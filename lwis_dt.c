@@ -18,6 +18,97 @@
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
 
+#include "lwis_gpio.h"
+#include "lwis_regulator.h"
+#include "lwis_sensor.h"
+
+static int parse_sensor_gpio(struct device_node *pdnode, char *name,
+			     struct lwis_gpio_list **gpio_list)
+{
+	int i;
+	int ret;
+	int pin;
+	int count;
+	enum of_gpio_flags flags;
+
+	count = of_gpio_named_count(pdnode, name);
+
+	/* No GPIO pins found, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	*gpio_list = lwis_gpio_list_alloc(count);
+
+	/* Parse and acquire gpio pin numbers and polarities */
+	for (i = 0; i < count; ++i) {
+		pin = of_get_named_gpio_flags(pdnode, name, i, &flags);
+		if (pin < 0) {
+			pr_err("Cannot find gpio %s[%d]\n", name, i);
+			ret = pin;
+			goto error_parse_gpio;
+		}
+		lwis_gpio_set(*gpio_list, i, pin,
+			      !(flags & OF_GPIO_ACTIVE_LOW));
+	}
+
+	pr_info("%s: %s\n", __func__, name);
+	lwis_gpio_print(*gpio_list);
+
+	return 0;
+
+	/* In case of error, free the other GPIOs that were alloc'ed */
+error_parse_gpio:
+	lwis_gpio_list_free(*gpio_list);
+	return ret;
+}
+
+static int parse_sensor_regulators(struct device *pdev,
+				   struct lwis_regulator_list **reg_list)
+{
+	int i;
+	int ret;
+	int count;
+	struct device_node *pdnode;
+	struct device_node *pdnode_reg;
+	const char *name;
+
+	pdnode = pdev->of_node;
+
+	count = of_property_count_elems_of_size(pdnode, "regulators",
+						sizeof(u32));
+
+	/* No regulators found, or entry does not exist, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	*reg_list = lwis_regulator_list_alloc(count);
+
+	/* Parse regulator list and acquire the regulator pointers */
+	for (i = 0; i < count; ++i) {
+		pdnode_reg = of_parse_phandle(pdnode, "regulators", i);
+		of_property_read_string(pdnode_reg, "regulator-name", &name);
+		ret = lwis_regulator_set(*reg_list, pdev, i, (char *) name);
+		if (ret) {
+			pr_err("Cannot find regulator: %s\n", name);
+			goto error_parse_reg;
+		}
+	}
+
+	lwis_regulator_print(*reg_list);
+
+	return 0;
+
+	/* In case of error, free all the other regulators that were alloc'ed */
+error_parse_reg:
+	for (i = 0; i < count; ++i) {
+		lwis_regulator_put(*reg_list, i);
+	}
+	lwis_regulator_list_free(*reg_list);
+	return ret;
+}
+
 int lwis_sensor_parse_config_dt(struct device *pdev,
 				struct lwis_sensor *psensor)
 {
@@ -28,6 +119,24 @@ int lwis_sensor_parse_config_dt(struct device *pdev,
 	if (!pdnode) {
 		pr_err("Cannot find device node\n");
 		ret = -ENODEV;
+		goto error;
+	}
+
+	ret = parse_sensor_gpio(pdnode, "enable-gpios", &psensor->enable_gpios);
+	if (ret) {
+		pr_err("Error parsing enable-gpios\n");
+		goto error;
+	}
+
+	ret = parse_sensor_gpio(pdnode, "reset-gpios", &psensor->reset_gpios);
+	if (ret) {
+		pr_err("Error parsing reset-gpios\n");
+		goto error;
+	}
+
+	ret = parse_sensor_regulators(pdev, &psensor->regulators);
+	if (ret) {
+		pr_err("Error parsing regulators\n");
 		goto error;
 	}
 

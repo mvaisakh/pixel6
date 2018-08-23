@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 
 #include "lwis_sensor.h"
+#include "lwis_dt.h"
 
 /*
  *  Sensor Interface Functions
@@ -56,4 +57,14 @@ struct lwis_sensor *lwis_sensor_get_ptr(struct i2c_client *pclient)
 
 error_exit:
 	return psensor;
+}
+
+int lwis_sensor_parse_config(struct device *pdev, struct lwis_sensor *psensor)
+{
+#ifdef CONFIG_OF
+	return lwis_sensor_parse_config_dt(pdev, psensor);
+#else
+	// Not implemented for non-device-tree parsing yet
+	return -ENOSYS;
+#endif
 }

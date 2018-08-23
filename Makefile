@@ -1,5 +1,7 @@
 lwis-objs := lwis_device.o
 lwis-objs += lwis_dt.o
+lwis-objs += lwis_gpio.o
+lwis-objs += lwis_regulator.o
 lwis-objs += sensors/lwis_sensor.o
 lwis-objs += sensors/lwis_sensor_imx362.o
 

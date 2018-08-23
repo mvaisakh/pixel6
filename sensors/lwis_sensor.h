@@ -14,6 +14,14 @@
 #include <linux/device.h>
 #include <linux/i2c.h>
 
+#include "lwis_gpio.h"
+#include "lwis_regulator.h"
+
+/*
+ *  Sensor Defines
+ */
+
+
 /*
  *  Sensor Data Structures
  */
@@ -24,6 +32,9 @@ struct lwis_sensor_ops {
 
 struct lwis_sensor {
 	struct lwis_sensor_ops *ops;
+	struct lwis_gpio_list *reset_gpios;
+	struct lwis_gpio_list *enable_gpios;
+	struct lwis_regulator_list *regulators;
 };
 
 /*
@@ -41,5 +52,7 @@ int lwis_sensor_init(struct lwis_sensor *psensor);
  *  i2c_client struct.
  */
 struct lwis_sensor *lwis_sensor_get_ptr(struct i2c_client *pclient);
+int lwis_sensor_parse_config(struct device *pdev, struct lwis_sensor *psensor);
+
 
 #endif /* LWIS_SENSOR_H_ */

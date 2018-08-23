@@ -48,6 +48,8 @@ static int lwis_sensor_imx362_probe(
 
 	psensor->ops = &imx362_ops;
 
+	lwis_sensor_parse_config(&client->dev, psensor);
+
 	return 0;
 }
 
