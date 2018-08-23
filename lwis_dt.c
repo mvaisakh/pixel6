@@ -11,13 +11,13 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include "lwis_dt.h"
-#include "lwis_sensor.h"
 
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
 
+#include "lwis_clock.h"
 #include "lwis_gpio.h"
 #include "lwis_regulator.h"
 #include "lwis_sensor.h"
@@ -109,6 +109,56 @@ error_parse_reg:
 	return ret;
 }
 
+static int parse_sensor_clocks(struct device *pdev,
+			       struct lwis_clock_list **clk_list)
+{
+	int i;
+	int ret = 0;
+	int count;
+	struct device_node *pdnode;
+	const char *name;
+	u32 rate;
+
+	pdnode = pdev->of_node;
+
+	count = of_property_count_strings(pdnode, "clock-names");
+
+	/* No clocks found, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	*clk_list = lwis_clock_list_alloc(count);
+
+	/* Parse and acquire clock pointers and frequencies, if applicable */
+	for (i = 0; i < count; ++i) {
+		of_property_read_string_index(pdnode, "clock-names", i,
+					      &name);
+		/* It is allowed to omit clock rates for some of the clocks */
+		ret = of_property_read_u32_index(pdnode, "clock-rates", i,
+						 &rate);
+		rate = (ret == 0) ? rate : 0;
+
+		ret = lwis_clock_set(*clk_list, pdev, i, (char *) name, rate);
+		if (ret) {
+			pr_err("Cannot find clock: %s\n", name);
+			goto error_parse_clk;
+		}
+	}
+
+	lwis_clock_print(*clk_list);
+
+	return 0;
+
+error_parse_clk:
+	/* Put back the clock instances for the ones that were alloc'ed */
+	for (i = 0; i < count; ++i) {
+		lwis_clock_put(*clk_list, pdev, i);
+	}
+	lwis_clock_list_free(*clk_list);
+	return ret;
+}
+
 int lwis_sensor_parse_config_dt(struct device *pdev,
 				struct lwis_sensor *psensor)
 {
@@ -119,28 +169,34 @@ int lwis_sensor_parse_config_dt(struct device *pdev,
 	if (!pdnode) {
 		pr_err("Cannot find device node\n");
 		ret = -ENODEV;
-		goto error;
+		goto error_parse_dt;
 	}
 
 	ret = parse_sensor_gpio(pdnode, "enable-gpios", &psensor->enable_gpios);
 	if (ret) {
 		pr_err("Error parsing enable-gpios\n");
-		goto error;
+		goto error_parse_dt;
 	}
 
 	ret = parse_sensor_gpio(pdnode, "reset-gpios", &psensor->reset_gpios);
 	if (ret) {
 		pr_err("Error parsing reset-gpios\n");
-		goto error;
+		goto error_parse_dt;
 	}
 
 	ret = parse_sensor_regulators(pdev, &psensor->regulators);
 	if (ret) {
 		pr_err("Error parsing regulators\n");
-		goto error;
+		goto error_parse_dt;
 	}
 
-error:
+	ret = parse_sensor_clocks(pdev, &psensor->clocks);
+	if (ret) {
+		pr_err("Error parsing clocks\n");
+		goto error_parse_dt;
+	}
+
+error_parse_dt:
 	return ret;
 }
 

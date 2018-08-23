@@ -1,4 +1,5 @@
 lwis-objs := lwis_device.o
+lwis-objs += lwis_clock.o
 lwis-objs += lwis_dt.o
 lwis-objs += lwis_gpio.o
 lwis-objs += lwis_regulator.o

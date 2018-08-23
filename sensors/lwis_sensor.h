@@ -14,6 +14,7 @@
 #include <linux/device.h>
 #include <linux/i2c.h>
 
+#include "lwis_clock.h"
 #include "lwis_gpio.h"
 #include "lwis_regulator.h"
 
@@ -35,6 +36,7 @@ struct lwis_sensor {
 	struct lwis_gpio_list *reset_gpios;
 	struct lwis_gpio_list *enable_gpios;
 	struct lwis_regulator_list *regulators;
+	struct lwis_clock_list *clocks;
 };
 
 /*
