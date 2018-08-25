@@ -1,0 +1,59 @@
+/*
+ * Google LWIS Sensor Interface
+ *
+ * Copyright (c) 2018 Google, LLC
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
+#include <linux/kernel.h>
+
+#include "lwis_sensor.h"
+
+/*
+ *  Sensor Interface Functions
+ */
+
+int lwis_sensor_init(struct lwis_sensor *psensor)
+{
+	if (!psensor || !psensor->ops || !psensor->ops->init) {
+		return -ENODEV;
+	}
+
+	return psensor->ops->init();
+}
+
+/*
+ *  Sensor Helper Functions
+ */
+
+struct lwis_sensor *lwis_sensor_get_ptr(struct i2c_client *pclient)
+{
+	struct lwis_sensor *psensor = NULL;
+
+#ifdef CONFIG_OF
+	struct device_node *pdnode;
+
+	pdnode = pclient->dev.of_node;
+	if (!pdnode) {
+		pr_err("Unable to obtain sensor device node\n");
+		goto error_exit;
+	}
+
+	psensor = (struct lwis_sensor *) pdnode->data;
+	if (!psensor) {
+		pr_err("Unable to obtain sensor data struct\n");
+		goto error_exit;
+	}
+
+#else
+	// Implementation reserved for non-device-tree platforms
+#endif
+
+error_exit:
+	return psensor;
+}

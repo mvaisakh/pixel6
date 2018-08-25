@@ -13,10 +13,12 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/uaccess.h>
 
+#include "lwis_commands.h"
 #include "lwis_device.h"
+#include "lwis_dt.h"
 
 #define LWIS_CLASS_NAME		"lwis"
 #define LWIS_DEVICE_NAME	"lwis"
@@ -93,15 +95,54 @@ static int lwis_release(struct inode *node, struct file *fp)
 static long lwis_ioctl(struct file *fp, unsigned int type,
 			unsigned long param)
 {
-	struct lwis_client *pclient = fp->private_data;
+	int ret = 0;
+	struct lwis_client *pclient;
+	struct lwis_device *pldev;
+
+	pclient = fp->private_data;
+	if (!pclient) {
+		pr_err("Cannot find client instance\n");
+		return -ENODEV;
+	}
+
+	pldev = pclient->pdev;
+	if (!pldev) {
+		pr_err("Cannot find device instance\n");
+		return -ENODEV;
+	}
 
 	mutex_lock(&pclient->lock);
 
-	// Do something
+	switch (type) {
+		case LWIS_GET_DEVICE_INFO:
+		{
+			struct lwis_device_info resp;
+			resp.dummy0 = 12;
+			resp.dummy1 = 34;
+			resp.dummy2 = 56;
+			ret = copy_to_user((void __user *)param, &resp,
+					   sizeof(struct lwis_device_info));
+			break;
+		}
+		case LWIS_ENROLL_BUFFER:
+		{
+			break;
+		}
+		case LWIS_SENSOR_INIT:
+		{
+			lwis_sensor_init(pldev->psensor);
+			break;
+		}
+		default:
+		{
+			pr_err("Unknown IOCTL operation\n");
+			ret = -EINVAL;
+		}
+	};
 
 	mutex_unlock(&pclient->lock);
 
-	return 0;
+	return ret;
 }
 
 #ifdef CONFIG_OF
@@ -171,7 +212,7 @@ static int __init lwis_register_device(void)
 				  LWIS_DEVICE_NAME);
 	if (ret) {
 		pr_err("Error in allocating chrdev region\n");
-		goto out;
+		goto error_chrdev_alloc;
 	}
 
 	core.device_major = MAJOR(lwis_devt);
@@ -181,7 +222,7 @@ static int __init lwis_register_device(void)
 	if (IS_ERR(core.pclass)) {
 		pr_err("Failed to create device class\n");
 		ret = PTR_ERR(core.pclass);
-		goto out_unregister_chrdev;
+		goto error_class_create;
 	}
 
 	/* Allocate a character device */
@@ -189,7 +230,7 @@ static int __init lwis_register_device(void)
 	if (!core.pcdev) {
 		pr_err("Failed to allocate cdev\n");
 		ret = -ENOMEM;
-		goto out_destroy_class;
+		goto error_cdev_alloc;
 	}
 
 	core.pcdev->ops = &lwis_fops;
@@ -197,7 +238,7 @@ static int __init lwis_register_device(void)
 	ret = cdev_add(core.pcdev, lwis_devt, LWIS_MAX_DEVICES);
 	if (ret) {
 		pr_err("Failed to add cdev\n");
-		goto out_destroy_class;
+		goto error_cdev_alloc;
 	}
 
 	mutex_unlock(&core.lock);
@@ -205,12 +246,12 @@ static int __init lwis_register_device(void)
 	return ret;
 
 	/* Error conditions */
-out_destroy_class:
+error_cdev_alloc:
 	class_destroy(core.pclass);
 	core.pclass = NULL;
-out_unregister_chrdev:
+error_class_create:
 	unregister_chrdev_region(lwis_devt, LWIS_MAX_DEVICES);
-out:
+error_chrdev_alloc:
 	mutex_unlock(&core.lock);
 	kfree(core.pidr);
 	core.pidr = NULL;
@@ -245,9 +286,10 @@ static int __init lwis_probe(struct platform_device *ppdev)
 		ret = 0;
 	} else {
 		pr_err("Unable to allocate minor ID (%d)\n", ret);
-		goto out;
+		goto error_minor_alloc;
 	}
 
+	pldev->ppdev = ppdev;
 	pldev->pdev = device_create(core.pclass, NULL,
 				     MKDEV(core.device_major, pldev->id),
 				     pldev, LWIS_DEVICE_NAME "%d",
@@ -255,7 +297,14 @@ static int __init lwis_probe(struct platform_device *ppdev)
 	if (IS_ERR(pldev->pdev)) {
 		pr_err("Failed to create device\n");
 		ret = PTR_ERR(pldev->pdev);
-		goto out_remove_idr;
+		goto error_dev_create;
+	}
+
+	/* Parse device tree for device configurations */
+	ret = lwis_device_parse_dt(pldev);
+	if (ret) {
+		pr_err("Failed to parse device tree\n");
+		goto error_parse_dt;
 	}
 
 	platform_set_drvdata(ppdev, pldev);
@@ -265,11 +314,13 @@ static int __init lwis_probe(struct platform_device *ppdev)
 	return ret;
 
 	/* Error conditions */
-out_remove_idr:
+error_parse_dt:
+	device_destroy(core.pclass, MKDEV(core.device_major, pldev->id));
+error_dev_create:
 	mutex_lock(&core.lock);
 	idr_remove(core.pidr, pldev->id);
 	mutex_unlock(&core.lock);
-out:
+error_minor_alloc:
 	kfree(pldev);
 	return ret;
 }

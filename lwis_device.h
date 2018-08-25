@@ -5,6 +5,9 @@
 #include <linux/fs.h>
 #include <linux/idr.h>
 #include <linux/kernel.h>
+#include <linux/platform_device.h>
+
+#include "lwis_sensor.h"
 
 /*
  *  struct lwis_core
@@ -29,6 +32,7 @@ struct lwis_device
 	int id;
 	struct device *pdev;
 	struct platform_device *ppdev;
+	struct lwis_sensor *psensor;
 };
 
 /*
