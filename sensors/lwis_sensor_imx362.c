@@ -19,6 +19,9 @@
 
 #define SENSOR_NAME "LWIS_IMX362"
 
+#define I2C_ON_STRING		"on_i2c"
+#define I2C_OFF_STRING		"off_i2c"
+
 /*
  *  Interface Functions
  */
@@ -36,6 +39,7 @@ static struct lwis_sensor_ops imx362_ops = {
 static int lwis_sensor_imx362_probe(
 	struct i2c_client *client, const struct i2c_device_id *id)
 {
+	int ret = 0;
 	struct lwis_sensor *psensor;
 
 	pr_info("IMX362: Probe\n");
@@ -48,9 +52,22 @@ static int lwis_sensor_imx362_probe(
 
 	psensor->ops = &imx362_ops;
 
-	lwis_sensor_parse_config(&client->dev, psensor);
+	ret = lwis_sensor_parse_config(&client->dev, psensor);
+	if (ret) {
+		pr_err("IMX362: Error parsing configurations\n");
+		goto error_probe;
+	}
+
+	ret = lwis_sensor_initialize_i2c(client, psensor);
+	if (ret) {
+		pr_err("IMX362: Error setting up i2c\n");
+		goto error_probe;
+	}
 
 	return 0;
+
+error_probe:
+	return ret;
 }
 
 static const struct of_device_id lwis_sensor_imx362_match[] = {

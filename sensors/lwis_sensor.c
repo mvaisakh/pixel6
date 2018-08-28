@@ -11,6 +11,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kernel.h>
+#include <linux/slab.h>
 
 #include "lwis_sensor.h"
 #include "lwis_dt.h"
@@ -67,4 +68,21 @@ int lwis_sensor_parse_config(struct device *pdev, struct lwis_sensor *psensor)
 	// Not implemented for non-device-tree parsing yet
 	return -ENOSYS;
 #endif
+}
+
+int lwis_sensor_initialize_i2c(struct i2c_client *pclient,
+			       struct lwis_sensor *psensor)
+{
+	struct lwis_i2c *pi2c;
+
+	pi2c = kzalloc(sizeof(struct lwis_i2c), GFP_KERNEL);
+	if (!pi2c) {
+		pr_err("Cannot allocate i2c structure\n");
+		return -ENOMEM;
+	}
+
+	psensor->i2c = pi2c;
+	pi2c->pclient = pclient;
+
+	return lwis_i2c_initialize(pi2c);
 }
