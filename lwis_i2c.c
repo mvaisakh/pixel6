@@ -8,7 +8,7 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#define pr_fmt(fmt) KBUILD_MODNAME "-i2c: " fmt
 
 #include "lwis_i2c.h"
 
@@ -22,7 +22,7 @@ int lwis_i2c_initialize(struct lwis_i2c *pi2c)
 	struct pinctrl *ppc;
 
 	if (!pi2c || !pi2c->pclient) {
-		pr_err("I2C: Cannot find i2c instance\n");
+		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
 
@@ -33,7 +33,7 @@ int lwis_i2c_initialize(struct lwis_i2c *pi2c)
 	/* TODO: Need to figure out why this is parent's parent */
 	ppc = devm_pinctrl_get(pdev->parent->parent);
 	if (IS_ERR(ppc)) {
-		pr_err("I2C: Cannot instantiate pinctrl instance (%d)\n",
+		pr_err("Cannot instantiate pinctrl instance (%d)\n",
 			(int) PTR_ERR(ppc));
 		return PTR_ERR(ppc);
 	}
@@ -48,20 +48,20 @@ int lwis_i2c_set_state(struct lwis_i2c *pi2c, const char *state_str)
 	struct pinctrl_state *pstate;
 
 	if (!pi2c || !pi2c->ppc) {
-		pr_err("I2C: Cannot find i2c instance\n");
+		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
 
 	pstate = pinctrl_lookup_state(pi2c->ppc, state_str);
 	if (IS_ERR(pstate)) {
-		pr_err("I2C: State %s not found (%ld)\n", state_str,
+		pr_err("State %s not found (%ld)\n", state_str,
 			PTR_ERR(pstate));
 		return PTR_ERR(pstate);
 	}
 
 	ret = pinctrl_select_state(pi2c->ppc, pstate);
 	if (ret) {
-		pr_err("I2C: Error selecting state %s (%d)\n", state_str, ret);
+		pr_err("Error selecting state %s (%d)\n", state_str, ret);
 		return ret;
 	}
 
@@ -90,11 +90,11 @@ int lwis_i2c_read(struct lwis_i2c *pi2c, u16 addr, u8 *rbuf, u32 bufsize)
 
 	ret = i2c_transfer(pclient->adapter, msg, ARRAY_SIZE(msg));
 	if (ret < 0) {
-		pr_err("I2C read failed (%d) : addr 0x%x\n", ret, addr);
+		pr_err("Read failed (%d): addr 0x%x\n", ret, addr);
 		return ret;
 	}
 
-	pr_info("I2C READ: ADDR 0x%04x VAL 0x%04x\n", addr, rbuf[0]);
+	pr_info("Read: addr 0x%04x val 0x%04x\n", addr, rbuf[0]);
 
 	return 0;
 }

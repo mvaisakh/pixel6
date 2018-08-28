@@ -8,7 +8,7 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#define pr_fmt(fmt) KBUILD_MODNAME "-clock: " fmt
 
 #include <linux/kernel.h>
 #include <linux/slab.h>

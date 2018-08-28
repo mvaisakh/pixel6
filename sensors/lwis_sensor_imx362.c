@@ -8,7 +8,7 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#define pr_fmt(fmt) KBUILD_MODNAME "-sensor-imx362: " fmt
 
 #include "lwis_sensor.h"
 
@@ -28,7 +28,7 @@
 static int lwis_sensor_imx362_init(void)
 {
 	// Currently stubbed
-	pr_info("IMX362: Init\n");
+	pr_info("Init\n");
 	return 0;
 }
 
@@ -42,11 +42,9 @@ static int lwis_sensor_imx362_probe(
 	int ret = 0;
 	struct lwis_sensor *psensor;
 
-	pr_info("IMX362: Probe\n");
-
 	psensor = lwis_sensor_get_ptr(client);
 	if (!psensor) {
-		pr_err("IMX362: Unable obtain sensor pointer\n");
+		pr_err("Unable obtain sensor pointer\n");
 		return -ENODEV;
 	}
 
@@ -54,13 +52,13 @@ static int lwis_sensor_imx362_probe(
 
 	ret = lwis_sensor_parse_config(&client->dev, psensor);
 	if (ret) {
-		pr_err("IMX362: Error parsing configurations\n");
+		pr_err("Error parsing configurations\n");
 		goto error_probe;
 	}
 
 	ret = lwis_sensor_initialize_i2c(client, psensor);
 	if (ret) {
-		pr_err("IMX362: Error setting up i2c\n");
+		pr_err("Error setting up i2c\n");
 		goto error_probe;
 	}
 
@@ -99,7 +97,7 @@ static int __init lwis_sensor_imx362_driver_init(void)
 {
 	int ret;
 
-	pr_info("IMX362: Init\n");
+	pr_info("Init\n");
 
 	ret = i2c_add_driver(&lwis_sensor_imx362_driver);
 	if (ret) {
