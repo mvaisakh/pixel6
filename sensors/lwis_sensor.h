@@ -40,8 +40,7 @@ struct lwis_sensor {
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
 	struct lwis_i2c *i2c;
-	struct i2c_client *i2c_client;
-	struct pinctrl *pin_ctrl;
+	struct pinctrl *mclk_ctrl;
 };
 
 /*
@@ -71,6 +70,10 @@ int lwis_sensor_parse_config(struct device *pdev, struct lwis_sensor *psensor);
  */
 int lwis_sensor_initialize_i2c(struct i2c_client *pclient,
 			       struct lwis_sensor *psensor);
+
+int lwis_sensor_initialize_mclk_ctrl(struct lwis_sensor *psensor);
+
+int lwis_sensor_set_mclk_state(struct lwis_sensor *psensor, const char *state);
 
 
 #endif /* LWIS_SENSOR_H_ */

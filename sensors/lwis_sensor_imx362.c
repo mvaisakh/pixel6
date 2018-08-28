@@ -21,6 +21,8 @@
 
 #define I2C_ON_STRING		"on_i2c"
 #define I2C_OFF_STRING		"off_i2c"
+#define MCLK_ON_STRING		"mclk_on"
+#define MCLK_OFF_STRING		"mclk_off"
 
 /*
  *  Interface Functions
@@ -59,6 +61,12 @@ static int lwis_sensor_imx362_probe(
 	ret = lwis_sensor_initialize_i2c(client, psensor);
 	if (ret) {
 		pr_err("Error setting up i2c\n");
+		goto error_probe;
+	}
+
+	ret = lwis_sensor_initialize_mclk_ctrl(psensor);
+	if (ret) {
+		pr_err("Error setting up mclk\n");
 		goto error_probe;
 	}
 
