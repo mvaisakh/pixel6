@@ -65,9 +65,19 @@ int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev,
 int lwis_clock_enable(struct lwis_clock_list *list, int index);
 
 /*
+ *  lwis_clock_enable_all: Enable all clocks.
+ */
+int lwis_clock_enable_all(struct lwis_clock_list *list);
+
+/*
  *  lwis_clock_disable: Disable clock by index.
  */
 void lwis_clock_disable(struct lwis_clock_list *list, int index);
+
+/*
+ *  lwis_clock_disable_all: Disable all clocks.
+ */
+void lwis_clock_disable_all(struct lwis_clock_list *list);
 
 /*
  *  lwis_clock_print: Debug function to print all the clocks in the

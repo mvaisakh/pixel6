@@ -96,6 +96,23 @@ int lwis_gpio_pin_set_level(struct lwis_gpio_list *list, int index,
 				"OUTPUT_HIGH" : "OUTPUT_LOW");
 }
 
+int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
+				enum lwis_gpio_pin_level level)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < list->count; ++i) {
+		ret = lwis_gpio_pin_set_level(list, i, level);
+		if (ret) {
+			pr_err("Error setting GPIO pin %d\n", i);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 void lwis_gpio_print(struct lwis_gpio_list *list)
 {
 	int i;

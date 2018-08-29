@@ -107,9 +107,34 @@ int lwis_clock_enable(struct lwis_clock_list *list, int index)
 	return ret;
 }
 
+int lwis_clock_enable_all(struct lwis_clock_list *list)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < list->count; ++i) {
+		ret = lwis_clock_enable(list, i);
+		if (ret) {
+			pr_err("Error enabling clock %s\n", list->clk[i].name);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 void lwis_clock_disable(struct lwis_clock_list *list, int index)
 {
 	clk_disable_unprepare(list->clk[index].clk);
+}
+
+void lwis_clock_disable_all(struct lwis_clock_list *list)
+{
+	int i;
+
+	for (i = 0; i < list->count; ++i) {
+		lwis_clock_disable(list, i);
+	}
 }
 
 void lwis_clock_print(struct lwis_clock_list *list)

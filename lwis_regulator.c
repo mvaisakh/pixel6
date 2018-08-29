@@ -94,9 +94,43 @@ int lwis_regulator_enable(struct lwis_regulator_list *list, int index)
 	return regulator_enable(list->reg[index].reg);
 }
 
+int lwis_regulator_enable_all(struct lwis_regulator_list *list)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < list->count; ++i) {
+		ret = lwis_regulator_enable(list, i);
+		if (ret) {
+			pr_err("Error enabling regulator %s\n",
+				list->reg[i].name);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int lwis_regulator_disable(struct lwis_regulator_list *list, int index)
 {
 	return regulator_disable(list->reg[index].reg);
+}
+
+int lwis_regulator_disable_all(struct lwis_regulator_list *list)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < list->count; ++i) {
+		ret = lwis_regulator_disable(list, i);
+		if (ret) {
+			pr_err("Error disabling regulator %s\n",
+				list->reg[i].name);
+			return ret;
+		}
+	}
+
+	return 0;
 }
 
 void lwis_regulator_print(struct lwis_regulator_list *list)

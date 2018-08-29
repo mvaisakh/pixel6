@@ -66,6 +66,13 @@ int lwis_gpio_set(struct lwis_gpio_list *list, int index, int pin,
 int lwis_gpio_pin_set_level(struct lwis_gpio_list *list, int index,
 			    enum lwis_gpio_pin_level level);
 
+/*
+ *  lwis_gpio_pin_set_level_all: Set all GPIO pins to the specified
+ *  active level.
+ */
+int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
+				enum lwis_gpio_pin_level level);
+
 /*  lwis_gpio_print: Debug function to print all the GPIO pins in the
  *  supplied list structure.
  */

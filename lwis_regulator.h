@@ -48,14 +48,24 @@ int lwis_regulator_set(struct lwis_regulator_list *list, struct device *pdev,
 int lwis_regulator_put(struct lwis_regulator_list *list, int index);
 
 /*
- *  lwis_regulator_enable: Turn on/enable the register by index.
+ *  lwis_regulator_enable: Turn on/enable the regulator by index.
  */
 int lwis_regulator_enable(struct lwis_regulator_list *list, int index);
 
 /*
- *  lwis_regulator_disable: Turn off/disable the register by index.
+ *  lwis_regulator_enable_all: Turn on/enable all the regulators.
+ */
+int lwis_regulator_enable_all(struct lwis_regulator_list *list);
+
+/*
+ *  lwis_regulator_disable: Turn off/disable the regulator by index.
  */
 int lwis_regulator_disable(struct lwis_regulator_list *list, int index);
+
+/*
+ *  lwis_regulator_disable_all: Turn off/disable all the regulators.
+ */
+int lwis_regulator_disable_all(struct lwis_regulator_list *list);
 
 /*
  *  lwis_regulator_print: Debug function to print all the regulators in the
