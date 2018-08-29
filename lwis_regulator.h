@@ -37,33 +37,58 @@ struct lwis_regulator_list *lwis_regulator_list_alloc(int num_regs);
 void lwis_regulator_list_free(struct lwis_regulator_list *list);
 
 /*
- *  lwis_regulator_set: Register the regulator by name.
+ *  lwis_regulator_get: Register the regulator by name.
+ *  Returns: index number (>= 0) if success, -ve if error
  */
-int lwis_regulator_set(struct lwis_regulator_list *list, struct device *pdev,
-		       int index, char *name);
+int lwis_regulator_get(struct lwis_regulator_list *list, char *name,
+		       struct device *dev);
 
 /*
- *  lwis_regulator_put: Unregister the regulator by index.
+ *  lwis_regulator_put_by_idx: Unregister the regulator by index.
+ *  Returns: 0 if success, -ve if error
  */
-int lwis_regulator_put(struct lwis_regulator_list *list, int index);
+int lwis_regulator_put_by_idx(struct lwis_regulator_list *list, int index);
 
 /*
- *  lwis_regulator_enable: Turn on/enable the regulator by index.
+ *  lwis_regulator_put_by_name: Unregister the regulator by index.
+ *  Returns: 0 if success, -ve if error
  */
-int lwis_regulator_enable(struct lwis_regulator_list *list, int index);
+int lwis_regulator_put_by_name(struct lwis_regulator_list *list, char *name);
+
+/*
+ *  lwis_regulator_enable_by_idx: Turn on/enable the regulator by index.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_regulator_enable_by_idx(struct lwis_regulator_list *list, int index);
+
+/*
+ *  lwis_regulator_enable_by_name: Turn on/enable the regulator by name.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_regulator_enable_by_name(struct lwis_regulator_list *list, char *name);
 
 /*
  *  lwis_regulator_enable_all: Turn on/enable all the regulators.
+ *  Returns: 0 if success, -ve if error
  */
 int lwis_regulator_enable_all(struct lwis_regulator_list *list);
 
 /*
- *  lwis_regulator_disable: Turn off/disable the regulator by index.
+ *  lwis_regulator_disable_by_idx: Turn off/disable the regulator by index.
+ *  Returns: 0 if success, -ve if error
  */
-int lwis_regulator_disable(struct lwis_regulator_list *list, int index);
+int lwis_regulator_disable_by_idx(struct lwis_regulator_list *list, int index);
+
+/*
+ *  lwis_regulator_disable_by_name: Turn off/disable the regulator by name.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_regulator_disable_by_name(struct lwis_regulator_list *list,
+				   char *name);
 
 /*
  *  lwis_regulator_disable_all: Turn off/disable all the regulators.
+ *  Returns: 0 if success, -ve if error
  */
 int lwis_regulator_disable_all(struct lwis_regulator_list *list);
 
@@ -73,4 +98,4 @@ int lwis_regulator_disable_all(struct lwis_regulator_list *list);
  */
 void lwis_regulator_print(struct lwis_regulator_list *list);
 
-#endif  /* LWIS_REGULATOR_H_ */
+#endif /* LWIS_REGULATOR_H_ */

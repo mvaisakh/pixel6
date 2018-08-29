@@ -53,18 +53,37 @@ void lwis_clock_list_free(struct lwis_clock_list *list)
 	kfree(list);
 }
 
-int lwis_clock_set(struct lwis_clock_list *list, struct device *pdev,
-		   int index, char *name, int rate)
+int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
+		   int rate)
 {
 	struct clk *clk;
+	int i;
+	int index = -1;
 
-	if (!pdev || !list || index < 0 || index >= list->count) {
+	if (!dev || !list) {
 		return -EINVAL;
 	}
 
-	clk = devm_clk_get(pdev, name);
+	/* Look for empty slot and duplicate entries */
+	for (i = 0; i < list->count; ++i) {
+		if (list->clk[i].clk == NULL) {
+			index = i;
+		} else if (!strcmp(list->clk[i].name, name)) {
+			pr_info("Clock %s already allocated\n", name);
+			return i;
+		}
+	}
 
+	/* No empty slot */
+	if (index < 0) {
+		pr_err("No empty slots in the lwis_clock struct\n");
+		return -ENOMEM;
+	}
+
+	/* Make sure clock exists */
+	clk = devm_clk_get(dev, name);
 	if (IS_ERR(clk)) {
+		pr_err("Clock %s not found\n", name);
 		return PTR_ERR(clk);
 	}
 
@@ -72,12 +91,13 @@ int lwis_clock_set(struct lwis_clock_list *list, struct device *pdev,
 	list->clk[index].name = name;
 	list->clk[index].rate = rate;
 
-	return 0;
+	return index;
 }
 
-int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev, int index)
+int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index,
+			  struct device *dev)
 {
-	if (!pdev || !list || index < 0 || index >= list->count) {
+	if (!dev || !list || index < 0 || index >= list->count) {
 		return -EINVAL;
 	}
 
@@ -85,13 +105,38 @@ int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev, int index)
 		return -EINVAL;
 	}
 
-	devm_clk_put(pdev, list->clk[index].clk);
-	list->clk[index].clk = NULL;
+	devm_clk_put(dev, list->clk[index].clk);
+	memset(list->clk + index, 0, sizeof(struct lwis_clock));
 
 	return 0;
 }
 
-int lwis_clock_enable(struct lwis_clock_list *list, int index)
+int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name,
+			   struct device *dev)
+{
+	int i;
+
+	if (!dev || !list) {
+		return -EINVAL;
+	}
+
+	/* Find entry by name */
+	for (i = 0; i < list->count; ++i) {
+		if (!strcmp(list->clk[i].name, name)) {
+			if (IS_ERR_OR_NULL(list->clk[i].clk)) {
+				return -EINVAL;
+			}
+			devm_clk_put(dev, list->clk[i].clk);
+			memset(list->clk + i, 0, sizeof(struct lwis_clock));
+			return 0;
+		}
+	}
+
+	pr_err("Clock %s not found\n", name);
+	return -EINVAL;
+}
+
+int lwis_clock_enable_by_idx(struct lwis_clock_list *list, int index)
 {
 	int ret = 0;
 
@@ -111,6 +156,24 @@ int lwis_clock_enable(struct lwis_clock_list *list, int index)
 	return ret;
 }
 
+int lwis_clock_enable_by_name(struct lwis_clock_list *list, char *name)
+{
+	int i;
+
+	if (!list) {
+		return -EINVAL;
+	}
+
+	for (i = 0; i < list->count; ++i) {
+		if (!strcmp(list->clk[i].name, name)) {
+			return lwis_clock_enable_by_idx(list, i);
+		}
+	}
+
+	pr_err("Clock %s not found\n", name);
+	return -ENOENT;
+}
+
 int lwis_clock_enable_all(struct lwis_clock_list *list)
 {
 	int i;
@@ -121,7 +184,7 @@ int lwis_clock_enable_all(struct lwis_clock_list *list)
 	}
 
 	for (i = 0; i < list->count; ++i) {
-		ret = lwis_clock_enable(list, i);
+		ret = lwis_clock_enable_by_idx(list, i);
 		if (ret) {
 			pr_err("Error enabling clock %s\n", list->clk[i].name);
 			return ret;
@@ -131,13 +194,31 @@ int lwis_clock_enable_all(struct lwis_clock_list *list)
 	return 0;
 }
 
-void lwis_clock_disable(struct lwis_clock_list *list, int index)
+void lwis_clock_disable_by_idx(struct lwis_clock_list *list, int index)
 {
 	if (!list || index < 0 || index >= list->count) {
 		return;
 	}
 
 	clk_disable_unprepare(list->clk[index].clk);
+}
+
+void lwis_clock_disable_by_name(struct lwis_clock_list *list, char *name)
+{
+	int i;
+
+	if (!list) {
+		return;
+	}
+
+	for (i = 0; i < list->count; ++i) {
+		if (!strcmp(list->clk[i].name, name)) {
+			lwis_clock_disable_by_idx(list, i);
+			return;
+		}
+	}
+
+	pr_err("Clock %s not found\n", name);
 }
 
 void lwis_clock_disable_all(struct lwis_clock_list *list)
@@ -149,7 +230,7 @@ void lwis_clock_disable_all(struct lwis_clock_list *list)
 	}
 
 	for (i = 0; i < list->count; ++i) {
-		lwis_clock_disable(list, i);
+		lwis_clock_disable_by_idx(list, i);
 	}
 }
 
@@ -161,4 +242,3 @@ void lwis_clock_print(struct lwis_clock_list *list)
 			list->clk[i].rate);
 	}
 }
-

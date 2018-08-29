@@ -47,32 +47,54 @@ struct lwis_clock_list *lwis_clock_list_alloc(int num_clks);
 void lwis_clock_list_free(struct lwis_clock_list *list);
 
 /*
- *  lwis_clock_set: Register the clock by name and store its assigned
+ *  lwis_clock_get: Register the clock by name and store its assigned
  *  clock rate.
+ *  Returns: index number (>= 0) if success, -ve if error
  */
-int lwis_clock_set(struct lwis_clock_list *list, struct device *pdev,
-		   int index, char *name, int rate);
+int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
+		   int rate);
 
 /*
- *  lwis_clock_put: Unregister the clock by index.
+ *  lwis_clock_put_by_idx: Unregister the clock by index.
+ *  Returns: 0 if success, -ve if error
  */
-int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev,
-		   int index);
+int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index,
+			  struct device *dev);
 
 /*
- *  lwis_clock_enable: Enable clock by index.
+ *  lwis_clock_put_by_name: Unregister the clock by name.
+ *  Returns: 0 if success, -ve if error
  */
-int lwis_clock_enable(struct lwis_clock_list *list, int index);
+int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name,
+			   struct device *dev);
+
+/*
+ *  lwis_clock_enable_by_idx: Enable clock by index.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_clock_enable_by_idx(struct lwis_clock_list *list, int index);
+
+/*
+ *  lwis_clock_enable_by_name: Enable clock by name.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_clock_enable_by_name(struct lwis_clock_list *list, char *name);
 
 /*
  *  lwis_clock_enable_all: Enable all clocks.
+ *  Returns: 0 if success, -ve if error
  */
 int lwis_clock_enable_all(struct lwis_clock_list *list);
 
 /*
- *  lwis_clock_disable: Disable clock by index.
+ *  lwis_clock_disable_by_idx: Disable clock by index.
  */
-void lwis_clock_disable(struct lwis_clock_list *list, int index);
+void lwis_clock_disable_by_idx(struct lwis_clock_list *list, int index);
+
+/*
+ *  lwis_clock_disable_by_name: Disable clock by name.
+ */
+void lwis_clock_disable_by_name(struct lwis_clock_list *list, char *name);
 
 /*
  *  lwis_clock_disable_all: Disable all clocks.
@@ -85,4 +107,4 @@ void lwis_clock_disable_all(struct lwis_clock_list *list);
  */
 void lwis_clock_print(struct lwis_clock_list *list);
 
-#endif  /* LWIS_CLOCK_H_ */
+#endif /* LWIS_CLOCK_H_ */

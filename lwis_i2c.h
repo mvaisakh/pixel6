@@ -14,37 +14,58 @@
 #include <linux/i2c.h>
 #include <linux/pinctrl/consumer.h>
 
-#define I2C_STATE_OFF_STRING	"off_i2c"
-#define I2C_STATE_ON_STRING	"on_i2c"
+#include "lwis_commands.h"
+
+#define I2C_STATE_OFF_STRING "off_i2c"
+#define I2C_STATE_ON_STRING "on_i2c"
 
 /*
  *  LWIS I2C Defines
  */
 
-
 /*
  *  LWIS I2C Structures
  */
 
-
 struct lwis_i2c {
-	struct i2c_client *pclient;
-	struct pinctrl *ppc;
+	struct i2c_client *client;
+	struct pinctrl *state_pinctrl;
 };
-
-/*
- *  lwis_i2c_initialize: Initialize the lwis_i2c structure.
- */
-int lwis_i2c_initialize(struct lwis_i2c *pi2c);
 
 /*
  *  lwis_i2c_set_state: Enable or disable the i2c device.
  *  NOTE: state_str must match the pinctrl-names defined in the i2c driver.
+ *  Pinctrl states can be found in the device tree, look for the i2c entry and
+ *  the state names are defined under "pinctrl-names".  Their corresponding
+ *  functions are defined under "pinctrl-N".
  */
-int lwis_i2c_set_state(struct lwis_i2c *pi2c, const char *state_str);
+int lwis_i2c_set_state(struct lwis_i2c *i2c, const char *state_str);
 
-int lwis_i2c_read(struct lwis_i2c *pi2c, u16 addr, u8 *rbuf, u32 bufsize);
+/*
+ *  lwis_i2c_read_batch: Read from i2c bus in a batch - register information
+ *  is provided through the "data" buffer.  The read back values will be stored
+ *  in the "data" buffer also.
+ */
+int lwis_i2c_read_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
+			int num_entries, int offset_bits);
 
-int lwis_i2c_write(struct lwis_i2c *pi2c, u16 addr, u8 *wbuf, u32 bufsize);
+/*
+ *  lwis_i2c_write_batch: Write to i2c bus in a batch - register and value
+ *  information are provided through the "data" buffer.
+ */
+int lwis_i2c_write_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
+			 int num_entries, int offset_bits);
 
-#endif  /* LWIS_I2C_H_ */
+/*
+ *  lwis_i2c_read: Single read from i2c bus.
+ */
+int lwis_i2c_read(struct lwis_i2c *i2c, int offset_bits, int64_t offset,
+		  int value_bits, uint64_t *value);
+
+/*
+ *  lwis_i2c_write: Single write to i2c bus.
+ */
+int lwis_i2c_write(struct lwis_i2c *i2c, int offset_bits, int64_t offset,
+		   int value_bits, uint64_t value);
+
+#endif /* LWIS_I2C_H_ */

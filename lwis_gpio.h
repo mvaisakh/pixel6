@@ -17,10 +17,7 @@
  *  LWIS GPIO Defines
  */
 
-enum lwis_gpio_pin_level {
-	LWIS_GPIO_PIN_INACTIVE = 0,
-	LWIS_GPIO_PIN_ACTIVE
-};
+enum lwis_gpio_pin_level { LWIS_GPIO_PIN_INACTIVE = 0, LWIS_GPIO_PIN_ACTIVE };
 
 /*
  *  LWIS GPIO Structures
@@ -54,9 +51,9 @@ struct lwis_gpio_list *lwis_gpio_list_alloc(int num_gpios);
 void lwis_gpio_list_free(struct lwis_gpio_list *list);
 
 /*
- *  lwis_gpio_set: Register the GPIO pin and polarity.
+ *  lwis_gpio_get: Register the GPIO pin and polarity.
  */
-int lwis_gpio_set(struct lwis_gpio_list *list, int index, int pin,
+int lwis_gpio_get(struct lwis_gpio_list *list, int index, int pin,
 		  bool is_active_high);
 
 /*
@@ -78,4 +75,4 @@ int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
  */
 void lwis_gpio_print(struct lwis_gpio_list *list);
 
-#endif  /* LWIS_GPIO_H_ */
+#endif /* LWIS_GPIO_H_ */

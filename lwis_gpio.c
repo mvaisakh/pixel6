@@ -52,7 +52,7 @@ void lwis_gpio_list_free(struct lwis_gpio_list *list)
 	kfree(list);
 }
 
-int lwis_gpio_set(struct lwis_gpio_list *list, int index, int pin,
+int lwis_gpio_get(struct lwis_gpio_list *list, int index, int pin,
 		  bool is_active_high)
 {
 	if (!list || index < 0 || index >= list->count) {
@@ -96,8 +96,8 @@ int lwis_gpio_pin_set_level(struct lwis_gpio_list *list, int index,
 	}
 
 	return gpio_request_one(list->gpio[index].pin, flag,
-				(flag == GPIOF_OUT_INIT_HIGH) ?
-				"OUTPUT_HIGH" : "OUTPUT_LOW");
+				(flag == GPIOF_OUT_INIT_HIGH) ? "OUTPUT_HIGH"
+							      : "OUTPUT_LOW");
 }
 
 int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,

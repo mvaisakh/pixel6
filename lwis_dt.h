@@ -16,16 +16,9 @@
 #include "lwis_device.h"
 
 /*
- *  lwis_device_parse_dt: Parse top level device configurations, and scan
- *  for peripheral components based on device tree definitions.
+ *  lwis_device_parse_dt: Parse device configurations based on device tree
+ *  entries.
  */
-int lwis_device_parse_dt(struct lwis_device *pldev);
+int lwis_device_parse_dt(struct lwis_device *lwis_dev);
 
-/*
- *  lwis_sensor_parse_config_dt: Parse sensor specific configurations, and
- *  obtain lists of GPIOs, clocks, regulators, etc. for the sensor.
- */
-int lwis_sensor_parse_config_dt(struct device *pdev,
-				struct lwis_sensor *psensor);
-
-#endif  /* LWIS_DT_H_ */
+#endif /* LWIS_DT_H_ */
