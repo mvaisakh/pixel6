@@ -77,7 +77,7 @@ int lwis_clock_set(struct lwis_clock_list *list, struct device *pdev,
 
 int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev, int index)
 {
-	if (!list || index < 0 || index >= list->count) {
+	if (!pdev || !list || index < 0 || index >= list->count) {
 		return -EINVAL;
 	}
 
@@ -94,6 +94,10 @@ int lwis_clock_put(struct lwis_clock_list *list, struct device *pdev, int index)
 int lwis_clock_enable(struct lwis_clock_list *list, int index)
 {
 	int ret = 0;
+
+	if (!list || index < 0 || index >= list->count) {
+		return -EINVAL;
+	}
 
 	ret = clk_prepare_enable(list->clk[index].clk);
 	if (ret) {
@@ -112,6 +116,10 @@ int lwis_clock_enable_all(struct lwis_clock_list *list)
 	int i;
 	int ret;
 
+	if (!list) {
+		return -EINVAL;
+	}
+
 	for (i = 0; i < list->count; ++i) {
 		ret = lwis_clock_enable(list, i);
 		if (ret) {
@@ -125,12 +133,20 @@ int lwis_clock_enable_all(struct lwis_clock_list *list)
 
 void lwis_clock_disable(struct lwis_clock_list *list, int index)
 {
+	if (!list || index < 0 || index >= list->count) {
+		return;
+	}
+
 	clk_disable_unprepare(list->clk[index].clk);
 }
 
 void lwis_clock_disable_all(struct lwis_clock_list *list)
 {
 	int i;
+
+	if (!list) {
+		return;
+	}
 
 	for (i = 0; i < list->count; ++i) {
 		lwis_clock_disable(list, i);

@@ -70,6 +70,10 @@ int lwis_gpio_pin_set_level(struct lwis_gpio_list *list, int index,
 {
 	unsigned long flag;
 
+	if (!list || index < 0 || index >= list->count) {
+		return -EINVAL;
+	}
+
 	if (!gpio_is_valid(list->gpio[index].pin)) {
 		return -EINVAL;
 	}
@@ -101,6 +105,10 @@ int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
 {
 	int i;
 	int ret;
+
+	if (!list) {
+		return -EINVAL;
+	}
 
 	for (i = 0; i < list->count; ++i) {
 		ret = lwis_gpio_pin_set_level(list, i, level);
