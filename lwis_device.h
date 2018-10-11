@@ -20,11 +20,14 @@
 #include "lwis_clock.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
+#include "lwis_interrupt.h"
+#include "lwis_ioreg.h"
+#include "lwis_phy.h"
 #include "lwis_regulator.h"
 
 #define LWIS_TOP_DEVICE_COMPAT "google,lwis-top-device"
 #define LWIS_I2C_DEVICE_COMPAT "google,lwis-i2c-device"
-#define LWIS_MMAP_DEVICE_COMPAT "google,lwis-mmap-device"
+#define LWIS_IOREG_DEVICE_COMPAT "google,lwis-ioreg-device"
 
 /* Device tree strings have a maximum length of 31, according to specs.
    Adding 1 byte for the null character. */
@@ -32,16 +35,16 @@
 
 /*
  * lwis_device_types
- * top : top level device that overlooks all the LWIS devices. Will be used to
- *       list the information of the other LWIS devices in the system.
- * i2c : for controlling i2c devices
- * mmap: for controlling memory mapped devices
+ * top  : top level device that overlooks all the LWIS devices. Will be used to
+ *        list the information of the other LWIS devices in the system.
+ * i2c  : for controlling i2c devices
+ * ioreg: for controlling mapped register I/O devices
  */
 enum lwis_device_types {
 	DEVICE_TYPE_UNKNOWN = -1,
 	DEVICE_TYPE_TOP = 0,
 	DEVICE_TYPE_I2C,
-	DEVICE_TYPE_MMAP,
+	DEVICE_TYPE_IOREG,
 	NUM_DEVICE_TYPES
 };
 
@@ -74,7 +77,10 @@ struct lwis_device {
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
 	struct lwis_i2c *i2c;
+	struct lwis_ioreg_list *ioreg;
 	struct pinctrl *mclk_ctrl;
+	struct lwis_interrupt_list *irqs;
+	struct lwis_phy_list *phys;
 	struct list_head dev_list;
 };
 

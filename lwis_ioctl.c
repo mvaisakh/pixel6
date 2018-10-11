@@ -8,6 +8,8 @@
  * published by the Free Software Foundation.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME "-ioctl: " fmt
+
 #include "lwis_ioctl.h"
 
 #include <linux/delay.h>
@@ -19,6 +21,7 @@
 #include "lwis_commands.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
+#include "lwis_ioreg.h"
 #include "lwis_pinctrl.h"
 #include "lwis_regulator.h"
 
@@ -65,6 +68,9 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 		ret = lwis_i2c_read_batch(lwis_dev->i2c, k_msg.buf,
 					  k_msg.num_entries,
 					  k_msg.offset_bitwidth);
+	} else if (lwis_dev->type == DEVICE_TYPE_IOREG) {
+		ret = lwis_ioreg_read_batch(lwis_dev->ioreg, k_msg.bid,
+					    k_msg.buf, k_msg.num_entries);
 	}
 
 	if (ret) {
@@ -118,6 +124,9 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 		ret = lwis_i2c_write_batch(lwis_dev->i2c, k_msg.buf,
 					   k_msg.num_entries,
 					   k_msg.offset_bitwidth);
+	} else if (lwis_dev->type == DEVICE_TYPE_IOREG) {
+		ret = lwis_ioreg_write_batch(lwis_dev->ioreg, k_msg.bid,
+					     k_msg.buf, k_msg.num_entries);
 	}
 
 error_i2c_write:
@@ -208,6 +217,16 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->phys) {
+		/* Power on the PHY */
+		ret = lwis_phy_set_power_all(lwis_dev->phys,
+					     /* power_on = */ true);
+		if (ret) {
+			pr_err("Error powering on PHY\n");
+			return ret;
+		}
+	}
+
 	pr_info("Device enabled\n");
 	return 0;
 }
@@ -216,6 +235,16 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 static int ioctl_device_disable(struct lwis_device *lwis_dev)
 {
 	int ret;
+
+	if (lwis_dev->phys) {
+		/* Power on the PHY */
+		ret = lwis_phy_set_power_all(lwis_dev->phys,
+					     /* power_on = */ false);
+		if (ret) {
+			pr_err("Error powering off PHY\n");
+			return ret;
+		}
+	}
 
 	if (lwis_dev->enable_gpios) {
 		/* Set enable pins to inactive */

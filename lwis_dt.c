@@ -14,11 +14,14 @@
 
 #include <linux/kernel.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
 
 #include "lwis_clock.h"
+#include "lwis_device.h"
 #include "lwis_gpio.h"
+#include "lwis_ioreg.h"
 #include "lwis_regulator.h"
 
 static int parse_gpios(struct lwis_device *lwis_dev, char *name,
@@ -91,7 +94,7 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 	for (i = 0; i < count; ++i) {
 		dev_node_reg = of_parse_phandle(dev_node, "regulators", i);
 		of_property_read_string(dev_node_reg, "regulator-name", &name);
-		ret = lwis_regulator_get(lwis_dev->regulators, (char *)name,
+		ret = lwis_regulator_get(lwis_dev->regulators, (char *) name,
 					 dev);
 		if (ret < 0) {
 			pr_err("Cannot find regulator: %s\n", name);
@@ -227,6 +230,142 @@ static int parse_i2c_handle(struct lwis_device *lwis_dev)
 	return 0;
 }
 
+static int parse_ioreg_registers(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+	int i;
+	int ret;
+	int blocks;
+	int reg_tuple_size;
+
+	dev_node = lwis_dev->plat_dev->dev.of_node;
+	reg_tuple_size = of_n_addr_cells(dev_node) + of_n_size_cells(dev_node);
+
+	blocks = of_property_count_elems_of_size(dev_node, "reg",
+						 reg_tuple_size * sizeof(u32));
+	if (blocks <= 0) {
+		pr_err("No register space found\n");
+		return -EINVAL;
+	}
+
+	lwis_dev->ioreg = lwis_ioreg_list_alloc(blocks);
+	if (IS_ERR(lwis_dev->ioreg)) {
+		pr_err("Failed to allocate ioreg list\n");
+		return PTR_ERR(lwis_dev->ioreg);
+	}
+
+	for (i = 0; i < blocks; ++i) {
+		ret = lwis_ioreg_get(lwis_dev->ioreg, i, lwis_dev->plat_dev);
+		if (ret) {
+			pr_err("Cannot set ioreg info\n");
+			goto error_ioreg;
+		}
+	}
+
+	return 0;
+
+error_ioreg:
+	for (i = 0; i < blocks; ++i) {
+		lwis_ioreg_put(lwis_dev->ioreg, i, lwis_dev->plat_dev);
+	}
+	lwis_ioreg_list_free(lwis_dev->ioreg);
+	lwis_dev->ioreg = NULL;
+	return ret;
+}
+
+static int parse_interrupts(struct lwis_device *lwis_dev)
+{
+	int i;
+	int ret;
+	int count;
+	const char *name;
+	struct device_node *dev_node;
+	struct platform_device *plat_dev;
+
+	plat_dev = lwis_dev->plat_dev;
+	dev_node = plat_dev->dev.of_node;
+
+	count = platform_irq_count(plat_dev);
+
+	/* No interrupts found, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	lwis_dev->irqs = lwis_interrupt_list_alloc(count);
+	if (IS_ERR(lwis_dev->irqs)) {
+		pr_err("Failed to allocate IRQ list\n");
+		return PTR_ERR(lwis_dev->irqs);
+	}
+
+	for (i = 0; i < count; ++i) {
+		of_property_read_string_index(dev_node, "interrupt-names", i,
+					      &name);
+		ret = lwis_interrupt_get(lwis_dev->irqs, i, (char *) name,
+					 plat_dev);
+		if (ret) {
+			pr_err("Cannot set irq %s\n", name);
+			goto error_get_irq;
+		}
+	}
+
+	lwis_interrupt_print(lwis_dev->irqs);
+
+	return 0;
+
+error_get_irq:
+	lwis_interrupt_list_free(lwis_dev->irqs);
+	lwis_dev->irqs = NULL;
+	return ret;
+}
+
+static int parse_phys(struct lwis_device *lwis_dev)
+{
+	struct device *dev;
+	struct device_node *dev_node;
+	int i;
+	int ret;
+	int count;
+	const char *name;
+
+	dev = &(lwis_dev->plat_dev->dev);
+	dev_node = dev->of_node;
+
+	count = of_count_phandle_with_args(dev_node, "phys", "#phy-cells");
+
+	/* No PHY found, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	lwis_dev->phys = lwis_phy_list_alloc(count);
+	if (IS_ERR(lwis_dev->phys)) {
+		pr_err("Failed to allocate PHY list\n");
+		return PTR_ERR(lwis_dev->phys);
+	}
+
+	for (i = 0; i < count; ++i) {
+		of_property_read_string_index(dev_node, "phy-names", i, &name);
+		ret = lwis_phy_get(lwis_dev->phys, (char *) name, dev);
+		if (ret < 0) {
+			pr_err("Error adding PHY[%d]\n", i);
+			goto error_parse_phy;
+		}
+	}
+
+	lwis_phy_print(lwis_dev->phys);
+
+	return 0;
+
+error_parse_phy:
+	for (i = 0; i < count; ++i) {
+		lwis_phy_put_by_idx(lwis_dev->phys, i, dev);
+	}
+	lwis_phy_list_free(lwis_dev->phys);
+	lwis_dev->phys = NULL;
+	return ret;
+}
+
 int lwis_device_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -287,13 +426,34 @@ int lwis_device_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
+	ret = parse_interrupts(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing interrupts\n");
+		return ret;
+	}
+
+	ret = parse_phys(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing phy's\n");
+		return ret;
+	}
+
 	if (!strcmp(compat_str, LWIS_TOP_DEVICE_COMPAT)) {
 		lwis_dev->type = DEVICE_TYPE_TOP;
 	} else if (!strcmp(compat_str, LWIS_I2C_DEVICE_COMPAT)) {
 		lwis_dev->type = DEVICE_TYPE_I2C;
-		parse_i2c_handle(lwis_dev);
-	} else if (!strcmp(compat_str, LWIS_MMAP_DEVICE_COMPAT)) {
-		lwis_dev->type = DEVICE_TYPE_MMAP;
+		ret = parse_i2c_handle(lwis_dev);
+		if (ret) {
+			pr_err("Error parsing i2c handle\n");
+			return ret;
+		}
+	} else if (!strcmp(compat_str, LWIS_IOREG_DEVICE_COMPAT)) {
+		lwis_dev->type = DEVICE_TYPE_IOREG;
+		ret = parse_ioreg_registers(lwis_dev);
+		if (ret) {
+			pr_err("Error parising ioreg registers\n");
+			return ret;
+		}
 	} else {
 		lwis_dev->type = DEVICE_TYPE_UNKNOWN;
 	}

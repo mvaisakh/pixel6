@@ -129,7 +129,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 static const struct of_device_id lwis_id_match[] = {
 	{ .compatible = LWIS_TOP_DEVICE_COMPAT },
 	{ .compatible = LWIS_I2C_DEVICE_COMPAT },
-	{ .compatible = LWIS_MMAP_DEVICE_COMPAT },
+	{ .compatible = LWIS_IOREG_DEVICE_COMPAT },
 	{},
 };
 MODULE_DEVICE_TABLE(of, lwis_id_match);
