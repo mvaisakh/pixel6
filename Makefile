@@ -8,6 +8,7 @@ lwis-objs += lwis_ioreg.o
 lwis-objs += lwis_phy.o
 lwis-objs += lwis_pinctrl.o
 lwis-objs += lwis_regulator.o
+lwis-objs += lwis_event.o
 
 # Device tree specific file
 ifeq ($(CONFIG_OF), y)

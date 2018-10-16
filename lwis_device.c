@@ -11,6 +11,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-device: " fmt
 
 #include <linux/device.h>
+#include <linux/hashtable.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -19,6 +20,7 @@
 #include "lwis_commands.h"
 #include "lwis_device.h"
 #include "lwis_dt.h"
+#include "lwis_event.h"
 #include "lwis_i2c.h"
 #include "lwis_ioctl.h"
 
@@ -32,12 +34,14 @@ static struct lwis_core core;
 static int lwis_open(struct inode *node, struct file *fp);
 static int lwis_release(struct inode *node, struct file *fp);
 static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param);
+static unsigned int lwis_poll(struct file *fp, poll_table *wait);
 
 static struct file_operations lwis_fops = {
 	.owner = THIS_MODULE,
 	.open = lwis_open,
 	.release = lwis_release,
 	.unlocked_ioctl = lwis_ioctl,
+	.poll = lwis_poll,
 };
 
 /*
@@ -47,6 +51,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 {
 	struct lwis_device *lwis_dev;
 	struct lwis_client *lwis_client;
+	unsigned long flags;
 
 	pr_info("Opening instance %d\n", iminor(node));
 
@@ -66,7 +71,22 @@ static int lwis_open(struct inode *node, struct file *fp)
 	}
 
 	lwis_client->lwis_dev = lwis_dev;
+	/* Initialize locks */
 	mutex_init(&lwis_client->lock);
+	spin_lock_init(&lwis_client->event_lock);
+
+	/* Empty hash table for client event states */
+	hash_init(lwis_client->event_states);
+
+	/* The event queue itself is a linked list */
+	INIT_LIST_HEAD(&lwis_client->event_queue);
+
+	/* Initialize the wait queue for the event queue */
+	init_waitqueue_head(&lwis_client->event_wait_queue);
+
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	list_add(&lwis_client->node, &lwis_dev->clients);
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	/* Storing the client handle in fp private_data for easy access */
 	fp->private_data = lwis_client;
@@ -80,9 +100,31 @@ static int lwis_open(struct inode *node, struct file *fp)
 static int lwis_release(struct inode *node, struct file *fp)
 {
 	struct lwis_client *lwis_client = fp->private_data;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct list_head *p, *n;
+	unsigned long flags;
 
 	pr_info("Closing instance %d\n", iminor(node));
 
+	/* Let's lock the mutex while we're cleaning up to avoid other parts
+	 * of the code from acquiring dangling pointers to the client or any
+	 * of the client event states that are about to be freed
+	 */
+	mutex_lock(&lwis_client->lock);
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+
+	/* Take this lwis_client off the list of active clients */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	list_for_each_safe(p, n, &lwis_dev->clients)
+	{
+		if (lwis_client == list_entry(p, struct lwis_client, node)) {
+			list_del(p);
+		}
+	}
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	mutex_unlock(&lwis_client->lock);
 	kfree(lwis_client);
 
 	return 0;
@@ -113,7 +155,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 
 	mutex_lock(&lwis_client->lock);
 
-	ret = lwis_ioctl_handler(lwis_dev, type, param);
+	ret = lwis_ioctl_handler(lwis_client, type, param);
 
 	mutex_unlock(&lwis_client->lock);
 
@@ -122,6 +164,35 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 	}
 
 	return ret;
+}
+/*
+ *  lwis_poll: Event queue status function of LWIS
+ *
+ */
+static unsigned int lwis_poll(struct file *fp, poll_table *wait)
+{
+	unsigned int mask = 0;
+	struct lwis_client *lwis_client;
+
+	lwis_client = fp->private_data;
+	if (!lwis_client) {
+		pr_err("Cannot find client instance\n");
+		mask |= POLLERR;
+	}
+
+	mutex_lock(&lwis_client->lock);
+
+	/* Add our wait queue to the poll table */
+	poll_wait(fp, &lwis_client->event_wait_queue, wait);
+
+	/* Check if we have anything in the event list */
+	if (lwis_client_event_peek_front(lwis_client, NULL) == 0) {
+		mask |= POLLIN;
+	}
+
+	mutex_unlock(&lwis_client->lock);
+
+	return mask;
 }
 
 #ifdef CONFIG_OF
@@ -302,9 +373,19 @@ static int __init lwis_probe(struct platform_device *plat_dev)
 		goto error_init;
 	}
 
+	/* Initialize an empty list of clients */
+	INIT_LIST_HEAD(&lwis_dev->clients);
+
+	/* Initialize event state hash table */
+	hash_init(lwis_dev->event_states);
+
+	/* Initialize the spinlock */
+	spin_lock_init(&lwis_dev->lock);
+
 	/* Add this instance to the device list */
-	INIT_LIST_HEAD(&lwis_dev->dev_list);
+	mutex_lock(&core.lock);
 	list_add(&lwis_dev->dev_list, &core.lwis_dev_list);
+	mutex_unlock(&core.lock);
 
 	platform_set_drvdata(plat_dev, lwis_dev);
 

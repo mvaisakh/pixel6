@@ -45,6 +45,36 @@ struct lwis_io_msg {
 	int offset_bitwidth;
 };
 
+/* The first 4096 event IDs are reserved for generic events shared by all
+ * devices.
+ *
+ * The rest are specific to device specializations
+ */
+#define LWIS_EVENT_ID_INVALID 0
+#define LWIS_EVENT_ID_HEARTBEAT 1
+// ...
+#define LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE 4096
+
+struct lwis_event_info {
+	// IOCTL Inputs
+	size_t payload_buffer_size;
+	void *payload_buffer;
+	// IOCTL Outputs
+	int64_t event_id;
+	uint64_t timestamp_ns;
+	size_t payload_size;
+};
+
+#define LWIS_EVENT_CONTROL_FLAG_ENABLE (1ULL << 0)
+#define LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE (1ULL << 1)
+
+struct lwis_event_control {
+	// IOCTL Inputs
+	int64_t event_id;
+	// IOCTL Outputs
+	uint64_t flags;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -57,5 +87,11 @@ struct lwis_io_msg {
 #define LWIS_REG_WRITE _IOWR(LWIS_IOC_TYPE, 4, struct lwis_io_msg)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 5)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 6)
+
+#define LWIS_EVENT_CONTROL_GET                                                 \
+	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
+#define LWIS_EVENT_CONTROL_SET                                                 \
+	_IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
+#define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
 
 #endif /* LWIS_COMMANDS_H_ */

@@ -13,11 +13,16 @@
 
 #include <linux/cdev.h>
 #include <linux/fs.h>
+#include <linux/hashtable.h>
 #include <linux/idr.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/poll.h>
 
 #include "lwis_clock.h"
+#include "lwis_commands.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
 #include "lwis_interrupt.h"
@@ -32,6 +37,12 @@
 /* Device tree strings have a maximum length of 31, according to specs.
    Adding 1 byte for the null character. */
 #define MAX_DEVICE_NAME_STRING 32
+
+#define EVENT_HASH_BITS 8
+
+/* Forward declaration for lwis_device. This is needed for the declaration for
+   lwis_device_subclass_operations data struct. */
+struct lwis_device;
 
 /*
  * lwis_device_types
@@ -62,6 +73,24 @@ struct lwis_core {
 	struct list_head lwis_dev_list;
 };
 
+/* struct lwis_device_subclass_operations
+ * This struct contains the 'virtual' functions for lwis_device subclasses
+ * that are called into by various lwis_device_* code if they are not NULL
+ * to allow the subclasses to customize certain behavior
+ */
+
+struct lwis_device_subclass_operations {
+	/* Called by lwis_device any time a particular event_id needs to be
+	 * enabled or disabled by the device
+	 */
+	int (*event_enable)(struct lwis_device *lwis_dev, int64_t event_id,
+			    bool enabled);
+	/* Called by lwis_device any time flags are updated */
+	int (*event_flags_updated)(struct lwis_device *lwis_dev,
+				   int64_t event_id, uint64_t old_flags,
+				   uint64_t new_flags);
+};
+
 /*
  *  struct lwis_device
  *  This struct applies to each of the LWIS devices, e.g. /dev/lwis*
@@ -82,6 +111,18 @@ struct lwis_device {
 	struct lwis_interrupt_list *irqs;
 	struct lwis_phy_list *phys;
 	struct list_head dev_list;
+
+	/* Spinlock used to synchronize access to the device struct */
+	spinlock_t lock;
+	/* List of clients opened for this device */
+	struct list_head clients;
+	/* Hash table of device-specific per-event state/control data */
+	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
+	/* Virtual function table for sub classes */
+	struct lwis_device_subclass_operations vops;
+
+	/* Heartbeat timer structure */
+	struct timer_list heartbeat_timer;
 };
 
 /*
@@ -92,6 +133,16 @@ struct lwis_device {
 struct lwis_client {
 	struct mutex lock;
 	struct lwis_device *lwis_dev;
+	/* Hash table of events controlled by userspace in this client */
+	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
+	/* Queue of pending events to be consumed by userspace */
+	struct list_head event_queue;
+	/* Spinlock used to synchronize access to event states and queue */
+	spinlock_t event_lock;
+	/* Event wait queue for waking up userspace */
+	wait_queue_head_t event_wait_queue;
+	/* Each device has a linked list of clients */
+	struct list_head node;
 };
 
 #endif /* LWIS_DEVICE_H_ */

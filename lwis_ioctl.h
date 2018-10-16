@@ -16,7 +16,7 @@
 /*
  *  lwis_ioctl_handler: Handle all IOCTL commands via the file descriptor.
  */
-int lwis_ioctl_handler(struct lwis_device *lwis_dev, unsigned int type,
+int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param);
 
 #endif /* LWIS_IOCTL_H_ */

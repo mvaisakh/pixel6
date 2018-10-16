@@ -19,6 +19,7 @@
 
 #include "lwis_clock.h"
 #include "lwis_commands.h"
+#include "lwis_event.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"
@@ -305,11 +306,140 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-int lwis_ioctl_handler(struct lwis_device *lwis_dev, unsigned int type,
+static int ioctl_event_control_get(struct lwis_client *lwis_client,
+				   struct lwis_event_control __user *msg)
+{
+	unsigned long ret;
+	struct lwis_event_control control;
+
+	ret = copy_from_user((void *) &control, (void __user *) msg,
+			     sizeof(control));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n", sizeof(control));
+		return -EINVAL;
+	}
+
+	ret = lwis_client_event_control_get(lwis_client, control.event_id,
+					    &control);
+
+	if (ret) {
+		pr_err("Failed to get event: %lld (err:%ld)\n",
+		       control.event_id, ret);
+		return -EINVAL;
+	}
+
+	ret = copy_to_user((void __user *) msg, (void *) &control,
+			   sizeof(control));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes to user\n", sizeof(control));
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int ioctl_event_control_set(struct lwis_client *lwis_client,
+				   struct lwis_event_control __user *msg)
+{
+	unsigned long ret;
+	struct lwis_event_control control;
+
+	ret = copy_from_user((void *) &control, (void __user *) msg,
+			     sizeof(control));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n", sizeof(control));
+		return -EINVAL;
+	}
+
+	ret = lwis_client_event_control_set(lwis_client, &control);
+	return ret;
+}
+
+static int ioctl_event_dequeue(struct lwis_client *lwis_client,
+			       struct lwis_event_info __user *msg)
+{
+	unsigned long ret, err = 0;
+	struct lwis_client_event *event;
+	struct lwis_event_info info_user;
+
+	ret = copy_from_user((void *) &info_user, (void __user *) msg,
+			     sizeof(info_user));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n",
+		       sizeof(info_user));
+		return -EINVAL;
+	}
+
+	/* Peek at the front element */
+	ret = lwis_client_event_peek_front(lwis_client, &event);
+	if (ret) {
+		if (ret != -ENOENT) {
+			pr_err("Error dequeueing event: %ld\n", ret);
+		}
+		return ret;
+	}
+
+	/* We need to check if we have an adequate payload buffer */
+	if (event->event_info.payload_size > info_user.payload_buffer_size) {
+		/* Nope, we don't. Let's inform the user and bail */
+		info_user.payload_size = event->event_info.payload_size;
+		err = -ENOMEM;
+	} else {
+		/*
+		 * Let's save the IOCTL inputs because they'll get overwritten
+		 */
+		size_t user_buffer_size = info_user.payload_buffer_size;
+		void *user_buffer = info_user.payload_buffer;
+
+		/* Copy over the rest of the info */
+		memcpy(&info_user, &event->event_info, sizeof(info_user));
+
+		/* Restore the IOCTL inputs */
+		info_user.payload_buffer_size = user_buffer_size;
+		info_user.payload_buffer = user_buffer;
+
+		/* Here we have a payload and the buffer is big enough */
+		if (event->event_info.payload_size > 0 &&
+		    info_user.payload_buffer) {
+			/* Copy over the payload buffer to userspace */
+			ret = copy_to_user(
+				(void __user *) info_user.payload_buffer,
+				(void *) event->event_info.payload_buffer,
+				event->event_info.payload_size);
+			if (ret) {
+				pr_err("Failed to copy %zu bytes to user\n",
+				       event->event_info.payload_size);
+				return -EINVAL;
+			}
+		}
+	}
+	/* If we didn't -ENOMEM up above, we can pop and discard the front of
+	 * the event queue because we're done dealing with it. If we got the
+	 * -ENOMEM case, we didn't actually dequeu this event and userspace
+	 *  should try again with a bigger payload_buffer
+	 */
+	if (!err) {
+		ret = lwis_client_event_pop_front(lwis_client, NULL);
+		if (ret) {
+			pr_err("Error dequeueing event: %ld\n", ret);
+			return ret;
+		}
+	}
+	/* Now let's copy the actual info struct back to user */
+	ret = copy_to_user((void __user *) msg, (void *) &info_user,
+			   sizeof(info_user));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes to user\n", sizeof(info_user));
+		return -EINVAL;
+	}
+	return err;
+}
+
+int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
 	int ret = 0;
-
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 	if (lwis_dev->type == DEVICE_TYPE_TOP) {
 		if (type == LWIS_GET_DEVICE_INFO) {
 			// TOP can only do GET_DEVICE_INFO
@@ -336,6 +466,18 @@ int lwis_ioctl_handler(struct lwis_device *lwis_dev, unsigned int type,
 		break;
 	case LWIS_DEVICE_DISABLE:
 		ret = ioctl_device_disable(lwis_dev);
+		break;
+	case LWIS_EVENT_CONTROL_GET:
+		ret = ioctl_event_control_get(
+			lwis_client, (struct lwis_event_control *) param);
+		break;
+	case LWIS_EVENT_CONTROL_SET:
+		ret = ioctl_event_control_set(
+			lwis_client, (struct lwis_event_control *) param);
+		break;
+	case LWIS_EVENT_DEQUEUE:
+		ret = ioctl_event_dequeue(lwis_client,
+					  (struct lwis_event_info *) param);
 		break;
 	default:
 		pr_err("Unknown IOCTL operation\n");
