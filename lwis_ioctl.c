@@ -19,6 +19,8 @@
 
 #include "lwis_clock.h"
 #include "lwis_commands.h"
+#include "lwis_device_i2c.h"
+#include "lwis_device_ioreg.h"
 #include "lwis_event.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
@@ -26,8 +28,7 @@
 #include "lwis_pinctrl.h"
 #include "lwis_regulator.h"
 
-#define I2C_ON_STRING "on_i2c"
-#define I2C_OFF_STRING "off_i2c"
+
 #define MCLK_ON_STRING "mclk_on"
 #define MCLK_OFF_STRING "mclk_off"
 
@@ -38,6 +39,12 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	struct lwis_io_msg k_msg;
 	struct lwis_io_data *user_buf;
 	struct lwis_io_data *k_buf;
+
+	/* register read is not supported for the lwis device, return */
+	if (!lwis_dev->vops.register_read) {
+		pr_err("Register read not supported on this LWIS device\n");
+		return -EINVAL;
+	}
 
 	/* Copy message struct from userspace */
 	ret = copy_from_user(&k_msg, (void __user *) user_msg,
@@ -65,15 +72,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 		goto error_i2c_read;
 	}
 
-	if (lwis_dev->type == DEVICE_TYPE_I2C) {
-		ret = lwis_i2c_read_batch(lwis_dev->i2c, k_msg.buf,
-					  k_msg.num_entries,
-					  k_msg.offset_bitwidth);
-	} else if (lwis_dev->type == DEVICE_TYPE_IOREG) {
-		ret = lwis_ioreg_read_batch(lwis_dev->ioreg, k_msg.bid,
-					    k_msg.buf, k_msg.num_entries);
-	}
-
+	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg);
 	if (ret) {
 		goto error_i2c_read;
 	}
@@ -94,6 +93,12 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 	struct lwis_io_msg k_msg;
 	struct lwis_io_data *user_buf;
 	struct lwis_io_data *k_buf;
+
+	/* register write is not supported for the lwis device, return */
+	if (!lwis_dev->vops.register_write) {
+		pr_err("Register write not supported on this LWIS device\n");
+		return -EINVAL;
+	}
 
 	/* Copy message struct from userspace */
 	ret = copy_from_user(&k_msg, (void __user *) user_msg,
@@ -121,14 +126,7 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 		goto error_i2c_write;
 	}
 
-	if (lwis_dev->type == DEVICE_TYPE_I2C) {
-		ret = lwis_i2c_write_batch(lwis_dev->i2c, k_msg.buf,
-					   k_msg.num_entries,
-					   k_msg.offset_bitwidth);
-	} else if (lwis_dev->type == DEVICE_TYPE_IOREG) {
-		ret = lwis_ioreg_write_batch(lwis_dev->ioreg, k_msg.bid,
-					     k_msg.buf, k_msg.num_entries);
-	}
+	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg);
 
 error_i2c_write:
 	kfree(k_buf);
@@ -159,13 +157,15 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 			       ret);
 			return ret;
 		}
-	}
 
-	if (lwis_dev->i2c) {
-		/* Enable the I2C bus */
-		ret = lwis_i2c_set_state(lwis_dev->i2c, I2C_ON_STRING);
+		/* Inherited from FIMC, will see if this is needed */
+		usleep_range(1500, 1500);
+
+		/* Set reset pin to 0 (i.e. deasserted) */
+		ret = lwis_gpio_set_value_all(lwis_dev->reset_gpios, 0);
 		if (ret) {
-			pr_err("Error enabling i2c bus (%d)\n", ret);
+			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
+			       ret);
 			return ret;
 		}
 	}
@@ -178,22 +178,6 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 			pr_err("Error setting mclk state (%d)\n", ret);
 			return ret;
 		}
-	}
-
-	if (lwis_dev->reset_gpios) {
-		/* Inherited from FIMC, will see if this is needed */
-		usleep_range(1500, 1500);
-
-		/* Set reset pin to 0 (i.e. deasserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->reset_gpios, 0);
-		if (ret) {
-			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
-			       ret);
-			return ret;
-		}
-
-		/* Inherited from FIMC, will see if this is needed */
-		usleep_range(2000, 2000);
 	}
 
 	if (lwis_dev->regulators) {
@@ -224,6 +208,14 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->vops.device_enable) {
+		ret = lwis_dev->vops.device_enable(lwis_dev);
+		if (ret) {
+			pr_err("Error executing device enable function\n");
+			return ret;
+		}
+	}
+
 	pr_info("Device enabled\n");
 	return 0;
 }
@@ -232,6 +224,14 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 static int ioctl_device_disable(struct lwis_device *lwis_dev)
 {
 	int ret;
+
+	if (lwis_dev->vops.device_disable) {
+		ret = lwis_dev->vops.device_disable(lwis_dev);
+		if (ret) {
+			pr_err("Error executing device disable function\n");
+			return ret;
+		}
+	}
 
 	if (lwis_dev->phys) {
 		/* Power on the PHY */
@@ -267,15 +267,6 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		if (ret) {
 			pr_err("Error setting reset GPIOs to ACTIVE (%d)\n",
 			       ret);
-			return ret;
-		}
-	}
-
-	if (lwis_dev->i2c) {
-		/* Disable the I2C bus */
-		ret = lwis_i2c_set_state(lwis_dev->i2c, I2C_OFF_STRING);
-		if (ret) {
-			pr_err("Error disabling i2c bus (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -434,15 +425,6 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 {
 	int ret = 0;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
-	if (lwis_dev->type == DEVICE_TYPE_TOP) {
-		if (type == LWIS_GET_DEVICE_INFO) {
-			// TOP can only do GET_DEVICE_INFO
-			// Saving for future implementation
-		} else {
-			pr_err("Invalid IOCTL operation on TOP device\n");
-			return -EINVAL;
-		}
-	}
 
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:

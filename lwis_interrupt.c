@@ -88,7 +88,8 @@ int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 
 	snprintf(irq_name, 16, "lwis-irq%d", index);
 
-	return request_irq(list->irq[index].irq, handler, 0, irq_name, dev);
+	return request_irq(list->irq[index].irq, handler, IRQF_GIC_MULTI_TARGET,
+			   irq_name, dev);
 }
 
 int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,

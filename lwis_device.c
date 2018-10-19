@@ -1,5 +1,5 @@
 /*
- * Google LWIS Device Driver
+ * Google LWIS Base Device Driver
  *
  * Copyright (c) 2018 Google, LLC
  *
@@ -8,7 +8,9 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME "-device: " fmt
+#define pr_fmt(fmt) KBUILD_MODNAME "-dev: " fmt
+
+#include "lwis_device.h"
 
 #include <linux/device.h>
 #include <linux/hashtable.h>
@@ -21,14 +23,17 @@
 #include "lwis_device.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
-#include "lwis_i2c.h"
 #include "lwis_ioctl.h"
+
+#ifdef CONFIG_OF
+#include "lwis_dt.h"
+#endif
 
 #define LWIS_CLASS_NAME "lwis"
 #define LWIS_DEVICE_NAME "lwis"
-#define LWIS_DRIVER_NAME "lwis-driver"
 #define LWIS_MAX_DEVICES (1U << MINORBITS)
 
+/* Global declaration for core lwis structure */
 static struct lwis_core core;
 
 static int lwis_open(struct inode *node, struct file *fp);
@@ -195,50 +200,97 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	return mask;
 }
 
+static int lwis_base_setup(struct lwis_device *lwis_dev)
+{
+	int ret = 0;
+
 #ifdef CONFIG_OF
-
-static const struct of_device_id lwis_id_match[] = {
-	{ .compatible = LWIS_TOP_DEVICE_COMPAT },
-	{ .compatible = LWIS_I2C_DEVICE_COMPAT },
-	{ .compatible = LWIS_IOREG_DEVICE_COMPAT },
-	{},
-};
-MODULE_DEVICE_TABLE(of, lwis_id_match);
-
-static struct platform_driver lwis_driver = {
-	.driver = {
-		.name = LWIS_DRIVER_NAME,
-		.owner = THIS_MODULE,
-		.of_match_table = lwis_id_match,
-	},
-};
-
+	/* Parse device tree for device configurations */
+	ret = lwis_base_parse_dt(lwis_dev);
+	if (ret) {
+		pr_err("Failed to parse device tree\n");
+	}
 #else
+	/* Non-device-tree init: Save for future implementation */
+	ret = -ENOSYS;
+#endif
 
-static struct platform_device_id lwis_driver_id[] = {
-	{
-		.name = LWIS_DRIVER_NAME,
-		.driver_data = 0,
-	},
-	{},
-};
-MODULE_DEVICE_TABLE(platform, lwis_driver_id);
-
-static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
-					      .driver = {
-						      .name = LWIS_DRIVER_NAME,
-						      .owner = THIS_MODULE,
-					      } };
-
-#endif /* CONFIG_OF */
+	return ret;
+}
 
 /*
- *  lwis_register_device: Create device class and device major number to the
- *  class of LWIS devices.
- *
- *  This is called once when the LWIS driver is registered as a platform device.
+ *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
-static int __init lwis_register_device(void)
+int lwis_base_probe(struct lwis_device *lwis_dev,
+		    struct platform_device *plat_dev)
+{
+	int ret = 0;
+
+	/* Allocate a minor number to this device */
+	mutex_lock(&core.lock);
+	ret = idr_alloc(core.idr, lwis_dev, 0, LWIS_MAX_DEVICES, GFP_KERNEL);
+	mutex_unlock(&core.lock);
+	if (ret >= 0) {
+		lwis_dev->id = ret;
+	} else {
+		pr_err("Unable to allocate minor ID (%d)\n", ret);
+		goto error_minor_alloc;
+	}
+
+	lwis_dev->plat_dev = plat_dev;
+	ret = lwis_base_setup(lwis_dev);
+	if (ret) {
+		pr_err("Error initializing LWIS device\n");
+		goto error_init;
+	}
+
+	/* Upon success initialization, create device for this instance */
+	lwis_dev->dev = device_create(
+		core.dev_class, NULL, MKDEV(core.device_major, lwis_dev->id),
+		lwis_dev, LWIS_DEVICE_NAME "-%s", lwis_dev->name);
+	if (IS_ERR(lwis_dev->dev)) {
+		pr_err("Failed to create device\n");
+		ret = PTR_ERR(lwis_dev->dev);
+		goto error_init;
+	}
+
+	/* Initialize an empty list of clients */
+	INIT_LIST_HEAD(&lwis_dev->clients);
+
+	/* Initialize event state hash table */
+	hash_init(lwis_dev->event_states);
+
+	/* Initialize the spinlock */
+	spin_lock_init(&lwis_dev->lock);
+
+	/* Add this instance to the device list */
+	mutex_lock(&core.lock);
+	list_add(&lwis_dev->dev_list, &core.lwis_dev_list);
+	mutex_unlock(&core.lock);
+
+	platform_set_drvdata(plat_dev, lwis_dev);
+
+	pr_info("Base Probe: Success\n");
+
+	return ret;
+
+	/* Error conditions */
+error_init:
+	mutex_lock(&core.lock);
+	idr_remove(core.idr, lwis_dev->id);
+	mutex_unlock(&core.lock);
+error_minor_alloc:
+	kfree(lwis_dev);
+	return ret;
+}
+
+/*
+ *  lwis_register_base_device: Create device class and device major number to
+ *  the class of LWIS devices.
+ *
+ *  This is called once when the core LWIS driver is initialized.
+ */
+static int __init lwis_register_base_device(void)
 {
 	int ret = 0;
 	dev_t lwis_devt;
@@ -309,125 +361,29 @@ error_chrdev_alloc:
 	return ret;
 }
 
-static int lwis_device_initialize(struct lwis_device *lwis_dev)
-{
-	int ret = 0;
-
-#ifdef CONFIG_OF
-	/* Parse device tree for device configurations */
-	ret = lwis_device_parse_dt(lwis_dev);
-	if (ret) {
-		pr_err("Failed to parse device tree\n");
-	}
-#else
-	/* Non-device-tree init: Save for future implementation */
-	ret = -ENOSYS;
-#endif
-
-	return ret;
-}
-
 /*
- *  lwis_probe: Create a device instance for each of the LWIS device.
+ *  lwis_base_device_init: Called during subsys_initcall routines.
  */
-static int __init lwis_probe(struct platform_device *plat_dev)
-{
-	int ret = 0;
-	struct lwis_device *lwis_dev;
-
-	pr_info("Probe: Begin\n");
-
-	/* Create LWIS device instance */
-	lwis_dev = kzalloc(sizeof(struct lwis_device), GFP_KERNEL);
-	if (!lwis_dev) {
-		pr_err("Failed to allocate lwis_device struct\n");
-		return -ENOMEM;
-	}
-
-	/* Allocate a minor number to this device */
-	mutex_lock(&core.lock);
-	ret = idr_alloc(core.idr, lwis_dev, 0, LWIS_MAX_DEVICES, GFP_KERNEL);
-	mutex_unlock(&core.lock);
-	if (ret >= 0) {
-		lwis_dev->id = ret;
-		ret = 0;
-	} else {
-		pr_err("Unable to allocate minor ID (%d)\n", ret);
-		goto error_minor_alloc;
-	}
-
-	lwis_dev->plat_dev = plat_dev;
-	ret = lwis_device_initialize(lwis_dev);
-	if (ret) {
-		pr_err("Error initializing LWIS device\n");
-		goto error_init;
-	}
-
-	/* Upon success initialization, create device for this instance */
-	lwis_dev->dev = device_create(
-		core.dev_class, NULL, MKDEV(core.device_major, lwis_dev->id),
-		lwis_dev, LWIS_DEVICE_NAME "-%s", lwis_dev->name);
-	if (IS_ERR(lwis_dev->dev)) {
-		pr_err("Failed to create device\n");
-		ret = PTR_ERR(lwis_dev->dev);
-		goto error_init;
-	}
-
-	/* Initialize an empty list of clients */
-	INIT_LIST_HEAD(&lwis_dev->clients);
-
-	/* Initialize event state hash table */
-	hash_init(lwis_dev->event_states);
-
-	/* Initialize the spinlock */
-	spin_lock_init(&lwis_dev->lock);
-
-	/* Add this instance to the device list */
-	mutex_lock(&core.lock);
-	list_add(&lwis_dev->dev_list, &core.lwis_dev_list);
-	mutex_unlock(&core.lock);
-
-	platform_set_drvdata(plat_dev, lwis_dev);
-
-	pr_info("Probe: Done\n");
-
-	return ret;
-
-	/* Error conditions */
-error_init:
-	mutex_lock(&core.lock);
-	idr_remove(core.idr, lwis_dev->id);
-	mutex_unlock(&core.lock);
-error_minor_alloc:
-	kfree(lwis_dev);
-	return ret;
-}
-
-/*
- *  lwis_device_init: Called during device_initcall_sync routines.
- */
-static int __init lwis_device_init(void)
+static int __init lwis_base_device_init(void)
 {
 	int ret = 0;
 
-	pr_info("Device initialization\n");
+	pr_info("LWIS device initialization\n");
 
 	/* Initialize the core struct */
 	memset(&core, 0, sizeof(struct lwis_core));
 	mutex_init(&core.lock);
 
-	lwis_register_device();
-
-	ret = platform_driver_probe(&lwis_driver, lwis_probe);
+	ret = lwis_register_base_device();
 	if (ret) {
-		pr_err("platform_driver_probe failed - %d", ret);
+		pr_err("Failed to register LWIS base\n");
 	}
 
 	return ret;
 }
 
-device_initcall_sync(lwis_device_init);
+subsys_initcall(lwis_base_device_init);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Google-ACMA");
-MODULE_DESCRIPTION("LWIS Driver");
+MODULE_DESCRIPTION("LWIS Base Device Driver");

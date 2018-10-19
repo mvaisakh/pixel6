@@ -17,8 +17,6 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "lwis_device.h"
-
 #define I2C_DEVICE_NAME "LWIS_I2C"
 
 /* Max bit width for register and data that is supported by this
@@ -101,7 +99,7 @@ static int perform_write_transfer(struct i2c_client *client,
 	return ret;
 }
 
-int lwis_i2c_set_state(struct lwis_i2c *i2c, const char *state_str)
+int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 {
 	int ret;
 	struct pinctrl_state *state;
@@ -126,17 +124,19 @@ int lwis_i2c_set_state(struct lwis_i2c *i2c, const char *state_str)
 	return 0;
 }
 
-int lwis_i2c_read_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
-			int num_entries, int offset_bits)
+int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 {
 	int i;
 	int ret;
 	u8 *wbuf;
 	u8 *rbuf;
+	struct lwis_io_data *data = msg->buf;
 	struct i2c_client *client = i2c->client;
-	struct i2c_msg msg[2];
+	struct i2c_msg i2c_msg[2];
 
-	const int num_msg = 2;
+	const int offset_bits = msg->offset_bitwidth;
+	const int num_entries = msg->num_entries;
+	const int num_i2c_msg = 2;
 
 	if (!i2c || !i2c->client) {
 		pr_err("Cannot find i2c instance\n");
@@ -163,21 +163,21 @@ int lwis_i2c_read_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
 		goto error_rbuf_alloc;
 	}
 
-	msg[0].addr = client->addr;
-	msg[0].flags = 0;
-	msg[0].len = offset_bits / 8;
-	msg[0].buf = wbuf;
+	i2c_msg[0].addr = client->addr;
+	i2c_msg[0].flags = 0;
+	i2c_msg[0].len = offset_bits / 8;
+	i2c_msg[0].buf = wbuf;
 
-	msg[1].addr = client->addr;
-	msg[1].flags = I2C_M_RD;
-	msg[1].buf = rbuf;
+	i2c_msg[1].addr = client->addr;
+	i2c_msg[1].flags = I2C_M_RD;
+	i2c_msg[1].buf = rbuf;
 
 	for (i = 0; i < num_entries; ++i) {
-		msg[1].len = data[i].access_size / 8;
-		ret = perform_read_transfer(client, msg, data[i].offset,
+		i2c_msg[1].len = data[i].access_size / 8;
+		ret = perform_read_transfer(client, i2c_msg, data[i].offset,
 					    offset_bits, data[i].access_size,
 					    &data[i].val);
-		if (ret != num_msg) {
+		if (ret != num_i2c_msg) {
 			break;
 		}
 	}
@@ -186,19 +186,21 @@ int lwis_i2c_read_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
 error_rbuf_alloc:
 	kfree(wbuf);
 
-	return (ret == num_msg) ? 0 : ret;
+	return (ret == num_i2c_msg) ? 0 : ret;
 }
 
-int lwis_i2c_write_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
-			 int num_entries, int offset_bits)
+int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 {
 	int i;
 	int ret;
 	u8 *buf;
+	struct lwis_io_data *data = msg->buf;
 	struct i2c_client *client = i2c->client;
-	struct i2c_msg msg;
+	struct i2c_msg i2c_msg;
 
-	const int num_msg = 1;
+	const int offset_bits = msg->offset_bitwidth;
+	const int num_entries = msg->num_entries;
+	const int num_i2c_msg = 1;
 
 	if (!i2c || !i2c->client) {
 		pr_err("Cannot find i2c instance\n");
@@ -216,26 +218,26 @@ int lwis_i2c_write_batch(struct lwis_i2c *i2c, struct lwis_io_data *data,
 		return -ENOMEM;
 	}
 
-	msg.addr = client->addr;
-	msg.flags = 0;
-	msg.buf = buf;
+	i2c_msg.addr = client->addr;
+	i2c_msg.flags = 0;
+	i2c_msg.buf = buf;
 
 	for (i = 0; i < num_entries; ++i) {
-		msg.len = (offset_bits + data[i].access_size) / 8;
-		ret = perform_write_transfer(client, &msg, data[i].offset,
+		i2c_msg.len = (offset_bits + data[i].access_size) / 8;
+		ret = perform_write_transfer(client, &i2c_msg, data[i].offset,
 					     offset_bits, data[i].access_size,
 					     data[i].val);
-		if (ret != num_msg) {
+		if (ret != num_i2c_msg) {
 			break;
 		}
 	}
 
 	kfree(buf);
 
-	return (ret == num_msg) ? 0 : ret;
+	return (ret == num_i2c_msg) ? 0 : ret;
 }
 
-int lwis_i2c_read(struct lwis_i2c *i2c, int offset_bits, int64_t offset,
+int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, int64_t offset,
 		  int value_bits, uint64_t *value)
 {
 	int ret;
@@ -294,7 +296,7 @@ error_rbuf_alloc:
 	return (ret == num_msg) ? 0 : ret;
 }
 
-int lwis_i2c_write(struct lwis_i2c *i2c, int offset_bits, int64_t offset,
+int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits, int64_t offset,
 		   int value_bits, uint64_t value)
 {
 	int ret;
@@ -342,9 +344,7 @@ int lwis_i2c_write(struct lwis_i2c *i2c, int offset_bits, int64_t offset,
 static int lwis_i2c_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
-	int ret = 0;
-	struct lwis_device *lwis_dev;
-	struct lwis_i2c *i2c;
+	struct lwis_i2c_device *i2c;
 	struct device *dev;
 	struct pinctrl *pinctrl;
 
@@ -357,20 +357,13 @@ static int lwis_i2c_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	lwis_dev = (struct lwis_device *) dnode->data;
-	if (!lwis_dev) {
+	i2c = (struct lwis_i2c_device *) dnode->data;
+	if (!i2c) {
 		pr_err("Unable to obtain LWIS device data struct\n");
 		return -ENODEV;
 	}
 #endif
 
-	i2c = kzalloc(sizeof(struct lwis_i2c), GFP_KERNEL);
-	if (!i2c) {
-		pr_err("Cannot allocate i2c structure\n");
-		return -ENOMEM;
-	}
-
-	lwis_dev->i2c = i2c;
 	i2c->client = client;
 	dev = &client->dev;
 
@@ -381,17 +374,13 @@ static int lwis_i2c_probe(struct i2c_client *client,
 	if (IS_ERR(pinctrl)) {
 		pr_err("Cannot instantiate pinctrl instance (%d)\n",
 		       (int) PTR_ERR(pinctrl));
-		ret = PTR_ERR(pinctrl);
-		goto error_state_pinctrl;
+		return PTR_ERR(pinctrl);
 	}
 	i2c->state_pinctrl = pinctrl;
 
-	return 0;
+	pr_info("I2C Driver Probe: Success\n");
 
-error_state_pinctrl:
-	kfree(i2c);
-	lwis_dev->i2c = NULL;
-	return ret;
+	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -430,7 +419,7 @@ int lwis_i2c_driver_init(void)
 {
 	int ret;
 
-	pr_info("Init\n");
+	pr_info("I2C driver initialization\n");
 
 	ret = i2c_add_driver(&lwis_i2c_driver);
 	if (ret) {

@@ -1,5 +1,5 @@
 /*
- * Google LWIS Device Driver
+ * Google LWIS Base Device Driver
  *
  * Copyright (c) 2018 Google, LLC
  *
@@ -24,9 +24,7 @@
 #include "lwis_clock.h"
 #include "lwis_commands.h"
 #include "lwis_gpio.h"
-#include "lwis_i2c.h"
 #include "lwis_interrupt.h"
-#include "lwis_ioreg.h"
 #include "lwis_phy.h"
 #include "lwis_regulator.h"
 
@@ -80,6 +78,16 @@ struct lwis_core {
  */
 
 struct lwis_device_subclass_operations {
+	/* Called by lwis_device when device register(s) need to be read */
+	int (*register_read)(struct lwis_device *lwis_dev,
+			     struct lwis_io_msg *msg);
+	/* Called by lwis_device when device register(s) need to be written */
+	int (*register_write)(struct lwis_device *lwis_dev,
+			      struct lwis_io_msg *msg);
+	/* called by lwis_device when enabling the device */
+	int (*device_enable)(struct lwis_device *lwis_dev);
+	/* called by lwis_device when disabling the device */
+	int (*device_disable)(struct lwis_device *lwis_dev);
 	/* Called by lwis_device any time a particular event_id needs to be
 	 * enabled or disabled by the device
 	 */
@@ -105,8 +113,6 @@ struct lwis_device {
 	struct gpio_descs *enable_gpios;
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
-	struct lwis_i2c *i2c;
-	struct lwis_ioreg_list *ioreg;
 	struct pinctrl *mclk_ctrl;
 	struct lwis_interrupt_list *irqs;
 	struct lwis_phy_list *phys;
@@ -144,5 +150,12 @@ struct lwis_client {
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };
+
+/*
+ *  lwis_base_probe: Common probe function that will be used for all types
+ *  of devices.
+ */
+int lwis_base_probe(struct lwis_device *lwis_dev,
+		    struct platform_device *plat_dev);
 
 #endif /* LWIS_DEVICE_H_ */

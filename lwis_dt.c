@@ -19,8 +19,8 @@
 #include <linux/slab.h>
 
 #include "lwis_clock.h"
-#include "lwis_device.h"
 #include "lwis_gpio.h"
+#include "lwis_i2c.h"
 #include "lwis_ioreg.h"
 #include "lwis_regulator.h"
 
@@ -208,68 +208,6 @@ error_pinctrl_state:
 	return ret;
 }
 
-static int parse_i2c_handle(struct lwis_device *lwis_dev)
-{
-	struct device_node *dev_node;
-	struct device_node *dev_node_i2c;
-
-	/* Save lwis_device handle to the device node of the i2c driver, in
-	   preparation for driver initialization. */
-	dev_node = lwis_dev->plat_dev->dev.of_node;
-	dev_node_i2c = of_parse_phandle(dev_node, "i2c-driver", 0);
-	if (!dev_node_i2c) {
-		pr_err("Cannot find i2c-driver node\n");
-		return -ENODEV;
-	}
-
-	dev_node_i2c->data = lwis_dev;
-
-	return 0;
-}
-
-static int parse_ioreg_registers(struct lwis_device *lwis_dev)
-{
-	struct device_node *dev_node;
-	int i;
-	int ret;
-	int blocks;
-	int reg_tuple_size;
-
-	dev_node = lwis_dev->plat_dev->dev.of_node;
-	reg_tuple_size = of_n_addr_cells(dev_node) + of_n_size_cells(dev_node);
-
-	blocks = of_property_count_elems_of_size(dev_node, "reg",
-						 reg_tuple_size * sizeof(u32));
-	if (blocks <= 0) {
-		pr_err("No register space found\n");
-		return -EINVAL;
-	}
-
-	lwis_dev->ioreg = lwis_ioreg_list_alloc(blocks);
-	if (IS_ERR(lwis_dev->ioreg)) {
-		pr_err("Failed to allocate ioreg list\n");
-		return PTR_ERR(lwis_dev->ioreg);
-	}
-
-	for (i = 0; i < blocks; ++i) {
-		ret = lwis_ioreg_get(lwis_dev->ioreg, i, lwis_dev->plat_dev);
-		if (ret) {
-			pr_err("Cannot set ioreg info\n");
-			goto error_ioreg;
-		}
-	}
-
-	return 0;
-
-error_ioreg:
-	for (i = 0; i < blocks; ++i) {
-		lwis_ioreg_put(lwis_dev->ioreg, i, lwis_dev->plat_dev);
-	}
-	lwis_ioreg_list_free(lwis_dev->ioreg);
-	lwis_dev->ioreg = NULL;
-	return ret;
-}
-
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -363,11 +301,10 @@ error_parse_phy:
 	return ret;
 }
 
-int lwis_device_parse_dt(struct lwis_device *lwis_dev)
+int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
 	struct device_node *dev_node;
-	const char *compat_str;
 	const char *name_str;
 	int ret = 0;
 
@@ -378,13 +315,6 @@ int lwis_device_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Cannot find device node\n");
 		return -ENODEV;
 	}
-
-	ret = of_property_read_string(dev_node, "compatible", &compat_str);
-	if (ret) {
-		pr_err("Error parsing compatible string\n");
-		return -EINVAL;
-	}
-	pr_info("Parsing DT: %s\n", compat_str);
 
 	ret = of_property_read_string(dev_node, "node-name", &name_str);
 	if (ret) {
@@ -435,27 +365,76 @@ int lwis_device_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-	if (!strcmp(compat_str, LWIS_TOP_DEVICE_COMPAT)) {
-		lwis_dev->type = DEVICE_TYPE_TOP;
-	} else if (!strcmp(compat_str, LWIS_I2C_DEVICE_COMPAT)) {
-		lwis_dev->type = DEVICE_TYPE_I2C;
-		ret = parse_i2c_handle(lwis_dev);
-		if (ret) {
-			pr_err("Error parsing i2c handle\n");
-			return ret;
-		}
-	} else if (!strcmp(compat_str, LWIS_IOREG_DEVICE_COMPAT)) {
-		lwis_dev->type = DEVICE_TYPE_IOREG;
-		ret = parse_ioreg_registers(lwis_dev);
-		if (ret) {
-			pr_err("Error parising ioreg registers\n");
-			return ret;
-		}
-	} else {
-		lwis_dev->type = DEVICE_TYPE_UNKNOWN;
-	}
-
 	dev_node->data = lwis_dev;
 
 	return ret;
+}
+
+int lwis_i2c_device_parse_dt(struct lwis_i2c_device *i2c_dev)
+{
+	struct device_node *dev_node;
+	struct device_node *dev_node_i2c;
+
+	/* Save lwis_device handle to the device node of the i2c driver, in
+	   preparation for driver initialization. */
+	dev_node = i2c_dev->base_dev.plat_dev->dev.of_node;
+	dev_node_i2c = of_parse_phandle(dev_node, "i2c-driver", 0);
+	if (!dev_node_i2c) {
+		pr_err("Cannot find i2c-driver node\n");
+		return -ENODEV;
+	}
+
+	dev_node_i2c->data = i2c_dev;
+
+	return 0;
+}
+
+int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
+{
+	struct device_node *dev_node;
+	int i;
+	int ret;
+	int blocks;
+	int reg_tuple_size;
+	const char *name;
+
+	dev_node = ioreg_dev->base_dev.plat_dev->dev.of_node;
+	reg_tuple_size = of_n_addr_cells(dev_node) + of_n_size_cells(dev_node);
+
+	blocks = of_property_count_elems_of_size(dev_node, "reg",
+						 reg_tuple_size * sizeof(u32));
+	if (blocks <= 0) {
+		pr_err("No register space found\n");
+		return -EINVAL;
+	}
+
+	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
+	if (ret) {
+		pr_err("Failed to allocate ioreg list\n");
+		return ret;
+	}
+
+	for (i = 0; i < blocks; ++i) {
+		of_property_read_string_index(dev_node, "reg-names", i, &name);
+		ret = lwis_ioreg_get(ioreg_dev, i, (char *) name);
+		if (ret) {
+			pr_err("Cannot set ioreg info\n");
+			goto error_ioreg;
+		}
+	}
+
+	return 0;
+
+error_ioreg:
+	for (i = 0; i < blocks; ++i) {
+		lwis_ioreg_put_by_idx(ioreg_dev, i);
+	}
+	lwis_ioreg_list_free(ioreg_dev);
+	return ret;
+}
+
+int lwis_top_device_parse_dt(struct lwis_top_device *top_dev)
+{
+	/* To be implemented */
+	return 0;
 }

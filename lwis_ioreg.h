@@ -16,63 +16,79 @@
 #include <linux/types.h>
 
 #include "lwis_commands.h"
-
-struct lwis_ioreg {
-	phys_addr_t start;
-	int size;
-	unsigned int __iomem *base;
-};
-
-struct lwis_ioreg_list {
-	struct lwis_ioreg *block;
-	int count;
-};
+#include "lwis_device_ioreg.h"
 
 /*
  *  lwis_ioreg_list_alloc: Allocate a lwis_ioreg_list struct with the specified
  *  number of entries.
  */
-struct lwis_ioreg_list *lwis_ioreg_list_alloc(int num_blocks);
+int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev,
+			  int num_blocks);
 
 /*
  *  lwis_ioreg_list_free: Deallocate the lwis_ioreg list struct provided.
  */
-void lwis_ioreg_list_free(struct lwis_ioreg_list *list);
+void lwis_ioreg_list_free(struct lwis_ioreg_device *ioreg_dev);
 
 /*
  *  lwis_ioreg_get: Setup the content of a lwis_ioreg entry.
  */
-int lwis_ioreg_get(struct lwis_ioreg_list *list, int index,
-		   struct platform_device *plat_dev);
+int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name);
 
 /*
- *  lwis_ioreg_put: Deinitialize the content of a lwis_ioreg entry.
+ *  lwis_ioreg_put_by_idx: Deinitialize the content of a lwis_ioreg entry
+ *  by index.
  */
-int lwis_ioreg_put(struct lwis_ioreg_list *list, int index,
-		   struct platform_device *plat_dev);
+int lwis_ioreg_put_by_idx(struct lwis_ioreg_device *ioreg_dev, int index);
+
+/*
+ *  lwis_ioreg_put_by_name: Deinitialize the content of a lwis_ioreg entry
+ *  by name.
+ */
+int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
 
 /*
  *  lwis_ioreg_read_batch: Read memory mapped registers in batch.
  */
-int lwis_ioreg_read_batch(struct lwis_ioreg_list *list, int index,
-			  struct lwis_io_data *data, int num_entries);
+int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
+			  struct lwis_io_msg *msg);
 
 /*
  *  lwis_ioreg_write_batch: Write memory mapped registers in batch.
  */
-int lwis_ioreg_write_batch(struct lwis_ioreg_list *list, int index,
-			   struct lwis_io_data *data, int num_entries);
+int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
+			   struct lwis_io_msg *msg);
 
 /*
- * lwis_ioreg_read: Read single memory mapped register
+ *  lwis_ioreg_read_by_block_idx: Read single memory mapped register by
+ *  block index.
  */
-int lwis_ioreg_read(struct lwis_ioreg_list *list, int index, int64_t offset,
-		    int value_bits, uint64_t *value);
+int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
+				 int index, int64_t offset, int value_bits,
+				 uint64_t *value);
 
 /*
- * lwis_ioreg_write: Write single memory mapped register
+ *  lwis_ioreg_read_by_block_name: Read single memory mapped register by
+ *  block name.
  */
-int lwis_ioreg_write(struct lwis_ioreg_list *list, int index, int64_t offset,
-		     int value_bits, uint64_t value);
+int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
+				  char *name, int64_t offset, int value_bits,
+				  uint64_t *value);
+
+/*
+ *  lwis_ioreg_write_by_block_idx: Write single memory mapped register by
+ *  block index.
+ */
+int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
+				  int index, int64_t offset, int value_bits,
+				  uint64_t value);
+
+/*
+ *  lwis_ioreg_write_by_block_name: Write single memory mapped register by
+ *  block name.
+ */
+int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
+				   char *name, int64_t offset, int value_bits,
+				   uint64_t value);
 
 #endif /* LWIS_IOREG_H_ */
