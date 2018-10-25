@@ -25,46 +25,43 @@
 #include "lwis_regulator.h"
 
 static int parse_gpios(struct lwis_device *lwis_dev, char *name,
-		       struct lwis_gpio_list **gpio_list)
+		       struct gpio_descs **gpio_list)
 {
-	int i;
 	int ret;
-	int pin;
 	int count;
-	enum of_gpio_flags flags;
+	struct device *dev;
 	struct device_node *dev_node;
+	char node_name[32];
 
-	dev_node = lwis_dev->plat_dev->dev.of_node;
-	count = of_gpio_named_count(dev_node, name);
+	dev = &lwis_dev->plat_dev->dev;
+	dev_node = dev->of_node;
+
+	/* Assemble the GPIO node name, appending "-gpios" to the end of
+	   the name */
+	strncpy(node_name, name, 32);
+	strncat(node_name, "-gpios", 32);
+
+	count = of_gpio_named_count(dev_node, node_name);
 
 	/* No GPIO pins found, just return */
 	if (count <= 0) {
 		return 0;
 	}
 
-	*gpio_list = lwis_gpio_list_alloc(count);
-
-	/* Parse and acquire gpio pin numbers and polarities */
-	for (i = 0; i < count; ++i) {
-		pin = of_get_named_gpio_flags(dev_node, name, i, &flags);
-		if (pin < 0) {
-			pr_err("Cannot find gpio %s[%d]\n", name, i);
-			ret = pin;
-			goto error_parse_gpios;
-		}
-		lwis_gpio_get(*gpio_list, i, pin,
-			      !(flags & OF_GPIO_ACTIVE_LOW));
+	*gpio_list = lwis_gpio_get_list(dev, name);
+	if (IS_ERR(*gpio_list)) {
+		pr_err("Error parsing GPIO list %s (%ld)\n", name,
+		       PTR_ERR(*gpio_list));
+		return PTR_ERR(*gpio_list);
 	}
 
-	pr_info("%s: %s\n", __func__, name);
-	lwis_gpio_print(*gpio_list);
+	ret = lwis_gpio_set_direction_all(*gpio_list, LWIS_GPIO_OUTPUT, 0);
+	if (ret) {
+		pr_err("Failed to set GPIO direction\n");
+		return ret;
+	}
 
 	return 0;
-
-	/* In case of error, free the other GPIOs that were alloc'ed */
-error_parse_gpios:
-	lwis_gpio_list_free(*gpio_list);
-	return ret;
 }
 
 static int parse_regulators(struct lwis_device *lwis_dev)
@@ -396,13 +393,13 @@ int lwis_device_parse_dt(struct lwis_device *lwis_dev)
 	}
 	strncpy(lwis_dev->name, name_str, MAX_DEVICE_NAME_STRING);
 
-	ret = parse_gpios(lwis_dev, "enable-gpios", &lwis_dev->enable_gpios);
+	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios);
 	if (ret) {
 		pr_err("Error parsing enable-gpios\n");
 		return ret;
 	}
 
-	ret = parse_gpios(lwis_dev, "reset-gpios", &lwis_dev->reset_gpios);
+	ret = parse_gpios(lwis_dev, "reset", &lwis_dev->reset_gpios);
 	if (ret) {
 		pr_err("Error parsing reset-gpios\n");
 		return ret;

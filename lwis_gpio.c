@@ -10,110 +10,46 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-gpio: " fmt
 
+#include <linux/gpio.h>
 #include <linux/kernel.h>
-#include <linux/slab.h>
 
 #include "lwis_gpio.h"
 
-struct lwis_gpio_list *lwis_gpio_list_alloc(int num_gpios)
+struct gpio_descs *lwis_gpio_get_list(struct device *dev, const char *name)
 {
-	struct lwis_gpio_list *list;
-
-	if (num_gpios <= 0) {
-		return ERR_PTR(-EINVAL);
-	}
-
-	list = kzalloc(sizeof(struct lwis_gpio_list), GFP_KERNEL);
-	if (!list) {
-		return ERR_PTR(-ENOMEM);
-	}
-
-	list->gpio = kzalloc(num_gpios * sizeof(struct lwis_gpio), GFP_KERNEL);
-	if (!list->gpio) {
-		kfree(list);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	list->count = num_gpios;
-
-	return list;
+	/* By default, the GPIO pins are acquired but uninitialized */
+	return devm_gpiod_get_array(dev, name, GPIOD_ASIS);
 }
 
-void lwis_gpio_list_free(struct lwis_gpio_list *list)
+void lwis_gpio_put_list(struct gpio_descs *gpios, struct device *dev)
 {
-	if (!list) {
-		return;
-	}
-
-	if (list->gpio) {
-		kfree(list->gpio);
-	}
-
-	kfree(list);
+	devm_gpiod_put_array(dev, gpios);
 }
 
-int lwis_gpio_get(struct lwis_gpio_list *list, int index, int pin,
-		  bool is_active_high)
+int lwis_gpio_set_direction(struct gpio_desc *gpio, enum lwis_gpio_dir dir,
+			    int init_value)
 {
-	if (!list || index < 0 || index >= list->count) {
-		return -EINVAL;
+	if (dir == LWIS_GPIO_INPUT) {
+		return gpiod_direction_input(gpio);
 	}
 
-	list->gpio[index].pin = pin;
-	list->gpio[index].is_active_high = is_active_high;
-
-	return 0;
+	return gpiod_direction_output(gpio, init_value);
 }
 
-int lwis_gpio_pin_set_level(struct lwis_gpio_list *list, int index,
-			    enum lwis_gpio_pin_level level)
-{
-	unsigned long flag;
-
-	if (!list || index < 0 || index >= list->count) {
-		return -EINVAL;
-	}
-
-	if (!gpio_is_valid(list->gpio[index].pin)) {
-		return -EINVAL;
-	}
-
-	/* Truth table between level (Lvl) and is_active_high (Act)
-	 *
-	 *                   (Lvl)
-	 *            | inactive | active
-	 *  ----------+----------+--------
-	 *  (Act)  0  |   HIGH   |   LOW
-	 *         1  |    LOW   |  HIGH
-	 */
-	if ((level == LWIS_GPIO_PIN_ACTIVE &&
-	     list->gpio[index].is_active_high) ||
-	    (level == LWIS_GPIO_PIN_INACTIVE &&
-	     !list->gpio[index].is_active_high)) {
-		flag = GPIOF_OUT_INIT_HIGH;
-	} else {
-		flag = GPIOF_OUT_INIT_LOW;
-	}
-
-	return gpio_request_one(list->gpio[index].pin, flag,
-				(flag == GPIOF_OUT_INIT_HIGH) ? "OUTPUT_HIGH"
-							      : "OUTPUT_LOW");
-}
-
-int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
-				enum lwis_gpio_pin_level level)
+int lwis_gpio_set_direction_all(struct gpio_descs *gpios,
+				enum lwis_gpio_dir dir, int init_value)
 {
 	int i;
 	int ret;
 
-	if (!list) {
+	if (!gpios) {
 		return -EINVAL;
 	}
 
-	for (i = 0; i < list->count; ++i) {
-		ret = lwis_gpio_pin_set_level(list, i, level);
+	for (i = 0; i < gpios->ndescs; ++i) {
+		ret = lwis_gpio_set_direction(gpios->desc[i], dir, init_value);
 		if (ret) {
-			pr_err("Error setting GPIO pin %d\n", i);
+			pr_err("Failed to set direction for GPIO %d\n", i);
 			return ret;
 		}
 	}
@@ -121,12 +57,33 @@ int lwis_gpio_pin_set_level_all(struct lwis_gpio_list *list,
 	return 0;
 }
 
-void lwis_gpio_print(struct lwis_gpio_list *list)
+int lwis_gpio_set_value(struct gpio_desc *gpio, int value)
+{
+	if (gpiod_get_direction(gpio) == GPIOF_DIR_IN) {
+		return -EINVAL;
+	}
+
+	gpiod_set_value(gpio, value);
+
+	return 0;
+}
+
+int lwis_gpio_set_value_all(struct gpio_descs *gpios, int value)
 {
 	int i;
+	int ret;
 
-	for (i = 0; i < list->count; ++i) {
-		pr_info("%s: gpio: %d active high: %d\n", __func__,
-			list->gpio[i].pin, list->gpio[i].is_active_high);
+	if (!gpios) {
+		return -EINVAL;
 	}
+
+	for (i = 0; i < gpios->ndescs; ++i) {
+		ret = lwis_gpio_set_value(gpios->desc[i], value);
+		if (ret) {
+			pr_err("Failed to set value for GPIO %d\n", i);
+			return ret;
+		}
+	}
+
+	return 0;
 }

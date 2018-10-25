@@ -101,8 +101,8 @@ struct lwis_device {
 	char name[MAX_DEVICE_NAME_STRING];
 	struct device *dev;
 	struct platform_device *plat_dev;
-	struct lwis_gpio_list *reset_gpios;
-	struct lwis_gpio_list *enable_gpios;
+	struct gpio_descs *reset_gpios;
+	struct gpio_descs *enable_gpios;
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
 	struct lwis_i2c *i2c;
