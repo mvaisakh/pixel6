@@ -37,6 +37,7 @@
 #define MAX_DEVICE_NAME_STRING 32
 
 #define EVENT_HASH_BITS 8
+#define BUFFER_HASH_BITS 8
 
 /* Forward declaration for lwis_device. This is needed for the declaration for
    lwis_device_subclass_operations data struct. */
@@ -147,6 +148,8 @@ struct lwis_client {
 	spinlock_t event_lock;
 	/* Event wait queue for waking up userspace */
 	wait_queue_head_t event_wait_queue;
+	/* Hash table of enrolled buffers keyed by dvaddr */
+	DECLARE_HASHTABLE(enrolled_buffers, BUFFER_HASH_BITS);
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };

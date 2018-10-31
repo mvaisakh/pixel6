@@ -27,6 +27,7 @@
 #include "lwis_ioreg.h"
 #include "lwis_pinctrl.h"
 #include "lwis_regulator.h"
+#include "lwis_buffer.h"
 
 
 #define MCLK_ON_STRING "mclk_on"
@@ -47,7 +48,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	}
 
 	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *) user_msg,
+	ret = copy_from_user(&k_msg, (void __user *)user_msg,
 			     sizeof(struct lwis_io_msg));
 	if (ret) {
 		return ret;
@@ -66,7 +67,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	k_msg.buf = k_buf;
 
 	/* Copy read data from userspace */
-	ret = copy_from_user(k_buf, (void __user *) user_buf,
+	ret = copy_from_user(k_buf, (void __user *)user_buf,
 			     k_msg.num_entries * sizeof(struct lwis_io_data));
 	if (ret) {
 		goto error_i2c_read;
@@ -78,7 +79,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	}
 
 	/* Copy read data back to userspace */
-	ret = copy_to_user((void __user *) user_buf, k_buf,
+	ret = copy_to_user((void __user *)user_buf, k_buf,
 			   k_msg.num_entries * sizeof(struct lwis_io_data));
 
 error_i2c_read:
@@ -101,7 +102,7 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 	}
 
 	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *) user_msg,
+	ret = copy_from_user(&k_msg, (void __user *)user_msg,
 			     sizeof(struct lwis_io_msg));
 	if (ret) {
 		return ret;
@@ -120,7 +121,7 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 	k_msg.buf = k_buf;
 
 	/* Copy write data from userspace */
-	ret = copy_from_user(k_buf, (void __user *) user_buf,
+	ret = copy_from_user(k_buf, (void __user *)user_buf,
 			     k_msg.num_entries * sizeof(struct lwis_io_data));
 	if (ret) {
 		goto error_i2c_write;
@@ -131,6 +132,85 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 error_i2c_write:
 	kfree(k_buf);
 	return ret;
+}
+
+static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
+			       struct lwis_buffer_info __user *msg)
+{
+	unsigned long ret;
+	struct lwis_buffer *buffer;
+
+	buffer = kzalloc(sizeof(struct lwis_buffer), GFP_KERNEL);
+	if (!buffer) {
+		pr_err("Failed to allocate lwis_buffer struct\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user((void *)&buffer->info, (void __user *)msg,
+			     sizeof(buffer->info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n",
+		       sizeof(buffer->info));
+		kfree(buffer);
+		return -EINVAL;
+	}
+
+	ret = lwis_buffer_enroll(lwis_client, buffer);
+
+	if (ret) {
+		pr_err("Failed to enroll buffer\n");
+		kfree(buffer);
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, (void *)&buffer->info,
+			   sizeof(buffer->info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes to user\n",
+		       sizeof(buffer->info));
+		lwis_buffer_disenroll(buffer);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
+				  struct lwis_buffer_info __user *msg)
+{
+	unsigned long ret;
+	struct lwis_buffer_info info;
+	struct lwis_buffer *buffer;
+
+	ret = copy_from_user((void *)&info, (void __user *)msg, sizeof(info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n", sizeof(info));
+		return -EINVAL;
+	}
+
+	buffer = lwis_client_enrolled_buffer_find(lwis_client, info.dma_vaddr);
+
+	if (!buffer) {
+		pr_err("Failed to find dma buffer for %llx\n", info.dma_vaddr);
+		return -ENOENT;
+	}
+
+	ret = lwis_buffer_disenroll(buffer);
+	if (ret) {
+		pr_err("Failed to disenroll dma buffer for %llx\n",
+		       info.dma_vaddr);
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, (void *)&buffer->info,
+			   sizeof(buffer->info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes to user\n",
+		       sizeof(buffer->info));
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 /* TODO(edmondchung): Not sure whether this is generic enough to handle device
@@ -297,7 +377,7 @@ static int ioctl_event_control_get(struct lwis_client *lwis_client,
 	unsigned long ret;
 	struct lwis_event_control control;
 
-	ret = copy_from_user((void *) &control, (void __user *) msg,
+	ret = copy_from_user((void *)&control, (void __user *)msg,
 			     sizeof(control));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes from user\n", sizeof(control));
@@ -313,7 +393,7 @@ static int ioctl_event_control_get(struct lwis_client *lwis_client,
 		return -EINVAL;
 	}
 
-	ret = copy_to_user((void __user *) msg, (void *) &control,
+	ret = copy_to_user((void __user *)msg, (void *)&control,
 			   sizeof(control));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes to user\n", sizeof(control));
@@ -329,7 +409,7 @@ static int ioctl_event_control_set(struct lwis_client *lwis_client,
 	unsigned long ret;
 	struct lwis_event_control control;
 
-	ret = copy_from_user((void *) &control, (void __user *) msg,
+	ret = copy_from_user((void *)&control, (void __user *)msg,
 			     sizeof(control));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes from user\n", sizeof(control));
@@ -347,7 +427,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	struct lwis_client_event *event;
 	struct lwis_event_info info_user;
 
-	ret = copy_from_user((void *) &info_user, (void __user *) msg,
+	ret = copy_from_user((void *)&info_user, (void __user *)msg,
 			     sizeof(info_user));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes from user\n",
@@ -384,12 +464,12 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 		info_user.payload_buffer = user_buffer;
 
 		/* Here we have a payload and the buffer is big enough */
-		if (event->event_info.payload_size > 0 &&
-		    info_user.payload_buffer) {
+		if (event->event_info.payload_size > 0
+		    && info_user.payload_buffer) {
 			/* Copy over the payload buffer to userspace */
 			ret = copy_to_user(
-				(void __user *) info_user.payload_buffer,
-				(void *) event->event_info.payload_buffer,
+				(void __user *)info_user.payload_buffer,
+				(void *)event->event_info.payload_buffer,
 				event->event_info.payload_size);
 			if (ret) {
 				pr_err("Failed to copy %zu bytes to user\n",
@@ -411,7 +491,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 		}
 	}
 	/* Now let's copy the actual info struct back to user */
-	ret = copy_to_user((void __user *) msg, (void *) &info_user,
+	ret = copy_to_user((void __user *)msg, (void *)&info_user,
 			   sizeof(info_user));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes to user\n", sizeof(info_user));
@@ -429,13 +509,19 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:
 		break;
-	case LWIS_ENROLL_BUFFER:
+	case LWIS_BUFFER_ENROLL:
+		ret = ioctl_buffer_enroll(lwis_client,
+					  (struct lwis_buffer_info *)param);
+		break;
+	case LWIS_BUFFER_DISENROLL:
+		ret = ioctl_buffer_disenroll(lwis_client,
+					     (struct lwis_buffer_info *)param);
 		break;
 	case LWIS_REG_READ:
-		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_msg *) param);
+		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_msg *)param);
 		break;
 	case LWIS_REG_WRITE:
-		ret = ioctl_reg_write(lwis_dev, (struct lwis_io_msg *) param);
+		ret = ioctl_reg_write(lwis_dev, (struct lwis_io_msg *)param);
 		break;
 	case LWIS_DEVICE_ENABLE:
 		ret = ioctl_device_enable(lwis_dev);
@@ -445,15 +531,15 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_EVENT_CONTROL_GET:
 		ret = ioctl_event_control_get(
-			lwis_client, (struct lwis_event_control *) param);
+			lwis_client, (struct lwis_event_control *)param);
 		break;
 	case LWIS_EVENT_CONTROL_SET:
 		ret = ioctl_event_control_set(
-			lwis_client, (struct lwis_event_control *) param);
+			lwis_client, (struct lwis_event_control *)param);
 		break;
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client,
-					  (struct lwis_event_info *) param);
+					  (struct lwis_event_info *)param);
 		break;
 	default:
 		pr_err("Unknown IOCTL operation\n");

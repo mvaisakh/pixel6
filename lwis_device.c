@@ -24,6 +24,7 @@
 #include "lwis_dt.h"
 #include "lwis_event.h"
 #include "lwis_ioctl.h"
+#include "lwis_buffer.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -89,6 +90,9 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Initialize the wait queue for the event queue */
 	init_waitqueue_head(&lwis_client->event_wait_queue);
 
+	/* Empty hash table for client enrolled buffers */
+	hash_init(lwis_client->enrolled_buffers);
+
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_add(&lwis_client->node, &lwis_dev->clients);
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
@@ -118,6 +122,9 @@ static int lwis_release(struct inode *node, struct file *fp)
 	mutex_lock(&lwis_client->lock);
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
+
+	/* Disenroll and clear the table of enrolled buffers */
+	lwis_client_enrolled_buffers_clear(lwis_client);
 
 	/* Take this lwis_client off the list of active clients */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
