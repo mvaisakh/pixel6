@@ -91,7 +91,7 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 	for (i = 0; i < count; ++i) {
 		dev_node_reg = of_parse_phandle(dev_node, "regulators", i);
 		of_property_read_string(dev_node_reg, "regulator-name", &name);
-		ret = lwis_regulator_get(lwis_dev->regulators, (char *) name,
+		ret = lwis_regulator_get(lwis_dev->regulators, (char *)name,
 					 dev);
 		if (ret < 0) {
 			pr_err("Cannot find regulator: %s\n", name);
@@ -144,8 +144,7 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 						 &rate);
 		rate = (ret == 0) ? rate : 0;
 
-		ret = lwis_clock_get(lwis_dev->clocks, (char *) name, dev,
-				     rate);
+		ret = lwis_clock_get(lwis_dev->clocks, (char *)name, dev, rate);
 		if (ret < 0) {
 			pr_err("Cannot find clock: %s\n", name);
 			goto error_parse_clk;
@@ -212,10 +211,11 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
 	int ret;
-	int count;
+	int count, event_infos_count;
 	const char *name;
 	struct device_node *dev_node;
 	struct platform_device *plat_dev;
+	struct of_phandle_iterator it;
 
 	plat_dev = lwis_dev->plat_dev;
 	dev_node = plat_dev->dev.of_node;
@@ -227,7 +227,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		return 0;
 	}
 
-	lwis_dev->irqs = lwis_interrupt_list_alloc(count);
+	lwis_dev->irqs = lwis_interrupt_list_alloc(lwis_dev, count);
 	if (IS_ERR(lwis_dev->irqs)) {
 		pr_err("Failed to allocate IRQ list\n");
 		return PTR_ERR(lwis_dev->irqs);
@@ -236,7 +236,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	for (i = 0; i < count; ++i) {
 		of_property_read_string_index(dev_node, "interrupt-names", i,
 					      &name);
-		ret = lwis_interrupt_get(lwis_dev->irqs, i, (char *) name,
+		ret = lwis_interrupt_get(lwis_dev->irqs, i, (char *)name,
 					 plat_dev);
 		if (ret) {
 			pr_err("Cannot set irq %s\n", name);
@@ -244,10 +244,180 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		}
 	}
 
+	event_infos_count = of_property_count_elems_of_size(
+		dev_node, "interrupt-event-infos", 4);
+	if (count != event_infos_count) {
+		pr_err("DT numbers of irqs: %d != event infos: %d in DT\n",
+		       count, event_infos_count);
+		goto error_get_irq;
+	}
+	/* Get event infos */
+	i = 0;
+	of_for_each_phandle(&it, ret, dev_node, "interrupt-event-infos", 0, 0)
+	{
+		const char *irq_reg_space = NULL;
+		u64 irq_src_reg;
+		u64 irq_reset_reg;
+		u64 irq_mask_reg;
+		int irq_events_num;
+		int int_reg_bits_num;
+		u64 *irq_events;
+		u32 *int_reg_bits;
+		int irq_reg_bid = -1;
+		int irq_reg_bid_count;
+		int j;
+		struct device_node *event_info = of_node_get(it.node);
+
+		irq_events_num = of_property_count_elems_of_size(
+			event_info, "irq-events", 8);
+		if (irq_events_num <= 0) {
+			pr_err("Error getting irq-events: %d\n",
+			       irq_events_num);
+			ret = -EINVAL;
+			goto error_event_infos;
+		}
+
+		int_reg_bits_num = of_property_count_elems_of_size(
+			event_info, "int-reg-bits", 4);
+		if (irq_events_num != int_reg_bits_num
+		    || int_reg_bits_num <= 0) {
+			pr_err("Error getting int-reg-bits: %d\n",
+			       int_reg_bits_num);
+			ret = -EINVAL;
+			goto error_event_infos;
+		}
+
+		irq_events = kzalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
+		if (IS_ERR_OR_NULL(irq_events)) {
+			ret = -ENOMEM;
+			goto error_event_infos;
+		}
+
+		int_reg_bits =
+			kzalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
+		if (IS_ERR_OR_NULL(int_reg_bits)) {
+			ret = -ENOMEM;
+			kfree(irq_events);
+			goto error_event_infos;
+		}
+
+		irq_events_num = of_property_read_variable_u64_array(
+			event_info, "irq-events", irq_events, irq_events_num,
+			irq_events_num);
+		if (irq_events_num != int_reg_bits_num) {
+			pr_err("Error getting irq-events: %d\n",
+			       irq_events_num);
+			ret = irq_events_num;
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		int_reg_bits_num = of_property_read_variable_u32_array(
+			event_info, "int-reg-bits", int_reg_bits,
+			int_reg_bits_num, int_reg_bits_num);
+		if (irq_events_num != int_reg_bits_num) {
+			pr_err("Error getting int-reg-bits: %d\n",
+			       int_reg_bits_num);
+			ret = int_reg_bits_num;
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		ret = of_property_read_string(event_info, "irq-reg-space",
+					      &irq_reg_space);
+		if (ret) {
+			pr_err("Error getting irq-reg-space from dt: %d\n",
+			       ret);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		irq_reg_bid_count =
+			of_property_count_strings(dev_node, "reg-names");
+
+		if (irq_reg_bid_count <= 0) {
+			pr_err("Error getting reg-names from dt: %d\n",
+			       irq_reg_bid_count);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+		for (j = 0; j < irq_reg_bid_count; j++) {
+			const char *bid_name;
+			ret = of_property_read_string_index(
+				dev_node, "reg-names", j, &bid_name);
+
+			if (ret) {
+				break;
+			}
+			if (!strcmp(bid_name, irq_reg_space)) {
+				irq_reg_bid = j;
+				break;
+			}
+		}
+		if (irq_reg_bid < 0) {
+			pr_err("Could not find a reg bid for %s\n",
+			       irq_reg_space);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		ret = of_property_read_u64(event_info, "irq-src-reg",
+					   &irq_src_reg);
+		if (ret) {
+			pr_err("Error getting irq-src-reg from dt: %d\n", ret);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		ret = of_property_read_u64(event_info, "irq-reset-reg",
+					   &irq_reset_reg);
+		if (ret) {
+			pr_err("Error getting irq-reset-reg from dt: %d\n",
+			       ret);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		ret = of_property_read_u64(event_info, "irq-mask-reg",
+					   &irq_mask_reg);
+		if (ret) {
+			pr_err("Error getting irq-mask-reg from dt: %d\n", ret);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		ret = lwis_interrupt_set_event_info(
+			lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
+			(int64_t *)irq_events, irq_events_num, int_reg_bits,
+			int_reg_bits_num, irq_src_reg, irq_reset_reg,
+			irq_mask_reg);
+		if (ret) {
+			pr_err("Error setting event info for interrupt %d %d\n",
+			       i, ret);
+			kfree(irq_events);
+			kfree(int_reg_bits);
+			goto error_event_infos;
+		}
+
+		of_node_put(event_info);
+		i++;
+	}
+
 	lwis_interrupt_print(lwis_dev->irqs);
 
 	return 0;
-
+error_event_infos:
+	for (i = 0; i < count; ++i) {
+		// TODO(yromanenko): lwis_interrupt_put
+	}
 error_get_irq:
 	lwis_interrupt_list_free(lwis_dev->irqs);
 	lwis_dev->irqs = NULL;
@@ -281,7 +451,7 @@ static int parse_phys(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < count; ++i) {
 		of_property_read_string_index(dev_node, "phy-names", i, &name);
-		ret = lwis_phy_get(lwis_dev->phys, (char *) name, dev);
+		ret = lwis_phy_get(lwis_dev->phys, (char *)name, dev);
 		if (ret < 0) {
 			pr_err("Error adding PHY[%d]\n", i);
 			goto error_parse_phy;
@@ -396,6 +566,7 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 	int ret;
 	int blocks;
 	int reg_tuple_size;
+	u32 reg_access_size;
 	const char *name;
 
 	dev_node = ioreg_dev->base_dev.plat_dev->dev.of_node;
@@ -408,6 +579,13 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 		return -EINVAL;
 	}
 
+	ret = of_property_read_u32(dev_node, "reg-access-size",
+				   &reg_access_size);
+	if (ret) {
+		pr_err("Failed to read reg-access-size: %d\n", ret);
+		return ret;
+	}
+
 	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
 	if (ret) {
 		pr_err("Failed to allocate ioreg list\n");
@@ -416,7 +594,8 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 
 	for (i = 0; i < blocks; ++i) {
 		of_property_read_string_index(dev_node, "reg-names", i, &name);
-		ret = lwis_ioreg_get(ioreg_dev, i, (char *) name);
+		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name,
+				     reg_access_size);
 		if (ret) {
 			pr_err("Cannot set ioreg info\n");
 			goto error_ioreg;

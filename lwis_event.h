@@ -35,6 +35,7 @@ struct lwis_device;
 struct lwis_device_event_state {
 	uint64_t event_id;
 	int64_t enable_counter;
+	uint64_t event_counter;
 	struct hlist_node node;
 };
 
@@ -142,12 +143,14 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 				    uint64_t new_flags);
 
 /*
- * lwis_device_event_enable: Handles when a generic device event needs to be
- * enabled or disabled. Actually implements the generic device events.
+ * lwis_device_event_enable: Handles when a device event needs to be
+ * enabled or disabled. Actually implements the generic device events, and calls
+ * into other parts to see if they care about the event as well.
  *
  * Locks: lwisdevice->lock
  * Alloc: May allocate
- * Returns: 0 on success
+ * Returns: 0 on success (event enabled/disabled)
+ *          -EINVAL if event unknown 
  */
 int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 			     bool enabled);
@@ -156,11 +159,25 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
  * lwis_device_event_emit: Emits an event to all the relevant clients of the
  * device
  *
- * Locks: lwisdevice->lock
+ * Locks: lwis_dev->lock and then lwis_client->event_lock
  * Alloc: May allocate (GFP_ATOMIC or GFP_NOWAIT only)
  * Returns: 0 on success
  */
 int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			   void *payload, size_t payload_size);
+
+/*
+ * lwis_device_event_state_find_or_create: Looks through the provided device's
+ * event state list and tries to find a lwis_device_event_state object with the
+ * matching event_id. If not found, creates the object with 0 flags and adds it
+ * to the list
+ *
+ * Locks: lwis_dev->lock 
+ * Alloc: Maybe
+ * Returns: device event state object on success, errno on error
+ */
+struct lwis_device_event_state *
+lwis_device_event_state_find_or_create(struct lwis_device *lwis_dev,
+				       int64_t event_id);
 
 #endif /* LWIS_EVENT_H_ */

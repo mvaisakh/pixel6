@@ -120,11 +120,6 @@ static int lwis_release(struct inode *node, struct file *fp)
 	 * of the client event states that are about to be freed
 	 */
 	mutex_lock(&lwis_client->lock);
-	/* Clear event states for this client */
-	lwis_client_event_states_clear(lwis_client);
-
-	/* Disenroll and clear the table of enrolled buffers */
-	lwis_client_enrolled_buffers_clear(lwis_client);
 
 	/* Take this lwis_client off the list of active clients */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -135,6 +130,13 @@ static int lwis_release(struct inode *node, struct file *fp)
 		}
 	}
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+
+	/* Disenroll and clear the table of enrolled buffers */
+	lwis_client_enrolled_buffers_clear(lwis_client);
+
 
 	mutex_unlock(&lwis_client->lock);
 	kfree(lwis_client);
@@ -171,7 +173,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 
 	mutex_unlock(&lwis_client->lock);
 
-	if (ret) {
+	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != EAGAIN) {
 		pr_err("Error processing IOCTL %d (%d)\n", _IOC_NR(type), ret);
 	}
 
@@ -244,6 +246,16 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 		goto error_minor_alloc;
 	}
 
+
+	/* Initialize an empty list of clients */
+	INIT_LIST_HEAD(&lwis_dev->clients);
+
+	/* Initialize event state hash table */
+	hash_init(lwis_dev->event_states);
+
+	/* Initialize the spinlock */
+	spin_lock_init(&lwis_dev->lock);
+
 	lwis_dev->plat_dev = plat_dev;
 	ret = lwis_base_setup(lwis_dev);
 	if (ret) {
@@ -260,15 +272,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 		ret = PTR_ERR(lwis_dev->dev);
 		goto error_init;
 	}
-
-	/* Initialize an empty list of clients */
-	INIT_LIST_HEAD(&lwis_dev->clients);
-
-	/* Initialize event state hash table */
-	hash_init(lwis_dev->event_states);
-
-	/* Initialize the spinlock */
-	spin_lock_init(&lwis_dev->lock);
 
 	/* Add this instance to the device list */
 	mutex_lock(&core.lock);

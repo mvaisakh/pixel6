@@ -64,6 +64,7 @@ struct lwis_event_info {
 	void *payload_buffer;
 	// IOCTL Outputs
 	int64_t event_id;
+        uint64_t event_counter;
 	uint64_t timestamp_ns;
 	size_t payload_size;
 };

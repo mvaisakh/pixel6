@@ -31,9 +31,10 @@
 static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_register_read(struct lwis_device *lwis_dev,
-				    struct lwis_io_msg *msg);
+				    struct lwis_io_msg *msg, bool non_blocking);
 static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
-				     struct lwis_io_msg *msg);
+				     struct lwis_io_msg *msg,
+				     bool non_blocking);
 
 static struct lwis_device_subclass_operations ioreg_vops = {
 	.register_read = lwis_ioreg_register_read,
@@ -44,48 +45,26 @@ static struct lwis_device_subclass_operations ioreg_vops = {
 	.event_flags_updated = NULL,
 };
 
-static irqreturn_t ioreg_irq_handler(int irq, void *dev)
-{
-	return IRQ_HANDLED;
-}
-
 static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev)
 {
-	struct lwis_ioreg_device *ioreg_dev =
-		(struct lwis_ioreg_device *) lwis_dev;
-
-	if (ioreg_dev->base_dev.irqs) {
-		lwis_interrupt_request_by_idx(ioreg_dev->base_dev.irqs, 0,
-				              ioreg_irq_handler, ioreg_dev);
-	}
-
 	return 0;
 }
 
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 {
-	struct lwis_ioreg_device *ioreg_dev =
-		(struct lwis_ioreg_device *) lwis_dev;
-
-	if (ioreg_dev->base_dev.irqs) {
-		lwis_interrupt_free_by_idx(ioreg_dev->base_dev.irqs, 0,
-					   ioreg_dev);
-	}
-
 	return 0;
 }
 
 static int lwis_ioreg_register_read(struct lwis_device *lwis_dev,
-				    struct lwis_io_msg *msg)
+				    struct lwis_io_msg *msg, bool non_blocking)
 {
-	return lwis_ioreg_read_batch((struct lwis_ioreg_device *) lwis_dev,
-				     msg);
+	return lwis_ioreg_read_batch((struct lwis_ioreg_device *)lwis_dev, msg);
 }
 
 static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
-				     struct lwis_io_msg *msg)
+				     struct lwis_io_msg *msg, bool non_blocking)
 {
-	return lwis_ioreg_write_batch((struct lwis_ioreg_device *) lwis_dev,
+	return lwis_ioreg_write_batch((struct lwis_ioreg_device *)lwis_dev,
 				      msg);
 }
 
@@ -123,7 +102,7 @@ static int __init lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	ioreg_dev->base_dev.vops = ioreg_vops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *) ioreg_dev, plat_dev);
+	ret = lwis_base_probe((struct lwis_device *)ioreg_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -145,17 +124,18 @@ error_probe:
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
-	{ .compatible = LWIS_IOREG_DEVICE_COMPAT },
+	{.compatible = LWIS_IOREG_DEVICE_COMPAT},
 	{},
 };
 MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
-	.driver = {
-		.name = LWIS_DRIVER_NAME,
-		.owner = THIS_MODULE,
-		.of_match_table = lwis_id_match,
-	},
+	.driver =
+		{
+			.name = LWIS_DRIVER_NAME,
+			.owner = THIS_MODULE,
+			.of_match_table = lwis_id_match,
+		},
 };
 #else  /* CONFIG_OF not defined */
 static struct platform_device_id lwis_driver_id[] = {
@@ -167,11 +147,11 @@ static struct platform_device_id lwis_driver_id[] = {
 };
 MODULE_DEVICE_TABLE(platform, lwis_driver_id);
 
-static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
-					      .driver = {
-						      .name = LWIS_DRIVER_NAME,
-						      .owner = THIS_MODULE,
-					      } };
+static struct platform_driver lwis_driver = {.id_table = lwis_driver_id,
+					     .driver = {
+						     .name = LWIS_DRIVER_NAME,
+						     .owner = THIS_MODULE,
+					     }};
 #endif /* CONFIG_OF */
 
 /*

@@ -190,17 +190,7 @@ lwis_device_event_state_find(struct lwis_device *lwis_dev, int64_t event_id)
 	return state;
 }
 
-/*
- * lwis_device_event_state_find_or_create: Looks through the provided device's
- * event state list and tries to find a lwis_device_event_state object with the
- * matching event_id. If not found, creates the object with 0 flags and adds it
- * to the list
- *
- * Locks: lwis_dev->lock
- * Alloc: Maybe
- * Returns: device event state object on success, errno on error
- */
-static struct lwis_device_event_state *
+struct lwis_device_event_state *
 lwis_device_event_state_find_or_create(struct lwis_device *lwis_dev,
 				       int64_t event_id)
 {
@@ -227,6 +217,7 @@ lwis_device_event_state_find_or_create(struct lwis_device *lwis_dev,
 		 */
 		new_state->event_id = event_id;
 		new_state->enable_counter = 0;
+		new_state->event_counter = 0;
 
 		/* Critical section for adding to the hash table */
 		spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -442,14 +433,14 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 	/* Disable IRQs and lock the lock */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	/* Are we turning on the event? */
-	if (!(old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE) &&
-	    (new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+	if (!(old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)
+	    && (new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
 		state->enable_counter++;
 		event_enabled = true;
 		call_enable_cb = (state->enable_counter == 1);
 
-	} else if ((old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE) &&
-		   !(new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+	} else if ((old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)
+		   && !(new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
 		state->enable_counter--;
 		event_enabled = false;
 		call_enable_cb = (state->enable_counter == 0);
@@ -458,35 +449,25 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 	/* Handle event being enabled or disabled */
 	if (call_enable_cb) {
-		/* If it's a generic event, we handle it here */
-		if (event_id < LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
-			ret = lwis_device_event_enable(lwis_dev, event_id,
-						       event_enabled);
-			if (ret) {
-				pr_err("Failed to %s event: %lld (err:%d)\n",
-				       event_enabled ? "enable" : "disable",
-				       event_id, ret);
-				return ret;
-			}
-		}
-		/* Check if our specialization cares about event updates */
-		if (lwis_dev->vops.event_enable) {
-			ret = lwis_dev->vops.event_enable(lwis_dev, event_id,
-							  event_enabled);
-			if (ret) {
-				pr_err("Failed to %s event: %lld (err:%d)\n",
-				       event_enabled ? "enable" : "disable",
-				       event_id, ret);
-				return ret;
-			}
+		/* Call our handler dispatcher */
+		ret = lwis_device_event_enable(lwis_dev, event_id,
+					       event_enabled);
+		if (ret) {
+			pr_err("Failed to %s event: %lld (err:%d)\n",
+			       event_enabled ? "enable" : "disable", event_id,
+			       ret);
+			return ret;
 		}
 	}
 	/* Check if our specialization cares about flags updates */
 	if (lwis_dev->vops.event_flags_updated) {
 		ret = lwis_dev->vops.event_flags_updated(lwis_dev, event_id,
 							 old_flags, new_flags);
-		pr_err("Failed updating flags: %lld %llx -> %llx (err:%d)\n",
-		       event_id, old_flags, new_flags, ret);
+		if (ret) {
+			pr_err("Failed updating flags:"
+			       " %lld %llx -> %llx (err:%d)\n",
+			       event_id, old_flags, new_flags, ret);
+		}
 	}
 
 	return ret;
@@ -494,7 +475,7 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 
 static void lwis_device_event_heartbeat_timer(unsigned long param)
 {
-	struct lwis_device *lwis_dev = (struct lwis_device *) param;
+	struct lwis_device *lwis_dev = (struct lwis_device *)param;
 
 	lwis_device_event_emit(lwis_dev, LWIS_EVENT_ID_HEARTBEAT, NULL, 0);
 
@@ -504,71 +485,127 @@ static void lwis_device_event_heartbeat_timer(unsigned long param)
 int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 			     bool enabled)
 {
-	switch (event_id) {
-	case LWIS_EVENT_ID_HEARTBEAT: {
-		if (enabled) {
-			setup_timer(&lwis_dev->heartbeat_timer,
-				    lwis_device_event_heartbeat_timer,
-				    (unsigned long) lwis_dev);
-			lwis_device_event_heartbeat_timer(
-				(unsigned long) lwis_dev);
+	int ret = -EINVAL, err = 0;
+	if (event_id < LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
+		ret = 0;
+		switch (event_id) {
+		case LWIS_EVENT_ID_HEARTBEAT: {
+			if (enabled) {
+				setup_timer(&lwis_dev->heartbeat_timer,
+					    lwis_device_event_heartbeat_timer,
+					    (unsigned long)lwis_dev);
+				lwis_device_event_heartbeat_timer(
+					(unsigned long)lwis_dev);
 
-		} else {
-			del_timer(&lwis_dev->heartbeat_timer);
+			} else {
+				del_timer(&lwis_dev->heartbeat_timer);
+			}
+			break;
 		}
-		break;
+		default: {
+			/* We treat this as a real error because there really
+			 * shouldn't be anything else handling generic events */
+			ret = err = -ENOENT;
+			pr_err("Unknown generic event: %lld\n", event_id);
+		}
+		};
+	} else {
+		if (lwis_dev->irqs) {
+			ret = lwis_interrupt_event_enable(lwis_dev->irqs,
+							  event_id, enabled);
+			if (ret && ret != -EINVAL) {
+				pr_err("Failed to %s IRQ event: %lld (e:%d)\n",
+				       enabled ? "enable" : "disable", event_id,
+				       ret);
+				err = ret;
+			}
+		}
 	}
-	default: {
-		pr_err("Unknown generic event: %lld\n", event_id);
-		return -EINVAL;
+	/* Check if our specialization cares about event updates */
+	if (!err && lwis_dev->vops.event_enable) {
+		ret = lwis_dev->vops.event_enable(lwis_dev, event_id, enabled);
+		if (ret && ret != -EINVAL) {
+			pr_err("Failed to %s event: %lld (err:%d)\n",
+			       enabled ? "enable" : "disable", event_id, ret);
+			err = ret;
+		}
 	}
-	};
-	return 0;
+	return err ? err : ret;
 }
 
 int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			   void *payload, size_t payload_size)
 {
-	struct lwis_client_event_state *state;
+	struct lwis_client_event_state *client_event_state;
+	struct lwis_device_event_state *device_event_state;
 	struct lwis_client_event *event;
 	/* Our iterators */
 	struct lwis_client *lwis_client;
-	struct list_head *p;
-	list_for_each(p, &lwis_dev->clients)
+	struct list_head *p, *n;
+	/* Flags for IRQ disable */
+	unsigned long flags;
+
+	device_event_state = lwis_device_event_state_find(lwis_dev, event_id);
+	if (IS_ERR_OR_NULL(device_event_state)) {
+		pr_err("Device event state not found %llx\n", event_id);
+		return -EINVAL;
+	}
+	/* Lock and disable to prevent event_states from changing */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+
+	/* Increment the event counter */
+	device_event_state->event_counter++;
+
+	/* Run internal handler if any */
+	if (lwis_dev->vops.event_emitted) {
+		int ret = lwis_dev->vops.event_emitted(lwis_dev, event_id,
+						       &payload, &payload_size);
+		if (ret) {
+			pr_warn("Warning: vops.event_emitted returned %d\n",
+				ret);
+		}
+	}
+
+
+	/* Notify clients */
+	list_for_each_safe(p, n, &lwis_dev->clients)
 	{
 		bool emit = false;
-		/* Flags for irqsave */
-		unsigned long flags;
 		lwis_client = list_entry(p, struct lwis_client, node);
-		/* Disable IRQs and lock the event lock */
-		spin_lock_irqsave(&lwis_client->event_lock, flags);
-		state = lwis_client_event_state_find_locked(lwis_client,
-							    event_id);
 
-		if (!IS_ERR_OR_NULL(state)) {
-			if ((state->event_control.flags &
-			     LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE) &&
-			    (state->event_control.flags &
-			     LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+		/* Lock the event lock instead.
+		 * WARNING: Deadlock potential if something else locks
+		 * event_lock first and then lwis_dev->lock second */
+		spin_lock(&lwis_client->event_lock);
+		client_event_state = lwis_client_event_state_find_locked(
+			lwis_client, event_id);
+
+		if (!IS_ERR_OR_NULL(client_event_state)) {
+			if ((client_event_state->event_control.flags
+			     & LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE)
+			    && (client_event_state->event_control.flags
+				& LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
 				emit = true;
 			}
 		}
 
 		/* Restore the lock */
-		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+		spin_unlock(&lwis_client->event_lock);
 		if (emit) {
-			event = kzalloc(sizeof(struct lwis_client_event) +
-						payload_size,
+			event = kzalloc(sizeof(struct lwis_client_event)
+						+ payload_size,
 					GFP_ATOMIC);
 			event->event_info.event_id = event_id;
+			event->event_info.event_counter =
+				device_event_state->event_counter;
 			event->event_info.timestamp_ns =
 				ktime_to_ns(ktime_get());
 			event->event_info.payload_size = payload_size;
 			if (payload_size > 0) {
 				event->event_info.payload_buffer =
-					(void *) ((uint8_t *) event +
-						  sizeof(struct
-							 lwis_client_event));
+					(void *)((uint8_t *)event
+						 + sizeof(struct
+							  lwis_client_event));
 				memcpy(event->event_info.payload_buffer,
 				       payload, payload_size);
 			} else {
@@ -577,5 +614,8 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			lwis_client_event_push_back(lwis_client, event);
 		}
 	}
+	/* Unlock and restore device lock */
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
 	return 0;
 }

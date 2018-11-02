@@ -81,10 +81,10 @@ struct lwis_core {
 struct lwis_device_subclass_operations {
 	/* Called by lwis_device when device register(s) need to be read */
 	int (*register_read)(struct lwis_device *lwis_dev,
-			     struct lwis_io_msg *msg);
+			     struct lwis_io_msg *msg, bool non_blocking);
 	/* Called by lwis_device when device register(s) need to be written */
 	int (*register_write)(struct lwis_device *lwis_dev,
-			      struct lwis_io_msg *msg);
+			      struct lwis_io_msg *msg, bool non_blocking);
 	/* called by lwis_device when enabling the device */
 	int (*device_enable)(struct lwis_device *lwis_dev);
 	/* called by lwis_device when disabling the device */
@@ -98,6 +98,10 @@ struct lwis_device_subclass_operations {
 	int (*event_flags_updated)(struct lwis_device *lwis_dev,
 				   int64_t event_id, uint64_t old_flags,
 				   uint64_t new_flags);
+        /* Called by lwis_device any time an event is emitted 
+         * Called with lwis_dev->lock locked and IRQs disabled */
+	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id,
+			     void **payload_ptrptr, size_t *payload_size_ptr);
 };
 
 /*

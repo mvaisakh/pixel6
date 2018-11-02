@@ -22,8 +22,7 @@
  *  lwis_ioreg_list_alloc: Allocate a lwis_ioreg_list struct with the specified
  *  number of entries.
  */
-int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev,
-			  int num_blocks);
+int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev, int num_blocks);
 
 /*
  *  lwis_ioreg_list_free: Deallocate the lwis_ioreg list struct provided.
@@ -33,7 +32,8 @@ void lwis_ioreg_list_free(struct lwis_ioreg_device *ioreg_dev);
 /*
  *  lwis_ioreg_get: Setup the content of a lwis_ioreg entry.
  */
-int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name);
+int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name,
+		   int default_access_size);
 
 /*
  *  lwis_ioreg_put_by_idx: Deinitialize the content of a lwis_ioreg entry
@@ -63,8 +63,8 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
  *  lwis_ioreg_read_by_block_idx: Read single memory mapped register by
  *  block index.
  */
-int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
-				 int index, int64_t offset, int value_bits,
+int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
+				 int64_t offset, int value_bits,
 				 uint64_t *value);
 
 /*

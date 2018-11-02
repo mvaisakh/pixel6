@@ -13,6 +13,7 @@ lwis-objs += lwis_pinctrl.o
 lwis-objs += lwis_regulator.o
 lwis-objs += lwis_event.o
 lwis-objs += lwis_buffer.o
+lwis-objs += lwis_util.o
 
 # Device tree specific file
 ifeq ($(CONFIG_OF), y)

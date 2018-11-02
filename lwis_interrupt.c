@@ -11,11 +11,28 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-int: " fmt
 
 #include "lwis_interrupt.h"
+#include "lwis_event.h"
+#include "lwis_util.h"
+#include "lwis_device.h"
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
-struct lwis_interrupt_list *lwis_interrupt_list_alloc(int count)
+struct lwis_single_event_info {
+	/* Event ID of the event we can emit */
+	int64_t event_id;
+	/* Bit # in the status/reset/mask registers */
+	int int_reg_bit;
+	/* Reference to the device event state */
+	struct lwis_device_event_state *state;
+	/* Node in the lwis_interrupt->event_infos hash table */
+	struct hlist_node node;
+	/* Node in the lwis_interrupt->enabled_event_infos list */
+	struct list_head node_enabled;
+};
+
+struct lwis_interrupt_list *
+lwis_interrupt_list_alloc(struct lwis_device *lwis_dev, int count)
 {
 	struct lwis_interrupt_list *list;
 
@@ -30,8 +47,7 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(int count)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->irq = kzalloc(count * sizeof(struct lwis_interrupt),
-			    GFP_KERNEL);
+	list->irq = kzalloc(count * sizeof(struct lwis_interrupt), GFP_KERNEL);
 	if (!list->irq) {
 		pr_err("Failed to allocate IRQs\n");
 		kfree(list);
@@ -39,6 +55,7 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(int count)
 	}
 
 	list->count = count;
+	list->lwis_dev = lwis_dev;
 
 	return list;
 }
@@ -71,10 +88,228 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		return -EINVAL;
 	}
 
+	/* Initialize the spinlock */
+	spin_lock_init(&list->irq[index].lock);
 	list->irq[index].irq = irq;
 	list->irq[index].name = name;
+	list->irq[index].has_events = false;
+	list->irq[index].lwis_dev = list->lwis_dev;
 
 	return 0;
+}
+
+static struct lwis_single_event_info *
+lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq,
+					    int64_t event_id)
+{
+	/* Our hash iterator */
+	struct lwis_single_event_info *p;
+
+	BUG_ON(!irq);
+	/* Iterate through the hash bucket for this event_id */
+	hash_for_each_possible(irq->event_infos, p, node, event_id)
+	{
+		/* If it's indeed the right one, return it */
+		if (p->event_id == event_id) {
+			return p;
+		}
+	}
+	return NULL;
+}
+
+static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
+{
+	int ret;
+	struct lwis_interrupt *irq = (struct lwis_interrupt *)data;
+	struct lwis_single_event_info *event;
+	struct list_head *p;
+	uint64_t source_value, reset_value = 0;
+	/* Read the mask register */
+	ret = lwis_device_single_register_read(irq->lwis_dev, true,
+					       irq->irq_reg_bid,
+					       irq->irq_src_reg, &source_value);
+	if (ret) {
+		pr_err("Failed to read IRQ status register: %d\n", ret);
+		goto error;
+	}
+
+	list_for_each(p, &irq->enabled_event_infos)
+	{
+		event = list_entry(p, struct lwis_single_event_info,
+				   node_enabled);
+
+		/* Check if this event needs to be emitted */
+		if ((source_value >> event->int_reg_bit) & 0x1) {
+			/* Emit the event */
+			lwis_device_event_emit(irq->lwis_dev, event->event_id,
+					       NULL, 0);
+			/* Clear this interrupt */
+			reset_value |= (1ULL << event->int_reg_bit);
+		}
+	}
+
+	/* Write the mask register */
+	ret = lwis_device_single_register_write(
+		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_reset_reg,
+		reset_value);
+	if (ret) {
+		pr_err("Failed to write IRQ reset register: %d\n", ret);
+		goto error;
+	}
+error:
+	return IRQ_HANDLED;
+}
+
+int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
+				  const char *irq_reg_space, int irq_reg_bid,
+				  int64_t *irq_events, size_t irq_events_num,
+				  uint32_t *int_reg_bits,
+				  size_t int_reg_bits_num, int64_t irq_src_reg,
+				  int64_t irq_reset_reg, int64_t irq_mask_reg)
+{
+	int i, ret;
+	unsigned long flags;
+	BUG_ON(int_reg_bits_num != irq_events_num);
+
+	/* Protect the structure */
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	/* Set the fields */
+	list->irq[index].irq_reg_bid = irq_reg_bid;
+	list->irq[index].irq_src_reg = irq_src_reg;
+	list->irq[index].irq_reset_reg = irq_reset_reg;
+	list->irq[index].irq_mask_reg = irq_mask_reg;
+	/* Empty hash table for event infos */
+	hash_init(list->irq[index].event_infos);
+	/* Initialize an empty list for enabled events */
+	INIT_LIST_HEAD(&list->irq[index].enabled_event_infos);
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+
+	/* Build the hash table of events we can emit */
+	for (i = 0; i < irq_events_num; i++) {
+		struct lwis_single_event_info *new_event = kzalloc(
+			sizeof(struct lwis_single_event_info), GFP_KERNEL);
+
+		if (!new_event) {
+			return -ENOMEM;
+		}
+
+		/* Grab the device state outside of the spinlock */
+		new_event->state = lwis_device_event_state_find_or_create(
+			list->lwis_dev, irq_events[i]);
+		new_event->event_id = irq_events[i];
+		new_event->int_reg_bit = int_reg_bits[i];
+
+		spin_lock_irqsave(&list->irq[index].lock, flags);
+		/* Check for duplicate events */
+		if (lwis_interrupt_get_single_event_info_locked(
+			    &list->irq[index], new_event->event_id)
+		    != NULL) {
+			spin_unlock_irqrestore(&list->irq[index].lock, flags);
+			pr_err("Duplicate event_id: %lld for IRQ: %s\n",
+			       new_event->event_id, list->irq[index].name);
+			return -EINVAL;
+		}
+		/* Let's add the new state object */
+		hash_add(list->irq[index].event_infos, &new_event->node,
+			 new_event->event_id);
+
+		spin_unlock_irqrestore(&list->irq[index].lock, flags);
+	}
+	/* It might make more sense to make has_events atomic_t instead of
+	 * locking a spinlock to write a boolean, but then we might have to deal
+	 * with barriers, etc. */
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	/* Set flag that we have events */
+	list->irq[index].has_events = true;
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+
+	/* Register an IRQ */
+	ret = lwis_interrupt_request_by_idx(
+		list, index, lwis_interrupt_event_isr, &list->irq[index]);
+
+	return ret;
+}
+
+static int
+lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
+					  struct lwis_single_event_info *event,
+					  bool enabled)
+{
+	int ret = 0;
+	uint64_t mask_value;
+	BUG_ON(!irq);
+	BUG_ON(!event);
+	if (enabled) {
+		/* Add the event info to the list of enabled event infos */
+		list_add_tail(&event->node_enabled, &irq->enabled_event_infos);
+
+		/* Read the mask register */
+		ret = lwis_device_single_register_read(
+			irq->lwis_dev, true, irq->irq_reg_bid,
+			irq->irq_mask_reg, &mask_value);
+		if (ret) {
+			pr_err("Failed to read IRQ mask register: %d\n", ret);
+			return ret;
+		}
+
+		/* Unmask the interrupt */
+		mask_value |= (1ULL << event->int_reg_bit);
+
+		/* Write the mask register */
+		ret = lwis_device_single_register_write(
+			irq->lwis_dev, true, irq->irq_reg_bid,
+			irq->irq_mask_reg, mask_value);
+		if (ret) {
+			pr_err("Failed to write IRQ mask register: %d\n", ret);
+			return ret;
+		}
+	} else {
+		/* Remove the event info from the list of enabled event infos */
+		list_del(&event->node_enabled);
+
+		/* Read the mask register */
+		ret = lwis_device_single_register_read(
+			irq->lwis_dev, true, irq->irq_reg_bid,
+			irq->irq_mask_reg, &mask_value);
+		if (ret) {
+			pr_err("Failed to read IRQ mask register: %d\n", ret);
+			return ret;
+		}
+
+		/* Mask the interrupt */
+		mask_value &= ~(1ULL << event->int_reg_bit);
+
+		/* Write the mask register */
+		ret = lwis_device_single_register_write(
+			irq->lwis_dev, true, irq->irq_reg_bid,
+			irq->irq_mask_reg, mask_value);
+		if (ret) {
+			pr_err("Failed to write IRQ mask register: %d\n", ret);
+			return ret;
+		}
+	}
+	return ret;
+}
+
+int lwis_interrupt_event_enable(struct lwis_interrupt_list *list,
+				int64_t event_id, bool enabled)
+{
+	int index, ret = -EINVAL;
+	unsigned long flags;
+	struct lwis_single_event_info *event;
+	BUG_ON(!list);
+
+	for (index = 0; index < list->count; index++) {
+		spin_lock_irqsave(&list->irq[index].lock, flags);
+		event = lwis_interrupt_get_single_event_info_locked(
+			&list->irq[index], event_id);
+		if (event) {
+			ret = lwis_interrupt_single_event_enable_locked(
+				&list->irq[index], event, enabled);
+		}
+		spin_unlock_irqrestore(&list->irq[index].lock, flags);
+	}
+	return ret;
 }
 
 int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
@@ -86,10 +321,11 @@ int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 		return -EINVAL;
 	}
 
-	snprintf(irq_name, 16, "lwis-irq%d", index);
+	snprintf(irq_name, 16, "lwis-%s-%s", list->lwis_dev->name,
+		 list->irq[index].name);
 
-	return request_irq(list->irq[index].irq, handler, IRQF_GIC_MULTI_TARGET,
-			   irq_name, dev);
+	return request_irq(list->irq[index].irq, handler,
+			   IRQF_GIC_MULTI_TARGET | IRQF_SHARED, irq_name, dev);
 }
 
 int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,

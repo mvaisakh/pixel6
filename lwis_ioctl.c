@@ -73,7 +73,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 		goto error_i2c_read;
 	}
 
-	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg);
+	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg, false);
 	if (ret) {
 		goto error_i2c_read;
 	}
@@ -127,7 +127,7 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 		goto error_i2c_write;
 	}
 
-	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg);
+	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
 
 error_i2c_write:
 	kfree(k_buf);
@@ -295,7 +295,10 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 			return ret;
 		}
 	}
-
+	{
+		extern int iovmm_activate(struct device *dev);
+		iovmm_activate(&lwis_dev->plat_dev->dev);
+	}
 	pr_info("Device enabled\n");
 	return 0;
 }

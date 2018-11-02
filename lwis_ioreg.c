@@ -53,7 +53,8 @@ void lwis_ioreg_list_free(struct lwis_ioreg_device *ioreg_dev)
 	}
 }
 
-int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
+int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name,
+		   int default_access_size)
 {
 	struct resource *res;
 	struct lwis_ioreg *block;
@@ -80,6 +81,7 @@ int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
 	block->name = name;
 	block->start = res->start;
 	block->size = resource_size(res);
+	block->default_access_size = default_access_size;
 	block->base = devm_ioremap_nocache(&plat_dev->dev, res->start,
 					   resource_size(res));
 	if (!block->base) {
@@ -145,16 +147,16 @@ static int ioreg_read_internal(unsigned int __iomem *base, int64_t offset,
 {
 	switch (value_bits) {
 	case 8:
-		*value = readb((void *) base + offset);
+		*value = readb((void *)base + offset);
 		break;
 	case 16:
-		*value = readw((void *) base + offset);
+		*value = readw((void *)base + offset);
 		break;
 	case 32:
-		*value = readl((void *) base + offset);
+		*value = readl((void *)base + offset);
 		break;
 	case 64:
-		*value = readq((void *) base + offset);
+		*value = readq((void *)base + offset);
 		break;
 	default:
 		return -EINVAL;
@@ -168,16 +170,16 @@ static int ioreg_write_internal(unsigned int __iomem *base, int64_t offset,
 {
 	switch (value_bits) {
 	case 8:
-		writeb((uint8_t) value, (void *) base + offset);
+		writeb((uint8_t)value, (void *)base + offset);
 		break;
 	case 16:
-		writew((uint16_t) value, (void *) base + offset);
+		writew((uint16_t)value, (void *)base + offset);
 		break;
 	case 32:
-		writel((uint32_t) value, (void *) base + offset);
+		writel((uint32_t)value, (void *)base + offset);
 		break;
 	case 64:
-		writeq(value, (void *) base + offset);
+		writeq(value, (void *)base + offset);
 		break;
 	default:
 		return -EINVAL;
@@ -193,6 +195,7 @@ int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
 	struct lwis_io_data *data = msg->buf;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
+	int access_size;
 
 	const int index = msg->bid;
 	const int num_entries = msg->num_entries;
@@ -215,10 +218,12 @@ int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
 		return -EINVAL;
 	}
 
+	access_size = data[i].access_size ? data[i].access_size
+					  : block->default_access_size;
+
 	for (i = 0; i < num_entries; ++i) {
-		int ret =
-			ioreg_read_internal(block->base, data[i].offset,
-					    data[i].access_size, &data[i].val);
+		int ret = ioreg_read_internal(block->base, data[i].offset,
+					      access_size, &data[i].val);
 		if (ret) {
 			pr_err("Invalid ioreg read\n");
 			return ret;
@@ -235,6 +240,7 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
 	struct lwis_io_data *data = msg->buf;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
+	int access_size;
 
 	const int index = msg->bid;
 	const int num_entries = msg->num_entries;
@@ -257,10 +263,12 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
 		return -EINVAL;
 	}
 
+	access_size = data[i].access_size ? data[i].access_size
+					  : block->default_access_size;
+
 	for (i = 0; i < num_entries; ++i) {
-		int ret =
-			ioreg_write_internal(block->base, data[i].offset,
-					     data[i].access_size, data[i].val);
+		int ret = ioreg_write_internal(block->base, data[i].offset,
+					       access_size, data[i].val);
 		if (ret) {
 			pr_err("Invalid ioreg write\n");
 			return ret;
@@ -291,6 +299,8 @@ int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
 		return -EINVAL;
 	}
 
+	value_bits = value_bits ? value_bits : block->default_access_size;
+
 	return ioreg_read_internal(block->base, offset, value_bits, value);
 }
 
@@ -309,6 +319,11 @@ int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 	for (i = 0; i < list->count; ++i) {
 		if (!strcmp(list->block[i].name, name)) {
 			if (list->block[i].base) {
+				value_bits =
+					value_bits
+						? value_bits
+						: list->block[i]
+							  .default_access_size;
 				return ioreg_read_internal(list->block[i].base,
 							   offset, value_bits,
 							   value);
@@ -341,6 +356,8 @@ int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
 		return -EINVAL;
 	}
 
+	value_bits = value_bits ? value_bits : block->default_access_size;
+
 	return ioreg_write_internal(block->base, offset, value_bits, value);
 }
 
@@ -359,13 +376,17 @@ int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 	for (i = 0; i < list->count; ++i) {
 		if (!strcmp(list->block[i].name, name)) {
 			if (list->block[i].base) {
+				value_bits =
+					value_bits
+						? value_bits
+						: list->block[i]
+							  .default_access_size;
 				return ioreg_write_internal(list->block[i].base,
 							    offset, value_bits,
 							    value);
 			}
 			return -EINVAL;
 		}
-
 	}
 
 	return -ENOENT;
