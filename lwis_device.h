@@ -43,6 +43,9 @@
    lwis_device_subclass_operations data struct. */
 struct lwis_device;
 
+/* Forward declaration of a platform specific struct used by platform funcs */
+struct lwis_platform;
+
 /*
  * lwis_device_types
  * top  : top level device that overlooks all the LWIS devices. Will be used to
@@ -109,6 +112,7 @@ struct lwis_device_subclass_operations {
  *  This struct applies to each of the LWIS devices, e.g. /dev/lwis*
  */
 struct lwis_device {
+	struct lwis_platform *platform;
 	int id;
 	enum lwis_device_types type;
 	char name[MAX_DEVICE_NAME_STRING];
@@ -123,6 +127,10 @@ struct lwis_device {
 	struct lwis_phy_list *phys;
 	struct list_head dev_list;
 
+	/* Enabled state of the device */
+	int enabled;
+	/* Mutex used to synchronize access between clients */
+	struct mutex client_lock;
 	/* Spinlock used to synchronize access to the device struct */
 	spinlock_t lock;
 	/* List of clients opened for this device */
@@ -131,6 +139,8 @@ struct lwis_device {
 	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
 	/* Virtual function table for sub classes */
 	struct lwis_device_subclass_operations vops;
+	/* Does the device have IOMMU. TODO: Move to platform */
+	bool has_iommu;
 
 	/* Heartbeat timer structure */
 	struct timer_list heartbeat_timer;

@@ -28,7 +28,7 @@
 #include "lwis_pinctrl.h"
 #include "lwis_regulator.h"
 #include "lwis_buffer.h"
-
+#include "lwis_platform.h"
 
 #define MCLK_ON_STRING "mclk_on"
 #define MCLK_OFF_STRING "mclk_off"
@@ -168,7 +168,7 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 	if (ret) {
 		pr_err("Failed to copy %zu bytes to user\n",
 		       sizeof(buffer->info));
-		lwis_buffer_disenroll(buffer);
+		lwis_buffer_disenroll(lwis_client, buffer);
 		return -EINVAL;
 	}
 
@@ -195,7 +195,7 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 		return -ENOENT;
 	}
 
-	ret = lwis_buffer_disenroll(buffer);
+	ret = lwis_buffer_disenroll(lwis_client, buffer);
 	if (ret) {
 		pr_err("Failed to disenroll dma buffer for %llx\n",
 		       info.dma_vaddr);
@@ -218,14 +218,34 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
    with this for now. */
 static int ioctl_device_enable(struct lwis_device *lwis_dev)
 {
-	int ret;
+	int ret = 0;
+
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 0 && lwis_dev->enabled < INT_MAX) {
+		lwis_dev->enabled++;
+		mutex_unlock(&lwis_dev->client_lock);
+		return 0;
+	} else if (lwis_dev->enabled == INT_MAX) {
+		pr_err("Enable counter overflow\n");
+		ret = -EINVAL;
+		goto error_locked;
+	}
+
+	lwis_dev->enabled = 1;
+
+	/* Let's do the platform-specific enable call */
+	ret = lwis_platform_device_enable(lwis_dev);
+	if (ret) {
+		pr_err("Platform-specific device enable fail: %d\n", ret);
+		goto error_locked;
+	}
 
 	if (lwis_dev->clocks) {
 		/* Enable clocks */
 		ret = lwis_clock_enable_all(lwis_dev->clocks);
 		if (ret) {
 			pr_err("Error enabling clocks (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -235,7 +255,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		if (ret) {
 			pr_err("Failed to set reset GPIOs to ACTIVE (%d)\n",
 			       ret);
-			return ret;
+			goto error_locked;
 		}
 
 		/* Inherited from FIMC, will see if this is needed */
@@ -246,7 +266,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		if (ret) {
 			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
 			       ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -256,7 +276,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 					     MCLK_ON_STRING);
 		if (ret) {
 			pr_err("Error setting mclk state (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -265,7 +285,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		ret = lwis_regulator_enable_all(lwis_dev->regulators);
 		if (ret) {
 			pr_err("Error enabling regulators (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -274,7 +294,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		ret = lwis_gpio_set_value_all(lwis_dev->enable_gpios, 1);
 		if (ret) {
 			pr_err("Error enabling GPIO pins (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -284,7 +304,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 					     /* power_on = */ true);
 		if (ret) {
 			pr_err("Error powering on PHY\n");
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -292,15 +312,14 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		ret = lwis_dev->vops.device_enable(lwis_dev);
 		if (ret) {
 			pr_err("Error executing device enable function\n");
-			return ret;
+			goto error_locked;
 		}
 	}
-	{
-		extern int iovmm_activate(struct device *dev);
-		iovmm_activate(&lwis_dev->plat_dev->dev);
-	}
+
 	pr_info("Device enabled\n");
-	return 0;
+error_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	return ret;
 }
 
 /* TODO(edmondchung): Same comment as ioctl_device_enable. */
@@ -308,11 +327,24 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 {
 	int ret;
 
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 1) {
+		lwis_dev->enabled--;
+		mutex_unlock(&lwis_dev->client_lock);
+		return 0;
+	} else if (lwis_dev->enabled <= 0) {
+		pr_err("Disabling a device that is already disabled\n");
+		ret = -EINVAL;
+		goto error_locked;
+	}
+
+	lwis_dev->enabled = 0;
+
 	if (lwis_dev->vops.device_disable) {
 		ret = lwis_dev->vops.device_disable(lwis_dev);
 		if (ret) {
 			pr_err("Error executing device disable function\n");
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -322,7 +354,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 					     /* power_on = */ false);
 		if (ret) {
 			pr_err("Error powering off PHY\n");
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -331,7 +363,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		ret = lwis_gpio_set_value_all(lwis_dev->enable_gpios, 0);
 		if (ret) {
 			pr_err("Error disabling GPIO pins (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -340,7 +372,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		ret = lwis_regulator_disable_all(lwis_dev->regulators);
 		if (ret) {
 			pr_err("Error disabling regulators (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -350,7 +382,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		if (ret) {
 			pr_err("Error setting reset GPIOs to ACTIVE (%d)\n",
 			       ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -360,7 +392,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 					     MCLK_OFF_STRING);
 		if (ret) {
 			pr_err("Error setting mclk state (%d)\n", ret);
-			return ret;
+			goto error_locked;
 		}
 	}
 
@@ -369,9 +401,17 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		lwis_clock_disable_all(lwis_dev->clocks);
 	}
 
-	pr_info("Device disabled\n");
+	/* Let's do the platform-specific disable call */
+	ret = lwis_platform_device_disable(lwis_dev);
+	if (ret) {
+		pr_err("Platform-specific device disable fail: %d\n", ret);
+		goto error_locked;
+	}
 
-	return 0;
+	pr_info("Device disabled\n");
+error_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	return ret;
 }
 
 static int ioctl_event_control_get(struct lwis_client *lwis_client,

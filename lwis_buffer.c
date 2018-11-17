@@ -11,11 +11,10 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-buffer: " fmt
 
 #include <linux/slab.h>
-// TODO(yromanenko): Refactor chipset specific to a file under platform/
-#include <linux/ion_exynos.h>
 
 #include "lwis_device.h"
 #include "lwis_buffer.h"
+#include "lwis_platform_dma.h"
 
 int lwis_buffer_enroll(struct lwis_client *lwis_client,
 		       struct lwis_buffer *buffer)
@@ -60,8 +59,9 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 		return -EINVAL;
 	}
 
-	buffer->info.dma_vaddr = ion_iovmm_map(buffer->dma_buf_attachment, 0, 0,
-					       buffer->dma_direction, 0);
+	buffer->info.dma_vaddr = lwis_platform_dma_buffer_map(
+		lwis_client->lwis_dev, buffer->dma_buf_attachment, 0, 0,
+		buffer->dma_direction, 0);
 
 	if (!buffer->info.dma_vaddr) {
 		pr_err("Could not map into IO VMM for fd: %d", buffer->info.fd);
@@ -79,8 +79,9 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 	if (old_buffer) {
 		pr_err("Duplicate vaddr %llx for fd %d", buffer->info.dma_vaddr,
 		       buffer->info.fd);
-		ion_iovmm_unmap(buffer->dma_buf_attachment,
-				buffer->info.dma_vaddr);
+		lwis_platform_dma_buffer_unmap(lwis_client->lwis_dev,
+					       buffer->dma_buf_attachment,
+					       buffer->info.dma_vaddr);
 		dma_buf_unmap_attachment(buffer->dma_buf_attachment,
 					 buffer->sg_table,
 					 buffer->dma_direction);
@@ -95,11 +96,15 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 	return 0;
 }
 
-int lwis_buffer_disenroll(struct lwis_buffer *buffer)
+int lwis_buffer_disenroll(struct lwis_client *lwis_client,
+			  struct lwis_buffer *buffer)
 {
+	BUG_ON(!lwis_client);
 	BUG_ON(!buffer);
 
-	ion_iovmm_unmap(buffer->dma_buf_attachment, buffer->info.dma_vaddr);
+	lwis_platform_dma_buffer_unmap(lwis_client->lwis_dev,
+				       buffer->dma_buf_attachment,
+				       buffer->info.dma_vaddr);
 	dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
 				 buffer->dma_direction);
 	dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
@@ -140,7 +145,7 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 	hash_for_each_safe(lwis_client->enrolled_buffers, i, n, buffer, node)
 	{
 		/* Disenroll the buffer */
-		lwis_buffer_disenroll(buffer);
+		lwis_buffer_disenroll(lwis_client, buffer);
 		/* Free the object */
 		kfree(buffer);
 	}

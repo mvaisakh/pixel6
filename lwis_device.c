@@ -25,6 +25,7 @@
 #include "lwis_event.h"
 #include "lwis_ioctl.h"
 #include "lwis_buffer.h"
+#include "lwis_platform.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -246,6 +247,11 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 		goto error_minor_alloc;
 	}
 
+	/* Initialize enabled state */
+	lwis_dev->enabled = 0;
+
+	/* Initialize client mutex */
+	mutex_init(&lwis_dev->client_lock);
 
 	/* Initialize an empty list of clients */
 	INIT_LIST_HEAD(&lwis_dev->clients);
@@ -279,6 +285,9 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	mutex_unlock(&core.lock);
 
 	platform_set_drvdata(plat_dev, lwis_dev);
+
+	/* Call platform-specific probe function */
+	lwis_platform_probe(lwis_dev);
 
 	pr_info("Base Probe: Success\n");
 

@@ -475,11 +475,14 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
 	struct device_node *dev_node;
+	struct property *iommus;
+	int iommus_len = 0;
 	const char *name_str;
 	int ret = 0;
 
 	dev = &(lwis_dev->plat_dev->dev);
 	dev_node = dev->of_node;
+
 
 	if (!dev_node) {
 		pr_err("Cannot find device node\n");
@@ -534,6 +537,9 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Error parsing phy's\n");
 		return ret;
 	}
+
+	iommus = of_find_property(dev_node, "iommus", &iommus_len);
+	lwis_dev->has_iommu = iommus && iommus_len;
 
 	dev_node->data = lwis_dev;
 

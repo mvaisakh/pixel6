@@ -15,6 +15,8 @@ lwis-objs += lwis_event.o
 lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o
 
+obj-$(CONFIG_LWIS) += platform/
+
 # Device tree specific file
 ifeq ($(CONFIG_OF), y)
 lwis-objs += lwis_dt.o

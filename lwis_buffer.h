@@ -47,7 +47,8 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
  * Alloc: Yes
  * Returns: 0 on success
  */
-int lwis_buffer_disenroll(struct lwis_buffer *buffer);
+int lwis_buffer_disenroll(struct lwis_client *lwis_client,
+			  struct lwis_buffer *buffer);
 
 
 /*
