@@ -542,6 +542,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 	/* Our iterators */
 	struct lwis_client *lwis_client;
 	struct list_head *p, *n;
+	uint64_t timestamp;
 	/* Flags for IRQ disable */
 	unsigned long flags;
 
@@ -555,6 +556,9 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 
 	/* Increment the event counter */
 	device_event_state->event_counter++;
+
+	/* Latch timestamp */
+	timestamp = ktime_to_ns(ktime_get());
 
 	/* Run internal handler if any */
 	if (lwis_dev->vops.event_emitted) {
@@ -598,8 +602,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			event->event_info.event_id = event_id;
 			event->event_info.event_counter =
 				device_event_state->event_counter;
-			event->event_info.timestamp_ns =
-				ktime_to_ns(ktime_get());
+			event->event_info.timestamp_ns = timestamp;
 			event->event_info.payload_size = payload_size;
 			if (payload_size > 0) {
 				event->event_info.payload_buffer =
