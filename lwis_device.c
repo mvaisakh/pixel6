@@ -26,6 +26,7 @@
 #include "lwis_ioctl.h"
 #include "lwis_buffer.h"
 #include "lwis_platform.h"
+#include "lwis_init.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -396,6 +397,26 @@ static int __init lwis_base_device_init(void)
 	ret = lwis_register_base_device();
 	if (ret) {
 		pr_err("Failed to register LWIS base\n");
+	}
+
+	ret = lwis_top_device_init();
+	if (ret) {
+		pr_err("Failed to lwis_top_device_init\n");
+	}
+
+	ret = lwis_ioreg_device_init();
+	if (ret) {
+		pr_err("Failed to lwis_ioreg_device_init\n");
+	}
+
+	ret = lwis_i2c_device_init();
+	if (ret) {
+		pr_err("Failed to lwis_i2c_device_init\n");
+	}
+
+	ret = lwis_i2c_driver_init();
+	if (ret) {
+		pr_err("Failed to lwis_i2c_driver_init\n");
 	}
 
 	return ret;

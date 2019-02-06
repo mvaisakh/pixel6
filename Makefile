@@ -1,27 +1,7 @@
-lwis-objs := lwis_device.o
-lwis-objs += lwis_device_i2c.o
-lwis-objs += lwis_device_ioreg.o
-lwis-objs += lwis_device_top.o
-lwis-objs += lwis_clock.o
-lwis-objs += lwis_gpio.o
-lwis-objs += lwis_i2c.o
-lwis-objs += lwis_interrupt.o
-lwis-objs += lwis_ioctl.o
-lwis-objs += lwis_ioreg.o
-lwis-objs += lwis_phy.o
-lwis-objs += lwis_pinctrl.o
-lwis-objs += lwis_regulator.o
-lwis-objs += lwis_event.o
-lwis-objs += lwis_buffer.o
-lwis-objs += lwis_util.o
+KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+M ?= $(shell pwd)
 
-obj-$(CONFIG_LWIS) += platform/
+KBUILD_OPTIONS += CONFIG_LWIS=m
 
-# Device tree specific file
-ifeq ($(CONFIG_OF), y)
-lwis-objs += lwis_dt.o
-endif
-
-obj-$(CONFIG_LWIS) += lwis.o
-
-subdir-ccflags-$(CONFIG_LWIS) += -Idrivers/media/platform/google/lwis
+modules modules_install clean:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) $(@)

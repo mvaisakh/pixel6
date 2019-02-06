@@ -93,7 +93,7 @@ static const struct of_device_id lwis_id_match[] = {
 	{ .compatible = LWIS_TOP_DEVICE_COMPAT },
 	{},
 };
-MODULE_DEVICE_TABLE(of, lwis_id_match);
+//MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
 	.driver = {
@@ -124,7 +124,7 @@ static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
  *  lwis_top_device_init: Init function that will be called by the kernel
  *  initialization routines.
  */
-static int __init lwis_top_device_init(void)
+int lwis_top_device_init(void)
 {
 	int ret = 0;
 
@@ -137,9 +137,3 @@ static int __init lwis_top_device_init(void)
 
 	return ret;
 }
-
-device_initcall_sync(lwis_top_device_init);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("Google-ACMA");
-MODULE_DESCRIPTION("LWIS Top Device");

@@ -390,7 +390,7 @@ static const struct of_device_id lwis_i2c_match[] = {
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, lwis_i2c_match);
+//MODULE_DEVICE_TABLE(of, lwis_i2c_match);
 #endif
 
 static const struct i2c_device_id lwis_i2c_id_table[] = {
@@ -428,4 +428,3 @@ int lwis_i2c_driver_init(void)
 
 	return ret;
 }
-late_initcall_sync(lwis_i2c_driver_init);

@@ -185,7 +185,7 @@ static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
  *  lwis_i2c_device_init: Init function that will be called by the kernel
  *  initialization routines.
  */
-static int __init lwis_i2c_device_init(void)
+int lwis_i2c_device_init(void)
 {
 	int ret = 0;
 
@@ -198,9 +198,3 @@ static int __init lwis_i2c_device_init(void)
 
 	return ret;
 }
-
-device_initcall_sync(lwis_i2c_device_init);
-
-MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("Google-ACMA");
-MODULE_DESCRIPTION("LWIS I2C Device");
