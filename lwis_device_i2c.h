@@ -22,6 +22,8 @@
  */
 struct lwis_i2c_device {
 	struct lwis_device base_dev;
+	int address;
+	struct i2c_adapter *adapter;
 	struct i2c_client *client;
 	struct pinctrl *state_pinctrl;
 };

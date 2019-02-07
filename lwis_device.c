@@ -414,11 +414,6 @@ static int __init lwis_base_device_init(void)
 		pr_err("Failed to lwis_i2c_device_init\n");
 	}
 
-	ret = lwis_i2c_driver_init();
-	if (ret) {
-		pr_err("Failed to lwis_i2c_driver_init\n");
-	}
-
 	return ret;
 }
 

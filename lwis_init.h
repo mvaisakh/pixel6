@@ -17,9 +17,6 @@ int lwis_ioreg_device_init(void);
 /* lwis_device_top.c */
 int lwis_top_device_init(void);
 
-/* lwis_i2c.c */
-int lwis_i2c_driver_init(void);
-
 /* lwis_device_i2c.c */
 int lwis_i2c_device_init(void);
 

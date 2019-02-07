@@ -103,8 +103,8 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 
 	return 0;
 
-	/* In case of error, free all the other regulators that were alloc'ed */
 error_parse_reg:
+	/* In case of error, free all the other regulators that were alloc'ed */
 	for (i = 0; i < count; ++i) {
 		lwis_regulator_put_by_idx(lwis_dev->regulators, i);
 	}
@@ -279,8 +279,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 		int_reg_bits_num = of_property_count_elems_of_size(
 			event_info, "int-reg-bits", 4);
-		if (irq_events_num != int_reg_bits_num
-		    || int_reg_bits_num <= 0) {
+		if (irq_events_num != int_reg_bits_num ||
+		    int_reg_bits_num <= 0) {
 			pr_err("Error getting int-reg-bits: %d\n",
 			       int_reg_bits_num);
 			ret = -EINVAL;
@@ -483,7 +483,6 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	dev = &(lwis_dev->plat_dev->dev);
 	dev_node = dev->of_node;
 
-
 	if (!dev_node) {
 		pr_err("Cannot find device node\n");
 		return -ENODEV;
@@ -550,17 +549,28 @@ int lwis_i2c_device_parse_dt(struct lwis_i2c_device *i2c_dev)
 {
 	struct device_node *dev_node;
 	struct device_node *dev_node_i2c;
+	int ret;
 
-	/* Save lwis_device handle to the device node of the i2c driver, in
-	   preparation for driver initialization. */
 	dev_node = i2c_dev->base_dev.plat_dev->dev.of_node;
-	dev_node_i2c = of_parse_phandle(dev_node, "i2c-driver", 0);
+
+	dev_node_i2c = of_parse_phandle(dev_node, "i2c-bus", 0);
 	if (!dev_node_i2c) {
-		pr_err("Cannot find i2c-driver node\n");
+		pr_err("Cannot find i2c-bus node\n");
 		return -ENODEV;
 	}
 
-	dev_node_i2c->data = i2c_dev;
+	i2c_dev->adapter = of_find_i2c_adapter_by_node(dev_node_i2c);
+	if (!i2c_dev->adapter) {
+		pr_err("Cannot find i2c adapter\n");
+		return -ENODEV;
+	}
+
+	ret = of_property_read_u32(dev_node, "i2c-addr",
+				   (u32 *)&i2c_dev->address);
+	if (ret) {
+		pr_err("Failed to read i2c-addr\n");
+		return ret;
+	}
 
 	return 0;
 }

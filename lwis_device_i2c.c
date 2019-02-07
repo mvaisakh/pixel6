@@ -49,7 +49,7 @@ static struct lwis_device_subclass_operations i2c_vops = {
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 {
 	int ret;
-	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *) lwis_dev;
+	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
 	/* Enable the I2C bus */
 	ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
@@ -64,7 +64,7 @@ static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 {
 	int ret;
-	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *) lwis_dev;
+	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
 	/* Disable the I2C bus */
 	ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
@@ -80,38 +80,92 @@ static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
 				  struct lwis_io_msg *msg, bool non_blocking)
 {
 	/* I2C does not currently support non-blocking calls at all */
-	if(non_blocking) {
+	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_read_batch((struct lwis_i2c_device *) lwis_dev, msg);
+	return lwis_i2c_read_batch((struct lwis_i2c_device *)lwis_dev, msg);
 }
 
 static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
 				   struct lwis_io_msg *msg, bool non_blocking)
 {
 	/* I2C does not currently support non-blocking calls at all */
-	if(non_blocking) {
+	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_write_batch((struct lwis_i2c_device *) lwis_dev, msg);
+	return lwis_i2c_write_batch((struct lwis_i2c_device *)lwis_dev, msg);
+}
+
+static int lwis_i2c_addr_matcher(struct device *dev, void *data)
+{
+	struct i2c_client *client = i2c_verify_client(dev);
+	int address = *(int *)data;
+
+	/* Return 0 if error, or address doesn't match */
+	if (IS_ERR_OR_NULL(client) || (client->addr != address)) {
+		return 0;
+	}
+
+	/* Return 1 when address is found */
+	return 1;
 }
 
 static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 {
-	int ret = 0;
+	int ret;
+	struct i2c_board_info info = {};
+	struct dev_archdata dev_ad = {};
+	struct device *dev;
+	struct pinctrl *pinctrl;
 
 #ifdef CONFIG_OF
 	/* Parse device tree for device configurations */
 	ret = lwis_i2c_device_parse_dt(i2c_dev);
 	if (ret) {
 		pr_err("Failed to parse device tree\n");
+		return ret;
 	}
 #else
 	/* Non-device-tree init: Save for future implementation */
-	ret = -ENOSYS;
+	return -ENOSYS;
 #endif
 
-	return ret;
+	info.addr = i2c_dev->address;
+	info.archdata = &dev_ad;
+
+	i2c_dev->client = i2c_new_device(i2c_dev->adapter, &info);
+
+	/* New device creation failed, possibly because client with the same
+	   address is defined, try to find the client instance in the adapter
+	   and use it here */
+	if (IS_ERR_OR_NULL(i2c_dev->client)) {
+		struct device *idev;
+		idev = device_find_child(&i2c_dev->adapter->dev,
+					 &i2c_dev->address,
+					 lwis_i2c_addr_matcher);
+		i2c_dev->client = i2c_verify_client(idev);
+	}
+
+	/* Still getting error in obtaining client, return error */
+	if (IS_ERR_OR_NULL(i2c_dev->client)) {
+		pr_err("Failed to create or find i2c device\n");
+		return -EINVAL;
+	}
+
+	dev = &i2c_dev->client->dev;
+
+	/* Parent of the client is the i2c block, which is where the i2c state
+	   pinctrl's are defined */
+	/* TODO: Need to figure out why this is parent's parent */
+	pinctrl = devm_pinctrl_get(dev->parent->parent);
+	if (IS_ERR(pinctrl)) {
+		pr_err("Cannot instantiate pinctrl instance (%d)\n",
+		       (int)PTR_ERR(pinctrl));
+		return PTR_ERR(pinctrl);
+	}
+	i2c_dev->state_pinctrl = pinctrl;
+
+	return 0;
 }
 
 static int __init lwis_i2c_device_probe(struct platform_device *plat_dev)
@@ -130,7 +184,7 @@ static int __init lwis_i2c_device_probe(struct platform_device *plat_dev)
 	i2c_dev->base_dev.vops = i2c_vops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *) i2c_dev, plat_dev);
+	ret = lwis_base_probe((struct lwis_device *)i2c_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -152,33 +206,32 @@ error_probe:
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
-	{ .compatible = LWIS_I2C_DEVICE_COMPAT },
-	{},
+	{.compatible = LWIS_I2C_DEVICE_COMPAT }, {},
 };
 MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
-	.driver = {
-		.name = LWIS_DRIVER_NAME,
-		.owner = THIS_MODULE,
-		.of_match_table = lwis_id_match,
-	},
+	.driver =
+		{
+			.name = LWIS_DRIVER_NAME,
+			.owner = THIS_MODULE,
+			.of_match_table = lwis_id_match,
+		},
 };
 #else  /* CONFIG_OF not defined */
 static struct platform_device_id lwis_driver_id[] = {
 	{
-		.name = LWIS_DRIVER_NAME,
-		.driver_data = 0,
+		.name = LWIS_DRIVER_NAME, .driver_data = 0,
 	},
 	{},
 };
 MODULE_DEVICE_TABLE(platform, lwis_driver_id);
 
-static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
-					      .driver = {
-						      .name = LWIS_DRIVER_NAME,
-						      .owner = THIS_MODULE,
-					      } };
+static struct platform_driver lwis_driver = {.id_table = lwis_driver_id,
+					     .driver = {
+						     .name = LWIS_DRIVER_NAME,
+						     .owner = THIS_MODULE,
+					     } };
 #endif /* CONFIG_OF */
 
 /*
