@@ -102,6 +102,12 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 int lwis_interrupt_event_enable(struct lwis_interrupt_list *list,
 				int64_t event_id, bool enabled);
 
+/*
+ *  lwis_interrupt_request_all_default: Request all interupts in the list with
+ *  the default IRQ handler provided in the C file.
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list);
 
 /*
  *  lwis_interrupt_request_by_idx: Request interrupt by index, which also
@@ -120,15 +126,18 @@ int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
 				   irq_handler_t handler, void *dev);
 
 /*
+ *  lwis_interrupt_free_all_default: Free all interrupts in the list.
+ */
+void lwis_interrupt_free_all_default(struct lwis_interrupt_list *list);
+
+/*
  *  lwis_interrupt_free_by_idx: Free interrupt by index.
- *  Returns: 0 if success, -ve if error
  */
 void lwis_interrupt_free_by_idx(struct lwis_interrupt_list *list, int index,
 				void *dev);
 
 /*
  *  lwis_interrupt_free_by_name: Free interrupt by name.
- *  Returns: 0 if success, -ve if error
  */
 void lwis_interrupt_free_by_name(struct lwis_interrupt_list *list, char *name,
 				 void *dev);

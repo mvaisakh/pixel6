@@ -11,9 +11,9 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-int: " fmt
 
 #include "lwis_interrupt.h"
+#include "lwis_device.h"
 #include "lwis_event.h"
 #include "lwis_util.h"
-#include "lwis_device.h"
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -62,9 +62,7 @@ lwis_interrupt_list_alloc(struct lwis_device *lwis_dev, int count)
 
 void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 {
-	if (!list) {
-		return;
-	}
+	BUG_ON(!list);
 
 	if (list->irq) {
 		kfree(list->irq);
@@ -167,7 +165,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg)
 {
-	int i, ret;
+	int i;
 	unsigned long flags;
 	BUG_ON(int_reg_bits_num != irq_events_num);
 
@@ -202,8 +200,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 		spin_lock_irqsave(&list->irq[index].lock, flags);
 		/* Check for duplicate events */
 		if (lwis_interrupt_get_single_event_info_locked(
-			    &list->irq[index], new_event->event_id)
-		    != NULL) {
+			    &list->irq[index], new_event->event_id) != NULL) {
 			spin_unlock_irqrestore(&list->irq[index].lock, flags);
 			pr_err("Duplicate event_id: %lld for IRQ: %s\n",
 			       new_event->event_id, list->irq[index].name);
@@ -223,11 +220,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	list->irq[index].has_events = true;
 	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 
-	/* Register an IRQ */
-	ret = lwis_interrupt_request_by_idx(
-		list, index, lwis_interrupt_event_isr, &list->irq[index]);
-
-	return ret;
+	return 0;
 }
 
 static int
@@ -312,14 +305,27 @@ int lwis_interrupt_event_enable(struct lwis_interrupt_list *list,
 	return ret;
 }
 
+int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list)
+{
+	int i;
+	int ret;
+
+	BUG_ON(!list);
+
+	for (i = 0; i < list->count; ++i) {
+		/* Register an IRQ */
+		ret = lwis_interrupt_request_by_idx(
+			list, i, lwis_interrupt_event_isr, &list->irq[i]);
+	}
+	return 0;
+}
+
 int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 				  irq_handler_t handler, void *dev)
 {
 	char irq_name[16];
 
-	if (!list) {
-		return -EINVAL;
-	}
+	BUG_ON(!list);
 
 	snprintf(irq_name, 16, "lwis-%s-%s", list->lwis_dev->name,
 		 list->irq[index].name);
@@ -333,9 +339,7 @@ int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
 {
 	int i;
 
-	if (!list) {
-		return -EINVAL;
-	}
+	BUG_ON(!list);
 
 	for (i = 0; i < list->count; ++i) {
 		if (!strcmp(list->irq[i].name, name)) {
@@ -348,12 +352,21 @@ int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
 	return -ENOENT;
 }
 
+void lwis_interrupt_free_all_default(struct lwis_interrupt_list *list)
+{
+	int i;
+
+	BUG_ON(!list);
+
+	for (i = 0; i < list->count; ++i) {
+		lwis_interrupt_free_by_idx(list, i, &list->irq[i]);
+	}
+}
+
 void lwis_interrupt_free_by_idx(struct lwis_interrupt_list *list, int index,
 				void *dev)
 {
-	if (!list) {
-		return;
-	}
+	BUG_ON(!list);
 
 	free_irq(list->irq[index].irq, dev);
 }
@@ -363,9 +376,7 @@ void lwis_interrupt_free_by_name(struct lwis_interrupt_list *list, char *name,
 {
 	int i;
 
-	if (!list) {
-		return;
-	}
+	BUG_ON(!list);
 
 	for (i = 0; i < list->count; ++i) {
 		if (!strcmp(list->irq[i].name, name)) {

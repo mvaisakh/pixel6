@@ -334,6 +334,14 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->irqs) {
+		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
+		if (ret) {
+			pr_err("Failed to request interrupts (%d)\n", ret);
+			goto error_locked;
+		}
+	}
+
 	if (lwis_dev->vops.device_enable) {
 		ret = lwis_dev->vops.device_enable(lwis_dev);
 		if (ret) {
@@ -372,6 +380,10 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 			pr_err("Error executing device disable function\n");
 			goto error_locked;
 		}
+	}
+
+	if (lwis_dev->irqs) {
+		lwis_interrupt_free_all_default(lwis_dev->irqs);
 	}
 
 	if (lwis_dev->phys) {
