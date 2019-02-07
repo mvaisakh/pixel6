@@ -1,3 +1,4 @@
+/* BEGIN-INTERNAL */
 /*
  * Google LWIS IOCTL Commands and Data Structures
  *
@@ -7,7 +8,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
+/* END-INTERNAL */
 #ifndef LWIS_COMMANDS_H_
 #define LWIS_COMMANDS_H_
 
@@ -16,8 +17,13 @@
 #include <linux/types.h>
 #else
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #endif /* __KERNEL__ */
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 /*
  *  IOCTL Types and Data Structures
@@ -98,5 +104,9 @@ struct lwis_event_control {
 #define LWIS_EVENT_CONTROL_SET                                                 \
 	_IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
+
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif /* __cplusplus */
 
 #endif /* LWIS_COMMANDS_H_ */
