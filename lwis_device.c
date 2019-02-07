@@ -245,7 +245,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 		lwis_dev->id = ret;
 	} else {
 		pr_err("Unable to allocate minor ID (%d)\n", ret);
-		goto error_minor_alloc;
+		return ret;
 	}
 
 	/* Initialize enabled state */
@@ -299,8 +299,6 @@ error_init:
 	mutex_lock(&core.lock);
 	idr_remove(core.idr, lwis_dev->id);
 	mutex_unlock(&core.lock);
-error_minor_alloc:
-	kfree(lwis_dev);
 	return ret;
 }
 
