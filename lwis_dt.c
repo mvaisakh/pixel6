@@ -25,42 +25,36 @@
 #include "lwis_regulator.h"
 
 static int parse_gpios(struct lwis_device *lwis_dev, char *name,
-		       struct gpio_descs **gpio_list)
+		       bool *is_present)
 {
-	int ret;
 	int count;
 	struct device *dev;
 	struct device_node *dev_node;
-	char node_name[32];
+	struct gpio_descs *list;
+
+	*is_present = false;
 
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 
-	/* Assemble the GPIO node name, appending "-gpios" to the end of
-	   the name */
-	strncpy(node_name, name, 32);
-	strncat(node_name, "-gpios", 32);
-
-	count = of_gpio_named_count(dev_node, node_name);
+	count = gpiod_count(dev, name);
 
 	/* No GPIO pins found, just return */
 	if (count <= 0) {
 		return 0;
 	}
 
-	*gpio_list = lwis_gpio_get_list(dev, name);
-	if (IS_ERR(*gpio_list)) {
+	list = lwis_gpio_list_get(dev, name);
+	if (IS_ERR(list)) {
 		pr_err("Error parsing GPIO list %s (%ld)\n", name,
-		       PTR_ERR(*gpio_list));
-		return PTR_ERR(*gpio_list);
+		       PTR_ERR(list));
+		return PTR_ERR(list);
 	}
 
-	ret = lwis_gpio_set_direction_all(*gpio_list, LWIS_GPIO_OUTPUT, 0);
-	if (ret) {
-		pr_err("Failed to set GPIO direction\n");
-		return ret;
-	}
-
+	/* The GPIO pins are valid, release the list as we do not need to hold
+	   on to the pins yet */
+	lwis_gpio_list_put(list, dev);
+	*is_present = true;
 	return 0;
 }
 
@@ -495,13 +489,13 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	}
 	strncpy(lwis_dev->name, name_str, MAX_DEVICE_NAME_STRING);
 
-	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios);
+	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios_present);
 	if (ret) {
 		pr_err("Error parsing enable-gpios\n");
 		return ret;
 	}
 
-	ret = parse_gpios(lwis_dev, "reset", &lwis_dev->reset_gpios);
+	ret = parse_gpios(lwis_dev, "reset", &lwis_dev->reset_gpios_present);
 	if (ret) {
 		pr_err("Error parsing reset-gpios\n");
 		return ret;

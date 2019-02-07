@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+#include "lwis_buffer.h"
 #include "lwis_clock.h"
 #include "lwis_commands.h"
 #include "lwis_device_i2c.h"
@@ -26,9 +27,8 @@
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"
 #include "lwis_pinctrl.h"
-#include "lwis_regulator.h"
-#include "lwis_buffer.h"
 #include "lwis_platform.h"
+#include "lwis_regulator.h"
 
 #define MCLK_ON_STRING "mclk_on"
 #define MCLK_OFF_STRING "mclk_off"
@@ -249,9 +249,18 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->reset_gpios) {
+	if (lwis_dev->reset_gpios_present) {
+		struct gpio_descs *gpios;
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
+		if (IS_ERR_OR_NULL(gpios)) {
+			pr_err("Failed to obtain reset gpio list (%d)\n",
+			       PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			goto error_locked;
+		}
+
 		/* Set reset pin to 1 (i.e. asserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->reset_gpios, 1);
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
 		if (ret) {
 			pr_err("Failed to set reset GPIOs to ACTIVE (%d)\n",
 			       ret);
@@ -262,12 +271,16 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		usleep_range(1500, 1500);
 
 		/* Set reset pin to 0 (i.e. deasserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->reset_gpios, 0);
+		ret = lwis_gpio_list_set_output_value(gpios, 0);
 		if (ret) {
 			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
 			       ret);
 			goto error_locked;
 		}
+
+		/* Setting reset_gpios to non-NULL to indicate that this lwis
+		   device is holding onto the GPIO pins. */
+		lwis_dev->reset_gpios = gpios;
 	}
 
 	if (lwis_dev->mclk_ctrl) {
@@ -289,13 +302,26 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->enable_gpios) {
+	if (lwis_dev->enable_gpios_present) {
+		struct gpio_descs *gpios;
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
+		if (IS_ERR_OR_NULL(gpios)) {
+			pr_err("Failed to obtain enable gpio list (%d)\n",
+			       PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			goto error_locked;
+		}
+
 		/* Set enable pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->enable_gpios, 1);
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
 		if (ret) {
 			pr_err("Error enabling GPIO pins (%d)\n", ret);
 			goto error_locked;
 		}
+
+		/* Setting enable_gpios to non-NULL to indicate that this lwis
+		   device is holding onto the GPIO pins. */
+		lwis_dev->enable_gpios = gpios;
 	}
 
 	if (lwis_dev->phys) {
@@ -358,13 +384,19 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->enable_gpios) {
+	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->enable_gpios, 0);
+		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
+						      0);
 		if (ret) {
 			pr_err("Error disabling GPIO pins (%d)\n", ret);
 			goto error_locked;
 		}
+
+		/* Release "ownership" of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->enable_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->enable_gpios = NULL;
 	}
 
 	if (lwis_dev->regulators) {
@@ -376,14 +408,19 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->reset_gpios) {
+	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
 		/* Set reset pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_set_value_all(lwis_dev->reset_gpios, 1);
+		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
 		if (ret) {
 			pr_err("Error setting reset GPIOs to ACTIVE (%d)\n",
 			       ret);
 			goto error_locked;
 		}
+
+		/* Release ownership of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->reset_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->reset_gpios = NULL;
 	}
 
 	if (lwis_dev->mclk_ctrl) {
@@ -507,8 +544,8 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 		info_user.payload_buffer = user_buffer;
 
 		/* Here we have a payload and the buffer is big enough */
-		if (event->event_info.payload_size > 0
-		    && info_user.payload_buffer) {
+		if (event->event_info.payload_size > 0 &&
+		    info_user.payload_buffer) {
 			/* Copy over the payload buffer to userspace */
 			ret = copy_to_user(
 				(void __user *)info_user.payload_buffer,

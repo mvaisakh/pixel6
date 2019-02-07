@@ -101,8 +101,8 @@ struct lwis_device_subclass_operations {
 	int (*event_flags_updated)(struct lwis_device *lwis_dev,
 				   int64_t event_id, uint64_t old_flags,
 				   uint64_t new_flags);
-        /* Called by lwis_device any time an event is emitted 
-         * Called with lwis_dev->lock locked and IRQs disabled */
+	/* Called by lwis_device any time an event is emitted
+ 	* Called with lwis_dev->lock locked and IRQs disabled */
 	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id,
 			     void **payload_ptrptr, size_t *payload_size_ptr);
 };
@@ -118,7 +118,9 @@ struct lwis_device {
 	char name[MAX_DEVICE_NAME_STRING];
 	struct device *dev;
 	struct platform_device *plat_dev;
+	bool reset_gpios_present;
 	struct gpio_descs *reset_gpios;
+	bool enable_gpios_present;
 	struct gpio_descs *enable_gpios;
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
