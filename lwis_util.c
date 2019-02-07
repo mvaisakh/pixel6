@@ -15,7 +15,7 @@
 
 int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 				      bool non_blocking, int bid,
-				      int64_t offset, uint64_t value)
+				      uint64_t offset, uint64_t value)
 {
 	BUG_ON(!lwis_dev);
 	if (lwis_dev->vops.register_write) {
@@ -38,7 +38,7 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 }
 
 int lwis_device_single_register_read(struct lwis_device *lwis_dev,
-				     bool non_blocking, int bid, int64_t offset,
+				     bool non_blocking, int bid, uint64_t offset,
 				     uint64_t *value)
 {
 	int ret = -EINVAL;

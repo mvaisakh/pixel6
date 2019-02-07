@@ -42,7 +42,7 @@ struct lwis_buffer_info {
 };
 
 struct lwis_io_data {
-	int64_t offset;
+	uint64_t offset;
 	uint64_t val;
 	int access_size;
 };

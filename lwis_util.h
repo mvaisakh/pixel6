@@ -34,7 +34,7 @@ struct lwis_device;
  */
 int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 				      bool non_blocking, int bid,
-				      int64_t offset, uint64_t value);
+				      uint64_t offset, uint64_t value);
 
 
 /*
@@ -53,7 +53,7 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
  * Other errors are possible
  */
 int lwis_device_single_register_read(struct lwis_device *lwis_dev,
-				     bool non_blocking, int bid, int64_t offset,
+				     bool non_blocking, int bid, uint64_t offset,
 				     uint64_t *value);
 
 #endif // LWIS_UTIL_H_

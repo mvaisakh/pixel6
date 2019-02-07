@@ -64,7 +64,7 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
  *  block index.
  */
 int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
-				 int64_t offset, int value_bits,
+				 uint64_t offset, int value_bits,
 				 uint64_t *value);
 
 /*
@@ -72,7 +72,7 @@ int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
  *  block name.
  */
 int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				  char *name, int64_t offset, int value_bits,
+				  char *name, uint64_t offset, int value_bits,
 				  uint64_t *value);
 
 /*
@@ -80,7 +80,7 @@ int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
  *  block index.
  */
 int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
-				  int index, int64_t offset, int value_bits,
+				  int index, uint64_t offset, int value_bits,
 				  uint64_t value);
 
 /*
@@ -88,7 +88,7 @@ int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
  *  block name.
  */
 int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				   char *name, int64_t offset, int value_bits,
+				   char *name, uint64_t offset, int value_bits,
 				   uint64_t value);
 
 #endif /* LWIS_IOREG_H_ */

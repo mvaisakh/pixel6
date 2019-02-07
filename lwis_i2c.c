@@ -33,7 +33,7 @@ static inline bool check_bitwidth(const int bitwidth, const int min,
 }
 
 static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
-				 int64_t offset, int offset_bits,
+				 uint64_t offset, int offset_bits,
 				 int value_bits, uint64_t *value)
 {
 	int ret = 0;
@@ -67,7 +67,7 @@ static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
 }
 
 static int perform_write_transfer(struct i2c_client *client,
-				  struct i2c_msg *msg, int64_t offset,
+				  struct i2c_msg *msg, uint64_t offset,
 				  int offset_bits, int value_bits,
 				  uint64_t value)
 {
@@ -237,7 +237,7 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 	return (ret == num_i2c_msg) ? 0 : ret;
 }
 
-int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, int64_t offset,
+int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, uint64_t offset,
 		  int value_bits, uint64_t *value)
 {
 	int ret;
@@ -296,8 +296,8 @@ error_rbuf_alloc:
 	return (ret == num_msg) ? 0 : ret;
 }
 
-int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits, int64_t offset,
-		   int value_bits, uint64_t value)
+int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
+		   uint64_t offset, int value_bits, uint64_t value)
 {
 	int ret;
 	u8 *buf;
