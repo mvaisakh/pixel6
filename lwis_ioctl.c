@@ -350,6 +350,9 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	/* Sleeping to make sure all pins are ready to go */
+	usleep_range(2000, 2000);
+
 	pr_info("Device enabled\n");
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
