@@ -15,6 +15,11 @@
 #include "lwis_platform.h"
 #include "lwis_platform_exynos.h"
 
+struct dma_buf *lwis_platform_dma_buffer_alloc(const char *heap_name,
+					       size_t len, unsigned int flags)
+{
+	return ion_alloc_dmabuf(heap_name, len, flags);
+}
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
 					struct dma_buf_attachment *attachment,

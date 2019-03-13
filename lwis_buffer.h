@@ -18,6 +18,13 @@
 
 #include "lwis_commands.h"
 
+#define ION_SYSTEM_HEAP_NAME "ion_system_heap"
+#define ION_SYSTEM_CONTIG_HEAP_NAME "ion_system_contig_heap"
+
+// ION allocation flags, imported from "/drivers/staging/android/uapi/ion.h".
+#define ION_FLAG_CACHED 1
+#define ION_FLAG_NOZEROED 8
+
 struct lwis_buffer {
 	struct lwis_buffer_info info;
 	enum dma_data_direction dma_direction;
@@ -26,6 +33,18 @@ struct lwis_buffer {
 	struct sg_table *sg_table;
 	struct hlist_node node;
 };
+
+/*
+ * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info and
+ * maps it into the device IO space and adds the buffer object into the table of
+ * this client's enrolled buffers
+ *
+ * Assumes: lwisclient->lock is locked
+ * Alloc: Yes
+ * Returns: 0 on success
+ */
+int lwis_buffer_alloc(struct lwis_client *lwis_client,
+		      struct lwis_alloc_buffer_info *alloc_info);
 
 /*
  * lwis_buffer_enroll: Maps the DMA buffer represented by the file descriptor
@@ -50,7 +69,6 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 int lwis_buffer_disenroll(struct lwis_client *lwis_client,
 			  struct lwis_buffer *buffer);
 
-
 /*
  * lwis_client_enrolled_buffer_find: Finds the enrolled buffer based on
  * dma_vaddr passed, and returns it
@@ -62,7 +80,6 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client,
 struct lwis_buffer *
 lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
 				 dma_addr_t dma_vaddr);
-
 
 /*
  * lwis_client_enrolled_buffers_clear: Frees all items in

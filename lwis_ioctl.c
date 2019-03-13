@@ -134,6 +134,42 @@ error_i2c_write:
 	return ret;
 }
 
+static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
+			      struct lwis_alloc_buffer_info __user *msg)
+{
+	unsigned long ret;
+	struct lwis_alloc_buffer_info alloc_info;
+
+	ret = copy_from_user((void *)&alloc_info, (void __user *)msg,
+			     sizeof(alloc_info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes from user\n",
+		       sizeof(alloc_info));
+		return -EINVAL;
+	}
+
+	ret = lwis_buffer_alloc(lwis_client, &alloc_info);
+	if (ret) {
+		pr_err("Failed to allocate and enroll buffer\n");
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, (void *)&alloc_info,
+			   sizeof(alloc_info));
+	if (ret) {
+		pr_err("Failed to copy %zu bytes to user\n",
+		       sizeof(alloc_info));
+
+		lwis_buffer_disenroll(
+			lwis_client,
+			lwis_client_enrolled_buffer_find(lwis_client,
+							 alloc_info.dma_vaddr));
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 			       struct lwis_buffer_info __user *msg)
 {
@@ -603,6 +639,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:
+		break;
+	case LWIS_BUFFER_ALLOC:
+		ret = ioctl_buffer_alloc(
+			lwis_client, (struct lwis_alloc_buffer_info *)param);
 		break;
 	case LWIS_BUFFER_ENROLL:
 		ret = ioctl_buffer_enroll(lwis_client,

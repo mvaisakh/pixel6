@@ -32,6 +32,27 @@ extern "C" {
 struct lwis_device_info {
 };
 
+enum lwis_dma_alloc_flags {
+	// Allocates a cached buffer.
+	LWIS_DMA_BUFFER_CACHED = 1UL << 0,
+	// Allocates a buffer which is not initialized to 0 to avoid initialization
+	// overhead.
+	LWIS_DMA_BUFFER_UNINITIALIZED = 1UL << 1,
+	// Allocates a buffer which is stored in contiguous memory.
+	LWIS_DMA_BUFFER_CONTIGUOUS = 1UL << 2,
+};
+
+struct lwis_alloc_buffer_info {
+	// IOCTL input/output for BUFFER_ALLOC
+	size_t size;
+	// IOCTL input for BUFFER_ALLOC
+	uint32_t flags; // lwis_dma_alloc_flags
+	bool dma_read;
+	bool dma_write;
+	// IOCTL output for BUFFER_ALLOC
+	uint64_t dma_vaddr;
+};
+
 struct lwis_buffer_info {
 	// IOCTL input for BUFFER_ENROLL
 	int fd;
@@ -98,6 +119,7 @@ struct lwis_event_control {
 #define LWIS_REG_WRITE _IOWR(LWIS_IOC_TYPE, 5, struct lwis_io_msg)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
+#define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
@@ -106,7 +128,7 @@ struct lwis_event_control {
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
 
 #ifdef __cplusplus
-}  /* extern "C" */
+} /* extern "C" */
 #endif /* __cplusplus */
 
 #endif /* LWIS_COMMANDS_H_ */
