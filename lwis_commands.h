@@ -30,6 +30,7 @@ extern "C" {
  */
 
 struct lwis_device_info {
+	// TBD
 };
 
 enum lwis_dma_alloc_flags {
