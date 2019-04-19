@@ -19,92 +19,28 @@
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		      struct lwis_alloc_buffer_info *alloc_info)
 {
-	struct lwis_buffer *buffer;
-	const char *ion_heap_name;
-	unsigned int ion_flags = 0;
-	int ret = 0;
+	struct dma_buf *dma_buf;
 	BUG_ON(!lwis_client);
 	BUG_ON(!alloc_info);
 
-	buffer = kzalloc(sizeof(struct lwis_buffer), GFP_KERNEL);
-	if (!buffer) {
-		pr_err("Failed to allocate lwis_buffer struct\n");
-		ret = -ENOMEM;
-		goto lwis_buf_alloc_fail;
-	}
-
-	if (alloc_info->flags & LWIS_DMA_BUFFER_CONTIGUOUS) {
-		ion_heap_name = ION_SYSTEM_CONTIG_HEAP_NAME;
-	} else {
-		ion_heap_name = ION_SYSTEM_HEAP_NAME;
-	}
-	if (alloc_info->flags & LWIS_DMA_BUFFER_CACHED) {
-		ion_flags |= ION_FLAG_CACHED;
-	}
-	if (alloc_info->flags & LWIS_DMA_BUFFER_UNINITIALIZED) {
-		ion_flags |= ION_FLAG_NOZEROED;
-	}
 	alloc_info->size = PAGE_ALIGN(alloc_info->size);
 
-	buffer->dma_buf = lwis_platform_dma_buffer_alloc(
-		ion_heap_name, alloc_info->size, ion_flags);
-	if (IS_ERR_OR_NULL(buffer->dma_buf)) {
-		ret = -ENOMEM;
-		goto dma_buf_alloc_fail;
+	dma_buf = lwis_platform_dma_buffer_alloc(
+		alloc_info->size, alloc_info->flags);
+	if (IS_ERR_OR_NULL(dma_buf)) {
+		pr_err("lwis_platform_dma_buffer_alloc failed (%d)\n",
+			PTR_ERR(dma_buf));
+		return -ENOMEM;
 	}
 
-	buffer->dma_buf_attachment = dma_buf_attach(
-		buffer->dma_buf, &lwis_client->lwis_dev->plat_dev->dev);
-	if (IS_ERR_OR_NULL(buffer->dma_buf_attachment)) {
-		pr_err("Could not attach dma buffer!");
-		ret = -EINVAL;
-		goto dma_buf_attach_fail;
+	alloc_info->dma_fd = dma_buf_fd(dma_buf, O_CLOEXEC);
+	if (alloc_info->dma_fd < 0) {
+		pr_err("dma_buf_fd failed (%d)\n", alloc_info->dma_fd);
+		dma_buf_put(dma_buf);
+		return alloc_info->dma_fd;
 	}
-
-	if (alloc_info->dma_read && alloc_info->dma_write) {
-		buffer->dma_direction = DMA_BIDIRECTIONAL;
-	} else if (alloc_info->dma_read) {
-		buffer->dma_direction = DMA_TO_DEVICE;
-	} else if (alloc_info->dma_write) {
-		buffer->dma_direction = DMA_FROM_DEVICE;
-	} else {
-		buffer->dma_direction = DMA_NONE;
-	}
-
-	buffer->sg_table = dma_buf_map_attachment(buffer->dma_buf_attachment,
-						  buffer->dma_direction);
-	if (IS_ERR_OR_NULL(buffer->sg_table)) {
-		pr_err("Could not map dma attachment!");
-		ret = -EINVAL;
-		goto dma_buf_map_attach_fail;
-	}
-
-	alloc_info->dma_vaddr = lwis_platform_dma_buffer_map(
-		lwis_client->lwis_dev, buffer->dma_buf_attachment, 0,
-		alloc_info->size, buffer->dma_direction, 0);
-	if (!alloc_info->dma_vaddr) {
-		pr_err("Could not map into IO VMM!");
-		ret = -EINVAL;
-		goto dma_buf_map_fail;
-	}
-	// Stores the dma virtual address to lwis_buffer.
-	buffer->info.dma_vaddr = alloc_info->dma_vaddr;
-
-	hash_add(lwis_client->enrolled_buffers, &buffer->node,
-		 alloc_info->dma_vaddr);
 
 	return 0;
-dma_buf_map_fail:
-	dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
-				 buffer->dma_direction);
-dma_buf_map_attach_fail:
-	dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
-dma_buf_attach_fail:
-	dma_buf_put(buffer->dma_buf);
-dma_buf_alloc_fail:
-	kfree(buffer);
-lwis_buf_alloc_fail:
-	return ret;
 }
 
 int lwis_buffer_enroll(struct lwis_client *lwis_client,

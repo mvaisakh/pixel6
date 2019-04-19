@@ -159,11 +159,6 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 	if (ret) {
 		pr_err("Failed to copy %zu bytes to user\n",
 		       sizeof(alloc_info));
-
-		lwis_buffer_disenroll(
-			lwis_client,
-			lwis_client_enrolled_buffer_find(lwis_client,
-							 alloc_info.dma_vaddr));
 		return -EINVAL;
 	}
 

@@ -43,14 +43,13 @@ enum lwis_dma_alloc_flags {
 };
 
 struct lwis_alloc_buffer_info {
-	// IOCTL input/output for BUFFER_ALLOC
-	size_t size;
 	// IOCTL input for BUFFER_ALLOC
+	size_t size;
 	uint32_t flags; // lwis_dma_alloc_flags
 	bool dma_read;
 	bool dma_write;
 	// IOCTL output for BUFFER_ALLOC
-	uint64_t dma_vaddr;
+	int dma_fd;
 };
 
 struct lwis_buffer_info {

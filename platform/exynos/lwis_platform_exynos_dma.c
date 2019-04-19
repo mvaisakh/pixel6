@@ -12,13 +12,33 @@
 #include <linux/ion_exynos.h>
 #include <linux/exynos_iovmm.h>
 
+#include "lwis_commands.h"
 #include "lwis_platform.h"
 #include "lwis_platform_exynos.h"
 
-struct dma_buf *lwis_platform_dma_buffer_alloc(const char *heap_name,
-					       size_t len, unsigned int flags)
+#define ION_SYSTEM_HEAP_NAME "ion_system_heap"
+#define ION_SYSTEM_CONTIG_HEAP_NAME "ion_system_contig_heap"
+
+// ION allocation flags, imported from "/drivers/staging/android/uapi/ion.h".
+#define ION_FLAG_CACHED 1
+#define ION_FLAG_NOZEROED 8
+
+struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags)
 {
-	return ion_alloc_dmabuf(heap_name, len, flags);
+	unsigned int ion_flags = 0;
+
+	// "system_contig_heap" does not seemed to be used in the exynos driver,
+	// that's why system heap is used by default.
+	const char *ion_heap_name = ION_SYSTEM_HEAP_NAME;
+
+	if (flags & LWIS_DMA_BUFFER_CACHED) {
+		ion_flags |= ION_FLAG_CACHED;
+	}
+	if (flags & LWIS_DMA_BUFFER_UNINITIALIZED) {
+		ion_flags |= ION_FLAG_NOZEROED;
+	}
+
+	return ion_alloc_dmabuf(ion_heap_name, len, ion_flags);
 }
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,

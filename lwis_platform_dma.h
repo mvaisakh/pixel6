@@ -13,17 +13,15 @@
 
 #include "lwis_device.h"
 
-/* Allocates a DMA buffer of size of PAGE_ALIGN(len) with ion allocation flags
- * from an ion heap represented by heap_name. This returns dma_buf structure or
- * an ERR_PTR on error
+/* Allocates a DMA buffer of size of PAGE_ALIGN(len) with allocation flags.
+ * This returns dma_buf structure or an ERR_PTR on error.
  */
-struct dma_buf *lwis_platform_dma_buffer_alloc(const char *heap_name,
-					       size_t len, unsigned int flags);
+struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags);
 
 /*
  * Does the actual platform specific parts of mapping a DMA buffer into the
  * device memory space, returning an IOMMU DMA virtual-address or an ERR_PTR
- * on error
+ * on error.
  */
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
 					struct dma_buf_attachment *attachment,
@@ -33,7 +31,7 @@ dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
 
 /*
  * Does the actual platform specific parts of unmapping a DMA buffer from the
- * device memory space
+ * device memory space.
  */
 int lwis_platform_dma_buffer_unmap(struct lwis_device *lwis_dev,
 				   struct dma_buf_attachment *attachment,

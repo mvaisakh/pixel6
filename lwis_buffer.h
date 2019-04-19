@@ -18,13 +18,6 @@
 
 #include "lwis_commands.h"
 
-#define ION_SYSTEM_HEAP_NAME "ion_system_heap"
-#define ION_SYSTEM_CONTIG_HEAP_NAME "ion_system_contig_heap"
-
-// ION allocation flags, imported from "/drivers/staging/android/uapi/ion.h".
-#define ION_FLAG_CACHED 1
-#define ION_FLAG_NOZEROED 8
-
 struct lwis_buffer {
 	struct lwis_buffer_info info;
 	enum dma_data_direction dma_direction;
@@ -35,9 +28,8 @@ struct lwis_buffer {
 };
 
 /*
- * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info and
- * maps it into the device IO space and adds the buffer object into the table of
- * this client's enrolled buffers
+ * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info,
+ * maps it into the device IO space and returns a file descriptor
  *
  * Assumes: lwisclient->lock is locked
  * Alloc: Yes
