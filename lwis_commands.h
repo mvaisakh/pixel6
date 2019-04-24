@@ -46,8 +46,6 @@ struct lwis_alloc_buffer_info {
 	// IOCTL input for BUFFER_ALLOC
 	size_t size;
 	uint32_t flags; // lwis_dma_alloc_flags
-	bool dma_read;
-	bool dma_write;
 	// IOCTL output for BUFFER_ALLOC
 	int dma_fd;
 };
