@@ -78,9 +78,6 @@
 struct sdioh_info {
 	uint		cfg_bar;		/* pci cfg address for bar */
 	uint32		caps;			/* cached value of capabilities reg */
-#ifndef BCMSPI_ANDROID
-	void		*bar0;			/* BAR0 for PCI Device */
-#endif /* !BCMSPI_ANDROID */
 	osl_t		*osh;			/* osh handler */
 	void		*controller;	/* Pointer to SPI Controller's private data struct */
 	uint		lockcount;		/* nest count of spi_lock() calls */

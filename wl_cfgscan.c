@@ -769,6 +769,59 @@ exit:
 	return err;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && 0
+static const u8 *
+wl_retrieve_wps_attribute(const u8 *buf, u16 element_id)
+{
+	const wl_wps_ie_t *ie = NULL;
+	u16 len = 0;
+	const u8 *attrib;
+
+	if (!buf) {
+		WL_ERR(("WPS IE not present"));
+		return 0;
+	}
+
+	ie = (const wl_wps_ie_t*) buf;
+	len = ie->len;
+
+	/* Point subel to the P2P IE's subelt field.
+	 * Subtract the preceding fields (id, len, OUI, oui_type) from the length.
+	 */
+	attrib = ie->attrib;
+	len -= 4;	/* exclude OUI + OUI_TYPE */
+
+	/* Search for attrib */
+	return wl_find_attribute(attrib, len, element_id);
+}
+
+static bool
+wl_is_wps_enrollee_active(struct net_device *ndev, const u8 *ie_ptr, u16 len)
+{
+	const u8 *ie;
+	const u8 *attrib;
+
+	if ((ie = (const u8 *)wl_cfgp2p_find_wpsie(ie_ptr, len)) == NULL) {
+		WL_DBG(("WPS IE not present. Do nothing.\n"));
+		return false;
+	}
+
+	if ((attrib = wl_retrieve_wps_attribute(ie, WPS_ATTR_REQ_TYPE)) == NULL) {
+		WL_DBG(("WPS_ATTR_REQ_TYPE not found!\n"));
+		return false;
+	}
+
+	if (*attrib == WPS_REQ_TYPE_ENROLLEE) {
+		WL_INFORM_MEM(("WPS Enrolle Active\n"));
+		return true;
+	} else {
+		WL_DBG(("WPS_REQ_TYPE:%d\n", *attrib));
+	}
+
+	return false;
+}
+#endif // endif
+
 /* Find listen channel */
 static s32 wl_find_listen_channel(struct bcm_cfg80211 *cfg,
 	const u8 *ie, u32 ie_len)
@@ -1066,7 +1119,7 @@ wl_scan_prep(struct bcm_cfg80211 *cfg, void *scan_params, u32 len,
 
 	/* Copy ssid array if applicable */
 	if (request->n_ssids > 0) {
-		cur_offset = roundup(cur_offset, sizeof(u32));
+		cur_offset = (u32) roundup(cur_offset, sizeof(u32));
 		if (len > (cur_offset + (request->n_ssids * sizeof(wlc_ssid_t)))) {
 			u32 rem_len = len - cur_offset;
 			wl_cfgscan_populate_scan_ssids(cfg,
@@ -1161,6 +1214,28 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	} else {
 		params_size = (WL_SCAN_PARAMS_FIXED_SIZE + OFFSETOF(wl_escan_params_t, params));
 	}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && 0
+	if ((request != NULL) && !ETHER_ISNULLADDR(request->mac_addr) &&
+		!ETHER_ISNULLADDR(request->mac_addr_mask) &&
+		!wl_is_wps_enrollee_active(ndev, request->ie, request->ie_len)) {
+		/* Call scanmac only for valid configuration */
+		err = wl_cfg80211_scan_mac_enable(ndev, request->mac_addr,
+			request->mac_addr_mask);
+		if (err < 0) {
+			if (err == BCME_UNSUPPORTED) {
+				/* Ignore if chip doesnt support the feature */
+				err = BCME_OK;
+			} else {
+				/* For errors other than unsupported fail the scan */
+				WL_ERR(("%s : failed to set random mac for host scan, %d\n",
+					__FUNCTION__, err));
+				err = -EAGAIN;
+				goto exit;
+			}
+		}
+	}
+#endif // endif
 
 	if (!cfg->p2p_supported || !p2p_scan(cfg)) {
 		/* LEGACY SCAN TRIGGER */
@@ -1579,7 +1654,7 @@ wl_cfgscan_handle_scanbusy(struct bcm_cfg80211 *cfg, struct net_device *ndev, s3
 			}
 #endif /* DHD_DEBUG && DHD_FW_COREDUMP */
 			dhdp->hang_reason = HANG_REASON_SCAN_BUSY;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && 1
 			dhd_os_send_hang_message(dhdp);
 #else
 			WL_ERR(("%s: HANG event is unsupported\n", __FUNCTION__));
@@ -1721,7 +1796,9 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 					p2p_on(cfg) = true;
 					wl_cfgp2p_set_firm_p2p(cfg);
 					get_primary_mac(cfg, &primary_mac);
+#ifndef WL_P2P_USE_RANDMAC
 					wl_cfgp2p_generate_bss_mac(cfg, &primary_mac);
+#endif /* WL_P2P_USE_RANDMAC */
 #if defined(P2P_IE_MISSING_FIX)
 					cfg->p2p_prb_noti = false;
 #endif // endif
@@ -2064,6 +2141,12 @@ s32 wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 		err = BCME_ERROR;
 		goto out;
 	}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && 0
+		/* Disable scanmac if enabled */
+		if (cfg->scanmac_enabled) {
+			wl_cfg80211_scan_mac_disable(ndev);
+		}
+#endif // endif
 
 	if (cfg->scan_request) {
 		dev = bcmcfg_to_prmry_ndev(cfg);
@@ -2102,7 +2185,12 @@ s32 wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 	if (cfg->sched_scan_req && !cfg->scan_request) {
 		if (!aborted) {
 			WL_INFORM_MEM(("[%s] Report sched scan done.\n", dev->name));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
+			cfg80211_sched_scan_results(cfg->sched_scan_req->wiphy,
+					cfg->sched_scan_req->reqid);
+#else
 			cfg80211_sched_scan_results(cfg->sched_scan_req->wiphy);
+#endif /* LINUX_VER > 4.11 */
 		}
 
 		DBG_EVENT_LOG(dhdp, WIFI_EVENT_DRIVER_PNO_SCAN_COMPLETE);
@@ -2664,6 +2752,28 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	} else {
 		ret = -EINVAL;
 	}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && (0)
+	if (!ETHER_ISNULLADDR(request->mac_addr) && !ETHER_ISNULLADDR(request->mac_addr_mask)) {
+		ret = wl_cfg80211_scan_mac_enable(dev, request->mac_addr, request->mac_addr_mask);
+		/* Ignore if chip doesnt support the feature */
+		if (ret < 0) {
+			if (ret == BCME_UNSUPPORTED) {
+				/* If feature is not supported, ignore the error (legacy chips) */
+				ret = BCME_OK;
+			} else {
+				WL_ERR(("set random mac failed (%d). Ignore.\n", ret));
+				/* Cleanup the states and stop the pno */
+				if (dhd_dev_pno_stop_for_ssid(dev) < 0) {
+					WL_ERR(("PNO Stop for SSID failed"));
+				}
+				WL_CFG_DRV_LOCK(&cfg->cfgdrv_lock, flags);
+				cfg->sched_scan_req = NULL;
+				cfg->sched_scan_running = FALSE;
+				WL_CFG_DRV_UNLOCK(&cfg->cfgdrv_lock, flags);
+			}
+		}
+	}
+#endif // endif
 exit:
 	if (event_data) {
 		MFREE(cfg->osh, event_data->tlvs, tlv_len);
@@ -2673,7 +2783,11 @@ exit:
 }
 
 int
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 11, 0))
+wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev, u64 reqid)
+#else
 wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev)
+#endif /* LINUX_VER > 4.11 */
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);

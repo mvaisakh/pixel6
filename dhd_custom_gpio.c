@@ -41,8 +41,6 @@
 #define WL_TRACE(x)
 #endif // endif
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
-
 #if defined(BCMLXSDMMC)
 extern int sdioh_mmc_irq(int irq);
 #endif /* (BCMLXSDMMC)  */
@@ -91,7 +89,6 @@ int dhd_customer_oob_irq_map(void *adapter, unsigned long *irq_flags_ptr)
 
 	return (host_oob_irq);
 }
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 /* Customer function to control hw specific wlan gpios */
 int

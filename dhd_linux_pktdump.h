@@ -43,7 +43,8 @@ typedef enum pkt_cnt_rsn {
 	PKT_CNT_RSN_INVALID	= 0,
 	PKT_CNT_RSN_ROAM	= 1,
 	PKT_CNT_RSN_GRPKEY_UP	= 2,
-	PKT_CNT_RSN_MAX		= 3
+	PKT_CNT_RSN_CONNECT	= 3,
+	PKT_CNT_RSN_MAX		= 4
 } pkt_cnt_rsn_t;
 
 extern msg_eapol_t dhd_is_4way_msg(uint8 *pktdata);

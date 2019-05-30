@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfg80211.h 817606 2019-05-02 06:59:42Z $
+ * $Id: wl_cfg80211.h 820899 2019-05-21 10:32:39Z $
  */
 
 /**
@@ -503,7 +503,6 @@ enum wl_status {
 typedef enum wl_iftype {
 	WL_IF_TYPE_STA = 0,
 	WL_IF_TYPE_AP = 1,
-	WL_IF_TYPE_TEST1 = 2,
 	WL_IF_TYPE_NAN_NMI = 3,
 	WL_IF_TYPE_NAN = 4,
 	WL_IF_TYPE_P2P_GO = 5,
@@ -527,11 +526,11 @@ typedef enum wl_interface_state {
 
 /* wi-fi mode */
 enum wl_mode {
-	WL_MODE_BSS,
-	WL_MODE_IBSS,
-	WL_MODE_AP,
-	WL_MODE_TEST1,
-	WL_MODE_NAN
+	WL_MODE_BSS = 0,
+	WL_MODE_IBSS = 1,
+	WL_MODE_AP = 2,
+	WL_MODE_NAN = 4,
+	WL_MODE_MAX
 };
 
 /* driver profile list */
@@ -1327,9 +1326,6 @@ struct bcm_cfg80211 {
 #ifdef WL_IFACE_MGMT
 	iface_mgmt_data_t iface_data;
 #endif /* WL_IFACE_MGMT */
-#ifdef WL_CFG80211_P2P_DEV_IF
-	bool down_disc_if;
-#endif /* WL_CFG80211_P2P_DEV_IF */
 #ifdef P2PLISTEN_AP_SAMECHN
 	bool p2p_resp_apchn_status;
 #endif /* P2PLISTEN_AP_SAMECHN */
@@ -1405,6 +1401,9 @@ struct bcm_cfg80211 {
 	bool hal_started;
 	wl_wlc_version_t wlc_ver;
 	bool scan_params_v2;
+#ifdef SUPPORT_AP_BWCTRL
+	u32 bw_cap_5g;
+#endif /* SUPPORT_AP_BWCTRL */
 };
 #define WL_STATIC_IFIDX	(DHD_MAX_IFS + DHD_MAX_STATIC_IFS - 1)
 enum static_ndev_states {
@@ -1907,8 +1906,6 @@ wl_iftype_to_str(int wl_iftype)
 			return "WL_IF_TYPE_STA";
 		case (WL_IF_TYPE_AP):
 			return "WL_IF_TYPE_AP";
-		case (WL_IF_TYPE_TEST1):
-			return "WL_IF_TYPE_TEST1";
 		case (WL_IF_TYPE_NAN_NMI):
 			return "WL_IF_TYPE_NAN_NMI";
 		case (WL_IF_TYPE_NAN):
@@ -2458,11 +2455,18 @@ extern int wl_cfg80211_get_concurrency_mode(struct bcm_cfg80211 *cfg);
 #if defined(WL_DISABLE_HE_SOFTAP) || defined(WL_DISABLE_HE_P2P)
 int wl_cfg80211_set_he_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
 		s32 bssidx, u32 interface_type, bool set);
-#define WL_HE_FEATURES_HE_AP		0x8
-#define WL_HE_FEATURES_HE_P2P		0x20
 #endif /* WL_DISABLE_HE_SOFTAP || WL_DISABLE_HE_P2P */
 extern s32 wl_cfg80211_config_suspend_events(struct net_device *ndev, bool enable);
 #ifdef SUPPORT_AP_SUSPEND
 extern int wl_set_ap_suspend(struct net_device *dev, bool enable, char *ifname);
 #endif /* SUPPORT_AP_SUSPEND */
+#ifdef SUPPORT_SOFTAP_ELNA_BYPASS
+int wl_set_softap_elna_bypass(struct net_device *dev, char *ifname, int enable);
+int wl_get_softap_elna_bypass(struct net_device *dev, char *ifname, void *param);
+#endif /* SUPPORT_SOFTAP_ELNA_BYPASS */
+#ifdef SUPPORT_AP_BWCTRL
+extern int wl_set_ap_bw(struct net_device *dev, u32 bw, char *ifname);
+extern int wl_get_ap_bw(struct net_device *dev, char* command, char *ifname, int total_len);
+#endif /* SUPPORT_AP_BWCTRL */
+bool wl_cfg80211_check_in_progress(struct net_device *dev);
 #endif /* _wl_cfg80211_h_ */

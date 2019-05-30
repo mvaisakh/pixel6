@@ -78,6 +78,11 @@ int get_scheduler_policy(struct task_struct *p);
 
 #define ALL_INTERFACES	0xff
 
+/* H2D and D2H ring dump is enabled by default */
+#ifdef PCIE_FULL_DONGLE
+#define DHD_DUMP_PCIE_RINGS
+#endif /* PCIE_FULL_DONGLE */
+
 #include <osl.h>
 
 #include <wlioctl.h>
@@ -921,7 +926,7 @@ extern void copy_debug_dump_time(char *dest, char *src);
 
 #if defined(CUSTOMER_HW2) || defined(BOARD_HIKEY)
 #define DHD_COMMON_DUMP_PATH	"/data/misc/wifi/"
-#elif (defined(BOARD_PANDA) || defined(__ARM_ARCH_7A__))
+#elif defined(__ARM_ARCH_7A__)
 #define DHD_COMMON_DUMP_PATH	"/data/vendor/wifi/"
 #else
 #define DHD_COMMON_DUMP_PATH	"/installmedia/"
@@ -1015,31 +1020,6 @@ typedef enum dhd_induce_error_states
 	DHD_INDUCE_TX_BIG_PKT		= 0x6,
 	DHD_INDUCE_ERROR_MAX		= 0x7
 } dhd_induce_error_states_t;
-
-#ifdef DHD_HP2P
-#define MAX_TX_HIST_BIN		16
-#define MAX_RX_HIST_BIN		10
-#define MAX_HP2P_FLOWS		16
-#define HP2P_PRIO		7
-#define HP2P_PKT_THRESH		48
-#define HP2P_TIME_THRESH	200
-#define HP2P_PKT_EXPIRY		40
-#define	HP2P_TIME_SCALE		32
-
-typedef struct hp2p_info {
-	void	*dhd_pub;
-	uint16	flowid;
-	bool	hrtimer_init;
-	void	*ring;
-	struct	tasklet_hrtimer timer;
-	uint64	num_pkt_limit;
-	uint64	num_timer_limit;
-	uint64	num_timer_start;
-	uint64	tx_t0[MAX_TX_HIST_BIN];
-	uint64	tx_t1[MAX_TX_HIST_BIN];
-	uint64	rx_t0[MAX_RX_HIST_BIN];
-} hp2p_info_t;
-#endif /* DHD_HP2P */
 
 #if defined(SHOW_LOGTRACE) && defined(DHD_USE_KTHREAD_FOR_LOGTRACE)
 /* Timestamps to trace dhd_logtrace_thread() */
@@ -1167,14 +1147,8 @@ typedef struct dhd_pub {
 	char eventmask[WL_EVENTING_MASK_LEN];
 	int	op_mode;				/* STA, HostAPD, WFD, SoftAP */
 
-/* Set this to 1 to use a seperate interface (p2p0) for p2p operations.
- *  For ICS MR1 releases it should be disable to be compatable with ICS MR1 Framework
- *  see target dhd-cdc-sdmmc-panda-cfg80211-icsmr1-gpl-debug in Makefile
- */
-/* #define WL_ENABLE_P2P_IF		1 */
-
 #if defined(LINUX) || defined(linux)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	struct mutex 	wl_start_stop_lock; /* lock/unlock for Android start/stop */
 	struct mutex 	wl_softap_lock;		 /* lock/unlock for any SoftAP/STA settings */
 #endif // endif
@@ -1434,10 +1408,6 @@ typedef struct dhd_pub {
 	uint8 dequeue_prec_map;
 	uint8 prio_8021x;
 #endif // endif
-#ifdef WL_NATOE
-	struct dhd_nfct_info *nfct;
-	spinlock_t nfct_lock;
-#endif /* WL_NATOE */
 	/* timesync link */
 	struct dhd_ts *ts;
 	bool	d2h_hostrdy_supported;
@@ -1606,19 +1576,6 @@ typedef struct dhd_pub {
 #ifdef DHD_STATUS_LOGGING
 	void *statlog;
 #endif /* DHD_STATUS_LOGGING */
-#ifdef DHD_HP2P
-	/* whether enabled from host by user iovar */
-	bool hp2p_enable;
-	bool hp2p_infra_enable;
-	/* whether fw supports it */
-	bool hp2p_capable;
-	bool hp2p_ts_capable;
-	uint16 pkt_thresh;
-	uint16 time_thresh;
-	uint16 pkt_expiry;
-	hp2p_info_t hp2p_info[MAX_HP2P_FLOWS];
-	bool hp2p_ring_active;
-#endif /* D2H_HP2P */
 #ifdef DHD_DB0TS
 	bool db0ts_capable;
 #endif /* DHD_DB0TS */
@@ -1825,21 +1782,21 @@ extern void dhd_os_scan_wake_unlock(dhd_pub_t *pub);
 
 inline static void MUTEX_LOCK_SOFTAP_SET_INIT(dhd_pub_t * dhdp)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	mutex_init(&dhdp->wl_softap_lock);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
 }
 
 inline static void MUTEX_LOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	mutex_lock(&dhdp->wl_softap_lock);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
 }
 
 inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	mutex_unlock(&dhdp->wl_softap_lock);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
 }
@@ -2045,7 +2002,7 @@ void dhd_net_if_unlock(struct net_device *dev);
 
 #if defined(LINUX) || defined(linux)
 #if defined(MULTIPLE_SUPPLICANT)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && defined(BCMSDIO)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1 && defined(BCMSDIO)
 extern struct mutex _dhd_sdio_mutex_lock_;
 #endif // endif
 #endif /* MULTIPLE_SUPPLICANT */
@@ -2521,10 +2478,6 @@ extern void dhd_vif_del(struct dhd_info *dhd, int ifidx);
 extern void dhd_event(struct dhd_info *dhd, char *evpkt, int evlen, int ifidx);
 extern void dhd_vif_sendup(struct dhd_info *dhd, int ifidx, uchar *cp, int len);
 
-#ifdef WL_NATOE
-extern int dhd_natoe_ct_event(dhd_pub_t *dhd, char *data);
-#endif /* WL_NATOE */
-
 /* Send packet to dongle via data channel */
 extern int dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pkt);
 
@@ -2736,6 +2689,9 @@ extern uint dhd_roam_disable;
 
 /* Roaming mode control */
 extern uint dhd_radio_up;
+
+/* TCM verification control */
+extern uint dhd_tcm_test_enable;
 
 /* Initial idletime ticks (may be -1 for immediate idle, 0 for no idle) */
 extern int dhd_idletime;
@@ -3047,6 +3003,10 @@ int dhd_deepsleep(struct net_device *dev, int flag);
 
 extern void dhd_wait_for_event(dhd_pub_t *dhd, bool *lockvar);
 extern void dhd_wait_event_wakeup(dhd_pub_t*dhd);
+
+#ifdef WL_CFG80211
+bool dhd_cfg80211_check_in_progress(dhd_pub_t *dhdp);
+#endif /* WL_CFG80211 */
 
 #define IFLOCK_INIT(lock)       *lock = 0
 #define IFLOCK(lock)    while (InterlockedCompareExchange((lock), 1, 0))	\
@@ -3651,6 +3611,7 @@ void dhd_send_trap_to_fw_for_timeout(dhd_pub_t * pub, timeout_reasons_t reason);
 #endif // endif
 #if defined(PCIE_OOB) || defined(PCIE_INB_DW)
 extern int dhd_bus_set_device_wake(struct dhd_bus *bus, bool val);
+extern void dhd_bus_dw_deassert(dhd_pub_t *dhd);
 #endif /* defined(PCIE_OOB) || defined(PCIE_INB_DW) */
 extern void dhd_prhex(const char *msg, volatile uchar *buf, uint nbytes, uint8 dbg_level);
 int dhd_tput_test(dhd_pub_t *dhd, tput_test_t *tput_data);
@@ -3925,11 +3886,6 @@ extern void dhd_dump_file_manage_enqueue(dhd_pub_t *dhd, char *dump_path, char *
 
 #define HD_PREFIX_SIZE  2   /* hexadecimal prefix size */
 #define HD_BYTE_SIZE    2   /* hexadecimal byte size */
-
-#ifdef DHD_HP2P
-extern unsigned long dhd_os_hp2plock(dhd_pub_t *pub);
-extern void dhd_os_hp2punlock(dhd_pub_t *pub, unsigned long flags);
-#endif /* DHD_HP2P */
 
 #ifdef DNGL_AXI_ERROR_LOGGING
 extern void dhd_axi_error(dhd_pub_t *dhd);

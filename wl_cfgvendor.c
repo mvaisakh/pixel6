@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgvendor.c 815871 2019-04-22 06:21:38Z $
+ * $Id: wl_cfgvendor.c 820279 2019-05-17 04:32:30Z $
  */
 
 /*
@@ -2508,6 +2508,16 @@ wl_cfgvendor_set_ssid_whitelist(struct wiphy *wiphy,
 	}
 	err = dhd_dev_set_whitelist_ssid(bcmcfg_to_prmry_ndev(cfg),
 	          ssid_whitelist, mem_needed, flush);
+	if (err == BCME_UNSUPPORTED) {
+		/* If firmware doesn't support feature, ignore the error
+		 * Android framework doesn't populate/use whitelist ssids
+		 * as of now, but invokes whitelist as part of roam config
+		 * API. so this handler cannot be compiled out. but its
+		 * safe to ignore.
+		 */
+		WL_ERR(("whilelist ssid not supported. Ignore."));
+		err = BCME_OK;
+	}
 exit:
 	MFREE(cfg->osh, ssid_whitelist, mem_needed);
 	return err;
@@ -2743,13 +2753,16 @@ wl_cfgvendor_set_sae_password(struct wiphy *wiphy,
 	wsec_pmk_t pmk;
 	s32 bssidx;
 
+	/* clear the content of pmk structure before usage */
+	(void)memset_s(&pmk, sizeof(wsec_pmk_t), 0x0, sizeof(wsec_pmk_t));
+
 	if ((bssidx = wl_get_bssidx_by_wdev(cfg, net->ieee80211_ptr)) < 0) {
 		WL_ERR(("Find p2p index from wdev(%p) failed\n", net->ieee80211_ptr));
 		return BCME_ERROR;
 	}
 
-	if (len < WSEC_MIN_PSK_LEN || len >= WSEC_MAX_PSK_LEN) {
-		WL_ERR(("Invalid passphrase length %d..should be >=8 and <=63\n",
+	if ((len < WSEC_MIN_PSK_LEN) || (len >= WSEC_MAX_PASSPHRASE_LEN)) {
+		WL_ERR(("Invalid passphrase length %d..should be >= 8 and < 256\n",
 			len));
 		err = BCME_BADLEN;
 		goto done;

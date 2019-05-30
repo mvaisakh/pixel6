@@ -115,13 +115,12 @@
 #else
 #define DHD_IF_ROLE_NAN(pub, idx)	(FALSE)
 #endif /* WL_NAN */
-#define DHD_IF_ROLE_TEST1(pub, idx)	(FALSE)
 
 #define DHD_IF_ROLE_GENERIC_STA(pub, idx) \
 	(DHD_IF_ROLE_STA(pub, idx) || DHD_IF_ROLE_P2PGC(pub, idx) || DHD_IF_ROLE_WDS(pub, idx))
 
 #define DHD_IF_ROLE_MULTI_CLIENT(pub, idx) \
-	(DHD_IF_ROLE_AP(pub, idx) || DHD_IF_ROLE_P2PGO(pub, idx) || DHD_IF_ROLE_TEST1(pub, idx) ||\
+	(DHD_IF_ROLE_AP(pub, idx) || DHD_IF_ROLE_P2PGO(pub, idx) ||\
 		DHD_IF_ROLE_NAN(pub, idx))
 
 #define DHD_FLOW_RING(dhdp, flowid) \
@@ -283,9 +282,6 @@ typedef struct flow_ring_node {
 	/* counter to decide if this particlur flow is stuck or not */
 	uint32		stuck_count;
 #endif /* DEVICE_TX_STUCK_DETECT */
-#ifdef DHD_HP2P
-	bool	hp2p_ring;
-#endif /* DHD_HP2P */
 } flow_ring_node_t;
 
 typedef flow_ring_node_t flow_ring_table_t;

@@ -225,6 +225,12 @@ enum wl_cfgp2p_status {
 #endif // endif
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
+#if 0 && (defined(WL_CFG80211_P2P_DEV_IF) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3, \
+	8, 0)))
+#error Disable 'WL_ENABLE_P2P_IF', if 'WL_CFG80211_P2P_DEV_IF' is enabled \
+	or kernel version is 3.8.0 or above
+#endif // endif
+
 #if !defined(WLP2P) && defined(WL_CFG80211_P2P_DEV_IF)
 #error WLP2P not defined
 #endif // endif

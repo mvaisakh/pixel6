@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: sbgci.h 813698 2019-04-06 05:22:45Z $
+ * $Id: sbgci.h 818737 2019-05-08 18:54:52Z $
  */
 
 #ifndef _SBGCI_H
@@ -269,7 +269,8 @@ typedef volatile struct {
 	uint32 lhl_lp_dn_ctl4_adr;			/* 0xee4 */
 	uint32 lhl_lp_up_ctl5_adr;			/* 0xee8 */
 	uint32 lhl_lp_dn_ctl5_adr;			/* 0xeec */
-
+	uint32 lhl_top_pwrdn3_ctl_adr;			/* 0xEF0 */
+	uint32 lhl_top_pwrup3_ctl_adr;			/* 0xEF4 */
 } gciregs_t;
 
 #define	GCI_CAP0_REV_MASK	0x000000ff

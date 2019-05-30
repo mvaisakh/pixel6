@@ -1,12 +1,12 @@
 #
 # Copyright (C) 2019, Broadcom.
-#
+# 
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
 # under the terms of the GNU General Public License version 2 (the "GPL"),
 # available at http://www.broadcom.com/licenses/GPLv2.php, with the
 # following added to such license:
-#
+# 
 #      As a special exception, the copyright holders of this software give you
 # permission to link this software with independent modules, and to copy and
 # distribute the resulting executable under terms of your choice, provided that
@@ -37,36 +37,37 @@ config BCMDHD_PCIE
 	depends on BCMDHD && PCI && !BCMDHD_SDIO
 
 config BCM4354
-	tristate "BCM4354 support"
+	bool "BCM4354 support"
 	depends on BCMDHD
+	default n
 
 config BCM4356
-	tristate "BCM4356 support"
+	bool "BCM4356 support"
 	depends on BCMDHD
 	default n
 
 config BCM4358
-	tristate "BCM4358 support"
+	bool "BCM4358 support"
 	depends on BCMDHD
 	default n
 
 config BCM4359
-	tristate "BCM4359 support"
+	bool "BCM4359 support"
 	depends on BCMDHD
 	default n
 
 config BCM4361
-	tristate "BCM4361 support"
+	bool "BCM4361 support"
 	depends on BCMDHD
 	default n
 
 config BCM4362
-	tristate "BCM4362 support"
+	bool "BCM4362 support"
 	depends on BCMDHD
 	default n
 
 config BCM4375
-	tristate "BCM4375 support"
+	bool "BCM4375 support"
 	depends on BCMDHD
 	default n
 

@@ -173,6 +173,7 @@ extern void dhd_prot_update_txflowring(dhd_pub_t *dhdp, uint16 flow_id, void *ms
 extern void dhd_prot_txdata_write_flush(dhd_pub_t *dhd, uint16 flow_id);
 extern uint32 dhd_prot_txp_threshold(dhd_pub_t *dhd, bool set, uint32 val);
 extern void dhd_prot_reset(dhd_pub_t *dhd);
+extern uint16 dhd_get_max_flow_rings(dhd_pub_t *dhd);
 
 #ifdef IDLE_TX_FLOW_MGMT
 extern int dhd_prot_flow_ring_batch_suspend_request(dhd_pub_t *dhd, uint16 *ringid, uint16 count);
@@ -182,9 +183,6 @@ extern int dhd_prot_init_info_rings(dhd_pub_t *dhd);
 #ifdef BTLOG
 extern int dhd_prot_init_btlog_rings(dhd_pub_t *dhd);
 #endif	/* BTLOG */
-#ifdef DHD_HP2P
-extern int dhd_prot_init_hp2p_rings(dhd_pub_t *dhd);
-#endif /* DHD_HP2P */
 
 #endif /* BCMPCIE */
 
@@ -242,13 +240,6 @@ void dhd_dma_buf_free(dhd_pub_t *dhd, dhd_dma_buf_t *dma_buf);
 
 int dhd_get_hscb_info(dhd_pub_t *dhd, void ** va, uint32 *len);
 int dhd_get_hscb_buff(dhd_pub_t *dhd, uint32 offset, uint32 length, void * buff);
-
-#ifdef DHD_HP2P
-extern uint8 dhd_prot_hp2p_enable(dhd_pub_t *dhd, bool set, int enable);
-extern uint32 dhd_prot_pkt_threshold(dhd_pub_t *dhd, bool set, uint32 val);
-extern uint32 dhd_prot_time_threshold(dhd_pub_t *dhd, bool set, uint32 val);
-extern uint32 dhd_prot_pkt_expiry(dhd_pub_t *dhd, bool set, uint32 val);
-#endif // endif
 
 #ifdef DHD_MAP_LOGGING
 extern void dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp);

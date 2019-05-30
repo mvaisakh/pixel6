@@ -1080,7 +1080,7 @@ dhd_flow_rings_flush(dhd_pub_t *dhdp, uint8 ifindex)
 	}
 }
 
-/** Delete flow ring(s) for given peer address. Related to AP/SBT/TDLS functionality. */
+/** Delete flow ring(s) for given peer address. */
 void
 dhd_flow_rings_delete_for_peer(dhd_pub_t *dhdp, uint8 ifindex, char *addr)
 {

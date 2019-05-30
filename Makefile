@@ -1,13 +1,13 @@
 # bcmdhd
 #
 # Copyright (C) 2019, Broadcom.
-#
+# 
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
 # under the terms of the GNU General Public License version 2 (the "GPL"),
 # available at http://www.broadcom.com/licenses/GPLv2.php, with the
 # following added to such license:
-#
+# 
 #      As a special exception, the copyright holders of this software give you
 # permission to link this software with independent modules, and to copy and
 # distribute the resulting executable under terms of your choice, provided that
@@ -33,7 +33,9 @@ DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
 	-DEMBEDDED_PLATFORM -DPNO_SUPPORT -DSHOW_LOGTRACE                     \
 	-DBOARD_HIKEY -DGET_CUSTOM_MAC_ENABLE      \
 	-DSEC_ENHANCEMENT -DDHD_FW_COREDUMP \
-	-DDHD_DUMP_FILE_WRITE_FROM_KERNEL
+	-DDHD_DUMP_FILE_WRITE_FROM_KERNEL \
+	-DDHD_USE_RANDMAC \
+	-DWL_P2P_USE_RANDMAC
 
 DHDCFLAGS += -DOEM_ANDROID
 
@@ -92,6 +94,8 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_USE_SPIN_LOCK_BH
 # Enable SSSR Dump
 	DHDCFLAGS += -DDHD_SSSR_DUMP
+# Enable Register access via dhd IOVAR
+	DHDCFLAGS += -DDHD_PCIE_REG_ACCESS
 # Enable SMD/Minidump collection
 	DHDCFLAGS += -DD2H_MINIDUMP
 # ROT and Scan timeout debugging due to Kernel scheduling problem
@@ -105,13 +109,14 @@ DHDCFLAGS += -DDHD_PKTTS
 # High Priority P2P support
 DHDCFLAGS += -DDHD_HP2P
 
+DHDCFLAGS += -DDHD_BUS_MEM_ACCESS
+
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Enable Load Balancing support by default.
 # DHD_LB_RXP - Perform RX Packet processing in parallel
 # DHD_LB_STATS - To display the Load Blancing statistics
 	DHDCFLAGS += -DDHD_LB -DDHD_LB_RXP -DDHD_LB_STATS
 	DHDCFLAGS += -DDHD_LB_PRIMARY_CPUS=0xF0 -DDHD_LB_SECONDARY_CPUS=0x0E
-	DHDCFLAGS += -DWAKEUP_KSOFTIRQD_POST_NAPI_SCHEDULE
 endif
 
 ifneq ($(CONFIG_FIB_RULES),)
@@ -145,6 +150,12 @@ DHDCFLAGS += -DDHD_GET_VALID_CHANNELS
 DHDCFLAGS += -DLINKSTAT_SUPPORT
 DHDCFLAGS += -DPFN_SCANRESULT_2
 DHDCFLAGS += -DWL_IFACE_COMB_NUM_CHANNELS
+# Scheduled scan (PNO)
+DHDCFLAGS += -DWL_SCHED_SCAN
+# FW ROAM control
+DHDCFLAGS += -DROAMEXP_SUPPORT
+# Skip supplicant bssid and channel hints
+DHDCFLAGS += -DWL_SKIP_CONNECT_HINTS
 # Phy / System
 DHDCFLAGS += -DDHD_ENABLE_LPC
 DHDCFLAGS += -DDISABLE_PM_BCNRX
@@ -219,16 +230,17 @@ DHDCFLAGS += -DDISABLE_PRUNED_SCAN
 DHDCFLAGS += -DESCAN_BUF_OVERFLOW_MGMT
 DHDCFLAGS += -DUSE_INITIAL_SHORT_DWELL_TIME
 DHDCFLAGS += -DWL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST
+DHDCFLAGS += -DSUPPORT_RANDOM_MAC_SCAN
+
 # Suspend/Resume
 DHDCFLAGS += -DENABLE_MAX_DTIM_IN_SUSPEND
 DHDCFLAGS += -DSUPPORT_DEEP_SLEEP
-# Customer 4 Specific Feature
+# Misc Features
 DHDCFLAGS += -DDHD_BLOB_EXISTENCE_CHECK
 DHDCFLAGS += -DSUPPORT_PM2_ONLY
 DHDCFLAGS += -DSUPPORT_AMPDU_MPDU_CMD
 DHDCFLAGS += -DWL_RELMCAST
 DHDCFLAGS += -DWL_SUPP_EVENT
-DHDCFLAGS += -DDISABLE_ANDROID_PNO
 DHDCFLAGS += -DDISABLE_WL_FRAMEBURST_SOFTAP
 DHDCFLAGS += -DFILTER_IE
 DHDCFLAGS += -DCUSTOM_LONG_RETRY_LIMIT=12
@@ -377,6 +389,7 @@ DHDCFLAGS += -DDHDENABLE_TAILPAD
 DHDCFLAGS += -DCUSTOM_SET_SHORT_DWELL_TIME
 DHDCFLAGS += -DCUSTOM_FORCE_NODFS_FLAG
 
+
 # Disable FRAMEBURST on VSDB
 DHDCFLAGS += -DDISABLE_FRAMEBURST_VSDB
 
@@ -400,7 +413,7 @@ DRIVER_TYPE ?= $(CONFIG_BCMDHD)
 # Chip dependent feature
 #########################
 
-ifneq ($(filter y, $(CONFIG_BCM4358) $(CONFIG_BCM4359) $(CONFIG_BCM4361) $(CONFIG_BCM4362) $(CONFIG_BCM43014) $(CONFIG_BCM4375)),)
+ifneq ($(filter y, $(CONFIG_BCM4358) $(CONFIG_BCM4359) $(CONFIG_BCM4375) $(CONFIG_BCM4385)),)
   DHDCFLAGS += -DUSE_WL_TXBF
   DHDCFLAGS += -DCUSTOM_DPC_CPUCORE=0
 
@@ -524,6 +537,7 @@ endif
   DHDCFLAGS += -DDHD_DHCP_DUMP
 endif
 
+
 ifneq ($(CONFIG_BCM4339),)
   DHDCFLAGS += -DBCM4339_CHIP -DHW_OOB
 
@@ -547,11 +561,17 @@ endif
 
 #EXTRA_LDFLAGS += --strip-debug
 
+DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+
 ifeq ($(DRIVER_TYPE),y)
-  DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
+  DHDCFLAGS += -DWAKEUP_KSOFTIRQD_POST_NAPI_SCHEDULE
   DHDCFLAGS += -DUSE_LATE_INITCALL_SYNC
   # Use kernel strlcpy() implementation instead of one, defined in bcmstdlib_s.c
   DHDCFLAGS += -DBCM_USE_PLATFORM_STRLCPY
+endif
+
+ifeq ($(DRIVER_TYPE),m)
+  DHDCFLAGS += -DBCMDHD_MODULAR
 endif
 
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG

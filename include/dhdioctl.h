@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhdioctl.h 808176 2019-03-06 05:12:11Z $
+ * $Id: dhdioctl.h 820385 2019-05-17 18:31:02Z $
  */
 
 #ifndef _dhdioctl_h_
@@ -166,7 +166,6 @@ typedef enum {
 typedef enum dhd_iftype {
 	DHD_IF_TYPE_STA		= 0,
 	DHD_IF_TYPE_AP		= 1,
-	DHD_IF_TYPE_TEST1	= 2,
 	DHD_IF_TYPE_NAN_NMI	= 3,
 	DHD_IF_TYPE_NAN		= 4,
 	DHD_IF_TYPE_P2P_GO	= 5,

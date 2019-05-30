@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmutils.h 813077 2019-04-03 13:15:57Z $
+ * $Id: bcmutils.h 820606 2019-05-20 03:46:49Z $
  */
 
 #ifndef	_bcmutils_h_
@@ -169,6 +169,7 @@ extern void pktfrag_trim_tailbytes(osl_t * osh, void* p, uint16 len, uint8 type)
 extern uint pktcopy(osl_t *osh, void *p, uint offset, uint len, uchar *buf);
 extern uint pktfrombuf(osl_t *osh, void *p, uint offset, uint len, uchar *buf);
 extern uint pkttotlen(osl_t *osh, void *p);
+extern uint pkttotcnt(osl_t *osh, void *p);
 extern void *pktlast(osl_t *osh, void *p);
 extern uint pktsegcnt(osl_t *osh, void *p);
 extern uint8 *pktdataoffset(osl_t *osh, void *p,  uint offset);
@@ -1503,9 +1504,9 @@ typedef struct varbuf {
 } varbuf_t;
 
 /** Initialization of varbuf structure */
-void varbuf_init(varbuf_t *b, char *buf, uint size);
+void BCMATTACHFN(varbuf_init)(varbuf_t *b, char *buf, uint size);
 /** append a null terminated var=value string */
-int varbuf_append(varbuf_t *b, const char *fmt, ...);
+int BCMATTACHFN(varbuf_append)(varbuf_t *b, const char *fmt, ...);
 #if defined(DONGLEBUILD) || defined(BCMDRIVER)
 int initvars_table(osl_t *osh, char *start, char *end, char **vars, uint *count);
 #endif // endif

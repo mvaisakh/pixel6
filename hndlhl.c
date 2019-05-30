@@ -42,7 +42,7 @@
  */
 #define FLAGS_SHIFT	14
 #define	LHL_ERROR(args) printf args
-static const char rstr_rfldo3p3_cap_war[] = "rfldo3p3_cap_war";
+static const char BCMATTACHDATA(rstr_rfldo3p3_cap_war)[] = "rfldo3p3_cap_war";
 
 void
 si_lhl_setup(si_t *sih, osl_t *osh)
@@ -274,7 +274,7 @@ error:
 }
 
 void
-si_lhl_timer_config(si_t *sih, osl_t *osh, int timer_type)
+BCMATTACHFN(si_lhl_timer_config)(si_t *sih, osl_t *osh, int timer_type)
 {
 	uint origidx;
 	pmuregs_t *pmu = NULL;
@@ -377,7 +377,7 @@ si_lhl_timer_config(si_t *sih, osl_t *osh, int timer_type)
 }
 
 void
-si_lhl_timer_enable(si_t *sih)
+BCMATTACHFN(si_lhl_timer_enable)(si_t *sih)
 {
 	/* Enable clks for pmu int propagation */
 	PMU_REG(sih, pmuintctrl0, PMU_INTC_ALP_REQ, PMU_INTC_ALP_REQ);
@@ -400,7 +400,7 @@ si_lhl_ilp_config(si_t *sih, osl_t *osh, uint32 ilp_period)
 	 }
 }
 
-lhl_reg_set_t lv_sleep_mode_4369_lhl_reg_set[] =
+lhl_reg_set_t BCMATTACHDATA(lv_sleep_mode_4369_lhl_reg_set)[] =
 {
 	/* set wl_sleep_en */
 	{LHL_REG_OFF(lhl_top_pwrseq_ctl_adr), (1 << 0), (1 << 0)},
@@ -502,7 +502,7 @@ lhl_reg_set_t lv_sleep_mode_4369_lhl_reg_set[] =
 	{LHL_REG_OFF(otpcontrol), (1 << 16), (1 << 16)}
 };
 
-lhl_reg_set_t lv_sleep_mode_4378_lhl_reg_set[] =
+lhl_reg_set_t BCMATTACHDATA(lv_sleep_mode_4378_lhl_reg_set)[] =
 {
 	/* set wl_sleep_en */
 	{LHL_REG_OFF(lhl_top_pwrseq_ctl_adr), (1 << 0), (1 << 0)},
@@ -604,7 +604,7 @@ lhl_reg_set_t lv_sleep_mode_4378_lhl_reg_set[] =
 	{LHL_REG_OFF(otpcontrol), (1 << 16), (1 << 16)}
 };
 
-lhl_reg_set_t lv_sleep_mode_4387_lhl_reg_set[] =
+lhl_reg_set_t BCMATTACHDATA(lv_sleep_mode_4387_lhl_reg_set)[] =
 {
 	/* set wl_sleep_en */
 	{LHL_REG_OFF(lhl_top_pwrseq_ctl_adr), (1 << 0), (1 << 0)},
@@ -686,7 +686,7 @@ lhl_reg_set_t lv_sleep_mode_4387_lhl_reg_set[] =
 		(LHL4378_SLB_EN_DWN_CNT << 16) | (LHL4378_ISO_EN_DWN_CNT << 8))},
 
 	/* lhl_top_pwrdn2_ctl_adr, set down count for VMUX_asr_sel */
-	{LHL_REG_OFF(lhl_top_pwrdn2_ctl_adr), ~0, (LHL4378_VMUX_ASR_SEL_DWN_CNT << 16)},
+	{LHL_REG_OFF(lhl_top_pwrdn2_ctl_adr), ~0, (LHL4387_VMUX_ASR_SEL_DWN_CNT << 16)},
 
 	/* Change the default up count values for the resources */
 	/* lhl_top_pwrup_ctl_adr, set up count for top_level_sleep, iso, slb and pwrsw */
@@ -694,7 +694,7 @@ lhl_reg_set_t lv_sleep_mode_4387_lhl_reg_set[] =
 		(LHL4378_SLB_EN_UP_CNT << 16) | (LHL4378_ISO_EN_UP_CNT << 8))},
 
 	/* lhl_top_pwrdn2_ctl_adr, set down count for VMUX_asr_sel */
-	{LHL_REG_OFF(lhl_top_pwrup2_ctl_adr), ~0, ((LHL4378_VMUX_ASR_SEL_UP_CNT << 16))},
+	{LHL_REG_OFF(lhl_top_pwrup2_ctl_adr), ~0, ((LHL4387_VMUX_ASR_SEL_UP_CNT << 16))},
 
 	/* Enable lhl interrupt */
 	{LHL_REG_OFF(gci_intmask), (1 << 30), (1 << 30)},
@@ -703,7 +703,13 @@ lhl_reg_set_t lv_sleep_mode_4387_lhl_reg_set[] =
 	{LHL_REG_OFF(gci_wakemask), (1 << 30), (1 << 30)},
 
 	/* Making forceOTPpwrOn 1 */
-	{LHL_REG_OFF(otpcontrol), (1 << 16), (1 << 16)}
+	{LHL_REG_OFF(otpcontrol), (1 << 16), (1 << 16)},
+
+	/* serdes_clk_dis dn=2, miscldo_pu dn=6; Also include CRWLLHL-48 WAR set bit31 */
+	{LHL_REG_OFF(lhl_top_pwrdn3_ctl_adr), ~0, 0x80040c02},
+
+	/* serdes_clk_dis dn=11, miscldo_pu dn=0 */
+	{LHL_REG_OFF(lhl_top_pwrup3_ctl_adr), ~0, 0x00160010}
 };
 
 /* LV sleep mode summary:
@@ -712,7 +718,7 @@ lhl_reg_set_t lv_sleep_mode_4387_lhl_reg_set[] =
  * With ASR ON, LPLDO OFF
  */
 void
-si_set_lv_sleep_mode_lhl_config_4369(si_t *sih)
+BCMATTACHFN(si_set_lv_sleep_mode_lhl_config_4369)(si_t *sih)
 {
 	uint i;
 	uint coreidx = si_findcoreidx(sih, GCI_CORE_ID, 0);
@@ -731,7 +737,7 @@ si_set_lv_sleep_mode_lhl_config_4369(si_t *sih)
 }
 
 void
-si_set_lv_sleep_mode_lhl_config_4378(si_t *sih)
+BCMATTACHFN(si_set_lv_sleep_mode_lhl_config_4378)(si_t *sih)
 {
 	uint i;
 	uint coreidx = si_findcoreidx(sih, GCI_CORE_ID, 0);
@@ -746,7 +752,7 @@ si_set_lv_sleep_mode_lhl_config_4378(si_t *sih)
 }
 
 void
-si_set_lv_sleep_mode_lhl_config_4387(si_t *sih)
+BCMATTACHFN(si_set_lv_sleep_mode_lhl_config_4387)(si_t *sih)
 {
 	uint i;
 	uint coreidx = si_findcoreidx(sih, GCI_CORE_ID, 0);
@@ -758,9 +764,15 @@ si_set_lv_sleep_mode_lhl_config_4387(si_t *sih)
 	for (i = 0; i < ARRAYSIZE(lv_sleep_mode_4387_lhl_reg_set); i++) {
 		si_corereg(sih, coreidx, regs[i].offset, regs[i].mask, regs[i].val);
 	}
+
+	OSL_DELAY(100);
+	LHL_REG(sih, lhl_top_pwrseq_ctl_adr, ~0, 0x000006c1);
+
+	/* Clear Misc_LDO override */
+	si_pmu_vreg_control(sih, PMU_VREG_5, VREG5_4387_MISCLDO_PU_MASK, 0);
 }
 
-lhl_reg_set_t lv_sleep_mode_4362_lhl_reg_set[] =
+lhl_reg_set_t BCMATTACHDATA(lv_sleep_mode_4362_lhl_reg_set)[] =
 {
 	/* set wl_sleep_en */
 	{LHL_REG_OFF(lhl_top_pwrseq_ctl_adr), (1 << 0), (1 << 0)},
@@ -868,7 +880,7 @@ lhl_reg_set_t lv_sleep_mode_4362_lhl_reg_set[] =
  * With ASR ON, LPLDO OFF
  */
 void
-si_set_lv_sleep_mode_lhl_config_4362(si_t *sih)
+BCMATTACHFN(si_set_lv_sleep_mode_lhl_config_4362)(si_t *sih)
 {
 	uint i;
 	uint coreidx = si_findcoreidx(sih, GCI_CORE_ID, 0);

@@ -460,6 +460,9 @@ int dhd_set_wmf_psta_disable(dhd_pub_t *dhdp, uint32 idx, int val);
 void dhd_update_psta_interface_for_sta(dhd_pub_t *dhdp, char* ifname,
 		void* mac_addr, void* event_data);
 #endif /* DHD_WMF */
+
+void dhd_generate_mac_addr(struct ether_addr *ea_addr);
+
 #if defined(BT_OVER_SDIO)
 int dhd_net_bus_get(struct net_device *dev);
 int dhd_net_bus_put(struct net_device *dev);

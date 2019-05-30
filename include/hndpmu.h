@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: hndpmu.h 814717 2019-04-12 21:18:37Z $
+ * $Id: hndpmu.h 818579 2019-05-08 05:30:21Z $
  */
 
 #ifndef _hndpmu_h_
@@ -157,6 +157,7 @@ extern void si_pmu_pll_init(si_t *sih, osl_t *osh, uint32 xtalfreq);
 extern void si_pmu_res_init(si_t *sih, osl_t *osh);
 extern void si_pmu_swreg_init(si_t *sih, osl_t *osh);
 extern void si_pmu_res_minmax_update(si_t *sih, osl_t *osh);
+extern void si_pmu_clear_intmask(si_t *sih);
 
 extern uint32 si_pmu_si_clock(si_t *sih, osl_t *osh);   /* returns [Hz] units */
 extern uint32 si_pmu_cpu_clock(si_t *sih, osl_t *osh);  /* returns [hz] units */
@@ -267,6 +268,7 @@ extern void si_pmustatstimer_int_enable(si_t *sih);
 extern void si_pmustatstimer_int_disable(si_t *sih);
 #endif /* BCMPMU_STATS */
 extern int si_pmu_min_res_set(si_t *sih, osl_t *osh, uint min_mask, bool set);
+extern void si_pmu_disable_intr_pwrreq(si_t *sih);
 
 #ifdef DONGLEBUILD
 /* Get PMU registers in rodata */
@@ -279,11 +281,7 @@ extern uint si_pmu_get_mac_rsrc_req_tmr_cnt(si_t *sih);
 extern uint si_pmu_get_pmu_interrupt_rcv_cnt(si_t *sih);
 
 extern bool _bcm_pwr_opt_dis;
-#ifdef BCMINTERNAL_PWR_OPT
-#define BCM_PWR_OPT_ENAB()	(!_bcm_pwr_opt_dis)
-#else
 #define BCM_PWR_OPT_ENAB()	(FALSE)
-#endif // endif
 
 extern int si_pmu_mem_pwr_off(si_t *sih, int core_idx);
 #endif /* _hndpmu_h_ */

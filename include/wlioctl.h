@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlioctl.h 817501 2019-05-01 23:19:59Z $
+ * $Id: wlioctl.h 820492 2019-05-18 07:07:23Z $
  */
 
 #ifndef _wlioctl_h_
@@ -3013,7 +3013,6 @@ enum {
 #define WL_MIMO_PS_STATUS_HW_STATE_NONE			0
 #define WL_MIMO_PS_STATUS_HW_STATE_LTECOEX		(0x1 << 0)
 #define WL_MIMO_PS_STATUS_HW_STATE_MIMOPS_BSS		(0x1 << 1)
-#define WL_MIMO_PS_STATUS_HW_STATE_SBT_BSS		(0x1 << 2)
 #define WL_MIMO_PS_STATUS_HW_STATE_SCAN			(0x1 << 3)
 #define WL_MIMO_PS_STATUS_HW_STATE_TXPPR		(0x1 << 4)
 #define WL_MIMO_PS_STATUS_HW_STATE_PWRTHOTTLE		(0x1 << 5)
@@ -3263,7 +3262,7 @@ typedef struct wl_psbw_status_v1 {
 /* Bits for disable_reasons */
 #define WL_PSBW_DISA_HOST			0x00000001 /* Host has disabled through psbw_cfg */
 #define WL_PSBW_DISA_AP20M			0x00000002 /* AP is operating on 20 MHz */
-#define WL_PSBW_DISA_SLOTTED_BSS		0x00000004 /* SBT or NAN active */
+#define WL_PSBW_DISA_SLOTTED_BSS		0x00000004 /* slot_bss active */
 #define WL_PSBW_DISA_NOT_PMFAST			0x00000008 /* Not PM_FAST */
 #define WL_PSBW_DISA_BASICRATESET		0x00000010 /* BasicRateSet is empty */
 #define WL_PSBW_DISA_NOT_D3			0x00000020 /* PCIe not in D3 */
@@ -3393,11 +3392,7 @@ typedef struct wl_bsstrans_roamthrottle {
 
 #ifndef NFIFO_EXT
 #if defined(BCM_AQM_DMA_DESC) && !defined(BCM_AQM_DMA_DESC_DISABLED)
-#if defined(WL_MU_TX) && !defined(WL_MU_TX_DISABLED)
-#define NFIFO_EXT		32		/* 6 traditional FIFOs + 2 rsvd + 24 MU FIFOs */
-#else
 #define NFIFO_EXT		10		/* 4EDCA + 4 TWT + 1 Mcast/Bcast + 1 Spare */
-#endif // endif
 #elif defined(WL11AX_TRIGGERQ) && !defined(WL11AX_TRIGGERQ_DISABLED)
 #define NFIFO_EXT		10
 #else
@@ -11254,34 +11249,6 @@ typedef struct nan_sync_master {
 	uint32 ambtt;
 } nan_sync_master_t;
 
-/*
-* NAN Sync TLV(NSTLV):
-* To keep NAN concurrency time sync.
-* It is generated at hybrid device, and propogated by SBT only device.
-* It contains the information needed to run NAN election
-*/
-#include <packed_section_start.h>
-typedef BWL_PRE_PACKED_STRUCT struct nan_sync_tlv {
-	uint16 hop_count;				/* total hop_count */
-	struct ether_addr src_addr;		/* macaddr of the hybrid originator of nstlv */
-	struct ether_addr cluster_id;	/* NAN cluster ID of hybrid originator of nstlv */
-	uint32 nan_tsf_h;	/* NAN cluster TSF of the hybrid originator of nstlv */
-	uint32 nan_tsf_l;
-	uint8 master_preference;
-	uint8 random_factor;
-	uint8 amr[WL_NAN_MASTER_RANK_LEN];
-	uint8 orig_hop_count;			/* hop_count of the origin hybrid NAN device */
-	uint32  ambtt;		/* Anchor Master Beacon Transmission Time */
-	uint8 opt_xtlv_len;	/* xtlv len */
-} BWL_POST_PACKED_STRUCT nan_sync_tlv_t;
-
-typedef BWL_PRE_PACKED_STRUCT struct wl_nan_sync_tlv {
-	uint8 type;					/* 23 for NTLV */
-	uint16 param_len;
-	nan_sync_tlv_t ntlv;
-} BWL_POST_PACKED_STRUCT wl_nan_sync_tlv_t;
-#include <packed_section_end.h>
-
 /* NAN advertiser structure */
 /* TODO RSDB: add chspec to indicates core corresponds correct core */
 typedef struct nan_adv_entry {
@@ -11302,8 +11269,8 @@ typedef struct nan_adv_entry {
 #define NAN_VIRTUAL_PEER_BIT	0x80
 
 typedef enum {
-	NAC_CNT_NTLV_AF_TX = 0,		/* count of SBT AF containing NTLV tx */
-	NAC_CNT_NTLV_AF_RX,		/* count of SBT AF containing NTLV rx */
+	NAC_CNT_NTLV_AF_TX = 0,		/* count of AF containing NTLV tx */
+	NAC_CNT_NTLV_AF_RX,		/* count of AF containing NTLV rx */
 	NAC_CNT_NTLV_TMERR_TX,		/* count of NTLV tx timing error */
 	NAC_CNT_NTLV_TMERR_RX,		/* count of NTLV rx timing error */
 	NAC_CNT_NTLV_TM_MISMATCH,	/* count of TopMaster mismatch in Rx NTLV processing */
@@ -12350,6 +12317,7 @@ typedef struct wl_nan_nsr_ndp_info {
 /* NAN2.0 Ranging definitions */
 
 /* result indication bit map */
+#define NAN_RANGE_INDICATION_NONE		0
 #define NAN_RANGE_INDICATION_CONT		(1<<0)
 #define NAN_RANGE_INDICATION_INGRESS		(1<<1)
 #define NAN_RANGE_INDICATION_EGRESS		(1<<2)
@@ -12434,10 +12402,12 @@ typedef struct wl_nan_ev_rng_rpt_ind {
 typedef uint8 wl_nan_range_idle_count_t;
 
 /* nan ranging termination reason codes */
-#define NAN_RNG_TERM_IDLE_TIMEOUT	1 /* no ftms from peer */
-#define NAN_RNG_TERM_PEER_REQ		2
-#define NAN_RNG_TERM_USER_REQ		3
-#define NAN_RNG_TERM_RNG_RESP_TIMEOUT	4
+#define NAN_RNG_TERM_UNSPECIFIED	0
+#define NAN_RNG_TERM_IDLE_TIMEOUT	1u /* no ftms from peer */
+#define NAN_RNG_TERM_PEER_REQ		2u
+#define NAN_RNG_TERM_USER_REQ		3u
+#define NAN_RNG_TERM_RNG_RESP_TIMEOUT	4u
+#define NAN_RNG_TERM_RNG_RESP_REJ	5u /* On range resp reject from peer */
 
 typedef struct wl_nan_ev_rng_term_ind {
 	struct ether_addr peer_m_addr;
@@ -13035,6 +13005,7 @@ typedef enum {
 	WL_WSEC_INFO_BSS_ALGO = (WL_WSEC_INFO_BSS_BASE + 4),
 	WL_WSEC_INFO_BSS_KEY_LEN = (WL_WSEC_INFO_BSS_BASE + 5),
 	WL_WSEC_INFO_BSS_ALGOS = (WL_WSEC_INFO_BSS_BASE + 6),
+	WL_WSEC_INFO_BSS_WPA_AP_RESTRICT = (WL_WSEC_INFO_BSS_BASE + 7),
 	/* add per-BSS properties above */
 	WL_WSEC_INFO_MAX = 0xffff
 } wl_wsec_info_type_t;
@@ -13058,6 +13029,15 @@ typedef struct wl_wsec_info {
 	uint8 num_tlvs;
 	wl_wsec_info_tlv_t tlvs[1]; /**< tlv data follows */
 } wl_wsec_info_t;
+#define AP_BLOCK_NONE		0x0000	/* default: No restriction */
+#define AP_ALLOW_WPA2		0x0001	/* allow WPA2PSK AP */
+#define AP_ALLOW_TSN		0x0002	/* WPA3 transition AP  */
+#define AP_ALLOW_WPA3_ONLY	0x0004	/* WPA3 only AP */
+#define AP_ALLOW_MAX	(AP_ALLOW_WPA2 | AP_ALLOW_TSN | \
+			AP_ALLOW_WPA3_ONLY)
+typedef struct {
+	uint32 wpa_ap_restrict; /* set WPA2 / WPA3 AP restriction policy */
+} wl_wsec_info_wpa_ap_restrict_t;
 
 /*
  * randmac definitions
@@ -15163,7 +15143,6 @@ typedef struct wnm_roam_trigger_cfg {
 typedef enum wl_interface_type {
 	WL_INTERFACE_TYPE_STA = 0,
 	WL_INTERFACE_TYPE_AP = 1,
-	WL_INTERFACE_TYPE_TEST1 = 2,
 	WL_INTERFACE_TYPE_NAN = 3,
 	WL_INTERFACE_TYPE_P2P_GO = 4,
 	WL_INTERFACE_TYPE_P2P_GC = 5,
@@ -16797,7 +16776,6 @@ typedef enum {
 	CHANSW_IOVAR = 7,	/* channel switch due to IOVAR */
 	CHANSW_CSA_DFS = 8,	/* channel switch due to chan switch  announcement from AP */
 	CHANSW_APCS = 9,	/* Channel switch from AP channel select module */
-	CHANSW_SBT = 10,	/* channel switch due to SBT */
 	CHANSW_FBT = 11,	/* Channel switch from FBT module for action frame response */
 	CHANSW_UPDBW = 12,	/* channel switch at update bandwidth */
 	CHANSW_ULB = 13,	/* channel switch at ULB */
@@ -17409,6 +17387,8 @@ enum {
 	WL_HC_RX_XTLV_ID_VAL_STALL_THRESHOLD   = 3,     /* stall_threshold */
 	WL_HC_RX_XTLV_ID_VAL_STALL_SAMPLE_SIZE = 4,     /* stall_sample_size */
 	WL_HC_RX_XTLV_ID_VAL_STALL_FORCE       = 5,     /* stall test trigger */
+	WL_HC_RX_XTLV_ID_VAL_STALL_UC_DECRYPT_FAIL = 6,  /* trigger uc decrypt failures */
+	WL_HC_RX_XTLV_ID_VAL_STALL_BCMC_DECRYPT_FAIL = 7, /* trigger bcmc decrypt failures */
 };
 
 /* Health Check: Datapath SCAN IDs */
@@ -18187,8 +18167,6 @@ typedef struct wlc_leaked_infra_guard_marker {
 #define WL_LEAKED_GUARD_TIME_NONE	0               /* Not in any guard time */
 #define WL_LEAKED_GUARD_TIME_FRTS	(0x01 << 0)     /* Normal FRTS power save */
 #define WL_LEAKED_GUARD_TIME_SCAN	(0x01 << 1)     /* Channel switch due to scanning */
-#define WL_LEAKED_GUARD_TIME_TEST2	(0x01 << 2)     /* Channel switch due to TEST2 */
-#define WL_LEAKED_GUARD_TIME_TEST3	(0x01 << 3)     /* Channel switch due to TEST3 */
 #define WL_LEAKED_GUARD_TIME_INFRA_STA	(0x01 << 4)	/* generic type infra sta channel switch */
 #define WL_LEAKED_GUARD_TIME_TERMINATED (0x01 << 7)     /* indicate a GT is terminated early */
 
@@ -18783,7 +18761,6 @@ enum wl_ifstats_xtlv_id {
 	/* AMPDU stats on per-IF */
 	WL_IFSTATS_XTLV_AMPDU_DUMP = 0x505,
 	WL_IFSTATS_XTLV_IF_SPECIFIC = 0x506,
-	WL_IFSTATS_XTLV_WL_PWRSTATS_TEST1 = 0x507,
 	WL_IFSTATS_XTLV_IF_LQM = 0x508,
 	/* Interface specific state capture in periodic fashion */
 	WL_IFSTATS_XTLV_IF_PERIODIC_STATE = 0x509,
@@ -19169,6 +19146,7 @@ typedef struct wl_scb_ecounters_v2 {
  */
 
 #define WL_NAN_SLOT_ECOUNTERS_VERSION_1		1
+#define WL_NAN_SLOT_ECOUNTERS_VERSION_2		2
 
 typedef struct wl_nan_slot_ecounters_v1 {
 	uint16	version;	      /* version field */
@@ -19179,6 +19157,25 @@ typedef struct wl_nan_slot_ecounters_v1 {
 	nan_sched_stats_t sched;      /* sched stats */
 	wl_nan_mac_stats_t mac;	      /* mac stats */
 } wl_nan_slot_ecounters_v1_t;
+
+typedef struct wl_nan_slot_ecounters_v2 {
+	uint16	version;	      /* version field */
+	uint16	length;		      /* struct length starting from version */
+	uint32	chan[NAN_MAX_BANDS];  /* cur nan slot chanspec of both bands */
+	uint16	cur_slot_idx;	      /* cur nan slot index */
+	uint16  pad;
+	nan_sched_stats_t sched;      /* sched stats */
+	wl_nan_mac_stats_t mac;	      /* mac stats */
+	/* for v2 */
+	uint16 bcn_rx_drop_rssi;      /* Beacon received but ignored due to weak rssi */
+	uint16 bcn_rx_drop_rssi_5g;   /* 5G Beacon received but ignored due to weak rssi */
+	uint16 cnt_rssi_close;	      /* cnt of beacon rssi > rssi_close received */
+	uint16 cnt_rssi_close_5g;     /* cnt of 5G beacon rssi > rssi_close received */
+	uint16 cnt_rssi_mid;	      /* cnt of beacon rssi > rssi_middle received */
+	uint16 cnt_rssi_mid_5g;	      /* cnt of 5G beacon rssi > rssi_middle received */
+	uint16 bcn_txfail;	      /* Beacon sending failure count */
+	uint16 bcn_txfail_5g;	      /* sending 5G beacon failure count */
+} wl_nan_slot_ecounters_v2_t;
 
 /* WL_STATS_XTLV_NDP_SESSION_STATUS for ecounters */
 #define WL_NAN_SESSION_STATUS_EC_VERSION_1  1
@@ -20065,7 +20062,6 @@ typedef struct wl_omi_req {
 
 /* Bits for ULMU disable reason */
 #define OMI_ULMU_DISABLED_HOST			0x01u   /* Host has disabled through he omi */
-#define OMI_ULMU_DISABLED_SBT			0x02u   /* Disabled due to TEST4 */
 #define OMI_ULMU_DISABLED_NAN			0x04u   /* Disabled due to NAN enabled */
 #define OMI_ULMU_DISABLED_BTCOEX		0x08u   /* Disabled while in BT Coex activity */
 #define OMI_ULMU_DISABLED_LTECOEX		0x10u   /* Disabled due to LTE Coex activity */
@@ -20295,6 +20291,25 @@ typedef struct wl_wsec_del_pmk {
 	uint8 xtlvs[];
 } wl_wsec_del_pmk_t;
 #define WL_WSEC_DEL_PMK_FIXED_LEN_V1	OFFSETOF(wl_wsec_del_pmk_t, xtlvs)
+
+#define WLC_RC_ROAM_VER_1	1
+
+typedef struct wlc_rcroam {
+	uint16 ver;
+	uint16 len;
+	uint8 data[];
+} wlc_rcroam_t;
+
+typedef struct wlc_rcroam_info_v1 {
+	uint16	inactivity_period; /* inactivty monitor period */
+	uint16	roam_scan_timeout;
+	uint16	periodic_roam_scan_timeout;
+	uint8	roam_trig_step; /* roaming trigger step value */
+} wlc_rcroam_info_v1_t;
+
+#define WLC_RC_ROAM_CUR_VER		WLC_RC_ROAM_VER_1
+#define RCROAM_HDRLEN			4u
+#define MAX_RCSCAN_TIMER		300u
 
 #define WLC_SILENT_ROAM_VER_1	1
 /* silent roam information struct */

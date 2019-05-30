@@ -999,7 +999,7 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 		DHD_RTT(("WL_PROXD_TLV_ID_COLLECT_CHAN_DATA\n"));
 		DHD_RTT(("\tchan est %u\n", (uint32) (len / sizeof(uint32))));
-		for (i = 0; i < (len/sizeof(chan_data_entry)); i++) {
+		for (i = 0; (uint16)i < (len/sizeof(chan_data_entry)); i++) {
 			uint32 *p = (uint32*)p_data;
 			chan_data_entry = ltoh32_ua(p + i);
 			DHD_RTT(("\t%u\n", chan_data_entry));
@@ -1484,6 +1484,35 @@ exit:
 }
 
 #ifdef WL_NAN
+#ifdef RTT_GEOFENCE_CONT
+void
+dhd_rtt_get_geofence_cont_ind(dhd_pub_t *dhd, bool* geofence_cont)
+{
+	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
+	if (!rtt_status) {
+		return;
+	}
+	GEOFENCE_RTT_LOCK(rtt_status);
+	*geofence_cont = rtt_status->geofence_cfg.geofence_cont;
+	GEOFENCE_RTT_UNLOCK(rtt_status);
+}
+
+void
+dhd_rtt_set_geofence_cont_ind(dhd_pub_t *dhd, bool geofence_cont)
+{
+	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
+	if (!rtt_status) {
+		return;
+	}
+	GEOFENCE_RTT_LOCK(rtt_status);
+	rtt_status->geofence_cfg.geofence_cont = geofence_cont;
+	DHD_RTT(("dhd_rtt_set_geofence_cont_override, geofence_cont = %d\n",
+		rtt_status->geofence_cfg.geofence_cont));
+	GEOFENCE_RTT_UNLOCK(rtt_status);
+}
+#endif /* RTT_GEOFENCE_CONT */
+
+#ifdef RTT_GEOFENCE_INTERVAL
 void
 dhd_rtt_set_geofence_rtt_interval(dhd_pub_t *dhd, int interval)
 {
@@ -1495,6 +1524,7 @@ dhd_rtt_set_geofence_rtt_interval(dhd_pub_t *dhd, int interval)
 	rtt_status->geofence_cfg.geofence_rtt_interval = interval;
 	GEOFENCE_RTT_UNLOCK(rtt_status);
 }
+#endif /* RTT_GEOFENCE_INTERVAL */
 
 /* sets geofence role concurrency state TRUE/FALSE */
 void

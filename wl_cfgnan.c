@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgnan.c 817102 2019-04-29 10:05:16Z $
+ * $Id: wl_cfgnan.c 820188 2019-05-16 17:32:52Z $
  */
 
 #ifdef WL_NAN
@@ -86,6 +86,9 @@ void wl_cfgnan_data_remove_peer(struct bcm_cfg80211 *cfg,
         struct ether_addr *peer_addr);
 
 static void wl_cfgnan_send_stop_event(struct bcm_cfg80211 *cfg);
+
+static void wl_cfgnan_terminate_ranging_session(struct bcm_cfg80211 *cfg,
+	nan_ranging_inst_t *ranging_inst);
 
 #ifdef RTT_SUPPORT
 static s32 wl_cfgnan_clear_peer_ranging(struct bcm_cfg80211 * cfg,
@@ -3308,11 +3311,35 @@ fail:
 
 }
 
+static bool
+wl_cfgnan_clear_svc_from_ranging_inst(struct bcm_cfg80211 *cfg,
+	nan_ranging_inst_t *ranging_inst, nan_svc_info_t *svc)
+{
+	int i = 0;
+	bool cleared = FALSE;
+
+	if (svc && ranging_inst->in_use) {
+		for (i = 0; i < MAX_SUBSCRIBES; i++) {
+			if (svc == ranging_inst->svc_idx[i]) {
+				ranging_inst->num_svc_ctx--;
+				ranging_inst->svc_idx[i] = NULL;
+				cleared = TRUE;
+				/*
+				 * This list is maintained dupes free,
+				 * hence can break
+				 */
+				break;
+			}
+		}
+	}
+	return cleared;
+}
+
 static int
-wl_cfgnan_clear_svc_ranging_inst(struct bcm_cfg80211 *cfg, uint8 svc_id)
+wl_cfgnan_clear_svc_from_all_ranging_inst(struct bcm_cfg80211 *cfg, uint8 svc_id)
 {
 	nan_ranging_inst_t *ranging_inst;
-	int i = 0, j;
+	int i = 0;
 	int ret = BCME_OK;
 
 	nan_svc_info_t *svc = wl_cfgnan_get_svc_inst(cfg, svc_id, 0);
@@ -3323,15 +3350,42 @@ wl_cfgnan_clear_svc_ranging_inst(struct bcm_cfg80211 *cfg, uint8 svc_id)
 	}
 	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
 		ranging_inst = &(cfg->nan_ranging_info[i]);
-		if (ranging_inst->range_id) {
-			for (j = 0; j < MAX_SUBSCRIBES; j++) {
-				if (svc == ranging_inst->svc_idx[j]) {
-					ranging_inst->num_svc_ctx--;
-					ranging_inst->svc_idx[j] = NULL;
-				}
-			}
-		}
+		wl_cfgnan_clear_svc_from_ranging_inst(cfg, ranging_inst, svc);
 	}
+
+done:
+	return ret;
+}
+
+static int
+wl_cfgnan_ranging_clear_publish(struct bcm_cfg80211 *cfg,
+	struct ether_addr *peer, uint8 svc_id)
+{
+	nan_ranging_inst_t *ranging_inst = NULL;
+	nan_svc_info_t *svc = NULL;
+	bool cleared = FALSE;
+	int ret = BCME_OK;
+
+	ranging_inst = wl_cfgnan_check_for_ranging(cfg, peer);
+	if (!ranging_inst || !ranging_inst->in_use) {
+		goto done;
+	}
+
+	svc = wl_cfgnan_get_svc_inst(cfg, svc_id, 0);
+	if (!svc) {
+		WL_ERR(("\n svc not found, svc_id = %d\n", svc_id));
+		ret = BCME_NOTFOUND;
+		goto done;
+	}
+
+	cleared = wl_cfgnan_clear_svc_from_ranging_inst(cfg, ranging_inst, svc);
+	if (!cleared) {
+		/* Only if this svc was cleared, any update needed */
+		ret = BCME_NOTFOUND;
+		goto done;
+	}
+
+	wl_cfgnan_terminate_ranging_session(cfg, ranging_inst);
 
 done:
 	return ret;
@@ -3463,55 +3517,84 @@ wl_cfgnan_clear_svc_cache(struct bcm_cfg80211 *cfg,
 	}
 }
 
-static int
-wl_cfgnan_terminate_ranging_sessions(struct net_device *ndev,
-		struct bcm_cfg80211 *cfg, uint8 svc_id)
+/*
+ * Terminate given ranging instance
+ * if no pending ranging sub service
+ */
+static void
+wl_cfgnan_terminate_ranging_session(struct bcm_cfg80211 *cfg,
+	nan_ranging_inst_t *ranging_inst)
 {
-	/* cancel all related ranging instances */
-	uint8 i;
 	int ret = BCME_OK;
 	uint32 status;
-	nan_ranging_inst_t *ranging_inst;
 #ifdef RTT_SUPPORT
-	int8 index = -1;
+	rtt_geofence_target_info_t* geofence_target = NULL;
 	dhd_pub_t *dhd = (struct dhd_pub *)(cfg->pub);
-	rtt_geofence_target_info_t* geofence_target;
+	int8 index;
 #endif /* RTT_SUPPORT */
 
-	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
-		ranging_inst = &cfg->nan_ranging_info[i];
-		if (ranging_inst->num_svc_ctx == 0 &&
-				ranging_inst->range_role == NAN_RANGING_ROLE_INITIATOR) {
-			if (ranging_inst->range_id) {
-				ret =  wl_cfgnan_cancel_ranging(ndev, cfg, ranging_inst->range_id,
-					NAN_RNG_TERM_FLAG_NONE, &status);
-				if (unlikely(ret) || unlikely(status)) {
-					WL_ERR(("%s:nan range cancel failed ret = %d status = %d\n",
-						__FUNCTION__, ret, status));
-					goto exit;
-				}
-				WL_DBG(("Range cancelled \n"));
-			}
-#ifdef RTT_SUPPORT
+	if (ranging_inst->range_id == 0) {
+		/* Make sure, range inst is valid in caller */
+		return;
+	}
+
+	if (ranging_inst->num_svc_ctx != 0) {
+		/*
+		 * Make sure to remove all svc_insts for range_inst
+		 * in order to cancel ranging and remove target in caller
+		 */
+		return;
+	}
+
+	/* Cancel Ranging if in progress for rang_inst */
+	if (ranging_inst->range_status == NAN_RANGING_IN_PROGRESS) {
+		ret =  wl_cfgnan_cancel_ranging(bcmcfg_to_prmry_ndev(cfg),
+				cfg, ranging_inst->range_id,
+				NAN_RNG_TERM_FLAG_NONE, &status);
+		if (unlikely(ret) || unlikely(status)) {
+			WL_ERR(("%s:nan range cancel failed ret = %d status = %d\n",
+				__FUNCTION__, ret, status));
+		} else {
+			WL_DBG(("Range cancelled \n"));
 			/* Set geofence RTT in progress state to false */
-			geofence_target = dhd_rtt_get_geofence_target(dhd,
-				&ranging_inst->peer_addr, &index);
-			if (geofence_target) {
-				dhd_rtt_remove_geofence_target(dhd, &geofence_target->peer_addr);
-			}
-			WL_INFORM_MEM(("Removing Ranging Instance " MACDBG "\n",
-				MAC2STRDBG(&(ranging_inst->peer_addr))));
-			bzero(ranging_inst, sizeof(nan_ranging_inst_t));
-			if (index == 0) {
-				/* If the target was the geofence queue head */
-				dhd_rtt_set_geofence_rtt_state(dhd, FALSE);
-			}
+#ifdef RTT_SUPPORT
+			dhd_rtt_set_geofence_rtt_state(dhd, FALSE);
 #endif /* RTT_SUPPORT */
 		}
 	}
 
-exit:
-	return ret;
+#ifdef RTT_SUPPORT
+	geofence_target = dhd_rtt_get_geofence_target(dhd,
+			&ranging_inst->peer_addr, &index);
+	if (geofence_target) {
+		dhd_rtt_remove_geofence_target(dhd, &geofence_target->peer_addr);
+		WL_INFORM_MEM(("Removing Ranging Instance " MACDBG "\n",
+			MAC2STRDBG(&(ranging_inst->peer_addr))));
+		bzero(ranging_inst, sizeof(nan_ranging_inst_t));
+	}
+#endif /* RTT_SUPPORT */
+}
+
+/*
+ * Terminate all ranging sessions
+ * with no pending ranging sub service
+ */
+static void
+wl_cfgnan_terminate_all_obsolete_ranging_sessions(
+	struct bcm_cfg80211 *cfg)
+{
+	/* cancel all related ranging instances */
+	uint8 i = 0;
+	nan_ranging_inst_t *ranging_inst = NULL;
+
+	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
+		ranging_inst = &cfg->nan_ranging_info[i];
+		if (ranging_inst->in_use) {
+			wl_cfgnan_terminate_ranging_session(cfg, ranging_inst);
+		}
+	}
+
+	return;
 }
 
 /*
@@ -4681,6 +4764,12 @@ wl_cfgnan_subscribe_handler(struct net_device *ndev,
 	nan_svc_info_t *svc_info;
 	uint8 upd_ranging_required;
 #endif /* WL_NAN_DISC_CACHE */
+#ifdef RTT_GEOFENCE_CONT
+#ifdef RTT_SUPPORT
+	dhd_pub_t *dhd = (struct dhd_pub *)(cfg->pub);
+	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
+#endif /* RTT_SUPPORT */
+#endif /* RTT_GEOFENCE_CONT */
 
 	NAN_DBG_ENTER();
 	NAN_MUTEX_LOCK();
@@ -4701,10 +4790,10 @@ wl_cfgnan_subscribe_handler(struct net_device *ndev,
 #ifdef WL_NAN_DISC_CACHE
 		svc_info = wl_cfgnan_get_svc_inst(cfg, cmd_data->sub_id, 0);
 		if (svc_info) {
-			wl_cfgnan_clear_svc_ranging_inst(cfg, cmd_data->sub_id);
+			wl_cfgnan_clear_svc_from_all_ranging_inst(cfg, cmd_data->sub_id);
 			/* terminate ranging sessions for this svc, avoid clearing svc cache */
-			wl_cfgnan_terminate_ranging_sessions(ndev, cfg, cmd_data->sub_id);
-			WL_DBG(("Ranging sessions terminated  for svc update\n"));
+			wl_cfgnan_terminate_all_obsolete_ranging_sessions(cfg);
+			WL_DBG(("Ranging sessions handled for svc update\n"));
 			upd_ranging_required = !!(cmd_data->sde_control_flag &
 					NAN_SDE_CF_RANGING_REQUIRED);
 			if ((svc_info->ranging_required ^ upd_ranging_required) ||
@@ -4723,6 +4812,17 @@ wl_cfgnan_subscribe_handler(struct net_device *ndev,
 #endif /* WL_NAN_DISC_CACHE */
 	}
 
+#ifdef RTT_GEOFENCE_CONT
+#ifdef RTT_SUPPORT
+	/* Override ranging Indication */
+	if (rtt_status->geofence_cfg.geofence_cont) {
+		if (cmd_data->ranging_indication !=
+				NAN_RANGE_INDICATION_NONE) {
+			cmd_data->ranging_indication = NAN_RANGE_INDICATION_CONT;
+		}
+	}
+#endif /* RTT_SUPPORT */
+#endif /* RTT_GEOFENCE_CONT */
 	ret = wl_cfgnan_svc_handler(ndev, cfg, WL_NAN_CMD_SD_SUBSCRIBE, cmd_data);
 	if (ret < 0) {
 		WL_ERR(("%s: fail to handle svc, ret=%d\n", __FUNCTION__, ret));
@@ -4878,8 +4978,8 @@ wl_cfgnan_cancel_sub_handler(struct net_device *ndev,
 
 #ifdef WL_NAN_DISC_CACHE
 	/* terminate ranging sessions for this svc */
-	wl_cfgnan_clear_svc_ranging_inst(cfg, cmd_data->sub_id);
-	wl_cfgnan_terminate_ranging_sessions(ndev, cfg, cmd_data->sub_id);
+	wl_cfgnan_clear_svc_from_all_ranging_inst(cfg, cmd_data->sub_id);
+	wl_cfgnan_terminate_all_obsolete_ranging_sessions(cfg);
 	/* clear svc cache for the service */
 	wl_cfgnan_clear_svc_cache(cfg, cmd_data->sub_id);
 	wl_cfgnan_remove_disc_result(cfg, cmd_data->sub_id);
@@ -6838,7 +6938,14 @@ wl_cfgnan_process_range_report(struct bcm_cfg80211 *cfg,
 		wl_cfgnan_notify_disc_with_ranging(cfg, rng_inst, &nan_event_data,
 				range_res->dist_mm);
 		rng_inst->prev_distance_mm = range_res->dist_mm;
-		if (rtt_status->geofence_cfg.geofence_rtt_interval > 0) {
+		/* Reset resp reject count on valid measurement */
+		rng_inst->geof_resp_rej_count = 0;
+#ifdef RTT_GEOFENCE_INTERVAL
+		if (rtt_status->geofence_cfg.geofence_rtt_interval <= 0) {
+			; /* Do Nothing */
+		} else
+#endif /* RTT_GEOFENCE_INTERVAL */
+		{
 			wl_cfgnan_suspend_geofence_rng_session(bcmcfg_to_prmry_ndev(cfg),
 					&rng_inst->peer_addr, RTT_GEO_SUSPN_RANGE_RES_REPORTED, 0);
 			GEOFENCE_RTT_LOCK(rtt_status);
@@ -7013,7 +7120,8 @@ wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 		retry = TRUE;
 	}
 
-	if (cur_idx == 0 && sched_reason == RTT_SCHED_RNG_RPT_GEOFENCE) {
+	if ((cur_idx == 0) && ((sched_reason == RTT_SCHED_RNG_RPT_GEOFENCE) ||
+			(sched_reason == RTT_SCHED_RNG_TERM))) {
 		/* First Target again after all done, retry over a timer */
 		retry = TRUE;
 	}
@@ -7204,10 +7312,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		}
 #ifdef WL_NAN_DISC_CACHE
 		if (pev->reason != NAN_TERM_REASON_USER_REQ) {
-			wl_cfgnan_clear_svc_ranging_inst(cfg, pev->instance_id);
+			wl_cfgnan_clear_svc_from_all_ranging_inst(cfg, pev->instance_id);
 			/* terminate ranging sessions */
-			wl_cfgnan_terminate_ranging_sessions(bcmcfg_to_prmry_ndev(cfg),
-				cfg, pev->instance_id);
+			wl_cfgnan_terminate_all_obsolete_ranging_sessions(cfg);
 		}
 #endif /* WL_NAN_DISC_CACHE */
 		break;
@@ -7293,6 +7400,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			while ((entry_idx < cache_data->count) &&
 					(xtlv_len >= sizeof(*cache_entry))) {
 				cache_entry = &cache_data->cache_exp_list[entry_idx];
+				/* Handle ranging cases for cache timeout */
+				wl_cfgnan_ranging_clear_publish(cfg, &cache_entry->r_nmi_addr,
+					cache_entry->l_sub_id);
 				/* Invalidate local cache info */
 				wl_cfgnan_remove_disc_result(cfg, cache_entry->l_sub_id);
 				xtlv_len = xtlv_len - sizeof(*cache_entry);
@@ -7326,6 +7436,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 #ifdef RTT_SUPPORT
 		int8 index = -1;
 		rtt_geofence_target_info_t* geofence_target;
+		rtt_status_info_t *rtt_status;
+		int rng_sched_reason = 0;
+		bool geof_retry = FALSE;
 #endif /* RTT_SUPPORT */
 		BCM_REFERENCE(dhd);
 		WL_INFORM_MEM(("Received WL_NAN_EVENT_RNG_TERM_IND peer: " MACDBG ", "
@@ -7334,32 +7447,46 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		rng_inst = wl_cfgnan_get_rng_inst_by_id(cfg, range_term->rng_id);
 		if (rng_inst) {
 #ifdef RTT_SUPPORT
+			rng_sched_reason = RTT_SCHED_RNG_TERM;
 			if (rng_inst->range_type == RTT_TYPE_NAN_DIRECTED) {
 				dhd_rtt_handle_nan_rtt_session_end(dhd, &rng_inst->peer_addr);
 			} else if (rng_inst->range_type == RTT_TYPE_NAN_GEOFENCE) {
-				/* Set geofence RTT in progress state to false */
-				/*
-				 * ToDo:
-				 * Check for reason code,
-				 * Accordingly, if we can attempt retry
-				 */
-				geofence_target = dhd_rtt_get_geofence_target(dhd,
-						&rng_inst->peer_addr, &index);
-				if (geofence_target) {
-					dhd_rtt_remove_geofence_target(dhd,
-							&geofence_target->peer_addr);
+				if (range_term->reason_code == NAN_RNG_TERM_RNG_RESP_REJ) {
+					rng_inst->geof_resp_rej_count++;
+					if (rng_inst->geof_resp_rej_count <=
+						NAN_RNG_GEOFENCE_MAX_RNG_REJ_CNT) {
+						geof_retry = TRUE;
+					}
 				}
-				WL_TRACE(("Reset the state on terminate\n"));
-				/* If the target was the geofence queue head */
+				if (geof_retry) {
+					rtt_status = GET_RTTSTATE(dhd);
+					GEOFENCE_RTT_LOCK(rtt_status);
+					dhd_rtt_move_geofence_cur_target_idx_to_next(dhd);
+					GEOFENCE_RTT_UNLOCK(rtt_status);
+				} else {
+					/* Report on ranging failure */
+					wl_cfgnan_disc_result_on_geofence_cancel(cfg,
+						rng_inst);
+					WL_TRACE(("Reset the state on terminate\n"));
+					geofence_target = dhd_rtt_get_geofence_target(dhd,
+							&rng_inst->peer_addr, &index);
+					if (geofence_target) {
+						dhd_rtt_remove_geofence_target(dhd,
+							&geofence_target->peer_addr);
+					}
+				}
+				/* Set geofence RTT in progress state to false */
 				dhd_rtt_set_geofence_rtt_state(dhd, FALSE);
 			}
 			if (rng_inst->range_role == NAN_RANGING_ROLE_RESPONDER &&
-				wl_check_range_role_concurrency(dhd, rng_inst)) {
+					wl_check_range_role_concurrency(dhd, rng_inst)) {
 				/* Resolve role concurrency */
 				wl_cfgnan_resolve_ranging_role_concurrecny(dhd, rng_inst);
+				/* Override sched reason if role concurrency just resolved */
+				rng_sched_reason = RTT_SCHED_RNG_TERM_PEND_ROLE_CHANGE;
 			}
-			/* Dont abolish rng_inst if geofence rtt pending for peer */
-			wl_cfgnan_reset_geofence_ranging(cfg, rng_inst, RTT_SCHED_RNG_TERM);
+			/* Reset Ranging Instance and trigger ranging if applicable */
+			wl_cfgnan_reset_geofence_ranging(cfg, rng_inst, rng_sched_reason);
 #endif /* RTT_SUPPORT */
 		}
 		break;
@@ -7448,12 +7575,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 				nan_event_data->sub_id, 0);
 			if (svc_info && svc_info->ranging_required &&
 				(update_flags & NAN_DISC_CACHE_PARAM_SDE_CONTROL)) {
-				wl_cfgnan_clear_svc_ranging_inst(cfg, nan_event_data->sub_id);
-				/* terminate ranging sessions for this svc, if any */
-				wl_cfgnan_terminate_ranging_sessions(bcmcfg_to_prmry_ndev(cfg),
-					cfg, nan_event_data->sub_id);
+				wl_cfgnan_ranging_clear_publish(cfg,
+					&nan_event_data->remote_nmi, nan_event_data->sub_id);
 			}
-			WL_DBG(("Ranging sessions terminated  for svc update or not required\n"));
 		}
 
 		/*

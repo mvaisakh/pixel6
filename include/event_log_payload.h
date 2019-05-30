@@ -23,7 +23,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: event_log_payload.h 817517 2019-05-01 23:58:31Z $
+ * $Id: event_log_payload.h 820855 2019-05-21 05:33:53Z $
  */
 
 #ifndef _EVENT_LOG_PAYLOAD_H_
@@ -877,4 +877,85 @@ typedef struct phy_periodic_log_v2 {
 	phy_periodic_log_core_t phy_perilog_core[MAX_CORE_4357];
 } phy_periodic_log_v2_t;
 
+/* Event log payload for enhanced roam log */
+typedef enum {
+	ROAM_LOG_SCANSTART = 1,		/* EVT log for roam scan start */
+	ROAM_LOG_SCAN_CMPLT = 2,	/* EVT log for roam scan completeted */
+	ROAM_LOG_ROAM_CMPLT = 3,	/* EVT log for roam done */
+	ROAM_LOG_NBR_REQ = 4,		/* EVT log for Neighbor REQ */
+	ROAM_LOG_NBR_REP = 5,		/* EVT log for Neighbor REP */
+	PRSV_PERIODIC_ID_MAX
+} prsv_periodic_id_enum_t;
+
+typedef struct prsv_periodic_log_hdr {
+	uint8 version;
+	uint8 id;
+	uint16 length;
+} prsv_periodic_log_hdr_t;
+
+#define ROAM_LOG_VER_1	(1u)
+#define ROAM_LOG_TRIG_VER	(1u)
+typedef struct roam_log_trig_v1 {
+	prsv_periodic_log_hdr_t hdr;
+	int8 rssi;
+	uint8 current_cu;
+	uint8 pad[2];
+	uint reason;
+	int result;
+	union {
+		struct {
+			uint rcvd_reason;
+		} prt_roam;
+		struct {
+			uint8 req_mode;
+			uint8 token;
+			uint16 nbrlist_size;
+			uint32 disassoc_dur;
+			uint32 validity_dur;
+			uint32 bss_term_dur;
+		} bss_trans;
+	};
+} roam_log_trig_v1_t;
+
+#define ROAM_LOG_RPT_SCAN_LIST_SIZE 3
+#define ROAM_LOG_INVALID_TPUT 0xFFFFFFFFu
+typedef struct roam_scan_ap_info {
+	int8 rssi;
+	uint8 pad[3];
+	uint32 score;
+	uint16 chanspec;
+	struct ether_addr addr;
+	uint32 estm_tput;
+} roam_scan_ap_info_t;
+
+typedef struct roam_log_scan_cmplt_v1 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 full_scan;
+	uint8 scan_count;
+	uint8 scan_list_size;
+	uint8 pad;
+	int32 score_delta;
+	roam_scan_ap_info_t cur_info;
+	roam_scan_ap_info_t scan_list[ROAM_LOG_RPT_SCAN_LIST_SIZE];
+} roam_log_scan_cmplt_v1_t;
+
+typedef struct roam_log_cmplt_v1 {
+	prsv_periodic_log_hdr_t hdr;
+	uint status;
+	uint reason;
+	uint16	chanspec;
+	struct ether_addr addr;
+	uint8 pad[3];
+	uint8 retry;
+} roam_log_cmplt_v1_t;
+
+typedef struct roam_log_nbrrep {
+	prsv_periodic_log_hdr_t hdr;
+	uint channel_num;
+} roam_log_nbrrep_v1_t;
+
+typedef struct roam_log_nbrreq {
+	prsv_periodic_log_hdr_t hdr;
+	uint token;
+} roam_log_nbrreq_v1_t;
 #endif /* _EVENT_LOG_PAYLOAD_H_ */

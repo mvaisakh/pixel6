@@ -175,7 +175,6 @@ extern int wl_print_backtrace(const char * prefix, void * i_backtrace, int i_bac
 #define WL_TSO(args)		do {if (wl_msg_level2 & WL_TSO_VAL) WL_PRINT(args);} while (0)
 #define WL_MQ(args)		do {if (wl_msg_level2 & WL_MQ_VAL) WL_PRINT(args);} while (0)
 #define WL_P2PO(args)		do {if (wl_msg_level2 & WL_P2PO_VAL) WL_PRINT(args);} while (0)
-#define WL_SBD(args)		do {if (wl_msg_level2 & WL_SBD_VAL) WL_PRINT(args);} while (0)
 #define WL_WNM(args)		do {if (wl_msg_level2 & WL_WNM_VAL) WL_PRINT(args);} while (0)
 #define WL_TXBF(args)		do {if (wl_msg_level2 & WL_TXBF_VAL) WL_PRINT(args);} while (0)
 #define	WL_PCIE(args)		do {if (wl_msg_level2 & WL_PCIE_VAL) WL_PRINT(args);} while (0)
@@ -252,7 +251,6 @@ void wlc_bmac_tslog(struct wlc_hw_info *hw, const char *str, uint32 p1, uint32 p
 #define WL_L2FILTER_ON()	(wl_msg_level2 & WL_L2FILTER_VAL)
 #define WL_MQ_ON()		(wl_msg_level2 & WL_MQ_VAL)
 #define WL_P2PO_ON()		(wl_msg_level2 & WL_P2PO_VAL)
-#define WL_SBD_ON()		(wl_msg_level2 & WL_SBD_VAL)
 #define WL_WNM_ON()		(wl_msg_level2 & WL_WNM_VAL)
 #define WL_TXBF_ON()	        (wl_msg_level2 & WL_TXBF_VAL)
 #define WL_PCIE_ON()		(wl_msg_level2 & WL_PCIE_VAL)
@@ -904,7 +902,6 @@ extern uint32 wl_mesh_dbg;
 #define WL_L2FILTER(args)
 #define WL_MQ(args)
 #define WL_P2PO(args)
-#define WL_SBD(args)
 #define WL_WNM(args)
 #define WL_TXBF(args)
 #define WL_TSLOG(w, s, i, j)
@@ -1004,7 +1001,6 @@ extern uint32 wl_mesh_dbg;
 #define WL_L2FILTER_ON()	0
 #define WL_MQ_ON()		0
 #define WL_P2PO_ON()		0
-#define WL_SBD_ON()		0
 #define WL_TXBF_ON()            0
 #define WL_TSLOG_ON()		0
 #define WL_MUMIMO_ON()		0

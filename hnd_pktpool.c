@@ -136,7 +136,7 @@ BCMRAMFN(pktpool_registry_cmp)(int id, pktpool_t *pp)
 
 /** Constructs a pool registry to serve a maximum of total_pools */
 int
-pktpool_attach(osl_t *osh, uint32 total_pools)
+BCMATTACHFN(pktpool_attach)(osl_t *osh, uint32 total_pools)
 {
 	uint32 poolid;
 	BCM_REFERENCE(osh);
@@ -161,7 +161,7 @@ pktpool_attach(osl_t *osh, uint32 total_pools)
 
 /** Destructs the pool registry. Ascertain all pools were first de-inited */
 int
-pktpool_dettach(osl_t *osh)
+BCMATTACHFN(pktpool_dettach)(osl_t *osh)
 {
 	uint32 poolid;
 	BCM_REFERENCE(osh);
@@ -184,7 +184,7 @@ pktpool_dettach(osl_t *osh)
 
 /** Registers a pool in a free slot; returns the registry slot index */
 static int
-pktpool_register(pktpool_t * poolptr)
+BCMATTACHFN(pktpool_register)(pktpool_t * poolptr)
 {
 	uint32 poolid;
 
@@ -207,7 +207,7 @@ pktpool_register(pktpool_t * poolptr)
 
 /** Deregisters a pktpool, given the pool pointer; tag slot as free */
 static int
-pktpool_deregister(pktpool_t * poolptr)
+BCMATTACHFN(pktpool_deregister)(pktpool_t * poolptr)
 {
 	uint32 poolid;
 
@@ -247,7 +247,7 @@ pktpool_deregister(pktpool_t * poolptr)
  * @param type            e.g. 'lbuf_frag'
  */
 int
-pktpool_init(osl_t *osh,
+BCMATTACHFN(pktpool_init)(osl_t *osh,
 	pktpool_t *pktp,
 	int *n_pkts,
 	int max_pkt_bytes,
@@ -352,7 +352,7 @@ exit:
  * corruption as the pktpool_t structure no longer exists.
  */
 int
-pktpool_deinit(osl_t *osh, pktpool_t *pktp)
+BCMATTACHFN(pktpool_deinit)(osl_t *osh, pktpool_t *pktp)
 {
 	uint16 freed = 0;
 
@@ -672,7 +672,7 @@ pktpool_enq(pktpool_t *pktp, void *p)
 
 /** utility for registering host addr fill function called from pciedev */
 int
-pktpool_hostaddr_fill_register(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
+BCMATTACHFN(pktpool_hostaddr_fill_register)(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
 {
 
 	ASSERT(cb != NULL);
@@ -684,7 +684,7 @@ pktpool_hostaddr_fill_register(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
 }
 
 int
-pktpool_rxcplid_fill_register(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
+BCMATTACHFN(pktpool_rxcplid_fill_register)(pktpool_t *pktp, pktpool_cb_extn_t cb, void *arg)
 {
 
 	ASSERT(cb != NULL);
@@ -710,7 +710,7 @@ pktpool_invoke_dmarxfill(pktpool_t *pktp)
 
 /** Registers callback functions for split rx mode */
 int
-pkpool_haddr_avail_register_cb(pktpool_t *pktp, pktpool_cb_t cb, void *arg)
+BCMATTACHFN(pkpool_haddr_avail_register_cb)(pktpool_t *pktp, pktpool_cb_t cb, void *arg)
 {
 
 	ASSERT(cb != NULL);
@@ -817,7 +817,7 @@ done:
 
 /** Registers callback functions */
 int
-pktpool_empty_register(pktpool_t *pktp, pktpool_cb_t cb, void *arg)
+BCMATTACHFN(pktpool_empty_register)(pktpool_t *pktp, pktpool_cb_t cb, void *arg)
 {
 	int err = 0;
 	int i;
@@ -1386,7 +1386,7 @@ static osl_t *pktpool_osh = NULL;
  * Initializes several packet pools and allocates packets within those pools.
  */
 int
-hnd_pktpool_init(osl_t *osh)
+BCMATTACHFN(hnd_pktpool_init)(osl_t *osh)
 {
 	int err = BCME_OK;
 	int n;

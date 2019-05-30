@@ -21,7 +21,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: siutils.c 817202 2019-04-30 00:54:57Z $
+ * $Id: siutils.c 820913 2019-05-21 12:07:52Z $
  */
 
 #include <typedefs.h>
@@ -170,8 +170,8 @@ static void si_oob_war_BT_F1(si_t *sih);
 
 #if defined(DONGLEBUILD)
 #if	!defined(NVSRCX)
-static char * si_getkvars(void);
-static int si_getkvarsz(void);
+static char * BCMATTACHFN(si_getkvars)(void);
+static int BCMATTACHFN(si_getkvarsz)(void);
 #endif // endif
 #endif /* DONGLEBUILD */
 
@@ -202,11 +202,11 @@ static si_info_t ksii;
 static si_cores_info_t ksii_cores_info;
 
 #ifndef BCMDONGLEHOST
-static const char rstr_rmin[] = "rmin";
-static const char rstr_rmax[] = "rmax";
+static const char BCMATTACHDATA(rstr_rmin)[] = "rmin";
+static const char BCMATTACHDATA(rstr_rmax)[] = "rmax";
 
-static const char rstr_lhl_ps_mode[] = "lhl_ps_mode";
-static const char rstr_ext_wakeup_dis[] = "ext_wakeup_dis";
+static const char BCMATTACHDATA(rstr_lhl_ps_mode)[] = "lhl_ps_mode";
+static const char BCMATTACHDATA(rstr_ext_wakeup_dis)[] = "ext_wakeup_dis";
 #endif // endif
 
 /**
@@ -221,7 +221,7 @@ static const char rstr_ext_wakeup_dis[] = "ext_wakeup_dis";
  * varsz - pointer to int to return the size of the vars
  */
 si_t *
-si_attach(uint devid, osl_t *osh, volatile void *regs,
+BCMATTACHFN(si_attach)(uint devid, osl_t *osh, volatile void *regs,
                        uint bustype, void *sdh, char **vars, uint *varsz)
 {
 	si_info_t *sii;
@@ -272,7 +272,7 @@ static uint32	wd_msticks;		/**< watchdog timer ticks normalized to ms */
  */
 #if	!defined(NVSRCX)
 static char *
-si_getkvars(void)
+BCMATTACHFN(si_getkvars)(void)
 {
 	if (FWSIGN_ENAB()) {
 		return NULL;
@@ -281,7 +281,7 @@ si_getkvars(void)
 }
 
 static int
-si_getkvarsz(void)
+BCMATTACHFN(si_getkvarsz)(void)
 {
 	if (FWSIGN_ENAB()) {
 		return NULL;
@@ -293,14 +293,14 @@ si_getkvarsz(void)
 
 /** Returns the backplane address of the chipcommon core for a particular chip */
 uint32
-si_enum_base(uint devid)
+BCMATTACHFN(si_enum_base)(uint devid)
 {
 	return SI_ENUM_BASE_DEFAULT;
 }
 
 /** generic kernel variant of si_attach(). Is not called for Linux WLAN NIC builds. */
 si_t *
-si_kattach(osl_t *osh)
+BCMATTACHFN(si_kattach)(osl_t *osh)
 {
 	static bool ksii_attached = FALSE;
 	si_cores_info_t *cores_info;
@@ -355,7 +355,7 @@ si_kattach(osl_t *osh)
 }
 
 static bool
-si_buscore_prep(si_info_t *sii, uint bustype, uint devid, void *sdh)
+BCMATTACHFN(si_buscore_prep)(si_info_t *sii, uint bustype, uint devid, void *sdh)
 {
 	BCM_REFERENCE(sdh);
 	BCM_REFERENCE(devid);
@@ -463,7 +463,7 @@ done:
 }
 
 static bool
-si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
+BCMATTACHFN(si_buscore_setup)(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 	uint *origidx, volatile const void *regs)
 {
 	const si_cores_info_t *cores_info = sii->cores_info;
@@ -674,41 +674,41 @@ si_buscore_setup(si_info_t *sii, chipcregs_t *cc, uint bustype, uint32 savewin,
 
 #if !defined(BCMDONGLEHOST) /* if not a DHD build */
 
-static const char rstr_boardvendor[] = "boardvendor";
-static const char rstr_boardtype[] = "boardtype";
+static const char BCMATTACHDATA(rstr_boardvendor)[] = "boardvendor";
+static const char BCMATTACHDATA(rstr_boardtype)[] = "boardtype";
 #if defined(BCMPCIEDEV_SROM_FORMAT)
-static const char rstr_subvid[] = "subvid";
+static const char BCMATTACHDATA(rstr_subvid)[] = "subvid";
 #endif /* defined(BCMPCIEDEV_SROM_FORMAT) */
 #ifdef BCMSDIO
-static const char rstr_manfid[] = "manfid";
+static const char BCMATTACHDATA(rstr_manfid)[] = "manfid";
 #endif // endif
-static const char rstr_prodid[] = "prodid";
-static const char rstr_boardrev[] = "boardrev";
-static const char rstr_boardflags[] = "boardflags";
-static const char rstr_boardflags4[] = "boardflags4";
-static const char rstr_xtalfreq[] = "xtalfreq";
+static const char BCMATTACHDATA(rstr_prodid)[] = "prodid";
+static const char BCMATTACHDATA(rstr_boardrev)[] = "boardrev";
+static const char BCMATTACHDATA(rstr_boardflags)[] = "boardflags";
+static const char BCMATTACHDATA(rstr_boardflags4)[] = "boardflags4";
+static const char BCMATTACHDATA(rstr_xtalfreq)[] = "xtalfreq";
 #ifdef WLLED
-static const char rstr_leddc[] = "leddc";
+static const char BCMATTACHDATA(rstr_leddc)[] = "leddc";
 #endif // endif
-static const char rstr_muxenab[] = "muxenab";
-static const char rstr_gpiopulldown[] = "gpdn";
-static const char rstr_devid[] = "devid";
-static const char rstr_wl0id[] = "wl0id";
-static const char rstr_devpathD[] = "devpath%d";
-static const char rstr_D_S[] = "%d:%s";
-static const char rstr_swdenab[] = "swdenable";
-static const char rstr_spurconfig[] = "spurconfig";
-static const char rstr_wowl_gpio[] = "wowl_gpio";
-static const char rstr_lpflags[] = "lpflags";
-static const char rstr_armclk[] = "armclk";
-static const char rstr_ccidiv[] = "ccidiv";
-static const char rstr_rfldo3p3_cap_war[] = "rfldo3p3_cap_war";
+static const char BCMATTACHDATA(rstr_muxenab)[] = "muxenab";
+static const char BCMATTACHDATA(rstr_gpiopulldown)[] = "gpdn";
+static const char BCMATTACHDATA(rstr_devid)[] = "devid";
+static const char BCMATTACHDATA(rstr_wl0id)[] = "wl0id";
+static const char BCMATTACHDATA(rstr_devpathD)[] = "devpath%d";
+static const char BCMATTACHDATA(rstr_D_S)[] = "%d:%s";
+static const char BCMATTACHDATA(rstr_swdenab)[] = "swdenable";
+static const char BCMATTACHDATA(rstr_spurconfig)[] = "spurconfig";
+static const char BCMATTACHDATA(rstr_wowl_gpio)[] = "wowl_gpio";
+static const char BCMATTACHDATA(rstr_lpflags)[] = "lpflags";
+static const char BCMATTACHDATA(rstr_armclk)[] = "armclk";
+static const char BCMATTACHDATA(rstr_ccidiv)[] = "ccidiv";
+static const char BCMATTACHDATA(rstr_rfldo3p3_cap_war)[] = "rfldo3p3_cap_war";
 #if defined(SECI_UART)
-static const char rstr_fuart_pup_rx_cts[] = "fuart_pup_rx_cts";
+static const char BCMATTACHDATA(rstr_fuart_pup_rx_cts)[] = "fuart_pup_rx_cts";
 #endif /* defined(SECI_UART) */
 
 static uint32
-si_fixup_vid_overrides(si_info_t *sii, char *pvars, uint32 conf_vid)
+BCMATTACHFN(si_fixup_vid_overrides)(si_info_t *sii, char *pvars, uint32 conf_vid)
 {
 	BCM_REFERENCE(pvars);
 
@@ -739,7 +739,7 @@ si_fixup_vid_overrides(si_info_t *sii, char *pvars, uint32 conf_vid)
 }
 
 static void
-si_nvram_process(si_info_t *sii, char *pvars)
+BCMATTACHFN(si_nvram_process)(si_info_t *sii, char *pvars)
 {
 	uint w = 0;
 
@@ -849,7 +849,7 @@ typedef struct {
 } si_mux_uartopt_t;
 
 /* note: each index corr to MUXENAB4335_UART mask >> shift - 1 */
-static const si_mux_uartopt_t mux4335_uartopt[] = {
+static const si_mux_uartopt_t BCMATTACHDATA(mux4335_uartopt)[] = {
 		{CC4335_PIN_GPIO_06, CC4335_PIN_GPIO_02},
 		{CC4335_PIN_GPIO_12, CC4335_PIN_GPIO_13},
 		{CC4335_PIN_SDIO_DATA0, CC4335_PIN_SDIO_CMD},
@@ -857,31 +857,31 @@ static const si_mux_uartopt_t mux4335_uartopt[] = {
 };
 
 /* note: each index corr to MUXENAB4335_HOSTWAKE mask > shift - 1 */
-static const uint8 mux4335_hostwakeopt[] = {
+static const uint8 BCMATTACHDATA(mux4335_hostwakeopt)[] = {
 		CC4335_PIN_GPIO_00,
 		CC4335_PIN_GPIO_05,
 		CC4335_PIN_GPIO_09
 };
 
 /* note: each index corr to MUXENAB4335_HOSTWAKE mask > shift - 1 */
-static const uint8 mux43012_hostwakeopt[] = {
+static const uint8 BCMATTACHDATA(mux43012_hostwakeopt)[] = {
 		CC43012_PIN_GPIO_00
 };
 
-static const si_mux_uartopt_t mux4350_uartopt[] = {
+static const si_mux_uartopt_t BCMATTACHDATA(mux4350_uartopt)[] = {
 		{CC4350_PIN_GPIO_00, CC4350_PIN_GPIO_01},
 		{CC4350_PIN_GPIO_05, CC4350_PIN_GPIO_04},
 		{CC4350_PIN_GPIO_15, CC4350_PIN_GPIO_14},
 };
 
 /* note: each index corr to MUXENAB4350_HOSTWAKE mask >> shift - 1 */
-static const uint8 mux4350_hostwakeopt[] = {
+static const uint8 BCMATTACHDATA(mux4350_hostwakeopt)[] = {
 		CC4335_PIN_GPIO_00,
 };
 
 #ifdef SECI_UART
 #define NUM_SECI_UART_GPIOS	4
-static const char rstr_seci_uart_gpios[] = "seci_uart_gpios";
+static const char BCMATTACHDATA(rstr_seci_uart_gpios)[] = "seci_uart_gpios";
 static bool fuart_pullup_rx_cts_enab = FALSE;
 static bool fast_uart_init = FALSE;
 static uint32 fast_uart_tx;
@@ -892,12 +892,12 @@ static uint32 fast_uart_cts_in;
 #endif /* SECI_UART */
 
 /* note: each index corr to MUXENAB4349_HOSTWAKE mask >> shift - 1 */
-static const uint8 mux4349_hostwakeopt[] = {
+static const uint8 BCMATTACHDATA(mux4349_hostwakeopt)[] = {
 		CC4349_PIN_GPIO_00,
 };
 
 void
-si_swdenable(si_t *sih, uint32 swdflag)
+BCMATTACHFN(si_swdenable)(si_t *sih, uint32 swdflag)
 {
 	switch (CHIPID(sih->chip)) {
 	case BCM4345_CHIP_ID:
@@ -935,7 +935,7 @@ si_swdenable(si_t *sih, uint32 swdflag)
 
 /** want to have this available all the time to switch mux for debugging */
 void
-si_muxenab(si_t *sih, uint32 w)
+BCMATTACHFN(si_muxenab)(si_t *sih, uint32 w)
 {
 	uint32 chipcontrol, pmu_chipcontrol;
 
@@ -1109,6 +1109,7 @@ si_muxenab(si_t *sih, uint32 w)
 	case BCM43569_CHIP_ID:
 	case BCM43570_CHIP_ID:
 	case BCM4358_CHIP_ID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		if (w & MUXENAB4350_UART_MASK) {
 			uint32 uart_rx = 0, uart_tx = 0;
@@ -1420,9 +1421,9 @@ si_gpio_enable(si_t *sih, uint32 mask)
 	return BCME_OK;
 }
 
-static const char rstr_host_wake_opt[] = "host_wake_opt";
+static const char BCMATTACHDATA(rstr_host_wake_opt)[] = "host_wake_opt";
 uint8
-si_gci_host_wake_gpio_init(si_t *sih)
+BCMATTACHFN(si_gci_host_wake_gpio_init)(si_t *sih)
 {
 	uint8  host_wake_gpio = CC_GCI_GPIO_INVALID;
 	uint32 host_wake_opt;
@@ -1473,6 +1474,7 @@ si_gci_time_sync_gpio_enable(si_t *sih, uint8 gpio, bool state)
 	case BCM4347_CHIP_GRPID:
 	case BCM4362_CHIP_GRPID:
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		si_gci_enable_gpio(sih, gpio, 1 << gpio,
 			state ? 1 << gpio : 0x00);
@@ -1484,9 +1486,9 @@ si_gci_time_sync_gpio_enable(si_t *sih, uint8 gpio, bool state)
 }
 
 #define	TIMESYNC_GPIO_NUM	12 /* Hardcoded for now. Will be removed later */
-static const char rstr_time_sync_opt[] = "time_sync_opt";
+static const char BCMATTACHDATA(rstr_time_sync_opt)[] = "time_sync_opt";
 uint8
-si_gci_time_sync_gpio_init(si_t *sih)
+BCMATTACHFN(si_gci_time_sync_gpio_init)(si_t *sih)
 {
 	uint8  time_sync_gpio = TIMESYNC_GPIO_NUM;
 	uint32 time_sync_opt;
@@ -1507,6 +1509,7 @@ si_gci_time_sync_gpio_init(si_t *sih)
 	case BCM4347_CHIP_GRPID:
 	case BCM4362_CHIP_GRPID:
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		time_sync_gpio = time_sync_opt & 0xff;
 		si_gci_enable_gpio(sih, time_sync_gpio,
@@ -1553,7 +1556,7 @@ si_gci_enable_gpioint(si_t *sih, bool enable)
 
 /* assumes function select is performed separately */
 void
-si_enable_gpio_wake(si_t *sih, uint8 *wake_mask, uint8 *cur_status, uint8 gci_gpio,
+BCMINITFN(si_enable_gpio_wake)(si_t *sih, uint8 *wake_mask, uint8 *cur_status, uint8 gci_gpio,
 	uint32 pmu_cc2_mask, uint32 pmu_cc2_value)
 {
 	si_gci_gpio_chipcontrol(sih, gci_gpio,
@@ -1626,14 +1629,14 @@ si_gci_free_wake_pin(si_t *sih, uint8 gpio_n)
 }
 
 #if defined(BCMPCIEDEV)
-static const char rstr_device_wake_opt[] = "device_wake_opt";
+static const char BCMINITDATA(rstr_device_wake_opt)[] = "device_wake_opt";
 #else
-static const char rstr_device_wake_opt[] = "sd_devwake";
+static const char BCMINITDATA(rstr_device_wake_opt)[] = "sd_devwake";
 #endif // endif
 #define DEVICE_WAKE_GPIO3	3
 
 uint8
-si_enable_perst_wake(si_t *sih, uint8 *perst_wake_mask, uint8 *perst_cur_status)
+BCMATTACHFN(si_enable_perst_wake)(si_t *sih, uint8 *perst_wake_mask, uint8 *perst_cur_status)
 {
 	uint8  gci_perst = CC_GCI_GPIO_15;
 	switch (CHIPID(sih->chip)) {
@@ -1682,7 +1685,7 @@ si_enable_perst_wake(si_t *sih, uint8 *perst_wake_mask, uint8 *perst_cur_status)
 }
 
 uint8
-si_get_device_wake_opt(si_t *sih)
+BCMINITFN(si_get_device_wake_opt)(si_t *sih)
 {
 	si_info_t *sii = SI_INFO(sih);
 
@@ -2765,7 +2768,7 @@ si_gci_clear_functionsel(si_t *sih, uint8 fnsel)
 }
 
 static void
-si_gci_chipctrl_overrides(osl_t *osh, si_t *sih, char *pvars)
+BCMATTACHFN(si_gci_chipctrl_overrides)(osl_t *osh, si_t *sih, char *pvars)
 {
 	uint8 num_cc = 0;
 	char gciccstr[16];
@@ -2829,7 +2832,7 @@ si_gci_chipstatus(si_t *sih, uint reg)
 #endif /* !defined(BCMDONGLEHOST) */
 
 uint16
-si_chipid(const si_t *sih)
+BCMINITFN(si_chipid)(const si_t *sih)
 {
 	const si_info_t *sii = SI_INFO(sih);
 
@@ -2838,7 +2841,7 @@ si_chipid(const si_t *sih)
 
 /* CHIP_ID's being mapped here should not be used anywhere else in the code */
 static void
-si_chipid_fixup(si_t *sih)
+BCMATTACHFN(si_chipid_fixup)(si_t *sih)
 {
 	si_info_t *sii = SI_INFO(sih);
 
@@ -2921,7 +2924,7 @@ si_reset_axi_errlog_info(const si_t *sih)
  *        function set 'vars' to NULL.
  */
 static si_info_t *
-si_doattach(si_info_t *sii, uint devid, osl_t *osh, volatile void *regs,
+BCMATTACHFN(si_doattach)(si_info_t *sii, uint devid, osl_t *osh, volatile void *regs,
                        uint bustype, void *sdh, char **vars, uint *varsz)
 {
 	struct si_pub *sih = &sii->pub;
@@ -3518,7 +3521,7 @@ exit:
 
 /** may be called with core in reset */
 void
-si_detach(si_t *sih)
+BCMATTACHFN(si_detach)(si_t *sih)
 {
 	si_info_t *sii = SI_INFO(sih);
 	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
@@ -3603,7 +3606,7 @@ si_setosh(si_t *sih, osl_t *osh)
 
 /** register driver interrupt disabling and restoring callback functions */
 void
-si_register_intr_callback(si_t *sih, void *intrsoff_fn, void *intrsrestore_fn,
+BCMATTACHFN(si_register_intr_callback)(si_t *sih, void *intrsoff_fn, void *intrsrestore_fn,
                           void *intrsenabled_fn, void *intr_arg)
 {
 	si_info_t *sii = SI_INFO(sih);
@@ -3619,7 +3622,7 @@ si_register_intr_callback(si_t *sih, void *intrsoff_fn, void *intrsrestore_fn,
 }
 
 void
-si_deregister_intr_callback(si_t *sih)
+BCMATTACHFN(si_deregister_intr_callback)(si_t *sih)
 {
 	si_info_t *sii;
 
@@ -3678,7 +3681,7 @@ si_flag_alt(const si_t *sih)
 }
 
 void
-si_setint(const si_t *sih, int siflag)
+BCMATTACHFN(si_setint)(const si_t *sih, int siflag)
 {
 	if (CHIPTYPE(sih->socitype) == SOCI_SB)
 		sb_setint(sih, siflag);
@@ -3767,7 +3770,7 @@ si_coreunit(const si_t *sih)
 }
 
 uint
-si_corevendor(const si_t *sih)
+BCMATTACHFN(si_corevendor)(const si_t *sih)
 {
 	if (CHIPTYPE(sih->socitype) == SOCI_SB)
 		return sb_corevendor(sih);
@@ -3784,7 +3787,7 @@ si_corevendor(const si_t *sih)
 }
 
 bool
-si_backplane64(const si_t *sih)
+BCMINITFN(si_backplane64)(const si_t *sih)
 {
 	return ((sih->cccaps & CC_CAP_BKPLN64) != 0);
 }
@@ -4008,7 +4011,7 @@ uint si_get_corerev(si_t *sih, uint core_id)
 }
 
 int
-si_numaddrspaces(const si_t *sih)
+BCMATTACHFN(si_numaddrspaces)(const si_t *sih)
 {
 	if (CHIPTYPE(sih->socitype) == SOCI_SB)
 		return sb_numaddrspaces(sih);
@@ -4055,7 +4058,7 @@ si_addrspace(const si_t *sih, uint spidx, uint baidx)
  * baidx : base address index
  */
 uint32
-si_addrspacesize(const si_t *sih, uint spidx, uint baidx)
+BCMATTACHFN(si_addrspacesize)(const si_t *sih, uint spidx, uint baidx)
 {
 	if (CHIPTYPE(sih->socitype) == SOCI_SB)
 		return sb_addrspacesize(sih, baidx);
@@ -4469,7 +4472,7 @@ done:
 }
 
 static uint32
-factor6(uint32 x)
+BCMINITFN(factor6)(uint32 x)
 {
 	switch (x) {
 	case CC_F6_2:	return 2;
@@ -4494,7 +4497,7 @@ divide_clock(uint32 clock, uint32 div)
 
 /** calculate the speed the SI would run at given a set of clockcontrol values */
 uint32
-si_clock_rate(uint32 pll_type, uint32 n, uint32 m)
+BCMINITFN(si_clock_rate)(uint32 pll_type, uint32 n, uint32 m)
 {
 	uint32 n1, n2, clock, m1, m2, m3, mc;
 
@@ -4704,7 +4707,7 @@ si_chip_hostif(const si_t *sih)
 
 #if !defined(BCMDONGLEHOST)
 uint32
-si_clock(si_t *sih)
+BCMINITFN(si_clock)(si_t *sih)
 {
 	const si_info_t *sii = SI_INFO(sih);
 	chipcregs_t *cc;
@@ -4748,7 +4751,7 @@ exit:
 
 /** returns value in [Hz] units */
 uint32
-si_alp_clock(si_t *sih)
+BCMINITFN(si_alp_clock)(si_t *sih)
 {
 	if (PMUCTL_ENAB(sih)) {
 		return si_pmu_alp_clock(sih, si_osh(sih));
@@ -4759,7 +4762,7 @@ si_alp_clock(si_t *sih)
 
 /** returns value in [Hz] units */
 uint32
-si_ilp_clock(si_t *sih)
+BCMINITFN(si_ilp_clock)(si_t *sih)
 {
 	if (PMUCTL_ENAB(sih))
 		return si_pmu_ilp_clock(sih, si_osh(sih));
@@ -4857,7 +4860,7 @@ si_taclear(si_t *sih, bool details)
  * Map sb core id to pci device id.
  */
 uint16
-si_d11_devid(si_t *sih)
+BCMATTACHFN(si_d11_devid)(si_t *sih)
 {
 	const si_info_t *sii = SI_INFO(sih);
 	uint16 device;
@@ -4884,7 +4887,7 @@ si_d11_devid(si_t *sih)
 }
 
 int
-si_corepciid(si_t *sih, uint func, uint16 *pcivendor, uint16 *pcidevice,
+BCMATTACHFN(si_corepciid)(si_t *sih, uint func, uint16 *pcivendor, uint16 *pcidevice,
                           uint8 *pciclass, uint8 *pcisubclass, uint8 *pciprogif,
                           uint8 *pciheader)
 {
@@ -5162,7 +5165,7 @@ si_slowclk_freq(si_info_t *sii, bool max_freq, chipcregs_t *cc)
 }
 
 static void
-si_clkctl_setdelay(si_info_t *sii, void *chipcregs)
+BCMINITFN(si_clkctl_setdelay)(si_info_t *sii, void *chipcregs)
 {
 	chipcregs_t *cc = (chipcregs_t *)chipcregs;
 	uint slowmaxfreq, pll_delay, slowclk;
@@ -5190,7 +5193,7 @@ si_clkctl_setdelay(si_info_t *sii, void *chipcregs)
 
 /** initialize power control delay registers */
 void
-si_clkctl_init(si_t *sih)
+BCMINITFN(si_clkctl_init)(si_t *sih)
 {
 	si_info_t *sii;
 	uint origidx = 0;
@@ -5226,7 +5229,7 @@ si_clkctl_init(si_t *sih)
 #if !defined(BCMDONGLEHOST)
 /** return the value suitable for writing to the dot11 core FAST_PWRUP_DELAY register */
 uint16
-si_clkctl_fast_pwrup_delay(si_t *sih)
+BCMINITFN(si_clkctl_fast_pwrup_delay)(si_t *sih)
 {
 	si_info_t *sii = SI_INFO(sih);
 	uint origidx = 0;
@@ -5523,7 +5526,7 @@ BCMNMIATTACHFN(si_devpath_pcie)(const si_t *sih, char *path, int size)
 }
 
 char *
-si_coded_devpathvar(const si_t *sih, char *varname, int var_len, const char *name)
+BCMATTACHFN(si_coded_devpathvar)(const si_t *sih, char *varname, int var_len, const char *name)
 {
 	char pathname[SI_DEVPATH_BUFSZ + 32];
 	char devpath[SI_DEVPATH_BUFSZ + 32];
@@ -5581,7 +5584,7 @@ si_coded_devpathvar(const si_t *sih, char *varname, int var_len, const char *nam
 
 /** Get a variable, but only if it has a devpath prefix */
 char *
-si_getdevpathvar(const si_t *sih, const char *name)
+BCMATTACHFN(si_getdevpathvar)(const si_t *sih, const char *name)
 {
 	char varname[SI_DEVPATH_BUFSZ + 32];
 	char *val;
@@ -5606,7 +5609,7 @@ si_getdevpathvar(const si_t *sih, const char *name)
 
 /** Get a variable, but only if it has a devpath prefix */
 int
-si_getdevpathintvar(const si_t *sih, const char *name)
+BCMATTACHFN(si_getdevpathintvar)(const si_t *sih, const char *name)
 {
 #if defined(BCMBUSTYPE) && (BCMBUSTYPE == SI_BUS)
 	BCM_REFERENCE(sih);
@@ -5641,7 +5644,7 @@ si_getdevpathintvar(const si_t *sih, const char *name)
  * On overflow, the first char will be set to '\0'.
  */
 static char *
-si_devpathvar(const si_t *sih, char *var, int len, const char *name)
+BCMATTACHFN(si_devpathvar)(const si_t *sih, char *var, int len, const char *name)
 {
 	uint path_len;
 
@@ -5661,7 +5664,7 @@ si_devpathvar(const si_t *sih, char *var, int len, const char *name)
 }
 
 static char *
-si_pcie_devpathvar(const si_t *sih, char *var, int len, const char *name)
+BCMATTACHFN(si_pcie_devpathvar)(const si_t *sih, char *var, int len, const char *name)
 {
 	uint path_len;
 
@@ -5894,7 +5897,7 @@ si_pcieserdesreg(const si_t *sih, uint32 mdioslave, uint32 offset, uint32 mask, 
 
 /** return TRUE if PCIE capability exists in the pci config space */
 static bool
-si_ispcie(const si_info_t *sii)
+BCMATTACHFN(si_ispcie)(const si_info_t *sii)
 {
 	uint8 cap_ptr;
 
@@ -6040,7 +6043,7 @@ si_pcie_set_request_size(const si_t *sih, uint16 size)
 }
 
 uint16
-si_pcie_get_request_size(const si_t *sih)
+BCMATTACHFN(si_pcie_get_request_size)(const si_t *sih)
 {
 	const si_info_t *sii = SI_INFO(sih);
 
@@ -6118,7 +6121,7 @@ si_pcie_hw_L1SS_war(const si_t *sih)
 }
 
 void
-si_pci_up(const si_t *sih)
+BCMINITFN(si_pci_up)(const si_t *sih)
 {
 	const si_info_t *sii;
 
@@ -6135,7 +6138,7 @@ si_pci_up(const si_t *sih)
 
 /** Unconfigure and/or apply various WARs when system is going to sleep mode */
 void
-si_pci_sleep(const si_t *sih)
+BCMUNINITFN(si_pci_sleep)(const si_t *sih)
 {
 	/* 4360 pcie2 WAR */
 	do_4360_pcie2_war = 0;
@@ -6145,7 +6148,7 @@ si_pci_sleep(const si_t *sih)
 
 /** Unconfigure and/or apply various WARs when the wireless interface is going down */
 void
-si_pci_down(const si_t *sih)
+BCMINITFN(si_pci_down)(const si_t *sih)
 {
 	const si_info_t *sii = SI_INFO(sih);
 	BCM_REFERENCE(sii);
@@ -6162,7 +6165,7 @@ si_pci_down(const si_t *sih)
  * coremask is the bitvec of cores by index to be enabled.
  */
 void
-si_pci_setup(si_t *sih, uint coremask)
+BCMATTACHFN(si_pci_setup)(si_t *sih, uint coremask)
 {
 	const si_info_t *sii = SI_INFO(sih);
 	sbpciregs_t *pciregs = NULL;
@@ -6220,7 +6223,7 @@ si_pci_setup(si_t *sih, uint coremask)
 
 /* In NIC mode is there any better way to find out what ARM core is there? */
 static uint
-si_get_armcoreidx(si_t *sih)
+BCMATTACHFN(si_get_armcoreidx)(si_t *sih)
 {
 	uint saveidx = si_coreidx(sih);
 	uint coreidx = BADIDX;
@@ -6240,7 +6243,7 @@ si_get_armcoreidx(si_t *sih)
  * coreidx is the index of the core to be enabled.
  */
 int
-si_pcie_setup(si_t *sih, uint coreidx)
+BCMATTACHFN(si_pcie_setup)(si_t *sih, uint coreidx)
 {
 	int main_intr, alt_intr;
 	uint pciepidx;
@@ -6364,7 +6367,7 @@ si_pcieltrenable(const si_t *sih, uint32 mask, uint32 val)
 }
 
 uint8
-si_pcieobffenable(const si_t *sih, uint32 mask, uint32 val)
+BCMATTACHFN(si_pcieobffenable)(const si_t *sih, uint32 mask, uint32 val)
 {
 	const si_info_t *sii = SI_INFO(sih);
 
@@ -6847,7 +6850,7 @@ si_gpioevent(si_t *sih, uint regtype, uint32 mask, uint32 val)
 }
 
 uint32
-si_gpio_int_enable(si_t *sih, bool enable)
+BCMATTACHFN(si_gpio_int_enable)(si_t *sih, bool enable)
 {
 	uint offs;
 
@@ -6932,6 +6935,7 @@ si_gci_shif_config_wake_pin(si_t *sih, uint8 gpio_n, uint8 wake_events,
 						gci_wakset, gci_wakset);
 				break;
 			}
+		case BCM4385_CHIP_GRPID :
 		case BCM4387_CHIP_GRPID :
 			{
 				if (!gci_gpio) {
@@ -7773,7 +7777,7 @@ bool si_seci_clk_force_status(si_t *sih)
 
 /** SECI Init routine, pass in seci_mode */
 volatile void *
-si_seci_init(si_t *sih, uint8  seci_mode)
+BCMINITFN(si_seci_init)(si_t *sih, uint8  seci_mode)
 {
 	uint32 origidx = 0;
 	uint32 offset;
@@ -7927,7 +7931,7 @@ si_seci_init(si_t *sih, uint8  seci_mode)
 
 /** Query OTP to see if FM is disabled */
 static int
-si_query_FMDisabled_from_OTP(si_t *sih, uint16 *FMDisabled)
+BCMINITFN(si_query_FMDisabled_from_OTP)(si_t *sih, uint16 *FMDisabled)
 {
 	int error = BCME_OK;
 	uint bitoff = 0;
@@ -7980,7 +7984,7 @@ si_sraon(const si_t *sih)
 
 /** ECI Init routine */
 int
-si_eci_init(si_t *sih)
+BCMINITFN(si_eci_init)(si_t *sih)
 {
 	uint32 origidx = 0;
 	const si_info_t *sii;
@@ -8107,7 +8111,7 @@ seci_restore_coreidx(si_t *sih, uint32 origidx, bool fast)
 }
 
 void
-si_seci_down(si_t *sih)
+BCMINITFN(si_seci_down)(si_t *sih)
 {
 	uint32 origidx;
 	bool fast;
@@ -8190,7 +8194,7 @@ exit:
 }
 
 void *
-si_gci_init(si_t *sih)
+BCMINITFN(si_gci_init)(si_t *sih)
 {
 #ifdef HNDGCI
 	const si_info_t *sii = SI_INFO(sih);
@@ -8476,9 +8480,9 @@ si_is_sprom_available(si_t *sih)
 		return (sih->chipst & CST4362_SPROM_PRESENT) != 0;
 	case BCM4378_CHIP_GRPID:
 		return (sih->chipst & CST4378_SPROM_PRESENT) != 0;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		return (sih->chipst & CST4387_SPROM_PRESENT) != 0;
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		/* 4389 supports only OTP */
 		return FALSE;
@@ -8632,11 +8636,11 @@ si_cis_source(const si_t *sih)
 		if (sih->chipst & CST4378_SPROM_PRESENT)
 			return CIS_SROM;
 		return CIS_OTP;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		if (sih->chipst & CST4387_SPROM_PRESENT)
 			return CIS_SROM;
 		return CIS_OTP;
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		/* 4389 supports only OTP */
 		return CIS_OTP;
@@ -8645,7 +8649,7 @@ si_cis_source(const si_t *sih)
 	}
 }
 
-uint16 si_fabid(si_t *sih)
+uint16 BCMATTACHFN(si_fabid)(si_t *sih)
 {
 	uint32 data;
 	uint16 fabid = 0;
@@ -8687,7 +8691,7 @@ uint16 si_fabid(si_t *sih)
 }
 #endif /* !defined(BCMDONGLEHOST) */
 
-uint32 si_get_sromctl(si_t *sih)
+uint32 BCMATTACHFN(si_get_sromctl)(si_t *sih)
 {
 	chipcregs_t *cc;
 	uint origidx = si_coreidx(sih);
@@ -8704,7 +8708,7 @@ uint32 si_get_sromctl(si_t *sih)
 	return sromctl;
 }
 
-int si_set_sromctl(si_t *sih, uint32 value)
+int BCMATTACHFN(si_set_sromctl)(si_t *sih, uint32 value)
 {
 	chipcregs_t *cc;
 	uint origidx = si_coreidx(sih);
@@ -9376,7 +9380,7 @@ si_clear_backplane_to(si_t *sih)
 }
 
 void
-si_update_backplane_timeouts(const si_t *sih, bool enable, uint32 timeout_exp,
+BCMATTACHFN(si_update_backplane_timeouts)(const si_t *sih, bool enable, uint32 timeout_exp,
 	uint32 cid)
 {
 #if defined(AXI_TIMEOUTS) || defined(BCM_BACKPLANE_TIMEOUT)
@@ -9585,7 +9589,7 @@ si_config_4364_d11_oob(si_t *sih, uint coreid)
 }
 
 void
-si_pll_closeloop(si_t *sih)
+BCMATTACHFN(si_pll_closeloop)(si_t *sih)
 {
 #if !defined(BCMDONGLEHOST) && !defined(DONGLEBUILD) || defined(SAVERESTORE)
 	uint32 data;
@@ -9875,7 +9879,7 @@ si_get_ccidiv(const si_t *sih)
 }
 #ifdef DONGLEBUILD
 uint32
-si_wrapper_dump_buf_size(const si_t *sih)
+BCMATTACHFN(si_wrapper_dump_buf_size)(const si_t *sih)
 {
 	if (CHIPTYPE(sih->socitype) == SOCI_AI)
 		return ai_wrapper_dump_buf_size(sih);
@@ -10295,7 +10299,7 @@ si_hib_ext_wakeup_isenab(const si_t *sih)
 }
 
 static void
-si_oob_war_BT_F1(si_t *sih)
+BCMATTACHFN(si_oob_war_BT_F1)(si_t *sih)
 {
 	uint origidx = si_coreidx(sih);
 	volatile void *regs;
@@ -10652,10 +10656,26 @@ BCMRAMFN(si_scan_core_present)(const si_t *sih)
 		(si_numcoreunits(sih, SR_CORE_ID) > 4));
 }
 
+#if !defined(BCMDONGLEHOST)
+bool
+si_btc_bt_status_in_reset(si_t *sih)
+{
+	return !((si_gci_chipstatus(sih, GCI_CHIPSTATUS_04) >>
+		BT_IN_RESET_BIT_SHIFT) & 0x1);
+}
+
+bool
+si_btc_bt_status_in_pds(si_t *sih)
+{
+	return ((si_gci_chipstatus(sih, GCI_CHIPSTATUS_04) >>
+		BT_IN_PDS_BIT_SHIFT) & 0x1);
+}
+#endif /* !defined(BCMDONGLEHOST) */
+
 #ifndef BCMDONGLEHOST
 /* query d11 core type */
 uint
-si_core_d11_type(si_t *sih, uint coreunit)
+BCMATTACHFN(si_core_d11_type)(si_t *sih, uint coreunit)
 {
 #ifdef WL_SCAN_CORE_SIM
 	/* use the core unit WL_SCAN_CORE_SIM as the scan core */
@@ -10681,7 +10701,7 @@ si_core_d11_type(si_t *sih, uint coreunit)
 
 /* decide if this core is allowed by the package option or not... */
 bool
-si_pkgopt_d11_allowed(si_t *sih, uint coreunit)
+BCMATTACHFN(si_pkgopt_d11_allowed)(si_t *sih, uint coreunit)
 {
 	uint coreidx;
 	volatile void *regs;

@@ -240,7 +240,7 @@ getintvararraysize_internal(char *vars, const char *name)
  * Pass in NULL for the dest_array[12] that is not to be used.
  */
 static int
-getintvararray_slicespecific(osl_t *osh, char *vars, char *vars_table_accessor,
+BCMATTACHFN(getintvararray_slicespecific)(osl_t *osh, char *vars, char *vars_table_accessor,
 	const char* name, uint8* dest_array1, int16* dest_array2, uint dest_size)
 {
 	uint i;
@@ -293,7 +293,7 @@ done:
 }
 
 int
-get_uint8_vararray_slicespecific(osl_t *osh, char *vars, char *vars_table_accessor,
+BCMATTACHFN(get_uint8_vararray_slicespecific)(osl_t *osh, char *vars, char *vars_table_accessor,
 	const char* name, uint8* dest_array, uint dest_size)
 {
 	int ret;
@@ -304,7 +304,7 @@ get_uint8_vararray_slicespecific(osl_t *osh, char *vars, char *vars_table_access
 }
 
 int
-get_int16_vararray_slicespecific(osl_t *osh, char *vars, char *vars_table_accessor,
+BCMATTACHFN(get_int16_vararray_slicespecific)(osl_t *osh, char *vars, char *vars_table_accessor,
 	const char* name, int16* dest_array, uint dest_size)
 {
 	return getintvararray_slicespecific(osh, vars, vars_table_accessor,
@@ -316,7 +316,7 @@ get_int16_vararray_slicespecific(osl_t *osh, char *vars, char *vars_table_access
  * Caller is responsible for freeing the resulting name string with MFREE.
  */
 uint
-get_slicespecific_var_name(osl_t *osh, char *vars_table_accessor, const char *name,
+BCMATTACHFN(get_slicespecific_var_name)(osl_t *osh, char *vars_table_accessor, const char *name,
 	char **name_out)
 {
 	char *name_with_prefix = NULL;
@@ -403,7 +403,7 @@ getgpiopin(char *vars, char *pin_name, uint def_pin)
 }
 
 static void
-bcm_nvram_refresh(char *flash)
+BCMATTACHFN(bcm_nvram_refresh)(char *flash)
 {
 	int i;
 	int ret = 0;
@@ -429,7 +429,7 @@ bcm_nvram_refresh(char *flash)
 }
 
 char *
-bcm_nvram_vars(uint *length)
+BCMATTACHFN(bcm_nvram_vars)(uint *length)
 {
 #ifndef BCMNVRAMR
 	/* cache may be stale if nvram is read/write */
@@ -445,7 +445,7 @@ bcm_nvram_vars(uint *length)
 
 /* copy nvram vars into locally-allocated multi-string array */
 int
-bcm_nvram_cache(void *sih)
+BCMATTACHFN(bcm_nvram_cache)(void *sih)
 {
 	int ret = 0;
 	void *osh;
@@ -510,6 +510,19 @@ BCMFASTPATH(pkttotlen)(osl_t *osh, void *p)
 	}
 
 	return (total);
+}
+
+/* return total length of buffer chain */
+uint
+BCMFASTPATH(pkttotcnt)(osl_t *osh, void *p)
+{
+	uint cnt = 0;
+
+	for (; p; p = PKTNEXT(osh, p)) {
+		cnt++;
+	}
+
+	return (cnt);
 }
 
 /* return the last buffer of chained pkt */
@@ -645,7 +658,7 @@ pktfrombuf(osl_t *osh, void *p, uint offset, uint len, uchar *buf)
 	return ret;
 }
 
-#ifdef NOTYET
+#ifdef NOT_YET
 /* copy data from one pkt buffer (chain) to another */
 uint
 pkt2pktcopy(osl_t *osh, void *p1, uint offs1, void *p2, uint offs2, uint maxlen)
@@ -666,7 +679,7 @@ pkt2pktcopy(osl_t *osh, void *p1, uint offs1, void *p2, uint offs2, uint maxlen)
 
 	/* Heck w/it, only need the above for now */
 }
-#endif /* NOTYET */
+#endif /* NOT_YET */
 
 uint8 *
 BCMFASTPATH(pktdataoffset)(osl_t *osh, void *p,  uint offset)
@@ -1708,7 +1721,7 @@ typedef struct bcm_mwbmap {     /* Hierarchical multiword bitmap allocator    */
 
 /* Incarnate a hierarchical multiword bitmap based small index allocator. */
 struct bcm_mwbmap *
-bcm_mwbmap_init(osl_t *osh, uint32 items_max)
+BCMATTACHFN(bcm_mwbmap_init)(osl_t *osh, uint32 items_max)
 {
 	struct bcm_mwbmap * mwbmap_p;
 	uint32 wordix, size, words, extra;
@@ -1782,7 +1795,7 @@ error1:
 
 /* Release resources used by multiword bitmap based small index allocator. */
 void
-bcm_mwbmap_fini(osl_t * osh, struct bcm_mwbmap * mwbmap_hdl)
+BCMATTACHFN(bcm_mwbmap_fini)(osl_t * osh, struct bcm_mwbmap * mwbmap_hdl)
 {
 	bcm_mwbmap_t * mwbmap_p;
 
@@ -2372,7 +2385,7 @@ done:
 /* END: Simple id16 allocator */
 
 void
-dll_pool_detach(void * osh, dll_pool_t * pool, uint16 elems_max, uint16 elem_size)
+BCMATTACHFN(dll_pool_detach)(void * osh, dll_pool_t * pool, uint16 elems_max, uint16 elem_size)
 {
 	uint32 mem_size;
 	mem_size = sizeof(dll_pool_t) + (elems_max * elem_size);
@@ -2380,7 +2393,7 @@ dll_pool_detach(void * osh, dll_pool_t * pool, uint16 elems_max, uint16 elem_siz
 		MFREE(osh, pool, mem_size);
 }
 dll_pool_t *
-dll_pool_init(void * osh, uint16 elems_max, uint16 elem_size)
+BCMATTACHFN(dll_pool_init)(void * osh, uint16 elems_max, uint16 elem_size)
 {
 	uint32 mem_size, i;
 	dll_pool_t * dll_pool_p;
@@ -4051,7 +4064,7 @@ hndcrc32(const uint8 *pdata, uint nbytes, uint32 crc)
 	return crc;
 }
 
-#ifdef notdef
+#ifdef NOT_YET
 #define CLEN	1499	/*  CRC Length */
 #define CBUFSIZ		(CLEN+4)
 #define CNBUFS		5 /* # of bufs */
@@ -4085,7 +4098,7 @@ testcrc32(void)
 	MFREE(buf, CBUFSIZ*CNBUFS);
 	return;
 }
-#endif /* notdef */
+#endif /* NOT_YET */
 
 /*
  * Advance from the current 1-byte tag/1-byte length/variable-length value
@@ -5544,7 +5557,7 @@ BCMRAMFN(bcm_ether_privacy_mask)(struct ether_addr *addr)
 
 /* Count the number of elements not matching a given value in a null terminated array */
 int
-array_value_mismatch_count(uint8 value, uint8 *array, int array_size)
+BCMATTACHFN(array_value_mismatch_count)(uint8 value, uint8 *array, int array_size)
 {
 	int i;
 	int count = 0;
@@ -5563,14 +5576,14 @@ array_value_mismatch_count(uint8 value, uint8 *array, int array_size)
 
 /* Count the number of non-zero elements in an uint8 array */
 int
-array_nonzero_count(uint8 *array, int array_size)
+BCMATTACHFN(array_nonzero_count)(uint8 *array, int array_size)
 {
 	return array_value_mismatch_count(0, array, array_size);
 }
 
 /* Count the number of non-zero elements in an int16 array */
 int
-array_nonzero_count_int16(int16 *array, int array_size)
+BCMATTACHFN(array_nonzero_count_int16)(int16 *array, int array_size)
 {
 	int i;
 	int count = 0;
@@ -5585,7 +5598,7 @@ array_nonzero_count_int16(int16 *array, int array_size)
 
 /* Count the number of zero elements in an uint8 array */
 int
-array_zero_count(uint8 *array, int array_size)
+BCMATTACHFN(array_zero_count)(uint8 *array, int array_size)
 {
 	int i;
 	int count = 0;
@@ -5602,7 +5615,7 @@ array_zero_count(uint8 *array, int array_size)
  * One of array1 or array2 should be non-NULL.  The other should be NULL.
  */
 static int
-verify_ordered_array(uint8 *array1, int16 *array2, int array_size,
+BCMATTACHFN(verify_ordered_array)(uint8 *array1, int16 *array2, int array_size,
 	int range_lo, int range_hi, bool err_if_no_zero_term, bool is_ordered)
 {
 	int ret;
@@ -5650,7 +5663,7 @@ verify_ordered_array(uint8 *array1, int16 *array2, int array_size,
 
 /* Validate an ordered uint8 configuration array */
 int
-verify_ordered_array_uint8(uint8 *array, int array_size,
+BCMATTACHFN(verify_ordered_array_uint8)(uint8 *array, int array_size,
 	uint8 range_lo, uint8 range_hi)
 {
 	return verify_ordered_array(array, NULL, array_size, (int)range_lo, (int)range_hi,
@@ -5659,7 +5672,7 @@ verify_ordered_array_uint8(uint8 *array, int array_size,
 
 /* Validate an ordered int16 non-zero-terminated configuration array */
 int
-verify_ordered_array_int16(int16 *array, int array_size,
+BCMATTACHFN(verify_ordered_array_int16)(int16 *array, int array_size,
 	int16 range_lo, int16 range_hi)
 {
 	return verify_ordered_array(NULL, array, array_size, (int)range_lo, (int)range_hi,
@@ -5668,7 +5681,7 @@ verify_ordered_array_int16(int16 *array, int array_size,
 
 /* Validate all values in an array are in range */
 int
-verify_array_values(uint8 *array, int array_size,
+BCMATTACHFN(verify_array_values)(uint8 *array, int array_size,
 	int range_lo, int range_hi, bool zero_terminated)
 {
 	int ret = BCME_OK;
@@ -5741,7 +5754,7 @@ replace_nvram_variable(char *varbuf, unsigned int buflen, const char *variable,
 #if !defined(BCMDONGLEHOST)
 /** Initialization of varbuf structure */
 void
-varbuf_init(varbuf_t *b, char *buf, uint size)
+BCMATTACHFN(varbuf_init)(varbuf_t *b, char *buf, uint size)
 {
 	b->size = size;
 	b->base = b->buf = buf;
@@ -5749,7 +5762,7 @@ varbuf_init(varbuf_t *b, char *buf, uint size)
 
 /** append a null terminated var=value string */
 int
-varbuf_append(varbuf_t *b, const char *fmt, ...)
+BCMATTACHFN(varbuf_append)(varbuf_t *b, const char *fmt, ...)
 {
 	va_list ap;
 	int r;
@@ -5806,7 +5819,7 @@ varbuf_append(varbuf_t *b, const char *fmt, ...)
  * Return 0 on success, nonzero on error.
  */
 int
-initvars_table(osl_t *osh, char *start, char *end, char **vars,
+BCMATTACHFN(initvars_table)(osl_t *osh, char *start, char *end, char **vars,
 	uint *count)
 {
 	int c = (int)(end - start);

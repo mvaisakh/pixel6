@@ -129,8 +129,8 @@ extern bool bcm_postattach_part_reclaimed;
 #define POSTATTACH_PART_RECLAIMED()	(bcm_postattach_part_reclaimed)
 
 /* Place _fn/_data symbols in various reclaimed output sections */
-#define _data	__attribute__ ((__section__ (".dataini2." #_data))) _data
-#define _fn	__attribute__ ((__section__ (".textini2." #_fn), noinline)) _fn
+#define BCMATTACHDATA(_data)	__attribute__ ((__section__ (".dataini2." #_data))) _data
+#define BCMATTACHFN(_fn)	__attribute__ ((__section__ (".textini2." #_fn), noinline)) _fn
 #define BCMPREATTACHDATA(_data)	__attribute__ ((__section__ (".dataini3." #_data))) _data
 #define BCMPREATTACHFN(_fn)	__attribute__ ((__section__ (".textini3." #_fn), noinline)) _fn
 #define BCMPOSTATTACHDATA(_data)	__attribute__ ((__section__ (".dataini5." #_data))) _data
@@ -154,20 +154,20 @@ extern bool bcm_postattach_part_reclaimed;
 #else
 #define BCMPREATTACHDATASR(_data)	BCMPREATTACHDATA(_data)
 #define BCMPREATTACHFNSR(_fn)		BCMPREATTACHFN(_fn)
-#define BCMATTACHDATASR(_data)		_data
-#define BCMATTACHFNSR(_fn)		_fn
+#define BCMATTACHDATASR(_data)		BCMATTACHDATA(_data)
+#define BCMATTACHFNSR(_fn)		BCMATTACHFN(_fn)
 #endif // endif
 
-#define _data	_data
-#define _fn		_fn
+#define BCMINITDATA(_data)	_data
+#define BCMINITFN(_fn)		_fn
 #ifndef CONST
 #define CONST	const
 #endif // endif
 
 /* Non-manufacture or internal attach function/dat */
 #if !defined(WLTEST)
-#define	BCMNMIATTACHFN(_fn)	_fn
-#define	BCMNMIATTACHDATA(_data)	_data
+#define	BCMNMIATTACHFN(_fn)	BCMATTACHFN(_fn)
+#define	BCMNMIATTACHDATA(_data)	BCMATTACHDATA(_data)
 #else
 #define	BCMNMIATTACHFN(_fn)	_fn
 #define	BCMNMIATTACHDATA(_data)	_data
@@ -211,7 +211,7 @@ extern bool bcm_postattach_part_reclaimed;
 #define	BCMSROMCISDUMPATTACHDATA(_data)	BCMSROMATTACHDATA(_data)
 #endif /* BCM_CISDUMP_NO_RECLAIM */
 
-#define _fn	_fn
+#define BCMUNINITFN(_fn)	_fn
 
 #else /* BCM_RECLAIM */
 
@@ -219,8 +219,8 @@ extern bool bcm_postattach_part_reclaimed;
 #define bcm_attach_part_reclaimed	(1)
 #define bcm_preattach_part_reclaimed	(1)
 #define bcm_postattach_part_reclaimed	(1)
-#define _data		_data
-#define _fn		_fn
+#define BCMATTACHDATA(_data)		_data
+#define BCMATTACHFN(_fn)		_fn
 #define BCM_SRM_ATTACH_DATA(_data)	_data
 #define BCM_SRM_ATTACH_FN(_fn)		_fn
 /* BCMRODATA data is written into at attach time so it cannot be in .rodata */
@@ -229,9 +229,9 @@ extern bool bcm_postattach_part_reclaimed;
 #define BCMPREATTACHFN(_fn)		_fn
 #define BCMPOSTATTACHDATA(_data)	_data
 #define BCMPOSTATTACHFN(_fn)		_fn
-#define _data		_data
-#define _fn			_fn
-#define _fn		_fn
+#define BCMINITDATA(_data)		_data
+#define BCMINITFN(_fn)			_fn
+#define BCMUNINITFN(_fn)		_fn
 #define	BCMNMIATTACHFN(_fn)		_fn
 #define	BCMNMIATTACHDATA(_data)		_data
 #define	BCMSROMATTACHFN(_fn)		_fn
@@ -255,13 +255,13 @@ extern bool bcm_postattach_part_reclaimed;
 
 #endif /* BCM_RECLAIM */
 
-#define BCMUCODEDATA(_data)		_data
+#define BCMUCODEDATA(_data)		BCMINITDATA(_data)
 
 #if defined(BCM_AQM_DMA_DESC) && !defined(BCM_AQM_DMA_DESC_DISABLED) && \
 	!defined(DONGLEBUILD)
-#define BCMUCODEFN(_fn)			_fn
+#define BCMUCODEFN(_fn)			BCMINITFN(_fn)
 #else
-#define BCMUCODEFN(_fn)			_fn
+#define BCMUCODEFN(_fn)			BCMATTACHFN(_fn)
 #endif /* BCM_AQM_DMA_DESC */
 
 /* This feature is for dongle builds only.
@@ -670,18 +670,7 @@ extern bool _sdiodevenab;
 
 extern uint32 gFWID;
 
-#ifdef BCMFRWDPKT /* BCMFRWDPKT support enab macros  */
-	extern bool _bcmfrwdpkt;
-	#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
-		#define BCMFRWDPKT_ENAB() (_bcmfrwdpkt)
-	#elif defined(BCMFRWDPKT_DISABLED)
-		#define BCMFRWDPKT_ENAB()	(0)
-	#else
-		#define BCMFRWDPKT_ENAB()	(1)
-	#endif
-#else
 	#define BCMFRWDPKT_ENAB()		(0)
-#endif /* BCMFRWDPKT */
 
 #ifdef BCMFRWDPOOLREORG /* BCMFRWDPOOLREORG support enab macros  */
 	extern bool _bcmfrwdpoolreorg;

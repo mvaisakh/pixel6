@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: osl.h 813832 2019-04-08 15:31:18Z $
+ * $Id: osl.h 821203 2019-05-22 18:11:44Z $
  */
 
 #ifndef _osl_h_
@@ -380,6 +380,13 @@ do { \
 #define MEMCHECK(f, l)	osl_memcheck(f, l)
 #else
 #define MEMCHECK(f, l)
+#endif /* OSL_MEMCHECK */
+
+#ifndef BCMDBGPERF
+#define PERF_TRACE_START(id)			do {} while (0)
+#define PERF_TRACE_END(id)			do {} while (0)
+#define PERF_TRACE_END2(id, mycounters)		do {} while (0)
+#define UPDATE_PERF_TRACE_COUNTER(counter, val)	do {} while (0)
 #endif /* OSL_MEMCHECK */
 
 #endif	/* _osl_h_ */

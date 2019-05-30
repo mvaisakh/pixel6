@@ -67,7 +67,7 @@ typedef struct {
  *   entries must have non-NULL name.
  */
 #if !defined(SROM15_MEMOPT)
-static const sromvar_t pci_sromvars[] = {
+static const sromvar_t BCMATTACHDATA(pci_sromvars)[] = {
 /*	name		revmask		flags		off			mask */
 #if defined(BCMPCIEDEV) && defined(BCMPCIEDEV_ENABLED)
 	{"devid",	0xffffff00,	SRFL_PRHEX, SROM_DEVID_PCIE,		0xffff},
@@ -880,7 +880,7 @@ static const sromvar_t pci_sromvars[] = {
 };
 #endif /* !defined(SROM15_MEMOPT) */
 
-static const sromvar_t pci_srom15vars[] = {
+static const sromvar_t BCMATTACHDATA(pci_srom15vars)[] = {
 	{"macaddr",	0x00008000,	SRFL_ETHADDR,		SROM15_MACHI,	0xffff},
 	{"caldata_offset", 0x00008000, 0, SROM15_CAL_OFFSET_LOC, 0xffff},
 	{"boardrev", 0x00008000, SRFL_PRHEX, SROM15_BRDREV, 0xffff},
@@ -889,7 +889,7 @@ static const sromvar_t pci_srom15vars[] = {
 	{NULL,		0,		0,		0,			0}
 };
 
-static const sromvar_t pci_srom16vars[] = {
+static const sromvar_t BCMATTACHDATA(pci_srom16vars)[] = {
 	{"macaddr",		0x00010000,	SRFL_ETHADDR,	SROM16_MACHI,		0xffff},
 	{"caldata_offset",	0x00010000,	0,	SROM16_CALDATA_OFFSET_LOC,	0xffff},
 	{"boardrev", 0x00010000,	SRFL_PRHEX,		SROM16_BOARDREV,	0xffff},
@@ -898,7 +898,7 @@ static const sromvar_t pci_srom16vars[] = {
 	{NULL,			0,		0,		0,			0}
 };
 
-static const sromvar_t pci_srom17vars[] = {
+static const sromvar_t BCMATTACHDATA(pci_srom17vars)[] = {
 	{"boardrev",	0x00020000,	SRFL_PRHEX,	SROM17_BRDREV,		0xffff},
 	{"macaddr",	0x00020000,	SRFL_ETHADDR,	SROM17_MACADDR,		0xffff},
 	{"ccode",		0x00020000,	SRFL_CCODE,	SROM17_CCODE,		0xffff},
@@ -930,7 +930,7 @@ static const sromvar_t pci_srom17vars[] = {
 	{NULL,		0,		0,		0,			0x00}
 };
 
-static const sromvar_t pci_srom18vars[] = {
+static const sromvar_t BCMATTACHDATA(pci_srom18vars)[] = {
 	{"macaddr",		0x00040000,	SRFL_ETHADDR,	SROM18_MACHI,		0xffff},
 	{"caldata_offset",	0x00040000,	0,	SROM18_CALDATA_OFFSET_LOC,	0xffff},
 	{"boardrev",		0x00040000,	SRFL_PRHEX,	SROM18_BOARDREV,	0xffff},
@@ -939,7 +939,7 @@ static const sromvar_t pci_srom18vars[] = {
 	{NULL,			0,		0,		0,			0}
 };
 
-static const sromvar_t perpath_pci_sromvars[] = {
+static const sromvar_t BCMATTACHDATA(perpath_pci_sromvars)[] = {
 	{"maxp2ga",	0x000000f0,	0,		SROM4_2G_ITT_MAXP,	0x00ff},
 	{"itt2ga",	0x000000f0,	0,		SROM4_2G_ITT_MAXP,	0xff00},
 	{"itt5ga",	0x000000f0,	0,		SROM4_5G_ITT_MAXP,	0xff00},

@@ -120,7 +120,7 @@ typedef struct dhd_info {
 #endif /* DHD_USE_SCAN_WAKELOCK */
 #endif /* CONFIG_HAS_WAKELOCK && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
 	/* net_device interface lock, prevent race conditions among net_dev interface
 	 * calls and wifi_on or wifi_off
 	 */
@@ -382,12 +382,6 @@ typedef struct dhd_info {
 	bool duart_execute;
 #endif	/* DHD_DEBUG_UART */
 	struct mutex logdump_lock;
-	#if defined(GDB_PROXY) && defined(PCIE_FULL_DONGLE) && defined(BCMINTERNAL)
-	/* Root directory for GDB Proxy's (proc)fs files, used by first (default) interface */
-	struct proc_dir_entry *gdb_proxy_fs_root;
-	/* Name of procfs root directory */
-	char gdb_proxy_fs_root_name[100];
-#endif // endif
 #if defined(DHD_MQ) && defined(DHD_MQ_STATS)
 	uint64 pktcnt_qac_histo[MQ_MAX_QUEUES][AC_COUNT];
 	uint64 pktcnt_per_ac[AC_COUNT];
@@ -398,9 +392,6 @@ typedef struct dhd_info {
 	/* indicates sssrdump is called directly instead of scheduling work queue */
 	bool no_wq_sssrdump;
 	struct work_struct dhd_hang_process_work;
-#ifdef DHD_HP2P
-	spinlock_t	hp2p_lock;
-#endif /* DHD_HP2P */
 } dhd_info_t;
 
 #ifdef WL_MONITOR

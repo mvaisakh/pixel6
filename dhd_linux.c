@@ -233,10 +233,6 @@ static int dhd_wait_for_file_dump(dhd_pub_t *dhdp);
 static void dhd_blk_tsfl_handler(struct work_struct * work);
 #endif /* DHDTCPSYNC_FLOOD_BLK */
 
-#ifdef WL_NATOE
-#include <dhd_linux_nfct.h>
-#endif /* WL_NATOE */
-
 #ifdef SET_RANDOM_MAC_SOFTAP
 #ifndef CONFIG_DHD_SET_RANDOM_MAC_VAL
 #define CONFIG_DHD_SET_RANDOM_MAC_VAL	0x001A11
@@ -308,9 +304,7 @@ volatile bool dhd_mmc_suspend = FALSE;
 DECLARE_WAIT_QUEUE_HEAD(dhd_dpc_wait);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP) */
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 extern void dhd_enable_oob_intr(struct dhd_bus *bus, bool enable);
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 static void dhd_hang_process(struct work_struct *work_data);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0))
 MODULE_LICENSE("GPL and additional rights");
@@ -540,10 +534,6 @@ static void dhd_set_mcast_list_handler(void *handle, void *event_info, u8 event)
 #ifdef BCM_ROUTER_DHD
 static void dhd_inform_dhd_monitor_handler(void *handle, void *event_info, u8 event);
 #endif // endif
-#ifdef WL_NATOE
-static void dhd_natoe_ct_event_hanlder(void *handle, void *event_info, u8 event);
-static void dhd_natoe_ct_ioctl_handler(void *handle, void *event_info, uint8 event);
-#endif /* WL_NATOE */
 
 #if defined(CONFIG_IPV6) && defined(IPV6_NDO_SUPPORT)
 static void dhd_inet6_work_handler(void *dhd_info, void *event_data, u8 event);
@@ -896,6 +886,10 @@ module_param(qt_flr_reset, int, 0);
 int qt_dngl_timeout = 0; // dongle attach timeout in ms
 module_param(qt_dngl_timeout, int, 0);
 #endif /* BCMQT_HW */
+
+/* TCM verification flag */
+uint dhd_tcm_test_enable = FALSE;
+module_param(dhd_tcm_test_enable, uint, 0644);
 
 extern char dhd_version[];
 extern char fw_version[];
@@ -1806,6 +1800,18 @@ exit:
 	return _apply;
 }
 #endif /* !GAN_LITE_NAT_KEEPALIVE_FILTER */
+
+void
+dhd_generate_mac_addr(struct ether_addr *ea_addr)
+{
+	RANDOM_BYTES(ea_addr->octet, ETHER_ADDR_LEN);
+	/* restore mcast and local admin bits to 0 and 1 */
+	ETHER_SET_UNICAST(ea_addr->octet);
+	ETHER_SET_LOCALADDR(ea_addr->octet);
+	DHD_ERROR(("%s:generated new MAC="MACDBG" \n",
+		__FUNCTION__, MAC2STRDBG(ea_addr->octet)));
+	return;
+}
 
 void
 dhd_set_packet_filter(dhd_pub_t *dhd)
@@ -8324,6 +8330,14 @@ dhd_pri_stop(struct net_device *net)
 	return ret;
 }
 
+#ifdef WL_CFG80211
+bool
+dhd_cfg80211_check_in_progress(dhd_pub_t *dhdp)
+{
+	return wl_cfg80211_check_in_progress(dhd_linux_get_primary_netdev(dhdp));
+}
+#endif /* WL_CFG80211 */
+
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 /*
  * For static I/Fs, the firmware interface init
@@ -8511,101 +8525,6 @@ dhd_event_ifchange(dhd_info_t *dhdinfo, wl_event_data_if_t *ifevent, char *name,
 #endif /* WL_CFG80211 */
 	return BCME_OK;
 }
-
-#ifdef WL_NATOE
-/* Handler to update natoe info and bind with new subscriptions if there is change in config */
-static void
-dhd_natoe_ct_event_hanlder(void *handle, void *event_info, u8 event)
-{
-	dhd_info_t *dhd = handle;
-	wl_event_data_natoe_t *natoe = event_info;
-	dhd_nfct_info_t *nfct = dhd->pub.nfct;
-
-	if (event != DHD_WQ_WORK_NATOE_EVENT) {
-		DHD_ERROR(("%s: unexpected event \n", __FUNCTION__));
-		return;
-	}
-
-	if (!dhd) {
-		DHD_ERROR(("%s: dhd info not available \n", __FUNCTION__));
-		return;
-	}
-	if (natoe->natoe_active && natoe->sta_ip && natoe->start_port && natoe->end_port &&
-			(natoe->start_port < natoe->end_port)) {
-		/* Rebind subscriptions to start receiving notifications from groups */
-		if (dhd_ct_nl_bind(nfct, nfct->subscriptions) < 0) {
-			dhd_ct_close(nfct);
-		}
-		dhd_ct_send_dump_req(nfct);
-	} else if (!natoe->natoe_active) {
-		/* Rebind subscriptions to stop receiving notifications from groups */
-		if (dhd_ct_nl_bind(nfct, CT_NULL_SUBSCRIPTION) < 0) {
-			dhd_ct_close(nfct);
-		}
-	}
-}
-
-/* As NATOE enable/disbale event is received, we have to bind with new NL subscriptions.
- * Scheduling workq to switch from tasklet context as bind call may sleep in handler
- */
-int
-dhd_natoe_ct_event(dhd_pub_t *dhd, char *data)
-{
-	wl_event_data_natoe_t *event_data = (wl_event_data_natoe_t *)data;
-
-	if (dhd->nfct) {
-		wl_event_data_natoe_t *natoe = dhd->nfct->natoe_info;
-		uint8 prev_enable = natoe->natoe_active;
-
-		spin_lock_bh(&dhd->nfct_lock);
-		memcpy(natoe, event_data, sizeof(*event_data));
-		spin_unlock_bh(&dhd->nfct_lock);
-
-		if (prev_enable != event_data->natoe_active) {
-			dhd_deferred_schedule_work(dhd->info->dhd_deferred_wq,
-					(void *)natoe, DHD_WQ_WORK_NATOE_EVENT,
-					dhd_natoe_ct_event_hanlder, DHD_WQ_WORK_PRIORITY_LOW);
-		}
-		return BCME_OK;
-	}
-	DHD_ERROR(("%s ERROR NFCT is not enabled \n", __FUNCTION__));
-	return BCME_ERROR;
-}
-
-/* Handler to send natoe ioctl to dongle */
-static void
-dhd_natoe_ct_ioctl_handler(void *handle, void *event_info, uint8 event)
-{
-	dhd_info_t *dhd = handle;
-	dhd_ct_ioc_t *ct_ioc = event_info;
-
-	if (event != DHD_WQ_WORK_NATOE_IOCTL) {
-		DHD_ERROR(("%s: unexpected event \n", __FUNCTION__));
-		return;
-	}
-
-	if (!dhd) {
-		DHD_ERROR(("%s: dhd info not available \n", __FUNCTION__));
-		return;
-	}
-
-	if (dhd_natoe_prep_send_exception_port_ioctl(&dhd->pub, ct_ioc) < 0) {
-		DHD_ERROR(("%s: Error in sending NATOE IOCTL \n", __FUNCTION__));
-	}
-}
-
-/* When Netlink message contains port collision info, the info must be sent to dongle FW
- * For that we have to switch context from softirq/tasklet by scheduling workq for natoe_ct ioctl
- */
-void
-dhd_natoe_ct_ioctl_schedule_work(dhd_pub_t *dhd, dhd_ct_ioc_t *ioc)
-{
-
-	dhd_deferred_schedule_work(dhd->info->dhd_deferred_wq, (void *)ioc,
-			DHD_WQ_WORK_NATOE_IOCTL, dhd_natoe_ct_ioctl_handler,
-			DHD_WQ_WORK_PRIORITY_HIGH);
-}
-#endif /* WL_NATOE */
 
 /* This API maps ndev to ifp inclusive of static IFs */
 static dhd_if_t *
@@ -8812,7 +8731,8 @@ dhd_allocate_if(dhd_pub_t *dhdpub, int ifidx, const char *name,
 	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 9))
-	ifp->net->needs_free_netdev = 1;
+	/* as priv_destructor calls free_netdev, no need to set need_free_netdev */
+	ifp->net->needs_free_netdev = 0;
 #ifdef WL_CFG80211
 	if (ifidx == 0)
 		ifp->net->priv_destructor = free_netdev;
@@ -9494,7 +9414,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #endif /* DHD_DEBUG */
 
 #ifdef GET_CUSTOM_MAC_ENABLE
-	wifi_platform_get_mac_addr(dhd->adapter, dhd->pub.mac.octet);
+	 wifi_platform_get_mac_addr(dhd->adapter, dhd->pub.mac.octet);
 #endif /* GET_CUSTOM_MAC_ENABLE */
 #ifdef CUSTOM_FORCE_NODFS_FLAG
 	dhd->pub.dhd_cflags |= WLAN_PLAT_NODFS_FLAG;
@@ -9620,9 +9540,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	spin_lock_init(&dhd->tcpack_lock);
 #endif /* DHDTCPACK_SUPPRESS */
 
-#ifdef DHD_HP2P
-	spin_lock_init(&dhd->hp2p_lock);
-#endif // endif
 	/* Initialize Wakelock stuff */
 	spin_lock_init(&dhd->wakelock_spinlock);
 	spin_lock_init(&dhd->wakelock_evt_spinlock);
@@ -9695,8 +9612,8 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #endif /* DEBUGABILITY */
 
 #ifdef DHD_STATUS_LOGGING
-	dhd->pub.statlog = dhd_attach_statlog(&dhd->pub,
-		MAX_STATLOG_ITEM, STATLOG_LOGBUF_LEN);
+	dhd->pub.statlog = dhd_attach_statlog(&dhd->pub, MAX_STATLOG_ITEM,
+		MAX_STATLOG_REQ_ITEM, STATLOG_LOGBUF_LEN);
 	if (dhd->pub.statlog == NULL) {
 		DHD_ERROR(("%s: alloc statlog failed\n", __FUNCTION__));
 	}
@@ -10026,11 +9943,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 	(void)dhd_sysfs_init(dhd);
 
-#ifdef WL_NATOE
-	/* Open Netlink socket for NF_CONNTRACK notifications */
-	dhd->pub.nfct = dhd_ct_open(&dhd->pub, NFNL_SUBSYS_CTNETLINK | NFNL_SUBSYS_CTNETLINK_EXP,
-			CT_ALL);
-#endif /* WL_NATOE */
 #ifdef GDB_PROXY
 	dhd->pub.gdb_proxy_nodeadman = nodeadman != 0;
 #endif /* GDB_PROXY */
@@ -10506,7 +10418,6 @@ dhd_bus_start(dhd_pub_t *dhdp)
 
 	DHD_ENABLE_RUNTIME_PM(&dhd->pub);
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) || defined(BCMPCIE_OOB_HOST_WAKE)
 	/* Host registration for OOB interrupt */
 	if (dhd_bus_oob_intr_register(dhdp)) {
 		/* deactivate timer and wait for the handler to finish */
@@ -10529,7 +10440,6 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	/* Enable oob at firmware */
 	dhd_enable_oob_intr(dhd->pub.bus, TRUE);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
-#endif /* OOB_INTR_ONLY || BCMSPI_ANDROID || BCMPCIE_OOB_HOST_WAKE */
 #ifdef PCIE_FULL_DONGLE
 	{
 		/* max_h2d_rings includes H2D common rings */
@@ -11468,7 +11378,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint32 btmdelta = WBTEXT_BTMDELTA;
 #endif /* WBTEXT && WBTEXT_BTMDELTA */
 	wl_wlc_version_t wlc_ver;
-
 #ifdef PKT_FILTER_SUPPORT
 	dhd_pkt_filter_enable = TRUE;
 #ifdef APF
@@ -11612,8 +11521,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 			goto done;
 		}
 		memcpy(dhd->mac.octet, ea_addr.octet, ETHER_ADDR_LEN);
-	} else {
+	} else
 #endif /* GET_CUSTOM_MAC_ENABLE */
+	{
 		/* Get the default device MAC address directly from firmware */
 		ret = dhd_iovar(dhd, 0, "cur_etheraddr", NULL, 0, (char *)&buf, sizeof(buf), FALSE);
 		if (ret < 0) {
@@ -11621,12 +11531,21 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 			ret = BCME_NOTUP;
 			goto done;
 		}
+
+		DHD_ERROR(("%s: use firmware generated mac_address "MACDBG"\n",
+			__FUNCTION__, MAC2STRDBG(&buf)));
+
+#ifdef MACADDR_PROVISION_ENFORCED
+		if (ETHER_IS_LOCALADDR(buf)) {
+			DHD_ERROR(("%s: error! not using provision mac addr!\n", __FUNCTION__));
+			ret = BCME_BADADDR;
+			goto done;
+		}
+#endif /* MACADDR_PROVISION_ENFORCED */
+
 		/* Update public MAC address after reading from Firmware */
 		memcpy(dhd->mac.octet, buf, ETHER_ADDR_LEN);
-
-#ifdef GET_CUSTOM_MAC_ENABLE
 	}
-#endif /* GET_CUSTOM_MAC_ENABLE */
 
 	if ((ret = dhd_apply_default_clm(dhd, clm_path)) < 0) {
 		DHD_ERROR(("%s: CLM set failed. Abort initialization.\n", __FUNCTION__));
@@ -12359,9 +12278,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef DBG_PKT_MON
 		setbit(eventmask_msg->mask, WLC_E_ROAM_PREP);
 #endif /* DBG_PKT_MON */
-#ifdef WL_NATOE
-		setbit(eventmask_msg->mask, WLC_E_NATOE_NFCT);
-#endif /* WL_NATOE */
 #ifdef BCM_ROUTER_DHD
 		setbit(eventmask_msg->mask, WLC_E_DPSTA_INTF_IND);
 #endif /* BCM_ROUTER_DHD */
@@ -13528,7 +13444,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 		MAC2STRDBG(net->dev_addr));
 #endif /* CUSTOMER_HW4_DEBUG */
 
-#if (defined(BCMPCIE) || (defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= \
+#if 1 && (defined(BCMPCIE) || (defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= \
 	KERNEL_VERSION(2, 6, 27))))
 	if (ifidx == 0) {
 #ifdef BCMLXSDMMC
@@ -13609,9 +13525,7 @@ dhd_bus_detach(dhd_pub_t *dhdp)
 #endif /* BCMDBUS */
 			}
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) || defined(BCMPCIE_OOB_HOST_WAKE)
 			dhd_bus_oob_intr_unregister(dhdp);
-#endif /* OOB_INTR_ONLY || BCMSPI_ANDROID || BCMPCIE_OOB_HOST_WAKE */
 		}
 	}
 }
@@ -13829,12 +13743,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 		}
 	}
 #endif /* BCMDBUS */
-
-#ifdef WL_NATOE
-	if (dhd->pub.nfct) {
-		dhd_ct_close(dhd->pub.nfct);
-	}
-#endif /* WL_NATOE */
 
 #ifdef DHD_LB
 	if (dhd->dhd_state & DHD_ATTACH_STATE_LB_ATTACH_DONE) {
@@ -15474,7 +15382,10 @@ dhd_dev_get_feature_set(struct net_device *dev)
 #if defined(PNO_SUPPORT) && !defined(DISABLE_ANDROID_PNO)
 	if (dhd_is_pno_supported(dhd)) {
 		feature_set |= WIFI_FEATURE_PNO;
+#ifdef BATCH_SCAN
+		/* Deprecated */
 		feature_set |= WIFI_FEATURE_BATCH_SCAN;
+#endif /* BATCH_SCAN */
 #ifdef GSCAN_SUPPORT
 		feature_set |= WIFI_FEATURE_GSCAN;
 		feature_set |= WIFI_FEATURE_HAL_EPNO;
@@ -15497,6 +15408,10 @@ dhd_dev_get_feature_set(struct net_device *dev)
 		feature_set |= WIFI_FEATURE_FILTER_IE;
 	}
 #endif /* FILTER_IE */
+#ifdef ROAMEXP_SUPPORT
+	 feature_set |= WIFI_FEATURE_CONTROL_ROAMING;
+#endif /* ROAMEXP_SUPPORT */
+
 	return feature_set;
 }
 
@@ -17462,7 +17377,7 @@ write_dump_to_file(dhd_pub_t *dhd, uint8 *buf, int size, char *fname)
 	file_mode = O_CREAT | O_WRONLY | O_SYNC;
 #elif defined(CUSTOMER_HW2) || defined(BOARD_HIKEY)
 	file_mode = O_CREAT | O_WRONLY | O_SYNC;
-#elif (defined(BOARD_PANDA) || defined(__ARM_ARCH_7A__))
+#elif defined(__ARM_ARCH_7A__)
 	file_mode = O_CREAT | O_WRONLY;
 #else
 	/* Extra flags O_DIRECT and O_SYNC are required for Brix Android, as we are
@@ -24483,34 +24398,6 @@ dhd_dump_file_manage_enqueue(dhd_pub_t *dhd, char *dump_path, char *fname)
 }
 #endif /* DHD_DUMP_MNGR */
 
-#ifdef DHD_HP2P
-unsigned long
-dhd_os_hp2plock(dhd_pub_t *pub)
-{
-	dhd_info_t *dhd;
-	unsigned long flags = 0;
-
-	dhd = (dhd_info_t *)(pub->info);
-
-	if (dhd) {
-		flags = osl_spin_lock(&dhd->hp2p_lock);
-	}
-
-	return flags;
-}
-
-void
-dhd_os_hp2punlock(dhd_pub_t *pub, unsigned long flags)
-{
-	dhd_info_t *dhd;
-
-	dhd = (dhd_info_t *)(pub->info);
-
-	if (dhd) {
-		osl_spin_unlock(&dhd->hp2p_lock, flags);
-	}
-}
-#endif /* DHD_HP2P */
 #ifdef DNGL_AXI_ERROR_LOGGING
 static void
 dhd_axi_error_dump(void *handle, void *event_info, u8 event)

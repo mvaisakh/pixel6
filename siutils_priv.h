@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: siutils_priv.h 816138 2019-04-23 06:38:35Z $
+ * $Id: siutils_priv.h 820975 2019-05-21 20:28:39Z $
  */
 
 #ifndef	_siutils_priv_h_
@@ -115,6 +115,7 @@ typedef struct axi_wrapper {
 #define BCM4378_BT_AXI_ID	2
 #define BCM4368_BT_AXI_ID	2
 #define BCM43602_BT_AXI_ID	1
+#define BCM4378_ARM_PREFETCH_AXI_ID     9
 
 /* for BT logging and memory dump, ignore failed access to BT memory */
 #define BCM4347_BT_ADDR_HI	0

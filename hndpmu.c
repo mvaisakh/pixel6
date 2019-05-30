@@ -414,10 +414,10 @@ static rsc_per_chip_t* BCMRAMFN(si_pmu_get_rsc_positions)(si_t *sih)
 	case BCM4378_CHIP_GRPID:
 		rsc = &rsc_4378;
 		break;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		rsc = &rsc_4387;
 		break;
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		rsc = &rsc_4389;
 		break;
@@ -429,39 +429,37 @@ static rsc_per_chip_t* BCMRAMFN(si_pmu_get_rsc_positions)(si_t *sih)
 	return rsc;
 }; /* si_pmu_get_rsc_positions */
 
-static const char rstr_pllD[] = "pll%d";
-static const char rstr_regD[] = "reg%d";
-static const char rstr_chipcD[] = "chipc%d";
-static const char rstr_rDt[] = "r%dt";
-static const char rstr_rDd[] = "r%dd";
-static const char rstr_Invalid_Unsupported_xtal_value_D[] =
+static const char BCMATTACHDATA(rstr_pllD)[] = "pll%d";
+static const char BCMATTACHDATA(rstr_regD)[] = "reg%d";
+static const char BCMATTACHDATA(rstr_chipcD)[] = "chipc%d";
+static const char BCMATTACHDATA(rstr_rDt)[] = "r%dt";
+static const char BCMATTACHDATA(rstr_rDd)[] = "r%dd";
+static const char BCMATTACHDATA(rstr_Invalid_Unsupported_xtal_value_D)[] =
 	"Invalid/Unsupported xtal value %d";
-static const char rstr_xtalfreq[] = "xtalfreq";
+static const char BCMATTACHDATA(rstr_xtalfreq)[] = "xtalfreq";
 #if defined(SAVERESTORE) && defined(LDO3P3_MIN_RES_MASK)
-static const char rstr_ldo_prot[] = "ldo_prot";
+static const char BCMATTACHDATA(rstr_ldo_prot)[] = "ldo_prot";
 #endif /* SAVERESTORE && LDO3P3_MIN_RES_MASK */
-static const char rstr_btldo3p3pu[] = "btldopu";
+static const char BCMATTACHDATA(rstr_btldo3p3pu)[] = "btldopu";
 #if defined(BCM_FASTLPO_PMU) && !defined(BCM_FASTLPO_PMU_DISABLED)
-static const char rstr_fastlpo_dis[] = "fastlpo_dis";
+static const char BCMATTACHDATA(rstr_fastlpo_dis)[] = "fastlpo_dis";
 #endif /* BCM_FASTLPO_PMU */
-static const char rstr_fastlpo_pcie_dis[] = "fastlpo_pcie_dis";
-static const char rstr_gpio_drive_strength[] = "gpio_drive_strength";
-static const char rstr_memlpldo_volt[] = "memlpldo_volt";
-static const char rstr_lpldo_volt[] = "lpldo_volt";
-static const char rstr_dyn_clksw_en[] = "dyn_clksw_en";
-static const char rstr_rfldo3p3_cap_war[] = "rfldo3p3_cap_war";
-#ifdef BCMINTERNAL_PWR_OPT
-static const char rstr_pwr_opt_dis[] = "pwr_opt_dis";
-#endif // endif
-static const char rstr_abuck_volt[] = "abuck_volt";
-static const char rstr_cbuck_volt[] = "cbuck_volt";
+static const char BCMATTACHDATA(rstr_fastlpo_pcie_dis)[] = "fastlpo_pcie_dis";
+static const char BCMATTACHDATA(rstr_gpio_drive_strength)[] = "gpio_drive_strength";
+static const char BCMATTACHDATA(rstr_memlpldo_volt)[] = "memlpldo_volt";
+static const char BCMATTACHDATA(rstr_lpldo_volt)[] = "lpldo_volt";
+static const char BCMATTACHDATA(rstr_dyn_clksw_en)[] = "dyn_clksw_en";
+static const char BCMATTACHDATA(rstr_rfldo3p3_cap_war)[] = "rfldo3p3_cap_war";
+static const char BCMATTACHDATA(rstr_abuck_volt)[] = "abuck_volt";
+static const char BCMATTACHDATA(rstr_cbuck_volt)[] = "cbuck_volt";
+static const char BCMATTACHDATA(rstr_csrtune)[] = "csr_tune";
 
 /* The check for OTP parameters for the PLL control registers is done and if found the
  * registers are updated accordingly.
  */
 
 static void
-si_pmu_otp_pllcontrol(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_otp_pllcontrol)(si_t *sih, osl_t *osh)
 {
 	char name[16];
 	const char *otp_val;
@@ -494,7 +492,7 @@ si_pmu_otp_pllcontrol(si_t *sih, osl_t *osh)
  * registers are updated accordingly.
  */
 static void
-si_pmu_otp_vreg_control(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_otp_vreg_control)(si_t *sih, osl_t *osh)
 {
 	char name[16];
 	const char *otp_val;
@@ -527,7 +525,7 @@ si_pmu_otp_vreg_control(si_t *sih, osl_t *osh)
  * registers are updated accordingly.
  */
 static void
-si_pmu_otp_chipcontrol(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_otp_chipcontrol)(si_t *sih, osl_t *osh)
 {
 	uint32 val, cc_ctrlcnt, i;
 	char name[16];
@@ -651,7 +649,7 @@ si_pmu_set_ldo_voltage(si_t *sih, osl_t *osh, uint8 ldo, uint8 voltage)
  * It does not write to the d11 core.
  */
 uint16
-si_pmu_fast_pwrup_delay(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_fast_pwrup_delay)(si_t *sih, osl_t *osh)
 {
 	uint pmudelay = PMU_MAX_TRANSITION_DLY;
 	pmuregs_t *pmu;
@@ -841,14 +839,14 @@ typedef struct {
 #define RES_DEPEND_ADD		1	/* Add to the  dependencies mask */
 #define RES_DEPEND_REMOVE	-1	/* Remove from the dependencies mask */
 
-static const pmu_res_updown_t bcm4335_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4335_res_updown)[] = {
 	{RES4335_XTAL_PU, 0x00260002},
 	{RES4335_ALP_AVAIL, 0x00020005},
 	{RES4335_WL_CORE_RDY, 0x00020005},
 	{RES4335_LQ_START, 0x00060002},
 	{RES4335_SR_CLK_START, 0x00060002}
 };
-static const pmu_res_depend_t bcm4335b0_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4335b0_res_depend)[] = {
 	{
 		PMURES_BIT(RES4335_ALP_AVAIL) |
 		PMURES_BIT(RES4335_HT_START) |
@@ -867,7 +865,7 @@ static const pmu_res_depend_t bcm4335b0_res_depend[] = {
 	}
 };
 
-static const pmu_res_updown_t bcm4350_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4350_res_updown)[] = {
 #if defined(SAVERESTORE) && !defined(SAVERESTORE_DISABLED)
 #ifndef SRFAST
 	{RES4350_SR_SAVE_RESTORE,	0x00190019},
@@ -914,7 +912,7 @@ static const pmu_res_updown_t bcm4350_res_updown[] = {
 #endif /* SRFAST */
 };
 
-static const pmu_res_updown_t bcm4349_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4349_res_updown)[] = {
 	{RES4349_BG_PU, 0x00080000},
 	{RES4349_PMU_SLEEP, 0x001a0013},
 	{RES4349_PALDO3P3_PU, 0x00080000},
@@ -947,7 +945,7 @@ static const pmu_res_updown_t bcm4349_res_updown[] = {
 	{RES4349_MACPHY_CLKAVAIL, 0x00000000},
 };
 
-static const pmu_res_updown_t bcm4373a0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4373a0_res_updown)[] = {
 	{RES4373_BG_PU, 0x00080000},
 	{RES4373_PMU_SLEEP, 0x001a0013},
 	{RES4373_PALDO3P3_PU, 0x00080000},
@@ -981,7 +979,7 @@ static const pmu_res_updown_t bcm4373a0_res_updown[] = {
 };
 
 /* Using a safe SAVE_RESTORE up/down time, it will get updated after openloop cal */
-static const pmu_res_updown_t bcm43012a0_res_updown_ds0[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm43012a0_res_updown_ds0)[] = {
 	{RES43012_MEMLPLDO_PU,		0x00200020},
 	{RES43012_PMU_SLEEP,		0x00a600a6},
 	{RES43012_FAST_LPO,		0x00D20000},
@@ -1013,7 +1011,7 @@ static const pmu_res_updown_t bcm43012a0_res_updown_ds0[] = {
 	{RES43012_MACPHY_CLK_AVAIL,	0x00000000},
 };
 
-static const pmu_res_updown_t bcm4364a0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4364a0_res_updown)[] = {
 	{RES4364_LPLDO_PU,		0x00020003},
 	{RES4364_BG_PU,			0x001a0013},
 	{RES4364_MEMLPLDO_PU,		0x00090003},
@@ -1047,7 +1045,7 @@ static const pmu_res_updown_t bcm4364a0_res_updown[] = {
 	{RES4364_MACPHY_CLKAVAIL,	0x00000000},
 };
 
-static const pmu_res_depend_t bcm4350_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4350_res_depend)[] = {
 #ifdef SRFAST
 	{
 		PMURES_BIT(RES4350_LDO3P3_PU),
@@ -1166,7 +1164,7 @@ static const pmu_res_depend_t bcm4350_res_depend[] = {
 };
 
 #ifndef BCM_BOOTLOADER
-static const pmu_res_depend_t bcm4350_res_pciewar[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4350_res_pciewar)[] = {
 	{
 #ifdef SRFAST
 		PMURES_BIT(RES4350_SR_PHY_PWRSW) |
@@ -1319,17 +1317,17 @@ static const pmu_res_depend_t bcm4350_res_pciewar[] = {
 };
 #endif /* BCM_BOOTLOADER */
 
-static const pmu_res_updown_t bcm4360_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4360_res_updown)[] = {
 	{RES4360_BBPLLPWRSW_PU,		0x00200001}
 };
 
-static const pmu_res_updown_t bcm43602_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm43602_res_updown)[] = {
 	{RES43602_SR_SAVE_RESTORE,	0x00190019},
 	{RES43602_XTAL_PU,		0x00280002},
 	{RES43602_RFLDO_PU,		0x00430005}
 };
 
-static const pmu_res_updown_t bcm4345_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4345_res_updown)[] = {
 #if defined(SAVERESTORE) && !defined(SAVERESTORE_DISABLED)
 	{RES4345_SR_SAVE_RESTORE,	0x00190019},
 #else
@@ -1338,7 +1336,7 @@ static const pmu_res_updown_t bcm4345_res_updown[] = {
 	{RES4345_XTAL_PU,               0x600002},      /* 3 ms uptime for XTAL_PU */
 };
 
-static const pmu_res_depend_t bcm4345_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4345_res_depend)[] = {
 #ifdef BCMPCIEDEV_ENABLED
 	{
 		PMURES_BIT(RES4345_PERST_OVR),
@@ -1424,11 +1422,11 @@ static const pmu_res_depend_t bcm4345_res_depend[] = {
 #endif /* BCMPCIEDEV_ENABLED */
 };
 
-static const pmu_res_depend_t bcm43012a0_res_depend_ds0[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm43012a0_res_depend_ds0)[] = {
 	{0, 0, 0, NULL}
 };
 
-static const pmu_res_depend_t bcm4349a0_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4349a0_res_depend)[] = {
 	{
 /* RSRC 0 0x0 */
 		PMURES_BIT(RES4349_LPLDO_PU),
@@ -1779,7 +1777,7 @@ static const pmu_res_depend_t bcm4349a0_res_depend[] = {
 };
 
 /* 4364 Resource dependencies for RSDB mode */
-static const pmu_res_depend_t bcm4364a0_res_depend_rsdb[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4364a0_res_depend_rsdb)[] = {
 	{
 /* RSRC 0 0x1 */
 		PMURES_BIT(RES4364_LPLDO_PU),
@@ -2636,7 +2634,7 @@ static const pmu_res_depend_t bcm4364a0_res_depend_1x1[] = {
 };
 #endif /* defined(DUAL_PMU_SEQUENCE) */
 
-static const pmu_res_depend_t bcm43602_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm43602_res_depend)[] = {
 	{
 		PMURES_BIT(RES43602_SR_SUBCORE_PWRSW) | PMURES_BIT(RES43602_SR_CLK_STABLE) |
 		PMURES_BIT(RES43602_SR_SAVE_RESTORE)  | PMURES_BIT(RES43602_SR_SLEEP) |
@@ -2681,7 +2679,7 @@ static const pmu_res_depend_t bcm43602_res_depend[] = {
 
 #ifndef BCM_BOOTLOADER
 /** switch off LPLDO for 12x12 package because it can cause a problem when chip is reset */
-static const pmu_res_depend_t bcm43602_12x12_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm43602_12x12_res_depend)[] = {
 	/* set rsrc 19, 21, 22, 23 & 24 remove ~(1<<16 | 1<<15 )] */
 	{	/* resources no longer dependent on resource that is going to be removed */
 		PMURES_BIT(RES43602_LPLDO_PU)        | PMURES_BIT(RES43602_REGULATOR)        |
@@ -2705,7 +2703,7 @@ static const pmu_res_depend_t bcm43602_12x12_res_depend[] = {
 	}
 };
 
-static const pmu_res_depend_t bcm43602_res_pciewar[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm43602_res_pciewar)[] = {
 	{
 		PMURES_BIT(RES43602_PERST_OVR),
 		RES_DEPEND_ADD,
@@ -2761,12 +2759,12 @@ static const pmu_res_depend_t bcm43602_res_pciewar[] = {
 };
 #endif /* BCM_BOOTLOADER */
 
-static const pmu_res_updown_t bcm4360B1_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4360B1_res_updown)[] = {
 	/* Need to change elements here, should get default values for this - 4360B1 */
 	{RES4360_XTAL_PU,               0x00430002}, /* Changed for 4360B1 */
 };
 
-static const pmu_res_depend_t bcm4347_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4347_res_depend)[] = {
 #ifndef BCM_BOOTLOADER
 	{
 		PMURES_BIT(RES4347_MACPHY_AUX_CLK_AVAIL) | PMURES_BIT(RES4347_MINIPMU_AUX_PU) |
@@ -2789,7 +2787,7 @@ static const pmu_res_depend_t bcm4347_res_depend[] = {
 #endif /* BCM_BOOTLOADER */
 };
 
-static const pmu_res_updown_t bcm4347_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4347_res_updown)[] = {
 	{RES4347_XTAL_PU, 0x05dc0022},
 	{RES4347_FAST_LPO_AVAIL, 0x01900022},
 	{RES4347_SR_DIG, 0x01c401c4},
@@ -2800,7 +2798,7 @@ static const pmu_res_updown_t bcm4347_res_updown[] = {
 	{RES4347_PWRSW_MAIN, 0x00c80032},
 };
 
-static pmu_res_depend_t bcm4347b0_res_depend[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4347b0_res_depend)[] = {
 #ifndef BCM_BOOTLOADER
 	/* singing cap war : For overriding LDO3P3 dependency */
 	{
@@ -2950,7 +2948,7 @@ static pmu_res_depend_t bcm4347b0_res_depend[] = {
 #endif /* BCM_BOOTLOADER */
 };
 
-static const pmu_res_depend_t bcm4347b0_res_depend_war[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4347b0_res_depend_war)[] = {
 	{
 		PMURES_BIT(RES4347_RADIO_AUX_PU) |
 		PMURES_BIT(RES4347_MINIPMU_AUX_PU) |
@@ -2964,7 +2962,7 @@ static const pmu_res_depend_t bcm4347b0_res_depend_war[] = {
 	},
 };
 
-static const pmu_res_updown_t bcm4347b0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4347b0_res_updown)[] = {
 	{RES4347_AAON,			0x00640044},
 	{RES4347_PMU_SLEEP,		0x00f00022},
 	{RES4347_FAST_LPO_AVAIL,	0x00f00022},
@@ -2985,7 +2983,7 @@ static const pmu_res_updown_t bcm4347b0_res_updown[] = {
 	{RES4347_MACPHY_MAIN_CLK_AVAIL,	0x00640022},
 };
 
-static const pmu_res_depend_t bcm4369a0_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4369a0_res_depend)[] = {
 	{PMURES_BIT(RES4369_DUMMY),			RES_DEPEND_SET, 0x00000000, NULL},
 	{PMURES_BIT(RES4369_ABUCK),			RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4369_PMU_SLEEP),			RES_DEPEND_SET, 0x00000001, NULL},
@@ -3019,7 +3017,7 @@ static const pmu_res_depend_t bcm4369a0_res_depend[] = {
 	{PMURES_BIT(RES4369_MACPHY_MAIN_CLK_AVAIL),	RES_DEPEND_SET, 0x17cbc7df, NULL},
 };
 
-static const pmu_res_depend_t bcm4369a0_res_depend_fastlpo_pcie[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4369a0_res_depend_fastlpo_pcie)[] = {
 	{PMURES_BIT(RES4369_DUMMY),			RES_DEPEND_SET, 0x00000000, NULL},
 	{PMURES_BIT(RES4369_ABUCK),			RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4369_PMU_SLEEP),			RES_DEPEND_SET, 0x00000001, NULL},
@@ -3053,7 +3051,7 @@ static const pmu_res_depend_t bcm4369a0_res_depend_fastlpo_pcie[] = {
 	{PMURES_BIT(RES4369_MACPHY_MAIN_CLK_AVAIL),     RES_DEPEND_SET, 0x17cbc7ff, NULL},
 };
 
-static const pmu_res_updown_t bcm4369a0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4369a0_res_updown)[] = {
 	{RES4369_DUMMY,                 0x00220022},
 	{RES4369_ABUCK,                 0x00c80022},
 	{RES4369_PMU_SLEEP,             0x00c80022},
@@ -3087,7 +3085,7 @@ static const pmu_res_updown_t bcm4369a0_res_updown[] = {
 	{RES4369_MACPHY_MAIN_CLK_AVAIL, 0x00640022},
 };
 
-static const pmu_res_updown_t bcm4369a0_res_updown_fastlpo_pmu[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4369a0_res_updown_fastlpo_pmu)[] = {
 	{RES4369_DUMMY,                 0x00220022},
 	{RES4369_ABUCK,                 0x00c80022},
 	{RES4369_PMU_SLEEP,             0x00c80022},
@@ -3121,7 +3119,7 @@ static const pmu_res_updown_t bcm4369a0_res_updown_fastlpo_pmu[] = {
 	{RES4369_MACPHY_MAIN_CLK_AVAIL, 0x00640022},
 };
 
-static const pmu_res_updown_t bcm4369b0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4369b0_res_updown)[] = {
 	{RES4369_DUMMY,                 0x00220022},
 	{RES4369_ABUCK,                 0x00c80022},
 	{RES4369_PMU_SLEEP,             0x00c80022},
@@ -3155,7 +3153,7 @@ static const pmu_res_updown_t bcm4369b0_res_updown[] = {
 	{RES4369_MACPHY_MAIN_CLK_AVAIL, 0x00640022},
 };
 
-static const pmu_res_updown_t bcm4369b0_res_updown_fastlpo_pmu[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4369b0_res_updown_fastlpo_pmu)[] = {
 	{RES4369_DUMMY,                 0x00220022},
 	{RES4369_ABUCK,                 0x00c80022},
 	{RES4369_PMU_SLEEP,             0x00c80022},
@@ -3189,7 +3187,7 @@ static const pmu_res_updown_t bcm4369b0_res_updown_fastlpo_pmu[] = {
 	{RES4369_MACPHY_MAIN_CLK_AVAIL, 0x00640022},
 };
 
-static const pmu_res_depend_t bcm4362_res_depend[] = {
+static const pmu_res_depend_t BCMATTACHDATA(bcm4362_res_depend)[] = {
 	{PMURES_BIT(RES4362_DUMMY),                 RES_DEPEND_SET, 0x00000000, NULL},
 	{PMURES_BIT(RES4362_ABUCK),                 RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4362_PMU_SLEEP),             RES_DEPEND_SET, 0x00000001, NULL},
@@ -3223,7 +3221,7 @@ static const pmu_res_depend_t bcm4362_res_depend[] = {
 	{PMURES_BIT(RES4362_MACPHY_MAIN_CLK_AVAIL), RES_DEPEND_SET, 0x17cbc7df, NULL},
 };
 
-static const pmu_res_updown_t bcm4362_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4362_res_updown)[] = {
 	{RES4362_DUMMY,                 0x00220022},
 	{RES4362_ABUCK,                 0x00c80022},
 	{RES4362_PMU_SLEEP,             0x00c80022},
@@ -3257,13 +3255,13 @@ static const pmu_res_updown_t bcm4362_res_updown[] = {
 	{RES4362_MACPHY_MAIN_CLK_AVAIL, 0x00640022},
 };
 
-static const pmu_res_updown_t bcm4378a0_res_updown_qt[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4378a0_res_updown_qt)[] = {
 	{RES4378_SR_DIG,		0x14001400},
 	{RES4378_SR_AUX,		0x4B004B00},
 	{RES4378_SR_MAIN,		0x5F005F00},
 };
 
-static const pmu_res_updown_t bcm4378a0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4378a0_res_updown)[] = {
 	{RES4378_ABUCK,			0x00c80022},
 	{RES4378_PMU_SLEEP,		0x00c80022},
 	{RES4378_MISC_LDO,		0x00c80022},
@@ -3280,7 +3278,7 @@ static const pmu_res_updown_t bcm4378a0_res_updown[] = {
 	{RES4378_MACPHY_MAIN_CLK_AVAIL,	0x00640022},
 };
 
-static pmu_res_depend_t bcm4378a0_res_depend[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4378a0_res_depend)[] = {
 	{PMURES_BIT(RES4378_ABUCK),			RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4378_PMU_SLEEP),			RES_DEPEND_SET, 0x00000001, NULL},
 	{PMURES_BIT(RES4378_MISC_LDO),			RES_DEPEND_SET, 0x00000007, NULL},
@@ -3313,7 +3311,7 @@ static pmu_res_depend_t bcm4378a0_res_depend[] = {
 	{PMURES_BIT(RES4378_MACPHY_MAIN_CLK_AVAIL),	RES_DEPEND_SET, 0x17cbc7ff, NULL},
 };
 
-static const pmu_res_updown_t bcm4378b0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4378b0_res_updown)[] = {
 	{RES4378_ABUCK,			0x00c80022},
 	{RES4378_PMU_SLEEP,		0x00c80022},
 	{RES4378_MISC_LDO,		0x00c80022},
@@ -3333,11 +3331,11 @@ static const pmu_res_updown_t bcm4378b0_res_updown[] = {
 	{RES4378_MACPHY_MAIN_CLK_AVAIL,	0x00640022},
 };
 
-static pmu_res_depend_t bcm4378b0_res_depend[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4378b0_res_depend)[] = {
 	{PMURES_BIT(RES4378_ABUCK),			RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4378_PMU_SLEEP),			RES_DEPEND_SET, 0x00000001, NULL},
 	{PMURES_BIT(RES4378_MISC_LDO),			RES_DEPEND_SET, 0x00000007, NULL},
-	{PMURES_BIT(RES4378_LDO3P3_PU),			RES_DEPEND_SET, 0x00000005, NULL},
+	{PMURES_BIT(RES4378_LDO3P3_PU),			RES_DEPEND_SET, 0x00000001, NULL},
 	{PMURES_BIT(RES4378_FAST_LPO_AVAIL),		RES_DEPEND_SET, 0x00000005, NULL},
 	{PMURES_BIT(RES4378_XTAL_PU),			RES_DEPEND_SET, 0x00000007, NULL},
 	{PMURES_BIT(RES4378_XTAL_STABLE),		RES_DEPEND_SET, 0x00000047, NULL},
@@ -3370,7 +3368,7 @@ static pmu_res_depend_t bcm4378b0_res_depend[] = {
 	{PMURES_BIT(RES4378_MACPHY_MAIN_CLK_AVAIL),	RES_DEPEND_SET, 0x17cbc7ff, NULL},
 };
 
-static const pmu_res_updown_t bcm4368b0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4368b0_res_updown)[] = {
 	{RES4368_ABUCK,                  0x00c80022},
 	{RES4368_CBUCK,                  0x00c80022},
 	{RES4368_MISCLDO_PU,             0x00c80022},
@@ -3389,7 +3387,7 @@ static const pmu_res_updown_t bcm4368b0_res_updown[] = {
 	{RES4368_MACPHY_MAIN_CLK_AVAIL,  0x00640022},
 };
 
-static pmu_res_depend_t bcm4368b0_res_depend[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4368b0_res_depend)[] = {
 	{PMURES_BIT(RES4368_ABUCK),                  RES_DEPEND_SET, 0x00000000, NULL},
 	{PMURES_BIT(RES4368_CBUCK),                  RES_DEPEND_SET, 0x00000001, NULL},
 	{PMURES_BIT(RES4368_MISCLDO_PU),             RES_DEPEND_SET, 0x00000003, NULL},
@@ -3423,7 +3421,7 @@ static pmu_res_depend_t bcm4368b0_res_depend[] = {
 	{PMURES_BIT(RES4368_MACPHY_MAIN_CLK_AVAIL),  RES_DEPEND_SET, 0x17cac3ff, NULL},
 };
 
-static const pmu_res_updown_t bcm4387b0_res_updown_qt[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4387b0_res_updown_qt)[] = {
 	{RES4387_XTAL_PU,		0x012c0033},
 	{RES4387_PWRSW_DIG,		0x38993899},
 	{RES4387_PWRSW_AUX,		0x38993899},
@@ -3432,7 +3430,7 @@ static const pmu_res_updown_t bcm4387b0_res_updown_qt[] = {
 	{RES4387_CORE_RDY_CB,		0x00960033},
 };
 
-static const pmu_res_subst_trans_tmr_t bcm4387b0_res_subst_trans_tmr_qt[] = {
+static const pmu_res_subst_trans_tmr_t BCMATTACHDATA(bcm4387b0_res_subst_trans_tmr_qt)[] = {
 	{RES4387_PWRSW_DIG,		0, 0x38993800},
 	{RES4387_PWRSW_DIG,		1, 0x36000600},
 	{RES4387_PWRSW_DIG,		2, 0x01000002},
@@ -3450,7 +3448,38 @@ static const pmu_res_subst_trans_tmr_t bcm4387b0_res_subst_trans_tmr_qt[] = {
 	{RES4387_PWRSW_MAIN,		2, 0x01000002},
 };
 
-static const pmu_res_updown_t bcm4387b0_res_updown[] = {
+static const pmu_res_updown_t BCMATTACHDATA(bcm4387c0_res_updown_qt)[] = {
+	{RES4387_XTAL_PU,			0x012c0033},
+	{RES4387_PWRSW_DIG,			0x38993899},
+	{RES4387_PWRSW_AUX,			0x38993899},
+	{RES4387_PWRSW_SCAN,			0x38993899},
+	{RES4387_PWRSW_MAIN,			0x38993899},
+	{RES4387_CORE_RDY_CB,			0x00960033},
+};
+
+static const pmu_res_subst_trans_tmr_t BCMATTACHDATA(bcm4387c0_res_subst_trans_tmr_qt)[] = {
+	{RES4387_PWRSW_DIG,			0, 0x38993800},
+	{RES4387_PWRSW_DIG,			1, 0x36C00600},
+	{RES4387_PWRSW_DIG,			2, 0x360005A0},
+	{RES4387_PWRSW_DIG,			3, 0x01000002},
+
+	{RES4387_PWRSW_AUX,			0, 0x38993800},
+	{RES4387_PWRSW_AUX,			1, 0x36c00600},
+	{RES4387_PWRSW_AUX,			2, 0x360005A0},
+	{RES4387_PWRSW_AUX,			3, 0x01000002},
+
+	{RES4387_PWRSW_SCAN,			0, 0x38993800},
+	{RES4387_PWRSW_SCAN,			1, 0x33c00600},
+	{RES4387_PWRSW_SCAN,			2, 0x330005A0},
+	{RES4387_PWRSW_SCAN,			3, 0x01000002},
+
+	{RES4387_PWRSW_MAIN,			0, 0x38993800},
+	{RES4387_PWRSW_MAIN,			1, 0x36c00600},
+	{RES4387_PWRSW_MAIN,			2, 0x360005A0},
+	{RES4387_PWRSW_MAIN,			3, 0x01000002},
+};
+
+static const pmu_res_updown_t BCMATTACHDATA(bcm4387b0_res_updown)[] = {
 	{RES4387_XTAL_PU,		0x03e80033},
 	{RES4387_PWRSW_DIG,		0x04b002bc},
 	{RES4387_PWRSW_AUX,		0x060e03bc},
@@ -3466,7 +3495,7 @@ static const pmu_res_updown_t bcm4387b0_res_updown[] = {
 
 #define NUM_UPDN_PWR_OPTM_4387		1
 
-static const pmu_res_subst_trans_tmr_t bcm4387b0_res_subst_trans_tmr[] = {
+static const pmu_res_subst_trans_tmr_t BCMATTACHDATA(bcm4387b0_res_subst_trans_tmr)[] = {
 	{RES4387_PWRSW_DIG,		0, 0x04b002bc},
 	{RES4387_PWRSW_DIG,		1, 0x02500210},
 	{RES4387_PWRSW_DIG,		2, 0x00a00010},
@@ -3484,7 +3513,7 @@ static const pmu_res_subst_trans_tmr_t bcm4387b0_res_subst_trans_tmr[] = {
 	{RES4387_PWRSW_SCAN,		2, 0x00320002},
 };
 
-static pmu_res_depend_t bcm4387b0_res_depend[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4387b0_res_depend)[] = {
 	{PMURES_BIT(RES4387_DUMMY),			RES_DEPEND_SET,  0x0, NULL},
 	{PMURES_BIT(RES4387_RESERVED_1),		RES_DEPEND_SET,  0x0, NULL},
 	{PMURES_BIT(RES4387_PMU_SLEEP),			RES_DEPEND_SET,  0x1, NULL},
@@ -3523,7 +3552,7 @@ static pmu_res_depend_t bcm4387b0_res_depend[] = {
  *	for "S/W managed power request for Scan core" feature
  * (2) Added RES4387_XTAL_HQ to the rsrc dependency list of RES4387_MACPHY_CLK_MAIN
 */
-static pmu_res_depend_t bcm4387b0_res_depend_pwr_optm[] = {
+static pmu_res_depend_t BCMATTACHDATA(bcm4387b0_res_depend_pwr_optm)[] = {
 	{PMURES_BIT(RES4387_CORE_RDY_SCAN),		RES_DEPEND_SET,  0x060010CD, NULL},
 	{PMURES_BIT(RES4387_RADIO_PU_SCAN),		RES_DEPEND_SET,  0x060030CD, NULL},
 	{PMURES_BIT(RES4387_MACPHY_CLK_SCAN),		RES_DEPEND_SET,  0x162830CD, NULL},
@@ -3812,6 +3841,7 @@ si_pmu_res_masks(si_t *sih, uint32 *pmin, uint32 *pmax)
 #endif /* SAVERESTORE */
 		max_mask = 0x7FFFFFFF;
 		break;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		min_mask = 0x64fffff;
 #if defined(SAVERESTORE)
@@ -3825,7 +3855,6 @@ si_pmu_res_masks(si_t *sih, uint32 *pmin, uint32 *pmax)
 #endif /* SAVERESTORE */
 		max_mask = 0x7FFFFFFF;
 		break;
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		/*
 		 * check later if this can be replaced with chip default value read from
@@ -3873,7 +3902,7 @@ si_pmu_res_masks(si_t *sih, uint32 *pmin, uint32 *pmax)
 
 /* Replace the pmu rsrc dependencies in original table with the values in fixup table */
 static void
-si_pmu_resdeptbl_fixup(pmu_res_depend_t *orig_tbl, uint orig_tbl_sz,
+BCMATTACHFN(si_pmu_resdeptbl_fixup)(pmu_res_depend_t *orig_tbl, uint orig_tbl_sz,
 	pmu_res_depend_t *fixup_tbl, uint fixup_tbl_sz)
 {
 	uint i, j;
@@ -3894,7 +3923,7 @@ si_pmu_resdeptbl_upd(si_t *sih, osl_t *osh, pmuregs_t *pmu,
 	const pmu_res_depend_t *restable, uint tablesz)
 #else
 static void
-si_pmu_resdeptbl_upd(si_t *sih, osl_t *osh, pmuregs_t *pmu,
+BCMATTACHFN(si_pmu_resdeptbl_upd)(si_t *sih, osl_t *osh, pmuregs_t *pmu,
 	const pmu_res_depend_t *restable, uint tablesz)
 #endif /* DUAL_PMU_SEQUENCE */
 {
@@ -3945,7 +3974,7 @@ si_pmu_resdeptbl_upd(si_t *sih, osl_t *osh, pmuregs_t *pmu,
 
 /** Initialize PMU hardware resources. */
 void
-si_pmu_res_init(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_res_init)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -4197,15 +4226,29 @@ si_pmu_res_init(si_t *sih, osl_t *osh)
 		}
 		break;
 
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		if (SR_ENAB()) {
 			if (ISSIM_ENAB(sih)) {
-				pmu_res_updown_table = bcm4387b0_res_updown_qt;
-				pmu_res_updown_table_sz = ARRAYSIZE(bcm4387b0_res_updown_qt);
+				if (PMUREV(sih->pmurev) == 39) {
+					pmu_res_updown_table = bcm4387c0_res_updown_qt;
+					pmu_res_updown_table_sz =
+						ARRAYSIZE(bcm4387c0_res_updown_qt);
 
-				pmu_res_subst_trans_tmr_table = bcm4387b0_res_subst_trans_tmr_qt;
-				pmu_res_subst_trans_tmr_table_sz =
-					ARRAYSIZE(bcm4387b0_res_subst_trans_tmr_qt);
+					pmu_res_subst_trans_tmr_table =
+						bcm4387c0_res_subst_trans_tmr_qt;
+					pmu_res_subst_trans_tmr_table_sz =
+						ARRAYSIZE(bcm4387c0_res_subst_trans_tmr_qt);
+				} else {
+					pmu_res_updown_table = bcm4387b0_res_updown_qt;
+					pmu_res_updown_table_sz =
+						ARRAYSIZE(bcm4387b0_res_updown_qt);
+
+					pmu_res_subst_trans_tmr_table =
+						bcm4387b0_res_subst_trans_tmr_qt;
+					pmu_res_subst_trans_tmr_table_sz =
+						ARRAYSIZE(bcm4387b0_res_subst_trans_tmr_qt);
+				}
 			} else {
 				pmu_res_updown_table = bcm4387b0_res_updown;
 				pmu_res_updown_table_sz = ARRAYSIZE(bcm4387b0_res_updown);
@@ -4232,7 +4275,6 @@ si_pmu_res_init(si_t *sih, osl_t *osh)
 		}
 		break;
 
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		if (SR_ENAB()) {
 			/* TODO */
@@ -4488,7 +4530,7 @@ enum xtaltab0_640 {
  * clock. This output clock feeds the clock divider network. The defines of the form
  * PMU1_XTALTAB0_640_* index into this array.
  */
-static const pmu1_xtaltab0_t pmu1_xtaltab0_640[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_640)[] = {
 /*	fref      xf     p1div   p2div  ndiv_int  ndiv_frac */
 	{12000,   1,       1,      1,     0x35,   0x555555}, /* array index 0 */
 	{13000,   2,       1,      1,     0x31,   0x3B13B1},
@@ -4534,7 +4576,7 @@ static const pmu1_xtaltab0_t pmu1_xtaltab0_640[] = {
 #define PMU1_XTALTAB0_640_52000K	18
 
 /* the following table is based on 880Mhz fvco */
-static const pmu1_xtaltab0_t pmu1_xtaltab0_880[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_880)[] = {
 	{12000,	1,	3,	22,	0x9,	0xFFFFEF},
 	{13000,	2,	1,	6,	0xb,	0x483483},
 	{14400,	3,	1,	10,	0xa,	0x1C71C7},
@@ -4573,7 +4615,7 @@ static const pmu1_xtaltab0_t pmu1_xtaltab0_880[] = {
 #define PMU1_XTALTAB0_880_40000K	15
 
 /* the following table is based on 1760Mhz fvco */
-static const pmu1_xtaltab0_t pmu1_xtaltab0_1760[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_1760)[] = {
 	{12000,	1,	3,	44,	0x9,	0xFFFFEF},
 	{13000,	2,	1,	12,	0xb,	0x483483},
 	{14400,	3,	1,	20,	0xa,	0x1C71C7},
@@ -4628,7 +4670,7 @@ enum xtaltab0_960 {
  * clock. This output clock feeds the clock divider network. The defines of the form
  * PMU1_XTALTAB0_960_* index into this array.
  */
-static const pmu1_xtaltab0_t pmu1_xtaltab0_960[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_960)[] = {
 /*	fref      xf     p1div   p2div  ndiv_int  ndiv_frac */
 	{12000,   1,       1,      1,     0x50,   0x0     }, /* array index 0 */
 	{13000,   2,       1,      1,     0x49,   0xD89D89},
@@ -4654,7 +4696,7 @@ static const pmu1_xtaltab0_t pmu1_xtaltab0_960[] = {
 	{0,	      0,       0,      0,     0,      0	      }
 };
 
-static const pmu1_xtaltab0_t pmu1_xtaltab0_4369_963[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_4369_963)[] = {
 /*	fref      xf     p1div   NA  ndiv_int  ndiv_frac */
 	{12000,   1,       1,      1,     0x50,   0x40000}, /* array index 0 */
 	{13000,   2,       1,      1,     0x4A,   0x13B14},
@@ -4678,7 +4720,7 @@ static const pmu1_xtaltab0_t pmu1_xtaltab0_4369_963[] = {
 	{0,	      0,       0,      0,     0,      0	     }
 };
 
-static const pmu1_xtaltab0_t pmu1_xtaltab0_4362_963[] = {
+static const pmu1_xtaltab0_t BCMINITDATA(pmu1_xtaltab0_4362_963)[] = {
 /*	fref      xf     p1div   NA  ndiv_int  ndiv_frac */
 	{12000,   1,       1,      1,     0x50,   0x40000}, /* array index 0 */
 	{13000,   2,       1,      1,     0x4A,   0x13B14},
@@ -4835,7 +4877,7 @@ static const uint32	pmu1_pllctrl_tab_4335_961mhz[] = {
 /*  *****************************  tables for 4345 *********************** */
 
 /* PLL control register table giving info about the xtal supported for 4345 series */
-static const pllctrl_data_t pmu1_xtaltab0_4345[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4345)[] = {
 	{12000, 0, XTALTAB0_960_12000K},
 	{13000, 0, XTALTAB0_960_13000K},
 	{14400, 0, XTALTAB0_960_14400K},
@@ -4876,12 +4918,12 @@ static const pllctrl_data_t pmu1_xtaltab0_4350[] = {
  * PLL control register table giving info about the xtal supported for 4335.
  * There should be a one to one mapping between pmu1_pllctrl_tab_4335_963mhz[] and this table.
  */
-static const uint32	pmu1_pllctrl_tab_4350_963mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4350_963mhz)[] = {
 /*	PLL 0       PLL 1       PLL 2       PLL 3       PLL 4       PLL 5       PLL6         */
 	0x50800000, 0x18060603, 0x0cb10814, 0x80bfaa00, 0x02600004, 0x00019AB1, 0x04a6c181,
 	0x50800000, 0x18060603, 0x0C310814, 0x00133333, 0x02600004, 0x00017FFF, 0x04a6c181
 };
-static const uint32	pmu1_pllctrl_tab_4350C0_963mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4350C0_963mhz)[] = {
 /*	PLL 0       PLL 1       PLL 2       PLL 3       PLL 4       PLL 5       PLL6         */
 	0x50800000, 0x08060603, 0x0cb10804, 0xe2bfaa00, 0x02600004, 0x00019AB1, 0x02a6c181,
 	0x50800000, 0x08060603, 0x0C310804, 0xe2133333, 0x02600004, 0x00017FFF, 0x02a6c181
@@ -4982,7 +5024,7 @@ static const uint32 (pmu1_pllctrl_tab_43012_1600mhz)[] = {
  * PLL control register table giving info about the xtal supported for 4364
  * There should be a one to one mapping between pmu1_pllctrl_tab_4364_960mhz[] and this table.
  */
-static const pllctrl_data_t pmu1_xtaltab0_4364[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4364)[] = {
 /*       clock  mode xf */
 	{37400, 0,   XTALTAB0_960_37400K}
 };
@@ -4992,7 +5034,7 @@ static const pllctrl_data_t pmu1_xtaltab0_4364[] = {
  * There should be a one to one mapping between pmu1_pllctrl_tab_4349_640mhz[] and this table.
  * PLL control5 register is related to HSIC which is not supported in 4349
  */
-static const uint32	pmu1_pllctrl_tab_4364_960mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4364_960mhz)[] = {
 /* Default values for unused registers 5-7 as sw loop execution will go for 8 times */
 /* Fvco is taken as 960 */
 /* 1x1 MAC Clock Frequency configured to 120MHz */
@@ -5012,7 +5054,7 @@ static const uint32	pmu1_pllctrl_tab_4364_960mhz[] = {
  * PLL control register table giving info about the xtal supported for 4347
  * There should be a one to one mapping between pmu1_pllctrl_tab_4347_960p5mhz[] and this table.
  */
-static const pllctrl_data_t pmu1_xtaltab0_4347[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4347)[] = {
 /*       clock  mode xf */
 	{37400, 0,   XTALTAB0_960_37400K}
 };
@@ -5026,7 +5068,7 @@ static const pllctrl_data_t pmu1_xtaltab0_4347[] = {
  * TBD : will update once all the control data is provided by system team
  * freq table : pll1 : fvco 963M, pll2 for arm : 385 MHz
  */
-static const uint32	pmu1_pllctrl_tab_4347_960p5mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4347_960p5mhz)[] = {
 /* Default values for unused registers 4-7 as sw loop execution will go for 8 times */
 /* Fvco is taken as 960.5M */
 /*	PLL 0  PLL 1   PLL 2   PLL 3   PLL 4   PLL 5  PLL 6  PLL 7   PLL 8   PLL 9   PLL 10 */
@@ -5043,7 +5085,7 @@ static const uint32	pmu1_pllctrl_tab_4347_960p5mhz[] = {
  * There should be a one to one mapping between pmu1_pllctrl_tab_4347_960mhz[] and this table.
  * Even though macro suggests XTALTAB0_960_37400K --> BBPLL VCO is set to 963MHz
  */
-static const pllctrl_data_t pmu1_xtaltab0_4369[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4369)[] = {
 /*       clock  mode xf */
 	{37400, 0,   XTALTAB0_960_37400K}
 };
@@ -5057,7 +5099,7 @@ static const pllctrl_data_t pmu1_xtaltab0_4369[] = {
 * freq table : pll1 : fvco 960.1M, pll2 for arm : 400 MHz
 */
 #define PMU_PLL3_4369B0_DEFAULT	0x006ABF86
-static const uint32	pmu1_pllctrl_tab_4369_960p1mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4369_960p1mhz)[] = {
 /* Default values for unused registers 4-7 as sw loop execution will go for 8 times */
 /* Fvco is taken as 963M */
 /*	PLL 0  PLL 1   PLL 2   PLL 3   PLL 4   PLL 5  PLL 6  PLL 7   PLL 8   PLL 9   PLL 10 */
@@ -5075,7 +5117,7 @@ static const uint32	pmu1_pllctrl_tab_4369_960p1mhz[] = {
  * There should be a one to one mapping between pmu1_pllctrl_tab_4347_960mhz[] and this table.
  * Even though macro suggests XTALTAB0_960_37400K --> BBPLL VCO is set to 963MHz
  */
-static const pllctrl_data_t pmu1_xtaltab0_4362[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4362)[] = {
 /*       clock  mode xf */
 	{37400, 0,   XTALTAB0_960_37400K}
 };
@@ -5086,7 +5128,7 @@ static const pllctrl_data_t pmu1_xtaltab0_4362[] = {
 /* This freq actually around 960.123 */
 #define PMU_PLL3_4362A0_DEFAULT	0x006ABF86
 
-static const uint32	pmu1_pllctrl_tab_4362_960p1mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4362_960p1mhz)[] = {
 /* Default values for unused registers 4-7 as sw loop execution will go for 8 times */
 /* Fvco is taken as 963M */
 /*	PLL 0  PLL 1   PLL 2   PLL 3   PLL 4   PLL 5  PLL 6  PLL 7   PLL 8   PLL 9   PLL 10 */
@@ -5099,12 +5141,12 @@ static const uint32	pmu1_pllctrl_tab_4362_960p1mhz[] = {
 
 /*  *****************************  tables for 4368a0 *********************** */
 /* Only 1 Xtal supported for 4368a0 for now */
-static const pllctrl_data_t pmu1_xtaltab0_4368[] = {
+static const pllctrl_data_t BCMATTACHDATA(pmu1_xtaltab0_4368)[] = {
 /*       clock  mode xf */
 	{37400, 0,   XTALTAB0_960_37400K}
 };
 
-static const uint32	pmu1_pllctrl_tab_4368_960mhz[] = {
+static const uint32	BCMATTACHDATA(pmu1_pllctrl_tab_4368_960mhz)[] = {
 /* Fvco (BBPLL) is taken as 960M */
 /*	PLL 0  PLL 1   PLL 2   PLL 3   PLL 4   PLL 5  PLL 6  PLL 7   PLL 8   PLL 9   PLL 10 */
 	0x15000000, 0x06050603, 0x01910806, 0x006BFA86,
@@ -5116,7 +5158,7 @@ static const uint32	pmu1_pllctrl_tab_4368_960mhz[] = {
 
 /** returns a table that instructs how to program the BBPLL for a particular xtal frequency */
 static const pmu1_xtaltab0_t *
-si_pmu1_xtaltab0(si_t *sih)
+BCMINITFN(si_pmu1_xtaltab0)(si_t *sih)
 {
 #ifdef BCMDBG_PMU
 	char chn[8];
@@ -5152,6 +5194,7 @@ si_pmu1_xtaltab0(si_t *sih)
 	case BCM4368_CHIP_GRPID:
 		return pmu1_xtaltab0_960;
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		return pmu1_xtaltab0_960;
 	default:
@@ -5164,7 +5207,7 @@ si_pmu1_xtaltab0(si_t *sih)
 
 /** returns chip specific PLL settings for default xtal frequency and VCO output frequency */
 static const pmu1_xtaltab0_t *
-si_pmu1_xtaldef0(si_t *sih)
+BCMINITFN(si_pmu1_xtaldef0)(si_t *sih)
 {
 #ifdef BCMDBG_PMU
 	char chn[8];
@@ -5205,6 +5248,7 @@ si_pmu1_xtaldef0(si_t *sih)
 	case BCM4347_CHIP_GRPID:
 	case BCM4378_CHIP_GRPID:
 		return &pmu1_xtaltab0_960[PMU1_XTALTAB0_960_37400K];
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		return &pmu1_xtaltab0_960[PMU1_XTALTAB0_960_59970K];
 	case BCM4369_CHIP_GRPID:
@@ -5349,7 +5393,7 @@ done:
 
 /** returns chip specific default BaseBand pll fvco frequency in [khz] units */
 static uint32
-si_pmu1_pllfvco0(si_t *sih)
+BCMINITFN(si_pmu1_pllfvco0)(si_t *sih)
 {
 #ifdef BCMDBG_PMU
 	char chn[8];
@@ -5410,6 +5454,7 @@ si_pmu1_pllfvco0(si_t *sih)
 		return FVCO_960;
 	case BCM4378_CHIP_GRPID:
 		return FVCO_960p1;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		return FVCO_963p01;
 	default:
@@ -5425,7 +5470,7 @@ si_pmu1_pllfvco0(si_t *sih)
  * for second pll for arm clock in 4347 - 420 MHz
  */
 static uint32
-si_pmu1_pllfvco0_pll2(si_t *sih)
+BCMINITFN(si_pmu1_pllfvco0_pll2)(si_t *sih)
 {
 #ifdef BCMDBG_PMU
 	char chn[8];
@@ -5437,10 +5482,10 @@ si_pmu1_pllfvco0_pll2(si_t *sih)
 
 	case BCM4369_CHIP_GRPID:
 	case BCM4362_CHIP_GRPID:
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		return si_get_armpllclkfreq(sih) * 1000;
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		return FVCO_400;
 	default:
@@ -5454,7 +5499,7 @@ si_pmu1_pllfvco0_pll2(si_t *sih)
 
 /** query alp/xtal clock frequency */
 static uint32
-si_pmu1_alpclk0(si_t *sih, osl_t *osh, pmuregs_t *pmu)
+BCMINITFN(si_pmu1_alpclk0)(si_t *sih, osl_t *osh, pmuregs_t *pmu)
 {
 	const pmu1_xtaltab0_t *xt;
 	uint32 xf;
@@ -5475,6 +5520,7 @@ si_pmu1_alpclk0(si_t *sih, osl_t *osh, pmuregs_t *pmu)
 
 	switch (CHIPID(sih->chip))
 	{
+		case BCM4385_CHIP_GRPID:
 		case BCM4387_CHIP_GRPID:
 			/* xtalfreq for 4378B0 is 59.97 MHz and
 			 * but ALP clk is xtal / 2 (29.985 MHz) by default.
@@ -5542,7 +5588,7 @@ si_pmu_htclk_mask(si_t *sih)
 
 /** returns ALP frequency in [Hz] */
 static uint32
-si_pmu_def_alp_clock(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_def_alp_clock)(si_t *sih, osl_t *osh)
 {
 	uint32 clock = ALP_CLOCK;
 
@@ -5643,7 +5689,7 @@ si_pmu_pllctrlreg_update(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint32 xtal,
 #ifdef SRFAST
 /** SRFAST specific function */
 static void
-si_pmu_internal_clk_calibration(si_t *sih, uint32 xtal)
+BCMATTACHFN(si_pmu_internal_clk_calibration)(si_t *sih, uint32 xtal)
 {
 	switch (CHIPID(sih->chip)) {
 		case BCM4345_CHIP_ID:
@@ -5672,7 +5718,7 @@ si_pmu_internal_clk_calibration(si_t *sih, uint32 xtal)
 #endif /* SRFAST */
 
 static void
-si_pmu_set_4345_pllcontrol_regs(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint32 xtal)
+BCMATTACHFN(si_pmu_set_4345_pllcontrol_regs)(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint32 xtal)
 {
 /* these defaults come from the recommeded values defined on the 4345 confluence PLL page */
 /* Backplane/ARM CR4 clock controlled by m3div bits 23:16 of PLL_CONTROL1
@@ -5895,7 +5941,7 @@ void si_pmu_armpll_chmdiv_upd(si_t *sih, uint32 ch0_mdiv, uint32 ch1_mdiv)
  * This function is only called for pmu1_ type chips, perhaps we should rename it.
  */
 static bool
-si_pmu_update_pllcontrol(si_t *sih, osl_t *osh, uint32 xtal, bool update_required)
+BCMATTACHFN(si_pmu_update_pllcontrol)(si_t *sih, osl_t *osh, uint32 xtal, bool update_required)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -6067,6 +6113,7 @@ si_pmu_update_pllcontrol(si_t *sih, osl_t *osh, uint32 xtal, bool update_require
 		pllctrlreg_val = pmu1_pllctrl_tab_4368_960mhz;
 		break;
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		/* TBD : bypass PLL programming, So use chip default values */
 		pllctrlreg_update = NULL;
@@ -6788,7 +6835,7 @@ si_pmu_pll_4364_macfreq_switch(si_t *sih, osl_t *osh, uint8 mode)
  * when done.
  */
 static void
-si_pmu1_pllinit1(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint32 xtal)
+BCMATTACHFN(si_pmu1_pllinit1)(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint32 xtal)
 {
 	char name[16];
 	const char *otp_val;
@@ -6944,7 +6991,7 @@ uint32 si_pmu_get_backplaneclkspeed(si_t *sih)
 	uint32 FVCO;
 	uint32 tmp, mdiv = 1;
 
-	if (BCM4387_CHIP(sih->chip)) {
+	if (BCM4387_CHIP(sih->chip) || BCM4385_CHIP(sih->chip)) {
 		return si_pmu_bpclk_4387(sih);
 	}
 
@@ -7008,7 +7055,7 @@ si_pmu_update_backplane_clock(si_t *sih, osl_t *osh, uint reg, uint32 mask, uint
  * clock divider that leads up to the backplane. Returns value in [Hz] units.
  */
 static uint32
-si_pmu_bpclk_4387(si_t *sih)
+BCMINITFN(si_pmu_bpclk_4387)(si_t *sih)
 {
 	uint32 tmp, mdiv;
 	uint32 FVCO;	/* in [khz] units */
@@ -7027,7 +7074,7 @@ si_pmu_bpclk_4387(si_t *sih)
  * clock divider that leads up to the ARM. Returns value in [Hz] units.
  */
 static uint32
-si_pmu1_cpuclk0(si_t *sih, osl_t *osh, pmuregs_t *pmu)
+BCMINITFN(si_pmu1_cpuclk0)(si_t *sih, osl_t *osh, pmuregs_t *pmu)
 {
 	uint32 tmp, mdiv = 1;
 #ifdef BCMDBG
@@ -7237,7 +7284,7 @@ si_pmu1_cpuclk0(si_t *sih, osl_t *osh, pmuregs_t *pmu)
  * Returns value in [Hz] units. For second pll for arm clock in 4347 - 420MHz
  */
 static uint32
-si_pmu1_cpuclk0_pll2(si_t *sih)
+BCMINITFN(si_pmu1_cpuclk0_pll2)(si_t *sih)
 {
 	uint32 FVCO = si_pmu1_pllfvco0_pll2(sih);	/* in [khz] units */
 
@@ -7393,6 +7440,7 @@ si_pmu_fvco_macdiv(si_t *sih, uint32 *fvco, uint32 *div)
 				& PMU1_PLL0_PC1_M4DIV_MASK) >> PMU1_PLL0_PC1_M4DIV_SHIFT;
 		}
 		break;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		if (div) {
 			*div = si_pmu_macdiv_4387(sih);
@@ -7540,7 +7588,7 @@ si_pmu_switch_off_PARLDO(si_t *sih, osl_t *osh)
  * Change VCO frequency (slightly), e.g. to avoid PHY errors due to spurs.
  */
 static void
-si_set_bb_vcofreq_frac(si_t *sih, osl_t *osh, int vcofreq, int frac, int xtalfreq)
+BCMATTACHFN(si_set_bb_vcofreq_frac)(si_t *sih, osl_t *osh, int vcofreq, int frac, int xtalfreq)
 {
 	uint32 vcofreq_withfrac, p1div, ndiv_int, fraca, ndiv_mode, reg;
 	/* shifts / masks for PMU PLL control register #2 : */
@@ -7771,7 +7819,7 @@ si_pmu_enb_slow_clk(si_t *sih, osl_t *osh, uint32 xtalfreq)
  * xtalfreq : x-tal frequency in [KHz]
  */
 void
-si_pmu_pll_init(si_t *sih, osl_t *osh, uint xtalfreq)
+BCMATTACHFN(si_pmu_pll_init)(si_t *sih, osl_t *osh, uint xtalfreq)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -7844,6 +7892,7 @@ si_pmu_pll_init(si_t *sih, osl_t *osh, uint xtalfreq)
 			si_set_bb_vcofreq_frac(sih, osh, 960, 98, 40);
 		break;
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		si_pmu1_pllinit1(sih, osh, pmu, xtalfreq); /* nvram PLL overrides + enables PLL */
 		break;
@@ -7866,7 +7915,7 @@ si_pmu_pll_init(si_t *sih, osl_t *osh, uint xtalfreq)
 
 /** get alp clock frequency in [Hz] units */
 uint32
-si_pmu_alp_clock(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_alp_clock)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -7923,6 +7972,7 @@ si_pmu_alp_clock(si_t *sih, osl_t *osh)
 	case BCM4368_CHIP_GRPID:
 	case BCM4362_CHIP_GRPID:
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		clock = si_pmu1_alpclk0(sih, osh, pmu);
 		break;
@@ -7952,7 +8002,7 @@ si_pmu_alp_clock(si_t *sih, osl_t *osh)
  * pllreg "pll0" i.e. 12 for main 6 for phy, 0 for misc.
  */
 static uint32
-si_pmu5_clock(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint pll0, uint m)
+BCMINITFN(si_pmu5_clock)(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint pll0, uint m)
 {
 	uint32 tmp, div, ndiv, p1, p2, fc;
 
@@ -7999,7 +8049,7 @@ si_pmu5_clock(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint pll0, uint m)
  * For designs that feed the same clock to both backplane and CPU just return the CPU clock speed.
  */
 uint32
-si_pmu_si_clock(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_si_clock)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -8071,6 +8121,7 @@ si_pmu_si_clock(si_t *sih, osl_t *osh)
 		clock = si_pmu1_cpuclk0(sih, osh, pmu);
 		break;
 
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		clock = si_pmu_bpclk_4387(sih);
 		break;
@@ -8133,7 +8184,7 @@ si_pmu_cpu_pll7clock(si_t *sih, osl_t *osh)
 
 /** returns CPU clock frequency in [hz] units */
 uint32
-si_pmu_cpu_clock(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_cpu_clock)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -8259,7 +8310,7 @@ si_pmu_mem_ca7clock(si_t *sih, osl_t *osh)
 
 /** get memory clock frequency, which is the same as the HT clock for newer chips. Returns [Hz]. */
 uint32
-si_pmu_mem_clock(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_mem_clock)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -8318,7 +8369,7 @@ si_pmu_mem_clock(si_t *sih, osl_t *osh)
 static uint32 ilpcycles_per_sec = 0;
 
 void
-si_pmu_ilp_clock_set(uint32 cycles_per_sec)
+BCMINITFN(si_pmu_ilp_clock_set)(uint32 cycles_per_sec)
 {
 	ilpcycles_per_sec = cycles_per_sec;
 }
@@ -8333,7 +8384,7 @@ si_pmu_ilp_clock_set(uint32 cycles_per_sec)
  * turned on and used to feed the CPU and that OSL_DELAY() is calibrated.
  */
 uint32
-si_pmu_ilp_clock(si_t *sih, osl_t *osh)
+BCMINITFN(si_pmu_ilp_clock)(si_t *sih, osl_t *osh)
 {
 	if (ISSIM_ENAB(sih))
 		return ILP_CLOCK;
@@ -8377,7 +8428,7 @@ si_pmu_ilp_clock(si_t *sih, osl_t *osh)
  *		    hardware supports this), if no hw support drive strength is not programmed.
  */
 void
-si_sdiod_drive_strength_init(si_t *sih, osl_t *osh, uint32 drivestrength)
+BCMINITFN(si_sdiod_drive_strength_init)(si_t *sih, osl_t *osh, uint32 drivestrength)
 {
 	/*
 	 * Note:
@@ -8396,7 +8447,7 @@ si_sdiod_drive_strength_init(si_t *sih, osl_t *osh, uint32 drivestrength)
 #if !defined(BCMDONGLEHOST)
 /** initialize PMU */
 void
-si_pmu_init(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_init)(si_t *sih, osl_t *osh)
 {
 	pmuregs_t *pmu;
 	uint origidx;
@@ -8473,7 +8524,7 @@ si_pmu_rsrc_macphy_clk_deps(si_t *sih, osl_t *osh, int macunit)
 }
 
 uint32
-si_pmu_rsrc_ht_avail_clk_deps(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_rsrc_ht_avail_clk_deps)(si_t *sih, osl_t *osh)
 {
 	uint32 deps;
 	rsc_per_chip_t *rsc;
@@ -8501,7 +8552,7 @@ si_pmu_rsrc_ht_avail_clk_deps(si_t *sih, osl_t *osh)
 }
 
 uint32
-si_pmu_rsrc_cb_ready_deps(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_rsrc_cb_ready_deps)(si_t *sih, osl_t *osh)
 {
 	uint32 deps;
 	rsc_per_chip_t *rsc;
@@ -8572,7 +8623,7 @@ si_pmu_set_mac_rsrc_req(si_t *sih, int macunit)
  * need to check circular dependancies and prevent dead recursion.
  */
 static uint
-si_pmu_res_uptime(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint8 rsrc)
+BCMINITFN(si_pmu_res_uptime)(si_t *sih, osl_t *osh, pmuregs_t *pmu, uint8 rsrc)
 {
 	uint32 deps;
 	uint uptime, i, dup, dmax;
@@ -9143,7 +9194,7 @@ si_pmu_is_otp_powered(si_t *sih, osl_t *osh)
  * savings (due to more accurate sleep intervals).
  */
 static void
-si_pmu_set_lpoclk(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_set_lpoclk)(si_t *sih, osl_t *osh)
 {
 	uint32 ext_lpo_sel, int_lpo_sel, timeout = 0,
 		ext_lpo_avail = 0, lpo_sel = 0;
@@ -9314,7 +9365,7 @@ si_pmu_fast_lpo_locked(si_t *sih, osl_t *osh)
 
 /* Turn ON FAST LPO FLL (1MHz) */
 static void
-si_pmu_fast_lpo_enable(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_fast_lpo_enable)(si_t *sih, osl_t *osh)
 {
 	int i = 0, lock = 0;
 
@@ -9388,7 +9439,7 @@ si_pmu_fast_lpo_enable(si_t *sih, osl_t *osh)
 
 /* Turn ON FAST LPO FLL (1MHz) for PCIE */
 bool
-si_pmu_fast_lpo_enable_pcie(si_t *sih)
+BCMATTACHFN(si_pmu_fast_lpo_enable_pcie)(si_t *sih)
 {
 	if (!FASTLPO_ENAB()) {
 		return FALSE;
@@ -9423,7 +9474,7 @@ si_pmu_fast_lpo_enable_pcie(si_t *sih)
 
 /* Turn ON FAST LPO FLL (1MHz) for PMU */
 bool
-si_pmu_fast_lpo_enable_pmu(si_t *sih)
+BCMATTACHFN(si_pmu_fast_lpo_enable_pmu)(si_t *sih)
 {
 	if (!FASTLPO_ENAB()) {
 		return FALSE;
@@ -9454,7 +9505,7 @@ si_pmu_fast_lpo_enable_pmu(si_t *sih)
 }
 
 static uint8
-fastlpo_dis_get(void)
+BCMATTACHFN(fastlpo_dis_get)(void)
 {
 	uint8 fastlpo_dis = 1;
 
@@ -9470,7 +9521,7 @@ fastlpo_dis_get(void)
 }
 
 static uint8
-fastlpo_pcie_dis_get(void)
+BCMATTACHFN(fastlpo_pcie_dis_get)(void)
 {
 	uint8 fastlpo_pcie_dis = 1;
 
@@ -9490,7 +9541,7 @@ fastlpo_pcie_dis_get(void)
  */
 #if defined(SAVERESTORE)
 static void
-si_set_lv_sleep_mode_pmu(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_set_lv_sleep_mode_pmu)(si_t *sih, osl_t *osh)
 {
 	/* jtag_udr_write USER_REG9W jtag_serdes_pic_enable 1 */
 	if (BCM4369_CHIP(sih->chip) && (CHIPREV(sih->chiprev) == 0)) {
@@ -9601,7 +9652,7 @@ si_set_lv_sleep_mode_pmu(si_t *sih, osl_t *osh)
 }
 
 static void
-si_set_lv_sleep_mode_4369(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_set_lv_sleep_mode_4369)(si_t *sih, osl_t *osh)
 {
 	si_set_lv_sleep_mode_pmu(sih, osh);
 
@@ -9628,7 +9679,7 @@ void si_set_abuck_mode_4362(si_t *sih, uint8 mode)
 }
 
 static void
-si_set_lv_sleep_mode_4378(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_set_lv_sleep_mode_4378)(si_t *sih, osl_t *osh)
 {
 	si_set_lv_sleep_mode_pmu(sih, osh);
 
@@ -9636,7 +9687,7 @@ si_set_lv_sleep_mode_4378(si_t *sih, osl_t *osh)
 }
 
 static void
-si_set_lv_sleep_mode_4387(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_set_lv_sleep_mode_4387)(si_t *sih, osl_t *osh)
 {
 	si_set_lv_sleep_mode_pmu(sih, osh);
 
@@ -9677,7 +9728,7 @@ si_set_lv_sleep_mode_4387(si_t *sih, osl_t *osh)
 }
 
 static void
-si_set_lv_sleep_mode_4362(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_set_lv_sleep_mode_4362)(si_t *sih, osl_t *osh)
 {
 	/* Program pmu VREG resgiter for Resouce based ABUCK and CBUCK modes
 	 *      cbuck rsrc 0 - PWM and abuck rsrc 0 - Auto, rsrc 1 - PWM
@@ -9760,7 +9811,7 @@ si_set_lv_sleep_mode_4362(si_t *sih, osl_t *osh)
 }
 
 void
-si_pmu_fis_setup(si_t *sih)
+BCMATTACHFN(si_pmu_fis_setup)(si_t *sih)
 {
 	uint origidx;
 	pmuregs_t *pmu;
@@ -9802,7 +9853,7 @@ si_pmu_fis_setup(si_t *sih)
  * use nvram to enable
  */
 static void
-si_pmu_dynamic_clk_switch_enab(si_t *sih)
+BCMATTACHFN(si_pmu_dynamic_clk_switch_enab)(si_t *sih)
 {
 	if (PMUREV(sih->pmurev) >= 36) {
 		if (getintvar(NULL, rstr_dyn_clksw_en)) {
@@ -9818,7 +9869,7 @@ si_pmu_dynamic_clk_switch_enab(si_t *sih)
 
 /* use pmu rsrc XTAL_PU to count deep sleep of chip */
 static void
-si_pmu_enb_slp_cnt_on_rsrc(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_enb_slp_cnt_on_rsrc)(si_t *sih, osl_t *osh)
 {
 	uint origidx;
 	pmuregs_t *pmu;
@@ -9842,6 +9893,7 @@ si_pmu_enb_slp_cnt_on_rsrc(si_t *sih, osl_t *osh)
 		rsrc_slp = RES4378_XTAL_PU;
 		break;
 
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		rsrc_slp = RES4387_XTAL_PU;
 		break;
@@ -9859,7 +9911,7 @@ si_pmu_enb_slp_cnt_on_rsrc(si_t *sih, osl_t *osh)
 
 /** initialize PMU chip controls and other chip level stuff */
 void
-si_pmu_chip_init(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_chip_init)(si_t *sih, osl_t *osh)
 {
 	ASSERT(sih->cccaps & CC_CAP_PMU);
 	si_pmu_otp_chipcontrol(sih, osh);
@@ -10471,19 +10523,34 @@ si_pmu_chip_init(si_t *sih, osl_t *osh)
 
 		si_pmu_dynamic_clk_switch_enab(sih);
 
-		si_pmu_vreg_control(sih, PMU_VREG_0,
-			VREG0_4378_CSR_VOLT_ADJ_PWM_MASK |
-			VREG0_4378_CSR_VOLT_ADJ_PFM_MASK |
-			VREG0_4378_CSR_VOLT_ADJ_LP_PFM_MASK |
-			VREG0_4378_CSR_OUT_VOLT_TRIM_ADJ_MASK,
-			(CSR_VOLT_ADJ_PWM_4378 << VREG0_4378_CSR_VOLT_ADJ_PWM_SHIFT) |
-			(CSR_VOLT_ADJ_PFM_4378 << VREG0_4378_CSR_VOLT_ADJ_PFM_SHIFT) |
-			(CSR_VOLT_ADJ_LP_PFM_4378 << VREG0_4378_CSR_VOLT_ADJ_LP_PFM_SHIFT) |
-			(CSR_OUT_VOLT_TRIM_ADJ_4378 << VREG0_4378_CSR_OUT_VOLT_TRIM_ADJ_SHIFT));
-
+		if (CHIPID(sih->chip) == BCM4378_CHIP_GRPID) {
+			si_pmu_vreg_control(sih, PMU_VREG_0,
+				VREG0_4378_CSR_VOLT_ADJ_PWM_MASK |
+				VREG0_4378_CSR_VOLT_ADJ_PFM_MASK |
+				VREG0_4378_CSR_VOLT_ADJ_LP_PFM_MASK |
+				VREG0_4378_CSR_OUT_VOLT_TRIM_ADJ_MASK,
+				(CSR_VOLT_ADJ_PWM_4378 << VREG0_4378_CSR_VOLT_ADJ_PWM_SHIFT) |
+				(CSR_VOLT_ADJ_PFM_4378 << VREG0_4378_CSR_VOLT_ADJ_PFM_SHIFT) |
+				(CSR_VOLT_ADJ_LP_PFM_4378 << VREG0_4378_CSR_VOLT_ADJ_LP_PFM_SHIFT) |
+				(CSR_OUT_VOLT_TRIM_ADJ_4378 <<
+					VREG0_4378_CSR_OUT_VOLT_TRIM_ADJ_SHIFT));
+		} else {
+			/* 4368 */
+			int nvcsr;
+			if ((nvcsr = getintvar(NULL, rstr_csrtune))) {
+				si_pmu_vreg_control(sih, PMU_VREG_0,
+					VREG0_4378_CSR_VOLT_ADJ_PWM_MASK |
+					VREG0_4378_CSR_VOLT_ADJ_PFM_MASK |
+					VREG0_4378_CSR_VOLT_ADJ_LP_PFM_MASK,
+					(nvcsr << VREG0_4378_CSR_VOLT_ADJ_PWM_SHIFT) |
+					(nvcsr << VREG0_4378_CSR_VOLT_ADJ_PFM_SHIFT) |
+					(nvcsr << VREG0_4378_CSR_VOLT_ADJ_LP_PFM_SHIFT));
+			}
+		}
 	}
 		break;
 
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 	{
 		pmuregs_t *pmu = si_setcore(sih, PMU_CORE_ID, 0);
@@ -10562,10 +10629,6 @@ si_pmu_chip_init(si_t *sih, osl_t *osh)
 		/* Enable fast LPO */
 		si_pmu_fast_lpo_enable(sih, osh);
 		si_pmu_dynamic_clk_switch_enab(sih);
-
-#ifdef BCMINTERNAL_PWR_OPT
-		_bcm_pwr_opt_dis = (bool)getintvar(NULL, rstr_pwr_opt_dis);
-#endif // endif
 
 		if (BCM_PWR_OPT_ENAB()) {
 			/* HQ settings */
@@ -10854,7 +10917,7 @@ si_pmu_slow_clk_reinit(si_t *sih, osl_t *osh)
 
 /** initialize PMU registers in case default values proved to be suboptimal */
 void
-si_pmu_swreg_init(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_swreg_init)(si_t *sih, osl_t *osh)
 {
 	int gpio_drive_strength;
 
@@ -10909,6 +10972,8 @@ si_pmu_swreg_init(si_t *sih, osl_t *osh)
 		}
 		break;
 	case BCM4378_CHIP_GRPID:
+	case BCM4385_CHIP_GRPID:
+	case BCM4387_CHIP_GRPID:
 #ifdef BCM_AVS
 		if (BCM_AVS_ENAB()) {
 			si_pmu_set_avs(sih);
@@ -10955,7 +11020,7 @@ si_pmu_waitforclk_on_backplane(si_t *sih, osl_t *osh, uint32 clk, uint32 delay_v
  * Possible only if PMU rev >= 10 and there is an external LPO 32768Hz crystal.
  */
 uint32
-si_pmu_measure_alpclk(si_t *sih, osl_t *osh)
+BCMATTACHFN(si_pmu_measure_alpclk)(si_t *sih, osl_t *osh)
 {
 	uint32 alp_khz;
 	uint32 pmustat_lpo = 0;
@@ -11162,7 +11227,7 @@ static uint32 *rodata_pmuregdump_ptr = NULL;
 
 /** size of the buffer needed to store the PMU register dump specifically PMU indirect registers */
 uint32
-si_pmu_dump_buf_size_pmucap(si_t *sih)
+BCMATTACHFN(si_pmu_dump_buf_size_pmucap)(si_t *sih)
 {
 	uint32 buf_size = 0;
 	uint32 cnt;
@@ -11508,23 +11573,31 @@ si_pmu_min_res_ldo3p3_set(si_t *sih, osl_t *osh, bool on)
 	uint32 min_mask = 0;
 	uint coreidx = si_findcoreidx(sih, GCI_CORE_ID, 0);
 
-	if (BCM4349_CHIP(sih->chip)) {
-		min_mask = PMURES_BIT(RES4349_LDO3P3_PU) | PMURES_BIT(RES4349_PMU_SLEEP) |
-			PMURES_BIT(RES4349_BG_PU);
-	} else if (BCM4347_CHIP(sih->chip)) {
-		/* no RES4347_BG_PU */
-		min_mask = PMURES_BIT(RES4347_LDO3P3_PU) | PMURES_BIT(RES4347_PMU_SLEEP);
-	} else if (BCM4369_CHIP(sih->chip) || BCM4362_CHIP(sih->chip)) {
-		min_mask = PMURES_BIT(RES4369_LDO3P3_PU);
-		if (on) {
-			si_corereg(sih, coreidx, LHL_REG_OFF(lhl_lp_main_ctl1_adr),
-				BCM_MASK32(23, 0), 0x9E9F9F);
-		} else {
-			si_corereg(sih, coreidx, LHL_REG_OFF(lhl_lp_main_ctl1_adr),
-				BCM_MASK32(23, 0), 0x9E9F97);
-		}
-	} else {
-		return BCME_UNSUPPORTED;
+	switch (CHIPID(sih->chip)) {
+		case BCM4349_CHIP_GRPID:
+			min_mask = PMURES_BIT(RES4349_LDO3P3_PU) | PMURES_BIT(RES4349_PMU_SLEEP) |
+				PMURES_BIT(RES4349_BG_PU);
+			break;
+		case BCM4347_CHIP_GRPID:
+			/* no RES4347_BG_PU */
+			min_mask = PMURES_BIT(RES4347_LDO3P3_PU) | PMURES_BIT(RES4347_PMU_SLEEP);
+			break;
+		case BCM4369_CHIP_GRPID:
+		case BCM4362_CHIP_GRPID:
+			min_mask = PMURES_BIT(RES4369_LDO3P3_PU);
+			if (on) {
+				si_corereg(sih, coreidx, LHL_REG_OFF(lhl_lp_main_ctl1_adr),
+						BCM_MASK32(23, 0), 0x9E9F9F);
+			} else {
+				si_corereg(sih, coreidx, LHL_REG_OFF(lhl_lp_main_ctl1_adr),
+						BCM_MASK32(23, 0), 0x9E9F97);
+			}
+			break;
+		case BCM4378_CHIP_GRPID:
+			min_mask = PMURES_BIT(RES4378_LDO3P3_PU);
+			break;
+		default:
+			return BCME_UNSUPPORTED;
 	}
 
 	si_pmu_min_res_set(sih, osh, min_mask, on);
@@ -11702,10 +11775,10 @@ si_pmu_wake_bit_offset(si_t *sih)
 	case BCM4378_CHIP_GRPID:
 		wakebit = CC2_4378_GCI2WAKE_MASK;
 		break;
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		wakebit = CC2_4387_GCI2WAKE_MASK;
 		break;
-	case BCM4385_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
 		wakebit = CC2_4389_GCI2WAKE_MASK;
 		break;
@@ -12420,6 +12493,7 @@ si_pmu_mem_pwr_off(si_t *sih, int core_idx)
 	}
 
 	switch (CHIPID(sih->chip)) {
+	case BCM4385_CHIP_GRPID:
 	case BCM4387_CHIP_GRPID:
 		if (core_idx == 0) {
 			si_pmu_chipcontrol(sih, PMU_CHIPCTL4,
@@ -12477,5 +12551,56 @@ si_pmu_mem_pwr_off(si_t *sih, int core_idx)
 	}
 
 	return ret;
+}
+
+void
+si_pmu_disable_intr_pwrreq(si_t *sih)
+{
+	if (MULTIBP_CAP(sih)) {
+		switch (CHIPID(sih->chip)) {
+		case BCM4368_CHIP_GRPID:
+		case BCM4378_CHIP_GRPID:
+		case BCM4385_CHIP_GRPID:
+		case BCM4387_CHIP_GRPID:
+		case BCM4389_CHIP_GRPID:
+			si_pmu_chipcontrol(sih, PMU_CHIPCTL2, PMU_CC2_CB2WL_INTR_PWRREQ_EN, 0);
+			si_pmu_chipcontrol(sih, PMU_CHIPCTL6, PMU_CC6_ENABLE_DMN1_WAKEUP, 0);
+			break;
+		default:
+			PMU_ERROR(("si_pmu_disable_intr_pwrreq: add support for this chip!\n"));
+			OSL_SYS_HALT();
+			break;
+		}
+	}
+}
+
+void
+si_pmu_clear_intmask(si_t *sih)
+{
+	pmuregs_t *pmu;
+	uint origidx;
+	osl_t *osh = si_osh(sih);
+	uint pmu_intr_recvr_cnt;
+
+	/* Remember original core before switch to chipc/pmu */
+	origidx = si_coreidx(sih);
+	if (AOB_ENAB(sih)) {
+		pmu = si_setcore(sih, PMU_CORE_ID, 0);
+	} else {
+		pmu = si_setcoreidx(sih, SI_CC_IDX);
+	}
+
+	ASSERT(pmu != NULL);
+	W_REG(osh, &pmu->pmuintmask0, 0);
+
+	pmu_intr_recvr_cnt = ((R_REG(osh, &pmu->core_cap_ext) & PCAP_EXT_PMU_INTR_RCVR_CNT_MASK)
+			>> PCAP_EXT_PMU_INTR_RCVR_CNT_SHIFT) + 1;
+
+	if (pmu_intr_recvr_cnt > 1) {
+		W_REG(osh, &pmu->pmuintmask1, 0);
+	}
+
+	/* Return to original core */
+	si_setcoreidx(sih, origidx);
 }
 #endif /* DONGLEBUILD */

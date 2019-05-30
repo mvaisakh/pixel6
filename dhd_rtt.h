@@ -270,6 +270,9 @@ typedef struct rtt_geofence_cfg {
 	int8 cur_target_idx;
 	rtt_geofence_target_info_t geofence_target_info[RTT_MAX_GEOFENCE_TARGET_CNT];
 	int geofence_rtt_interval;
+#ifdef RTT_GEOFENCE_CONT
+	bool geofence_cont;
+#endif /* RTT_GEOFENCE_CONT */
 } rtt_geofence_cfg_t;
 
 /*
@@ -277,16 +280,17 @@ typedef struct rtt_geofence_cfg {
  * going forward if needed
  */
 enum rtt_schedule_reason {
-	RTT_SCHED_HOST_TRIGGER		= 1, /* On host command for directed RTT */
-	RTT_SCHED_SUB_MATCH		= 2, /* on Sub Match for svc with range req */
-	RTT_SCHED_DIR_TRIGGER_FAIL	= 3, /* On failure of Directed RTT Trigger */
-	RTT_SCHED_DP_END		= 4, /* ON NDP End event from fw */
-	RTT_SCHED_DP_REJECTED		= 5, /* On receving reject dp event from fw */
-	RTT_SCHED_RNG_RPT_DIRECTED	= 6, /* On Ranging report for directed RTT */
-	RTT_SCHED_RNG_TERM		= 7, /* On Range Term Indicator */
-	RTT_SHCED_HOST_DIRECTED_TERM	= 8, /* On host terminating directed RTT sessions */
-	RTT_SCHED_RNG_RPT_GEOFENCE	= 9, /* On Ranging report for geofence RTT */
-	RTT_SCHED_RTT_RETRY_GEOFENCE	= 10 /* On Geofence Retry */
+	RTT_SCHED_HOST_TRIGGER			= 1, /* On host command for directed RTT */
+	RTT_SCHED_SUB_MATCH			= 2, /* on Sub Match for svc with range req */
+	RTT_SCHED_DIR_TRIGGER_FAIL		= 3, /* On failure of Directed RTT Trigger */
+	RTT_SCHED_DP_END			= 4, /* ON NDP End event from fw */
+	RTT_SCHED_DP_REJECTED			= 5, /* On receving reject dp event from fw */
+	RTT_SCHED_RNG_RPT_DIRECTED		= 6, /* On Ranging report for directed RTT */
+	RTT_SCHED_RNG_TERM			= 7, /* On Range Term Indicator */
+	RTT_SHCED_HOST_DIRECTED_TERM		= 8, /* On host terminating directed RTT sessions */
+	RTT_SCHED_RNG_RPT_GEOFENCE		= 9, /* On Ranging report for geofence RTT */
+	RTT_SCHED_RTT_RETRY_GEOFENCE		= 10, /* On Geofence Retry */
+	RTT_SCHED_RNG_TERM_PEND_ROLE_CHANGE	= 11 /* On Rng Term, while pending role change */
 };
 
 /*
@@ -436,7 +440,15 @@ int
 dhd_rtt_set_cfg(dhd_pub_t *dhd, rtt_config_params_t *params);
 
 #ifdef WL_NAN
+#ifdef RTT_GEOFENCE_CONT
+void dhd_rtt_set_geofence_cont_ind(dhd_pub_t *dhd, bool geofence_cont);
+
+void dhd_rtt_get_geofence_cont_ind(dhd_pub_t *dhd, bool* geofence_cont);
+#endif /* RTT_GEOFENCE_CONT */
+
+#ifdef RTT_GEOFENCE_INTERVAL
 void dhd_rtt_set_geofence_rtt_interval(dhd_pub_t *dhd, int interval);
+#endif /* RTT_GEOFENCE_INTERVAL */
 
 void dhd_rtt_set_role_concurrency_state(dhd_pub_t *dhd, bool state);
 

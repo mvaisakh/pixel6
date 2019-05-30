@@ -492,9 +492,7 @@ extern uint dhd_watchdog_ms;
 extern uint sd_f1_blocksize;
 #endif /* !NDIS */
 
-#ifdef BCMSPI_ANDROID
 extern uint *dhd_spi_lockcount;
-#endif /* BCMSPI_ANDROID */
 
 extern void dhd_os_wd_timer(void *bus, uint wdtick);
 int dhd_enableOOB(dhd_pub_t *dhd, bool sleep);
@@ -916,6 +914,7 @@ dhdsdio_sr_cap(dhd_bus_t *bus)
 		(bus->sih->chip == BCM4362_CHIP_ID) ||
 		(bus->sih->chip == BCM43012_CHIP_ID) ||
 		(bus->sih->chip == BCM43014_CHIP_ID) ||
+		(bus->sih->chip == BCM43013_CHIP_ID) ||
 		(bus->sih->chip == BCM43751_CHIP_ID)) {
 		core_capext = TRUE;
 	} else {
@@ -991,6 +990,7 @@ dhdsdio_sr_init(dhd_bus_t *bus)
 		CHIPID(bus->sih->chip) == BCM43012_CHIP_ID ||
 		CHIPID(bus->sih->chip) == BCM4362_CHIP_ID ||
 		CHIPID(bus->sih->chip) == BCM43014_CHIP_ID ||
+		CHIPID(bus->sih->chip) == BCM43013_CHIP_ID ||
 		CHIPID(bus->sih->chip) == BCM43751_CHIP_ID)
 			dhdsdio_devcap_set(bus, SDIOD_CCCR_BRCM_CARDCAP_CMD_NODEC);
 
@@ -1962,38 +1962,11 @@ int dhdsdio_func_blocksize(dhd_pub_t *dhd, int function_num, int block_size)
 }
 #endif /* USE_DYNAMIC_F2_BLKSIZE */
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 void
 dhd_enable_oob_intr(struct dhd_bus *bus, bool enable)
 {
-#if defined(BCMSPI_ANDROID)
 	bcmsdh_intr_enable(bus->sdh);
-#elif defined(HW_OOB)
-	bcmsdh_enable_hw_oob_intr(bus->sdh, enable);
-#else
-	sdpcmd_regs_t *regs = bus->regs;
-	uint retries = 0;
-
-	dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
-	if (enable == TRUE) {
-
-		/* Tell device to start using OOB wakeup */
-		W_SDREG(SMB_USE_OOB, &regs->tosbmailbox, retries);
-		if (retries > retry_limit)
-			DHD_ERROR(("CANNOT SIGNAL CHIP, WILL NOT WAKE UP!!\n"));
-
-	} else {
-		/* Send misc interrupt to indicate OOB not needed */
-		W_SDREG(0, &regs->tosbmailboxdata, retries);
-		if (retries <= retry_limit)
-			W_SDREG(SMB_DEV_INT, &regs->tosbmailbox, retries);
-	}
-
-	/* Turn off our contribution to the HT clock request */
-	dhdsdio_clkctl(bus, CLK_SDONLY, FALSE);
-#endif /* !defined(HW_OOB) */
 }
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 int
 dhd_bus_txdata(struct dhd_bus *bus, void *pkt)
@@ -5201,9 +5174,6 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 		bus->intdis = FALSE;
 		if (bus->intr) {
 			DHD_INTR(("%s: enable SDIO device interrupts\n", __FUNCTION__));
-#ifndef BCMSPI_ANDROID
-			bcmsdh_intr_enable(bus->sdh);
-#endif /* !BCMSPI_ANDROID */
 		} else {
 			DHD_INTR(("%s: disable SDIO interrupts\n", __FUNCTION__));
 			bcmsdh_intr_disable(bus->sdh);
@@ -6928,10 +6898,8 @@ clkwait:
 #if !defined(NDIS)
 		bcmsdh_intr_enable(sdh);
 #endif /* !defined(NDIS) */
-#ifdef BCMSPI_ANDROID
 		if (*dhd_spi_lockcount == 0)
 			bcmsdh_oob_intr_set(bus->sdh, TRUE);
-#endif /* BCMSPI_ANDROID */
 	}
 
 #if defined(OOB_INTR_ONLY) && !defined(HW_OOB)
@@ -7088,9 +7056,7 @@ dhdsdio_isr(void *arg)
 		DHD_ERROR(("dhdsdio_isr() w/o interrupt configured!\n"));
 	}
 
-#ifdef BCMSPI_ANDROID
 	bcmsdh_oob_intr_set(bus->sdh, FALSE);
-#endif /* BCMSPI_ANDROID */
 #if !defined(NDIS)
 	bcmsdh_intr_disable(sdh);
 #endif /* !defined(NDIS) */
@@ -7420,32 +7386,24 @@ int dhd_bus_oob_intr_register(dhd_pub_t *dhdp)
 {
 	int err = 0;
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 	err = bcmsdh_oob_intr_register(dhdp->bus->sdh, dhdsdio_isr, dhdp->bus);
-#endif // endif
 	return err;
 }
 
 void dhd_bus_oob_intr_unregister(dhd_pub_t *dhdp)
 {
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 	bcmsdh_oob_intr_unregister(dhdp->bus->sdh);
-#endif // endif
 }
 
 void dhd_bus_oob_intr_set(dhd_pub_t *dhdp, bool enable)
 {
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 	bcmsdh_oob_intr_set(dhdp->bus->sdh, enable);
-#endif // endif
 }
 
 int dhd_bus_get_oob_irq_num(dhd_pub_t *dhdp)
 {
 	int irq_num = 0;
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 	irq_num = bcmsdh_get_oob_intr_num(dhdp->bus->sdh);
-#endif /* OOB_INTR_ONLY || BCMSPI_ANDROID */
 	return irq_num;
 }
 
@@ -7782,6 +7740,9 @@ dhdsdio_chipmatch(uint16 chipid)
 		return TRUE;
 
 	if (chipid == BCM43014_CHIP_ID)
+		return TRUE;
+
+	if (chipid == BCM43013_CHIP_ID)
 		return TRUE;
 
 	if (chipid == BCM4369_CHIP_ID)
@@ -8672,10 +8633,8 @@ dhdsdio_resume(void *context)
 	DHD_BUS_BUSY_SET_RESUME_IN_PROGRESS(bus->dhd);
 	DHD_LINUX_GENERAL_UNLOCK(bus->dhd, flags);
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 	if (dhd_os_check_if_up(bus->dhd))
 		bcmsdh_oob_intr_set(bus->sdh, TRUE);
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 	DHD_LINUX_GENERAL_LOCK(bus->dhd, flags);
 	DHD_BUS_BUSY_CLEAR_RESUME_IN_PROGRESS(bus->dhd);
@@ -9341,12 +9300,10 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			/* Stop the bus, disable F2 */
 			dhd_bus_stop(bus, FALSE);
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 			/* Clean up any pending IRQ */
 			dhd_enable_oob_intr(bus, FALSE);
 			bcmsdh_oob_intr_set(bus->sdh, FALSE);
 			bcmsdh_oob_intr_unregister(bus->sdh);
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 			/* Clean tx/rx buffer pointers, detach from the dongle */
 			dhdsdio_release_dongle(bus, bus->dhd->osh, TRUE, TRUE);
@@ -9393,12 +9350,10 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 					/* Re-init bus, enable F2 transfer */
 					bcmerror = dhd_bus_init((dhd_pub_t *) bus->dhd, FALSE);
 					if (bcmerror == BCME_OK) {
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 						dhd_enable_oob_intr(bus, TRUE);
 						bcmsdh_oob_intr_register(bus->sdh,
 							dhdsdio_isr, bus);
 						bcmsdh_oob_intr_set(bus->sdh, TRUE);
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 						bus->dhd->dongle_reset = FALSE;
 						bus->dhd->up = TRUE;

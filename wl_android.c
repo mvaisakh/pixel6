@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_android.c 817606 2019-05-02 06:59:42Z $
+ * $Id: wl_android.c 821341 2019-05-23 06:38:15Z $
  */
 
 #include <linux/module.h>
@@ -276,9 +276,8 @@ typedef struct android_wifi_af_params {
 /* CUSTOMER_HW4's value differs from BRCM FW value for enable/disable */
 #define CUSTOMER_HW4_ENABLE		0
 #define CUSTOMER_HW4_DISABLE	-1
-#define CUSTOMER_HW4_EN_CONVERT(i)	(i += 1)
 #endif /* FCC_PWR_LIMIT_2G */
-
+#define CUSTOMER_HW4_EN_CONVERT(i)	(i += 1)
 #endif /* CUSTOMER_HW4_PRIVATE_CMD */
 
 #ifdef WLFBT
@@ -403,6 +402,11 @@ typedef union {
 #define CMD_SET_AP_SUSPEND			"SET_AP_SUSPEND"
 #endif /* SUPPORT_AP_SUSPEND */
 
+#ifdef SUPPORT_AP_BWCTRL
+#define CMD_SET_AP_BW			"SET_AP_BW"
+#define CMD_GET_AP_BW			"GET_AP_BW"
+#endif /* SUPPORT_AP_BWCTRL */
+
 /* miracast related definition */
 #define MIRACAST_MODE_OFF	0
 #define MIRACAST_MODE_SOURCE	1
@@ -455,9 +459,11 @@ void dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd);
 extern bool dhd_debug_uart_is_running(struct net_device *dev);
 #endif	/* DHD_DEBUG_UART */
 
+#ifdef RTT_GEOFENCE_INTERVAL
 #if defined(RTT_SUPPORT) && defined(WL_NAN)
 #define CMD_GEOFENCE_INTERVAL	"GEOFENCE_INT"
 #endif /* RTT_SUPPORT && WL_NAN */
+#endif /* RTT_GEOFENCE_INTERVAL */
 
 struct io_cfg {
 	s8 *iovar;
@@ -495,66 +501,6 @@ typedef enum {
 #endif /* BCMFW_ROAM_ENABLE */
 
 #define CMD_DEBUG_VERBOSE          "DEBUG_VERBOSE"
-#ifdef WL_NATOE
-
-#define CMD_NATOE		"NATOE"
-
-#define NATOE_MAX_PORT_NUM	65535
-
-/* natoe command info structure */
-typedef struct wl_natoe_cmd_info {
-	uint8  *command;        /* pointer to the actual command */
-	uint16 tot_len;        /* total length of the command */
-	uint16 bytes_written;  /* Bytes written for get response */
-} wl_natoe_cmd_info_t;
-
-typedef struct wl_natoe_sub_cmd wl_natoe_sub_cmd_t;
-typedef int (natoe_cmd_handler_t)(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-
-struct wl_natoe_sub_cmd {
-	char *name;
-	uint8  version;              /* cmd  version */
-	uint16 id;                   /* id for the dongle f/w switch/case */
-	uint16 type;                 /* base type of argument */
-	natoe_cmd_handler_t *handler; /* cmd handler  */
-};
-
-#define WL_ANDROID_NATOE_FUNC(suffix) wl_android_natoe_subcmd_ ##suffix
-static int wl_android_process_natoe_cmd(struct net_device *dev,
-		char *command, int total_len);
-static int wl_android_natoe_subcmd_enable(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-static int wl_android_natoe_subcmd_config_ips(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-static int wl_android_natoe_subcmd_config_ports(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-static int wl_android_natoe_subcmd_dbg_stats(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-static int wl_android_natoe_subcmd_tbl_cnt(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info);
-
-static const wl_natoe_sub_cmd_t natoe_cmd_list[] = {
-	/* wl natoe enable [0/1] or new: "wl natoe [0/1]" */
-	{"enable", 0x01, WL_NATOE_CMD_ENABLE,
-	IOVT_BUFFER, WL_ANDROID_NATOE_FUNC(enable)
-	},
-	{"config_ips", 0x01, WL_NATOE_CMD_CONFIG_IPS,
-	IOVT_BUFFER, WL_ANDROID_NATOE_FUNC(config_ips)
-	},
-	{"config_ports", 0x01, WL_NATOE_CMD_CONFIG_PORTS,
-	IOVT_BUFFER, WL_ANDROID_NATOE_FUNC(config_ports)
-	},
-	{"stats", 0x01, WL_NATOE_CMD_DBG_STATS,
-	IOVT_BUFFER, WL_ANDROID_NATOE_FUNC(dbg_stats)
-	},
-	{"tbl_cnt", 0x01, WL_NATOE_CMD_TBL_CNT,
-	IOVT_BUFFER, WL_ANDROID_NATOE_FUNC(tbl_cnt)
-	},
-	{NULL, 0, 0, 0, NULL}
-};
-
-#endif /* WL_NATOE */
 
 #ifdef SET_PCIE_IRQ_CPU_CORE
 #define CMD_PCIE_IRQ_CORE	"PCIE_IRQ_CORE"
@@ -589,6 +535,11 @@ static const wl_natoe_sub_cmd_t natoe_cmd_list[] = {
 #ifdef WL_CHAN_UTIL
 #define CMD_GET_CHAN_UTIL "GET_CU"
 #endif /* WL_CHAN_UTIL */
+
+#ifdef SUPPORT_SOFTAP_ELNA_BYPASS
+#define CMD_SET_SOFTAP_ELNA_BYPASS				"SET_SOFTAP_ELNA_BYPASS"
+#define CMD_GET_SOFTAP_ELNA_BYPASS				"GET_SOFTAP_ELNA_BYPASS"
+#endif /* SUPPORT_SOFTAP_ELNA_BYPASS */
 
 /* drv command info structure */
 typedef struct wl_drv_cmd_info {
@@ -2786,102 +2737,230 @@ wl_android_get_fcc_pwr_limit_2g(struct net_device *dev, char *command, int total
 }
 #endif /* FCC_PWR_LIMIT_2G */
 
+/* Additional format of sta_info
+ * tx_pkts, tx_failures, tx_rate(kbps), rssi(main), rssi(aux), tx_pkts_retried,
+ * tx_pkts_retry_exhausted, rx_lastpkt_rssi(main), rx_lastpkt_rssi(aux),
+ * tx_pkts_total, tx_pkts_retries, tx_pkts_fw_total, tx_pkts_fw_retries,
+ * tx_pkts_fw_retry_exhausted
+ */
+#define STA_INFO_ADD_FMT	"%d %d %d %d %d %d %d %d %d %d %d %d %d %d"
+
 s32
 wl_cfg80211_get_sta_info(struct net_device *dev, char* command, int total_len)
 {
 	int bytes_written = -1, ret = 0;
-	char *pcmd = command;
-	char *str;
+	char *pos, *token, *cmdstr;
+	bool is_macaddr = FALSE;
 	sta_info_v4_t *sta = NULL;
-	const wl_cnt_wlc_t* wlc_cnt = NULL;
 	struct ether_addr mac;
-	char *iovar_buf;
+	char *iovar_buf = NULL;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	struct net_device *apdev = NULL;
+#ifdef BCMDONGLEHOST
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+#endif /* BCMDONGLEHOST */
 	/* Client information */
 	uint16 cap = 0;
-	uint32 rxrtry = 0;
-	uint32 rxmulti = 0;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	uint32 rxrtry = 0, rxmulti = 0;
+	uint32 tx_pkts = 0, tx_failures = 0, tx_rate = 0;
+	uint32 tx_pkts_retried = 0, tx_pkts_retry_exhausted = 0;
+	uint32 tx_pkts_total = 0, tx_pkts_retries = 0;
+	uint32 tx_pkts_fw_total = 0, tx_pkts_fw_retries = 0;
+	uint32 tx_pkts_fw_retry_exhausted = 0;
+	int8 rssi[WL_STA_ANT_MAX] = {0};
+	int8 rx_lastpkt_rssi[WL_STA_ANT_MAX] = {0};
 
 	WL_DBG(("%s\n", command));
 
-	iovar_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MAXLEN);
-	if (iovar_buf == NULL) {
-		DHD_ERROR(("wl_cfg80211_get_sta_info: failed to allocated memory %d bytes\n",
-		WLC_IOCTL_MAXLEN));
-		goto error;
+	/* Check the current op_mode */
+	if (!(dhdp->op_mode & DHD_FLAG_HOSTAP_MODE)) {
+		WL_ERR(("unsupported op mode: %d\n", dhdp->op_mode));
+		return BCME_NOTAP;
 	}
 
-	str = bcmstrtok(&pcmd, " ", NULL);
-	if (str) {
-		str = bcmstrtok(&pcmd, " ", NULL);
-		/* If GETSTAINFO subcmd name is not provided, return error */
-		if (str == NULL) {
-			WL_ERR(("GETSTAINFO subcmd not provided wl_cfg80211_get_sta_info\n"));
+	/*
+	 * DRIVER GETSTAINFO [client MAC or ALL] [ifname]
+	 */
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* Client MAC or ALL */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR(("GETSTAINFO subcmd not provided wl_cfg80211_get_sta_info\n"));
+		return -EINVAL;
+	}
+	cmdstr = token;
+
+	bzero(&mac, ETHER_ADDR_LEN);
+	if ((!strncmp(token, "all", 3)) || (!strncmp(token, "ALL", 3))) {
+		is_macaddr = FALSE;
+	} else if ((bcm_ether_atoe(token, &mac))) {
+		is_macaddr = TRUE;
+	} else {
+		WL_ERR(("Failed to get address\n"));
+		return -EINVAL;
+	}
+
+	/* get the interface name */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		/* assign requested dev for compatibility */
+		apdev = dev;
+	} else {
+		/* Find a net_device for SoftAP by interface name */
+		apdev = wl_get_ap_netdev(cfg, token);
+		if (!apdev) {
+			WL_ERR(("cannot find a net_device for SoftAP\n"));
+			return -EINVAL;
+		}
+	}
+
+	iovar_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MAXLEN);
+	if (!iovar_buf) {
+		WL_ERR(("Failed to allocated memory %d bytes\n",
+			WLC_IOCTL_MAXLEN));
+		return BCME_NOMEM;
+	}
+
+	if (is_macaddr) {
+		int cnt;
+
+		/* get the sta info */
+		ret = wldev_iovar_getbuf(apdev, "sta_info",
+			(struct ether_addr *)mac.octet, ETHER_ADDR_LEN,
+			iovar_buf, WLC_IOCTL_MAXLEN, NULL);
+		if (ret < 0) {
+			WL_ERR(("Get sta_info ERR %d\n", ret));
 			goto error;
 		}
 
-		bzero(&mac, ETHER_ADDR_LEN);
-		if ((bcm_ether_atoe((str), &mac))) {
-			/* get the sta info */
-			ret = wldev_iovar_getbuf(dev, "sta_info",
-				(struct ether_addr *)mac.octet,
-				ETHER_ADDR_LEN, iovar_buf, WLC_IOCTL_SMLEN, NULL);
-			if (ret < 0) {
-				WL_ERR(("Get sta_info ERR %d\n", ret));
-				goto error;
-			}
-
-			sta = (sta_info_v4_t *)iovar_buf;
-			if (dtoh16(sta->ver) != WL_STA_VER_4) {
-				WL_ERR(("sta_info struct version mismatch, "
-					"host ver : %d, fw ver : %d\n", WL_STA_VER_4,
-					dtoh16(sta->ver)));
-				goto error;
-			}
-			cap = dtoh16(sta->cap);
-			rxrtry = dtoh32(sta->rx_pkts_retried);
-			rxmulti = dtoh32(sta->rx_mcast_pkts);
-		} else if ((!strncmp(str, "all", 3)) || (!strncmp(str, "ALL", 3))) {
-			/* get counters info */
-			ret = wldev_iovar_getbuf(dev, "counters", NULL, 0,
-				iovar_buf, WLC_IOCTL_MAXLEN, NULL);
-			if (unlikely(ret)) {
-				WL_ERR(("counters error (%d) - size = %zu\n",
-					ret, sizeof(wl_cnt_wlc_t)));
-				goto error;
-			}
-			ret = wl_cntbuf_to_xtlv_format(NULL, iovar_buf, WL_CNTBUF_MAX_SIZE, 0);
-			if (ret != BCME_OK) {
-				WL_ERR(("wl_cntbuf_to_xtlv_format ERR %d\n", ret));
-				goto error;
-			}
-			if (!(wlc_cnt = GET_WLCCNT_FROM_CNTBUF(iovar_buf))) {
-				WL_ERR(("wlc_cnt NULL!\n"));
-				goto error;
-			}
-
-			rxrtry = dtoh32(wlc_cnt->rxrtry);
-			rxmulti = dtoh32(wlc_cnt->rxmulti);
-		} else {
-			WL_ERR(("Get address fail\n"));
+		sta = (sta_info_v4_t *)iovar_buf;
+		if (dtoh16(sta->ver) != WL_STA_VER_4) {
+			WL_ERR(("sta_info struct version mismatch, "
+				"host ver : %d, fw ver : %d\n", WL_STA_VER_4,
+				dtoh16(sta->ver)));
 			goto error;
+		}
+		cap = dtoh16(sta->cap);
+		rxrtry = dtoh32(sta->rx_pkts_retried);
+		rxmulti = dtoh32(sta->rx_mcast_pkts);
+		tx_pkts = dtoh32(sta->tx_pkts);
+		tx_failures = dtoh32(sta->tx_failures);
+		tx_rate = dtoh32(sta->tx_rate);
+		tx_pkts_retried = dtoh32(sta->tx_pkts_retried);
+		tx_pkts_retry_exhausted = dtoh32(sta->tx_pkts_retry_exhausted);
+		tx_pkts_total = dtoh32(sta->tx_pkts_total);
+		tx_pkts_retries = dtoh32(sta->tx_pkts_retries);
+		tx_pkts_fw_total = dtoh32(sta->tx_pkts_fw_total);
+		tx_pkts_fw_retries = dtoh32(sta->tx_pkts_fw_retries);
+		tx_pkts_fw_retry_exhausted = dtoh32(sta->tx_pkts_fw_retry_exhausted);
+		for (cnt = WL_ANT_IDX_1; cnt < WL_RSSI_ANT_MAX; cnt++) {
+			rssi[cnt] = sta->rssi[cnt];
+			rx_lastpkt_rssi[cnt] = sta->rx_lastpkt_rssi[cnt];
 		}
 	} else {
-		WL_ERR(("Command ERR\n"));
-		goto error;
+		const wl_cnt_wlc_t* wlc_cnt = NULL;
+#ifndef DISABLE_IF_COUNTERS
+		wl_if_stats_t *if_stats = NULL;
+#endif /* !DISABLE_IF_COUNTERS */
+		ret = wldev_iovar_getbuf(apdev, "counters", NULL, 0,
+			iovar_buf, WLC_IOCTL_MAXLEN, NULL);
+		if (unlikely(ret)) {
+			WL_ERR(("counters error (%d) - size = %zu\n",
+				ret, sizeof(wl_cnt_wlc_t)));
+			goto error;
+		}
+		ret = wl_cntbuf_to_xtlv_format(NULL, iovar_buf,
+			WL_CNTBUF_MAX_SIZE, 0);
+		if (ret != BCME_OK) {
+			WL_ERR(("wl_cntbuf_to_xtlv_format ERR %d\n", ret));
+			goto error;
+		}
+		if (!(wlc_cnt = GET_WLCCNT_FROM_CNTBUF(iovar_buf))) {
+			WL_ERR(("wlc_cnt NULL!\n"));
+			goto error;
+		}
+
+#ifndef DISABLE_IF_COUNTERS
+		if_stats = (wl_if_stats_t *)MALLOCZ(cfg->osh,
+			sizeof(wl_if_stats_t));
+		if (!if_stats) {
+			WL_ERR(("MALLOCZ failed\n"));
+			goto error;
+		}
+		bzero(if_stats, sizeof(wl_if_stats_t));
+#ifdef BCMDONGLEHOST
+		if (FW_SUPPORTED(dhdp, ifst)) {
+			ret = wl_cfg80211_ifstats_counters(apdev, if_stats);
+		} else
+#endif /* BCMDONGLEHOST */
+		{
+			ret = wldev_iovar_getbuf(apdev, "if_counters",
+				NULL, 0, (char *)if_stats,
+				sizeof(wl_if_stats_t), NULL);
+		}
+		if (ret) {
+			WL_ERR(("if_counters not supported ret=%d\n", ret));
+#endif /* !DISABLE_IF_COUNTERS */
+			/* In case if_stats IOVAR is not supported,
+			 * get information from counters.
+			 */
+			rxrtry = dtoh32(wlc_cnt->rxrtry);
+			rxmulti = dtoh32(wlc_cnt->rxmulti);
+			tx_pkts = dtoh32(wlc_cnt->txframe);
+			tx_failures = dtoh32(wlc_cnt->txnobuf) +
+				dtoh32(wlc_cnt->rxrunt) + dtoh32(wlc_cnt->txfail);
+			tx_pkts_total = dtoh32(wlc_cnt->txfrmsnt);
+			tx_pkts_retries = dtoh32(wlc_cnt->txretrans);
+			tx_pkts_fw_total = dtoh32(wlc_cnt->txfrmsnt);
+			tx_pkts_fw_retries = dtoh32(wlc_cnt->txretrans);
+			tx_pkts_fw_retry_exhausted = dtoh32(wlc_cnt->txfail);
+#ifndef DISABLE_IF_COUNTERS
+		} else {
+			/* Populate from if_stats */
+			if (dtoh16(if_stats->version) > WL_IF_STATS_T_VERSION) {
+				WL_ERR(("incorrect version of wl_if_stats_t,"
+					" expected=%u got=%u\n", WL_IF_STATS_T_VERSION,
+					if_stats->version));
+				goto error;
+			}
+			rxrtry = (uint32)(wlc_cnt->rxrtry);
+			rxmulti = (uint32)dtoh64(if_stats->rxmulti);
+			tx_pkts = (uint32)dtoh64(if_stats->txframe);
+			tx_failures = (uint32)dtoh64(if_stats->txnobuf) +
+				(uint32)dtoh64(if_stats->rxrunt) +
+				(uint32)dtoh64(if_stats->txfail);
+			tx_pkts_total = (uint32)dtoh64(if_stats->txfrmsnt);
+			tx_pkts_retries = (uint32)dtoh64(if_stats->txretrans);
+			tx_pkts_fw_total = (uint32)dtoh64(if_stats->txfrmsnt);
+			tx_pkts_fw_retries = (uint32)dtoh64(if_stats->txretrans);
+			tx_pkts_fw_retry_exhausted = (uint32)dtoh64(if_stats->txfail);
+		}
+#endif /* !DISABLE_IF_COUNTERS */
 	}
 
-	bytes_written = snprintf(command, total_len,
-		"%s %s Rx_Retry_Pkts=%d Rx_BcMc_Pkts=%d CAP=%04x\n",
-		CMD_GET_STA_INFO, str, rxrtry, rxmulti, cap);
-
-	WL_DBG(("%s", command));
+	{
+		WL_ERR(("ALL\n"));
+		bytes_written = snprintf(command, total_len,
+			"%s %s Rx_Retry_Pkts=%d Rx_BcMc_Pkts=%d CAP=%04x "
+			STA_INFO_ADD_FMT "\n", CMD_GET_STA_INFO, cmdstr, rxrtry, rxmulti, cap,
+			tx_pkts, tx_failures, tx_rate, (int32)rssi[WL_ANT_IDX_1],
+			(int32)rssi[WL_ANT_IDX_2], tx_pkts_retried,
+			tx_pkts_retry_exhausted, (int32)rx_lastpkt_rssi[WL_ANT_IDX_1],
+			(int32)rx_lastpkt_rssi[WL_ANT_IDX_2], tx_pkts_total,
+			tx_pkts_retries, tx_pkts_fw_total, tx_pkts_fw_retries,
+			tx_pkts_fw_retry_exhausted);
+	}
+	WL_ERR_KERN(("Command: %s", command));
 
 error:
 	if (iovar_buf) {
 		MFREE(cfg->osh, iovar_buf, WLC_IOCTL_MAXLEN);
-
 	}
+
 	return bytes_written;
 }
 #endif /* CUSTOMER_HW4_PRIVATE_CMD */
@@ -3744,616 +3823,6 @@ error:
 	return bytes_written;
 }
 #endif /* CONNECTION_STATISTICS */
-
-#ifdef WL_NATOE
-static int
-wl_android_process_natoe_cmd(struct net_device *dev, char *command, int total_len)
-{
-	int ret = BCME_ERROR;
-	char *pcmd = command;
-	char *str = NULL;
-	wl_natoe_cmd_info_t cmd_info;
-	const wl_natoe_sub_cmd_t *natoe_cmd = &natoe_cmd_list[0];
-
-	/* skip to cmd name after "natoe" */
-	str = bcmstrtok(&pcmd, " ", NULL);
-
-	/* If natoe subcmd name is not provided, return error */
-	if (*pcmd == '\0') {
-		WL_ERR(("natoe subcmd not provided wl_android_process_natoe_cmd\n"));
-		ret = -EINVAL;
-		return ret;
-	}
-
-	/* get the natoe command name to str */
-	str = bcmstrtok(&pcmd, " ", NULL);
-
-	while (natoe_cmd->name != NULL) {
-		if (strcmp(natoe_cmd->name, str) == 0)  {
-			/* dispacth cmd to appropriate handler */
-			if (natoe_cmd->handler) {
-				cmd_info.command = command;
-				cmd_info.tot_len = total_len;
-				ret = natoe_cmd->handler(dev, natoe_cmd, pcmd, &cmd_info);
-			}
-			return ret;
-		}
-		natoe_cmd++;
-	}
-	return ret;
-}
-
-static int
-wlu_natoe_set_vars_cbfn(void *ctx, uint8 *data, uint16 type, uint16 len)
-{
-	int res = BCME_OK;
-	wl_natoe_cmd_info_t *cmd_info = (wl_natoe_cmd_info_t *)ctx;
-	uint8 *command = cmd_info->command;
-	uint16 total_len = cmd_info->tot_len;
-	uint16 bytes_written = 0;
-
-	UNUSED_PARAMETER(len);
-
-	switch (type) {
-
-	case WL_NATOE_XTLV_ENABLE:
-	{
-		bytes_written = snprintf(command, total_len, "natoe: %s\n",
-				*data?"enabled":"disabled");
-		cmd_info->bytes_written = bytes_written;
-		break;
-	}
-
-	case WL_NATOE_XTLV_CONFIG_IPS:
-	{
-		wl_natoe_config_ips_t *config_ips;
-		uint8 buf[16];
-
-		config_ips = (wl_natoe_config_ips_t *)data;
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->sta_ip, buf);
-		bytes_written = snprintf(command, total_len, "sta ip: %s\n", buf);
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->sta_netmask, buf);
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"sta netmask: %s\n", buf);
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->sta_router_ip, buf);
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"sta router ip: %s\n", buf);
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->sta_dnsip, buf);
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"sta dns ip: %s\n", buf);
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->ap_ip, buf);
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"ap ip: %s\n", buf);
-		bcm_ip_ntoa((struct ipv4_addr *)&config_ips->ap_netmask, buf);
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"ap netmask: %s\n", buf);
-		cmd_info->bytes_written = bytes_written;
-		break;
-	}
-
-	case WL_NATOE_XTLV_CONFIG_PORTS:
-	{
-		wl_natoe_ports_config_t *ports_config;
-
-		ports_config = (wl_natoe_ports_config_t *)data;
-		bytes_written = snprintf(command, total_len, "starting port num: %d\n",
-				dtoh16(ports_config->start_port_num));
-		bytes_written += snprintf(command + bytes_written, total_len,
-				"number of ports: %d\n", dtoh16(ports_config->no_of_ports));
-		cmd_info->bytes_written = bytes_written;
-		break;
-	}
-
-	case WL_NATOE_XTLV_DBG_STATS:
-	{
-		char *stats_dump = (char *)data;
-
-		bytes_written = snprintf(command, total_len, "%s\n", stats_dump);
-		cmd_info->bytes_written = bytes_written;
-		break;
-	}
-
-	case WL_NATOE_XTLV_TBL_CNT:
-	{
-		bytes_written = snprintf(command, total_len, "natoe max tbl entries: %d\n",
-				dtoh32(*(uint32 *)data));
-		cmd_info->bytes_written = bytes_written;
-		break;
-	}
-
-	default:
-		/* ignore */
-		break;
-	}
-
-	return res;
-}
-
-/*
- *   --- common for all natoe get commands ----
- */
-static int
-wl_natoe_get_ioctl(struct net_device *dev, wl_natoe_ioc_t *natoe_ioc,
-		uint16 iocsz, uint8 *buf, uint16 buflen, wl_natoe_cmd_info_t *cmd_info)
-{
-	/* for gets we only need to pass ioc header */
-	wl_natoe_ioc_t *iocresp = (wl_natoe_ioc_t *)buf;
-	int res;
-
-	/*  send getbuf natoe iovar */
-	res = wldev_iovar_getbuf(dev, "natoe", natoe_ioc, iocsz, buf,
-			buflen, NULL);
-
-	/*  check the response buff  */
-	if ((res == BCME_OK)) {
-		/* scans ioctl tlvbuf f& invokes the cbfn for processing  */
-		res = bcm_unpack_xtlv_buf(cmd_info, iocresp->data, iocresp->len,
-				BCM_XTLV_OPTION_ALIGN32, wlu_natoe_set_vars_cbfn);
-
-		if (res == BCME_OK) {
-			res = cmd_info->bytes_written;
-		}
-	}
-	else
-	{
-		DHD_ERROR(("wl_natoe_get_ioctl: get command failed code %d\n", res));
-		res = BCME_ERROR;
-	}
-
-	return res;
-}
-
-static int
-wl_android_natoe_subcmd_enable(struct net_device *dev, const wl_natoe_sub_cmd_t *cmd,
-		char *command, wl_natoe_cmd_info_t *cmd_info)
-{
-	int ret = BCME_OK;
-	wl_natoe_ioc_t *natoe_ioc;
-	char *pcmd = command;
-	uint16 iocsz = sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ;
-	uint16 buflen = WL_NATOE_IOC_BUFSZ;
-	bcm_xtlv_t *pxtlv = NULL;
-	char *ioctl_buf = NULL;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		return -ENOMEM;
-	}
-
-	/* alloc mem for ioctl headr + tlv data */
-	natoe_ioc = (wl_natoe_ioc_t *)MALLOCZ(cfg->osh, iocsz);
-	if (!natoe_ioc) {
-		WL_ERR(("ioctl header memory alloc failed\n"));
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-		return -ENOMEM;
-	}
-
-	/* make up natoe cmd ioctl header */
-	natoe_ioc->version = htod16(WL_NATOE_IOCTL_VERSION);
-	natoe_ioc->id = htod16(cmd->id);
-	natoe_ioc->len = htod16(WL_NATOE_IOC_BUFSZ);
-	pxtlv = (bcm_xtlv_t *)natoe_ioc->data;
-
-	if(*pcmd == WL_IOCTL_ACTION_GET) { /* get */
-		iocsz = sizeof(*natoe_ioc) + sizeof(*pxtlv);
-		ret = wl_natoe_get_ioctl(dev, natoe_ioc, iocsz, ioctl_buf,
-				WLC_IOCTL_MEDLEN, cmd_info);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to get iovar wl_android_natoe_subcmd_enable\n"));
-			ret = -EINVAL;
-		}
-	} else {	/* set */
-		uint8 val = bcm_atoi(pcmd);
-
-		/* buflen is max tlv data we can write, it will be decremented as we pack */
-		/* save buflen at start */
-		uint16 buflen_at_start = buflen;
-
-		/* we'll adjust final ioc size at the end */
-		ret = bcm_pack_xtlv_entry((uint8**)&pxtlv, &buflen, WL_NATOE_XTLV_ENABLE,
-			sizeof(uint8), &val, BCM_XTLV_OPTION_ALIGN32);
-
-		if (ret != BCME_OK) {
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* adjust iocsz to the end of last data record */
-		natoe_ioc->len = (buflen_at_start - buflen);
-		iocsz = sizeof(*natoe_ioc) + natoe_ioc->len;
-
-		ret = wldev_iovar_setbuf(dev, "natoe",
-				natoe_ioc, iocsz, ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to set iovar %d\n", ret));
-			ret = -EINVAL;
-		}
-	}
-
-exit:
-	MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-	MFREE(cfg->osh, natoe_ioc, iocsz);
-
-	return ret;
-}
-
-static int
-wl_android_natoe_subcmd_config_ips(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info)
-{
-	int ret = BCME_OK;
-	wl_natoe_config_ips_t config_ips;
-	wl_natoe_ioc_t *natoe_ioc;
-	char *pcmd = command;
-	char *str;
-	uint16 iocsz = sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ;
-	uint16 buflen = WL_NATOE_IOC_BUFSZ;
-	bcm_xtlv_t *pxtlv = NULL;
-	char *ioctl_buf = NULL;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		return -ENOMEM;
-	}
-
-	/* alloc mem for ioctl headr + tlv data */
-	natoe_ioc = (wl_natoe_ioc_t *)MALLOCZ(cfg->osh, iocsz);
-	if (!natoe_ioc) {
-		WL_ERR(("ioctl header memory alloc failed\n"));
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-		return -ENOMEM;
-	}
-
-	/* make up natoe cmd ioctl header */
-	natoe_ioc->version = htod16(WL_NATOE_IOCTL_VERSION);
-	natoe_ioc->id = htod16(cmd->id);
-	natoe_ioc->len = htod16(WL_NATOE_IOC_BUFSZ);
-	pxtlv = (bcm_xtlv_t *)natoe_ioc->data;
-
-	if(*pcmd == WL_IOCTL_ACTION_GET) { /* get */
-		iocsz = sizeof(*natoe_ioc) + sizeof(*pxtlv);
-		ret = wl_natoe_get_ioctl(dev, natoe_ioc, iocsz, ioctl_buf,
-				WLC_IOCTL_MEDLEN, cmd_info);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to get iovar wl_android_natoe_subcmd_config_ips\n"));
-			ret = -EINVAL;
-		}
-	} else {	/* set */
-		/* buflen is max tlv data we can write, it will be decremented as we pack */
-		/* save buflen at start */
-		uint16 buflen_at_start = buflen;
-
-		bzero(&config_ips, sizeof(config_ips));
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.sta_ip)) {
-			WL_ERR(("Invalid STA IP addr %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.sta_netmask)) {
-			WL_ERR(("Invalid STA netmask %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.sta_router_ip)) {
-			WL_ERR(("Invalid STA router IP addr %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.sta_dnsip)) {
-			WL_ERR(("Invalid STA DNS IP addr %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.ap_ip)) {
-			WL_ERR(("Invalid AP IP addr %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str || !bcm_atoipv4(str, (struct ipv4_addr *)&config_ips.ap_netmask)) {
-			WL_ERR(("Invalid AP netmask %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		ret = bcm_pack_xtlv_entry((uint8**)&pxtlv,
-				&buflen, WL_NATOE_XTLV_CONFIG_IPS, sizeof(config_ips),
-				&config_ips, BCM_XTLV_OPTION_ALIGN32);
-
-		if (ret != BCME_OK) {
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* adjust iocsz to the end of last data record */
-		natoe_ioc->len = (buflen_at_start - buflen);
-		iocsz = sizeof(*natoe_ioc) + natoe_ioc->len;
-
-		ret = wldev_iovar_setbuf(dev, "natoe",
-				natoe_ioc, iocsz, ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to set iovar %d\n", ret));
-			ret = -EINVAL;
-		}
-	}
-
-exit:
-	MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-	MFREE(cfg->osh, natoe_ioc, sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ);
-
-	return ret;
-}
-
-static int
-wl_android_natoe_subcmd_config_ports(struct net_device *dev,
-		const wl_natoe_sub_cmd_t *cmd, char *command, wl_natoe_cmd_info_t *cmd_info)
-{
-	int ret = BCME_OK;
-	wl_natoe_ports_config_t ports_config;
-	wl_natoe_ioc_t *natoe_ioc;
-	char *pcmd = command;
-	char *str;
-	uint16 iocsz = sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ;
-	uint16 buflen = WL_NATOE_IOC_BUFSZ;
-	bcm_xtlv_t *pxtlv = NULL;
-	char *ioctl_buf = NULL;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		return -ENOMEM;
-	}
-
-	/* alloc mem for ioctl headr + tlv data */
-	natoe_ioc = (wl_natoe_ioc_t *)MALLOCZ(cfg->osh, iocsz);
-	if (!natoe_ioc) {
-		WL_ERR(("ioctl header memory alloc failed\n"));
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-		return -ENOMEM;
-	}
-
-	/* make up natoe cmd ioctl header */
-	natoe_ioc->version = htod16(WL_NATOE_IOCTL_VERSION);
-	natoe_ioc->id = htod16(cmd->id);
-	natoe_ioc->len = htod16(WL_NATOE_IOC_BUFSZ);
-	pxtlv = (bcm_xtlv_t *)natoe_ioc->data;
-
-	if(*pcmd == WL_IOCTL_ACTION_GET) { /* get */
-		iocsz = sizeof(*natoe_ioc) + sizeof(*pxtlv);
-		ret = wl_natoe_get_ioctl(dev, natoe_ioc, iocsz, ioctl_buf,
-				WLC_IOCTL_MEDLEN, cmd_info);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to get iovar wl_android_natoe_subcmd_config_ports\n"));
-			ret = -EINVAL;
-		}
-	} else {	/* set */
-		/* buflen is max tlv data we can write, it will be decremented as we pack */
-		/* save buflen at start */
-		uint16 buflen_at_start = buflen;
-
-		bzero(&ports_config, sizeof(ports_config));
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str) {
-			WL_ERR(("Invalid port string %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-		ports_config.start_port_num = htod16(bcm_atoi(str));
-
-		str = bcmstrtok(&pcmd, " ", NULL);
-		if (!str) {
-			WL_ERR(("Invalid port string %s\n", str));
-			ret = -EINVAL;
-			goto exit;
-		}
-		ports_config.no_of_ports = htod16(bcm_atoi(str));
-
-		if ((uint32)(ports_config.start_port_num + ports_config.no_of_ports) >
-				NATOE_MAX_PORT_NUM) {
-			WL_ERR(("Invalid port configuration\n"));
-			ret = -EINVAL;
-			goto exit;
-		}
-		ret = bcm_pack_xtlv_entry((uint8**)&pxtlv,
-				&buflen, WL_NATOE_XTLV_CONFIG_PORTS, sizeof(ports_config),
-				&ports_config, BCM_XTLV_OPTION_ALIGN32);
-
-		if (ret != BCME_OK) {
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* adjust iocsz to the end of last data record */
-		natoe_ioc->len = (buflen_at_start - buflen);
-		iocsz = sizeof(*natoe_ioc) + natoe_ioc->len;
-
-		ret = wldev_iovar_setbuf(dev, "natoe",
-				natoe_ioc, iocsz, ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to set iovar %d\n", ret));
-			ret = -EINVAL;
-		}
-	}
-
-exit:
-	MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-	MFREE(cfg->osh, natoe_ioc, sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ);
-
-	return ret;
-}
-
-static int
-wl_android_natoe_subcmd_dbg_stats(struct net_device *dev, const wl_natoe_sub_cmd_t *cmd,
-		char *command, wl_natoe_cmd_info_t *cmd_info)
-{
-	int ret = BCME_OK;
-	wl_natoe_ioc_t *natoe_ioc;
-	char *pcmd = command;
-	uint16 kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
-	uint16 iocsz = sizeof(*natoe_ioc) + WL_NATOE_DBG_STATS_BUFSZ;
-	uint16 buflen = WL_NATOE_DBG_STATS_BUFSZ;
-	bcm_xtlv_t *pxtlv = NULL;
-	char *ioctl_buf = NULL;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MAXLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		return -ENOMEM;
-	}
-
-	/* alloc mem for ioctl headr + tlv data */
-	natoe_ioc = (wl_natoe_ioc_t *)MALLOCZ(cfg->osh, iocsz);
-	if (!natoe_ioc) {
-		WL_ERR(("ioctl header memory alloc failed\n"));
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MAXLEN);
-		return -ENOMEM;
-	}
-
-	/* make up natoe cmd ioctl header */
-	natoe_ioc->version = htod16(WL_NATOE_IOCTL_VERSION);
-	natoe_ioc->id = htod16(cmd->id);
-	natoe_ioc->len = htod16(WL_NATOE_DBG_STATS_BUFSZ);
-	pxtlv = (bcm_xtlv_t *)natoe_ioc->data;
-
-	if(*pcmd == WL_IOCTL_ACTION_GET) { /* get */
-		iocsz = sizeof(*natoe_ioc) + sizeof(*pxtlv);
-		ret = wl_natoe_get_ioctl(dev, natoe_ioc, iocsz, ioctl_buf,
-				WLC_IOCTL_MAXLEN, cmd_info);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to get iovar wl_android_natoe_subcmd_dbg_stats\n"));
-			ret = -EINVAL;
-		}
-	} else {	/* set */
-		uint8 val = bcm_atoi(pcmd);
-
-		/* buflen is max tlv data we can write, it will be decremented as we pack */
-		/* save buflen at start */
-		uint16 buflen_at_start = buflen;
-
-		/* we'll adjust final ioc size at the end */
-		ret = bcm_pack_xtlv_entry((uint8**)&pxtlv, &buflen, WL_NATOE_XTLV_ENABLE,
-			sizeof(uint8), &val, BCM_XTLV_OPTION_ALIGN32);
-
-		if (ret != BCME_OK) {
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* adjust iocsz to the end of last data record */
-		natoe_ioc->len = (buflen_at_start - buflen);
-		iocsz = sizeof(*natoe_ioc) + natoe_ioc->len;
-
-		ret = wldev_iovar_setbuf(dev, "natoe",
-				natoe_ioc, iocsz, ioctl_buf, WLC_IOCTL_MAXLEN, NULL);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to set iovar %d\n", ret));
-			ret = -EINVAL;
-		}
-	}
-
-exit:
-	MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MAXLEN);
-	MFREE(cfg->osh, natoe_ioc, sizeof(*natoe_ioc) + WL_NATOE_DBG_STATS_BUFSZ);
-
-	return ret;
-}
-
-static int
-wl_android_natoe_subcmd_tbl_cnt(struct net_device *dev, const wl_natoe_sub_cmd_t *cmd,
-		char *command, wl_natoe_cmd_info_t *cmd_info)
-{
-	int ret = BCME_OK;
-	wl_natoe_ioc_t *natoe_ioc;
-	char *pcmd = command;
-	uint16 kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
-	uint16 iocsz = sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ;
-	uint16 buflen = WL_NATOE_IOC_BUFSZ;
-	bcm_xtlv_t *pxtlv = NULL;
-	char *ioctl_buf = NULL;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
-
-	ioctl_buf = (char *)MALLOCZ(cfg->osh, WLC_IOCTL_MEDLEN);
-	if (!ioctl_buf) {
-		WL_ERR(("ioctl memory alloc failed\n"));
-		return -ENOMEM;
-	}
-
-	/* alloc mem for ioctl headr + tlv data */
-	natoe_ioc = (wl_natoe_ioc_t *)MALLOCZ(cfg->osh, iocsz);
-	if (!natoe_ioc) {
-		WL_ERR(("ioctl header memory alloc failed\n"));
-		MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-		return -ENOMEM;
-	}
-
-	/* make up natoe cmd ioctl header */
-	natoe_ioc->version = htod16(WL_NATOE_IOCTL_VERSION);
-	natoe_ioc->id = htod16(cmd->id);
-	natoe_ioc->len = htod16(WL_NATOE_IOC_BUFSZ);
-	pxtlv = (bcm_xtlv_t *)natoe_ioc->data;
-
-	if(*pcmd == WL_IOCTL_ACTION_GET) { /* get */
-		iocsz = sizeof(*natoe_ioc) + sizeof(*pxtlv);
-		ret = wl_natoe_get_ioctl(dev, natoe_ioc, iocsz, ioctl_buf,
-				WLC_IOCTL_MEDLEN, cmd_info);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to get iovar wl_android_natoe_subcmd_tbl_cnt\n"));
-			ret = -EINVAL;
-		}
-	} else {	/* set */
-		uint32 val = bcm_atoi(pcmd);
-
-		/* buflen is max tlv data we can write, it will be decremented as we pack */
-		/* save buflen at start */
-		uint16 buflen_at_start = buflen;
-
-		/* we'll adjust final ioc size at the end */
-		ret = bcm_pack_xtlv_entry((uint8**)&pxtlv, &buflen, WL_NATOE_XTLV_TBL_CNT,
-			sizeof(uint32), &val, BCM_XTLV_OPTION_ALIGN32);
-
-		if (ret != BCME_OK) {
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* adjust iocsz to the end of last data record */
-		natoe_ioc->len = (buflen_at_start - buflen);
-		iocsz = sizeof(*natoe_ioc) + natoe_ioc->len;
-
-		ret = wldev_iovar_setbuf(dev, "natoe",
-				natoe_ioc, iocsz, ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-		if (ret != BCME_OK) {
-			WL_ERR(("Fail to set iovar %d\n", ret));
-			ret = -EINVAL;
-		}
-	}
-
-exit:
-	MFREE(cfg->osh, ioctl_buf, WLC_IOCTL_MEDLEN);
-	MFREE(cfg->osh, natoe_ioc, sizeof(*natoe_ioc) + WL_NATOE_IOC_BUFSZ);
-
-	return ret;
-}
-
-#endif /* WL_NATOE */
 
 #ifdef WL_MBO
 static int
@@ -7600,6 +7069,92 @@ wl_android_set_ap_suspend(struct net_device *dev, char *command, int total_len)
 }
 #endif /* SUPPORT_AP_SUSPEND */
 
+#ifdef SUPPORT_AP_BWCTRL
+int
+wl_android_set_ap_bw(struct net_device *dev, char *command, int total_len)
+{
+	int bw = DOT11_OPER_MODE_20MHZ;
+	char *pos, *token;
+	char *ifname = NULL;
+	int err = BCME_OK;
+	char name[IFNAMSIZ];
+
+	/*
+	 * DRIVER SET_AP_BW <0/1/2> <ifname>
+	 * 0 : 20MHz, 1 : 40MHz, 2 : 80MHz 3: 80+80 or 160MHz
+	 * This is from operating mode field
+	 * in 8.4.1.50 of 802.11ac-2013
+	 */
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* BW */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		return -EINVAL;
+	}
+	bw = bcm_atoi(token);
+
+	/* get the interface name */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		return -EINVAL;
+	}
+	ifname = token;
+
+	strlcpy(name, ifname, sizeof(name));
+	WL_DBG(("bw %d, ifacename %s\n", bw, name));
+
+	err = wl_set_ap_bw(dev, bw, name);
+	if (unlikely(err)) {
+		WL_ERR(("Failed to set bw, bw %d, error = %d\n", bw, err));
+	}
+
+	return err;
+}
+
+int
+wl_android_get_ap_bw(struct net_device *dev, char *command, int total_len)
+{
+	char *pos, *token;
+	char *ifname = NULL;
+	int bytes_written = 0;
+	char name[IFNAMSIZ];
+
+	/*
+	 * DRIVER GET_AP_BW <ifname>
+	 * returns 0 : 20MHz, 1 : 40MHz, 2 : 80MHz 3: 80+80 or 160MHz
+	 * This is from operating mode field
+	 * in 8.4.1.50 of 802.11ac-2013
+	 */
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* get the interface name */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		return -EINVAL;
+	}
+	ifname = token;
+
+	strlcpy(name, ifname, sizeof(name));
+	WL_DBG(("ifacename %s\n", name));
+
+	bytes_written = wl_get_ap_bw(dev, command, name, total_len);
+	if (bytes_written < 1) {
+		WL_ERR(("Failed to get bw, error = %d\n", bytes_written));
+		return -EPROTO;
+	}
+
+	return bytes_written;
+
+}
+#endif /* SUPPORT_AP_BWCTRL */
+
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr)
 {
 #define PRIVATE_COMMAND_MAX_LEN	8192
@@ -8106,6 +7661,7 @@ wl_android_get_channel_util(struct net_device *ndev, char *command, int total_le
 }
 #endif /* WL_GET_CU */
 
+#ifdef RTT_GEOFENCE_INTERVAL
 #if defined(RTT_SUPPORT) && defined(WL_NAN)
 static void
 wl_android_set_rtt_geofence_interval(struct net_device *ndev, char *command)
@@ -8118,6 +7674,96 @@ wl_android_set_rtt_geofence_interval(struct net_device *ndev, char *command)
 	dhd_rtt_set_geofence_rtt_interval(dhdp, rtt_interval);
 }
 #endif /* RTT_SUPPORT && WL_NAN */
+#endif /* RTT_GEOFENCE_INTERVAL */
+
+#ifdef SUPPORT_SOFTAP_ELNA_BYPASS
+int
+wl_android_set_softap_elna_bypass(struct net_device *dev, char *command, int total_len)
+{
+	char *ifname = NULL;
+	char *pos, *token;
+	int err = BCME_OK;
+	int enable = FALSE;
+
+	/*
+	 * STA/AP/GO I/F: DRIVER SET_SOFTAP_ELNA_BYPASS <ifname> <enable/disable>
+	 * the enable/disable format follows Samsung specific rules as following
+	 * Enable : 0
+	 * Disable :-1
+	 */
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* get the interface name */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR(("%s: Invalid arguments about interface name\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	ifname = token;
+
+	/* get enable/disable flag */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR(("%s: Invalid arguments about Enable/Disable\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	enable = bcm_atoi(token);
+
+	CUSTOMER_HW4_EN_CONVERT(enable);
+	err = wl_set_softap_elna_bypass(dev, ifname, enable);
+	if (unlikely(err)) {
+		WL_ERR(("%s: Failed to set ELNA Bypass of SoftAP mode, err=%d\n",
+			__FUNCTION__, err));
+		return err;
+	}
+
+	return err;
+}
+
+int
+wl_android_get_softap_elna_bypass(struct net_device *dev, char *command, int total_len)
+{
+	char *ifname = NULL;
+	char *pos, *token;
+	int err = BCME_OK;
+	int bytes_written = 0;
+	int softap_elnabypass = 0;
+
+	/*
+	 * STA/AP/GO I/F: DRIVER GET_SOFTAP_ELNA_BYPASS <ifname>
+	 */
+	pos = command;
+
+	/* drop command */
+	token = bcmstrtok(&pos, " ", NULL);
+
+	/* get the interface name */
+	token = bcmstrtok(&pos, " ", NULL);
+	if (!token) {
+		WL_ERR(("%s: Invalid arguments about interface name\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	ifname = token;
+
+	err = wl_get_softap_elna_bypass(dev, ifname, &softap_elnabypass);
+	if (unlikely(err)) {
+		WL_ERR(("%s: Failed to get ELNA Bypass of SoftAP mode, err=%d\n",
+			__FUNCTION__, err));
+		return err;
+	} else {
+		softap_elnabypass--; //Convert format to Customer HW4
+		WL_DBG(("%s: eLNA Bypass feature enable status is %d\n",
+			__FUNCTION__, softap_elnabypass));
+		bytes_written = snprintf(command, total_len, "%s %d",
+			CMD_GET_SOFTAP_ELNA_BYPASS, softap_elnabypass);
+	}
+
+	return bytes_written;
+}
+#endif /* SUPPORT_SOFTAP_ELNA_BYPASS */
 
 int
 wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
@@ -8827,6 +8473,14 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = wl_android_set_ap_suspend(net, command, priv_cmd.total_len);
 	}
 #endif /* SUPPORT_AP_SUSPEND */
+#ifdef SUPPORT_AP_BWCTRL
+	else if (strnicmp(command, CMD_SET_AP_BW, strlen(CMD_SET_AP_BW)) == 0) {
+		bytes_written = wl_android_set_ap_bw(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_GET_AP_BW, strlen(CMD_GET_AP_BW)) == 0) {
+		bytes_written = wl_android_get_ap_bw(net, command, priv_cmd.total_len);
+	}
+#endif /* SUPPORT_AP_BWCTRL */
 #ifdef SUPPORT_RSSI_SUM_REPORT
 	else if (strnicmp(command, CMD_SET_RSSI_LOGGING, strlen(CMD_SET_RSSI_LOGGING)) == 0) {
 		bytes_written = wl_android_set_rssi_logging(net, command, priv_cmd.total_len);
@@ -8838,12 +8492,6 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = wl_android_get_rssi_per_ant(net, command, priv_cmd.total_len);
 	}
 #endif /* SUPPORT_RSSI_SUM_REPORT */
-#ifdef WL_NATOE
-	else if (strnicmp(command, CMD_NATOE, strlen(CMD_NATOE)) == 0) {
-		bytes_written = wl_android_process_natoe_cmd(net, command,
-				priv_cmd.total_len);
-	}
-#endif /* WL_NATOE */
 #ifdef CONNECTION_STATISTICS
 	else if (strnicmp(command, CMD_GET_CONNECTION_STATS,
 		strlen(CMD_GET_CONNECTION_STATS)) == 0) {
@@ -8996,12 +8644,27 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 			command, priv_cmd.total_len);
 	}
 #endif /* WL_GET_CU */
+#ifdef RTT_GEOFENCE_INTERVAL
 #if defined(RTT_SUPPORT) && defined(WL_NAN)
 	else if (strnicmp(command, CMD_GEOFENCE_INTERVAL,
 			strlen(CMD_GEOFENCE_INTERVAL)) == 0) {
 		(void)wl_android_set_rtt_geofence_interval(net, command);
 	}
 #endif /* RTT_SUPPORT && WL_NAN */
+#endif /* RTT_GEOFENCE_INTERVAL */
+#ifdef SUPPORT_SOFTAP_ELNA_BYPASS
+	else if (strnicmp(command, CMD_SET_SOFTAP_ELNA_BYPASS,
+			strlen(CMD_SET_SOFTAP_ELNA_BYPASS)) == 0) {
+		bytes_written =
+			wl_android_set_softap_elna_bypass(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_GET_SOFTAP_ELNA_BYPASS,
+			strlen(CMD_GET_SOFTAP_ELNA_BYPASS)) == 0) {
+		bytes_written =
+			wl_android_get_softap_elna_bypass(net, command, priv_cmd.total_len);
+	}
+#endif /* SUPPORT_SOFTAP_ELNA_BYPASS */
+
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		bytes_written = scnprintf(command, sizeof("FAIL"), "FAIL");
@@ -9339,6 +9002,9 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 	int ifidx = WL_STATIC_IFIDX; /* Register ndev with a reserved ifidx */
 	u8 mac_addr[ETH_ALEN];
 	struct net_device *primary_ndev;
+#ifdef DHD_USE_RANDMAC
+	struct ether_addr ea_addr;
+#endif /* DHD_USE_RANDMAC */
 
 	WL_INFORM_MEM(("[STATIC_IF] Enter (%s) iftype:%d\n", ifname, iftype));
 
@@ -9346,11 +9012,16 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 		WL_ERR(("cfg null\n"));
 		return NULL;
 	}
-
-	/* Use primary mac with locally admin bit set */
 	primary_ndev = bcmcfg_to_prmry_ndev(cfg);
+
+#ifdef DHD_USE_RANDMAC
+	dhd_generate_mac_addr(&ea_addr);
+	(void)memcpy_s(mac_addr, ETH_ALEN, ea_addr.octet, ETH_ALEN);
+#else
+	/* Use primary mac with locally admin bit set */
 	(void)memcpy_s(mac_addr, ETH_ALEN, primary_ndev->dev_addr, ETH_ALEN);
 	mac_addr[0] |= 0x02;
+#endif /* DHD_USE_RANDMAC */
 
 	ndev = wl_cfg80211_allocate_if(cfg, ifidx, ifname, mac_addr,
 		WL_BSSIDX_MAX, NULL);
@@ -9420,7 +9091,11 @@ wl_cfg80211_static_if_open(struct net_device *net)
 		return BCME_ERROR;
 	}
 	if (cfg->static_ndev_state != NDEV_STATE_FW_IF_CREATED) {
+#ifdef DHD_USE_RANDMAC
+		wdev = wl_cfg80211_add_if(cfg, primary_ndev, wl_iftype, net->name, net->dev_addr);
+#else
 		wdev = wl_cfg80211_add_if(cfg, primary_ndev, wl_iftype, net->name, NULL);
+#endif // endif
 		if (!wdev) {
 			WL_ERR(("[STATIC_IF] wdev is NULL, can't proceed"));
 			return BCME_ERROR;

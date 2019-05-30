@@ -174,7 +174,7 @@ get_asd(const si_t *sih, uint32 **eromptr, uint sp, uint ad, uint st, uint32 *ad
  * http://hwnbu-twiki.broadcom.com/twiki/pub/Mwgroup/ArmDocumentation/SystemDiscovery.pdf
  */
 void
-ai_scan(si_t *sih, void *regs, uint devid)
+BCMATTACHFN(ai_scan)(si_t *sih, void *regs, uint devid)
 {
 	si_info_t *sii = SI_INFO(sih);
 	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
@@ -1759,13 +1759,19 @@ static bool
 ai_ignore_errlog(const si_info_t *sii, const aidmp_t *ai,
 	uint32 lo_addr, uint32 hi_addr, uint32 err_axi_id, uint32 errsts)
 {
-	uint32 axi_id;
 	uint32 ignore_errsts = AIELS_SLAVE_ERR;
 	uint32 ignore_errsts_2 = 0;
 	uint32 ignore_hi = BT_CC_SPROM_BADREG_HI;
 	uint32 ignore_lo = BT_CC_SPROM_BADREG_LO;
 	uint32 ignore_size = BT_CC_SPROM_BADREG_SIZE;
 	bool address_check = TRUE;
+	uint32 axi_id = 0;
+	uint32 axi_id2 = 0;
+	bool extd_axi_id_mask = FALSE;
+	uint32 axi_id_mask;
+
+	SI_PRINT(("err check: core %p, error %d, axi id 0x%04x, addr(0x%08x:%08x)\n",
+		ai, errsts, err_axi_id, hi_addr, lo_addr));
 
 	/* ignore the BT slave errors if the errlog is to chipcommon addr 0x190 */
 	switch (CHIPID(sii->pub.chip)) {
@@ -1792,11 +1798,16 @@ ai_ignore_errlog(const si_info_t *sii, const aidmp_t *ai,
 			break;
 #endif /* BTOVERPCIE */
 		case BCM4378_CHIP_GRPID:
+		case BCM4385_CHIP_GRPID:
 		case BCM4387_CHIP_GRPID:
+#ifdef BTOVERPCIE
 			axi_id = BCM4378_BT_AXI_ID;
 			/* For BT over PCIE, ignore any slave error from BT. */
 			/* No need to check any address range */
 			address_check = FALSE;
+#endif /* BTOVERPCIE */
+			axi_id2 = BCM4378_ARM_PREFETCH_AXI_ID;
+			extd_axi_id_mask = TRUE;
 			ignore_errsts_2 = AIELS_DECODE;
 			break;
 		case BCM4368_CHIP_GRPID:
@@ -1816,16 +1827,21 @@ ai_ignore_errlog(const si_info_t *sii, const aidmp_t *ai,
 			return FALSE;
 	}
 
+	axi_id_mask = extd_axi_id_mask ? AI_ERRLOGID_AXI_ID_MASK_EXTD : AI_ERRLOGID_AXI_ID_MASK;
+
 	/* AXI ID check */
-	err_axi_id &= AI_ERRLOGID_AXI_ID_MASK;
-	if (!(err_axi_id == axi_id)) {
+	err_axi_id &= axi_id_mask;
+	errsts &=  AIELS_ERROR_MASK;
+
+	/* check the ignore error cases. 2 checks */
+	if (!(((err_axi_id == axi_id) && (errsts == ignore_errsts)) ||
+		((err_axi_id == axi_id2) && (errsts == ignore_errsts_2)))) {
+		/* not the error ignore cases */
 		return FALSE;
+
 	}
 
-	if (((errsts & AIELS_ERROR_MASK) != ignore_errsts) &&
-		((errsts & AIELS_ERROR_MASK) != ignore_errsts_2))
-		return FALSE;
-
+	/* check the specific address checks now, if specified */
 	if (address_check) {
 		/* address range check */
 		if ((hi_addr != ignore_hi) ||
@@ -1834,6 +1850,7 @@ ai_ignore_errlog(const si_info_t *sii, const aidmp_t *ai,
 		}
 	}
 
+	SI_PRINT(("err check: ignored\n"));
 	return TRUE;
 }
 #endif /* defined (AXI_TIMEOUTS) || defined (BCM_BACKPLANE_TIMEOUT) */
@@ -2425,7 +2442,7 @@ BCMRAMFN(ai_get_wrapper_base_addr)(uint32 **offset)
 }
 
 uint32
-ai_wrapper_dump_buf_size(const si_t *sih)
+BCMATTACHFN(ai_wrapper_dump_buf_size)(const si_t *sih)
 {
 	uint32 buf_size = 0;
 	uint32 wrapper_count = 0;

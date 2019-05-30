@@ -320,7 +320,6 @@ bool bcmsdh_dev_pm_enabled(bcmsdh_info_t *bcmsdh)
 	return bcmsdh_osinfo->dev_wake_enabled;
 }
 
-#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 int bcmsdh_get_oob_intr_num(bcmsdh_info_t *bcmsdh)
 {
 	bcmsdh_os_info_t *bcmsdh_osinfo = bcmsdh->os_cxt;
@@ -353,9 +352,6 @@ static irqreturn_t wlan_oob_irq(int irq, void *dev_id)
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)dev_id;
 	bcmsdh_os_info_t *bcmsdh_osinfo = bcmsdh->os_cxt;
 
-#ifndef BCMSPI_ANDROID
-	bcmsdh_oob_intr_set(bcmsdh, FALSE);
-#endif /* !BCMSPI_ANDROID */
 	bcmsdh_osinfo->oob_irq_handler(bcmsdh_osinfo->oob_irq_handler_context);
 
 	return IRQ_HANDLED;
@@ -432,7 +428,6 @@ void bcmsdh_oob_intr_unregister(bcmsdh_info_t *bcmsdh)
 	free_irq(bcmsdh_osinfo->oob_irq_num, bcmsdh);
 	bcmsdh_osinfo->oob_irq_registered = FALSE;
 }
-#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 /* Module parameters specific to each host-controller driver */
 

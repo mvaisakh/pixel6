@@ -320,6 +320,7 @@ typedef struct dhd_bus {
 	bool	irq_registered;
 	bool	d2h_intr_method;
 	int32 idletime;                 /* Control for activity timeout */
+	bool rpm_enabled;
 	uint32 d3_inform_cnt;
 	uint32 d0_inform_cnt;
 	uint32 d0_inform_in_use_cnt;
@@ -416,6 +417,7 @@ typedef struct dhd_bus {
 
 	bool    cto_enable;     /* enable PCIE CTO Prevention and recovery */
 	uint32  cto_threshold;  /* PCIE CTO timeout threshold */
+	bool	cto_triggered;	/* CTO is triggered */
 	bool intr_enabled; /* ready to receive interrupts from dongle */
 	int	pwr_req_ref;
 	bool flr_force_fail; /* user intends to simulate flr force fail */
@@ -858,12 +860,21 @@ dhd_pcie_corereg_read(si_t *sih, uint val)
 	return si_corereg(sih, sih->buscoreidx, OFFSETOF(sbpcieregs_t, configdata), 0, 0);
 }
 
-extern int dhdpcie_get_nvpath_otp(dhd_bus_t *bus, char *program, char *nv_path);
+extern int dhdpcie_get_fwpath_otp(dhd_bus_t *bus, char *fw_path, char *nv_path,
+		char *clm_path, char *txcap_path);
 
 extern int dhd_pcie_debug_info_dump(dhd_pub_t *dhd);
 extern void dhd_pcie_intr_count_dump(dhd_pub_t *dhd);
 extern void dhdpcie_bus_clear_intstatus(dhd_bus_t *bus);
-#ifdef DHD_HP2P
-extern uint16 dhd_bus_get_hp2p_ring_max_size(dhd_bus_t *bus, bool tx);
+
+#if defined(DHD_EFI)
+extern wifi_properties_t *dhd_get_props(dhd_bus_t *bus);
 #endif // endif
+
+#if defined(DHD_EFI) || defined(NDIS)
+extern int dhd_get_platform(dhd_pub_t* dhd, char *progname);
+extern bool dhdpcie_is_chip_supported(uint32 chipid, int *idx);
+extern bool dhdpcie_is_sflash_chip(uint32 chipid);
+#endif // endif
+
 #endif /* dhd_pcie_h */

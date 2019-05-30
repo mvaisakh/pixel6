@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: aidmp.h 800447 2019-01-22 02:47:42Z $
+ * $Id: aidmp.h 820975 2019-05-21 20:28:39Z $
  */
 
 #ifndef	_AIDMP_H
@@ -445,5 +445,6 @@ typedef volatile struct _aidmp {
 
 /* axi id mask in the error log id */
 #define AI_ERRLOGID_AXI_ID_MASK 0x07
+#define AI_ERRLOGID_AXI_ID_MASK_EXTD 0x1F
 
 #endif	/* _AIDMP_H */

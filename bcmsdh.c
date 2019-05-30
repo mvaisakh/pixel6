@@ -235,17 +235,13 @@ bcmsdh_intr_enable(void *sdh)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 	SDIOH_API_RC status;
-#ifdef BCMSPI_ANDROID
 	uint32 data;
-#endif /* BCMSPI_ANDROID */
 	ASSERT(bcmsdh);
 
 	status = sdioh_interrupt_set(bcmsdh->sdioh, TRUE);
-#ifdef BCMSPI_ANDROID
 	data = bcmsdh_cfg_read_word(sdh, 0, 4, NULL);
 	data |= 0xE0E70000;
 	bcmsdh_cfg_write_word(sdh, 0, 4, data, NULL);
-#endif /* BCMSPI_ANDROID */
 	return (SDIOH_API_SUCCESS(status) ? 0 : BCME_ERROR);
 }
 
@@ -254,17 +250,13 @@ bcmsdh_intr_disable(void *sdh)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 	SDIOH_API_RC status;
-#ifdef BCMSPI_ANDROID
 	uint32 data;
-#endif /* BCMSPI_ANDROID */
 	ASSERT(bcmsdh);
 
 	status = sdioh_interrupt_set(bcmsdh->sdioh, FALSE);
-#ifdef BCMSPI_ANDROID
 	data = bcmsdh_cfg_read_word(sdh, 0, 4, NULL);
 	data &= ~0xE0E70000;
 	bcmsdh_cfg_write_word(sdh, 0, 4, data, NULL);
-#endif /* BCMSPI_ANDROID */
 	return (SDIOH_API_SUCCESS(status) ? 0 : BCME_ERROR);
 }
 

@@ -129,7 +129,7 @@ sb_setint(const si_t *sih, int siflag)
 
 /* return core index of the core with address 'sba' */
 static uint
-_sb_coreidx(const si_info_t *sii, uint32 sba)
+BCMATTACHFN(_sb_coreidx)(const si_info_t *sii, uint32 sba)
 {
 	uint i;
 	const si_cores_info_t *cores_info = (const si_cores_info_t *)sii->cores_info;
@@ -142,7 +142,7 @@ _sb_coreidx(const si_info_t *sii, uint32 sba)
 
 /* return core address of the current core */
 static uint32
-_sb_coresba(const si_info_t *sii)
+BCMATTACHFN(_sb_coresba)(const si_info_t *sii)
 {
 	uint32 sbaddr;
 
@@ -446,7 +446,7 @@ sb_corereg_addr(const si_t *sih, uint coreidx, uint regoff)
  */
 #define SB_MAXBUSES	2
 static uint
-_sb_scan(si_info_t *sii, uint32 sba, volatile void *regs, uint bus,
+BCMATTACHFN(_sb_scan)(si_info_t *sii, uint32 sba, volatile void *regs, uint bus,
 	uint32 sbba, uint numcores, uint devid)
 {
 	uint next;
@@ -519,7 +519,7 @@ _sb_scan(si_info_t *sii, uint32 sba, volatile void *regs, uint bus,
 
 /* scan the sb enumerated space to identify all cores */
 void
-sb_scan(si_t *sih, volatile void *regs, uint devid)
+BCMATTACHFN(sb_scan)(si_t *sih, volatile void *regs, uint devid)
 {
 	uint32 origsba;
 	sbconfig_t *sb;

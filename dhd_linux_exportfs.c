@@ -551,7 +551,7 @@ static struct dhd_attr dhd_attr_cntl_macaddr =
 #define MEMDUMPINFO PLATFORM_PATH".memdump.info"
 #elif defined(CUSTOMER_HW2) || defined(BOARD_HIKEY)
 #define MEMDUMPINFO "/data/misc/wifi/.memdump.info"
-#elif (defined(BOARD_PANDA) || defined(__ARM_ARCH_7A__))
+#elif defined(__ARM_ARCH_7A__)
 #define MEMDUMPINFO "/data/misc/wifi/.memdump.info"
 #else
 #define MEMDUMPINFO_LIVE "/installmedia/.memdump.info"

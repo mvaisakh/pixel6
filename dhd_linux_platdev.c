@@ -440,9 +440,9 @@ static int wifi_ctrlfunc_register_drv(void)
 	dev1 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME, wifi_platdev_match);
 	dev2 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME2, wifi_platdev_match);
 
-#ifdef BOARD_HIKEY_MODULAR
+#ifdef BCMDHD_MODULAR
 	dhd_wlan_init();
-#endif /* CONFIG_ARCH_HISI && CONFIG_BCMDHD */
+#endif /* BCMDHD_MODULAR */
 
 #if !defined(CONFIG_DTS)
 	if (!dts_enabled) {
@@ -538,9 +538,9 @@ void wifi_ctrlfunc_unregister_drv(void)
 			wifi_platform_bus_enumerate(adapter, FALSE);
 		}
 	}
-#ifdef BOARD_HIKEY_MODULAR
+#ifdef BCMDHD_MODULAR
 	dhd_wlan_deinit();
-#endif /* BOARD_HIKEY_MODULAR */
+#endif /* BCMDHD_MODULAR */
 #endif /* !defined(CONFIG_DTS) */
 
 	kfree(dhd_wifi_platdata->adapters);

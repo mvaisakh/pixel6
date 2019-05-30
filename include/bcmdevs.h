@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmdevs.h 817202 2019-04-30 00:54:57Z $
+ * $Id: bcmdevs.h 818767 2019-05-08 21:05:48Z $
  */
 
 #ifndef	_BCMDEVS_H
@@ -169,6 +169,9 @@
 #define BCM43014_D11N_ID	0x4495		/* 43014 802.11n dualband device */
 #define BCM43014_D11N2G_ID	0x4496		/* 43014 802.11n 2.4G device */
 #define BCM43014_D11N5G_ID	0x4497		/* 43014 802.11n 5G device */
+#define BCM43013_D11N_ID	0x4498		/* 43013 802.11n dualband device */
+#define BCM43013_D11N2G_ID	0x4499		/* 43013 802.11n 2.4G device */
+#define BCM43013_D11N5G_ID	0x449a		/* 43013 802.11n 5G device */
 
 /* PCI Subsystem ID */
 #define BCM4350_D11AC_ID	0x43a3
@@ -309,6 +312,7 @@
 #define BCM4358_CHIP_ID		0x4358          /* 4358 chipcommon chipid */
 #define	BCM43012_CHIP_ID	0xA804          /* 43012 chipcommon chipid */
 #define	BCM43014_CHIP_ID	0xA806          /* 43014 chipcommon chipid */
+#define	BCM43013_CHIP_ID	0xA805          /* 43013 chipcommon chipid */
 #define	BCM4369_CHIP_ID		0x4369          /* 4369 chipcommon chipid */
 #define BCM4375_CHIP_ID		0x4375          /* 4375 chipcommon chipid */
 #define	BCM4402_CHIP_ID		0x4402		/* 4402 chipid */
@@ -427,6 +431,16 @@
 #define BCM4335_FCBGAD_PKG_ID	(0x3)	/* FCBGA Debug Debug/Dev All if's. */
 #define BCM4335_PKG_MASK	(0x3)
 #define BCM43602_12x12_PKG_ID	(0x1)	/* 12x12 pins package, used for e.g. router designs */
+
+/* 43012 package ID's
+    http://confluence.broadcom.com/display/WLAN/BCM43012+Variants%2Cpackage%2Cballmap%2Cfloorplan#
+    BCM43012Variants,package,ballmap,floorplan-PackageOptions
+*/
+#define BCM943012_WLCSPOLY_PKG_ID	0x0	/* WLCSP CUSTOMER6 package */
+#define BCM943012_FCBGA_PKG_ID		0x3	/* FCBGA debug package */
+#define BCM943012_WLCSPWE_PKG_ID	0x1	/* WLCSP WE package */
+#define BCM943012_FCBGAWE_PKG_ID	0x5	/* FCBGA WE package */
+#define BCM943012_WLBGA_PKG_ID		0x2	/* WLBGA package */
 
 /* boardflags */
 #define	BFL_BTC2WIRE		0x00000001  /* old 2wire Bluetooth coexistence, OBSOLETE */
@@ -849,6 +863,9 @@
 #define BCM943602X100           0x0761 /* Dev only */
 #define BCM943602X100GS         0x0157 /* Woody */
 #define BCM943602X100P2         0x015A /* Buzz, Zurg */
+
+/* 4375B0 WLCSP SEMCO Board */
+#define BCM94375B0_WLCSP_SSID	0x086b
 
 /* # of GPIO pins */
 #define GPIO_NUMPINS		32

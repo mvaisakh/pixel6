@@ -128,7 +128,6 @@ dhd_wifi_init_gpio(void)
 extern void kirin_pcie_power_on_atu_fixup(void) __attribute__ ((weak));
 extern int kirin_pcie_lp_ctrl(u32 enable) __attribute__ ((weak));
 
-#ifndef BOARD_HIKEY_MODULAR
 int
 dhd_wlan_power(int onoff)
 {
@@ -192,7 +191,6 @@ dhd_wlan_power(int onoff)
 	return 0;
 }
 EXPORT_SYMBOL(dhd_wlan_power);
-#endif /* BOARD_HIKEY_MODULAR */
 
 static int
 dhd_wlan_reset(int onoff)
@@ -233,9 +231,7 @@ struct resource dhd_wlan_resources = {
 EXPORT_SYMBOL(dhd_wlan_resources);
 
 struct wifi_platform_data dhd_wlan_control = {
-#ifndef BOARD_HIKEY_MODULAR
 	.set_power	= dhd_wlan_power,
-#endif /* BOARD_HIKEY_MODULAR */
 	.set_reset	= dhd_wlan_reset,
 	.set_carddetect	= dhd_wlan_set_carddetect,
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
@@ -283,7 +279,7 @@ dhd_wlan_deinit(void)
 	gpio_free(wlan_reg_on);
 	return 0;
 }
-#ifndef BOARD_HIKEY_MODULAR
+#ifndef BCMDHD_MODULAR
 /* Required only for Built-in DHD */
 device_initcall(dhd_wlan_init);
 #endif /* BOARD_HIKEY_MODULAR */

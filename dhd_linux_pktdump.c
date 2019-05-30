@@ -160,6 +160,7 @@ static const char pkt_cnt_msg[][20] = {
 	"INVALID",
 	"ROAM_SUCCESS",
 	"GROUP_KEY_UPDATE",
+	"CONNECT_SUCCESS",
 	"INVALID"
 };
 
@@ -958,7 +959,7 @@ static const int dhcp_types_stat[9] = {
 	ST(DHCP_DECLINE), ST(DHCP_ACK), ST(DHCP_NAK), ST(DHCP_RELEASE),
 	ST(DHCP_INFORM)
 };
-#endif /*DHD_STATUS_LOGGING */
+#endif /* DHD_STATUS_LOGGING */
 
 void
 dhd_dhcp_dump(dhd_pub_t *dhdp, int ifidx, uint8 *pktdata, bool tx,

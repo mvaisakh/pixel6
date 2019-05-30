@@ -214,8 +214,6 @@ extern int dhd_bus_flow_ring_flush_request(struct dhd_bus *bus, void *flow_ring_
 extern void dhd_bus_flow_ring_flush_response(struct dhd_bus *bus, uint16 flowid, uint32 status);
 extern uint32 dhd_bus_max_h2d_queues(struct dhd_bus *bus);
 extern int dhd_bus_schedule_queue(struct dhd_bus *bus, uint16 flow_id, bool txs);
-extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
-extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 
 #ifdef IDLE_TX_FLOW_MGMT
 extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
@@ -273,6 +271,8 @@ extern void dhd_bus_ucode_download(struct dhd_bus *bus);
 
 extern int dhd_bus_readwrite_bp_addr(dhd_pub_t *dhdp, uint addr, uint size, uint* data, bool read);
 extern int dhd_get_idletime(dhd_pub_t *dhd);
+extern bool dhd_get_rpm_state(dhd_pub_t *dhd);
+extern void dhd_set_rpm_state(dhd_pub_t *dhd, bool state);
 #ifdef BCMPCIE
 extern void dhd_bus_dump_console_buffer(struct dhd_bus *bus);
 extern void dhd_bus_intr_count_dump(dhd_pub_t *dhdp);
@@ -280,6 +280,9 @@ extern void dhd_bus_set_dpc_sched_time(dhd_pub_t *dhdp);
 extern bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp);
 extern int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type);
 extern bool dhd_bus_check_driver_up(void);
+extern int dhd_bus_get_cto(dhd_pub_t *dhdp);
+extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
+extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 #else
 #define dhd_bus_dump_console_buffer(x)
 static INLINE void dhd_bus_intr_count_dump(dhd_pub_t *dhdp) { UNUSED_PARAMETER(dhdp); }
@@ -287,6 +290,9 @@ static INLINE void dhd_bus_set_dpc_sched_time(dhd_pub_t *dhdp) { }
 static INLINE bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type) { return 0; }
 static INLINE bool dhd_bus_check_driver_up(void) { return FALSE; }
+extern INLINE void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val) { }
+extern INLINE int dhd_bus_get_linkdown(dhd_pub_t *dhdp) { return 0; }
+static INLINE int dhd_bus_get_cto(dhd_pub_t *dhdp) { return 0; }
 #endif /* BCMPCIE */
 
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)

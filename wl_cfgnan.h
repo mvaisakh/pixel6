@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgnan.h 815812 2019-04-20 14:30:23Z $
+ * $Id: wl_cfgnan.h 818907 2019-05-09 07:58:57Z $
  */
 
 #ifndef _wl_cfgnan_h_
@@ -207,6 +207,8 @@
 #define NAN_RNG_REQ_ACCEPTED_BY_HOST    1
 #define NAN_RNG_REQ_REJECTED_BY_HOST    0
 
+#define NAN_RNG_GEOFENCE_MAX_RNG_REJ_CNT	3u
+
 typedef uint32 nan_data_path_id;
 
 typedef enum nan_stop_reason_code {
@@ -281,6 +283,7 @@ typedef struct nan_ranging_inst {
 	uint32 prev_distance_mm;
 	nan_range_role_t range_role;
 	bool in_use;
+	uint8 geof_resp_rej_count;
 } nan_ranging_inst_t;
 
 #define DUMP_NAN_RTT_INST(inst) { printf("svc instance ID %d", (inst)->svc_inst_id); \

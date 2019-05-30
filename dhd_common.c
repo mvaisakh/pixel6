@@ -654,13 +654,17 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 	}
 #endif /* DNGL_AXI_ERROR_LOGGING */
 
-#ifdef BCMPCIE
 	if (dhd_bus_get_linkdown(dhdp)) {
 		DHD_ERROR_RLMT(("%s : PCIE Link down occurred, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
 	}
-#endif /* BCMPCIE */
+
+	if (dhd_bus_get_cto(dhdp)) {
+		DHD_ERROR_RLMT(("%s : CTO Recovery reported, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
 
 	return ret;
 }
@@ -966,11 +970,11 @@ dhd_sssr_dump_init(dhd_pub_t *dhd)
 	}
 
 	if (alloc_sssr) {
-		dhd->sssr_dig_buf_before = (uint32 *)(dhd->sssr_mempool + mempool_used);
-		mempool_used += sr_size;
-
 		dhd->sssr_dig_buf_after = (uint32 *)(dhd->sssr_mempool + mempool_used);
 		mempool_used += sr_size;
+
+		/* DIG dump before suspend is not applicable. */
+		dhd->sssr_dig_buf_before = NULL;
 	}
 
 	dhd->sssr_inited = TRUE;
@@ -3447,8 +3451,8 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		} else if (status == WLC_E_STATUS_TIMEOUT) {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, TIMEOUT\n", event_name, eabuf));
 		} else if (status == WLC_E_STATUS_FAIL) {
-			DHD_EVENT(("MACEVENT: %s, MAC %s, FAILURE, reason %d\n",
-			       event_name, eabuf, (int)reason));
+			DHD_EVENT(("MACEVENT: %s, MAC %s, FAILURE, status %d reason %d\n",
+			       event_name, eabuf, (int)status, (int)reason));
 		} else {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, unexpected status %d\n",
 			       event_name, eabuf, (int)status));
@@ -3475,6 +3479,8 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 			auth_str = "Open System";
 		else if (auth_type == DOT11_SHARED_KEY)
 			auth_str = "Shared Key";
+		else if (auth_type == DOT11_SAE)
+			auth_str = "SAE";
 		else {
 			snprintf(err_msg, sizeof(err_msg), "AUTH unknown: %d", (int)auth_type);
 			auth_str = err_msg;
@@ -3489,8 +3495,8 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, TIMEOUT\n",
 				event_name, eabuf, auth_str));
 		} else if (status == WLC_E_STATUS_FAIL) {
-			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, FAILURE, reason %d\n",
-			       event_name, eabuf, auth_str, (int)reason));
+			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, FAILURE, status %d reason %d\n",
+			       event_name, eabuf, auth_str, (int)status, (int)reason));
 		} else if (status == WLC_E_STATUS_NO_ACK) {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, NOACK\n",
 			       event_name, eabuf, auth_str));
@@ -3525,7 +3531,7 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 			dhd_clear_join_error(dhd_pub, WLC_WPA_MASK);
 #endif /* REPORT_FATAL_TIMEOUTS */
 			if (status == WLC_E_STATUS_FAIL) {
-				DHD_EVENT(("MACEVENT: %s, failed\n", event_name));
+				DHD_EVENT(("MACEVENT: %s, failed status %d\n", event_name, status));
 			} else if (status == WLC_E_STATUS_NO_NETWORKS) {
 				DHD_EVENT(("MACEVENT: %s, no networks found\n", event_name));
 			} else {
@@ -4377,10 +4383,6 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 		break;
 #endif /* BCMDBG */
 	case WLC_E_NATOE_NFCT:
-#ifdef WL_NATOE
-		DHD_EVENT(("%s: WLC_E_NATOE_NFCT event received \n", __FUNCTION__));
-		dhd_natoe_ct_event(dhd_pub, event_data);
-#endif /* WL_NATOE */
 	break;
 #ifdef WL_NAN
 	case WLC_E_SLOTTED_BSS_PEER_OP:

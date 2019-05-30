@@ -21,7 +21,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: siutils.h 815552 2019-04-18 01:49:05Z $
+ * $Id: siutils.h 818535 2019-05-08 00:39:07Z $
  */
 
 #ifndef	_siutils_h_
@@ -272,6 +272,9 @@ typedef void (*wci2_handler_t)(void *ctx, char *buf, int len);
 #define VARBUF_PRIO_OTP			3u
 #define VARBUF_PRIO_SH_SFLASH		4u
 
+#define BT_IN_RESET_BIT_SHIFT		11u
+#define BT_IN_PDS_BIT_SHIFT		9u
+
 /* === exported functions === */
 extern si_t *si_attach(uint pcidev, osl_t *osh, volatile void *regs, uint bustype,
                        void *sdh, char **vars, uint *varsz);
@@ -482,8 +485,8 @@ extern int si_cis_source(const si_t *sih);
 /* bp_ind_access default timeout */
 #define BP_ACCESS_TO (500u * 1000u)
 
-extern uint16 si_fabid(si_t *sih);
-extern uint16 si_chipid(const si_t *sih);
+extern uint16 BCMATTACHFN(si_fabid)(si_t *sih);
+extern uint16 BCMINITFN(si_chipid)(const si_t *sih);
 
 /*
  * Build device path. Path size must be >= SI_DEVPATH_BUFSZ.
@@ -955,6 +958,10 @@ bool si_pkgopt_d11_allowed(si_t *sih, uint coreuint);
 bool si_scan_core_present(const si_t *sih);
 void si_configure_pwrthrottle_gpio(si_t *sih, uint8 pwrthrottle_gpio_pin);
 void si_configure_onbody_gpio(si_t *sih, uint8 onbody_gpio_pin);
+
+/* return BT state */
+bool si_btc_bt_status_in_reset(si_t *sih);
+bool si_btc_bt_status_in_pds(si_t *sih);
 
 /* RFFE RFEM Functions */
 #ifndef BCMDONGLEHOST
