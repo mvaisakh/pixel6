@@ -20,9 +20,62 @@
 # <<Broadcom-WL-IPTag/Open:>>
 #
 
+# Path to the module source
+M ?= $(shell pwd)
+
+ifeq ($(KERNEL_SRC),)
+ BCMDHD_ROOT=$(src)
+else
+ KBUILD_OPTIONS += BCMDHD_ROOT=$(shell cd $(KERNEL_SRC); readlink -e $(M))
+endif
+
 #####################
-# SDIO Basic feature
+# SDIO/PCIe Basic feature
 #####################
+
+# For inbuilt module, below configs will be provided via defconfig
+# But for out-of-tree module, explicitly define them here and add
+# them as cflags
+ifeq ($(CONFIG_BCMDHD),)
+CONFIG_BCMDHD=m
+CONFIG_BCMDHD_PCIE=y
+CONFIG_BCM4375=y
+CONFIG_DHD_OF_SUPPORT=y
+CONFIG_BCMDHD_FW_PATH="\"/vendor/etc/wifi/fw_bcmdhd.bin\""
+CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+CONFIG_BCMDHD_CLM_PATH="\"/vendor/etc/wifi/bcmdhd_clm.blob\""
+CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
+CONFIG_DHD_USE_STATIC_BUF=y
+CONFIG_DHD_USE_SCHED_SCAN=y
+CONFIG_DHD_SET_RANDOM_MAC_VAL=0x001A11
+CONFIG_WLAN_REGION_CODE=100
+CONFIG_WLAIBSS=y
+CONFIG_WL_RELMCAST=y
+CONFIG_BCMDHD_PREALLOC_PKTIDMAP=y
+CONFIG_BCMDHD_PREALLOC_MEMDUMP=y
+CONFIG_BCMDHD_OOB_HOST_WAKE=y
+CONFIG_BCMDHD_GET_OOB_STATE=y
+
+DHDCFLAGS += -DCONFIG_BCMDHD=$(CONFIG_BCMDHD)
+DHDCFLAGS += -DCONFIG_BCMDHD_PCIE=$(CONFIG_BCMDHD_PCIE)
+DHDCFLAGS += -DCONFIG_BCM4375=$(CONFIG_BCM4375)
+DHDCFLAGS += -DCONFIG_DHD_OF_SUPPORT=$(CONFIG_DHD_OF_SUPPORT)
+DHDCFLAGS += -DCONFIG_BCMDHD_FW_PATH=$(CONFIG_BCMDHD_FW_PATH)
+DHDCFLAGS += -DCONFIG_BCMDHD_NVRAM_PATH=$(CONFIG_BCMDHD_NVRAM_PATH)
+DHDCFLAGS += -DCONFIG_BCMDHD_CLM_PATH=$(CONFIG_BCMDHD_CLM_PATH)
+DHDCFLAGS += -DCONFIG_BROADCOM_WIFI_RESERVED_MEM=$(CONFIG_BROADCOM_WIFI_RESERVED_MEM)
+DHDCFLAGS += -DCONFIG_DHD_USE_STATIC_BUF=$(CONFIG_DHD_USE_STATIC_BUF)
+DHDCFLAGS += -DCONFIG_DHD_USE_SCHED_SCAN=$(CONFIG_DHD_USE_SCHED_SCAN)
+DHDCFLAGS += -DCONFIG_DHD_SET_RANDOM_MAC_VAL=$(CONFIG_DHD_SET_RANDOM_MAC_VAL)
+DHDCFLAGS += -DCONFIG_WLAN_REGION_CODE=$(CONFIG_WLAN_REGION_CODE)
+DHDCFLAGS += -DCONFIG_WLAIBSS=$(CONFIG_WLAIBSS)
+DHDCFLAGS += -DCONFIG_WL_RELMCAST=$(CONFIG_WL_RELMCAST)
+DHDCFLAGS += -DCONFIG_DHD_SET_RANDOM_MAC_VAL=$(CONFIG_DHD_SET_RANDOM_MAC_VAL)
+DHDCFLAGS += -DCONFIG_BCMDHD_PREALLOC_PKTIDMAP=$(CONFIG_BCMDHD_PREALLOC_PKTIDMAP)
+DHDCFLAGS += -DCONFIG_BCMDHD_PREALLOC_MEMDUMP=$(CONFIG_BCMDHD_PREALLOC_MEMDUMP)
+DHDCFLAGS += -DCONFIG_BCMDHD_OOB_HOST_WAKE=$(CONFIG_BCMDHD_OOB_HOST_WAKE)
+DHDCFLAGS += -DCONFIG_BCMDHD_GET_OOB_STATE=$(CONFIG_BCMDHD_GET_OOB_STATE)
+endif
 
 DHDCFLAGS += -DBCMUTILS_ERR_CODES
 DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
@@ -31,7 +84,7 @@ DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
 	-DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT                                \
 	-DKEEP_ALIVE -DPKT_FILTER_SUPPORT                             \
 	-DEMBEDDED_PLATFORM -DPNO_SUPPORT -DSHOW_LOGTRACE                     \
-	-DBOARD_HIKEY -DGET_CUSTOM_MAC_ENABLE      \
+	-DGET_CUSTOM_MAC_ENABLE      \
 	-DSEC_ENHANCEMENT -DDHD_FW_COREDUMP \
 	-DDHD_DUMP_FILE_WRITE_FROM_KERNEL \
 	-DDHD_USE_RANDMAC \
@@ -275,7 +328,6 @@ DHDCFLAGS += -DWL_SCB_TIMEOUT=10
 #DHDCFLAGS += -DWIFI_TURNOFF_DELAY=100
 
 #Static preallocated buffers
-DHDCFLAGS += -DCONFIG_DHD_USE_STATIC_BUF
 DHDCFLAGS += -DDHD_USE_STATIC_MEMDUMP
 
 #FAKEAP
@@ -574,9 +626,13 @@ ifeq ($(DRIVER_TYPE),m)
   DHDCFLAGS += -DBCMDHD_MODULAR
 endif
 
+ifneq ($(CONFIG_ARCH_HISI),)
+	DHDCFLAGS += -DBOARD_HIKEY
+endif
+
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
-EXTRA_CFLAGS += -DDHD_COMPILED=\"$(src)\"
-EXTRA_CFLAGS += -I$(src)/include/ -I$(src)/
+EXTRA_CFLAGS += -DDHD_COMPILED=\"$(BCMDHD_ROOT)\"
+EXTRA_CFLAGS += -I$(BCMDHD_ROOT)/include/ -I$(BCMDHD_ROOT)/
 KBUILD_CFLAGS += -I$(LINUXDIR)/include -I$(CURDIR) -Wno-date-time
 
 DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
@@ -592,11 +648,12 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
 # extra Source files
 DHDOFILES += wl_roam.o
 
-ifneq ($(CONFIG_DHD_OF_SUPPORT),)
-    DHDOFILES += dhd_custom_hikey.o
+ifneq ($(CONFIG_ARCH_HISI),)
+	DHDOFILES += dhd_custom_hikey.o
+endif
+
 ifneq ($(CONFIG_BROADCOM_WIFI_RESERVED_MEM),)
   DHDOFILES += dhd_custom_memprealloc.o
-endif
 endif
 
 ifneq ($(CONFIG_BCMDHD_SDIO),)
@@ -619,15 +676,18 @@ endif
 
 bcmdhd-objs := $(DHDOFILES)
 obj-$(DRIVER_TYPE)   += bcmdhd.o
+ccflags-y := $(KBUILD_CFLAGS)
+ccflags-y += $(EXTRA_CFLAGS)
 
 all:
-	@echo "$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules"
-	@$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules
+	@echo "$(MAKE) --no-print-directory -C $(KERNEL_SRC) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)"
+	@$(MAKE) --no-print-directory -C $(KERNEL_SRC) SUBDIRS=$(CURDIR) modules $(KBUILD_OPTIONS)
+
+modules_install:
+	@$(MAKE) --no-print-directory -C $(KERNEL_SRC) \
+		SUBDIRS=$(CURDIR) modules_install
 
 clean:
 	rm -rf *.o *.ko *.mod.c *~ .*.cmd *.o.cmd .*.o.cmd \
 	Module.symvers modules.order .tmp_versions modules.builtin
 
-install:
-	@$(MAKE) --no-print-directory -C $(KDIR) \
-		SUBDIRS=$(CURDIR) modules_install

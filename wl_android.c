@@ -5714,7 +5714,7 @@ static int wl_android_get_link_status(struct net_device *dev, char *command,
 	uint encode, txexp;
 	wl_bss_info_t *bi;
 	int datalen = sizeof(uint32) + sizeof(wl_bss_info_t);
-	char buf[datalen];
+	char buf[WLC_IOCTL_SMLEN];
 
 	bzero(buf, datalen);
 	/* get BSS information */
