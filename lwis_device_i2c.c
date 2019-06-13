@@ -114,7 +114,6 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 {
 	int ret;
 	struct i2c_board_info info = {};
-	struct dev_archdata dev_ad = {};
 	struct device *dev;
 	struct pinctrl *pinctrl;
 
@@ -131,7 +130,6 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 #endif
 
 	info.addr = i2c_dev->address;
-	info.archdata = &dev_ad;
 
 	i2c_dev->client = i2c_new_device(i2c_dev->adapter, &info);
 
