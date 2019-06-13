@@ -473,13 +473,13 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 	return ret;
 }
 
-static void lwis_device_event_heartbeat_timer(unsigned long param)
+static void lwis_device_event_heartbeat_timer(struct timer_list *t)
 {
-	struct lwis_device *lwis_dev = (struct lwis_device *)param;
+	struct lwis_device *lwis_dev = from_timer(lwis_dev, t, heartbeat_timer);
 
 	lwis_device_event_emit(lwis_dev, LWIS_EVENT_ID_HEARTBEAT, NULL, 0);
 
-	mod_timer(&lwis_dev->heartbeat_timer, jiffies + msecs_to_jiffies(1000));
+	mod_timer(t, jiffies + msecs_to_jiffies(1000));
 }
 
 int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
@@ -491,11 +491,11 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 		switch (event_id) {
 		case LWIS_EVENT_ID_HEARTBEAT: {
 			if (enabled) {
-				setup_timer(&lwis_dev->heartbeat_timer,
+				timer_setup(&lwis_dev->heartbeat_timer,
 					    lwis_device_event_heartbeat_timer,
-					    (unsigned long)lwis_dev);
+					    0);
 				lwis_device_event_heartbeat_timer(
-					(unsigned long)lwis_dev);
+					&lwis_dev->heartbeat_timer);
 
 			} else {
 				del_timer(&lwis_dev->heartbeat_timer);
