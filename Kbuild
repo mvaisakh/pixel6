@@ -16,7 +16,7 @@ lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o
 
 # Exynos specific files
-ifeq ($(CONFIG_SOC_EXYNOS9810), y)
+ifeq ($(CONFIG_SOC_EXYNOS9820), y)
 lwis-objs += platform/exynos/lwis_platform_exynos.o
 lwis-objs += platform/exynos/lwis_platform_exynos_dma.o
 endif
