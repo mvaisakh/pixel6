@@ -29,6 +29,10 @@ else
  KBUILD_OPTIONS += BCMDHD_ROOT=$(shell cd $(KERNEL_SRC); readlink -e $(M))
 endif
 
+ifneq ($(CONFIG_ARCH_QCOM),)
+	CONFIG_ARCH_MSM=y
+endif
+
 #####################
 # SDIO/PCIe Basic feature
 #####################
@@ -647,6 +651,10 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
 
 # extra Source files
 DHDOFILES += wl_roam.o
+
+ifneq ($(CONFIG_ARCH_MSM),)
+	DHDOFILES += dhd_custom_google0.o
+endif
 
 ifneq ($(CONFIG_ARCH_HISI),)
 	DHDOFILES += dhd_custom_hikey.o
