@@ -14,6 +14,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 
@@ -172,6 +173,7 @@ int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 	i2c_msg[1].flags = I2C_M_RD;
 	i2c_msg[1].buf = rbuf;
 
+	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	for (i = 0; i < num_entries; ++i) {
 		i2c_msg[1].len = data[i].access_size / 8;
 		ret = perform_read_transfer(client, i2c_msg, data[i].offset,
@@ -181,6 +183,7 @@ int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 			break;
 		}
 	}
+	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	kfree(rbuf);
 error_rbuf_alloc:
@@ -222,6 +225,7 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 	i2c_msg.flags = 0;
 	i2c_msg.buf = buf;
 
+	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	for (i = 0; i < num_entries; ++i) {
 		i2c_msg.len = (offset_bits + data[i].access_size) / 8;
 		ret = perform_write_transfer(client, &i2c_msg, data[i].offset,
@@ -231,6 +235,7 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 			break;
 		}
 	}
+	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	kfree(buf);
 
@@ -286,8 +291,10 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, uint64_t offset,
 	msg[1].len = value_bits / 8;
 	msg[1].buf = rbuf;
 
+	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_read_transfer(client, msg, offset, offset_bits,
 				    value_bits, value);
+	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	kfree(rbuf);
 error_rbuf_alloc:
@@ -333,8 +340,10 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
 	msg.buf = buf;
 	msg.len = msg_bytes;
 
+	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_write_transfer(client, &msg, offset, offset_bits,
 				     value_bits, value);
+	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	kfree(buf);
 

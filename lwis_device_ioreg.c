@@ -58,14 +58,15 @@ static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 static int lwis_ioreg_register_read(struct lwis_device *lwis_dev,
 				    struct lwis_io_msg *msg, bool non_blocking)
 {
-	return lwis_ioreg_read_batch((struct lwis_ioreg_device *)lwis_dev, msg);
+	return lwis_ioreg_read_batch((struct lwis_ioreg_device *)lwis_dev, msg,
+				     non_blocking);
 }
 
 static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
 				     struct lwis_io_msg *msg, bool non_blocking)
 {
-	return lwis_ioreg_write_batch((struct lwis_ioreg_device *)lwis_dev,
-				      msg);
+	return lwis_ioreg_write_batch((struct lwis_ioreg_device *)lwis_dev, msg,
+				      non_blocking);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
@@ -124,10 +125,10 @@ error_probe:
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
-	{.compatible = LWIS_IOREG_DEVICE_COMPAT},
+	{ .compatible = LWIS_IOREG_DEVICE_COMPAT },
 	{},
 };
-//MODULE_DEVICE_TABLE(of, lwis_id_match);
+// MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
 	.driver =
@@ -147,11 +148,11 @@ static struct platform_device_id lwis_driver_id[] = {
 };
 MODULE_DEVICE_TABLE(platform, lwis_driver_id);
 
-static struct platform_driver lwis_driver = {.id_table = lwis_driver_id,
-					     .driver = {
-						     .name = LWIS_DRIVER_NAME,
-						     .owner = THIS_MODULE,
-					     }};
+static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
+					      .driver = {
+						      .name = LWIS_DRIVER_NAME,
+						      .owner = THIS_MODULE,
+					      } };
 #endif /* CONFIG_OF */
 
 /*

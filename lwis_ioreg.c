@@ -192,9 +192,10 @@ static int ioreg_write_internal(unsigned int __iomem *base, uint64_t offset,
 }
 
 int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
-			  struct lwis_io_msg *msg)
+			  struct lwis_io_msg *msg, bool non_blocking)
 {
 	int i;
+	int ret = 0;
 	struct lwis_io_data *data = msg->buf;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
@@ -222,22 +223,34 @@ int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
 	access_size = data[i].access_size ? data[i].access_size
 					  : block->default_access_size;
 
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
 	for (i = 0; i < num_entries; ++i) {
-		int ret = ioreg_read_internal(block->base, data[i].offset,
-					      access_size, &data[i].val);
+		ret = ioreg_read_internal(block->base, data[i].offset,
+					  access_size, &data[i].val);
 		if (ret) {
-			pr_err("Invalid ioreg read\n");
-			return ret;
+			pr_err("Invalid ioreg read:\n");
+			pr_err("Offset: 0x%x, Access Size: %d, Base: %p\n",
+			       data[i].offset, access_size, block->base);
+			goto read_func_end;
 		}
 	}
 
-	return 0;
+read_func_end:
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
+	return ret;
 }
 
 int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
-			   struct lwis_io_msg *msg)
+			   struct lwis_io_msg *msg, bool non_blocking)
 {
 	int i;
+	int ret = 0;
 	struct lwis_io_data *data = msg->buf;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
@@ -265,24 +278,38 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
 	access_size = data[i].access_size ? data[i].access_size
 					  : block->default_access_size;
 
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
 	for (i = 0; i < num_entries; ++i) {
-		int ret = ioreg_write_internal(block->base, data[i].offset,
-					       access_size, data[i].val);
+		ret = ioreg_write_internal(block->base, data[i].offset,
+					   access_size, data[i].val);
 		if (ret) {
 			pr_err("Invalid ioreg write\n");
-			return ret;
+			pr_err("Offset: 0x%x, Value: 0x%x, Access Size: %d, "
+			       "Base: %p\n",
+			       data[i].offset, data[i].val, access_size,
+			       block->base);
+			goto write_func_end;
 		}
 	}
 
-	return 0;
+write_func_end:
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
+	return ret;
 }
 
 int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
 				 uint64_t offset, int value_bits,
-				 uint64_t *value)
+				 uint64_t *value, bool non_blocking)
 {
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
+	int ret;
 
 	BUG_ON(!ioreg_dev);
 
@@ -298,14 +325,23 @@ int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
 
 	value_bits = value_bits ? value_bits : block->default_access_size;
 
-	return ioreg_read_internal(block->base, offset, value_bits, value);
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	ret = ioreg_read_internal(block->base, offset, value_bits, value);
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
+	return ret;
 }
 
 int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 				  char *name, uint64_t offset, int value_bits,
-				  uint64_t *value)
+				  uint64_t *value, bool non_blocking)
 {
 	int i, bidx;
+	int ret;
 	struct lwis_ioreg_list *list;
 
 	BUG_ON(!ioreg_dev);
@@ -321,16 +357,24 @@ int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 
 	value_bits =
 		value_bits ? value_bits : list->block[i].default_access_size;
-	return ioreg_read_internal(list->block[i].base, offset, value_bits,
-				   value);
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	ret = ioreg_read_internal(list->block[i].base, offset, value_bits,
+				  value);
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	return ret;
 }
 
 int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
 				  int index, uint64_t offset, int value_bits,
-				  uint64_t value)
+				  uint64_t value, bool non_blocking)
 {
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
+	int ret;
 
 	BUG_ON(!ioreg_dev);
 
@@ -345,15 +389,22 @@ int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
 	}
 
 	value_bits = value_bits ? value_bits : block->default_access_size;
-
-	return ioreg_write_internal(block->base, offset, value_bits, value);
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	ret = ioreg_write_internal(block->base, offset, value_bits, value);
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	return ret;
 }
 
 int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 				   char *name, uint64_t offset, int value_bits,
-				   uint64_t value)
+				   uint64_t value, bool non_blocking)
 {
 	int i, bidx;
+	int ret;
 	struct lwis_ioreg_list *list;
 
 	BUG_ON(!ioreg_dev);
@@ -369,6 +420,13 @@ int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 
 	value_bits =
 		value_bits ? value_bits : list->block[i].default_access_size;
-	return ioreg_write_internal(list->block[i].base, offset, value_bits,
-				    value);
+	if (!non_blocking) {
+		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	ret = ioreg_write_internal(list->block[i].base, offset, value_bits,
+				   value);
+	if (!non_blocking) {
+		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+	return ret;
 }

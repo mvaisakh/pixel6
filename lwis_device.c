@@ -254,6 +254,9 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	/* Initialize client mutex */
 	mutex_init(&lwis_dev->client_lock);
 
+	/* Initialize register access mutex */
+	mutex_init(&lwis_dev->reg_rw_lock);
+
 	/* Initialize an empty list of clients */
 	INIT_LIST_HEAD(&lwis_dev->clients);
 

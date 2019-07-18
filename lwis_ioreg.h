@@ -51,13 +51,13 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
  *  lwis_ioreg_read_batch: Read memory mapped registers in batch.
  */
 int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
-			  struct lwis_io_msg *msg);
+			  struct lwis_io_msg *msg, bool non_blocking);
 
 /*
  *  lwis_ioreg_write_batch: Write memory mapped registers in batch.
  */
 int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
-			   struct lwis_io_msg *msg);
+			   struct lwis_io_msg *msg, bool non_blocking);
 
 /*
  *  lwis_ioreg_read_by_block_idx: Read single memory mapped register by
@@ -65,7 +65,7 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
  */
 int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
 				 uint64_t offset, int value_bits,
-				 uint64_t *value);
+				 uint64_t *value, bool non_blocking);
 
 /*
  *  lwis_ioreg_read_by_block_name: Read single memory mapped register by
@@ -73,7 +73,7 @@ int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
  */
 int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 				  char *name, uint64_t offset, int value_bits,
-				  uint64_t *value);
+				  uint64_t *value, bool non_blocking);
 
 /*
  *  lwis_ioreg_write_by_block_idx: Write single memory mapped register by
@@ -81,7 +81,7 @@ int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
  */
 int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
 				  int index, uint64_t offset, int value_bits,
-				  uint64_t value);
+				  uint64_t value, bool non_blocking);
 
 /*
  *  lwis_ioreg_write_by_block_name: Write single memory mapped register by
@@ -89,6 +89,6 @@ int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
  */
 int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
 				   char *name, uint64_t offset, int value_bits,
-				   uint64_t value);
+				   uint64_t value, bool non_blocking);
 
 #endif /* LWIS_IOREG_H_ */

@@ -143,6 +143,8 @@ struct lwis_device {
 	struct lwis_device_subclass_operations vops;
 	/* Does the device have IOMMU. TODO: Move to platform */
 	bool has_iommu;
+	/* Mutex used to synchronize register access between clients */
+	struct mutex reg_rw_lock;
 
 	/* Heartbeat timer structure */
 	struct timer_list heartbeat_timer;
