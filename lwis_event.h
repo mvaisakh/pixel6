@@ -49,10 +49,13 @@ struct lwis_client_event_state {
 };
 
 /*
- *  struct lwis_client_event
- *  This struct keeps track of events inside the client event queue
+ *  struct lwis_event_entry
+ *  This struct can be used to keep track of events inside the client event
+ *  queue, or the device events that are waiting to be emitted. These two
+ *  types of events are mutually exclusive, i.e. an event can only be one,
+ *  but not both, of those queues.
  */
-struct lwis_client_event {
+struct lwis_event_entry {
 	struct lwis_event_info event_info;
 	struct list_head node;
 };
@@ -103,7 +106,7 @@ int lwis_client_event_control_get(struct lwis_client *lwisclient,
  * Returns: 0 on success, -ENOENT if queue empty
  */
 int lwis_client_event_pop_front(struct lwis_client *lwisclient,
-				struct lwis_client_event **event);
+				struct lwis_event_entry **event);
 
 /*
  * lwis_client_event_peek_front: Get the front element of the queue without
@@ -115,7 +118,7 @@ int lwis_client_event_pop_front(struct lwis_client *lwisclient,
  * Returns: 0 on success, -ENOENT if queue empty
  */
 int lwis_client_event_peek_front(struct lwis_client *lwisclient,
-				 struct lwis_client_event **event);
+				 struct lwis_event_entry **event);
 
 /*
  * lwis_client_event_states_clear: Frees all items in lwisclient->event_states
@@ -150,7 +153,7 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
  * Locks: lwisdevice->lock
  * Alloc: May allocate
  * Returns: 0 on success (event enabled/disabled)
- *          -EINVAL if event unknown 
+ *          -EINVAL if event unknown
  */
 int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 			     bool enabled);
@@ -172,12 +175,31 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
  * matching event_id. If not found, creates the object with 0 flags and adds it
  * to the list
  *
- * Locks: lwis_dev->lock 
+ * Locks: lwis_dev->lock
  * Alloc: Maybe
  * Returns: device event state object on success, errno on error
  */
 struct lwis_device_event_state *
 lwis_device_event_state_find_or_create(struct lwis_device *lwis_dev,
 				       int64_t event_id);
+
+/*
+ * lwis_pending_event_push: Push triggered event into a local pending queue to
+ * defer processing until all the current event is done
+ *
+ * Alloc: Maybe
+ * Returns: 0 on success
+ */
+int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
+			    void *payload, size_t payload_size);
+
+/*
+ * lwis_pending_events_emit: If pending queue is not empty, start processing
+ * and emitting the events in queue
+ *
+ * Returns: 0 on success
+ */
+int lwis_pending_events_emit(struct lwis_device *lwis_dev,
+			     struct list_head *pending_events);
 
 #endif /* LWIS_EVENT_H_ */

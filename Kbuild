@@ -11,6 +11,7 @@ lwis-objs += lwis_ioreg.o
 lwis-objs += lwis_phy.o
 lwis-objs += lwis_pinctrl.o
 lwis-objs += lwis_regulator.o
+lwis-objs += lwis_transaction.o
 lwis-objs += lwis_event.o
 lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o

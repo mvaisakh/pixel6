@@ -11,12 +11,14 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-int: " fmt
 
 #include "lwis_interrupt.h"
-#include "lwis_device.h"
-#include "lwis_event.h"
-#include "lwis_util.h"
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
+
+#include "lwis_device.h"
+#include "lwis_event.h"
+#include "lwis_transaction.h"
+#include "lwis_util.h"
 
 struct lwis_single_event_info {
 	/* Event ID of the event we can emit */

@@ -19,14 +19,15 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+#include "lwis_buffer.h"
 #include "lwis_commands.h"
 #include "lwis_device.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
-#include "lwis_ioctl.h"
-#include "lwis_buffer.h"
-#include "lwis_platform.h"
 #include "lwis_init.h"
+#include "lwis_ioctl.h"
+#include "lwis_platform.h"
+#include "lwis_transaction.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -98,6 +99,9 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Empty hash table for client enrolled buffers */
 	hash_init(lwis_client->enrolled_buffers);
 
+	/* Start transaction processor task */
+	lwis_transaction_init(lwis_client);
+
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_add(&lwis_client->node, &lwis_dev->clients);
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
@@ -142,7 +146,6 @@ static int lwis_release(struct inode *node, struct file *fp)
 	/* Disenroll and clear the table of allocated and enrolled buffers */
 	lwis_client_allocated_buffers_clear(lwis_client);
 	lwis_client_enrolled_buffers_clear(lwis_client);
-
 
 	mutex_unlock(&lwis_client->lock);
 	kfree(lwis_client);

@@ -20,6 +20,7 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/poll.h>
+#include <linux/workqueue.h>
 
 #include "lwis_clock.h"
 #include "lwis_commands.h"
@@ -38,6 +39,7 @@
 
 #define EVENT_HASH_BITS 8
 #define BUFFER_HASH_BITS 8
+#define TRANSACTION_HASH_BITS 8
 
 /* Forward declaration for lwis_device. This is needed for the declaration for
    lwis_device_subclass_operations data struct. */
@@ -102,7 +104,7 @@ struct lwis_device_subclass_operations {
 				   int64_t event_id, uint64_t old_flags,
 				   uint64_t new_flags);
 	/* Called by lwis_device any time an event is emitted
- 	* Called with lwis_dev->lock locked and IRQs disabled */
+	 * Called with lwis_dev->lock locked and IRQs disabled */
 	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id,
 			     void **payload_ptrptr, size_t *payload_size_ptr);
 };
@@ -145,7 +147,6 @@ struct lwis_device {
 	bool has_iommu;
 	/* Mutex used to synchronize register access between clients */
 	struct mutex reg_rw_lock;
-
 	/* Heartbeat timer structure */
 	struct timer_list heartbeat_timer;
 };
@@ -170,6 +171,17 @@ struct lwis_client {
 	DECLARE_HASHTABLE(allocated_buffers, BUFFER_HASH_BITS);
 	/* Hash table of enrolled buffers keyed by dvaddr */
 	DECLARE_HASHTABLE(enrolled_buffers, BUFFER_HASH_BITS);
+	/* Hash table of transactions keyed by trigger event ID */
+	DECLARE_HASHTABLE(transaction_list, TRANSACTION_HASH_BITS);
+	/* Transaction task-related variables */
+	struct workqueue_struct *transaction_wq;
+	struct work_struct transaction_work;
+	/* Spinlock  used to synchornize access to transaction data structs */
+	spinlock_t transaction_lock;
+	/* List of transaction triggers */
+	struct list_head transaction_process_queue;
+	/* Transaction counter, which also provides transacton ID */
+	uint64_t transaction_counter;
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };

@@ -81,10 +81,16 @@ struct lwis_io_entry {
  *
  * The rest are specific to device specializations
  */
+// Event NONE and INVALID are intended to be sharing the same ID.
+#define LWIS_EVENT_ID_NONE 0
 #define LWIS_EVENT_ID_INVALID 0
 #define LWIS_EVENT_ID_HEARTBEAT 1
 // ...
 #define LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE 4096
+
+// Event flags used for transaction events.
+#define LWIS_TRANSACTION_EVENT_FLAG (1ULL << 63)
+#define LWIS_TRANSACTION_FAILURE_EVENT_FLAG (1ULL << 62)
 
 struct lwis_event_info {
 	// IOCTL Inputs
@@ -105,6 +111,34 @@ struct lwis_event_control {
 	int64_t event_id;
 	// IOCTL Outputs
 	uint64_t flags;
+};
+
+#define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (1ULL << 60)
+struct lwis_transaction_info {
+	// Input
+	int trigger_device_id;
+	int64_t trigger_event_id;
+	uint64_t trigger_event_counter;
+	size_t num_io_entries;
+	struct lwis_io_entry *io_entries;
+	bool run_in_event_context;
+	int64_t emit_success_event_id;
+	int64_t emit_error_event_id;
+	// Output
+	int64_t id;
+};
+
+// Actual size of this struct depends on num_entries
+struct lwis_transaction_response_header {
+	uint64_t id;
+	int error_code;
+	size_t num_entries;
+};
+
+struct lwis_io_result {
+	int bid;
+	uint64_t offset;
+	uint64_t value;
 };
 
 /*
@@ -129,6 +163,10 @@ struct lwis_event_control {
 #define LWIS_EVENT_CONTROL_SET                                                 \
 	_IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
+
+#define LWIS_TRANSACTION_SUBMIT                                                \
+	_IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
+#define LWIS_TRANSACTION_CANCEL _IOWR(LWIS_IOC_TYPE, 31, int64_t)
 
 #ifdef __cplusplus
 } /* extern "C" */

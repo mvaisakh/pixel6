@@ -29,6 +29,7 @@
 #include "lwis_pinctrl.h"
 #include "lwis_platform.h"
 #include "lwis_regulator.h"
+#include "lwis_transaction.h"
 
 #define MCLK_ON_STRING "mclk_on"
 #define MCLK_OFF_STRING "mclk_off"
@@ -547,7 +548,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 			       struct lwis_event_info __user *msg)
 {
 	unsigned long ret, err = 0;
-	struct lwis_client_event *event;
+	struct lwis_event_entry *event;
 	struct lwis_event_info info_user;
 
 	ret = copy_from_user((void *)&info_user, (void __user *)msg,
@@ -636,6 +637,78 @@ static int ioctl_time_query(struct lwis_client *client, uint64_t __user *msg)
 	return ret;
 }
 
+static int ioctl_transaction_submit(struct lwis_client *client,
+				    struct lwis_transaction_info __user *msg)
+{
+	int ret;
+	size_t entry_size;
+	struct lwis_transaction *k_transaction;
+	struct lwis_transaction_info *user_transaction;
+	struct lwis_io_entry *k_entries;
+	struct lwis_io_entry *user_entries;
+
+	k_transaction = kzalloc(sizeof(struct lwis_transaction), GFP_KERNEL);
+	if (!k_transaction) {
+		pr_err("Failed to allocate transaction info\n");
+		return -ENOMEM;
+	}
+
+	user_transaction = (struct lwis_transaction_info *)msg;
+	ret = copy_from_user((void *)&k_transaction->info,
+			     (void __user *)user_transaction,
+			     sizeof(struct lwis_transaction_info));
+	if (ret) {
+		pr_err("Failed to copy transaction info from user\n");
+		goto error_free_transaction;
+	}
+
+	user_entries = k_transaction->info.io_entries;
+	entry_size = k_transaction->info.num_io_entries *
+		     sizeof(struct lwis_io_entry);
+	k_entries = kzalloc(entry_size, GFP_KERNEL);
+	if (!k_entries) {
+		pr_err("Failed to allocate transaction entries\n");
+		ret = -ENOMEM;
+		goto error_free_transaction;
+	}
+	k_transaction->info.io_entries = k_entries;
+
+	ret = copy_from_user((void *)k_entries, (void __user *)user_entries,
+			     entry_size);
+	if (ret) {
+		pr_err("Failed to copy transaction entries from user\n");
+		goto error_free_entries;
+	}
+
+	ret = lwis_transaction_submit(client, k_transaction);
+	if (ret) {
+		pr_err("Failed to insert transaction\n");
+		goto error_free_entries;
+	}
+
+	ret = copy_to_user((void __user *)user_transaction,
+			   &k_transaction->info,
+			   sizeof(struct lwis_transaction_info));
+	if (ret) {
+		pr_err("Failed to copy transaction results to userspace\n");
+		return ret;
+	}
+
+	return 0;
+
+error_free_entries:
+	kfree(k_entries);
+error_free_transaction:
+	kfree(k_transaction);
+	return ret;
+}
+
+static int ioctl_transaction_cancel(struct lwis_client *client,
+				    int64_t __user *msg)
+{
+	return 0;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
@@ -687,6 +760,13 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_TIME_QUERY:
 		ret = ioctl_time_query(lwis_client, (uint64_t *)param);
+		break;
+	case LWIS_TRANSACTION_SUBMIT:
+		ret = ioctl_transaction_submit(
+			lwis_client, (struct lwis_transaction_info *)param);
+		break;
+	case LWIS_TRANSACTION_CANCEL:
+		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
 		break;
 	default:
 		pr_err("Unknown IOCTL operation\n");
