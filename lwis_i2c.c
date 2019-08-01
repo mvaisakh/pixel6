@@ -125,24 +125,30 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 	return 0;
 }
 
-int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
+int lwis_i2c_read_batch(struct lwis_i2c_device *i2c,
+			struct lwis_io_entry *entries, int num_entries)
 {
 	int i;
 	int ret;
 	u8 *wbuf;
 	u8 *rbuf;
-	struct lwis_io_data *data = msg->buf;
 	struct i2c_client *client = i2c->client;
 	struct i2c_msg i2c_msg[2];
 
-	const int offset_bits = msg->offset_bitwidth;
-	const int num_entries = msg->num_entries;
 	const int num_i2c_msg = 2;
+	int offset_bits;
 
 	if (!i2c || !i2c->client) {
 		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
+
+	if (num_entries <= 0) {
+		pr_err("Invalid number of entries %d\n", num_entries);
+		return -EINVAL;
+	}
+
+	offset_bits = entries[0].offset_bitwidth;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		pr_err("Invalid offset bitwidth %d\n", offset_bits);
@@ -175,10 +181,10 @@ int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 
 	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	for (i = 0; i < num_entries; ++i) {
-		i2c_msg[1].len = data[i].access_size / 8;
-		ret = perform_read_transfer(client, i2c_msg, data[i].offset,
-					    offset_bits, data[i].access_size,
-					    &data[i].val);
+		i2c_msg[1].len = entries[i].access_size / 8;
+		ret = perform_read_transfer(client, i2c_msg, entries[i].offset,
+					    offset_bits, entries[i].access_size,
+					    &entries[i].val);
 		if (ret != num_i2c_msg) {
 			break;
 		}
@@ -192,23 +198,30 @@ error_rbuf_alloc:
 	return (ret == num_i2c_msg) ? 0 : ret;
 }
 
-int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
+int lwis_i2c_write_batch(struct lwis_i2c_device *i2c,
+			 struct lwis_io_entry *entries, int num_entries)
 {
 	int i;
 	int ret;
 	u8 *buf;
-	struct lwis_io_data *data = msg->buf;
 	struct i2c_client *client = i2c->client;
 	struct i2c_msg i2c_msg;
 
-	const int offset_bits = msg->offset_bitwidth;
-	const int num_entries = msg->num_entries;
 	const int num_i2c_msg = 1;
+	int offset_bits;
 
 	if (!i2c || !i2c->client) {
 		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
+
+	if (num_entries <= 0) {
+		pr_err("Invalid number of entries %d\n", num_entries);
+		return -EINVAL;
+	}
+
+	/* Assuming offset bitwidth is constant with the whole batch. */
+	offset_bits = entries[0].offset_bitwidth;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		pr_err("Invalid offset bitwidth %d\n", offset_bits);
@@ -227,10 +240,10 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg)
 
 	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	for (i = 0; i < num_entries; ++i) {
-		i2c_msg.len = (offset_bits + data[i].access_size) / 8;
-		ret = perform_write_transfer(client, &i2c_msg, data[i].offset,
-					     offset_bits, data[i].access_size,
-					     data[i].val);
+		i2c_msg.len = (offset_bits + entries[i].access_size) / 8;
+		ret = perform_write_transfer(
+			client, &i2c_msg, entries[i].offset, offset_bits,
+			entries[i].access_size, entries[i].val);
 		if (ret != num_i2c_msg) {
 			break;
 		}
@@ -349,4 +362,3 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
 
 	return (ret == num_msg) ? 0 : ret;
 }
-

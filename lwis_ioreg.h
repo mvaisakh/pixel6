@@ -51,13 +51,15 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
  *  lwis_ioreg_read_batch: Read memory mapped registers in batch.
  */
 int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
-			  struct lwis_io_msg *msg, bool non_blocking);
+			  struct lwis_io_entry *entries, int num_entries,
+			  bool non_blocking);
 
 /*
  *  lwis_ioreg_write_batch: Write memory mapped registers in batch.
  */
 int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
-			   struct lwis_io_msg *msg, bool non_blocking);
+			   struct lwis_io_entry *entries, int num_entries,
+			   bool non_blocking);
 
 /*
  *  lwis_ioreg_read_by_block_idx: Read single memory mapped register by

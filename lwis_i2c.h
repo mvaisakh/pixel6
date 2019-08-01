@@ -31,16 +31,18 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str);
 
 /*
  *  lwis_i2c_read_batch: Read from i2c bus in a batch - register information
- *  is provided through the data buffer inside lwis_io_msg.  The read back
- *  values will be stored in the data buffer also.
+ *  is provided through lwis_io_entry.  The read back values will be stored in
+ *  the entries also.
  */
-int lwis_i2c_read_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg);
+int lwis_i2c_read_batch(struct lwis_i2c_device *i2c,
+			struct lwis_io_entry *entries, int num_entries);
 
 /*
  *  lwis_i2c_write_batch: Write to i2c bus in a batch - register and value
- *  information are provided through the data buffer inside lwis_io_msg.
+ *  information are provided through lwis_io_entry.
  */
-int lwis_i2c_write_batch(struct lwis_i2c_device *i2c, struct lwis_io_msg *msg);
+int lwis_i2c_write_batch(struct lwis_i2c_device *i2c,
+			 struct lwis_io_entry *entries, int num_entries);
 
 /*
  *  lwis_i2c_read: Single read from i2c bus.
@@ -52,6 +54,6 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, uint64_t offset,
  *  lwis_i2c_write: Single write to i2c bus.
  */
 int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
-                   uint64_t offset, int value_bits, uint64_t value);
+		   uint64_t offset, int value_bits, uint64_t value);
 
 #endif /* LWIS_I2C_H_ */

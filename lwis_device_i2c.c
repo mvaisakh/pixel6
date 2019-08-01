@@ -33,9 +33,11 @@
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
 static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_msg *msg, bool non_blocking);
+				  struct lwis_io_entry *entry,
+				  bool non_blocking);
 static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_msg *msg, bool non_blocking);
+				   struct lwis_io_entry *entry,
+				   bool non_blocking);
 
 static struct lwis_device_subclass_operations i2c_vops = {
 	.register_read = lwis_i2c_register_read,
@@ -77,23 +79,29 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 }
 
 static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_msg *msg, bool non_blocking)
+				  struct lwis_io_entry *entry,
+				  bool non_blocking)
 {
 	/* I2C does not currently support non-blocking calls at all */
 	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_read_batch((struct lwis_i2c_device *)lwis_dev, msg);
+	return lwis_i2c_read((struct lwis_i2c_device *)lwis_dev,
+			     entry->offset_bitwidth, entry->offset,
+			     entry->access_size, &entry->val);
 }
 
 static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_msg *msg, bool non_blocking)
+				   struct lwis_io_entry *entry,
+				   bool non_blocking)
 {
 	/* I2C does not currently support non-blocking calls at all */
 	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_write_batch((struct lwis_i2c_device *)lwis_dev, msg);
+	return lwis_i2c_write((struct lwis_i2c_device *)lwis_dev,
+			      entry->offset_bitwidth, entry->offset,
+			      entry->access_size, entry->val);
 }
 
 static int lwis_i2c_addr_matcher(struct device *dev, void *data)
@@ -204,7 +212,8 @@ error_probe:
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
-	{.compatible = LWIS_I2C_DEVICE_COMPAT }, {},
+	{ .compatible = LWIS_I2C_DEVICE_COMPAT },
+	{},
 };
 MODULE_DEVICE_TABLE(of, lwis_id_match);
 
@@ -219,17 +228,18 @@ static struct platform_driver lwis_driver = {
 #else  /* CONFIG_OF not defined */
 static struct platform_device_id lwis_driver_id[] = {
 	{
-		.name = LWIS_DRIVER_NAME, .driver_data = 0,
+		.name = LWIS_DRIVER_NAME,
+		.driver_data = 0,
 	},
 	{},
 };
 MODULE_DEVICE_TABLE(platform, lwis_driver_id);
 
-static struct platform_driver lwis_driver = {.id_table = lwis_driver_id,
-					     .driver = {
-						     .name = LWIS_DRIVER_NAME,
-						     .owner = THIS_MODULE,
-					     } };
+static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
+					      .driver = {
+						      .name = LWIS_DRIVER_NAME,
+						      .owner = THIS_MODULE,
+					      } };
 #endif /* CONFIG_OF */
 
 /*

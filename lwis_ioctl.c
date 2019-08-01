@@ -34,12 +34,10 @@
 #define MCLK_OFF_STRING "mclk_off"
 
 static int ioctl_reg_read(struct lwis_device *lwis_dev,
-			  struct lwis_io_msg *user_msg)
+			  struct lwis_io_entry *user_msg)
 {
 	int ret;
-	struct lwis_io_msg k_msg;
-	struct lwis_io_data *user_buf;
-	struct lwis_io_data *k_buf;
+	struct lwis_io_entry k_msg;
 
 	/* register read is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_read) {
@@ -48,52 +46,25 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	}
 
 	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *)user_msg,
-			     sizeof(struct lwis_io_msg));
+	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
 	if (ret) {
 		return ret;
 	}
 
-	user_buf = k_msg.buf;
-
-	/* Allocate a kernel buffer for the read data */
-	k_buf = kzalloc(k_msg.num_entries * sizeof(struct lwis_io_data),
-			GFP_KERNEL);
-	if (!k_buf) {
-		return -ENOMEM;
-	}
-
-	/* Set kernel buffer in the message */
-	k_msg.buf = k_buf;
-
-	/* Copy read data from userspace */
-	ret = copy_from_user(k_buf, (void __user *)user_buf,
-			     k_msg.num_entries * sizeof(struct lwis_io_data));
-	if (ret) {
-		goto error_i2c_read;
-	}
-
 	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg, false);
 	if (ret) {
-		goto error_i2c_read;
+		return ret;
 	}
 
 	/* Copy read data back to userspace */
-	ret = copy_to_user((void __user *)user_buf, k_buf,
-			   k_msg.num_entries * sizeof(struct lwis_io_data));
-
-error_i2c_read:
-	kfree(k_buf);
-	return ret;
+	return copy_to_user((void __user *)user_msg, &k_msg, sizeof(k_msg));
 }
 
 static int ioctl_reg_write(struct lwis_device *lwis_dev,
-			   struct lwis_io_msg *user_msg)
+			   struct lwis_io_entry *user_msg)
 {
 	int ret;
-	struct lwis_io_msg k_msg;
-	struct lwis_io_data *user_buf;
-	struct lwis_io_data *k_buf;
+	struct lwis_io_entry k_msg;
 
 	/* register write is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_write) {
@@ -102,36 +73,12 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 	}
 
 	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *)user_msg,
-			     sizeof(struct lwis_io_msg));
+	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
 	if (ret) {
 		return ret;
 	}
 
-	user_buf = k_msg.buf;
-
-	/* Allocate a kernel buffer for the write data */
-	k_buf = kzalloc(k_msg.num_entries * sizeof(struct lwis_io_data),
-			GFP_KERNEL);
-	if (!k_buf) {
-		return -ENOMEM;
-	}
-
-	/* Set kernel buffer in the message */
-	k_msg.buf = k_buf;
-
-	/* Copy write data from userspace */
-	ret = copy_from_user(k_buf, (void __user *)user_buf,
-			     k_msg.num_entries * sizeof(struct lwis_io_data));
-	if (ret) {
-		goto error_i2c_write;
-	}
-
-	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
-
-error_i2c_write:
-	kfree(k_buf);
-	return ret;
+	return lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
 }
 
 static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
@@ -648,10 +595,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 					     (struct lwis_buffer_info *)param);
 		break;
 	case LWIS_REG_READ:
-		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_msg *)param);
+		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_entry *)param);
 		break;
 	case LWIS_REG_WRITE:
-		ret = ioctl_reg_write(lwis_dev, (struct lwis_io_msg *)param);
+		ret = ioctl_reg_write(lwis_dev, (struct lwis_io_entry *)param);
 		break;
 	case LWIS_DEVICE_ENABLE:
 		ret = ioctl_device_enable(lwis_dev);

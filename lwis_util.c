@@ -17,49 +17,42 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 				      bool non_blocking, int bid,
 				      uint64_t offset, uint64_t value)
 {
+	struct lwis_io_entry entry = {};
+
 	BUG_ON(!lwis_dev);
-	if (lwis_dev->vops.register_write) {
-		struct lwis_io_data data = {};
-		struct lwis_io_msg msg = {};
-
-		data.offset = offset;
-		data.val = value;
-		data.access_size = 0; // use default
-
-		msg.buf = &data;
-		msg.num_entries = 1;
-		msg.offset_bitwidth = 0; // use default
-		msg.bid = bid;
-
-		return lwis_dev->vops.register_write(lwis_dev, &msg,
-						     non_blocking);
+	if (lwis_dev->vops.register_write == NULL) {
+		return -EINVAL;
 	}
-	return -EINVAL;
+
+	entry.offset = offset;
+	entry.val = value;
+	entry.access_size = 0;	   // use default
+	entry.offset_bitwidth = 0; // use default
+	entry.bid = bid;
+
+	return lwis_dev->vops.register_write(lwis_dev, &entry, non_blocking);
 }
 
 int lwis_device_single_register_read(struct lwis_device *lwis_dev,
-				     bool non_blocking, int bid, uint64_t offset,
-				     uint64_t *value)
+				     bool non_blocking, int bid,
+				     uint64_t offset, uint64_t *value)
 {
 	int ret = -EINVAL;
+	struct lwis_io_entry entry = {};
+
 	BUG_ON(!lwis_dev);
-	if (lwis_dev->vops.register_read) {
-		struct lwis_io_data data = {};
-		struct lwis_io_msg msg = {};
+	if (lwis_dev->vops.register_read == NULL) {
+		return -EINVAL;
+	}
 
-		data.offset = offset;
-		data.access_size = 0; // use default
+	entry.offset = offset;
+	entry.access_size = 0;	   // use default
+	entry.offset_bitwidth = 0; // use default
+	entry.bid = bid;
 
-		msg.buf = &data;
-		msg.num_entries = 1;
-		msg.offset_bitwidth = 0; // use default
-		msg.bid = bid;
-
-		ret = lwis_dev->vops.register_read(lwis_dev, &msg,
-						     non_blocking);
-		if(!ret && value) {
-			*value = data.val;
-		}
+	ret = lwis_dev->vops.register_read(lwis_dev, &entry, non_blocking);
+	if (!ret && value) {
+		*value = entry.val;
 	}
 	return ret;
 }
