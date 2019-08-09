@@ -175,7 +175,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 
 	mutex_unlock(&lwis_client->lock);
 
-	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != EAGAIN) {
+	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
 		pr_err("Error processing IOCTL %d (%d)\n", _IOC_NR(type), ret);
 	}
 

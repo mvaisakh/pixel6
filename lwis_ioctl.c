@@ -574,7 +574,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	if (event->event_info.payload_size > info_user.payload_buffer_size) {
 		/* Nope, we don't. Let's inform the user and bail */
 		info_user.payload_size = event->event_info.payload_size;
-		err = -ENOMEM;
+		err = -EAGAIN;
 	} else {
 		/*
 		 * Let's save the IOCTL inputs because they'll get overwritten
@@ -604,10 +604,10 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 			}
 		}
 	}
-	/* If we didn't -ENOMEM up above, we can pop and discard the front of
+	/* If we didn't -EAGAIN up above, we can pop and discard the front of
 	 * the event queue because we're done dealing with it. If we got the
-	 * -ENOMEM case, we didn't actually dequeu this event and userspace
-	 *  should try again with a bigger payload_buffer
+	 * -EAGAIN case, we didn't actually dequeue this event and userspace
+	 * should try again with a bigger payload_buffer.
 	 */
 	if (!err) {
 		ret = lwis_client_event_pop_front(lwis_client, NULL);
