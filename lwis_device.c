@@ -140,6 +140,9 @@ static int lwis_release(struct inode *node, struct file *fp)
 	}
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
+	/* Cancel all pending transactions for the client */
+	lwis_transaction_client_cleanup(lwis_client);
+
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
 

@@ -34,12 +34,13 @@ struct lwis_transaction_event_list {
 };
 
 int lwis_transaction_init(struct lwis_client *client);
-int lwis_transaction_cleanup(struct lwis_client *client);
+int lwis_transaction_client_cleanup(struct lwis_client *client);
 
 int lwis_transaction_submit(struct lwis_client *client,
 			    struct lwis_transaction *transaction);
 int lwis_transaction_event_trigger(struct lwis_client *client,
 				   int64_t event_id, uint64_t event_counter,
 				   struct list_head *pending_events);
+int lwis_transaction_cancel(struct lwis_client *client, uint64_t id);
 
 #endif /* LWIS_TRANSACTION_H_ */

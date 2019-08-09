@@ -706,6 +706,21 @@ error_free_transaction:
 static int ioctl_transaction_cancel(struct lwis_client *client,
 				    int64_t __user *msg)
 {
+	int ret;
+	int64_t id;
+
+	ret = copy_from_user((void *)&id, (void __user *)msg, sizeof(id));
+	if (ret) {
+		pr_err("Failed to copy transaction ID from user\n");
+		return ret;
+	}
+
+	ret = lwis_transaction_cancel(client, id);
+	if (ret) {
+		pr_err("Failed to clear transaction id 0x%llx\n", id);
+		return ret;
+	}
+
 	return 0;
 }
 
