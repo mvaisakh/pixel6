@@ -154,38 +154,30 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 }
 
 static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
-				  struct lwis_buffer_info __user *msg)
+				  uint64_t __user *msg)
 {
 	unsigned long ret;
-	struct lwis_buffer_info info;
+	uint64_t dma_vaddr;
 	struct lwis_buffer *buffer;
 
-	ret = copy_from_user((void *)&info, (void __user *)msg, sizeof(info));
+	ret = copy_from_user((void *)&dma_vaddr, (void __user *)msg,
+			     sizeof(dma_vaddr));
 	if (ret) {
-		pr_err("Failed to copy %zu bytes from user\n", sizeof(info));
+		pr_err("Failed to copy DMA virtual address from user\n");
 		return -EINVAL;
 	}
 
-	buffer = lwis_client_enrolled_buffer_find(lwis_client, info.dma_vaddr);
+	buffer = lwis_client_enrolled_buffer_find(lwis_client, dma_vaddr);
 
 	if (!buffer) {
-		pr_err("Failed to find dma buffer for %llx\n", info.dma_vaddr);
+		pr_err("Failed to find dma buffer for %llx\n", dma_vaddr);
 		return -ENOENT;
 	}
 
 	ret = lwis_buffer_disenroll(lwis_client, buffer);
 	if (ret) {
-		pr_err("Failed to disenroll dma buffer for %llx\n",
-		       info.dma_vaddr);
+		pr_err("Failed to disenroll dma buffer for %llx\n", dma_vaddr);
 		return ret;
-	}
-
-	ret = copy_to_user((void __user *)msg, (void *)&buffer->info,
-			   sizeof(buffer->info));
-	if (ret) {
-		pr_err("Failed to copy %zu bytes to user\n",
-		       sizeof(buffer->info));
-		return -EINVAL;
 	}
 
 	return 0;
@@ -591,8 +583,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 					  (struct lwis_buffer_info *)param);
 		break;
 	case LWIS_BUFFER_DISENROLL:
-		ret = ioctl_buffer_disenroll(lwis_client,
-					     (struct lwis_buffer_info *)param);
+		ret = ioctl_buffer_disenroll(lwis_client, (uint64_t *)param);
 		break;
 	case LWIS_REG_READ:
 		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_entry *)param);

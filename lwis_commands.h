@@ -55,7 +55,7 @@ struct lwis_buffer_info {
 	int fd;
 	bool dma_read;
 	bool dma_write;
-	// IOCTL output for BUFFER_ENROLL, input for BUFFER_DISENROLL
+	// IOCTL output for BUFFER_ENROLL
 	uint64_t dma_vaddr;
 };
 
@@ -112,7 +112,7 @@ struct lwis_event_control {
 
 #define LWIS_GET_DEVICE_INFO _IOWR(LWIS_IOC_TYPE, 1, struct lwis_device_info)
 #define LWIS_BUFFER_ENROLL _IOWR(LWIS_IOC_TYPE, 2, struct lwis_buffer_info)
-#define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, struct lwis_buffer_info)
+#define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, uint64_t)
 #define LWIS_REG_READ _IOWR(LWIS_IOC_TYPE, 4, struct lwis_io_entry)
 #define LWIS_REG_WRITE _IOWR(LWIS_IOC_TYPE, 5, struct lwis_io_entry)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
