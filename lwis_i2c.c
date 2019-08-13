@@ -64,6 +64,9 @@ static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
 		*value = rbuf[0];
 	} else if (value_bits == 16) {
 		*value = (rbuf[0] << 8) | rbuf[1];
+	} else if (value_bits == 32) {
+		*value = (rbuf[0] << 24) | (rbuf[1] << 16) | (rbuf[2] << 8) |
+			 rbuf[3];
 	} else {
 		pr_err("%s: Read with unsupported value bits %d\n",
 		       client->name, value_bits);
@@ -100,6 +103,11 @@ static int perform_write_transfer(struct i2c_client *client,
 	if (value_bits == 8) {
 		buf[i++] = value;
 	} else if (value_bits == 16) {
+		buf[i++] = (value >> 8) & 0xFF;
+		buf[i++] = value & 0xFF;
+	} else if (value_bits == 32) {
+		buf[i++] = (value >> 24) & 0xFF;
+		buf[i++] = (value >> 16) & 0xFF;
 		buf[i++] = (value >> 8) & 0xFF;
 		buf[i++] = value & 0xFF;
 	} else {
