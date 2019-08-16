@@ -180,6 +180,8 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 		return ret;
 	}
 
+	kfree(buffer);
+
 	return 0;
 }
 
