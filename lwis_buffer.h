@@ -27,6 +27,12 @@ struct lwis_enrolled_buffer {
 	struct hlist_node node;
 };
 
+struct lwis_allocated_buffer {
+	int fd;
+	struct dma_buf *dma_buf;
+	struct hlist_node node;
+};
+
 /*
  * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info,
  * maps it into the device IO space and returns a file descriptor
@@ -83,5 +89,27 @@ lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
  * Returns: 0 on success
  */
 int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client);
+
+/*
+ * lwis_client_allocated_buffer_find: Finds the allocated buffer based on
+ * file desciptor passed, and returns it
+ *
+ * Assumes: lwisclient->lock is locked
+ * Alloc: Yes
+ * Returns: Pointer on success, NULL otherwise
+ */
+struct lwis_allocated_buffer *
+lwis_client_allocated_buffer_find(struct lwis_client *lwis_client, int fd);
+
+/*
+ * lwis_client_allocated_buffers_clear: Frees all items in
+ * lwisclient->allocated_buffers and clears the hash table. Used for client
+ * shutdown only.
+ *
+ * Assumes: lwisclient->lock is locked
+ * Alloc: Free only
+ * Returns: 0 on success
+ */
+int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client);
 
 #endif /* LWIS_BUFFER_H_ */

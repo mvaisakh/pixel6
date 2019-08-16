@@ -92,6 +92,9 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Initialize the wait queue for the event queue */
 	init_waitqueue_head(&lwis_client->event_wait_queue);
 
+	/* Empty hash table for client allocated buffers */
+	hash_init(lwis_client->allocated_buffers);
+
 	/* Empty hash table for client enrolled buffers */
 	hash_init(lwis_client->enrolled_buffers);
 
@@ -136,7 +139,8 @@ static int lwis_release(struct inode *node, struct file *fp)
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
 
-	/* Disenroll and clear the table of enrolled buffers */
+	/* Disenroll and clear the table of allocated and enrolled buffers */
+	lwis_client_allocated_buffers_clear(lwis_client);
 	lwis_client_enrolled_buffers_clear(lwis_client);
 
 

@@ -179,3 +179,34 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 
 	return 0;
 }
+
+struct lwis_allocated_buffer *
+lwis_client_allocated_buffer_find(struct lwis_client *lwis_client, int fd)
+{
+	struct lwis_allocated_buffer *p;
+
+	BUG_ON(!lwis_client);
+
+	hash_for_each_possible(lwis_client->allocated_buffers, p, node, fd)
+	{
+		if (p->fd == fd) {
+			return p;
+		}
+	}
+	return NULL;
+}
+
+int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
+{
+	struct lwis_allocated_buffer *buffer;
+	struct hlist_node *n;
+	int i;
+
+	BUG_ON(!lwis_client);
+
+	hash_for_each_safe(lwis_client->allocated_buffers, i, n, buffer, node)
+	{
+		kfree(buffer);
+	}
+	return 0;
+}
