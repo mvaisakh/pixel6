@@ -86,19 +86,26 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 {
 	unsigned long ret;
 	struct lwis_alloc_buffer_info alloc_info;
+	struct lwis_allocated_buffer *buffer;
+
+	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+	if (!buffer) {
+		pr_err("Failed to allocated lwis_allocated_buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = copy_from_user((void *)&alloc_info, (void __user *)msg,
 			     sizeof(alloc_info));
 	if (ret) {
 		pr_err("Failed to copy %zu bytes from user\n",
 		       sizeof(alloc_info));
-		return -EINVAL;
+		goto error_alloc;
 	}
 
-	ret = lwis_buffer_alloc(lwis_client, &alloc_info);
+	ret = lwis_buffer_alloc(lwis_client, &alloc_info, buffer);
 	if (ret) {
 		pr_err("Failed to allocate and enroll buffer\n");
-		return ret;
+		goto error_alloc;
 	}
 
 	ret = copy_to_user((void __user *)msg, (void *)&alloc_info,
@@ -106,8 +113,42 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 	if (ret) {
 		pr_err("Failed to copy %zu bytes to user\n",
 		       sizeof(alloc_info));
+		lwis_buffer_free(lwis_client, buffer);
+		goto error_alloc;
+	}
+
+	return 0;
+
+error_alloc:
+	kfree(buffer);
+	return ret;
+}
+
+static int ioctl_buffer_free(struct lwis_client *lwis_client, int __user *msg)
+{
+	int ret;
+	int fd;
+	struct lwis_allocated_buffer *buffer;
+
+	ret = copy_from_user((void *)&fd, (void __user *)msg, sizeof(fd));
+	if (ret) {
+		pr_err("Failed to copy file descriptor from user\n");
 		return -EINVAL;
 	}
+
+	buffer = lwis_client_allocated_buffer_find(lwis_client, fd);
+	if (!buffer) {
+		pr_err("Cannot find allocated buffer FD %d\n", fd);
+		return -ENOENT;
+	}
+
+	ret = lwis_buffer_free(lwis_client, buffer);
+	if (ret) {
+		pr_err("Failed to free buffer FD %d\n", fd);
+		return ret;
+	}
+
+	kfree(buffer);
 
 	return 0;
 }
@@ -579,6 +620,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	case LWIS_BUFFER_ALLOC:
 		ret = ioctl_buffer_alloc(
 			lwis_client, (struct lwis_alloc_buffer_info *)param);
+		break;
+	case LWIS_BUFFER_FREE:
+		ret = ioctl_buffer_free(lwis_client, (int *)param);
 		break;
 	case LWIS_BUFFER_ENROLL:
 		ret = ioctl_buffer_enroll(lwis_client,

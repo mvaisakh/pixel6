@@ -17,6 +17,7 @@
 #include <linux/list.h>
 
 #include "lwis_commands.h"
+#include "lwis_device.h"
 
 struct lwis_enrolled_buffer {
 	struct lwis_buffer_info info;
@@ -34,15 +35,25 @@ struct lwis_allocated_buffer {
 };
 
 /*
- * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info,
- * maps it into the device IO space and returns a file descriptor
+ * lwis_buffer_alloc: Allocates a DMA buffer represented by alloc_info.
  *
  * Assumes: lwisclient->lock is locked
  * Alloc: Yes
  * Returns: 0 on success
  */
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
-		      struct lwis_alloc_buffer_info *alloc_info);
+		      struct lwis_alloc_buffer_info *alloc_info,
+		      struct lwis_allocated_buffer *buffer);
+
+/*
+ * lwis_buffer_free: Frees a DMA buffer represented by file descriptor.
+ *
+ * Assumes: lwisclient->lock is locked
+ * Alloc: Free only
+ * Returns: 0 on success
+ */
+int lwis_buffer_free(struct lwis_client *lwis_client,
+		     struct lwis_allocated_buffer *buffer);
 
 /*
  * lwis_buffer_enroll: Maps the DMA buffer represented by the file descriptor

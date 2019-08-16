@@ -46,7 +46,7 @@ struct lwis_alloc_buffer_info {
 	// IOCTL input for BUFFER_ALLOC
 	size_t size;
 	uint32_t flags; // lwis_dma_alloc_flags
-	// IOCTL output for BUFFER_ALLOC, input for BUFFER_FREE
+	// IOCTL output for BUFFER_ALLOC
 	int dma_fd;
 };
 
@@ -118,7 +118,7 @@ struct lwis_event_control {
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)
-#define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, struct lwis_alloc_buffer_info)
+#define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, int)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)

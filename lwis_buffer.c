@@ -12,14 +12,16 @@
 
 #include <linux/slab.h>
 
-#include "lwis_device.h"
 #include "lwis_buffer.h"
+#include "lwis_device.h"
 #include "lwis_platform_dma.h"
 
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
-		      struct lwis_alloc_buffer_info *alloc_info)
+		      struct lwis_alloc_buffer_info *alloc_info,
+		      struct lwis_allocated_buffer *buffer)
 {
 	struct dma_buf *dma_buf;
+
 	BUG_ON(!lwis_client);
 	BUG_ON(!alloc_info);
 
@@ -40,6 +42,18 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		return alloc_info->dma_fd;
 	}
 
+	buffer->fd = alloc_info->dma_fd;
+	buffer->dma_buf = dma_buf;
+	hash_add(lwis_client->allocated_buffers, &buffer->node, buffer->fd);
+
+	return 0;
+}
+
+int lwis_buffer_free(struct lwis_client *lwis_client,
+		     struct lwis_allocated_buffer *buffer)
+{
+	dma_buf_put(buffer->dma_buf);
+	hash_del(&buffer->node);
 	return 0;
 }
 
@@ -206,6 +220,7 @@ int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
 
 	hash_for_each_safe(lwis_client->allocated_buffers, i, n, buffer, node)
 	{
+		lwis_buffer_free(lwis_client, buffer);
 		kfree(buffer);
 	}
 	return 0;
