@@ -18,7 +18,7 @@
 
 #include "lwis_commands.h"
 
-struct lwis_buffer {
+struct lwis_enrolled_buffer {
 	struct lwis_buffer_info info;
 	enum dma_data_direction dma_direction;
 	struct dma_buf *dma_buf;
@@ -48,7 +48,7 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
  * Returns: 0 on success
  */
 int lwis_buffer_enroll(struct lwis_client *lwis_client,
-		       struct lwis_buffer *buffer);
+		       struct lwis_enrolled_buffer *buffer);
 
 /*
  * lwis_buffer_disenroll: Unmaps the buffer from IO space and removes the
@@ -59,7 +59,7 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
  * Returns: 0 on success
  */
 int lwis_buffer_disenroll(struct lwis_client *lwis_client,
-			  struct lwis_buffer *buffer);
+			  struct lwis_enrolled_buffer *buffer);
 
 /*
  * lwis_client_enrolled_buffer_find: Finds the enrolled buffer based on
@@ -69,7 +69,7 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client,
  * Alloc: Yes
  * Returns: Pointer on success, NULL otherwise
  */
-struct lwis_buffer *
+struct lwis_enrolled_buffer *
 lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
 				 dma_addr_t dma_vaddr);
 
