@@ -25,7 +25,7 @@
 #define MIN_OFFSET_BITS 8
 #define MAX_OFFSET_BITS 16
 #define MIN_DATA_BITS 8
-#define MAX_DATA_BITS 16
+#define MAX_DATA_BITS 32
 
 static inline bool check_bitwidth(const int bitwidth, const int min,
 				  const int max)
@@ -362,7 +362,7 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
 	}
 
 	if (!check_bitwidth(value_bits, MIN_DATA_BITS, MAX_DATA_BITS)) {
-		pr_err("Invalid value bitwidth %d\n", offset_bits);
+		pr_err("Invalid value bitwidth %d\n", value_bits);
 		return -EINVAL;
 	}
 
