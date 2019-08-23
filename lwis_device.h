@@ -166,6 +166,8 @@ struct lwis_client {
 	spinlock_t event_lock;
 	/* Event wait queue for waking up userspace */
 	wait_queue_head_t event_wait_queue;
+	/* Hash table of allocated buffers keyed by file descriptor. */
+	DECLARE_HASHTABLE(allocated_buffers, BUFFER_HASH_BITS);
 	/* Hash table of enrolled buffers keyed by dvaddr */
 	DECLARE_HASHTABLE(enrolled_buffers, BUFFER_HASH_BITS);
 	/* Each device has a linked list of clients */

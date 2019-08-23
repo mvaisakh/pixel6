@@ -116,11 +116,11 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 			       struct lwis_buffer_info __user *msg)
 {
 	unsigned long ret;
-	struct lwis_buffer *buffer;
+	struct lwis_enrolled_buffer *buffer;
 
-	buffer = kzalloc(sizeof(struct lwis_buffer), GFP_KERNEL);
+	buffer = kzalloc(sizeof(struct lwis_enrolled_buffer), GFP_KERNEL);
 	if (!buffer) {
-		pr_err("Failed to allocate lwis_buffer struct\n");
+		pr_err("Failed to allocate lwis_enrolled_buffer struct\n");
 		return -ENOMEM;
 	}
 
@@ -158,7 +158,7 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 {
 	unsigned long ret;
 	uint64_t dma_vaddr;
-	struct lwis_buffer *buffer;
+	struct lwis_enrolled_buffer *buffer;
 
 	ret = copy_from_user((void *)&dma_vaddr, (void __user *)msg,
 			     sizeof(dma_vaddr));
@@ -179,6 +179,8 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 		pr_err("Failed to disenroll dma buffer for %llx\n", dma_vaddr);
 		return ret;
 	}
+
+	kfree(buffer);
 
 	return 0;
 }

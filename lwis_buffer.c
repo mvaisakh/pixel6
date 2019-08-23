@@ -25,11 +25,11 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 
 	alloc_info->size = PAGE_ALIGN(alloc_info->size);
 
-	dma_buf = lwis_platform_dma_buffer_alloc(
-		alloc_info->size, alloc_info->flags);
+	dma_buf = lwis_platform_dma_buffer_alloc(alloc_info->size,
+						 alloc_info->flags);
 	if (IS_ERR_OR_NULL(dma_buf)) {
 		pr_err("lwis_platform_dma_buffer_alloc failed (%d)\n",
-			PTR_ERR(dma_buf));
+		       PTR_ERR(dma_buf));
 		return -ENOMEM;
 	}
 
@@ -44,9 +44,9 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 }
 
 int lwis_buffer_enroll(struct lwis_client *lwis_client,
-		       struct lwis_buffer *buffer)
+		       struct lwis_enrolled_buffer *buffer)
 {
-	struct lwis_buffer *old_buffer;
+	struct lwis_enrolled_buffer *old_buffer;
 	BUG_ON(!lwis_client);
 	BUG_ON(!buffer);
 
@@ -86,10 +86,9 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 		return -EINVAL;
 	}
 
-	buffer->info.dma_vaddr =
-		lwis_platform_dma_buffer_map(lwis_client->lwis_dev,
-					     buffer->dma_buf_attachment, 0, 0,
-					     buffer->dma_direction, 0);
+	buffer->info.dma_vaddr = lwis_platform_dma_buffer_map(
+		lwis_client->lwis_dev, buffer->dma_buf_attachment, 0, 0,
+		buffer->dma_direction, 0);
 
 	if (!buffer->info.dma_vaddr) {
 		pr_err("Could not map into IO VMM for fd: %d", buffer->info.fd);
@@ -125,7 +124,7 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 }
 
 int lwis_buffer_disenroll(struct lwis_client *lwis_client,
-			  struct lwis_buffer *buffer)
+			  struct lwis_enrolled_buffer *buffer)
 {
 	BUG_ON(!lwis_client);
 	BUG_ON(!buffer);
@@ -142,15 +141,16 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client,
 	return 0;
 }
 
-struct lwis_buffer *
+struct lwis_enrolled_buffer *
 lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
 				 dma_addr_t dma_vaddr)
 {
-	struct lwis_buffer *p;
+	struct lwis_enrolled_buffer *p;
 	BUG_ON(!lwis_client);
 
-	hash_for_each_possible (lwis_client->enrolled_buffers, p, node,
-				dma_vaddr) {
+	hash_for_each_possible(lwis_client->enrolled_buffers, p, node,
+			       dma_vaddr)
+	{
 		if (p->info.dma_vaddr == dma_vaddr) {
 			return p;
 		}
@@ -162,19 +162,51 @@ lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
 int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 {
 	/* Our hash table iterator */
-	struct lwis_buffer *buffer;
+	struct lwis_enrolled_buffer *buffer;
 	/* Temporary vars for hash table traversal */
 	struct hlist_node *n;
 	int i;
 
 	BUG_ON(!lwis_client);
 	/* Iterate over the entire hash table */
-	hash_for_each_safe (lwis_client->enrolled_buffers, i, n, buffer, node) {
+	hash_for_each_safe(lwis_client->enrolled_buffers, i, n, buffer, node)
+	{
 		/* Disenroll the buffer */
 		lwis_buffer_disenroll(lwis_client, buffer);
 		/* Free the object */
 		kfree(buffer);
 	}
 
+	return 0;
+}
+
+struct lwis_allocated_buffer *
+lwis_client_allocated_buffer_find(struct lwis_client *lwis_client, int fd)
+{
+	struct lwis_allocated_buffer *p;
+
+	BUG_ON(!lwis_client);
+
+	hash_for_each_possible(lwis_client->allocated_buffers, p, node, fd)
+	{
+		if (p->fd == fd) {
+			return p;
+		}
+	}
+	return NULL;
+}
+
+int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
+{
+	struct lwis_allocated_buffer *buffer;
+	struct hlist_node *n;
+	int i;
+
+	BUG_ON(!lwis_client);
+
+	hash_for_each_safe(lwis_client->allocated_buffers, i, n, buffer, node)
+	{
+		kfree(buffer);
+	}
 	return 0;
 }
