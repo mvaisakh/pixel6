@@ -62,6 +62,7 @@ struct lwis_buffer_info {
 enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_READ,
 	LWIS_IO_ENTRY_WRITE,
+	LWIS_IO_ENTRY_MODIFY,
 };
 
 struct lwis_io_entry {
@@ -69,6 +70,7 @@ struct lwis_io_entry {
 	int bid;
 	uint64_t offset;
 	uint64_t val;
+	uint64_t val_mask;
 	int offset_bitwidth;
 	int access_size;
 };
