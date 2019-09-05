@@ -124,7 +124,7 @@ static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
  *  lwis_top_device_init: Init function that will be called by the kernel
  *  initialization routines.
  */
-int lwis_top_device_init(void)
+int __init lwis_top_device_init(void)
 {
 	int ret = 0;
 
