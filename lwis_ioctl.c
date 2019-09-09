@@ -608,6 +608,19 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	return err;
 }
 
+static int ioctl_time_query(struct lwis_client *client, uint64_t __user *msg)
+{
+	int ret = 0;
+	uint64_t timestamp = ktime_to_ns(ktime_get());
+
+	ret = copy_to_user((void __user *)msg, &timestamp, sizeof(timestamp));
+	if (ret) {
+		pr_err("Failed to copy timestamp to userspace\n");
+	}
+
+	return ret;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
@@ -654,6 +667,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client,
 					  (struct lwis_event_info *)param);
+		break;
+	case LWIS_TIME_QUERY:
+		ret = ioctl_time_query(lwis_client, (uint64_t *)param);
 		break;
 	default:
 		pr_err("Unknown IOCTL operation\n");

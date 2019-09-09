@@ -121,6 +121,7 @@ struct lwis_event_control {
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)
 #define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, int)
+#define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, uint64_t)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
