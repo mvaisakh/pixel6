@@ -33,6 +33,21 @@
 #define MCLK_ON_STRING "mclk_on"
 #define MCLK_OFF_STRING "mclk_off"
 
+static int ioctl_get_device_info(struct lwis_device *lwis_dev,
+				 struct lwis_device_info *msg)
+{
+	int ret;
+	struct lwis_device_info k_info = { .id = lwis_dev->id };
+
+	ret = copy_to_user((void __user *)msg, &k_info, sizeof(k_info));
+	if (ret) {
+		pr_err("Failed to copy device info to userspace\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 static int ioctl_reg_read(struct lwis_device *lwis_dev,
 			  struct lwis_io_entry *user_msg)
 {
@@ -629,6 +644,8 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:
+		ret = ioctl_get_device_info(lwis_dev,
+					    (struct lwis_device_info *)param);
 		break;
 	case LWIS_BUFFER_ALLOC:
 		ret = ioctl_buffer_alloc(
