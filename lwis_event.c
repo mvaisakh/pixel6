@@ -433,14 +433,14 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 	/* Disable IRQs and lock the lock */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	/* Are we turning on the event? */
-	if (!(old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)
-	    && (new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+	if (!(old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)
+	    && (new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
 		state->enable_counter++;
 		event_enabled = true;
 		call_enable_cb = (state->enable_counter == 1);
 
-	} else if ((old_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)
-		   && !(new_flags & LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+	} else if ((old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)
+		   && !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
 		state->enable_counter--;
 		event_enabled = false;
 		call_enable_cb = (state->enable_counter == 0);
@@ -588,7 +588,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			if ((client_event_state->event_control.flags
 			     & LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE)
 			    && (client_event_state->event_control.flags
-				& LWIS_EVENT_CONTROL_FLAG_ENABLE)) {
+				& LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
 				emit = true;
 			}
 		}

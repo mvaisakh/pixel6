@@ -96,7 +96,7 @@ struct lwis_event_info {
 	size_t payload_size;
 };
 
-#define LWIS_EVENT_CONTROL_FLAG_ENABLE (1ULL << 0)
+#define LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE (1ULL << 0)
 #define LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE (1ULL << 1)
 
 struct lwis_event_control {
