@@ -25,14 +25,68 @@
 
 #define LWIS_DRIVER_NAME "lwis-top"
 
+static int lwis_top_register_read(struct lwis_device *lwis_dev,
+				  struct lwis_io_entry *entry,
+				  bool non_blocking);
+static int lwis_top_register_write(struct lwis_device *lwis_dev,
+				   struct lwis_io_entry *entry,
+				   bool non_blocking);
+
 static struct lwis_device_subclass_operations top_vops = {
-	.register_read = NULL,
-	.register_write = NULL,
+	.register_read = lwis_top_register_read,
+	.register_write = lwis_top_register_write,
 	.device_enable = NULL,
 	.device_disable = NULL,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
 };
+
+static int verify_io_entry(struct lwis_io_entry *entry)
+{
+	if (entry->offset_bitwidth != 0 && entry->offset_bitwidth != 8) {
+		pr_err("Offset bitwidth must be 8\n");
+		return -EINVAL;
+	}
+	if (entry->access_size != 0 && entry->access_size != 8) {
+		pr_err("Access size must be 8\n");
+		return -EINVAL;
+	}
+	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
+		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int lwis_top_register_read(struct lwis_device *lwis_dev,
+				  struct lwis_io_entry *entry,
+				  bool non_blocking)
+{
+	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
+	int ret = 0;
+
+	ret = verify_io_entry(entry);
+	if (ret) {
+		return ret;
+	}
+	entry->val = top_dev->scratch_mem[entry->offset];
+	return 0;
+}
+
+static int lwis_top_register_write(struct lwis_device *lwis_dev,
+				   struct lwis_io_entry *entry,
+				   bool non_blocking)
+{
+	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
+	int ret = 0;
+
+	ret = verify_io_entry(entry);
+	if (ret) {
+		return ret;
+	}
+	top_dev->scratch_mem[entry->offset] = entry->val;
+	return 0;
+}
 
 static int lwis_top_device_setup(struct lwis_top_device *top_dev)
 {
@@ -68,7 +122,7 @@ static int __init lwis_top_device_probe(struct platform_device *plat_dev)
 	top_dev->base_dev.vops = top_vops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *) top_dev, plat_dev);
+	ret = lwis_base_probe((struct lwis_device *)top_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -93,7 +147,7 @@ static const struct of_device_id lwis_id_match[] = {
 	{ .compatible = LWIS_TOP_DEVICE_COMPAT },
 	{},
 };
-//MODULE_DEVICE_TABLE(of, lwis_id_match);
+// MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
 	.driver = {

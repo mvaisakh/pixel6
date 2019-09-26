@@ -13,12 +13,17 @@
 
 #include "lwis_device.h"
 
+#define SCRATCH_MEMORY_SIZE 16
+
 /*
  *  struct lwis_top_device
  *  "Derived" lwis_device struct, with added top device related elements.
  */
 struct lwis_top_device {
 	struct lwis_device base_dev;
+  /* For testing purposes, scratch memory is used as register space in top
+     device. */
+  uint8_t scratch_mem[SCRATCH_MEMORY_SIZE];
 };
 
 #endif /* LWIS_DEVICE_TOP_H_ */
