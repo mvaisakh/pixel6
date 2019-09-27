@@ -595,10 +595,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 			lwis_client, event_id);
 
 		if (!IS_ERR_OR_NULL(client_event_state)) {
-			if ((client_event_state->event_control.flags &
-			     LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE) &&
-			    (client_event_state->event_control.flags &
-			     LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
+			if (client_event_state->event_control.flags &
+			    LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE) {
 				emit = true;
 			}
 		}
