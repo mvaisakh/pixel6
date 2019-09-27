@@ -496,9 +496,7 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 				timer_setup(&lwis_dev->heartbeat_timer,
 					    lwis_device_event_heartbeat_timer,
 					    0);
-				lwis_device_event_heartbeat_timer(
-					&lwis_dev->heartbeat_timer);
-
+				mod_timer(&lwis_dev->heartbeat_timer, jiffies);
 			} else {
 				del_timer(&lwis_dev->heartbeat_timer);
 			}
