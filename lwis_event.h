@@ -33,9 +33,9 @@ struct lwis_device;
  *  This struct keeps track of device-specific event state and controls
  */
 struct lwis_device_event_state {
-	uint64_t event_id;
+	int64_t event_id;
 	int64_t enable_counter;
-	uint64_t event_counter;
+	int64_t event_counter;
 	struct hlist_node node;
 };
 

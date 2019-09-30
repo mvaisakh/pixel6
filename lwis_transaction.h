@@ -28,7 +28,7 @@ struct lwis_transaction {
 };
 
 struct lwis_transaction_event_list {
-	uint64_t event_id;
+	int64_t event_id;
 	struct list_head list;
 	struct hlist_node node;
 };
@@ -39,9 +39,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client);
 int lwis_transaction_submit(struct lwis_client *client,
 			    struct lwis_transaction *transaction);
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
-				   uint64_t event_counter,
+				   int64_t event_counter,
 				   struct list_head *pending_events,
 				   bool in_irq);
-int lwis_transaction_cancel(struct lwis_client *client, uint64_t id);
+int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 
 #endif /* LWIS_TRANSACTION_H_ */

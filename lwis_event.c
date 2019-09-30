@@ -547,7 +547,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 	/* Our iterators */
 	struct lwis_client *lwis_client;
 	struct list_head *p, *n;
-	uint64_t timestamp;
+	int64_t timestamp;
 	int64_t event_counter;
 	/* Flags for IRQ disable */
 	unsigned long flags;

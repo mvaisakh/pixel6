@@ -98,8 +98,8 @@ struct lwis_event_info {
 	void *payload_buffer;
 	// IOCTL Outputs
 	int64_t event_id;
-	uint64_t event_counter;
-	uint64_t timestamp_ns;
+	int64_t event_counter;
+	int64_t timestamp_ns;
 	size_t payload_size;
 };
 
@@ -113,12 +113,12 @@ struct lwis_event_control {
 	uint64_t flags;
 };
 
-#define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1ULL)
+#define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
 struct lwis_transaction_info {
 	// Input
 	int trigger_device_id;
 	int64_t trigger_event_id;
-	uint64_t trigger_event_counter;
+	int64_t trigger_event_counter;
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	bool run_in_event_context;
@@ -130,7 +130,7 @@ struct lwis_transaction_info {
 
 // Actual size of this struct depends on num_entries
 struct lwis_transaction_response_header {
-	uint64_t id;
+	int64_t id;
 	int error_code;
 	size_t num_entries;
 };
@@ -156,7 +156,7 @@ struct lwis_io_result {
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)
 #define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, int)
-#define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, uint64_t)
+#define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, int64_t)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)

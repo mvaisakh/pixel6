@@ -321,10 +321,10 @@ int lwis_transaction_submit(struct lwis_client *client,
 
 static void process_transaction(struct lwis_client *client,
 				struct lwis_transaction *transaction,
-				uint64_t current_event_counter,
+				int64_t current_event_counter,
 				struct list_head *pending_events, bool in_irq)
 {
-	uint64_t trigger_counter = transaction->info.trigger_event_counter;
+	int64_t trigger_counter = transaction->info.trigger_event_counter;
 
 	if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
 	    trigger_counter == current_event_counter) {
@@ -342,7 +342,7 @@ static void process_transaction(struct lwis_client *client,
 }
 
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
-				   uint64_t event_counter,
+				   int64_t event_counter,
 				   struct list_head *pending_events,
 				   bool in_irq)
 {
@@ -379,7 +379,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	return 0;
 }
 
-int lwis_transaction_cancel(struct lwis_client *client, uint64_t id)
+int lwis_transaction_cancel(struct lwis_client *client, int64_t id)
 {
 	int i;
 	struct hlist_node *tmp;

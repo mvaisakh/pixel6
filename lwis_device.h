@@ -181,7 +181,7 @@ struct lwis_client {
 	/* List of transaction triggers */
 	struct list_head transaction_process_queue;
 	/* Transaction counter, which also provides transacton ID */
-	uint64_t transaction_counter;
+	int64_t transaction_counter;
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };

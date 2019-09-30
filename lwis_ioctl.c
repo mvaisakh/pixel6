@@ -624,10 +624,10 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	return err;
 }
 
-static int ioctl_time_query(struct lwis_client *client, uint64_t __user *msg)
+static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 {
 	int ret = 0;
-	uint64_t timestamp = ktime_to_ns(ktime_get());
+	int64_t timestamp = ktime_to_ns(ktime_get());
 
 	ret = copy_to_user((void __user *)msg, &timestamp, sizeof(timestamp));
 	if (ret) {
@@ -774,7 +774,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 					  (struct lwis_event_info *)param);
 		break;
 	case LWIS_TIME_QUERY:
-		ret = ioctl_time_query(lwis_client, (uint64_t *)param);
+		ret = ioctl_time_query(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_TRANSACTION_SUBMIT:
 		ret = ioctl_transaction_submit(
