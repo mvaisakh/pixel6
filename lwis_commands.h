@@ -113,7 +113,7 @@ struct lwis_event_control {
 	uint64_t flags;
 };
 
-#define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (1ULL << 60)
+#define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1ULL)
 struct lwis_transaction_info {
 	// Input
 	int trigger_device_id;
