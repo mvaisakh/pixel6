@@ -682,7 +682,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 
 	ret = lwis_transaction_submit(client, k_transaction);
 	if (ret) {
-		pr_err("Failed to insert transaction\n");
+		pr_err("Failed to submit transaction\n");
 		goto error_free_entries;
 	}
 

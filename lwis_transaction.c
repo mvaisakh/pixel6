@@ -245,6 +245,7 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 int lwis_transaction_submit(struct lwis_client *client,
 			    struct lwis_transaction *transaction)
 {
+	struct lwis_device_event_state *event_state;
 	struct lwis_transaction_event_list *event_list;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_io_entry *entry;
@@ -255,6 +256,19 @@ int lwis_transaction_submit(struct lwis_client *client,
 
 	BUG_ON(!client);
 	BUG_ON(!transaction);
+
+	/* Both trigger event ID and counter are defined */
+	if (info->trigger_event_id != LWIS_EVENT_ID_NONE &&
+	    info->trigger_event_counter !=
+		    LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
+		event_state = lwis_device_event_state_find(
+			client->lwis_dev, info->trigger_event_id);
+		/* Event has happened already */
+		if (event_state != NULL &&
+		    info->trigger_event_counter <= event_state->event_counter) {
+			return -ENOENT;
+		}
+	}
 
 	info->id = client->transaction_counter;
 
@@ -323,11 +337,6 @@ static void process_transaction(struct lwis_client *client,
 				      &client->transaction_process_queue);
 			list_del(&transaction->event_list_node);
 		}
-	} else if (trigger_counter < current_event_counter) {
-		transaction->resp->error_code = -ENOENT;
-		list_add_tail(&transaction->process_queue_node,
-			      &client->transaction_process_queue);
-		list_del(&transaction->event_list_node);
 	}
 }
 

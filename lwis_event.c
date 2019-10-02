@@ -174,7 +174,7 @@ lwis_device_event_state_find_locked(struct lwis_device *lwis_dev,
  * Alloc: No
  * Returns: device event state object, if found, NULL otherwise
  */
-static struct lwis_device_event_state *
+struct lwis_device_event_state *
 lwis_device_event_state_find(struct lwis_device *lwis_dev, int64_t event_id)
 {
 	/* Our return value  */

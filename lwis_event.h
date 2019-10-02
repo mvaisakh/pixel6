@@ -172,6 +172,18 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 /*
  * lwis_device_event_state_find_or_create: Looks through the provided device's
  * event state list and tries to find a lwis_device_event_state object with the
+ * matching event_id. If not found, function returns NULL pointer.
+ *
+ * Locks: lwis_dev->lock
+ * Alloc: Maybe
+ * Returns: device event state object if found, NULL otherwise.
+ */
+struct lwis_device_event_state *
+lwis_device_event_state_find(struct lwis_device *lwis_dev, int64_t event_id);
+
+/*
+ * lwis_device_event_state_find_or_create: Looks through the provided device's
+ * event state list and tries to find a lwis_device_event_state object with the
  * matching event_id. If not found, creates the object with 0 flags and adds it
  * to the list
  *
