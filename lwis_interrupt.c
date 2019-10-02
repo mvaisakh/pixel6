@@ -142,7 +142,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 		if ((source_value >> event->int_reg_bit) & 0x1) {
 			/* Emit the event */
 			lwis_device_event_emit(irq->lwis_dev, event->event_id,
-					       NULL, 0);
+					       NULL, 0, /*in_irq=*/true);
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
 		}

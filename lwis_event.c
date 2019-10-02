@@ -478,7 +478,8 @@ static void lwis_device_event_heartbeat_timer(struct timer_list *t)
 {
 	struct lwis_device *lwis_dev = from_timer(lwis_dev, t, heartbeat_timer);
 
-	lwis_device_event_emit(lwis_dev, LWIS_EVENT_ID_HEARTBEAT, NULL, 0);
+	lwis_device_event_emit(lwis_dev, LWIS_EVENT_ID_HEARTBEAT, NULL, 0,
+			       /*in_irq=*/false);
 
 	mod_timer(t, jiffies + msecs_to_jiffies(1000));
 }
@@ -537,7 +538,8 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
 static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 				       int64_t event_id, void *payload,
 				       size_t payload_size,
-				       struct list_head *pending_events)
+				       struct list_head *pending_events,
+				       bool in_irq)
 {
 	struct lwis_client_event_state *client_event_state;
 	struct lwis_device_event_state *device_event_state;
@@ -626,7 +628,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 		   ID and counter */
 		if (lwis_transaction_event_trigger(lwis_client, event_id,
 						   event_counter,
-						   pending_events)) {
+						   pending_events, in_irq)) {
 			pr_warn("Failed to process transactions: "
 				"Event ID: 0x%llx Counter: %d\n",
 				event_id, event_counter);
@@ -637,7 +639,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 }
 
 int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
-			   void *payload, size_t payload_size)
+			   void *payload, size_t payload_size, bool in_irq)
 {
 	int ret;
 	struct list_head pending_events;
@@ -648,7 +650,8 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 
 	/* Emit the original event */
 	ret = lwis_device_event_emit_impl(lwis_dev, event_id, payload,
-					  payload_size, &pending_events);
+					  payload_size, &pending_events,
+					  in_irq);
 	if (ret) {
 		pr_err("lwis_device_event_emit_impl failed: event ID %llx\n",
 		       event_id);
@@ -656,7 +659,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 	}
 
 	/* Emit pending events */
-	return lwis_pending_events_emit(lwis_dev, &pending_events);
+	return lwis_pending_events_emit(lwis_dev, &pending_events, in_irq);
 }
 
 int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
@@ -683,7 +686,7 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
 }
 
 int lwis_pending_events_emit(struct lwis_device *lwis_dev,
-			     struct list_head *pending_events)
+			     struct list_head *pending_events, bool in_irq)
 {
 	int return_val = 0, emit_result = 0;
 	struct lwis_event_entry *event;
@@ -694,7 +697,7 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev,
 		emit_result = lwis_device_event_emit_impl(
 			lwis_dev, event->event_info.event_id,
 			event->event_info.payload_buffer,
-			event->event_info.payload_size, pending_events);
+			event->event_info.payload_size, pending_events, in_irq);
 		if (emit_result) {
 			return_val = emit_result;
 			pr_warn("lwis_device_pending_event_emit error on "

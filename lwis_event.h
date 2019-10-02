@@ -167,7 +167,7 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id,
  * Returns: 0 on success
  */
 int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
-			   void *payload, size_t payload_size);
+			   void *payload, size_t payload_size, bool in_irq);
 
 /*
  * lwis_device_event_state_find_or_create: Looks through the provided device's
@@ -212,6 +212,6 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
  * Returns: 0 on success
  */
 int lwis_pending_events_emit(struct lwis_device *lwis_dev,
-			     struct list_head *pending_events);
+			     struct list_head *pending_events, bool in_irq);
 
 #endif /* LWIS_EVENT_H_ */
