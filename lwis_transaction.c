@@ -70,7 +70,6 @@ static int process_io_entries(struct lwis_client *client,
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
 	struct lwis_io_result *resp_buf;
-	uint64_t value = 0;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->num_entries * sizeof(struct lwis_io_result);
@@ -81,9 +80,8 @@ static int process_io_entries(struct lwis_client *client,
 	for (i = 0, read_idx = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE) {
-			ret = lwis_device_single_register_write(
-				lwis_dev, in_irq, entry->bid, entry->offset,
-				entry->val);
+			ret = lwis_dev->vops.register_write(lwis_dev, entry,
+							    in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -91,27 +89,25 @@ static int process_io_entries(struct lwis_client *client,
 		} else if (entry->type == LWIS_IO_ENTRY_READ) {
 			resp_buf[read_idx].bid = entry->bid;
 			resp_buf[read_idx].offset = entry->offset;
-			ret = lwis_device_single_register_read(
-				lwis_dev, in_irq, entry->bid, entry->offset,
-				&resp_buf[read_idx].value);
+			ret = lwis_dev->vops.register_read(lwis_dev, entry,
+							   in_irq);
+			resp_buf[read_idx].value = entry->val;
 			read_idx++;
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
-			ret = lwis_device_single_register_read(
-				lwis_dev, in_irq, entry->bid, entry->offset,
-				&value);
+			ret = lwis_dev->vops.register_read(lwis_dev, entry,
+							   in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
 			}
-			value &= ~entry->val_mask;
-			value |= entry->val_mask & entry->val;
-			ret = lwis_device_single_register_write(
-				lwis_dev, in_irq, entry->bid, entry->offset,
-				value);
+			entry->val &= ~entry->val_mask;
+			entry->val |= entry->val_mask & entry->val;
+			ret = lwis_dev->vops.register_write(lwis_dev, entry,
+							    in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -162,16 +158,15 @@ static void transaction_work_func(struct work_struct *work)
 	INIT_LIST_HEAD(&pending_events);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
-
 	list_for_each_safe(it_tran, it_tran_tmp,
 			   &client->transaction_process_queue)
 	{
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 process_queue_node);
 		if (transaction->resp->error_code) {
-			cancel_transaction(
-				transaction, transaction->resp->error_code,
-				&pending_events);
+			cancel_transaction(transaction,
+					   transaction->resp->error_code,
+					   &pending_events);
 			list_del(&transaction->process_queue_node);
 		} else {
 			process_io_entries(client, transaction,
