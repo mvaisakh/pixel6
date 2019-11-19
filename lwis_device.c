@@ -112,33 +112,13 @@ static int lwis_open(struct inode *node, struct file *fp)
 	return 0;
 }
 
-/*
- *  lwis_release: Closing an instance of a LWIS device
- */
-static int lwis_release(struct inode *node, struct file *fp)
+static int lwis_release_client(struct lwis_client *lwis_client)
 {
-	struct lwis_client *lwis_client = fp->private_data;
-	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
-	struct list_head *p, *n;
-	unsigned long flags;
-
-	pr_info("Closing instance %d\n", iminor(node));
-
 	/* Let's lock the mutex while we're cleaning up to avoid other parts
 	 * of the code from acquiring dangling pointers to the client or any
 	 * of the client event states that are about to be freed
 	 */
 	mutex_lock(&lwis_client->lock);
-
-	/* Take this lwis_client off the list of active clients */
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_safe(p, n, &lwis_dev->clients)
-	{
-		if (lwis_client == list_entry(p, struct lwis_client, node)) {
-			list_del(p);
-		}
-	}
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	/* Cancel all pending transactions for the client */
 	lwis_transaction_client_cleanup(lwis_client);
@@ -154,6 +134,31 @@ static int lwis_release(struct inode *node, struct file *fp)
 	kfree(lwis_client);
 
 	return 0;
+}
+/*
+ *  lwis_release: Closing an instance of a LWIS device
+ */
+static int lwis_release(struct inode *node, struct file *fp)
+{
+	struct lwis_client *lwis_client = fp->private_data;
+	struct lwis_client *p, *n;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	unsigned long flags;
+	int rc = 0;
+
+	pr_info("Closing instance %d\n", iminor(node));
+
+	rc = lwis_release_client(lwis_client);
+
+	/* Take this lwis_client off the list of active clients */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	list_for_each_entry_safe(p, n, &lwis_dev->clients,
+				 node) if (lwis_client == p)
+		list_del(&lwis_client->node);
+
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	return rc;
 }
 
 /*
@@ -324,7 +329,6 @@ error_init:
 static int __init lwis_register_base_device(void)
 {
 	int ret = 0;
-	dev_t lwis_devt;
 
 	/* Allocate ID management instance for device minor numbers */
 	core.idr = kzalloc(sizeof(struct idr), GFP_KERNEL);
@@ -339,14 +343,14 @@ static int __init lwis_register_base_device(void)
 
 	/* Acquire device major number and allocate the range to minor numbers
 	   to the device */
-	ret = alloc_chrdev_region(&lwis_devt, 0, LWIS_MAX_DEVICES,
+	ret = alloc_chrdev_region(&core.lwis_devt, 0, LWIS_MAX_DEVICES,
 				  LWIS_DEVICE_NAME);
 	if (ret) {
 		pr_err("Error in allocating chrdev region\n");
 		goto error_chrdev_alloc;
 	}
 
-	core.device_major = MAJOR(lwis_devt);
+	core.device_major = MAJOR(core.lwis_devt);
 
 	/* Create a device class*/
 	core.dev_class = class_create(THIS_MODULE, LWIS_CLASS_NAME);
@@ -366,7 +370,7 @@ static int __init lwis_register_base_device(void)
 
 	core.chr_dev->ops = &lwis_fops;
 
-	ret = cdev_add(core.chr_dev, lwis_devt, LWIS_MAX_DEVICES);
+	ret = cdev_add(core.chr_dev, core.lwis_devt, LWIS_MAX_DEVICES);
 	if (ret) {
 		pr_err("Failed to add cdev\n");
 		goto error_cdev_alloc;
@@ -383,7 +387,7 @@ error_cdev_alloc:
 	class_destroy(core.dev_class);
 	core.dev_class = NULL;
 error_class_create:
-	unregister_chrdev_region(lwis_devt, LWIS_MAX_DEVICES);
+	unregister_chrdev_region(core.lwis_devt, LWIS_MAX_DEVICES);
 error_chrdev_alloc:
 	mutex_unlock(&core.lock);
 	kfree(core.idr);
@@ -428,7 +432,77 @@ static int __init lwis_base_device_init(void)
 	return ret;
 }
 
+/*
+ *  lwis_base_device_deinit: Called when driver is unloaded.
+ */
+static void __exit lwis_driver_exit(void)
+{
+	struct lwis_device *lwis_dev, *temp;
+	struct lwis_client *client, *client_temp;
+	struct lwis_i2c_device *i2c_dev;
+
+	pr_info("%s Clean up LWIS devices.\n", __func__);
+	cdev_del(core.chr_dev);
+	list_for_each_entry_safe(lwis_dev, temp, &core.lwis_dev_list, dev_list)
+	{
+		pr_info("Destroy device %s id %d", lwis_dev->name,
+			lwis_dev->id);
+		/* Disable lwis device events */
+		lwis_device_event_enable(lwis_dev, LWIS_EVENT_ID_HEARTBEAT,
+					 false);
+		if (lwis_dev->type == DEVICE_TYPE_I2C) {
+			i2c_dev = (struct lwis_i2c_device *)lwis_dev;
+			i2c_unregister_device(i2c_dev->client);
+		}
+		/* Relase each client registered with dev */
+		list_for_each_entry_safe(client, client_temp,
+					 &lwis_dev->clients, node)
+		{
+			if (lwis_release_client(client))
+				pr_info("Failed to release client.");
+		}
+		pm_runtime_disable(&lwis_dev->plat_dev->dev);
+		/* Release device clock list */
+		if (lwis_dev->clocks)
+			lwis_clock_list_free(lwis_dev->clocks);
+		/* Release device interrupt list */
+		if (lwis_dev->irqs)
+			lwis_interrupt_list_free(lwis_dev->irqs);
+		/* Release device regulator list */
+		if (lwis_dev->regulators)
+			lwis_regulator_list_free(lwis_dev->regulators);
+		/* Release device phy list */
+		if (lwis_dev->phys)
+			lwis_phy_list_free(lwis_dev->phys);
+		/* Release device gpio list */
+		if (lwis_dev->reset_gpios)
+			lwis_gpio_list_put(lwis_dev->reset_gpios,
+				   &lwis_dev->plat_dev->dev);
+		if (lwis_dev->enable_gpios)
+			lwis_gpio_list_put(lwis_dev->enable_gpios,
+				   &lwis_dev->plat_dev->dev);
+		/* Destroy device */
+		device_destroy(core.dev_class,
+			       MKDEV(core.device_major, lwis_dev->id));
+		list_del(&lwis_dev->dev_list);
+		kfree(lwis_dev);
+	}
+
+	/* Unregister core lwis device */
+	unregister_chrdev_region(core.lwis_devt, LWIS_MAX_DEVICES);
+	class_destroy(core.dev_class);
+	core.dev_class = NULL;
+	kfree(core.idr);
+	core.idr = NULL;
+
+	/* Deinit device classes */
+	lwis_top_device_deinit();
+	lwis_i2c_device_deinit();
+	lwis_ioreg_device_deinit();
+}
+
 subsys_initcall(lwis_base_device_init);
+module_exit(lwis_driver_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Google-ACMA");

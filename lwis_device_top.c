@@ -191,3 +191,9 @@ int __init lwis_top_device_init(void)
 
 	return ret;
 }
+
+int lwis_top_device_deinit(void)
+{
+	platform_driver_unregister(&lwis_driver);
+	return 0;
+}

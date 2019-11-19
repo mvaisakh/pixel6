@@ -28,4 +28,5 @@ struct lwis_i2c_device {
 	struct pinctrl *state_pinctrl;
 };
 
+int lwis_i2c_device_deinit(void);
 #endif /* LWIS_DEVICE_I2C_H_ */

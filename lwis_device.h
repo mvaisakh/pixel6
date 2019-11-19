@@ -54,6 +54,7 @@ struct lwis_core {
 	struct idr *idr;
 	struct cdev *chr_dev;
 	struct mutex lock;
+	dev_t lwis_devt;
 	int device_major;
 	struct list_head lwis_dev_list;
 };

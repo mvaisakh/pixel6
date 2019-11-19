@@ -218,6 +218,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 	/* No interrupts found, just return */
 	if (count <= 0) {
+		lwis_dev->irqs = NULL;
 		return 0;
 	}
 

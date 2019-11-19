@@ -26,4 +26,5 @@ struct lwis_top_device {
   uint8_t scratch_mem[SCRATCH_MEMORY_SIZE];
 };
 
+int lwis_top_device_deinit(void);
 #endif /* LWIS_DEVICE_TOP_H_ */
