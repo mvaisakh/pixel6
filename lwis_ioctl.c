@@ -38,7 +38,10 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 				 struct lwis_device_info *msg)
 {
 	int ret;
-	struct lwis_device_info k_info = { .id = lwis_dev->id };
+	struct lwis_device_info k_info = { .id = lwis_dev->id,
+					   .type = lwis_dev->type };
+
+	strncpy(k_info.name, lwis_dev->name, LWIS_MAX_DEVICE_NAME_STRING);
 
 	ret = copy_to_user((void __user *)msg, &k_info, sizeof(k_info));
 	if (ret) {

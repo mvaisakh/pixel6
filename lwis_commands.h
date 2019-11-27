@@ -29,8 +29,29 @@ extern "C" {
  *  IOCTL Types and Data Structures
  */
 
+/*
+ * lwis_device_types
+ * top  : top level device that overlooks all the LWIS devices. Will be used to
+ *        list the information of the other LWIS devices in the system.
+ * i2c  : for controlling i2c devices
+ * ioreg: for controlling mapped register I/O devices
+ */
+enum lwis_device_types {
+	DEVICE_TYPE_UNKNOWN = -1,
+	DEVICE_TYPE_TOP = 0,
+	DEVICE_TYPE_I2C,
+	DEVICE_TYPE_IOREG,
+	NUM_DEVICE_TYPES
+};
+
+/* Device tree strings have a maximum length of 31, according to specs.
+   Adding 1 byte for the null character. */
+#define LWIS_MAX_DEVICE_NAME_STRING 32
+
 struct lwis_device_info {
 	int id;
+	enum lwis_device_types type;
+	char name[LWIS_MAX_DEVICE_NAME_STRING];
 };
 
 enum lwis_dma_alloc_flags {

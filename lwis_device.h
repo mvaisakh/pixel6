@@ -33,10 +33,6 @@
 #define LWIS_I2C_DEVICE_COMPAT "google,lwis-i2c-device"
 #define LWIS_IOREG_DEVICE_COMPAT "google,lwis-ioreg-device"
 
-/* Device tree strings have a maximum length of 31, according to specs.
-   Adding 1 byte for the null character. */
-#define MAX_DEVICE_NAME_STRING 32
-
 #define EVENT_HASH_BITS 8
 #define BUFFER_HASH_BITS 8
 #define TRANSACTION_HASH_BITS 8
@@ -47,21 +43,6 @@ struct lwis_device;
 
 /* Forward declaration of a platform specific struct used by platform funcs */
 struct lwis_platform;
-
-/*
- * lwis_device_types
- * top  : top level device that overlooks all the LWIS devices. Will be used to
- *        list the information of the other LWIS devices in the system.
- * i2c  : for controlling i2c devices
- * ioreg: for controlling mapped register I/O devices
- */
-enum lwis_device_types {
-	DEVICE_TYPE_UNKNOWN = -1,
-	DEVICE_TYPE_TOP = 0,
-	DEVICE_TYPE_I2C,
-	DEVICE_TYPE_IOREG,
-	NUM_DEVICE_TYPES
-};
 
 /*
  *  struct lwis_core
@@ -117,7 +98,7 @@ struct lwis_device {
 	struct lwis_platform *platform;
 	int id;
 	enum lwis_device_types type;
-	char name[MAX_DEVICE_NAME_STRING];
+	char name[LWIS_MAX_DEVICE_NAME_STRING];
 	struct device *dev;
 	struct platform_device *plat_dev;
 	bool reset_gpios_present;

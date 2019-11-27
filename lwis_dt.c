@@ -487,7 +487,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Error parsing node name\n");
 		return -EINVAL;
 	}
-	strncpy(lwis_dev->name, name_str, MAX_DEVICE_NAME_STRING);
+	strncpy(lwis_dev->name, name_str, LWIS_MAX_DEVICE_NAME_STRING);
 
 	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios_present);
 	if (ret) {
