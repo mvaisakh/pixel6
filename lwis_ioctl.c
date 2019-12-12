@@ -837,6 +837,102 @@ static int ioctl_transaction_cancel(struct lwis_client *client,
 	return 0;
 }
 
+static int ioctl_event_subscribe(struct lwis_client *client,
+				 struct lwis_event_subscribe __user *msg)
+{
+	int ret = 0;
+	struct lwis_event_subscribe k_subscribe;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+	struct lwis_device *trigger_device;
+	uint16_t trigger_device_id;
+
+	ret = copy_from_user((void *)&k_subscribe, (void __user *)msg,
+		sizeof(k_subscribe));
+	if (ret) {
+		pr_err("Failed to copy event subscribe from user\n");
+		return ret;
+	}
+
+	/* Check if top device probe failed */
+	if (lwis_dev->top_dev == NULL) {
+		pr_err("Top device is null");
+		return -EINVAL;
+	}
+
+	if ((k_subscribe.trigger_event_id & LWIS_TRANSACTION_EVENT_FLAG) ||
+		(k_subscribe.trigger_event_id &
+		LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
+		pr_err("Not support SW event subscription");
+		return -EINVAL;
+	}
+
+	trigger_device_id = k_subscribe.trigger_device_id;
+	trigger_device = lwis_find_dev_by_id(trigger_device_id);
+
+	if (!trigger_device) {
+		pr_err("Device id : %d doesn't match to any device",
+			trigger_device_id);
+		return -EINVAL;
+	}
+
+	/* Create event state to trigger/receiver device
+	 * Because of driver initialize in user space is sequential, it's
+	 * possible that receiver device subscribe an event before trigger
+	 * device set it up
+	 */
+	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
+		lwis_dev,
+		k_subscribe.trigger_event_id)) ||
+		IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
+		client,
+		k_subscribe.trigger_event_id)) ||
+		IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
+		trigger_device,
+		k_subscribe.trigger_event_id))) {
+		pr_err("Failed to add event id 0x%llx to trigger/receiver"
+			"device", k_subscribe.trigger_event_id);
+
+		return -EINVAL;
+	}
+	ret = lwis_dev->top_dev->subscribe_ops.subscribe_event(
+		lwis_dev->top_dev, k_subscribe.trigger_event_id,
+		trigger_device->id, lwis_dev->id);
+	if (ret < 0)
+		pr_err("Failed to subscribe event: 0x%x for %s",
+			k_subscribe.trigger_event_id, lwis_dev->name);
+
+	return ret;
+}
+
+static int ioctl_event_unsubscribe(struct lwis_client *client,
+				   int64_t __user *msg)
+{
+	int ret = 0;
+	int64_t event_id;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = copy_from_user((void *)&event_id, (void __user *)msg,
+		sizeof(event_id));
+	if (ret) {
+		pr_err("Failed to copy event unsubscribe from user\n");
+		return ret;
+	}
+
+	/* Check if top device probe failed */
+	if (lwis_dev->top_dev == NULL) {
+		pr_err("Top device is null");
+		return -EINVAL;
+	}
+
+	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(
+		lwis_dev->top_dev, event_id, lwis_dev->id);
+	if (ret < 0)
+		pr_err("Failed to unsubscribe event: 0x%x for %s", event_id,
+			lwis_dev->name);
+
+	return ret;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
@@ -885,6 +981,14 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client,
 					  (struct lwis_event_info *)param);
+		break;
+	case LWIS_EVENT_SUBSCRIBE:
+		ret = ioctl_event_subscribe(lwis_client,
+			(struct lwis_event_subscribe *)param);
+		break;
+	case LWIS_EVENT_UNSUBSCRIBE:
+		ret = ioctl_event_unsubscribe(lwis_client,
+			(int64_t *)param);
 		break;
 	case LWIS_TIME_QUERY:
 		ret = ioctl_time_query(lwis_client, (int64_t *)param);

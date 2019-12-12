@@ -156,6 +156,9 @@ static int lwis_release(struct inode *node, struct file *fp)
 				 node) if (lwis_client == p)
 		list_del(&lwis_client->node);
 
+	/* Release device event states */
+	lwis_device_event_states_clear_locked(lwis_dev);
+
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	return rc;
@@ -245,6 +248,56 @@ static int lwis_base_setup(struct lwis_device *lwis_dev)
 }
 
 /*
+ *  lwis_assign_top_to_other: Assign top device to the devices probed before.
+ */
+static void lwis_assign_top_to_other(struct lwis_device *top_dev)
+{
+	struct lwis_device *lwis_dev;
+
+	mutex_lock(&core.lock);
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+		lwis_dev->top_dev = top_dev;
+	}
+	mutex_unlock(&core.lock);
+}
+
+/*
+ *  lwis_find_top_dev: Find LWIS top device.
+ */
+struct lwis_device *lwis_find_top_dev()
+{
+	struct lwis_device *lwis_dev;
+
+	mutex_lock(&core.lock);
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+		if (lwis_dev->type == DEVICE_TYPE_TOP) {
+			mutex_unlock(&core.lock);
+			return lwis_dev;
+		}
+	}
+	mutex_unlock(&core.lock);
+	return NULL;
+}
+
+/*
+ *  lwis_find_dev_by_id: Find LWIS device by id.
+ */
+struct lwis_device *lwis_find_dev_by_id(int dev_id)
+{
+	struct lwis_device *lwis_dev;
+
+	mutex_lock(&core.lock);
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+		if (lwis_dev->id == dev_id) {
+			mutex_unlock(&core.lock);
+			return lwis_dev;
+		}
+	}
+	mutex_unlock(&core.lock);
+	return NULL;
+}
+
+/*
  *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
 int lwis_base_probe(struct lwis_device *lwis_dev,
@@ -280,6 +333,17 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 
 	/* Initialize the spinlock */
 	spin_lock_init(&lwis_dev->lock);
+
+	if (lwis_dev->type == DEVICE_TYPE_TOP) {
+
+		lwis_dev->top_dev = lwis_dev;
+		/* Assign top device to the devices probed before */
+		lwis_assign_top_to_other(lwis_dev);
+	} else {
+		lwis_dev->top_dev = lwis_find_top_dev();
+		if (lwis_dev->top_dev == NULL)
+			pr_warn("Top device not probed yet");
+	}
 
 	lwis_dev->plat_dev = plat_dev;
 	ret = lwis_base_setup(lwis_dev);
@@ -481,6 +545,9 @@ static void __exit lwis_driver_exit(void)
 		if (lwis_dev->enable_gpios)
 			lwis_gpio_list_put(lwis_dev->enable_gpios,
 				   &lwis_dev->plat_dev->dev);
+		/* Release event subscription components */
+		if (lwis_dev->type == DEVICE_TYPE_TOP)
+			lwis_dev->top_dev->subscribe_ops.release(lwis_dev);
 		/* Destroy device */
 		device_destroy(core.dev_class,
 			       MKDEV(core.device_major, lwis_dev->id));

@@ -36,6 +36,7 @@ struct lwis_device_event_state {
 	int64_t event_id;
 	int64_t enable_counter;
 	int64_t event_counter;
+	uint32_t subscriber_count;
 	struct hlist_node node;
 };
 
@@ -133,6 +134,15 @@ int lwis_client_event_peek_front(struct lwis_client *lwisclient,
 int lwis_client_event_states_clear(struct lwis_client *lwisclient);
 
 /*
+ * lwis_device_event_states_clear: Frees all items in lwisdev->event_states
+ * and clears the hash table. Used for device shutdown only.
+ *
+ * Assumes: lwisdev->lock is locked
+ * Returns: 0 on success
+ */
+int lwis_device_event_states_clear_locked(struct lwis_device *lwisdev);
+
+/*
  * lwis_device_event_flags_updated: Notifies the device that the given event_id
  * has new flags, which allows the device to register/unregister IRQs, and
  * keep track if event is still relevant
@@ -170,6 +180,18 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 			   void *payload, size_t payload_size, bool in_irq);
 
 /*
+ * lwis_device_external_event_emit: Emits an subscribed event to device.
+ * The difference to lwis_device_event_emit is
+ * 1. Directly assign event count to lwis_dev
+ * 2. Won't have subscriber
+ * 3. No payload to clients, only deliver event id and event count
+ * 4. Not supported chain transaction
+ */
+void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
+				     int64_t event_id, int64_t event_counter,
+				     int64_t timestamp, bool in_irq);
+
+/*
  * lwis_device_event_state_find_or_create: Looks through the provided device's
  * event state list and tries to find a lwis_device_event_state object with the
  * matching event_id. If not found, function returns NULL pointer.
@@ -196,6 +218,20 @@ lwis_device_event_state_find_or_create(struct lwis_device *lwis_dev,
 				       int64_t event_id);
 
 /*
+ * lwis_client_event_state_find_or_create: Looks through the provided client's
+ * event state list and tries to find a lwis_client_event_state object with the
+ * matching event_id. If not found, creates the object with 0 flags and adds it
+ * to the list
+ *
+ * Locks: lwis_client->event_lock
+ * Alloc: Maybe
+ * Returns: client event state object on success, errno on error
+ */
+struct lwis_client_event_state *
+lwis_client_event_state_find_or_create(struct lwis_client *lwis_client,
+				       int64_t event_id);
+
+/*
  * lwis_pending_event_push: Push triggered event into a local pending queue to
  * defer processing until all the current event is done
  *
@@ -212,6 +248,25 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
  * Returns: 0 on success
  */
 int lwis_pending_events_emit(struct lwis_device *lwis_dev,
-			     struct list_head *pending_events, bool in_irq);
+			     struct list_head *pending_events,
+			     bool in_irq);
+
+/*
+ * lwis_device_event_subscribed: Increase ref count on trigger device, when a
+ * event has been subscribed
+ * This should only called by top device.
+ * Returns: 0 on success, -EINVAL if event id not found in trigger device.
+ */
+int lwis_device_event_subscribed(struct lwis_device *lwis_dev,
+				 int64_t event_id);
+
+/*
+ * lwis_device_event_subscribed: If a receiver device unsubscribe a event,
+ * decrease ref count on trigger device.
+ * This should only called by top device.
+ * Returns: 0 on success, -EINVAL if event id not found in trigger device.
+ */
+int lwis_device_event_unsubscribed(struct lwis_device *lwis_dev,
+				   int64_t event_id);
 
 #endif /* LWIS_EVENT_H_ */

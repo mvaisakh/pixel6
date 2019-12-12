@@ -21,9 +21,16 @@
  */
 struct lwis_top_device {
 	struct lwis_device base_dev;
-  /* For testing purposes, scratch memory is used as register space in top
-     device. */
-  uint8_t scratch_mem[SCRATCH_MEMORY_SIZE];
+	/* For testing purposes, scratch memory is used as register space in
+	 * top device.
+	 */
+	uint8_t scratch_mem[SCRATCH_MEMORY_SIZE];
+	/* Hash table for event subscriber */
+	DECLARE_HASHTABLE(event_subscriber, EVENT_HASH_BITS);
+	/* Subscription work queue */
+	struct workqueue_struct *subscribe_wq;
+	struct work_struct subscribe_work;
+	struct list_head emitted_event_list;
 };
 
 int lwis_top_device_deinit(void);

@@ -11,6 +11,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-top-dev: " fmt
 
 #include "lwis_device_top.h"
+#include "lwis_event.h"
 
 #include <linux/device.h>
 #include <linux/init.h>
@@ -28,7 +29,6 @@
 static int lwis_top_register_io(struct lwis_device *lwis_dev,
 				struct lwis_io_entry *entry,
 				bool non_blocking);
-
 static struct lwis_device_subclass_operations top_vops = {
 	.register_io = lwis_top_register_io,
 	.device_enable = NULL,
@@ -36,6 +36,228 @@ static struct lwis_device_subclass_operations top_vops = {
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
 };
+
+static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
+				    int64_t trigger_event_id,
+				    int trigger_device_id,
+				    int receiver_device_id);
+static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev,
+				      int64_t trigger_event_id,
+				      int receiver_device_id);
+static void lwis_top_event_notify(struct lwis_device *lwis_dev,
+				    int64_t trigger_event_id,
+				    int64_t trigger_event_count,
+				    int64_t trigger_event_timestamp,
+				    bool in_irq);
+static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev);
+static struct lwis_event_subscribe_operations top_subscribe_ops = {
+	.subscribe_event = lwis_top_event_subscribe,
+	.unsubscribe_event = lwis_top_event_unsubscribe,
+	.notify_event_subscriber = lwis_top_event_notify,
+	.release = lwis_top_event_subscribe_release,
+};
+
+struct lwis_event_subscribe_info {
+	/* Subscribed Event ID */
+	int64_t event_id;
+	/* LWIS device who subscribed an event */
+	struct lwis_device *receiver_dev;
+	/* LWIS device who will trigger an event */
+	struct lwis_device *trigger_dev;
+	/* Node in the lwis_top_device->event_subscribe hash table */
+	struct hlist_node node;
+};
+
+struct lwis_trigger_event_info {
+	/* Store emitted event id from trigger device */
+	int64_t trigger_event_id;
+	/* Store emitted event count from trigger device */
+	int64_t trigger_event_count;
+	/* Store emitted event timestamp from trigger device */
+	int64_t trigger_event_timestamp;
+	/* node of list head */
+	struct list_head node;
+};
+
+static void subscribe_work_func(struct work_struct *work)
+{
+	struct lwis_top_device *lwis_top_dev =
+		container_of(work, struct lwis_top_device, subscribe_work);
+	struct lwis_trigger_event_info *trigger_event;
+	struct lwis_event_subscribe_info *p;
+	unsigned long flags;
+
+	if (list_empty(&lwis_top_dev->emitted_event_list)) {
+		pr_err("Event list is empty!");
+		return;
+	}
+
+	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
+	trigger_event = list_first_entry(&lwis_top_dev->emitted_event_list,
+		struct lwis_trigger_event_info, node);
+	list_del(&trigger_event->node);
+	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
+
+	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
+		trigger_event->trigger_event_id) {
+		if (p->event_id == trigger_event->trigger_event_id) {
+			/* Notify subscriber an event is happening */
+			lwis_device_external_event_emit(
+				p->receiver_dev,
+				trigger_event->trigger_event_id,
+				trigger_event->trigger_event_count,
+				trigger_event->trigger_event_timestamp,
+				false);
+		}
+	}
+	kfree(trigger_event);
+}
+
+static void lwis_top_event_notify(struct lwis_device *lwis_dev,
+				  int64_t trigger_event_id,
+				  int64_t trigger_event_count,
+				  int64_t trigger_event_timestamp,
+				  bool in_irq)
+{
+	struct lwis_top_device *lwis_top_dev =
+		(struct lwis_top_device *) lwis_dev;
+	struct lwis_trigger_event_info *trigger_event = kzalloc(sizeof(
+		trigger_event), GFP_ATOMIC);
+	unsigned long flags;
+
+	trigger_event->trigger_event_id = trigger_event_id;
+	trigger_event->trigger_event_count = trigger_event_count;
+	trigger_event->trigger_event_timestamp = trigger_event_timestamp;
+	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
+	list_add_tail(&trigger_event->node, &lwis_top_dev->emitted_event_list);
+	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
+	queue_work(lwis_top_dev->subscribe_wq,
+		   &lwis_top_dev->subscribe_work);
+}
+
+static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev,
+				      int64_t trigger_event_id,
+				      int receiver_device_id)
+{
+	struct lwis_top_device *lwis_top_dev =
+		(struct lwis_top_device *) lwis_dev;
+	struct lwis_event_subscribe_info *p;
+
+	mutex_lock(&lwis_top_dev->base_dev.client_lock);
+	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
+		trigger_event_id) {
+		if (p->event_id == trigger_event_id &&
+			p->receiver_dev->id == receiver_device_id) {
+			/* Notify trigger device someone unsubscribe a event */
+			lwis_device_event_unsubscribed(p->trigger_dev,
+						       trigger_event_id);
+			hash_del(&p->node);
+			kfree(p);
+			goto out;
+		}
+	}
+
+out:
+	mutex_unlock(&lwis_top_dev->base_dev.client_lock);
+	return 0;
+}
+
+static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
+				    int64_t trigger_event_id,
+				    int trigger_device_id,
+				    int receiver_device_id)
+{
+	struct lwis_top_device *lwis_top_dev =
+		(struct lwis_top_device *) lwis_dev;
+	struct lwis_device *lwis_trigger_dev =
+		lwis_find_dev_by_id(trigger_device_id);
+	struct lwis_device *lwis_receiver_dev =
+		lwis_find_dev_by_id(receiver_device_id);
+	struct lwis_event_subscribe_info *p, *new_subscription;
+	int ret = 0;
+
+	if (lwis_trigger_dev == NULL || lwis_receiver_dev == NULL) {
+		pr_err("LWIS trigger/receiver device not found");
+		return -EINVAL;
+	}
+	mutex_lock(&lwis_top_dev->base_dev.client_lock);
+	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
+		trigger_event_id) {
+		/* event already registered for this device */
+		if (p->event_id == trigger_event_id &&
+			p->receiver_dev->id == receiver_device_id)
+			goto out;
+	}
+
+	/* Notify trigger device someone subscribe a event */
+	ret = lwis_device_event_subscribed(lwis_trigger_dev, trigger_event_id);
+	if (ret < 0) {
+		pr_err("Failed to subcribe event : %llx", trigger_event_id);
+		goto out;
+	}
+
+	/* If the subscription does not exist in hash table, create one */
+	new_subscription = kzalloc(sizeof(struct lwis_event_subscribe_info),
+		GFP_KERNEL);
+	if (!new_subscription) {
+		lwis_device_event_unsubscribed(lwis_trigger_dev,
+					       trigger_event_id);
+		pr_err("Failed to allocate memory for new subscription");
+		ret = -ENOMEM;
+		goto out;
+	}
+	new_subscription->event_id = trigger_event_id;
+	new_subscription->receiver_dev = lwis_receiver_dev;
+	new_subscription->trigger_dev = lwis_trigger_dev;
+	hash_add(lwis_top_dev->event_subscriber, &new_subscription->node,
+		trigger_event_id);
+
+out:
+	mutex_unlock(&lwis_top_dev->base_dev.client_lock);
+	return ret;
+}
+
+static void lwis_top_event_subscribe_init(struct lwis_top_device *lwis_top_dev)
+{
+	hash_init(lwis_top_dev->event_subscriber);
+	INIT_LIST_HEAD(&lwis_top_dev->emitted_event_list);
+	lwis_top_dev->subscribe_wq = create_workqueue("lwistopsubscribe");
+	INIT_WORK(&lwis_top_dev->subscribe_work, subscribe_work_func);
+}
+
+static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev)
+{
+	struct lwis_top_device *lwis_top_dev =
+		(struct lwis_top_device *) lwis_dev;
+	struct lwis_event_subscribe_info *subscribe_info;
+	struct hlist_node *tmp;
+	struct lwis_trigger_event_info *pending_event, *n;
+	int i;
+	unsigned long flags;
+
+	/* Clean up subscription table */
+	mutex_lock(&lwis_top_dev->base_dev.client_lock);
+	hash_for_each_safe(
+		lwis_top_dev->event_subscriber, i, tmp, subscribe_info, node) {
+		hash_del(&subscribe_info->node);
+		kfree(subscribe_info);
+	}
+	mutex_unlock(&lwis_top_dev->base_dev.client_lock);
+
+	/* Clean up emitted event list */
+	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
+	list_for_each_entry_safe(
+		pending_event, n, &lwis_top_dev->emitted_event_list, node) {
+		list_del(&pending_event->node);
+		kfree(pending_event);
+
+	}
+	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
+
+	/* Clean up work queue */
+	flush_workqueue(lwis_top_dev->subscribe_wq);
+	destroy_workqueue(lwis_top_dev->subscribe_wq);
+}
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev,
 				struct lwis_io_entry *entry, bool non_blocking)
@@ -137,6 +359,7 @@ static int __init lwis_top_device_probe(struct platform_device *plat_dev)
 
 	top_dev->base_dev.type = DEVICE_TYPE_TOP;
 	top_dev->base_dev.vops = top_vops;
+	top_dev->base_dev.subscribe_ops = top_subscribe_ops;
 
 	/* Call the base device probe function */
 	ret = lwis_base_probe((struct lwis_device *)top_dev, plat_dev);
@@ -151,6 +374,8 @@ static int __init lwis_top_device_probe(struct platform_device *plat_dev)
 		pr_err("Error in top device initialization\n");
 		goto error_probe;
 	}
+
+	lwis_top_event_subscribe_init(top_dev);
 
 	return 0;
 

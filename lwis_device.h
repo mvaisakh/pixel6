@@ -90,6 +90,31 @@ struct lwis_device_subclass_operations {
 };
 
 /*
+ * struct lwis_event_subscribe_operations
+ * This struct contains the 'virtual' functions for lwis_device subclasses
+ * Top device should be the only device to implement it.
+ */
+struct lwis_event_subscribe_operations {
+	/* Subscribe an event for receiver device */
+	int (*subscribe_event)(struct lwis_device *lwis_dev,
+			       int64_t trigger_event_id,
+			       int trigger_device_id,
+			       int receiver_device_id);
+	/* Unsubscribe an event for receiver device */
+	int (*unsubscribe_event)(struct lwis_device *lwis_dev,
+				 int64_t trigger_event_id,
+				 int receiver_device_id);
+	/* Notify subscriber when an event is happening */
+	void (*notify_event_subscriber)(struct lwis_device *lwis_dev,
+					int64_t trigger_event_id,
+					int64_t trigger_event_count,
+					int64_t trigger_event_timestamp,
+					bool in_irq);
+	/* Clean up event subscription hash table when unloading top device */
+	void (*release)(struct lwis_device *lwis_dev);
+};
+
+/*
  *  struct lwis_device
  *  This struct applies to each of the LWIS devices, e.g. /dev/lwis*
  */
@@ -132,6 +157,9 @@ struct lwis_device {
 	/* Register-related properties */
 	unsigned int reg_addr_bitwidth;
 	unsigned int reg_value_bitwidth;
+	/* Point to lwis_top_dev */
+	struct lwis_device *top_dev;
+	struct lwis_event_subscribe_operations subscribe_ops;
 };
 
 /*
@@ -175,5 +203,15 @@ struct lwis_client {
  */
 int lwis_base_probe(struct lwis_device *lwis_dev,
 		    struct platform_device *plat_dev);
+
+/*
+ * Find LWIS top device
+ */
+struct lwis_device *lwis_find_top_dev(void);
+
+/*
+ * Find LWIS device by id
+ */
+struct lwis_device *lwis_find_dev_by_id(int dev_id);
 
 #endif /* LWIS_DEVICE_H_ */

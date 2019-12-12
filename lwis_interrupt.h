@@ -18,7 +18,6 @@
 
 #define EVENT_INFO_HASH_BITS 8
 
-
 struct lwis_interrupt {
 	int irq;
 	char *name;

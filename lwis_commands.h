@@ -187,6 +187,11 @@ struct lwis_io_result {
 	uint8_t values[];
 };
 
+struct lwis_event_subscribe {
+	int trigger_device_id;
+	int64_t trigger_event_id;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -209,6 +214,10 @@ struct lwis_io_result {
 #define LWIS_EVENT_CONTROL_SET                                                 \
 	_IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
+#define LWIS_EVENT_SUBSCRIBE                                                   \
+	_IOW(LWIS_IOC_TYPE, 23, struct lwis_event_subscribe)
+#define LWIS_EVENT_UNSUBSCRIBE _IOW(LWIS_IOC_TYPE, 24, int64_t)
+
 
 #define LWIS_TRANSACTION_SUBMIT                                                \
 	_IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)

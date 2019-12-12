@@ -256,6 +256,7 @@ int lwis_transaction_submit(struct lwis_client *client,
 	struct lwis_transaction_event_list *event_list;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_io_entry *entry;
+	struct lwis_device *lwis_dev = client->lwis_dev;
 	int i;
 	size_t resp_size;
 	size_t read_buf_size = 0;
@@ -271,12 +272,29 @@ int lwis_transaction_submit(struct lwis_client *client,
 	    info->trigger_event_counter !=
 		    LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
 		event_state = lwis_device_event_state_find(
-			client->lwis_dev, info->trigger_event_id);
+			lwis_dev, info->trigger_event_id);
 		/* Event has happened already */
 		if (event_state != NULL &&
 		    info->trigger_event_counter <= event_state->event_counter) {
 			return -ENOENT;
 		}
+	}
+
+	/* Make sure sw events exist in event table */
+	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
+		lwis_dev,
+		info->emit_success_event_id)) ||
+		IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
+			client,
+			info->emit_success_event_id)) ||
+		IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
+			lwis_dev,
+			info->emit_error_event_id)) ||
+		IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
+			client,
+			info->emit_error_event_id))) {
+		pr_err("Cannot create sw events for transaction");
+		return -EINVAL;
 	}
 
 	info->id = client->transaction_counter;
@@ -343,7 +361,9 @@ static void process_transaction(struct lwis_client *client,
 
 	if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
 	    trigger_counter == current_event_counter) {
-		if (transaction->info.run_in_event_context) {
+		/* I2c devices io can't execute io in irq context */
+		if (transaction->info.run_in_event_context &&
+			client->lwis_dev->type != DEVICE_TYPE_I2C) {
 			process_io_entries(client, transaction,
 					   &transaction->event_list_node,
 					   pending_events, in_irq);
