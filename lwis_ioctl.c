@@ -281,6 +281,37 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->enable_gpios_present) {
+		struct gpio_descs *gpios;
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
+		if (IS_ERR_OR_NULL(gpios)) {
+			pr_err("Failed to obtain enable gpio list (%d)\n",
+			       PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			goto error_locked;
+		}
+
+		/* Set enable pins to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		if (ret) {
+			pr_err("Error enabling GPIO pins (%d)\n", ret);
+			goto error_locked;
+		}
+
+		/* Setting enable_gpios to non-NULL to indicate that this lwis
+		   device is holding onto the GPIO pins. */
+		lwis_dev->enable_gpios = gpios;
+	}
+
+	if (lwis_dev->regulators) {
+		/* Enable all the regulators related to this sensor */
+		ret = lwis_regulator_enable_all(lwis_dev->regulators);
+		if (ret) {
+			pr_err("Error enabling regulators (%d)\n", ret);
+			goto error_locked;
+		}
+	}
+
 	if (lwis_dev->reset_gpios_present) {
 		struct gpio_descs *gpios;
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
@@ -323,37 +354,6 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 			pr_err("Error setting mclk state (%d)\n", ret);
 			goto error_locked;
 		}
-	}
-
-	if (lwis_dev->regulators) {
-		/* Enable all the regulators related to this sensor */
-		ret = lwis_regulator_enable_all(lwis_dev->regulators);
-		if (ret) {
-			pr_err("Error enabling regulators (%d)\n", ret);
-			goto error_locked;
-		}
-	}
-
-	if (lwis_dev->enable_gpios_present) {
-		struct gpio_descs *gpios;
-		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
-		if (IS_ERR_OR_NULL(gpios)) {
-			pr_err("Failed to obtain enable gpio list (%d)\n",
-			       PTR_ERR(gpios));
-			ret = PTR_ERR(gpios);
-			goto error_locked;
-		}
-
-		/* Set enable pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 1);
-		if (ret) {
-			pr_err("Error enabling GPIO pins (%d)\n", ret);
-			goto error_locked;
-		}
-
-		/* Setting enable_gpios to non-NULL to indicate that this lwis
-		   device is holding onto the GPIO pins. */
-		lwis_dev->enable_gpios = gpios;
 	}
 
 	if (lwis_dev->phys) {
@@ -431,6 +431,16 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->mclk_ctrl) {
+		/* Set MCLK state to off */
+		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+					     MCLK_OFF_STRING);
+		if (ret) {
+			pr_err("Error setting mclk state (%d)\n", ret);
+			goto error_locked;
+		}
+	}
+
 	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
 		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
@@ -468,16 +478,6 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		lwis_gpio_list_put(lwis_dev->reset_gpios,
 				   &lwis_dev->plat_dev->dev);
 		lwis_dev->reset_gpios = NULL;
-	}
-
-	if (lwis_dev->mclk_ctrl) {
-		/* Set MCLK state to off */
-		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-					     MCLK_OFF_STRING);
-		if (ret) {
-			pr_err("Error setting mclk state (%d)\n", ret);
-			goto error_locked;
-		}
 	}
 
 	if (lwis_dev->clocks) {
