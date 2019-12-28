@@ -608,7 +608,6 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 	int ret;
 	int blocks;
 	int reg_tuple_size;
-	u32 reg_access_size;
 	const char *name;
 
 	dev_node = ioreg_dev->base_dev.plat_dev->dev.of_node;
@@ -621,13 +620,6 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32(dev_node, "reg-access-size",
-				   &reg_access_size);
-	if (ret) {
-		pr_err("Failed to read reg-access-size: %d\n", ret);
-		return ret;
-	}
-
 	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
 	if (ret) {
 		pr_err("Failed to allocate ioreg list\n");
@@ -636,8 +628,7 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 
 	for (i = 0; i < blocks; ++i) {
 		of_property_read_string_index(dev_node, "reg-names", i, &name);
-		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name,
-				     reg_access_size);
+		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name);
 		if (ret) {
 			pr_err("Cannot set ioreg info\n");
 			goto error_ioreg;

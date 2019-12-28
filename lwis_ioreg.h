@@ -32,8 +32,7 @@ void lwis_ioreg_list_free(struct lwis_ioreg_device *ioreg_dev);
 /*
  *  lwis_ioreg_get: Setup the content of a lwis_ioreg entry.
  */
-int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name,
-		   int default_access_size);
+int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name);
 
 /*
  *  lwis_ioreg_put_by_idx: Deinitialize the content of a lwis_ioreg entry
@@ -66,31 +65,31 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
  *  block index.
  */
 int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
-				 uint64_t offset, int value_bits,
-				 uint64_t *value, bool non_blocking);
+				 uint64_t offset, uint64_t *value,
+				 bool non_blocking);
 
 /*
  *  lwis_ioreg_read_by_block_name: Read single memory mapped register by
  *  block name.
  */
 int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				  char *name, uint64_t offset, int value_bits,
-				  uint64_t *value, bool non_blocking);
+				  char *name, uint64_t offset, uint64_t *value,
+				  bool non_blocking);
 
 /*
  *  lwis_ioreg_write_by_block_idx: Write single memory mapped register by
  *  block index.
  */
 int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
-				  int index, uint64_t offset, int value_bits,
-				  uint64_t value, bool non_blocking);
+				  int index, uint64_t offset, uint64_t value,
+				  bool non_blocking);
 
 /*
  *  lwis_ioreg_write_by_block_name: Write single memory mapped register by
  *  block name.
  */
 int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				   char *name, uint64_t offset, int value_bits,
-				   uint64_t value, bool non_blocking);
+				   char *name, uint64_t offset, uint64_t value,
+				   bool non_blocking);
 
 #endif /* LWIS_IOREG_H_ */
