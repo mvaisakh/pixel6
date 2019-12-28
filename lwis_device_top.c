@@ -41,33 +41,15 @@ static struct lwis_device_subclass_operations top_vops = {
 	.event_flags_updated = NULL,
 };
 
-static int verify_io_entry(struct lwis_io_entry *entry)
-{
-	if (entry->offset_bitwidth != 0 && entry->offset_bitwidth != 8) {
-		pr_err("Offset bitwidth must be 8\n");
-		return -EINVAL;
-	}
-	if (entry->access_size != 0 && entry->access_size != 8) {
-		pr_err("Access size must be 8\n");
-		return -EINVAL;
-	}
-	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
-		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
-		return -EINVAL;
-	}
-	return 0;
-}
-
 static int lwis_top_register_read(struct lwis_device *lwis_dev,
 				  struct lwis_io_entry *entry,
 				  bool non_blocking)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
-	int ret = 0;
 
-	ret = verify_io_entry(entry);
-	if (ret) {
-		return ret;
+	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
+		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
+		return -EINVAL;
 	}
 	entry->val = top_dev->scratch_mem[entry->offset];
 	return 0;
@@ -78,11 +60,10 @@ static int lwis_top_register_write(struct lwis_device *lwis_dev,
 				   bool non_blocking)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
-	int ret = 0;
 
-	ret = verify_io_entry(entry);
-	if (ret) {
-		return ret;
+	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
+		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
+		return -EINVAL;
 	}
 	top_dev->scratch_mem[entry->offset] = entry->val;
 	return 0;
