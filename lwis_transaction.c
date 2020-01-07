@@ -70,6 +70,7 @@ static int process_io_entries(struct lwis_client *client,
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
 	struct lwis_io_result *resp_buf;
+	uint64_t modify_value;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->num_entries * sizeof(struct lwis_io_result);
@@ -98,6 +99,7 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+			modify_value = entry->val;
 			ret = lwis_dev->vops.register_read(lwis_dev, entry,
 							   in_irq);
 			if (ret) {
@@ -105,7 +107,7 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 			entry->val &= ~entry->val_mask;
-			entry->val |= entry->val_mask & entry->val;
+			entry->val |= entry->val_mask & modify_value;
 			ret = lwis_dev->vops.register_write(lwis_dev, entry,
 							    in_irq);
 			if (ret) {
