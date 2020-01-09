@@ -42,6 +42,13 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		return alloc_info->dma_fd;
 	}
 
+	/*
+	 * Increment refcount of the fd to 2. Both userspace's close(fd)
+	 * and kernel's lwis_buffer_free() will decrement the refcount by 1.
+	 * Whoever reaches 0 refcount frees the buffer.
+	 */
+	get_dma_buf(dma_buf);
+
 	buffer->fd = alloc_info->dma_fd;
 	buffer->dma_buf = dma_buf;
 	hash_add(lwis_client->allocated_buffers, &buffer->node, buffer->fd);
