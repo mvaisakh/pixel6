@@ -466,6 +466,31 @@ error_parse_phy:
 	return ret;
 }
 
+static void parse_bitwidths(struct lwis_device *lwis_dev)
+{
+	int ret;
+	struct device *dev;
+	struct device_node *dev_node;
+	u32 addr_bitwidth = 32;
+	u32 value_bitwidth = 32;
+
+	dev = &(lwis_dev->plat_dev->dev);
+	dev_node = dev->of_node;
+
+	ret = of_property_read_u32(dev_node, "reg-addr-bitwidth",
+				   &addr_bitwidth);
+	pr_info("Addr bitwidth set to%s: %d\n", ret ? " default" : "",
+		addr_bitwidth);
+
+	ret = of_property_read_u32(dev_node, "reg-value-bitwidth",
+				   &value_bitwidth);
+	pr_info("Value bitwidth set to%s: %d\n", ret ? " default" : "",
+		value_bitwidth);
+
+	lwis_dev->reg_addr_bitwidth = addr_bitwidth;
+	lwis_dev->reg_value_bitwidth = value_bitwidth;
+}
+
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -489,6 +514,8 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return -EINVAL;
 	}
 	strncpy(lwis_dev->name, name_str, LWIS_MAX_DEVICE_NAME_STRING);
+
+	pr_info("Device tree entry [%s] - begin\n", lwis_dev->name);
 
 	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios_present);
 	if (ret) {
@@ -532,10 +559,14 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
+	parse_bitwidths(lwis_dev);
+
 	iommus = of_find_property(dev_node, "iommus", &iommus_len);
 	lwis_dev->has_iommu = iommus && iommus_len;
 
 	dev_node->data = lwis_dev;
+
+	pr_info("Device tree entry [%s] - end\n", lwis_dev->name);
 
 	return ret;
 }
@@ -577,7 +608,6 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 	int ret;
 	int blocks;
 	int reg_tuple_size;
-	u32 reg_access_size;
 	const char *name;
 
 	dev_node = ioreg_dev->base_dev.plat_dev->dev.of_node;
@@ -590,13 +620,6 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32(dev_node, "reg-access-size",
-				   &reg_access_size);
-	if (ret) {
-		pr_err("Failed to read reg-access-size: %d\n", ret);
-		return ret;
-	}
-
 	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
 	if (ret) {
 		pr_err("Failed to allocate ioreg list\n");
@@ -605,8 +628,7 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 
 	for (i = 0; i < blocks; ++i) {
 		of_property_read_string_index(dev_node, "reg-names", i, &name);
-		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name,
-				     reg_access_size);
+		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name);
 		if (ret) {
 			pr_err("Cannot set ioreg info\n");
 			goto error_ioreg;

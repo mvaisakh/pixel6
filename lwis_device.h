@@ -131,6 +131,9 @@ struct lwis_device {
 	struct mutex reg_rw_lock;
 	/* Heartbeat timer structure */
 	struct timer_list heartbeat_timer;
+	/* Register-related properties */
+	unsigned int reg_addr_bitwidth;
+	unsigned int reg_value_bitwidth;
 };
 
 /*

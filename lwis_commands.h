@@ -93,8 +93,6 @@ struct lwis_io_entry {
 	uint64_t offset;
 	uint64_t val;
 	uint64_t val_mask;
-	int offset_bitwidth;
-	int access_size;
 };
 
 /* The first 4096 event IDs are reserved for generic events shared by all

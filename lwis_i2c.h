@@ -47,13 +47,13 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c,
 /*
  *  lwis_i2c_read: Single read from i2c bus.
  */
-int lwis_i2c_read(struct lwis_i2c_device *i2c, int offset_bits, uint64_t offset,
-		  int value_bits, uint64_t *value);
+int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset,
+		  uint64_t *value);
 
 /*
  *  lwis_i2c_write: Single write to i2c bus.
  */
-int lwis_i2c_write(struct lwis_i2c_device *i2c, int offset_bits,
-		   uint64_t offset, int value_bits, uint64_t value);
+int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset,
+		   uint64_t value);
 
 #endif /* LWIS_I2C_H_ */

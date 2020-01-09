@@ -62,7 +62,7 @@ static int lwis_ioreg_register_read(struct lwis_device *lwis_dev,
 {
 	return lwis_ioreg_read_by_block_idx(
 		(struct lwis_ioreg_device *)lwis_dev, entry->bid, entry->offset,
-		entry->access_size, &entry->val, non_blocking);
+		&entry->val, non_blocking);
 }
 
 static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
@@ -71,7 +71,7 @@ static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
 {
 	return lwis_ioreg_write_by_block_idx(
 		(struct lwis_ioreg_device *)lwis_dev, entry->bid, entry->offset,
-		entry->access_size, entry->val, non_blocking);
+		entry->val, non_blocking);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
@@ -177,7 +177,6 @@ int __init lwis_ioreg_device_init(void)
 
 	return ret;
 }
-
 
 int lwis_ioreg_device_deinit(void)
 {

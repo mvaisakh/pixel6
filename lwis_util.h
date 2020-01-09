@@ -20,9 +20,7 @@ struct lwis_device;
 /*
  * lwis_device_single_register_write: A utility function that allows you to
  * write a single register for a given bid, offset and value on any device
- * that supports register writes without worrying about access sizes, etc.
- *
- * Some device-specific default access size will be used.
+ * that supports register writes.
  *
  * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
  * true when called with IRQs disabled, or from an ISR)
@@ -40,9 +38,7 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 /*
  * lwis_device_single_register_read: A utility function that allows you to
  * read a single register for a given bid, offset and value on any device
- * that supports register writes without worrying about access sizes, etc.
- *
- * Some device-specific default access size will be used.
+ * that supports register reads.
  *
  * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
  * true when called with IRQs disabled, or from an ISR)

@@ -20,7 +20,6 @@ struct lwis_ioreg {
 	int size;
 	unsigned int __iomem *base;
 	char *name;
-	int default_access_size;
 };
 
 struct lwis_ioreg_list {

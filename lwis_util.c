@@ -26,8 +26,6 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 
 	entry.offset = offset;
 	entry.val = value;
-	entry.access_size = 0;	   // use default
-	entry.offset_bitwidth = 0; // use default
 	entry.bid = bid;
 
 	return lwis_dev->vops.register_write(lwis_dev, &entry, non_blocking);
@@ -46,8 +44,6 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 	}
 
 	entry.offset = offset;
-	entry.access_size = 0;	   // use default
-	entry.offset_bitwidth = 0; // use default
 	entry.bid = bid;
 
 	ret = lwis_dev->vops.register_read(lwis_dev, &entry, non_blocking);
