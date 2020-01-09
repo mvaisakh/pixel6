@@ -71,6 +71,7 @@ static int process_io_entries(struct lwis_client *client,
 	uint8_t *read_buf;
 	struct lwis_io_result *io_result;
 	const int reg_value_bytes = lwis_dev->reg_value_bitwidth / 8;
+	unsigned long flags;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->results_size_bytes;
@@ -126,7 +127,9 @@ event_push:
 				resp->error_code ? info->emit_error_event_id
 						 : info->emit_success_event_id,
 				(void *)resp, resp_size);
+	spin_lock_irqsave(&client->transaction_lock, flags);
 	list_del(list_node);
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
 	kfree(resp);
 	for (i = 0; i < info->num_io_entries; ++i) {
 		if (info->io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
@@ -180,12 +183,14 @@ static void transaction_work_func(struct work_struct *work)
 					   &pending_events);
 			list_del(&transaction->process_queue_node);
 		} else {
+			spin_unlock_irqrestore(&client->transaction_lock,
+					       flags);
 			process_io_entries(client, transaction,
 					   &transaction->process_queue_node,
 					   &pending_events, /*in_irq=*/false);
+			spin_lock_irqsave(&client->transaction_lock, flags);
 		}
 	}
-
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	lwis_pending_events_emit(client->lwis_dev, &pending_events,
@@ -358,6 +363,7 @@ static void process_transaction(struct lwis_client *client,
 				struct list_head *pending_events, bool in_irq)
 {
 	int64_t trigger_counter = transaction->info.trigger_event_counter;
+	unsigned long flags;
 
 	if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
 	    trigger_counter == current_event_counter) {
@@ -369,9 +375,12 @@ static void process_transaction(struct lwis_client *client,
 					   pending_events, in_irq);
 
 		} else {
+			spin_lock_irqsave(&client->transaction_lock, flags);
 			list_add_tail(&transaction->process_queue_node,
 				      &client->transaction_process_queue);
 			list_del(&transaction->event_list_node);
+			spin_unlock_irqrestore(&client->transaction_lock,
+					       flags);
 		}
 	}
 }
@@ -400,8 +409,10 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	{
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		process_transaction(client, transaction, event_counter,
 				    pending_events, in_irq);
+		spin_lock_irqsave(&client->transaction_lock, flags);
 	}
 
 	/* Schedule deferred transactions */
