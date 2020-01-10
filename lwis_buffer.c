@@ -111,7 +111,7 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 		lwis_client->lwis_dev, buffer->dma_buf_attachment, 0, 0,
 		buffer->dma_direction, 0);
 
-	if (!buffer->info.dma_vaddr) {
+	if (IS_ERR_OR_NULL((void *)buffer->info.dma_vaddr)) {
 		pr_err("Could not map into IO VMM for fd: %d", buffer->info.fd);
 		dma_buf_unmap_attachment(buffer->dma_buf_attachment,
 					 buffer->sg_table,
