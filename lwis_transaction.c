@@ -88,26 +88,26 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ) {
-			resp_buf[read_idx].bid = entry->bid;
-			resp_buf[read_idx].offset = entry->offset;
+			resp_buf[read_idx].bid = entry->rw.bid;
+			resp_buf[read_idx].offset = entry->rw.offset;
 			ret = lwis_dev->vops.register_read(lwis_dev, entry,
 							   in_irq);
-			resp_buf[read_idx].value = entry->val;
+			resp_buf[read_idx].value = entry->rw.val;
 			read_idx++;
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
-			modify_value = entry->val;
+			modify_value = entry->mod.val;
 			ret = lwis_dev->vops.register_read(lwis_dev, entry,
 							   in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
 			}
-			entry->val &= ~entry->val_mask;
-			entry->val |= entry->val_mask & modify_value;
+			entry->mod.val &= ~entry->mod.val_mask;
+			entry->mod.val |= entry->mod.val_mask & modify_value;
 			ret = lwis_dev->vops.register_write(lwis_dev, entry,
 							    in_irq);
 			if (ret) {

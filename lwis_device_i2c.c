@@ -86,8 +86,8 @@ static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
 	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_read((struct lwis_i2c_device *)lwis_dev, entry->offset,
-			     &entry->val);
+	return lwis_i2c_read((struct lwis_i2c_device *)lwis_dev,
+			     entry->rw.offset, &entry->rw.val);
 }
 
 static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
@@ -98,8 +98,8 @@ static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
 	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_write((struct lwis_i2c_device *)lwis_dev, entry->offset,
-			      entry->val);
+	return lwis_i2c_write((struct lwis_i2c_device *)lwis_dev,
+			      entry->rw.offset, entry->rw.val);
 }
 
 static int lwis_i2c_addr_matcher(struct device *dev, void *data)

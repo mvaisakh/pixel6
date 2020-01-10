@@ -24,9 +24,10 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	entry.offset = offset;
-	entry.val = value;
-	entry.bid = bid;
+	entry.type = LWIS_IO_ENTRY_WRITE;
+	entry.rw.offset = offset;
+	entry.rw.val = value;
+	entry.rw.bid = bid;
 
 	return lwis_dev->vops.register_write(lwis_dev, &entry, non_blocking);
 }
@@ -43,12 +44,13 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	entry.offset = offset;
-	entry.bid = bid;
+	entry.type = LWIS_IO_ENTRY_READ;
+	entry.rw.offset = offset;
+	entry.rw.bid = bid;
 
 	ret = lwis_dev->vops.register_read(lwis_dev, &entry, non_blocking);
 	if (!ret && value) {
-		*value = entry.val;
+		*value = entry.rw.val;
 	}
 	return ret;
 }

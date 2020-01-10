@@ -47,11 +47,11 @@ static int lwis_top_register_read(struct lwis_device *lwis_dev,
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
 
-	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
+	if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
 		return -EINVAL;
 	}
-	entry->val = top_dev->scratch_mem[entry->offset];
+	entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
 	return 0;
 }
 
@@ -61,11 +61,11 @@ static int lwis_top_register_write(struct lwis_device *lwis_dev,
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
 
-	if (entry->offset >= SCRATCH_MEMORY_SIZE) {
+	if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
 		return -EINVAL;
 	}
-	top_dev->scratch_mem[entry->offset] = entry->val;
+	top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
 	return 0;
 }
 

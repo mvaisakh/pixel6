@@ -212,7 +212,7 @@ int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
 	}
 
 	for (i = 0; i < num_entries; ++i) {
-		index = entries[i].bid;
+		index = entries[i].rw.bid;
 		if (index < 0 || index >= list->count) {
 			pr_err("Invalid ioreg read block index %d\n", index);
 			ret = -EINVAL;
@@ -225,12 +225,12 @@ int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
 			goto read_func_end;
 		}
 		ret = ioreg_read_internal(
-			block->base, entries[i].offset,
+			block->base, entries[i].rw.offset,
 			ioreg_dev->base_dev.reg_value_bitwidth,
-			&entries[i].val);
+			&entries[i].rw.val);
 		if (ret) {
 			pr_err("Invalid ioreg read:\n");
-			pr_err("Offset: 0x%x, Base: %p\n", entries[i].offset,
+			pr_err("Offset: 0x%x, Base: %p\n", entries[i].rw.offset,
 			       block->base);
 			goto read_func_end;
 		}
@@ -267,7 +267,7 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
 	}
 
 	for (i = 0; i < num_entries; ++i) {
-		index = entries[i].bid;
+		index = entries[i].rw.bid;
 		if (index < 0 || index >= list->count) {
 			pr_err("Invalid ioreg write block index %d\n", index);
 			ret = -EINVAL;
@@ -280,12 +280,14 @@ int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
 			goto write_func_end;
 		}
 		ret = ioreg_write_internal(
-			block->base, entries[i].offset,
-			ioreg_dev->base_dev.reg_value_bitwidth, entries[i].val);
+			block->base, entries[i].rw.offset,
+			ioreg_dev->base_dev.reg_value_bitwidth,
+			entries[i].rw.val);
 		if (ret) {
 			pr_err("Invalid ioreg write\n");
 			pr_err("Offset: 0x%x, Value: 0x%x, Base: %p\n",
-			       entries[i].offset, entries[i].val, block->base);
+			       entries[i].rw.offset, entries[i].rw.val,
+			       block->base);
 			goto write_func_end;
 		}
 	}

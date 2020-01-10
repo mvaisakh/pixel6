@@ -87,12 +87,27 @@ enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_MODIFY,
 };
 
-struct lwis_io_entry {
-	int type;
+// For io_entry read and write types.
+struct lwis_io_entry_rw {
+	int bid;
+	uint64_t offset;
+	uint64_t val;
+};
+
+// For io_entry modify types.
+struct lwis_io_entry_modify {
 	int bid;
 	uint64_t offset;
 	uint64_t val;
 	uint64_t val_mask;
+};
+
+struct lwis_io_entry {
+	int type;
+	union {
+		struct lwis_io_entry_rw rw;
+		struct lwis_io_entry_modify mod;
+	};
 };
 
 /* The first 4096 event IDs are reserved for generic events shared by all

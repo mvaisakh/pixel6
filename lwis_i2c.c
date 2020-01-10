@@ -208,9 +208,9 @@ int lwis_i2c_read_batch(struct lwis_i2c_device *i2c,
 	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	for (i = 0; i < num_entries; ++i) {
 		i2c_msg[1].len = value_bits / 8;
-		ret = perform_read_transfer(client, i2c_msg, entries[i].offset,
-					    offset_bits, value_bits,
-					    &entries[i].val);
+		ret = perform_read_transfer(client, i2c_msg,
+					    entries[i].rw.offset, offset_bits,
+					    value_bits, &entries[i].rw.val);
 		if (ret != num_i2c_msg) {
 			break;
 		}
@@ -269,8 +269,8 @@ int lwis_i2c_write_batch(struct lwis_i2c_device *i2c,
 	for (i = 0; i < num_entries; ++i) {
 		i2c_msg.len = (offset_bits + value_bits) / 8;
 		ret = perform_write_transfer(client, &i2c_msg,
-					     entries[i].offset, offset_bits,
-					     value_bits, entries[i].val);
+					     entries[i].rw.offset, offset_bits,
+					     value_bits, entries[i].rw.val);
 		if (ret != num_i2c_msg) {
 			break;
 		}
