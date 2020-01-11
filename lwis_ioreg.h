@@ -47,49 +47,27 @@ int lwis_ioreg_put_by_idx(struct lwis_ioreg_device *ioreg_dev, int index);
 int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
 
 /*
- *  lwis_ioreg_read_batch: Read memory mapped registers in batch.
+ *  lwis_ioreg_io_entry_read: Read registers via io_entry request.
  */
-int lwis_ioreg_read_batch(struct lwis_ioreg_device *ioreg_dev,
-			  struct lwis_io_entry *entries, int num_entries,
-			  bool non_blocking);
+int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
+			     struct lwis_io_entry *entry, bool non_blocking);
 
 /*
- *  lwis_ioreg_write_batch: Write memory mapped registers in batch.
+ *  lwis_ioreg_io_entry_write: Write registers via io_entry request.
  */
-int lwis_ioreg_write_batch(struct lwis_ioreg_device *ioreg_dev,
-			   struct lwis_io_entry *entries, int num_entries,
-			   bool non_blocking);
+int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
+			      struct lwis_io_entry *entry, bool non_blocking);
 
 /*
- *  lwis_ioreg_read_by_block_idx: Read single memory mapped register by
- *  block index.
+ *  lwis_ioreg_read: Read single register.
  */
-int lwis_ioreg_read_by_block_idx(struct lwis_ioreg_device *ioreg_dev, int index,
-				 uint64_t offset, uint64_t *value,
-				 bool non_blocking);
+int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
+		    uint64_t offset, uint64_t *value, bool non_blocking);
 
 /*
- *  lwis_ioreg_read_by_block_name: Read single memory mapped register by
- *  block name.
+ *  lwis_ioreg_write: Write single register.
  */
-int lwis_ioreg_read_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				  char *name, uint64_t offset, uint64_t *value,
-				  bool non_blocking);
-
-/*
- *  lwis_ioreg_write_by_block_idx: Write single memory mapped register by
- *  block index.
- */
-int lwis_ioreg_write_by_block_idx(struct lwis_ioreg_device *ioreg_dev,
-				  int index, uint64_t offset, uint64_t value,
-				  bool non_blocking);
-
-/*
- *  lwis_ioreg_write_by_block_name: Write single memory mapped register by
- *  block name.
- */
-int lwis_ioreg_write_by_block_name(struct lwis_ioreg_device *ioreg_dev,
-				   char *name, uint64_t offset, uint64_t value,
-				   bool non_blocking);
+int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
+		     uint64_t offset, uint64_t value, bool non_blocking);
 
 #endif /* LWIS_IOREG_H_ */
