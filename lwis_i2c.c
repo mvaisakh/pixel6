@@ -149,137 +149,16 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 	return 0;
 }
 
-int lwis_i2c_read_batch(struct lwis_i2c_device *i2c,
-			struct lwis_io_entry *entries, int num_entries)
+int lwis_i2c_io_entry_read(struct lwis_i2c_device *i2c,
+			   struct lwis_io_entry *entry)
 {
-	int i;
-	int ret;
-	u8 *wbuf;
-	u8 *rbuf;
-	struct i2c_client *client = i2c->client;
-	struct i2c_msg i2c_msg[2];
-	unsigned int offset_bits;
-	unsigned int value_bits;
-
-	const int num_i2c_msg = 2;
-
-	if (!i2c || !i2c->client) {
-		pr_err("Cannot find i2c instance\n");
-		return -ENODEV;
-	}
-
-	if (num_entries <= 0) {
-		pr_err("Invalid number of entries %d\n", num_entries);
-		return -EINVAL;
-	}
-
-	offset_bits = i2c->base_dev.reg_addr_bitwidth;
-	value_bits = i2c->base_dev.reg_value_bitwidth;
-
-	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
-		pr_err("Invalid offset bitwidth %d\n", offset_bits);
-		return -EINVAL;
-	}
-
-	wbuf = kzalloc(offset_bits / 8, GFP_KERNEL);
-	if (!wbuf) {
-		pr_err("Failed to allocate memory for i2c write buffer\n");
-		return -ENOMEM;
-	}
-
-	// Allocating read buffer to be max data bits allowed, as the data
-	// bitwidth in the list could potentially be diffent throughout the list
-	rbuf = kzalloc(MAX_DATA_BITS / 8, GFP_KERNEL);
-	if (!rbuf) {
-		pr_err("Failed to allocate memory for i2c read buffer\n");
-		ret = -ENOMEM;
-		goto error_rbuf_alloc;
-	}
-
-	i2c_msg[0].addr = client->addr;
-	i2c_msg[0].flags = 0;
-	i2c_msg[0].len = offset_bits / 8;
-	i2c_msg[0].buf = wbuf;
-
-	i2c_msg[1].addr = client->addr;
-	i2c_msg[1].flags = I2C_M_RD;
-	i2c_msg[1].buf = rbuf;
-
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
-	for (i = 0; i < num_entries; ++i) {
-		i2c_msg[1].len = value_bits / 8;
-		ret = perform_read_transfer(client, i2c_msg,
-					    entries[i].rw.offset, offset_bits,
-					    value_bits, &entries[i].rw.val);
-		if (ret != num_i2c_msg) {
-			break;
-		}
-	}
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
-
-	kfree(rbuf);
-error_rbuf_alloc:
-	kfree(wbuf);
-
-	return (ret == num_i2c_msg) ? 0 : ret;
+	return lwis_i2c_read(i2c, entry->rw.offset, &entry->rw.val);
 }
 
-int lwis_i2c_write_batch(struct lwis_i2c_device *i2c,
-			 struct lwis_io_entry *entries, int num_entries)
+int lwis_i2c_io_entry_write(struct lwis_i2c_device *i2c,
+			    struct lwis_io_entry *entry)
 {
-	int i;
-	int ret;
-	u8 *buf;
-	struct i2c_client *client = i2c->client;
-	struct i2c_msg i2c_msg;
-	unsigned int offset_bits;
-	unsigned int value_bits;
-
-	const int num_i2c_msg = 1;
-
-	if (!i2c || !i2c->client) {
-		pr_err("Cannot find i2c instance\n");
-		return -ENODEV;
-	}
-
-	if (num_entries <= 0) {
-		pr_err("Invalid number of entries %d\n", num_entries);
-		return -EINVAL;
-	}
-
-	offset_bits = i2c->base_dev.reg_addr_bitwidth;
-	value_bits = i2c->base_dev.reg_value_bitwidth;
-
-	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
-		pr_err("Invalid offset bitwidth %d\n", offset_bits);
-		return -EINVAL;
-	}
-
-	buf = kzalloc((offset_bits + MAX_DATA_BITS) / 8, GFP_KERNEL);
-	if (!buf) {
-		pr_err("Failed to allocate memory for i2c buffer\n");
-		return -ENOMEM;
-	}
-
-	i2c_msg.addr = client->addr;
-	i2c_msg.flags = 0;
-	i2c_msg.buf = buf;
-
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
-	for (i = 0; i < num_entries; ++i) {
-		i2c_msg.len = (offset_bits + value_bits) / 8;
-		ret = perform_write_transfer(client, &i2c_msg,
-					     entries[i].rw.offset, offset_bits,
-					     value_bits, entries[i].rw.val);
-		if (ret != num_i2c_msg) {
-			break;
-		}
-	}
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
-
-	kfree(buf);
-
-	return (ret == num_i2c_msg) ? 0 : ret;
+	return lwis_i2c_write(i2c, entry->rw.offset, entry->rw.val);
 }
 
 int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
