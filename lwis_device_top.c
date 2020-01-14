@@ -46,12 +46,33 @@ static int lwis_top_register_read(struct lwis_device *lwis_dev,
 				  bool non_blocking)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
+	struct lwis_io_entry_rw_batch *rw_batch;
+	int i;
 
-	if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
-		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
-		return -EINVAL;
+	BUG_ON(!entry);
+
+	if (entry->type == LWIS_IO_ENTRY_READ) {
+		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
+			pr_err("Offset (%d) must be < %d\n", entry->rw.offset,
+			       SCRATCH_MEMORY_SIZE);
+			return -EINVAL;
+		}
+		entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
+	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+		rw_batch = &entry->rw_batch;
+		if (rw_batch->offset + rw_batch->size_in_bytes >
+		    SCRATCH_MEMORY_SIZE) {
+			pr_err("Read range (%d) exceeds scratch memory (%d)\n",
+			       rw_batch->offset + rw_batch->size_in_bytes,
+			       SCRATCH_MEMORY_SIZE);
+			return -EINVAL;
+		}
+		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
+			rw_batch->buf[i] =
+				top_dev->scratch_mem[rw_batch->offset + i];
+		}
 	}
-	entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
+
 	return 0;
 }
 
@@ -60,12 +81,33 @@ static int lwis_top_register_write(struct lwis_device *lwis_dev,
 				   bool non_blocking)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
+	struct lwis_io_entry_rw_batch *rw_batch;
+	int i;
 
-	if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
-		pr_err("Offset must be < %d\n", SCRATCH_MEMORY_SIZE);
-		return -EINVAL;
+	BUG_ON(!entry);
+
+	if (entry->type == LWIS_IO_ENTRY_WRITE) {
+		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
+			pr_err("Offset (%d) must be < %d\n", entry->rw.offset,
+			       SCRATCH_MEMORY_SIZE);
+			return -EINVAL;
+		}
+		top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
+	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
+		rw_batch = &entry->rw_batch;
+		if (rw_batch->offset + rw_batch->size_in_bytes >
+		    SCRATCH_MEMORY_SIZE) {
+			pr_err("Write range (%d) exceeds scratch memory (%d)\n",
+			       rw_batch->offset + rw_batch->size_in_bytes,
+			       SCRATCH_MEMORY_SIZE);
+			return -EINVAL;
+		}
+		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
+			top_dev->scratch_mem[rw_batch->offset + i] =
+				rw_batch->buf[i];
+		}
 	}
-	top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
+
 	return 0;
 }
 

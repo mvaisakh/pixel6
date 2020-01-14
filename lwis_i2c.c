@@ -152,13 +152,33 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 int lwis_i2c_io_entry_read(struct lwis_i2c_device *i2c,
 			   struct lwis_io_entry *entry)
 {
-	return lwis_i2c_read(i2c, entry->rw.offset, &entry->rw.val);
+	BUG_ON(!entry);
+
+	if (entry->type == LWIS_IO_ENTRY_READ) {
+		return lwis_i2c_read(i2c, entry->rw.offset, &entry->rw.val);
+	}
+	if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+		pr_err("Read batch for i2c devices is not supported yet");
+		return -EINVAL;
+	}
+	pr_err("Invalid IO entry type for READ\n");
+	return -EINVAL;
 }
 
 int lwis_i2c_io_entry_write(struct lwis_i2c_device *i2c,
 			    struct lwis_io_entry *entry)
 {
-	return lwis_i2c_write(i2c, entry->rw.offset, entry->rw.val);
+	BUG_ON(!entry);
+
+	if (entry->type == LWIS_IO_ENTRY_WRITE) {
+		return lwis_i2c_write(i2c, entry->rw.offset, entry->rw.val);
+	}
+	if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
+		pr_err("Write batch for i2c devices is not supported yet");
+		return -EINVAL;
+	}
+	pr_err("Invalid IO entry type for WRITE\n");
+	return -EINVAL;
 }
 
 int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
@@ -166,7 +186,7 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
 	int ret;
 	u8 *wbuf;
 	u8 *rbuf;
-	struct i2c_client *client = i2c->client;
+	struct i2c_client *client;
 	struct i2c_msg msg[2];
 
 	const int num_msg = ARRAY_SIZE(msg);
@@ -177,6 +197,7 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
 		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
+	client = i2c->client;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		pr_err("Invalid offset bitwidth %d\n", offset_bits);
@@ -227,7 +248,7 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t value)
 {
 	int ret;
 	u8 *buf;
-	struct i2c_client *client = i2c->client;
+	struct i2c_client *client;
 	struct i2c_msg msg;
 
 	const int num_msg = 1;
@@ -239,6 +260,7 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t value)
 		pr_err("Cannot find i2c instance\n");
 		return -ENODEV;
 	}
+	client = i2c->client;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		pr_err("Invalid offset bitwidth %d\n", offset_bits);

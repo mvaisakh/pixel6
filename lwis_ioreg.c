@@ -143,6 +143,92 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name)
 	return 0;
 }
 
+static int ioreg_read_batch_internal(unsigned int __iomem *base,
+				     uint64_t offset, int value_bits,
+				     size_t size_in_bytes, uint8_t *buf)
+{
+	int i;
+
+	if (size_in_bytes & (value_bits / 8) - 1) {
+		pr_err("Read buf size (%d) not divisible by bitwidth (%d)\n",
+		       size_in_bytes, value_bits);
+		return -EINVAL;
+	}
+
+	switch (value_bits) {
+	case 8:
+		for (i = 0; i < size_in_bytes; ++i) {
+			*(buf + i) = readb((void *)base + offset + i);
+		}
+		break;
+	case 16:
+		for (i = 0; i < size_in_bytes; i += 2) {
+			*(uint16_t *)(buf + i) =
+				readw((void *)base + offset + i);
+		}
+		break;
+	case 32:
+		for (i = 0; i < size_in_bytes; i += 4) {
+			*(uint32_t *)(buf + i) =
+				readl((void *)base + offset + i);
+		}
+		break;
+	case 64:
+		for (i = 0; i < size_in_bytes; i += 8) {
+			*(uint64_t *)(buf + i) =
+				readq((void *)base + offset + i);
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int ioreg_write_batch_internal(unsigned int __iomem *base,
+				      uint64_t offset, int value_bits,
+				      size_t size_in_bytes, uint8_t *buf)
+{
+	int i;
+
+	if (size_in_bytes & (value_bits / 8) - 1) {
+		pr_err("Write buf size (%d) not divisible by bitwidth (%d)\n",
+		       size_in_bytes, value_bits);
+		return -EINVAL;
+	}
+
+	switch (value_bits) {
+	case 8:
+		for (i = 0; i < size_in_bytes; ++i) {
+			writeb(*(buf + i), (void *)base + offset + i);
+		}
+		break;
+	case 16:
+		for (i = 0; i < size_in_bytes; i += 2) {
+			writew(*(uint16_t *)(buf + i),
+			       (void *)base + offset + i);
+		}
+		break;
+	case 32:
+		for (i = 0; i < size_in_bytes; i += 4) {
+			writel(*(uint32_t *)(buf + i),
+			       (void *)base + offset + i);
+		}
+		break;
+	case 64:
+		for (i = 0; i < size_in_bytes; i += 8) {
+			writeq(*(uint64_t *)(buf + i),
+			       (void *)base + offset + i);
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ioreg_read_internal(unsigned int __iomem *base, uint64_t offset,
 			       int value_bits, uint64_t *value)
 {
@@ -193,9 +279,9 @@ int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
 			     struct lwis_io_entry *entry, bool non_blocking)
 {
 	int ret = 0;
+	int index;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
-	int index;
 
 	BUG_ON(!ioreg_dev);
 	BUG_ON(!entry);
@@ -206,25 +292,36 @@ int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
 		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
 
-	index = entry->rw.bid;
-	if (index < 0 || index >= list->count) {
-		pr_err("Invalid ioreg read block index %d\n", index);
+	/* Non-blocking because we already locked here */
+	if (entry->type == LWIS_IO_ENTRY_READ) {
+		ret = lwis_ioreg_read(ioreg_dev, entry->rw.bid,
+				      entry->rw.offset, &entry->rw.val,
+				      /*non_blocking=*/true);
+	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+		index = entry->rw_batch.bid;
+		if (index < 0 || index >= list->count) {
+			pr_err("Invalid ioreg read block index %d\n", index);
+			ret = -EINVAL;
+			goto read_func_end;
+		}
+		block = &list->block[index];
+		if (block->base == NULL) {
+			pr_err("Invalid ioreg read block base undefined\n");
+			ret = -EINVAL;
+			goto read_func_end;
+		}
+		ret = ioreg_read_batch_internal(
+			block->base, entry->rw_batch.offset,
+			ioreg_dev->base_dev.reg_value_bitwidth,
+			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
+		if (ret) {
+			pr_err("Invalid ioreg batch read at:\n");
+			pr_err("Offset: 0x%x, Base: %p\n",
+			       entry->rw_batch.offset, block->base);
+		}
+	} else {
+		pr_err("Invalid IO entry type for READ\n");
 		ret = -EINVAL;
-		goto read_func_end;
-	}
-	block = &list->block[index];
-	if (block->base == NULL) {
-		pr_err("Invalid ioreg read block base undefined\n");
-		ret = -EINVAL;
-		goto read_func_end;
-	}
-	ret = ioreg_read_internal(block->base, entry->rw.offset,
-				  ioreg_dev->base_dev.reg_value_bitwidth,
-				  &entry->rw.val);
-	if (ret) {
-		pr_err("Invalid ioreg read:\n");
-		pr_err("Offset: 0x%x, Base: %p\n", entry->rw.offset,
-		       block->base);
 	}
 
 read_func_end:
@@ -239,9 +336,9 @@ int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
 			      struct lwis_io_entry *entry, bool non_blocking)
 {
 	int ret = 0;
+	int index;
 	struct lwis_ioreg *block;
 	struct lwis_ioreg_list *list;
-	int index;
 
 	BUG_ON(!ioreg_dev);
 	BUG_ON(!entry);
@@ -252,25 +349,36 @@ int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
 		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
 
-	index = entry->rw.bid;
-	if (index < 0 || index >= list->count) {
-		pr_err("Invalid ioreg write block index %d\n", index);
+	/* Non-blocking because we already locked here */
+	if (entry->type == LWIS_IO_ENTRY_WRITE) {
+		ret = lwis_ioreg_write(ioreg_dev, entry->rw.bid,
+				       entry->rw.offset, entry->rw.val,
+				       /*non_blocking=*/true);
+	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
+		index = entry->rw_batch.bid;
+		if (index < 0 || index >= list->count) {
+			pr_err("Invalid ioreg write block index %d\n", index);
+			ret = -EINVAL;
+			goto write_func_end;
+		}
+		block = &list->block[index];
+		if (block->base == NULL) {
+			pr_err("Invalid ioreg write block base undefined\n");
+			ret = -EINVAL;
+			goto write_func_end;
+		}
+		ret = ioreg_write_batch_internal(
+			block->base, entry->rw_batch.offset,
+			ioreg_dev->base_dev.reg_value_bitwidth,
+			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
+		if (ret) {
+			pr_err("Invalid ioreg batch write at:\n");
+			pr_err("Offset: 0x%x, Base: %p\n",
+			       entry->rw_batch.offset, block->base);
+		}
+	} else {
+		pr_err("Invalid IO entry type for WRITE\n");
 		ret = -EINVAL;
-		goto write_func_end;
-	}
-	block = &list->block[index];
-	if (block->base == NULL) {
-		pr_err("Invalid ioreg write block base undefined\n");
-		ret = -EINVAL;
-		goto write_func_end;
-	}
-	ret = ioreg_write_internal(block->base, entry->rw.offset,
-				   ioreg_dev->base_dev.reg_value_bitwidth,
-				   entry->rw.val);
-	if (ret) {
-		pr_err("Invalid ioreg write\n");
-		pr_err("Offset: 0x%x, Value: 0x%x, Base: %p\n",
-		       entry->rw.offset, entry->rw.val, block->base);
 	}
 
 write_func_end:

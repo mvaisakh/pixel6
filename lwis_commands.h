@@ -83,7 +83,9 @@ struct lwis_buffer_info {
 
 enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_READ,
+	LWIS_IO_ENTRY_READ_BATCH,
 	LWIS_IO_ENTRY_WRITE,
+	LWIS_IO_ENTRY_WRITE_BATCH,
 	LWIS_IO_ENTRY_MODIFY,
 };
 
@@ -92,6 +94,13 @@ struct lwis_io_entry_rw {
 	int bid;
 	uint64_t offset;
 	uint64_t val;
+};
+
+struct lwis_io_entry_rw_batch {
+	int bid;
+	uint64_t offset;
+	size_t size_in_bytes;
+	uint8_t *buf;
 };
 
 // For io_entry modify types.
@@ -106,6 +115,7 @@ struct lwis_io_entry {
 	int type;
 	union {
 		struct lwis_io_entry_rw rw;
+		struct lwis_io_entry_rw_batch rw_batch;
 		struct lwis_io_entry_modify mod;
 	};
 };

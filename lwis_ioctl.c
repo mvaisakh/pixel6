@@ -55,8 +55,10 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 static int ioctl_reg_read(struct lwis_device *lwis_dev,
 			  struct lwis_io_entry *user_msg)
 {
-	int ret;
+	int ret = 0;
 	struct lwis_io_entry k_msg;
+	uint8_t *user_buf;
+	bool batch_mode = false;
 
 	/* register read is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_read) {
@@ -67,23 +69,60 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	/* Copy message struct from userspace */
 	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
 	if (ret) {
+		pr_err("Failed to copy register read ioctl from userspace\n");
 		return ret;
+	}
+
+	if (k_msg.type == LWIS_IO_ENTRY_READ_BATCH) {
+		batch_mode = true;
+		/* Save the userspace buffer address */
+		user_buf = k_msg.rw_batch.buf;
+		/* Allocate read buffer */
+		k_msg.rw_batch.buf =
+			kzalloc(k_msg.rw_batch.size_in_bytes, GFP_KERNEL);
+		if (!k_msg.rw_batch.buf) {
+			pr_err("Failed to allocate register read buffer\n");
+			return -ENOMEM;
+		}
+	} else if (k_msg.type != LWIS_IO_ENTRY_READ) {
+		/* Type must be either READ or READ_BATCH */
+		pr_err("Invalid io_entry type for REGISTER_READ\n");
+		return -EINVAL;
 	}
 
 	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg, false);
 	if (ret) {
-		return ret;
+		pr_err("Failed to read registers\n");
+		goto reg_read_exit;
 	}
 
-	/* Copy read data back to userspace */
-	return copy_to_user((void __user *)user_msg, &k_msg, sizeof(k_msg));
+	if (batch_mode) {
+		/* Copy read data back to userspace */
+		ret = copy_to_user((void __user *)user_buf, k_msg.rw_batch.buf,
+				   k_msg.rw_batch.size_in_bytes);
+		if (ret) {
+			pr_err("Failed to copy register read buffer back to "
+			       "userspace\n");
+		}
+	} else {
+		ret = copy_to_user((void __user *)user_msg, &k_msg,
+				   sizeof(k_msg));
+	}
+
+reg_read_exit:
+	if (batch_mode) {
+		kfree(k_msg.rw_batch.buf);
+	}
+	return ret;
 }
 
 static int ioctl_reg_write(struct lwis_device *lwis_dev,
 			   struct lwis_io_entry *user_msg)
 {
-	int ret;
+	int ret = 0;
 	struct lwis_io_entry k_msg;
+	uint8_t *user_buf;
+	bool batch_mode = false;
 
 	/* register write is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_write) {
@@ -97,7 +136,41 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 		return ret;
 	}
 
-	return lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
+	if (k_msg.type == LWIS_IO_ENTRY_WRITE_BATCH) {
+		batch_mode = true;
+		/* Save the userspace buffer address */
+		user_buf = k_msg.rw_batch.buf;
+		/* Allocate write buffer and copy contents from userspace */
+		k_msg.rw_batch.buf =
+			kzalloc(k_msg.rw_batch.size_in_bytes, GFP_KERNEL);
+		if (!k_msg.rw_batch.buf) {
+			pr_err("Failed to allocate register write buffer\n");
+			return -ENOMEM;
+		}
+		ret = copy_from_user(k_msg.rw_batch.buf,
+				     (void __user *)user_buf,
+				     k_msg.rw_batch.size_in_bytes);
+		if (ret) {
+			pr_err("Failed to copy write buffer from userspace\n");
+			goto reg_write_exit;
+		}
+
+	} else if (k_msg.type != LWIS_IO_ENTRY_WRITE) {
+		/* Type must be either WRITE or WRITE_BATCH */
+		pr_err("Invalid io_entry type for REGISTER_WRITE\n");
+		return -EINVAL;
+	}
+
+	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
+	if (ret) {
+		pr_err("Failed to write registers\n");
+	}
+
+reg_write_exit:
+	if (batch_mode) {
+		kfree(k_msg.rw_batch.buf);
+	}
+	return ret;
 }
 
 static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
