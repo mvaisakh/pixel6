@@ -60,16 +60,16 @@ static int lwis_ioreg_register_read(struct lwis_device *lwis_dev,
 				    struct lwis_io_entry *entry,
 				    bool non_blocking)
 {
-	return lwis_ioreg_io_entry_read((struct lwis_ioreg_device *)lwis_dev,
-					entry, non_blocking);
+	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev,
+				      entry, non_blocking);
 }
 
 static int lwis_ioreg_register_write(struct lwis_device *lwis_dev,
 				     struct lwis_io_entry *entry,
 				     bool non_blocking)
 {
-	return lwis_ioreg_io_entry_write((struct lwis_ioreg_device *)lwis_dev,
-					 entry, non_blocking);
+	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev,
+				      entry, non_blocking);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)

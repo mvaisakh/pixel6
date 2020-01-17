@@ -27,6 +27,25 @@ static int find_block_idx_by_name(struct lwis_ioreg_list *list, char *name)
 	return -ENOENT;
 }
 
+static struct lwis_ioreg *get_block_by_idx(struct lwis_ioreg_device *ioreg_dev,
+					   int index)
+{
+	struct lwis_ioreg *block;
+	struct lwis_ioreg_list *list;
+
+	list = &ioreg_dev->reg_list;
+	if (index < 0 || index >= list->count) {
+		return ERR_PTR(-EINVAL);
+	}
+
+	block = &list->block[index];
+	if (!block->base) {
+		return ERR_PTR(-EINVAL);
+	}
+
+	return block;
+}
+
 int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev, int num_blocks)
 {
 	struct lwis_ioreg_list *list;
@@ -275,18 +294,16 @@ static int ioreg_write_internal(unsigned int __iomem *base, uint64_t offset,
 	return 0;
 }
 
-int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
-			     struct lwis_io_entry *entry, bool non_blocking)
+int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
+			   struct lwis_io_entry *entry, bool non_blocking)
 {
 	int ret = 0;
 	int index;
 	struct lwis_ioreg *block;
-	struct lwis_ioreg_list *list;
+	uint64_t reg_value;
 
 	BUG_ON(!ioreg_dev);
 	BUG_ON(!entry);
-
-	list = &ioreg_dev->reg_list;
 
 	if (!non_blocking) {
 		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
@@ -299,16 +316,10 @@ int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
 				      /*non_blocking=*/true);
 	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
 		index = entry->rw_batch.bid;
-		if (index < 0 || index >= list->count) {
-			pr_err("Invalid ioreg read block index %d\n", index);
-			ret = -EINVAL;
-			goto read_func_end;
-		}
-		block = &list->block[index];
-		if (block->base == NULL) {
-			pr_err("Invalid ioreg read block base undefined\n");
-			ret = -EINVAL;
-			goto read_func_end;
+		block = get_block_by_idx(ioreg_dev, index);
+		if (IS_ERR_OR_NULL(block)) {
+			ret = PTR_ERR(block);
+			goto rw_func_end;
 		}
 		ret = ioreg_read_batch_internal(
 			block->base, entry->rw_batch.offset,
@@ -319,53 +330,16 @@ int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
 			pr_err("Offset: 0x%x, Base: %p\n",
 			       entry->rw_batch.offset, block->base);
 		}
-	} else {
-		pr_err("Invalid IO entry type for READ\n");
-		ret = -EINVAL;
-	}
-
-read_func_end:
-	if (!non_blocking) {
-		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
-	}
-
-	return ret;
-}
-
-int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
-			      struct lwis_io_entry *entry, bool non_blocking)
-{
-	int ret = 0;
-	int index;
-	struct lwis_ioreg *block;
-	struct lwis_ioreg_list *list;
-
-	BUG_ON(!ioreg_dev);
-	BUG_ON(!entry);
-
-	list = &ioreg_dev->reg_list;
-
-	if (!non_blocking) {
-		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
-	}
-
-	/* Non-blocking because we already locked here */
-	if (entry->type == LWIS_IO_ENTRY_WRITE) {
+	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		ret = lwis_ioreg_write(ioreg_dev, entry->rw.bid,
 				       entry->rw.offset, entry->rw.val,
 				       /*non_blocking=*/true);
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
 		index = entry->rw_batch.bid;
-		if (index < 0 || index >= list->count) {
-			pr_err("Invalid ioreg write block index %d\n", index);
-			ret = -EINVAL;
-			goto write_func_end;
-		}
-		block = &list->block[index];
-		if (block->base == NULL) {
-			pr_err("Invalid ioreg write block base undefined\n");
-			ret = -EINVAL;
-			goto write_func_end;
+		block = get_block_by_idx(ioreg_dev, index);
+		if (IS_ERR_OR_NULL(block)) {
+			ret = PTR_ERR(block);
+			goto rw_func_end;
 		}
 		ret = ioreg_write_batch_internal(
 			block->base, entry->rw_batch.offset,
@@ -376,12 +350,24 @@ int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
 			pr_err("Offset: 0x%x, Base: %p\n",
 			       entry->rw_batch.offset, block->base);
 		}
+	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+		ret = lwis_ioreg_read(ioreg_dev, entry->mod.bid,
+				      entry->mod.offset, &reg_value,
+				      /*non_blocking=*/true);
+		if (ret) {
+			goto rw_func_end;
+		}
+		reg_value &= ~entry->mod.val_mask;
+		reg_value |= entry->mod.val_mask & entry->mod.val;
+		ret = lwis_ioreg_write(ioreg_dev, entry->mod.bid,
+				       entry->mod.offset, reg_value,
+				       /*non_blocking=*/true);
 	} else {
-		pr_err("Invalid IO entry type for WRITE\n");
+		pr_err("Invalid IO entry type: %d\n", entry->type);
 		ret = -EINVAL;
 	}
 
-write_func_end:
+rw_func_end:
 	if (!non_blocking) {
 		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
@@ -393,19 +379,13 @@ int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
 		    uint64_t offset, uint64_t *value, bool non_blocking)
 {
 	struct lwis_ioreg *block;
-	struct lwis_ioreg_list *list;
 	int ret;
 
 	BUG_ON(!ioreg_dev);
 
-	list = &ioreg_dev->reg_list;
-	if (index < 0 || index >= list->count) {
-		return -EINVAL;
-	}
-
-	block = &list->block[index];
-	if (!block->base) {
-		return -EINVAL;
+	block = get_block_by_idx(ioreg_dev, index);
+	if (IS_ERR_OR_NULL(block)) {
+		return PTR_ERR(block);
 	}
 
 	if (!non_blocking) {
@@ -425,19 +405,13 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
 		     uint64_t offset, uint64_t value, bool non_blocking)
 {
 	struct lwis_ioreg *block;
-	struct lwis_ioreg_list *list;
 	int ret;
 
 	BUG_ON(!ioreg_dev);
 
-	list = &ioreg_dev->reg_list;
-	if (index < 0 || index >= list->count) {
-		return -EINVAL;
-	}
-
-	block = &list->block[index];
-	if (!block->base) {
-		return -EINVAL;
+	block = get_block_by_idx(ioreg_dev, index);
+	if (IS_ERR_OR_NULL(block)) {
+		return PTR_ERR(block);
 	}
 
 	if (!non_blocking) {

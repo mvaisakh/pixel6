@@ -47,16 +47,10 @@ int lwis_ioreg_put_by_idx(struct lwis_ioreg_device *ioreg_dev, int index);
 int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
 
 /*
- *  lwis_ioreg_io_entry_read: Read registers via io_entry request.
+ *  lwis_ioreg_io_entry_rw: Read/write registers via io_entry request.
  */
-int lwis_ioreg_io_entry_read(struct lwis_ioreg_device *ioreg_dev,
-			     struct lwis_io_entry *entry, bool non_blocking);
-
-/*
- *  lwis_ioreg_io_entry_write: Write registers via io_entry request.
- */
-int lwis_ioreg_io_entry_write(struct lwis_ioreg_device *ioreg_dev,
-			      struct lwis_io_entry *entry, bool non_blocking);
+int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
+			   struct lwis_io_entry *entry, bool non_blocking);
 
 /*
  *  lwis_ioreg_read: Read single register.
