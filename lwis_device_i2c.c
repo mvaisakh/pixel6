@@ -32,16 +32,12 @@
 
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
-static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
-				  bool non_blocking);
-static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_entry *entry,
-				   bool non_blocking);
+static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
+				struct lwis_io_entry *entry,
+				bool non_blocking);
 
 static struct lwis_device_subclass_operations i2c_vops = {
-	.register_read = lwis_i2c_register_read,
-	.register_write = lwis_i2c_register_write,
+	.register_io = lwis_i2c_register_io,
 	.device_enable = lwis_i2c_device_enable,
 	.device_disable = lwis_i2c_device_disable,
 	.event_enable = NULL,
@@ -78,28 +74,14 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-static int lwis_i2c_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
-				  bool non_blocking)
+static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
+				struct lwis_io_entry *entry, bool non_blocking)
 {
 	/* I2C does not currently support non-blocking calls at all */
 	if (non_blocking) {
 		return -EAGAIN;
 	}
-	return lwis_i2c_io_entry_rw((struct lwis_i2c_device *)lwis_dev,
-				    entry);
-}
-
-static int lwis_i2c_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_entry *entry,
-				   bool non_blocking)
-{
-	/* I2C does not currently support non-blocking calls at all */
-	if (non_blocking) {
-		return -EAGAIN;
-	}
-	return lwis_i2c_io_entry_rw((struct lwis_i2c_device *)lwis_dev,
-				    entry);
+	return lwis_i2c_io_entry_rw((struct lwis_i2c_device *)lwis_dev, entry);
 }
 
 static int lwis_i2c_addr_matcher(struct device *dev, void *data)

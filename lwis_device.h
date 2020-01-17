@@ -66,12 +66,10 @@ struct lwis_core {
  */
 
 struct lwis_device_subclass_operations {
-	/* Called by lwis_device when device register needs to be read */
-	int (*register_read)(struct lwis_device *lwis_dev,
-			     struct lwis_io_entry *entry, bool non_blocking);
-	/* Called by lwis_device when device register needs to be written */
-	int (*register_write)(struct lwis_device *lwis_dev,
-			      struct lwis_io_entry *entry, bool non_blocking);
+	/* Called by lwis_device when device register needs to be read/written
+	 */
+	int (*register_io)(struct lwis_device *lwis_dev,
+			   struct lwis_io_entry *entry, bool non_blocking);
 	/* called by lwis_device when enabling the device */
 	int (*device_enable)(struct lwis_device *lwis_dev);
 	/* called by lwis_device when disabling the device */

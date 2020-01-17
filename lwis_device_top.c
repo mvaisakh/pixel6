@@ -25,29 +25,25 @@
 
 #define LWIS_DRIVER_NAME "lwis-top"
 
-static int lwis_top_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
-				  bool non_blocking);
-static int lwis_top_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_entry *entry,
-				   bool non_blocking);
+static int lwis_top_register_io(struct lwis_device *lwis_dev,
+				struct lwis_io_entry *entry,
+				bool non_blocking);
 
 static struct lwis_device_subclass_operations top_vops = {
-	.register_read = lwis_top_register_read,
-	.register_write = lwis_top_register_write,
+	.register_io = lwis_top_register_io,
 	.device_enable = NULL,
 	.device_disable = NULL,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
 };
 
-static int lwis_top_register_read(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
-				  bool non_blocking)
+static int lwis_top_register_io(struct lwis_device *lwis_dev,
+				struct lwis_io_entry *entry, bool non_blocking)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
 	struct lwis_io_entry_rw_batch *rw_batch;
 	int i;
+	uint64_t reg_value;
 
 	BUG_ON(!entry);
 
@@ -71,22 +67,7 @@ static int lwis_top_register_read(struct lwis_device *lwis_dev,
 			rw_batch->buf[i] =
 				top_dev->scratch_mem[rw_batch->offset + i];
 		}
-	}
-
-	return 0;
-}
-
-static int lwis_top_register_write(struct lwis_device *lwis_dev,
-				   struct lwis_io_entry *entry,
-				   bool non_blocking)
-{
-	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
-	struct lwis_io_entry_rw_batch *rw_batch;
-	int i;
-
-	BUG_ON(!entry);
-
-	if (entry->type == LWIS_IO_ENTRY_WRITE) {
+	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 			pr_err("Offset (%d) must be < %d\n", entry->rw.offset,
 			       SCRATCH_MEMORY_SIZE);
@@ -106,6 +87,19 @@ static int lwis_top_register_write(struct lwis_device *lwis_dev,
 			top_dev->scratch_mem[rw_batch->offset + i] =
 				rw_batch->buf[i];
 		}
+	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+		if (entry->mod.offset >= SCRATCH_MEMORY_SIZE) {
+			pr_err("Offset (%d) must be < %d\n", entry->mod.offset,
+			       SCRATCH_MEMORY_SIZE);
+			return -EINVAL;
+		}
+		reg_value = top_dev->scratch_mem[entry->mod.offset];
+		reg_value &= ~entry->mod.val_mask;
+		reg_value |= entry->mod.val_mask & entry->mod.val;
+		top_dev->scratch_mem[entry->rw.offset] = reg_value;
+	} else {
+		pr_err("Invalid IO entry type: %d\n", entry->type);
+		return -EINVAL;
 	}
 
 	return 0;

@@ -61,8 +61,8 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 	bool batch_mode = false;
 
 	/* register read is not supported for the lwis device, return */
-	if (!lwis_dev->vops.register_read) {
-		pr_err("Register read not supported on this LWIS device\n");
+	if (!lwis_dev->vops.register_io) {
+		pr_err("Register IO not supported on this LWIS device\n");
 		return -EINVAL;
 	}
 
@@ -90,7 +90,7 @@ static int ioctl_reg_read(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_read(lwis_dev, &k_msg, false);
+	ret = lwis_dev->vops.register_io(lwis_dev, &k_msg, false);
 	if (ret) {
 		pr_err("Failed to read registers\n");
 		goto reg_read_exit;
@@ -125,8 +125,8 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 	bool batch_mode = false;
 
 	/* register write is not supported for the lwis device, return */
-	if (!lwis_dev->vops.register_write) {
-		pr_err("Register write not supported on this LWIS device\n");
+	if (!lwis_dev->vops.register_io) {
+		pr_err("Register IO not supported on this LWIS device\n");
 		return -EINVAL;
 	}
 
@@ -161,7 +161,7 @@ static int ioctl_reg_write(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_write(lwis_dev, &k_msg, false);
+	ret = lwis_dev->vops.register_io(lwis_dev, &k_msg, false);
 	if (ret) {
 		pr_err("Failed to write registers\n");
 	}

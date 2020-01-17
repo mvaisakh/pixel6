@@ -70,7 +70,6 @@ static int process_io_entries(struct lwis_client *client,
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
 	struct lwis_io_result *resp_buf;
-	uint64_t modify_value;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->num_entries * sizeof(struct lwis_io_result);
@@ -81,8 +80,8 @@ static int process_io_entries(struct lwis_client *client,
 	for (i = 0, read_idx = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE) {
-			ret = lwis_dev->vops.register_write(lwis_dev, entry,
-							    in_irq);
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
+							 in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -90,8 +89,8 @@ static int process_io_entries(struct lwis_client *client,
 		} else if (entry->type == LWIS_IO_ENTRY_READ) {
 			resp_buf[read_idx].bid = entry->rw.bid;
 			resp_buf[read_idx].offset = entry->rw.offset;
-			ret = lwis_dev->vops.register_read(lwis_dev, entry,
-							   in_irq);
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
+							 in_irq);
 			resp_buf[read_idx].value = entry->rw.val;
 			read_idx++;
 			if (ret) {
@@ -99,17 +98,8 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
-			modify_value = entry->mod.val;
-			ret = lwis_dev->vops.register_read(lwis_dev, entry,
-							   in_irq);
-			if (ret) {
-				resp->error_code = ret;
-				goto event_push;
-			}
-			entry->mod.val &= ~entry->mod.val_mask;
-			entry->mod.val |= entry->mod.val_mask & modify_value;
-			ret = lwis_dev->vops.register_write(lwis_dev, entry,
-							    in_irq);
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
+							 in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
