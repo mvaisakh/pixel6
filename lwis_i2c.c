@@ -149,35 +149,34 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 	return 0;
 }
 
-int lwis_i2c_io_entry_read(struct lwis_i2c_device *i2c,
-			   struct lwis_io_entry *entry)
+int lwis_i2c_io_entry_rw(struct lwis_i2c_device *i2c,
+			 struct lwis_io_entry *entry)
 {
+	int ret;
+	uint64_t reg_value;
 	BUG_ON(!entry);
 
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		return lwis_i2c_read(i2c, entry->rw.offset, &entry->rw.val);
 	}
-	if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
-		pr_err("Read batch for i2c devices is not supported yet");
-		return -EINVAL;
-	}
-	pr_err("Invalid IO entry type for READ\n");
-	return -EINVAL;
-}
-
-int lwis_i2c_io_entry_write(struct lwis_i2c_device *i2c,
-			    struct lwis_io_entry *entry)
-{
-	BUG_ON(!entry);
-
 	if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		return lwis_i2c_write(i2c, entry->rw.offset, entry->rw.val);
 	}
-	if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
-		pr_err("Write batch for i2c devices is not supported yet");
+	if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+		ret = lwis_i2c_read(i2c, entry->mod.offset, &reg_value);
+		if (ret) {
+			return ret;
+		}
+		reg_value &= ~entry->mod.val_mask;
+		reg_value |= entry->mod.val_mask & entry->mod.val;
+		return lwis_i2c_write(i2c, entry->mod.offset, reg_value);
+	}
+	if (entry->type == LWIS_IO_ENTRY_READ_BATCH ||
+	    entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
+		pr_err("Read/Write batch for i2c devices is not supported yet");
 		return -EINVAL;
 	}
-	pr_err("Invalid IO entry type for WRITE\n");
+	pr_err("Invalid IO entry type: %d\n", entry->type);
 	return -EINVAL;
 }
 

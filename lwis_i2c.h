@@ -30,17 +30,11 @@
 int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str);
 
 /*
- *  lwis_i2c_io_entry_read: Read from i2c bus via io_entry request.  The read
- *  back values will be stored in the entry also.
+ *  lwis_i2c_io_entry_rw: Read/Write from i2c bus via io_entry request.
+ *  The readback values will be stored in the entry.
  */
-int lwis_i2c_io_entry_read(struct lwis_i2c_device *i2c,
-			   struct lwis_io_entry *entry);
-
-/*
- *  lwis_i2c_io_entry_write: Write to i2c bus via io_entry request.
- */
-int lwis_i2c_io_entry_write(struct lwis_i2c_device *i2c,
-			    struct lwis_io_entry *entry);
+int lwis_i2c_io_entry_rw(struct lwis_i2c_device *i2c,
+			 struct lwis_io_entry *entry);
 
 /*
  *  lwis_i2c_read: Single read from i2c bus.
