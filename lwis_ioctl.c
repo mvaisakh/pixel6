@@ -716,12 +716,16 @@ static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 static int ioctl_transaction_submit(struct lwis_client *client,
 				    struct lwis_transaction_info __user *msg)
 {
+	int i;
 	int ret;
+	int last_buf_alloc_idx = 0;
 	size_t entry_size;
 	struct lwis_transaction *k_transaction;
 	struct lwis_transaction_info *user_transaction;
 	struct lwis_io_entry *k_entries;
 	struct lwis_io_entry *user_entries;
+	uint8_t *user_buf;
+	uint8_t *k_buf;
 
 	k_transaction = kzalloc(sizeof(struct lwis_transaction), GFP_KERNEL);
 	if (!k_transaction) {
@@ -756,10 +760,37 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 		goto error_free_entries;
 	}
 
+	/* For batch writes, need to allocate kernel buffers to deep copy the
+	 * write values. Don't need to do this for batch reads because memory
+	 * will be allocated in the form of lwis_io_result in transaction
+	 * processing.
+	 */
+	for (i = 0; i < k_transaction->info.num_io_entries; ++i) {
+		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
+			user_buf = k_entries[i].rw_batch.buf;
+			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes,
+					GFP_KERNEL);
+			if (!k_buf) {
+				pr_err("Failed to allocate tx write buffer\n");
+				ret = -ENOMEM;
+				goto error_free_buf;
+			}
+			last_buf_alloc_idx = i;
+			k_entries[i].rw_batch.buf = k_buf;
+			ret = copy_from_user(
+				k_buf, (void __user *)user_buf,
+				k_entries[i].rw_batch.size_in_bytes);
+			if (ret) {
+				pr_err("Failed to copy tx write buffer from userspace\n");
+				goto error_free_buf;
+			}
+		}
+	}
+
 	ret = lwis_transaction_submit(client, k_transaction);
 	if (ret) {
 		pr_err("Failed to submit transaction\n");
-		goto error_free_entries;
+		goto error_free_buf;
 	}
 
 	ret = copy_to_user((void __user *)user_transaction,
@@ -772,6 +803,12 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 
 	return 0;
 
+error_free_buf:
+	for (i = 0; i < last_buf_alloc_idx; ++i) {
+		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
+			kfree(k_entries[i].rw_batch.buf);
+		}
+	}
 error_free_entries:
 	kfree(k_entries);
 error_free_transaction:

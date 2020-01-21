@@ -177,12 +177,14 @@ struct lwis_transaction_response_header {
 	int64_t id;
 	int error_code;
 	size_t num_entries;
+	size_t results_size_bytes;
 };
 
 struct lwis_io_result {
 	int bid;
 	uint64_t offset;
-	uint64_t value;
+	size_t num_value_bytes;
+	uint8_t values[];
 };
 
 /*

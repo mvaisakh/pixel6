@@ -64,22 +64,24 @@ static int process_io_entries(struct lwis_client *client,
 	int i;
 	int ret = 0;
 	struct lwis_io_entry *entry;
-	int read_idx;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
-	struct lwis_io_result *resp_buf;
+	uint8_t *read_buf;
+	struct lwis_io_result *io_result;
+	const int reg_value_bytes = lwis_dev->reg_value_bitwidth / 8;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
-		    resp->num_entries * sizeof(struct lwis_io_result);
-	resp_buf = (struct lwis_io_result
-			    *)((uint8_t *)resp +
-			       sizeof(struct lwis_transaction_response_header));
+		    resp->results_size_bytes;
+	read_buf = (uint8_t *)resp +
+		   sizeof(struct lwis_transaction_response_header);
 
-	for (i = 0, read_idx = 0; i < info->num_io_entries; ++i) {
+	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
-		if (entry->type == LWIS_IO_ENTRY_WRITE) {
+		if (entry->type == LWIS_IO_ENTRY_WRITE ||
+		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
+		    entry->type == LWIS_IO_ENTRY_MODIFY) {
 			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 in_irq);
 			if (ret) {
@@ -87,23 +89,35 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ) {
-			resp_buf[read_idx].bid = entry->rw.bid;
-			resp_buf[read_idx].offset = entry->rw.offset;
-			ret = lwis_dev->vops.register_io(lwis_dev, entry,
-							 in_irq);
-			resp_buf[read_idx].value = entry->rw.val;
-			read_idx++;
-			if (ret) {
-				resp->error_code = ret;
-				goto event_push;
-			}
-		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+			io_result = (struct lwis_io_result *)read_buf;
+			io_result->bid = entry->rw.bid;
+			io_result->offset = entry->rw.offset;
+			io_result->num_value_bytes = reg_value_bytes;
 			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
 			}
+			memcpy(io_result->values, &entry->rw.val,
+			       reg_value_bytes);
+			read_buf += sizeof(struct lwis_io_result) +
+				    io_result->num_value_bytes;
+		} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+			io_result = (struct lwis_io_result *)read_buf;
+			io_result->bid = entry->rw_batch.bid;
+			io_result->offset = entry->rw_batch.offset;
+			io_result->num_value_bytes =
+				entry->rw_batch.size_in_bytes;
+			entry->rw_batch.buf = io_result->values;
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
+							 in_irq);
+			if (ret) {
+				resp->error_code = ret;
+				goto event_push;
+			}
+			read_buf += sizeof(struct lwis_io_result) +
+				    io_result->num_value_bytes;
 		}
 	}
 
@@ -114,6 +128,11 @@ event_push:
 				(void *)resp, resp_size);
 	list_del(list_node);
 	kfree(resp);
+	for (i = 0; i < info->num_io_entries; ++i) {
+		if (info->io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
+			kfree(info->io_entries[i].rw_batch.buf);
+		}
+	}
 	kfree(info->io_entries);
 	kfree(transaction);
 	return ret;
@@ -239,8 +258,10 @@ int lwis_transaction_submit(struct lwis_client *client,
 	struct lwis_io_entry *entry;
 	int i;
 	size_t resp_size;
+	size_t read_buf_size = 0;
 	int read_entries = 0;
 	unsigned long flags;
+	const int reg_value_bytes = client->lwis_dev->reg_value_bitwidth / 8;
 
 	BUG_ON(!client);
 	BUG_ON(!transaction);
@@ -263,6 +284,10 @@ int lwis_transaction_submit(struct lwis_client *client,
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_READ) {
+			read_buf_size += reg_value_bytes;
+			read_entries++;
+		} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+			read_buf_size += entry->rw_batch.size_in_bytes;
 			read_entries++;
 		}
 	}
@@ -270,7 +295,8 @@ int lwis_transaction_submit(struct lwis_client *client,
 	// Event response payload consists of header, and address and
 	// offset pairs.
 	resp_size = sizeof(struct lwis_transaction_response_header) +
-		    read_entries * sizeof(struct lwis_io_result);
+		    read_entries * sizeof(struct lwis_io_result) +
+		    read_buf_size;
 	transaction->resp = kzalloc(resp_size, GFP_KERNEL);
 	if (!transaction->resp) {
 		pr_err("Cannot allocate transaction response\n");
@@ -279,6 +305,8 @@ int lwis_transaction_submit(struct lwis_client *client,
 	transaction->resp->id = info->id;
 	transaction->resp->error_code = 0;
 	transaction->resp->num_entries = read_entries;
+	transaction->resp->results_size_bytes =
+		read_entries * sizeof(struct lwis_io_result) + read_buf_size;
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	if (info->trigger_event_id == LWIS_EVENT_ID_NONE) {
