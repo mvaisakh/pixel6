@@ -162,11 +162,12 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name)
 	return 0;
 }
 
-static int ioreg_read_batch_internal(unsigned int __iomem *base,
-				     uint64_t offset, int value_bits,
-				     size_t size_in_bytes, uint8_t *buf)
+static int ioreg_read_batch_internal(void __iomem *base, uint64_t offset,
+				     int value_bits, size_t size_in_bytes,
+				     uint8_t *buf)
 {
 	int i;
+	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
 		pr_err("Read buf size (%d) not divisible by bitwidth (%d)\n",
@@ -177,25 +178,25 @@ static int ioreg_read_batch_internal(unsigned int __iomem *base,
 	switch (value_bits) {
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
-			*(buf + i) = readb((void *)base + offset + i);
+			*(buf + i) = readb((void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
 			*(uint16_t *)(buf + i) =
-				readw((void *)base + offset + i);
+				readw((void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
 			*(uint32_t *)(buf + i) =
-				readl((void *)base + offset + i);
+				readl((void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
 			*(uint64_t *)(buf + i) =
-				readq((void *)base + offset + i);
+				readq((void __iomem *)(addr + i));
 		}
 		break;
 	default:
@@ -205,11 +206,12 @@ static int ioreg_read_batch_internal(unsigned int __iomem *base,
 	return 0;
 }
 
-static int ioreg_write_batch_internal(unsigned int __iomem *base,
-				      uint64_t offset, int value_bits,
-				      size_t size_in_bytes, uint8_t *buf)
+static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset,
+				      int value_bits, size_t size_in_bytes,
+				      uint8_t *buf)
 {
 	int i;
+	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
 		pr_err("Write buf size (%d) not divisible by bitwidth (%d)\n",
@@ -220,25 +222,25 @@ static int ioreg_write_batch_internal(unsigned int __iomem *base,
 	switch (value_bits) {
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
-			writeb(*(buf + i), (void *)base + offset + i);
+			writeb(*(buf + i), (void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
 			writew(*(uint16_t *)(buf + i),
-			       (void *)base + offset + i);
+			       (void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
 			writel(*(uint32_t *)(buf + i),
-			       (void *)base + offset + i);
+			       (void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
 			writeq(*(uint64_t *)(buf + i),
-			       (void *)base + offset + i);
+			       (void __iomem *)(addr + i));
 		}
 		break;
 	default:
@@ -248,21 +250,22 @@ static int ioreg_write_batch_internal(unsigned int __iomem *base,
 	return 0;
 }
 
-static int ioreg_read_internal(unsigned int __iomem *base, uint64_t offset,
+static int ioreg_read_internal(void __iomem *base, uint64_t offset,
 			       int value_bits, uint64_t *value)
 {
+	void __iomem *addr = (void __iomem *)((uint8_t *)base + offset);
 	switch (value_bits) {
 	case 8:
-		*value = readb((void *)base + offset);
+		*value = readb(addr);
 		break;
 	case 16:
-		*value = readw((void *)base + offset);
+		*value = readw(addr);
 		break;
 	case 32:
-		*value = readl((void *)base + offset);
+		*value = readl(addr);
 		break;
 	case 64:
-		*value = readq((void *)base + offset);
+		*value = readq(addr);
 		break;
 	default:
 		return -EINVAL;
@@ -271,21 +274,22 @@ static int ioreg_read_internal(unsigned int __iomem *base, uint64_t offset,
 	return 0;
 }
 
-static int ioreg_write_internal(unsigned int __iomem *base, uint64_t offset,
+static int ioreg_write_internal(void __iomem *base, uint64_t offset,
 				int value_bits, uint64_t value)
 {
+	void __iomem *addr = (void __iomem *)((uint8_t *)base + offset);
 	switch (value_bits) {
 	case 8:
-		writeb((uint8_t)value, (void *)base + offset);
+		writeb((uint8_t)value, addr);
 		break;
 	case 16:
-		writew((uint16_t)value, (void *)base + offset);
+		writew((uint16_t)value, addr);
 		break;
 	case 32:
-		writel((uint32_t)value, (void *)base + offset);
+		writel((uint32_t)value, addr);
 		break;
 	case 64:
-		writeq(value, (void *)base + offset);
+		writeq(value, addr);
 		break;
 	default:
 		return -EINVAL;
