@@ -87,7 +87,8 @@ enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_WRITE,
 	LWIS_IO_ENTRY_WRITE_BATCH,
 	LWIS_IO_ENTRY_MODIFY,
-	LWIS_IO_ENTRY_BIAS
+	LWIS_IO_ENTRY_BIAS,
+	LWIS_IO_ENTRY_POLL
 };
 
 // For io_entry read and write types.
@@ -116,6 +117,14 @@ struct lwis_io_entry_set_bias {
 	uint64_t bias;
 };
 
+// For io_entry poll type.
+struct lwis_io_entry_poll {
+	int bid;
+	uint64_t offset;
+	uint64_t val;
+	uint64_t timeout_ms;
+};
+
 struct lwis_io_entry {
 	int type;
 	union {
@@ -123,6 +132,7 @@ struct lwis_io_entry {
 		struct lwis_io_entry_rw_batch rw_batch;
 		struct lwis_io_entry_modify mod;
 		struct lwis_io_entry_set_bias set_bias;
+		struct lwis_io_entry_poll poll;
 	};
 };
 
@@ -182,6 +192,7 @@ struct lwis_transaction_info {
 struct lwis_transaction_response_header {
 	int64_t id;
 	int error_code;
+	int completion_index;
 	size_t num_entries;
 	size_t results_size_bytes;
 };
@@ -223,7 +234,6 @@ struct lwis_event_subscribe {
 #define LWIS_EVENT_SUBSCRIBE                                                   \
 	_IOW(LWIS_IOC_TYPE, 23, struct lwis_event_subscribe)
 #define LWIS_EVENT_UNSUBSCRIBE _IOW(LWIS_IOC_TYPE, 24, int64_t)
-
 
 #define LWIS_TRANSACTION_SUBMIT                                                \
 	_IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)

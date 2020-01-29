@@ -12,6 +12,7 @@
 
 #include "lwis_transaction.h"
 
+#include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
@@ -73,11 +74,14 @@ static int process_io_entries(struct lwis_client *client,
 	const int reg_value_bytes = lwis_dev->reg_value_bitwidth / 8;
 	unsigned long flags;
 	uint64_t bias = 0;
+	uint64_t start;
+	uint64_t val;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->results_size_bytes;
 	read_buf = (uint8_t *)resp +
 		   sizeof(struct lwis_transaction_response_header);
+	resp->completion_index = -1;
 
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
@@ -132,7 +136,36 @@ static int process_io_entries(struct lwis_client *client,
 				    io_result->num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_BIAS) {
 			bias = entry->set_bias.bias;
+		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
+			/* Read until getting the expected value or timeout */
+			val = ~entry->poll.val;
+			start = ktime_to_ms(ktime_get());
+			while (val != entry->poll.val) {
+				ret = lwis_device_single_register_read(
+					lwis_dev, false, entry->poll.bid,
+					entry->poll.offset, &val);
+				if (ret) {
+					pr_err("Failed to read registers\n");
+					resp->error_code = ret;
+					goto event_push;
+				}
+				if (val == entry->poll.val) {
+					break;
+				}
+				if (ktime_to_ms(ktime_get()) - start >
+				    entry->poll.timeout_ms) {
+					resp->error_code = -ETIMEDOUT;
+					goto event_push;
+				}
+				/* Sleep for 1ms */
+				usleep_range(1000, 1000);
+			}
+		} else {
+			pr_err("Unrecognized io_entry command\n");
+			resp->error_code = -EINVAL;
+			goto event_push;
 		}
+		resp->completion_index = i;
 	}
 
 event_push:
