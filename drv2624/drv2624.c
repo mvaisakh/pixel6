@@ -273,8 +273,8 @@ drv2624_get_diag_result(struct drv2624_data *pDRV2624, unsigned char nStatus)
 			goto end;
 		pDRV2624->mDiagResult.mnDiagK = nResult;
 
-		Re = 478.43 * (pDRV2624->mDiagResult.mnDiagZ /
-				(4 * pDRV2624->mDiagResult.mnDiagK + 719));
+		Re = ((47843UL * pDRV2624->mDiagResult.mnDiagZ) /
+			(4UL * pDRV2624->mDiagResult.mnDiagK + 719UL)) / 100;
 
 		dev_dbg(pDRV2624->dev,
 			"%s: ZResult=0x%x, CurrentK=0x%x, Re = %d ohm\n",
