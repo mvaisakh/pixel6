@@ -405,10 +405,10 @@ static void vibrator_work_routine(struct work_struct *work)
 		__func__, pDRV2624->mnWorkMode);
 
 	if (pDRV2624->mbIRQUsed) {
-		pDRV2624->mnIntStatus =
-			drv2624_reg_read(pDRV2624, DRV2624_REG_STATUS);
+		nResult = drv2624_reg_read(pDRV2624, DRV2624_REG_STATUS);
 		if (nResult < 0)
 			goto err;
+		pDRV2624->mnIntStatus = nResult;
 
 		drv2624_disableIRQ(pDRV2624);
 
@@ -434,8 +434,8 @@ static void vibrator_work_routine(struct work_struct *work)
 	if (pDRV2624->mnWorkMode == DRV2624_RTP_MODE) {
 		drv2624_stop(pDRV2624);
 	} else if (pDRV2624->mnWorkMode == DRV2624_RAM_MODE) {
-		status = drv2624_reg_read(pDRV2624, DRV2624_REG_GO);
-		if ((status < 0) || (status == STOP)
+		nResult = drv2624_reg_read(pDRV2624, DRV2624_REG_GO);
+		if ((nResult < 0) || (nResult == STOP)
 					|| !pDRV2624->mnVibratorPlaying) {
 			drv2624_stop(pDRV2624);
 		} else {
