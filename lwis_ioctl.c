@@ -104,6 +104,10 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_CANCEL);
 		break;
+	case IOCTL_TO_ENUM(LWIS_TRANSACTION_REPLACE):
+		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_REPLACE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_REPLACE);
+		break;
 	default:
 		strcpy(type_name, "UNDEFINED");
 		exp_size = 0;
@@ -721,8 +725,9 @@ static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 	return ret;
 }
 
-static int ioctl_transaction_submit(struct lwis_client *client,
-				    struct lwis_transaction_info __user *msg)
+static int lwis_transaction_prepare(struct lwis_client *client,
+				    struct lwis_transaction_info __user *msg,
+				    struct lwis_transaction **transaction)
 {
 	int i;
 	int ret;
@@ -802,32 +807,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 			}
 		}
 	}
-
-	ret = lwis_transaction_submit(client, k_transaction);
-	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to submit transaction\n");
-		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
-		if (copy_to_user((void __user *)user_transaction,
-				 &k_transaction->info,
-				 sizeof(struct lwis_transaction_info))) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to return info to userspace\n");
-		}
-		goto error_free_buf;
-	}
-
-	ret = copy_to_user((void __user *)user_transaction,
-			   &k_transaction->info,
-			   sizeof(struct lwis_transaction_info));
-	if (ret) {
-		dev_err_ratelimited(
-			lwis_dev->dev,
-			"Failed to copy transaction results to userspace\n");
-		return ret;
-	}
-
+	*transaction = k_transaction;
 	return 0;
 
 error_free_buf:
@@ -841,6 +821,93 @@ error_free_entries:
 error_free_transaction:
 	kfree(k_transaction);
 	return ret;
+}
+
+static void lwis_transaction_clean(struct lwis_transaction *transaction)
+{
+	int i;
+
+	for (i = 0; i < transaction->info.num_io_entries; ++i) {
+		if (transaction->info.io_entries[i].type ==
+		    LWIS_IO_ENTRY_WRITE_BATCH) {
+			kfree(transaction->info.io_entries[i].rw_batch.buf);
+		}
+	}
+	kfree(transaction->info.io_entries);
+	kfree(transaction);
+}
+
+static int ioctl_transaction_submit(struct lwis_client *client,
+				    struct lwis_transaction_info __user *msg)
+{
+	int ret;
+	struct lwis_transaction *k_transaction = NULL;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = lwis_transaction_prepare(client, msg, &k_transaction);
+	if (ret)
+		return ret;
+
+	ret = lwis_transaction_submit(client, k_transaction);
+	if (ret) {
+		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
+		if (copy_to_user((void __user *)msg, &k_transaction->info,
+				 sizeof(struct lwis_transaction_info))) {
+			dev_err_ratelimited(
+				lwis_dev->dev,
+				"Failed to return info to userspace\n");
+		}
+		lwis_transaction_clean(k_transaction);
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, &k_transaction->info,
+			   sizeof(struct lwis_transaction_info));
+	if (ret) {
+		dev_err_ratelimited(
+			lwis_dev->dev,
+			"Failed to copy transaction results to userspace\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int ioctl_transaction_replace(struct lwis_client *client,
+				     struct lwis_transaction_info __user *msg)
+{
+	int ret;
+	struct lwis_transaction *k_transaction;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = lwis_transaction_prepare(client, msg, &k_transaction);
+	if (ret) {
+		return ret;
+	}
+
+	ret = lwis_transaction_replace(client, k_transaction);
+	if (ret) {
+		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
+		if (copy_to_user((void __user *)msg, &k_transaction->info,
+				 sizeof(struct lwis_transaction_info))) {
+			dev_err_ratelimited(
+				lwis_dev->dev,
+				"Failed to return info to userspace\n");
+		}
+		lwis_transaction_clean(k_transaction);
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, &k_transaction->info,
+			   sizeof(struct lwis_transaction_info));
+	if (ret) {
+		dev_err_ratelimited(
+			lwis_dev->dev,
+			"Failed to copy transaction results to userspace\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static int ioctl_transaction_cancel(struct lwis_client *client,
@@ -1044,6 +1111,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_TRANSACTION_CANCEL:
 		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
+		break;
+	case LWIS_TRANSACTION_REPLACE:
+		ret = ioctl_transaction_replace(
+			lwis_client, (struct lwis_transaction_info *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

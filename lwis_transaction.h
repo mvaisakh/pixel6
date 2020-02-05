@@ -47,5 +47,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   struct list_head *pending_events,
 				   bool in_irq);
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
+int lwis_transaction_replace(struct lwis_client *client,
+			     struct lwis_transaction *transaction);
 
 #endif /* LWIS_TRANSACTION_H_ */

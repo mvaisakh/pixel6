@@ -252,6 +252,8 @@ struct lwis_event_subscribe {
 #define LWIS_TRANSACTION_SUBMIT                                                \
 	_IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
 #define LWIS_TRANSACTION_CANCEL _IOWR(LWIS_IOC_TYPE, 31, int64_t)
+#define LWIS_TRANSACTION_REPLACE                                               \
+	_IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
 
 #ifdef __cplusplus
 } /* extern "C" */
