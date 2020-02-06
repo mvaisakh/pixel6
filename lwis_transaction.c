@@ -72,6 +72,7 @@ static int process_io_entries(struct lwis_client *client,
 	struct lwis_io_result *io_result;
 	const int reg_value_bytes = lwis_dev->reg_value_bitwidth / 8;
 	unsigned long flags;
+	uint64_t bias = 0;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->results_size_bytes;
@@ -80,6 +81,16 @@ static int process_io_entries(struct lwis_client *client,
 
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
+		if (entry->type == LWIS_IO_ENTRY_WRITE ||
+		    entry->type == LWIS_IO_ENTRY_READ) {
+			entry->rw.offset += bias;
+		} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
+			   entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+			entry->rw_batch.offset += bias;
+		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+			entry->mod.offset += bias;
+		}
+
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
@@ -119,6 +130,8 @@ static int process_io_entries(struct lwis_client *client,
 			}
 			read_buf += sizeof(struct lwis_io_result) +
 				    io_result->num_value_bytes;
+		} else if (entry->type == LWIS_IO_ENTRY_BIAS) {
+			bias = entry->set_bias.bias;
 		}
 	}
 
@@ -287,17 +300,13 @@ int lwis_transaction_submit(struct lwis_client *client,
 
 	/* Make sure sw events exist in event table */
 	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
-		lwis_dev,
-		info->emit_success_event_id)) ||
-		IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
-			client,
-			info->emit_success_event_id)) ||
-		IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
-			lwis_dev,
-			info->emit_error_event_id)) ||
-		IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
-			client,
-			info->emit_error_event_id))) {
+		    lwis_dev, info->emit_success_event_id)) ||
+	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
+		    client, info->emit_success_event_id)) ||
+	    IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
+		    lwis_dev, info->emit_error_event_id)) ||
+	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
+		    client, info->emit_error_event_id))) {
 		pr_err("Cannot create sw events for transaction");
 		return -EINVAL;
 	}
@@ -369,7 +378,7 @@ static void process_transaction(struct lwis_client *client,
 	    trigger_counter == current_event_counter) {
 		/* I2c devices io can't execute io in irq context */
 		if (transaction->info.run_in_event_context &&
-			client->lwis_dev->type != DEVICE_TYPE_I2C) {
+		    client->lwis_dev->type != DEVICE_TYPE_I2C) {
 			process_io_entries(client, transaction,
 					   &transaction->event_list_node,
 					   pending_events, in_irq);
