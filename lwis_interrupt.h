@@ -11,9 +11,9 @@
 #ifndef LWIS_INTERRUPT_H_
 #define LWIS_INTERRUPT_H_
 
+#include <linux/hashtable.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
-#include <linux/hashtable.h>
 #include <linux/platform_device.h>
 
 #define EVENT_INFO_HASH_BITS 8
@@ -36,6 +36,8 @@ struct lwis_interrupt {
 	int64_t irq_reset_reg;
 	/* Offset of the mask register */
 	int64_t irq_mask_reg;
+	/* If mask_reg actually disable the interrupts. */
+	bool mask_toggled;
 	/* Hash table of event info*/
 	DECLARE_HASHTABLE(event_infos, EVENT_INFO_HASH_BITS);
 	/* List of enabled events */
@@ -86,8 +88,8 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  int64_t *irq_events, size_t irq_events_num,
 				  uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg);
-
+				  int64_t irq_reset_reg, int64_t irq_mask_reg,
+				  bool mask_toggled);
 
 /*
  * lwis_interrupt_event_enable: Handles masking and unmasking interrupts when

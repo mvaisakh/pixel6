@@ -106,6 +106,7 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq,
 	struct lwis_single_event_info *p;
 
 	BUG_ON(!irq);
+
 	/* Iterate through the hash bucket for this event_id */
 	hash_for_each_possible(irq->event_infos, p, node, event_id)
 	{
@@ -165,7 +166,8 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  int64_t *irq_events, size_t irq_events_num,
 				  uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg)
+				  int64_t irq_reset_reg, int64_t irq_mask_reg,
+				  bool mask_toggled)
 {
 	int i;
 	unsigned long flags;
@@ -178,6 +180,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	list->irq[index].irq_src_reg = irq_src_reg;
 	list->irq[index].irq_reset_reg = irq_reset_reg;
 	list->irq[index].irq_mask_reg = irq_mask_reg;
+	list->irq[index].mask_toggled = mask_toggled;
 	/* Empty hash table for event infos */
 	hash_init(list->irq[index].event_infos);
 	/* Initialize an empty list for enabled events */
@@ -234,6 +237,13 @@ lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 	uint64_t mask_value;
 	BUG_ON(!irq);
 	BUG_ON(!event);
+
+	/* If mask_toggled is set, reverse the enable/disable logic. */
+	if (irq->mask_toggled) {
+		pr_info("Reverse mask since mask_toggled is set");
+		enabled = (!enabled);
+	}
+
 	if (enabled) {
 		/* Add the event info to the list of enabled event infos */
 		list_add_tail(&event->node_enabled, &irq->enabled_event_infos);
