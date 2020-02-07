@@ -170,8 +170,8 @@ static int ioreg_read_batch_internal(void __iomem *base, uint64_t offset,
 	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
-		pr_err("Read buf size (%d) not divisible by bitwidth (%d)\n",
-		       size_in_bytes, value_bits);
+		pr_err("Read buf size (%d) not divisible by %d (bitwidth = %d)\n",
+		       size_in_bytes, value_bits / 8, value_bits);
 		return -EINVAL;
 	}
 
@@ -214,8 +214,8 @@ static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset,
 	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
-		pr_err("Write buf size (%d) not divisible by bitwidth (%d)\n",
-		       size_in_bytes, value_bits);
+		pr_err("Write buf size (%d) not divisible by %d (bitwidth = %d)\n",
+		       size_in_bytes, value_bits / 8, value_bits);
 		return -EINVAL;
 	}
 
