@@ -251,6 +251,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	of_for_each_phandle(&it, ret, dev_node, "interrupt-event-infos", 0, 0)
 	{
 		const char *irq_reg_space = NULL;
+		bool irq_mask_reg_toggle;
 		u64 irq_src_reg;
 		u64 irq_reset_reg;
 		u64 irq_mask_reg;
@@ -389,11 +390,14 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 			goto error_event_infos;
 		}
 
+		irq_mask_reg_toggle = of_property_read_bool(
+			event_info, "irq-mask-reg-toggle");
+
 		ret = lwis_interrupt_set_event_info(
 			lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
 			(int64_t *)irq_events, irq_events_num, int_reg_bits,
 			int_reg_bits_num, irq_src_reg, irq_reset_reg,
-			irq_mask_reg);
+			irq_mask_reg, irq_mask_reg_toggle);
 		if (ret) {
 			pr_err("Error setting event info for interrupt %d %d\n",
 			       i, ret);
