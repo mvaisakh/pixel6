@@ -12,6 +12,7 @@
 
 #include "lwis_device.h"
 
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/hashtable.h>
 #include <linux/init.h>
@@ -20,12 +21,15 @@
 #include <linux/uaccess.h>
 
 #include "lwis_buffer.h"
+#include "lwis_clock.h"
 #include "lwis_commands.h"
 #include "lwis_device.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
+#include "lwis_gpio.h"
 #include "lwis_init.h"
 #include "lwis_ioctl.h"
+#include "lwis_pinctrl.h"
 #include "lwis_platform.h"
 #include "lwis_transaction.h"
 
@@ -36,6 +40,8 @@
 #define LWIS_CLASS_NAME "lwis"
 #define LWIS_DEVICE_NAME "lwis"
 #define LWIS_MAX_DEVICES (1U << MINORBITS)
+#define MCLK_ON_STRING "mclk_on"
+#define MCLK_OFF_STRING "mclk_off"
 
 /* Global declaration for core lwis structure */
 static struct lwis_core core;
@@ -150,6 +156,17 @@ static int lwis_release(struct inode *node, struct file *fp)
 
 	rc = lwis_release_client(lwis_client);
 
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 0) {
+		lwis_dev->enabled--;
+		if (lwis_dev->enabled == 0) {
+			rc = lwis_dev_power_down_locked(lwis_dev);
+			pr_info("No more client, power down %s",
+				lwis_dev->name);
+		}
+	}
+	mutex_unlock(&lwis_dev->client_lock);
+
 	/* Take this lwis_client off the list of active clients */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_for_each_entry_safe(p, n, &lwis_dev->clients,
@@ -259,6 +276,276 @@ static void lwis_assign_top_to_other(struct lwis_device *top_dev)
 		lwis_dev->top_dev = top_dev;
 	}
 	mutex_unlock(&core.lock);
+}
+
+/*
+ * Power up a LWIS device, should be called when lwis_dev->enabled is 0
+ * lwis_dev->client_lock should be held before this function.
+ * TODO(edmondchung): Not sure whether this is generic enough to handle device
+ * enable yet, but this is sufficient to enable the sensor - so I will stick
+ * with this for now.
+ */
+int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
+{
+	int ret;
+
+	/* Let's do the platform-specific enable call */
+	ret = lwis_platform_device_enable(lwis_dev);
+	if (ret) {
+		pr_err("Platform-specific device enable fail: %d\n", ret);
+		return ret;
+	}
+
+	if (lwis_dev->clocks) {
+		/* Enable clocks */
+		ret = lwis_clock_enable_all(lwis_dev->clocks);
+		if (ret) {
+			pr_err("Error enabling clocks (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->enable_gpios_present) {
+		struct gpio_descs *gpios;
+
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
+		if (IS_ERR_OR_NULL(gpios)) {
+			pr_err("Failed to obtain enable gpio list (%d)\n",
+			       PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			return ret;
+		}
+
+		/* Set enable pins to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		if (ret) {
+			pr_err("Error enabling GPIO pins (%d)\n", ret);
+			return ret;
+		}
+
+		/* Setting enable_gpios to non-NULL to indicate that this lwis
+		   device is holding onto the GPIO pins. */
+		lwis_dev->enable_gpios = gpios;
+	}
+
+	if (lwis_dev->regulators) {
+		/* Enable all the regulators related to this sensor */
+		ret = lwis_regulator_enable_all(lwis_dev->regulators);
+		if (ret) {
+			pr_err("Error enabling regulators (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->reset_gpios_present) {
+		struct gpio_descs *gpios;
+
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
+		if (IS_ERR_OR_NULL(gpios)) {
+			pr_err("Failed to obtain reset gpio list (%d)\n",
+			       PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			return ret;
+		}
+
+		/* Set reset pin to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		if (ret) {
+			pr_err("Failed to set reset GPIOs to ACTIVE (%d)\n",
+			       ret);
+			return ret;
+		}
+
+		/* Inherited from FIMC, will see if this is needed */
+		usleep_range(1500, 1500);
+
+		/* Set reset pin to 0 (i.e. deasserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 0);
+		if (ret) {
+			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
+			       ret);
+			return ret;
+		}
+
+		/* Setting reset_gpios to non-NULL to indicate that this lwis
+		   device is holding onto the GPIO pins. */
+		lwis_dev->reset_gpios = gpios;
+	}
+
+	if (lwis_dev->mclk_ctrl) {
+		/* Set MCLK state to on */
+		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+					     MCLK_ON_STRING);
+		if (ret) {
+			pr_err("Error setting mclk state (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->shared_enable_gpios_present) {
+		struct gpio_descs *gpios;
+
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
+			"shared-enable");
+		if (IS_ERR_OR_NULL(gpios)) {
+			if (PTR_ERR(gpios) == -EBUSY) {
+				pr_warn("Shared gpios requested by another device\n");
+			} else {
+				pr_err("Failed to obtain shared gpio list (%d)\n",
+					PTR_ERR(gpios));
+				ret = PTR_ERR(gpios);
+				return ret;
+			}
+		} else {
+			/* Set enable pins to 1 (i.e. asserted) */
+			ret = lwis_gpio_list_set_output_value(gpios, 1);
+			if (ret) {
+				pr_err("Error enabling GPIO pins (%d)\n", ret);
+				return ret;
+			}
+			lwis_dev->shared_enable_gpios = gpios;
+		}
+	}
+
+	if (lwis_dev->phys) {
+		/* Power on the PHY */
+		ret = lwis_phy_set_power_all(lwis_dev->phys,
+					     /* power_on = */ true);
+		if (ret) {
+			pr_err("Error powering on PHY\n");
+			return ret;
+		}
+	}
+
+	if (lwis_dev->irqs) {
+		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
+		if (ret) {
+			pr_err("Failed to request interrupts (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->vops.device_enable) {
+		ret = lwis_dev->vops.device_enable(lwis_dev);
+		if (ret) {
+			pr_err("Error executing device enable function\n");
+			return ret;
+		}
+	}
+
+	/* Sleeping to make sure all pins are ready to go */
+	usleep_range(2000, 2000);
+	return ret;
+}
+
+/*
+ * Power down a LWIS device, should be called when lwis_dev->enabled become 0
+ * lwis_dev->client_lock should be held before this function.
+ * TODO(edmondchung): Same comment as lwis_dev_power_up_locked.
+ */
+int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
+{
+	int ret;
+
+	if (lwis_dev->vops.device_disable) {
+		ret = lwis_dev->vops.device_disable(lwis_dev);
+		if (ret) {
+			pr_err("Error executing device disable function\n");
+			return ret;
+		}
+	}
+
+	if (lwis_dev->irqs) {
+		lwis_interrupt_free_all_default(lwis_dev->irqs);
+	}
+
+	if (lwis_dev->phys) {
+		/* Power on the PHY */
+		ret = lwis_phy_set_power_all(lwis_dev->phys,
+					     /* power_on = */ false);
+		if (ret) {
+			pr_err("Error powering off PHY\n");
+			return ret;
+		}
+	}
+
+	if (lwis_dev->mclk_ctrl) {
+		/* Set MCLK state to off */
+		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+					     MCLK_OFF_STRING);
+		if (ret) {
+			pr_err("Error setting mclk state (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->shared_enable_gpios_present &&
+		lwis_dev->shared_enable_gpios) {
+		/* Set enable pins to 0 (i.e. deasserted) */
+		ret = lwis_gpio_list_set_output_value(
+			lwis_dev->shared_enable_gpios, 0);
+		if (ret) {
+			pr_err("Error disabling GPIO pins (%d)\n", ret);
+			return ret;
+		}
+
+		/* Release "ownership" of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->shared_enable_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->shared_enable_gpios = NULL;
+	}
+
+	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
+		/* Set enable pins to 0 (i.e. deasserted) */
+		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
+						      0);
+		if (ret) {
+			pr_err("Error disabling GPIO pins (%d)\n", ret);
+			return ret;
+		}
+
+		/* Release "ownership" of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->enable_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->enable_gpios = NULL;
+	}
+
+	if (lwis_dev->regulators) {
+		/* Disable all the regulators */
+		ret = lwis_regulator_disable_all(lwis_dev->regulators);
+		if (ret) {
+			pr_err("Error disabling regulators (%d)\n", ret);
+			return ret;
+		}
+	}
+
+	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
+		/* Set reset pins to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
+		if (ret) {
+			pr_err("Error setting reset GPIOs to ACTIVE (%d)\n",
+			       ret);
+			return ret;
+		}
+
+		/* Release ownership of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->reset_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->reset_gpios = NULL;
+	}
+
+	if (lwis_dev->clocks) {
+		/* Disable all clocks */
+		lwis_clock_disable_all(lwis_dev->clocks);
+	}
+
+	/* Let's do the platform-specific disable call */
+	ret = lwis_platform_device_disable(lwis_dev);
+	if (ret) {
+		pr_err("Platform-specific device disable fail: %d\n", ret);
+		return ret;
+	}
+	return ret;
 }
 
 /*

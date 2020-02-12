@@ -216,4 +216,16 @@ struct lwis_device *lwis_find_top_dev(void);
  */
 struct lwis_device *lwis_find_dev_by_id(int dev_id);
 
+/*
+ * Power up a LWIS device, should be called when lwis_dev->enabled is 0
+ * lwis_dev->client_lock should be held before this function.
+ */
+int lwis_dev_power_up_locked(struct lwis_device *lwis_dev);
+
+/*
+ * Power down a LWIS device, should be called when lwis_dev->enabled become 0
+ * lwis_dev->client_lock should be held before this function.
+ */
+int lwis_dev_power_down_locked(struct lwis_device *lwis_dev);
+
 #endif /* LWIS_DEVICE_H_ */
