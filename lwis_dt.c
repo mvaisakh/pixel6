@@ -521,6 +521,13 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 
 	pr_info("Device tree entry [%s] - begin\n", lwis_dev->name);
 
+	ret = parse_gpios(lwis_dev, "shared-enable",
+			  &lwis_dev->shared_enable_gpios_present);
+	if (ret) {
+		pr_err("Error parsing shared-enable-gpios\n");
+		return ret;
+	}
+
 	ret = parse_gpios(lwis_dev, "enable", &lwis_dev->enable_gpios_present);
 	if (ret) {
 		pr_err("Error parsing enable-gpios\n");

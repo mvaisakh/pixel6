@@ -354,6 +354,31 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->shared_enable_gpios_present) {
+		struct gpio_descs *gpios;
+
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
+			"shared-enable");
+		if (IS_ERR_OR_NULL(gpios)) {
+			if (PTR_ERR(gpios) == -EBUSY) {
+				pr_warn("Shared gpios requested by another device\n");
+			} else {
+				pr_err("Failed to obtain shared gpio list (%d)\n",
+					PTR_ERR(gpios));
+				ret = PTR_ERR(gpios);
+				goto error_locked;
+			}
+		} else {
+			/* Set enable pins to 1 (i.e. asserted) */
+			ret = lwis_gpio_list_set_output_value(gpios, 1);
+			if (ret) {
+				pr_err("Error enabling GPIO pins (%d)\n", ret);
+				goto error_locked;
+			}
+			lwis_dev->shared_enable_gpios = gpios;
+		}
+	}
+
 	if (lwis_dev->enable_gpios_present) {
 		struct gpio_descs *gpios;
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
@@ -458,7 +483,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 	/* Sleeping to make sure all pins are ready to go */
 	usleep_range(2000, 2000);
 
-	pr_info("Device enabled\n");
+	pr_info("Device enabled: %s\n", lwis_dev->name);
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
 	return ret;
@@ -514,6 +539,22 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->shared_enable_gpios_present &&
+		lwis_dev->shared_enable_gpios) {
+		/* Set enable pins to 0 (i.e. deasserted) */
+		ret = lwis_gpio_list_set_output_value(
+			lwis_dev->shared_enable_gpios, 0);
+		if (ret) {
+			pr_err("Error disabling GPIO pins (%d)\n", ret);
+			goto error_locked;
+		}
+
+		/* Release "ownership" of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->shared_enable_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->shared_enable_gpios = NULL;
+	}
+
 	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
 		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
@@ -565,7 +606,7 @@ static int ioctl_device_disable(struct lwis_device *lwis_dev)
 		goto error_locked;
 	}
 
-	pr_info("Device disabled\n");
+	pr_info("Device disabled: %s\n", lwis_dev->name);
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
 	return ret;

@@ -17,6 +17,9 @@
  *  LWIS GPIO Interface Functions
  */
 
+/* debug function */
+void lwis_gpio_list_print(char *name, struct gpio_descs *gpios);
+
 /*
  *  Acquire GPIO descriptors.
  */

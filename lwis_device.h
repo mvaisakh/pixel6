@@ -129,6 +129,8 @@ struct lwis_device {
 	struct gpio_descs *reset_gpios;
 	bool enable_gpios_present;
 	struct gpio_descs *enable_gpios;
+	bool shared_enable_gpios_present;
+	struct gpio_descs *shared_enable_gpios;
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
 	struct pinctrl *mclk_ctrl;

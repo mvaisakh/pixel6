@@ -15,6 +15,22 @@
 
 #include "lwis_gpio.h"
 
+/* debug function */
+void lwis_gpio_list_print(char *name, struct gpio_descs *gpios)
+{
+	int i;
+
+	if (IS_ERR_OR_NULL(gpios)) {
+		pr_info("name: %s error: %d\n", name, PTR_ERR(gpios));
+	} else {
+		pr_info("name: %s, count: %d\n", name, gpios->ndescs);
+		for (i = 0; i < gpios->ndescs; i++) {
+			pr_info("gpio number: %d\n",
+				desc_to_gpio(gpios->desc[i]));
+		}
+	}
+}
+
 struct gpio_descs *lwis_gpio_list_get(struct device *dev, const char *name)
 {
 	/* By default, the GPIO pins are acquired but uninitialized */
