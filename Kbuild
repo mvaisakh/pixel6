@@ -20,6 +20,9 @@ lwis-objs += lwis_util.o
 ifeq ($(CONFIG_SOC_EXYNOS9820), y)
 lwis-objs += platform/exynos/lwis_platform_exynos.o
 lwis-objs += platform/exynos/lwis_platform_exynos_dma.o
+else ifeq ($(CONFIG_SOC_GS101), y)
+lwis-objs += platform/exynos/lwis_platform_exynos.o
+lwis-objs += platform/exynos/lwis_platform_exynos_dma.o
 endif
 
 # Device tree specific file
