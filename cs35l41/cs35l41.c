@@ -3519,6 +3519,7 @@ err:
 	regulator_bulk_disable(cs35l41->num_supplies, cs35l41->supplies);
 	return ret;
 }
+EXPORT_SYMBOL(cs35l41_probe);
 
 int cs35l41_remove(struct cs35l41_private *cs35l41)
 {
@@ -3531,6 +3532,7 @@ int cs35l41_remove(struct cs35l41_private *cs35l41)
 	snd_soc_unregister_component(cs35l41->dev);
 	return 0;
 }
+EXPORT_SYMBOL(cs35l41_remove);
 
 MODULE_DESCRIPTION("ASoC CS35L41 driver");
 MODULE_AUTHOR("David Rhodes, Cirrus Logic Inc, <david.rhodes@cirrus.com>");

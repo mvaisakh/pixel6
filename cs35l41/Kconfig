@@ -4,6 +4,7 @@ config SND_SOC_CS35L41
 
 config SND_SOC_CS35L41_SPI
 	tristate "Cirrus Logic CS35L41 CODEC (SPI)"
+	depends on SND_SOC_CS35L41
 	depends on SPI_MASTER
 	select SND_SOC_CS35L41
 	select REGMAP_SPI
