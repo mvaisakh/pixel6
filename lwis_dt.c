@@ -261,6 +261,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		u32 *int_reg_bits;
 		int irq_reg_bid = -1;
 		int irq_reg_bid_count;
+		u32 irq_reg_bitwidth = 0;
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
 
@@ -393,11 +394,13 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		irq_mask_reg_toggle = of_property_read_bool(
 			event_info, "irq-mask-reg-toggle");
 
+		of_property_read_u32(event_info, "irq-reg-bitwidth",
+				     &irq_reg_bitwidth);
 		ret = lwis_interrupt_set_event_info(
 			lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
 			(int64_t *)irq_events, irq_events_num, int_reg_bits,
 			int_reg_bits_num, irq_src_reg, irq_reset_reg,
-			irq_mask_reg, irq_mask_reg_toggle);
+			irq_mask_reg, irq_mask_reg_toggle, irq_reg_bitwidth);
 		if (ret) {
 			pr_err("Error setting event info for interrupt %d %d\n",
 			       i, ret);
