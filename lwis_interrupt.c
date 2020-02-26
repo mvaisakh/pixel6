@@ -239,71 +239,60 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	return 0;
 }
 
+static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
+				   bool is_set)
+{
+	int ret = 0;
+	uint64_t mask_value = 0;
+	BUG_ON(!irq);
+
+	/* Read the mask register */
+	ret = lwis_device_single_register_read(irq->lwis_dev, true,
+					       irq->irq_reg_bid,
+					       irq->irq_mask_reg, &mask_value);
+	if (ret) {
+		pr_err("Failed to read IRQ mask register: %d\n", ret);
+		return ret;
+	}
+
+	/* Unmask the interrupt */
+	if (is_set) {
+		mask_value |= (1ULL << int_reg_bit);
+	} else {
+		mask_value &= ~(1ULL << int_reg_bit);
+	}
+
+	/* Write the mask register */
+	ret = lwis_device_single_register_write(irq->lwis_dev, true,
+						irq->irq_reg_bid,
+						irq->irq_mask_reg, mask_value);
+	if (ret) {
+		pr_err("Failed to write IRQ mask register: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
 static int
 lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 					  struct lwis_single_event_info *event,
 					  bool enabled)
 {
 	int ret = 0;
-	uint64_t mask_value;
+	bool is_set;
 	BUG_ON(!irq);
 	BUG_ON(!event);
 
-	/* If mask_toggled is set, reverse the enable/disable logic. */
-	if (irq->mask_toggled) {
-		pr_info("Reverse mask since mask_toggled is set");
-		enabled = (!enabled);
-	}
-
 	if (enabled) {
-		/* Add the event info to the list of enabled event infos */
 		list_add_tail(&event->node_enabled, &irq->enabled_event_infos);
-
-		/* Read the mask register */
-		ret = lwis_device_single_register_read(
-			irq->lwis_dev, true, irq->irq_reg_bid,
-			irq->irq_mask_reg, &mask_value);
-		if (ret) {
-			pr_err("Failed to read IRQ mask register: %d\n", ret);
-			return ret;
-		}
-
-		/* Unmask the interrupt */
-		mask_value |= (1ULL << event->int_reg_bit);
-
-		/* Write the mask register */
-		ret = lwis_device_single_register_write(
-			irq->lwis_dev, true, irq->irq_reg_bid,
-			irq->irq_mask_reg, mask_value);
-		if (ret) {
-			pr_err("Failed to write IRQ mask register: %d\n", ret);
-			return ret;
-		}
 	} else {
-		/* Remove the event info from the list of enabled event infos */
 		list_del(&event->node_enabled);
-
-		/* Read the mask register */
-		ret = lwis_device_single_register_read(
-			irq->lwis_dev, true, irq->irq_reg_bid,
-			irq->irq_mask_reg, &mask_value);
-		if (ret) {
-			pr_err("Failed to read IRQ mask register: %d\n", ret);
-			return ret;
-		}
-
-		/* Mask the interrupt */
-		mask_value &= ~(1ULL << event->int_reg_bit);
-
-		/* Write the mask register */
-		ret = lwis_device_single_register_write(
-			irq->lwis_dev, true, irq->irq_reg_bid,
-			irq->irq_mask_reg, mask_value);
-		if (ret) {
-			pr_err("Failed to write IRQ mask register: %d\n", ret);
-			return ret;
-		}
 	}
+
+	/* If mask_toggled is set, reverse the enable/disable logic. */
+	is_set = (!irq->mask_toggled) ? enabled : !enabled;
+	ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
+
 	return ret;
 }
 
