@@ -67,6 +67,8 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 	struct device_node *dev_node_reg;
 	const char *name;
 	struct device *dev;
+	int voltage;
+	int voltage_count;
 
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
@@ -79,14 +81,25 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 		return 0;
 	}
 
+	/* Voltage count is allowed to be less than regulator count,
+	   regulator_set_voltage will not be called for the ones with
+	   unspecified voltage */
+	voltage_count = of_property_count_elems_of_size(
+		dev_node, "regulator-voltages", sizeof(u32));
+
 	lwis_dev->regulators = lwis_regulator_list_alloc(count);
 
 	/* Parse regulator list and acquire the regulator pointers */
 	for (i = 0; i < count; ++i) {
 		dev_node_reg = of_parse_phandle(dev_node, "regulators", i);
 		of_property_read_string(dev_node_reg, "regulator-name", &name);
+		voltage = 0;
+		if (i < voltage_count) {
+			of_property_read_u32_index(
+				dev_node, "regulator-voltages", i, &voltage);
+		}
 		ret = lwis_regulator_get(lwis_dev->regulators, (char *)name,
-					 dev);
+					 voltage, dev);
 		if (ret < 0) {
 			pr_err("Cannot find regulator: %s\n", name);
 			goto error_parse_reg;

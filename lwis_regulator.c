@@ -54,7 +54,7 @@ void lwis_regulator_list_free(struct lwis_regulator_list *list)
 }
 
 int lwis_regulator_get(struct lwis_regulator_list *list, char *name,
-		       struct device *dev)
+		       int voltage, struct device *dev)
 {
 	struct regulator *reg;
 	int i;
@@ -88,6 +88,7 @@ int lwis_regulator_get(struct lwis_regulator_list *list, char *name,
 
 	list->reg[index].reg = reg;
 	list->reg[index].name = name;
+	list->reg[index].voltage = voltage;
 
 	return index;
 }
@@ -134,8 +135,22 @@ int lwis_regulator_put_by_name(struct lwis_regulator_list *list, char *name)
 
 int lwis_regulator_enable_by_idx(struct lwis_regulator_list *list, int index)
 {
+	int ret = 0;
+	struct lwis_regulator *lwis_reg;
+
 	if (!list) {
 		return -EINVAL;
+	}
+
+	lwis_reg = &list->reg[index];
+	if (lwis_reg->voltage > 0) {
+		ret = regulator_set_voltage(lwis_reg->reg, lwis_reg->voltage,
+					    lwis_reg->voltage);
+		if (ret) {
+			pr_err("Failed to set regulator %s voltage to %d\n",
+			       lwis_reg->name, lwis_reg->voltage);
+			return ret;
+		}
 	}
 
 	return regulator_enable(list->reg[index].reg);
@@ -151,7 +166,7 @@ int lwis_regulator_enable_by_name(struct lwis_regulator_list *list, char *name)
 
 	for (i = 0; i < list->count; ++i) {
 		if (!strcmp(list->reg[i].name, name)) {
-			return regulator_enable(list->reg[i].reg);
+			return lwis_regulator_enable_by_idx(list, i);
 		}
 	}
 
@@ -227,6 +242,7 @@ void lwis_regulator_print(struct lwis_regulator_list *list)
 	int i;
 
 	for (i = 0; i < list->count; ++i) {
-		pr_info("%s: reg: %s\n", __func__, list->reg[i].name);
+		pr_info("%s: reg: %s voltage: %d\n", __func__,
+			list->reg[i].name, list->reg[i].voltage);
 	}
 }
