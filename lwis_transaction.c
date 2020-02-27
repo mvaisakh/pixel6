@@ -325,9 +325,15 @@ int lwis_transaction_submit(struct lwis_client *client,
 		event_state = lwis_device_event_state_find(
 			lwis_dev, info->trigger_event_id);
 		/* Event has happened already */
-		if (event_state != NULL &&
-		    info->trigger_event_counter <= event_state->event_counter) {
-			return -ENOENT;
+		if (event_state != NULL) {
+			info->current_trigger_event_counter =
+				event_state->event_counter;
+			if (info->trigger_event_counter <=
+			    event_state->event_counter) {
+				return -ENOENT;
+			}
+		} else {
+			info->current_trigger_event_counter = 0;
 		}
 	}
 
