@@ -1733,10 +1733,10 @@ static int drv2624_i2c_remove(struct i2c_client *client)
 
 	cancel_work_sync(&drv2624->vibrator_work);
 	cancel_work_sync(&drv2624->work);
-	destroy_workqueue(drv2624->drv2624_wq);
 
 	led_classdev_unregister(&drv2624->led_dev);
 
+	destroy_workqueue(drv2624->drv2624_wq);
 	mutex_destroy(&drv2624->lock);
 
 	return 0;
