@@ -137,7 +137,7 @@ struct lwis_io_entry {
 };
 
 struct lwis_io_entries {
-	int num_io_entries;
+	uint32_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 };
 
