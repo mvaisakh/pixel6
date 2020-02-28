@@ -244,8 +244,14 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 {
 	int ret = 0;
 	uint64_t mask_value = 0;
+	int saved_bitwidth = 0;
 	BUG_ON(!irq);
 
+	/* Temporarily override bitwidth if needed */
+	if (irq->irq_reg_bitwidth > 0) {
+                saved_bitwidth = irq->lwis_dev->reg_value_bitwidth;
+		irq->lwis_dev->reg_value_bitwidth = irq->irq_reg_bitwidth;
+	}
 	/* Read the mask register */
 	ret = lwis_device_single_register_read(irq->lwis_dev, true,
 					       irq->irq_reg_bid,
@@ -269,6 +275,10 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 	if (ret) {
 		pr_err("Failed to write IRQ mask register: %d\n", ret);
 		return ret;
+	}
+	/* Restore bitwidth */
+	if (irq->irq_reg_bitwidth > 0) {
+		irq->lwis_dev->reg_value_bitwidth = saved_bitwidth;
 	}
 
 	return ret;
