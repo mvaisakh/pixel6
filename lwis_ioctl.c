@@ -430,9 +430,16 @@ error_locked:
 	return ret;
 }
 
-static int ioctl_device_disable(struct lwis_device *lwis_dev)
+static int ioctl_device_disable(struct lwis_client *lwis_client)
 {
 	int ret;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	/* Wait for all in-process transactions to complete. */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		pr_err("Failed to wait for in-process transaction to complete\n");
+	}
 
 	mutex_lock(&lwis_dev->client_lock);
 	if (lwis_dev->enabled > 1) {
@@ -856,7 +863,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		ret = ioctl_device_enable(lwis_dev);
 		break;
 	case LWIS_DEVICE_DISABLE:
-		ret = ioctl_device_disable(lwis_dev);
+		ret = ioctl_device_disable(lwis_client);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
 		ret = ioctl_event_control_get(

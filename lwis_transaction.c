@@ -254,14 +254,11 @@ int lwis_transaction_init(struct lwis_client *client)
 	return 0;
 }
 
-int lwis_transaction_client_cleanup(struct lwis_client *client)
+int lwis_transaction_client_flush(struct lwis_client *client)
 {
-	int i;
-	struct hlist_node *tmp;
 	unsigned long flags;
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
-	struct lwis_transaction_event_list *it_evt_list;
 
 	flush_workqueue(client->transaction_wq);
 
@@ -280,6 +277,23 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		}
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+	return 0;
+}
+
+int lwis_transaction_client_cleanup(struct lwis_client *client)
+{
+	int i, ret;
+	struct hlist_node *tmp;
+	unsigned long flags;
+	struct list_head *it_tran, *it_tran_tmp;
+	struct lwis_transaction *transaction;
+	struct lwis_transaction_event_list *it_evt_list;
+
+	ret = lwis_transaction_client_flush(client);
+	if (ret) {
+		pr_err("Failed to wait for all in-process transactions to complete\n");
+		return ret;
+	}
 	destroy_workqueue(client->transaction_wq);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
