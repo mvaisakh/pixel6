@@ -191,6 +191,10 @@ struct lwis_transaction_info {
 	int64_t emit_error_event_id;
 	// Output
 	int64_t id;
+        // Only will be set if trigger_event_id and trigger_event_counter are
+        // both specified, and trigger_event_counter is not NEXT_OCCURRENCE.
+        // Otherwise, the value is zero.
+	int64_t current_trigger_event_counter;
 };
 
 // Actual size of this struct depends on num_entries
