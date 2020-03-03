@@ -71,7 +71,7 @@ static int process_io_entries(struct lwis_client *client,
 	size_t resp_size;
 	uint8_t *read_buf;
 	struct lwis_io_result *io_result;
-	const int reg_value_bytes = lwis_dev->reg_value_bitwidth / 8;
+	const int reg_value_bytes = lwis_dev->native_value_bitwidth / 8;
 	unsigned long flags;
 	uint64_t bias = 0;
 	uint64_t start;
@@ -98,8 +98,9 @@ static int process_io_entries(struct lwis_client *client,
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
-			ret = lwis_dev->vops.register_io(lwis_dev, entry,
-							 in_irq);
+			ret = lwis_dev->vops.register_io(
+				lwis_dev, entry, in_irq,
+				lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -109,8 +110,9 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->bid = entry->rw.bid;
 			io_result->offset = entry->rw.offset;
 			io_result->num_value_bytes = reg_value_bytes;
-			ret = lwis_dev->vops.register_io(lwis_dev, entry,
-							 in_irq);
+			ret = lwis_dev->vops.register_io(
+				lwis_dev, entry, in_irq,
+				lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -126,8 +128,9 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->num_value_bytes =
 				entry->rw_batch.size_in_bytes;
 			entry->rw_batch.buf = io_result->values;
-			ret = lwis_dev->vops.register_io(lwis_dev, entry,
-							 in_irq);
+			ret = lwis_dev->vops.register_io(
+				lwis_dev, entry, in_irq,
+				lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -143,7 +146,8 @@ static int process_io_entries(struct lwis_client *client,
 			while (val != entry->poll.val) {
 				ret = lwis_device_single_register_read(
 					lwis_dev, false, entry->poll.bid,
-					entry->poll.offset, &val);
+					entry->poll.offset, &val,
+					lwis_dev->native_value_bitwidth);
 				if (ret) {
 					pr_err("Failed to read registers\n");
 					resp->error_code = ret;
@@ -327,7 +331,7 @@ int lwis_transaction_submit(struct lwis_client *client,
 	size_t read_buf_size = 0;
 	int read_entries = 0;
 	unsigned long flags;
-	const int reg_value_bytes = client->lwis_dev->reg_value_bitwidth / 8;
+	const int reg_value_bytes = client->lwis_dev->native_value_bitwidth / 8;
 
 	BUG_ON(!client);
 	BUG_ON(!transaction);

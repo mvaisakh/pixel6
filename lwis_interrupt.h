@@ -36,9 +36,9 @@ struct lwis_interrupt {
 	int64_t irq_reset_reg;
 	/* Offset of the mask register */
 	int64_t irq_mask_reg;
-	/* IRQ register bitwidth, in case there is a need to override the
-	 * default */
-	int irq_reg_bitwidth;
+	/* IRQ register access size, in case it is different from the bus
+	 * bitwidth */
+	int irq_reg_access_size;
 	/* If mask_reg actually disable the interrupts. */
 	bool mask_toggled;
 	/* Hash table of event info*/
@@ -92,7 +92,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg,
-				  bool mask_toggled, int irq_reg_bitwidth);
+				  bool mask_toggled, int irq_reg_access_size);
 
 /*
  * lwis_interrupt_event_enable: Handles masking and unmasking interrupts when

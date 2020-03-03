@@ -70,7 +70,8 @@ static int lwis_reg_read(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, false);
+	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, false,
+					 lwis_dev->native_value_bitwidth);
 	if (ret) {
 		pr_err("Failed to read registers\n");
 		goto reg_read_exit;
@@ -149,7 +150,8 @@ static int lwis_reg_write(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, false);
+	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, false,
+					 lwis_dev->native_value_bitwidth);
 	if (ret) {
 		pr_err("Failed to write registers\n");
 	}
@@ -186,7 +188,8 @@ static int lwis_reg_modify(struct lwis_device *lwis_dev,
 {
 	int ret = 0;
 
-	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, false);
+	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, false,
+					 lwis_dev->native_value_bitwidth);
 	if (ret) {
 		pr_err("Failed to read registers for modify\n");
 	}

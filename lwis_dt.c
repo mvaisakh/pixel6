@@ -507,8 +507,8 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 	pr_info("Value bitwidth set to%s: %d\n", ret ? " default" : "",
 		value_bitwidth);
 
-	lwis_dev->reg_addr_bitwidth = addr_bitwidth;
-	lwis_dev->reg_value_bitwidth = value_bitwidth;
+	lwis_dev->native_addr_bitwidth = addr_bitwidth;
+	lwis_dev->native_value_bitwidth = value_bitwidth;
 }
 
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)

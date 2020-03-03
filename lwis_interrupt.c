@@ -125,15 +125,11 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	struct lwis_single_event_info *event;
 	struct list_head *p;
 	uint64_t source_value, reset_value = 0;
-	int saved_bitwidth = irq->lwis_dev->reg_value_bitwidth;
-	/* Temporarily override bitwidth if needed */
-	if (irq->irq_reg_bitwidth > 0) {
-		irq->lwis_dev->reg_value_bitwidth = irq->irq_reg_bitwidth;
-	}
+
 	/* Read the mask register */
-	ret = lwis_device_single_register_read(irq->lwis_dev, true,
-					       irq->irq_reg_bid,
-					       irq->irq_src_reg, &source_value);
+	ret = lwis_device_single_register_read(
+		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_src_reg,
+		&source_value, irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to read IRQ status register: %d\n", ret);
 		goto error;
@@ -157,16 +153,12 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	/* Write the mask register */
 	ret = lwis_device_single_register_write(
 		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_reset_reg,
-		reset_value);
+		reset_value, irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to write IRQ reset register: %d\n", ret);
 		goto error;
 	}
 
-	/* Restore bitwidth */
-	if (irq->irq_reg_bitwidth > 0) {
-		irq->lwis_dev->reg_value_bitwidth = saved_bitwidth;
-	}
 error:
 	return IRQ_HANDLED;
 }
@@ -177,7 +169,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg,
-				  bool mask_toggled, int irq_reg_bitwidth)
+				  bool mask_toggled, int irq_reg_access_size)
 {
 	int i;
 	unsigned long flags;
@@ -191,7 +183,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	list->irq[index].irq_reset_reg = irq_reset_reg;
 	list->irq[index].irq_mask_reg = irq_mask_reg;
 	list->irq[index].mask_toggled = mask_toggled;
-	list->irq[index].irq_reg_bitwidth = irq_reg_bitwidth;
+	list->irq[index].irq_reg_access_size = irq_reg_access_size;
 	/* Empty hash table for event infos */
 	hash_init(list->irq[index].event_infos);
 	/* Initialize an empty list for enabled events */
@@ -244,18 +236,12 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 {
 	int ret = 0;
 	uint64_t mask_value = 0;
-	int saved_bitwidth = 0;
 	BUG_ON(!irq);
 
-	/* Temporarily override bitwidth if needed */
-	if (irq->irq_reg_bitwidth > 0) {
-                saved_bitwidth = irq->lwis_dev->reg_value_bitwidth;
-		irq->lwis_dev->reg_value_bitwidth = irq->irq_reg_bitwidth;
-	}
 	/* Read the mask register */
-	ret = lwis_device_single_register_read(irq->lwis_dev, true,
-					       irq->irq_reg_bid,
-					       irq->irq_mask_reg, &mask_value);
+	ret = lwis_device_single_register_read(
+		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_mask_reg,
+		&mask_value, irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to read IRQ mask register: %d\n", ret);
 		return ret;
@@ -269,16 +255,12 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 	}
 
 	/* Write the mask register */
-	ret = lwis_device_single_register_write(irq->lwis_dev, true,
-						irq->irq_reg_bid,
-						irq->irq_mask_reg, mask_value);
+	ret = lwis_device_single_register_write(
+		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_mask_reg,
+		mask_value, irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to write IRQ mask register: %d\n", ret);
 		return ret;
-	}
-	/* Restore bitwidth */
-	if (irq->irq_reg_bitwidth > 0) {
-		irq->lwis_dev->reg_value_bitwidth = saved_bitwidth;
 	}
 
 	return ret;

@@ -10,6 +10,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-ioreg: " fmt
 
+#include <linux/bitops.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -44,6 +45,24 @@ static struct lwis_ioreg *get_block_by_idx(struct lwis_ioreg_device *ioreg_dev,
 	}
 
 	return block;
+}
+
+static int validate_access_size(int access_size, int native_value_bitwidth)
+{
+	if (access_size != native_value_bitwidth) {
+		if (access_size != 8 && access_size != 16 &&
+		    access_size != 32 && access_size != 64) {
+			pr_err("Access size must be 8, 16, 32 or 64 - Actual %d\n",
+			       access_size);
+			return -EINVAL;
+		}
+		if (access_size > native_value_bitwidth) {
+			pr_err("Access size (%d) > bitwidth (%d) is not supported yet\n",
+			       access_size, native_value_bitwidth);
+			return -ENOSYS;
+		}
+	}
+	return 0;
 }
 
 int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev, int num_blocks)
@@ -299,7 +318,8 @@ static int ioreg_write_internal(void __iomem *base, uint64_t offset,
 }
 
 int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
-			   struct lwis_io_entry *entry, bool non_blocking)
+			   struct lwis_io_entry *entry, bool non_blocking,
+			   int access_size)
 {
 	int ret = 0;
 	int index;
@@ -317,7 +337,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		ret = lwis_ioreg_read(ioreg_dev, entry->rw.bid,
 				      entry->rw.offset, &entry->rw.val,
-				      /*non_blocking=*/true);
+				      /*non_blocking=*/true, access_size);
 	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
 		index = entry->rw_batch.bid;
 		block = get_block_by_idx(ioreg_dev, index);
@@ -327,7 +347,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 		}
 		ret = ioreg_read_batch_internal(
 			block->base, entry->rw_batch.offset,
-			ioreg_dev->base_dev.reg_value_bitwidth,
+			ioreg_dev->base_dev.native_value_bitwidth,
 			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
 		if (ret) {
 			pr_err("Invalid ioreg batch read at:\n");
@@ -337,7 +357,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		ret = lwis_ioreg_write(ioreg_dev, entry->rw.bid,
 				       entry->rw.offset, entry->rw.val,
-				       /*non_blocking=*/true);
+				       /*non_blocking=*/true, access_size);
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
 		index = entry->rw_batch.bid;
 		block = get_block_by_idx(ioreg_dev, index);
@@ -347,7 +367,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 		}
 		ret = ioreg_write_batch_internal(
 			block->base, entry->rw_batch.offset,
-			ioreg_dev->base_dev.reg_value_bitwidth,
+			ioreg_dev->base_dev.native_value_bitwidth,
 			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
 		if (ret) {
 			pr_err("Invalid ioreg batch write at:\n");
@@ -357,7 +377,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
 		ret = lwis_ioreg_read(ioreg_dev, entry->mod.bid,
 				      entry->mod.offset, &reg_value,
-				      /*non_blocking=*/true);
+				      /*non_blocking=*/true, access_size);
 		if (ret) {
 			goto rw_func_end;
 		}
@@ -365,7 +385,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 		reg_value |= entry->mod.val_mask & entry->mod.val;
 		ret = lwis_ioreg_write(ioreg_dev, entry->mod.bid,
 				       entry->mod.offset, reg_value,
-				       /*non_blocking=*/true);
+				       /*non_blocking=*/true, access_size);
 	} else {
 		pr_err("Invalid IO entry type: %d\n", entry->type);
 		ret = -EINVAL;
@@ -380,10 +400,14 @@ rw_func_end:
 }
 
 int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
-		    uint64_t offset, uint64_t *value, bool non_blocking)
+		    uint64_t offset, uint64_t *value, bool non_blocking,
+		    int access_size)
 {
 	struct lwis_ioreg *block;
 	int ret;
+	uint64_t internal_offset = offset;
+	unsigned int native_value_bitwidth;
+	uint64_t offset_mask;
 
 	BUG_ON(!ioreg_dev);
 
@@ -392,24 +416,47 @@ int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
 		return PTR_ERR(block);
 	}
 
+	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
+	ret = validate_access_size(access_size, native_value_bitwidth);
+	if (ret) {
+		pr_err("Invalid access size\n");
+		return ret;
+	}
+	if (access_size != native_value_bitwidth) {
+		offset_mask = native_value_bitwidth / BITS_PER_BYTE - 1;
+		internal_offset = offset & ~offset_mask;
+	}
+
 	if (!non_blocking) {
 		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
-	ret = ioreg_read_internal(block->base, offset,
-				  ioreg_dev->base_dev.reg_value_bitwidth,
-				  value);
+	ret = ioreg_read_internal(block->base, internal_offset,
+				  native_value_bitwidth, value);
 	if (!non_blocking) {
 		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
+	}
+
+	if (access_size != native_value_bitwidth) {
+		*value >>= (offset - internal_offset) * BITS_PER_BYTE;
+		if (access_size < BITS_PER_TYPE(uint64_t)) {
+			*value &= ((1ULL << access_size) - 1);
+		}
 	}
 
 	return ret;
 }
 
 int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
-		     uint64_t offset, uint64_t value, bool non_blocking)
+		     uint64_t offset, uint64_t value, bool non_blocking,
+		     int access_size)
 {
 	struct lwis_ioreg *block;
 	int ret;
+	uint64_t internal_offset = offset;
+	unsigned int native_value_bitwidth;
+	uint64_t read_value;
+	uint64_t offset_mask;
+	uint64_t value_mask;
 
 	BUG_ON(!ioreg_dev);
 
@@ -418,12 +465,29 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
 		return PTR_ERR(block);
 	}
 
+	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
+	ret = validate_access_size(access_size, native_value_bitwidth);
+	if (ret) {
+		pr_err("Invalid access size\n");
+		return ret;
+	}
+
 	if (!non_blocking) {
 		mutex_lock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
-	ret = ioreg_write_internal(block->base, offset,
-				   ioreg_dev->base_dev.reg_value_bitwidth,
-				   value);
+	if (access_size != native_value_bitwidth) {
+		offset_mask = native_value_bitwidth / BITS_PER_BYTE - 1;
+		internal_offset = offset & ~offset_mask;
+		value_mask = ((1 << access_size) - 1);
+		value_mask <<= (offset - internal_offset) * BITS_PER_BYTE;
+		/* We need to read-modify-write in this case */
+		ioreg_read_internal(block->base, internal_offset,
+				    native_value_bitwidth, &read_value);
+		value <<= (offset - internal_offset) * 8;
+		value = (value & value_mask) | (read_value & ~value_mask);
+	}
+	ret = ioreg_write_internal(block->base, internal_offset,
+				   native_value_bitwidth, value);
 	if (!non_blocking) {
 		mutex_unlock(&ioreg_dev->base_dev.reg_rw_lock);
 	}
