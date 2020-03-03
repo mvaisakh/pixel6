@@ -34,6 +34,7 @@ struct lwis_transaction_event_list {
 };
 
 int lwis_transaction_init(struct lwis_client *client);
+int lwis_transaction_client_flush(struct lwis_client *client);
 int lwis_transaction_client_cleanup(struct lwis_client *client);
 
 int lwis_transaction_submit(struct lwis_client *client,
