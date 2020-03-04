@@ -4813,7 +4813,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 
 		/* Parse pattern filter pattern. */
 		rc = wl_pattern_atoh(argv[i],
-			(char *) &pkt_filterp->u.pattern.mask_and_pattern[mask_size]);
+			(char *) &pkt_filterp->u.pattern.mask_and_pattern[rc]);
 
 		if (rc == -1) {
 			DHD_ERROR(("Rejecting: %s\n", argv[i]));
@@ -4827,7 +4827,7 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 
 		pkt_filter.u.pattern.size_bytes = mask_size;
 		buf_len += WL_PKT_FILTER_FIXED_LEN;
-		buf_len += (WL_PKT_FILTER_PATTERN_FIXED_LEN + 2 * mask_size);
+		buf_len += (WL_PKT_FILTER_PATTERN_FIXED_LEN + 2 * rc);
 
 		/* Keep-alive attributes are set in local	variable (keep_alive_pkt), and
 		 * then memcpy'ed into buffer (keep_alive_pktp) since there is no
@@ -4909,16 +4909,17 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 				goto fail;
 			}
 
-			if (*argv[i] == '!') {
+			endptr = argv[i];
+			if (*endptr == '!') {
 				pf_el->match_flags =
 					htod16(WL_PKT_FILTER_MFLAG_NEG);
-				(argv[i])++;
+				endptr++;
 			}
-			if (*argv[i] == '\0') {
+			if (*endptr == '\0') {
 				printf("Pattern not provided\n");
 				goto fail;
 			}
-			rc = wl_pattern_atoh(argv[i], (char*)&pf_el->mask_and_data[rc]);
+			rc = wl_pattern_atoh(endptr, (char*)&pf_el->mask_and_data[rc]);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
 				printf("Rejecting: %s\n", argv[i]);
 				goto fail;
