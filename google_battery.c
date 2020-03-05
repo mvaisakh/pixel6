@@ -131,6 +131,7 @@ struct batt_ssoc_state {
 	/* output of rate limiter */
 	qnum_t ssoc_rl;
 	struct batt_ssoc_rl_state ssoc_rl_state;
+	int ssoc_delta;
 
 	/* output of rate limiter */
 	int rl_rate;
@@ -684,11 +685,7 @@ static void ssoc_change_curve(struct batt_ssoc_state *ssoc_state,
 
 	/* force dsg curve when connect/disconnect with battery at 100% */
 	if (ssoc_level >= SSOC_FULL) {
-		const qnum_t rlt = qnum_fromint(ssoc_state->rl_soc_threshold);
-
-		gdf -=  qnum_rconst(SSOC_DELTA);
-		if (gdf > rlt)
-			gdf = rlt;
+		gdf -=  qnum_fromint(ssoc_state->ssoc_delta);
 		type = SSOC_UIC_TYPE_DSG;
 	}
 
@@ -4622,6 +4619,11 @@ static void google_battery_init_work(struct work_struct *work)
 	if (ret < 0)
 		batt_drv->ssoc_state.rl_soc_threshold =
 				DEFAULT_BATT_DRV_RL_SOC_THRESHOLD;
+
+	ret = of_property_read_u32(node, "google,ssoc-delta",
+				   &batt_drv->ssoc_state.ssoc_delta);
+	if (ret < 0)
+		batt_drv->ssoc_state.ssoc_delta = SSOC_DELTA;
 
 	/* cycle count is cached: read here bc SSOC, chg_profile might use it */
 	batt_update_cycle_count(batt_drv);
