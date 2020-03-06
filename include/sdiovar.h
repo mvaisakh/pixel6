@@ -2,7 +2,7 @@
  * Structure used by apps whose drivers access SDIO drivers.
  * Pulled out separately so dhdu and wlu can both use it.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,9 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: sdiovar.h 806764 2019-02-25 17:27:45Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _sdiovar_h_

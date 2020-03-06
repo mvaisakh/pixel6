@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,26 +18,26 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hnd_pktpool.h 808523 2019-03-07 19:21:13Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hnd_pktpool_h_
 #define _hnd_pktpool_h_
 
+#include <typedefs.h>
+#include <osl.h>
 #include <osl_ext.h>
 
 #ifdef __cplusplus
 extern "C" {
-#endif // endif
+#endif
 
 /* mutex macros for thread safe */
 #ifdef HND_PKTPOOL_THREAD_SAFE
 #define HND_PKTPOOL_MUTEX_DECL(mutex)		OSL_EXT_MUTEX_DECL(mutex)
 #else
 #define HND_PKTPOOL_MUTEX_DECL(mutex)
-#endif // endif
+#endif
 
 #ifdef BCMPKTPOOL
 #define POOL_ENAB(pool)		((pool) && (pool)->inited)
@@ -140,7 +140,7 @@ typedef struct pktpool {
 	pktpool_cbinfo_t dbg_cbs[PKTPOOL_CB_MAX];
 	uint16 dbg_qlen;
 	pktpool_dbg_t dbg_q[PKTPOOL_LEN_MAX + 1];
-#endif // endif
+#endif
 } pktpool_t;
 
 pktpool_t *get_pktpools_registry(int id);
@@ -173,6 +173,20 @@ extern int pktpool_rxcplid_fill_register(pktpool_t *pktp, pktpool_cb_extn_t cb, 
 extern void pktpool_invoke_dmarxfill(pktpool_t *pktp);
 extern int pkpool_haddr_avail_register_cb(pktpool_t *pktp, pktpool_cb_t cb, void *arg);
 extern int pktpool_avail(pktpool_t *pktpool);
+#ifdef BCMD11HDRPOOL
+extern int d11hdr_pool_init(osl_t *osh, pktpool_t *pktp, uint *n_pkts, uint max_pkt_bytes,
+	bool istx, uint8 type, bool is_heap_pool, uint32 heap_pool_flag, uint16 min_backup_buf);
+extern int d11hdr_pool_deinit(osl_t *osh, pktpool_t *pktp);
+extern int d11hdr_pool_fill(osl_t *osh, pktpool_t *pktp, bool minimal);
+extern void d11hdr_pool_enq(pktpool_t *pktp, void *p);
+extern void *d11hdr_pool_deq(pktpool_t *pktp);
+#define D11HDRGET(pktp)	  (void *)d11hdr_pool_deq((pktp))
+#define D11HDRFREE(pktp, p)	d11hdr_pool_enq((pktp), (p))
+#define D11HDRAVAIL()		(D11HDR_POOL->avail)
+#else
+#define d11hdr_pool_fill(osh, pktp, minimal)  BCME_OK
+#define D11HDRAVAIL(pktp)	  (TRUE)
+#endif /* BCMD11HDRPOOL */
 
 #define POOLPTR(pp)         ((pktpool_t *)(pp))
 #define POOLID(pp)          (POOLPTR(pp)->id)
@@ -218,7 +232,7 @@ extern pktpool_t *pktpool_shared;
 #ifdef BCMFRAGPOOL
 #define SHARED_FRAG_POOL	(pktpool_shared_lfrag)
 extern pktpool_t *pktpool_shared_lfrag;
-#endif // endif
+#endif
 
 #ifdef BCMRESVFRAGPOOL
 #define RESV_FRAG_POOL		(pktpool_resv_lfrag)
@@ -228,11 +242,17 @@ extern pktpool_t *pktpool_shared_lfrag;
 #define RESV_POOL_INFO		(NULL)
 #endif /* BCMRESVFRAGPOOL */
 
+#ifdef BCMD11HDRPOOL
+#define D11HDR_POOL		(pktpool_d11hdr)
+extern pktpool_t *pktpool_d11hdr;
+#endif /* BCMD11HDRPOOL */
+
 /** PCIe SPLITRX related */
 #define SHARED_RXFRAG_POOL	(pktpool_shared_rxlfrag)
 extern pktpool_t *pktpool_shared_rxlfrag;
 
 int hnd_pktpool_init(osl_t *osh);
+void hnd_pktpool_deinit(osl_t *osh);
 int hnd_pktpool_fill(pktpool_t *pktpool, bool minimal);
 void hnd_pktpool_refill(bool minimal);
 
@@ -254,6 +274,7 @@ extern int hnd_pktpool_heap_deregister_cb(pktpool_heap_cb_t fn);
 extern void *hnd_pktpool_freelist_alloc(uint size, uint alignbits, uint32 flag);
 extern uint16 hnd_pktpool_get_min_bkup_buf(pktpool_t *pktp);
 #endif /* POOL_HEAP_RECONFIG */
+extern uint32 hnd_pktpool_get_total_poolheap_count(void);
 
 #else /* BCMPKTPOOL */
 #define SHARED_POOL		((struct pktpool *)NULL)
@@ -261,6 +282,6 @@ extern uint16 hnd_pktpool_get_min_bkup_buf(pktpool_t *pktp);
 
 #ifdef __cplusplus
 	}
-#endif // endif
+#endif
 
 #endif /* _hnd_pktpool_h_ */

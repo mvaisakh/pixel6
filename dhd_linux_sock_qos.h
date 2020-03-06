@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes to call into
  * DHD's QOS on Socket Flow module.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -30,7 +30,6 @@
 #ifndef _DHD_LINUX_TPA_H_
 #define _DHD_LINUX_TPA_H_
 
-#define QOS_SAMPLING_INTVL_MS 100
 struct dhd_sock_flow_info;
 
 /* Feature Disabled dummy implementations */

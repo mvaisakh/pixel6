@@ -1,7 +1,7 @@
 /*
  * Linux platform device for DHD WLAN adapter
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -37,10 +37,7 @@
 #include <wl_android.h>
 #if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
-#endif // endif
-#ifdef BCMDBUS
-#include <dbus.h>
-#endif // endif
+#endif
 #ifdef CONFIG_DTS
 #include<linux/regulator/consumer.h>
 #include<linux/of_gpio.h>
@@ -51,7 +48,7 @@
 
 #ifdef DHD_WIFI_SHUTDOWN
 extern void wifi_plat_dev_drv_shutdown(struct platform_device *pdev);
-#endif // endif
+#endif
 
 #ifdef CONFIG_DTS
 struct regulator *wifi_regulator = NULL;
@@ -61,6 +58,11 @@ bool cfg_multichip = FALSE;
 bcmdhd_wifi_platdata_t *dhd_wifi_platdata = NULL;
 static int wifi_plat_dev_probe_ret = 0;
 static bool is_power_on = FALSE;
+/* XXX Some Qualcomm based CUSTOMER_HW4 platforms are using platform
+ * device structure even if the Kernel uses device tree structure.
+ * Therefore, the CONFIG_ARCH_MSM condition is temporarly remained
+ * to support in this case.
+ */
 #if !defined(CONFIG_DTS)
 #if defined(DHD_OF_SUPPORT)
 static bool dts_enabled = TRUE;
@@ -71,12 +73,12 @@ static bool dts_enabled = FALSE;
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-#endif // endif
+#endif
 struct resource dhd_wlan_resources = {0};
 struct wifi_platform_data dhd_wlan_control = {0};
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic pop
-#endif // endif
+#endif
 #endif /* CONFIG_OF && !defined(CONFIG_ARCH_MSM) */
 #endif /* !defind(CONFIG_DTS) */
 
@@ -180,7 +182,7 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 		return -EINVAL;
 	plat_data = adapter->wifi_plat_data;
 
-	DHD_ERROR(("%s = %d\n", __FUNCTION__, on));
+	DHD_ERROR(("%s = %d, delay: %lu msec\n", __FUNCTION__, on, msec));
 	if (plat_data->set_power) {
 #ifdef ENABLE_4335BT_WAR
 		if (on) {
@@ -300,7 +302,7 @@ static int wifi_plat_dev_drv_probe(struct platform_device *pdev)
 		adapter->intr_flags = resource->flags & IRQF_TRIGGER_MASK;
 #ifdef DHD_ISR_NO_SUSPEND
 		adapter->intr_flags |= IRQF_NO_SUSPEND;
-#endif // endif
+#endif
 	}
 
 #ifdef CONFIG_DTS
@@ -497,7 +499,7 @@ static int wifi_ctrlfunc_register_drv(void)
 		adapter->intr_flags = resource->flags & IRQF_TRIGGER_MASK;
 #ifdef DHD_ISR_NO_SUSPEND
 		adapter->intr_flags |= IRQF_NO_SUSPEND;
-#endif // endif
+#endif
 		wifi_plat_dev_probe_ret = dhd_wifi_platform_load();
 	}
 #endif /* !defined(CONFIG_DTS) */
@@ -628,9 +630,14 @@ static int dhd_wifi_platform_load_pcie(void)
 	BCM_REFERENCE(adapter);
 
 	if (dhd_wifi_platdata == NULL) {
+		/* XXX For x86 Bringup PC or BRIX */
 		err = dhd_bus_register();
 	} else {
+#ifdef DHD_SUPPORT_HDM
+		if (dhd_download_fw_on_driverload || hdm_trigger_init) {
+#else
 		if (dhd_download_fw_on_driverload) {
+#endif /* DHD_SUPPORT_HDM */
 			/* power up all adapters */
 			for (i = 0; i < dhd_wifi_platdata->num_adapters; i++) {
 				int retry = POWERUP_MAX_RETRY;
@@ -714,7 +721,7 @@ extern int dhd_dpc_prio;
 extern uint dhd_deferred_tx;
 #if defined(BCMLXSDMMC)
 extern struct semaphore dhd_registration_sem;
-#endif // endif
+#endif
 
 #ifdef BCMSDIO
 static int dhd_wifi_platform_load_sdio(void)
@@ -735,7 +742,7 @@ static int dhd_wifi_platform_load_sdio(void)
 
 #if defined(BCMLXSDMMC)
 	sema_init(&dhd_registration_sem, 0);
-#endif // endif
+#endif
 
 	if (dhd_wifi_platdata == NULL) {
 		DHD_ERROR(("DHD wifi platform data is required for Android build\n"));
@@ -826,7 +833,7 @@ fail:
 		wifi_platform_set_power(adapter, FALSE, WIFI_TURNOFF_DELAY);
 		wifi_platform_bus_enumerate(adapter, FALSE);
 	}
-#endif // endif
+#endif
 
 	return err;
 }
@@ -837,43 +844,10 @@ static int dhd_wifi_platform_load_sdio(void)
 }
 #endif /* BCMSDIO */
 
-#ifdef BCMDBUS
-/* User-specified vid/pid */
-int dhd_vid = 0xa5c;
-int dhd_pid = 0x48f;
-module_param(dhd_vid, int, 0);
-module_param(dhd_pid, int, 0);
-void *dhd_dbus_probe_cb(void *arg, const char *desc, uint32 bustype, uint32 hdrlen);
-void dhd_dbus_disconnect_cb(void *arg);
-
-static int dhd_wifi_platform_load_usb(void)
-{
-	int err = 0;
-
-	if (dhd_vid < 0 || dhd_vid > 0xffff) {
-		DHD_ERROR(("%s: invalid dhd_vid 0x%x\n", __FUNCTION__, dhd_vid));
-		return -EINVAL;
-	}
-	if (dhd_pid < 0 || dhd_pid > 0xffff) {
-		DHD_ERROR(("%s: invalid dhd_pid 0x%x\n", __FUNCTION__, dhd_pid));
-		return -EINVAL;
-	}
-
-	err = dbus_register(dhd_vid, dhd_pid, dhd_dbus_probe_cb, dhd_dbus_disconnect_cb,
-		NULL, NULL, NULL);
-
-	/* Device not detected */
-	if (err == DBUS_ERR_NODEVICE)
-		err = DBUS_OK;
-
-	return err;
-}
-#else /* BCMDBUS */
 static int dhd_wifi_platform_load_usb(void)
 {
 	return 0;
 }
-#endif /* BCMDBUS */
 
 static int dhd_wifi_platform_load()
 {

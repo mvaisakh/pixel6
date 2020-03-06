@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), Linux monitor network interface
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <osl.h>
@@ -33,16 +31,14 @@
 #include <linux/rtnetlink.h>
 #include <net/ieee80211_radiotap.h>
 
-#if defined(BCMDONGLEHOST)
 #include <wlioctl.h>
 #include <bcmutils.h>
 #include <dhd_dbg.h>
 #include <dngl_stats.h>
 #include <dhd.h>
-#endif /* defined(BCMDONGLEHOST) */
-#if defined(LINUX)
+#if defined(__linux__)
 #include <bcmstdlib_s.h>
-#endif /* defined(LINUX) */
+#endif /* defined(__linux__) */
 
 typedef enum monitor_states
 {
@@ -51,6 +47,9 @@ typedef enum monitor_states
 	MONITOR_STATE_INTERFACE_ADDED = 0x2,
 	MONITOR_STATE_INTERFACE_DELETED = 0x4
 } monitor_states_t;
+/*
+ * Some external functions, TODO: move them to dhd_linux.h
+ */
 int dhd_add_monitor(const char *name, struct net_device **new_ndev);
 extern int dhd_start_xmit(struct sk_buff *skb, struct net_device *net);
 int dhd_del_monitor(struct net_device *ndev);
@@ -62,7 +61,7 @@ int dhd_monitor_uninit(void);
  */
 #ifndef DHD_MAX_IFS
 #define DHD_MAX_IFS 16
-#endif // endif
+#endif
 #define MON_PRINT(format, ...) printk("DHD-MON: %s " format, __func__, ##__VA_ARGS__)
 #define MON_TRACE MON_PRINT
 
@@ -97,7 +96,7 @@ static const struct net_device_ops dhd_mon_if_ops = {
 	.ndo_set_rx_mode = dhd_mon_if_set_multicast_list,
 #else
 	.ndo_set_multicast_list = dhd_mon_if_set_multicast_list,
-#endif // endif
+#endif
 	.ndo_set_mac_address 	= dhd_mon_if_change_mac,
 };
 
@@ -112,7 +111,6 @@ static struct net_device* lookup_real_netdev(const char *name)
 {
 	struct net_device *ndev_found = NULL;
 
-#if defined(BCMDONGLEHOST)
 	int i;
 	int len = 0;
 	int last_name_len = 0;
@@ -143,7 +141,6 @@ static struct net_device* lookup_real_netdev(const char *name)
 			}
 		}
 	}
-#endif /* defined(BCMDONGLEHOST) */
 
 	return ndev_found;
 }
@@ -227,10 +224,8 @@ static int dhd_mon_if_subif_start_xmit(struct sk_buff *skb, struct net_device *n
 		if ((dot11_hdr->frame_control & 0x0300) == 0x0300)
 			dot11_hdr_len += 6;
 
-		(void)memcpy_s(dst_mac_addr, sizeof(dst_mac_addr), dot11_hdr->addr1,
-				sizeof(dst_mac_addr));
-		(void)memcpy_s(src_mac_addr, sizeof(src_mac_addr), dot11_hdr->addr2,
-				sizeof(src_mac_addr));
+		eacopy(dot11_hdr->addr1, dst_mac_addr);
+		eacopy(dot11_hdr->addr2, src_mac_addr);
 
 		/* Skip the 802.11 header, QoS (if any) and SNAP, but leave spaces for
 		 * for two MAC addresses
@@ -245,9 +240,7 @@ static int dhd_mon_if_subif_start_xmit(struct sk_buff *skb, struct net_device *n
 		MON_PRINT("if name: %s, matched if name %s\n", ndev->name, mon_if->real_ndev->name);
 
 		/* Use the real net device to transmit the packet */
-#if defined(BCMDONGLEHOST)
 		ret = dhd_start_xmit(skb, mon_if->real_ndev);
-#endif /* defined(BCMDONGLEHOST) */
 
 		return ret;
 	}

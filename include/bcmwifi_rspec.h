@@ -1,7 +1,7 @@
 /*
  * Common OS-independent driver header for rate management.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmwifi_rspec.h 791479 2018-11-29 13:54:38Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _bcmwifi_rspec_h_
@@ -81,8 +79,12 @@ typedef uint32	ratespec_t;
 /* RSPEC Macros for extracting and using HE-ER and DCM */
 #define RSPEC_HE_DCM(rspec)		(((rspec) & WL_RSPEC_DCM) >> WL_RSPEC_DCM_SHIFT)
 #define RSPEC_HE_ER(rspec)		(((rspec) & WL_RSPEC_ER_MASK) >> WL_RSPEC_ER_SHIFT)
+#ifdef WL11AX
 #define RSPEC_HE_ER_ENAB(rspec)		(((rspec) & WL_RSPEC_ER_ENAB_MASK) >> \
 					WL_RSPEC_ER_ENAB_SHIFT)
+#else
+#define RSPEC_HE_ER_ENAB(rspec)		FALSE
+#endif
 #define RSPEC_HE_ER_TONE(rspec)		(((rspec) & WL_RSPEC_ER_TONE_MASK) >> \
 					WL_RSPEC_ER_TONE_SHIFT)
 /* ======== RSPEC_RATE field ======== */
@@ -158,11 +160,7 @@ typedef uint32	ratespec_t;
 				 (int8)rate_info[(rspec) & WL_RSPEC_LEGACY_RATE_MASK] < 0)
 
 #define RSPEC_ISHT(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_HT)
-#ifdef WL11AC
 #define RSPEC_ISVHT(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_VHT)
-#else /* WL11AC */
-#define RSPEC_ISVHT(rspec)	0
-#endif /* WL11AC */
 #ifdef WL11AX
 #define RSPEC_ISHE(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_HE)
 #else /* WL11AX */
@@ -196,11 +194,8 @@ typedef uint32	ratespec_t;
 #define RSPEC2KBPS(rspec)	wf_rspec_to_rate(rspec)
 
 /* return rate in unit of 500Kbps */
-#ifdef BCMDBG
-#define RSPEC2RATE(rspec)	wf_rspec_to_rate_legacy(rspec)
-#else
+/* works only for legacy rate */
 #define RSPEC2RATE(rspec)	((rspec) & WL_RSPEC_LEGACY_RATE_MASK)
-#endif // endif
 
 /**
  * =================================
@@ -228,9 +223,6 @@ ratespec_t wf_he_plcp_to_rspec(uint8 *plcp);
 #endif /* WL11AX */
 ratespec_t wf_ht_plcp_to_rspec(uint8 *plcp);
 
-#ifdef BCMDBG
-uint wf_rspec_to_rate_legacy(ratespec_t rspec);
-#endif // endif
 uint wf_rspec_to_rate(ratespec_t rspec);
 
 #endif /* _bcmwifi_rspec_h_ */

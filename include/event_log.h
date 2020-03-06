@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: event_log.h 821063 2019-05-22 03:40:52Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_H_
@@ -30,16 +28,6 @@
 #include <event_log_set.h>
 #include <event_log_tag.h>
 #include <event_log_payload.h>
-#include <osl_decl.h>
-
-extern bool d3_preserve_enab;
-#if defined(ROM_ENAB_RUNTIME_CHECK)
-	#define D3_PRESERVE_ENAB()   (d3_preserve_enab)
-#elif defined(EVENTLOG_D3_PRESERVE_DISABLED)
-	#define D3_PRESERVE_ENAB()   (0)
-#else
-	#define D3_PRESERVE_ENAB()   (1)
-#endif // endif
 
 /* logstrs header */
 #define LOGSTRS_MAGIC   0x4C4F4753
@@ -52,16 +40,17 @@ extern bool d3_preserve_enab;
 #define EVENT_LOG_MAX_BLOCK_SIZE	1648
 #else
 #define EVENT_LOG_MAX_BLOCK_SIZE	1400
-#endif // endif
+#endif
 
 #define EVENT_LOG_BLOCK_SIZE_1K		0x400u
 #define EVENT_LOG_WL_BLOCK_SIZE		0x200
 #define EVENT_LOG_PSM_BLOCK_SIZE	0x200
 #define EVENT_LOG_MEM_API_BLOCK_SIZE	0x200
 #define EVENT_LOG_BUS_BLOCK_SIZE	0x200
-#define EVENT_LOG_ERROR_BLOCK_SIZE	0x200
+#define EVENT_LOG_ERROR_BLOCK_SIZE	0x400
 #define EVENT_LOG_MSCH_BLOCK_SIZE	0x400
 #define EVENT_LOG_WBUS_BLOCK_SIZE	0x100
+#define EVENT_LOG_PRSV_PERIODIC_BLOCK_SIZE (0x200u)
 
 #define EVENT_LOG_TOF_INLINE_BLOCK_SIZE	1300u
 
@@ -81,6 +70,11 @@ extern bool d3_preserve_enab;
 #define EVENT_LOG_EXT_HDR_BIN_FMT_NUM	(0x3FFE << 2)
 
 #define EVENT_LOGSET_ID_MASK	0x3F
+/* For event_log_get iovar, set values from 240 to 255 mean special commands for a group of sets */
+#define EVENT_LOG_GET_IOV_CMD_MASK	(0xF0u)
+#define EVENT_LOG_GET_IOV_CMD_ID_MASK	(0xFu)
+#define EVENT_LOG_GET_IOV_CMD_ID_FORCE_FLUSH_PRSRV	(0xEu) /* 240 + 14 = 254 */
+#define EVENT_LOG_GET_IOV_CMD_ID_FORCE_FLUSH_ALL	(0xFu) /* 240 + 15 = 255 */
 
 /*
  * There are multiple levels of objects define here:
@@ -126,7 +120,8 @@ typedef struct event_log_block {
 	uint16 pktlen;			/* Size of rest of block */
 	uint16 count;			/* Logtrace counter */
 	uint32 extra_hdr_info;		/* LSB: 6 bits set id. MSB 24 bits reserved */
-	uint32 event_logs;
+	uint32 event_logs;		/* Pointer to BEGINNING of event logs */
+	/* Event logs go here. Do not put extra fields below. */
 } event_log_block_t;
 
 /* Relative offset of extra_hdr_info field frpm pktlen field in log block */
@@ -199,12 +194,17 @@ typedef struct event_log_set {
 	uint16 flags;
 	uint16 num_preserve_blocks;
 	event_log_set_sub_destination_t sub_destination;
+	uint16	water_mark;		/* not used yet: threshold to flush host in percent */
+	uint32	period;			/* period to flush host in ms */
+	uint32	last_rpt_ts;	/* last time to flush  in ms */
 } event_log_set_t;
 
 /* Definition of flags in set */
 #define EVENT_LOG_SET_SHRINK_ACTIVE	(1 << 0)
 #define EVENT_LOG_SET_CONFIG_PARTIAL_BLK_SEND	(0x1 << 1)
 #define EVENT_LOG_SET_CHECK_LOG_RATE	(1 << 2)
+#define EVENT_LOG_SET_PERIODIC			(1 << 3)
+#define EVENT_LOG_SET_D3PRSV			(1 << 4)
 
 /* Top data structure for access to everything else */
 typedef struct event_log_top {
@@ -216,10 +216,11 @@ typedef struct event_log_top {
 	uint32 logstrs_size;		/* Size of lognums + logstrs area */
 	uint32 timestamp;		/* Last timestamp event */
 	uint32 cyclecount;		/* Cycles at last timestamp event */
-	_EL_SET_PTR sets; 		/* Ptr to array of <num_sets> set ptrs */
+	_EL_SET_PTR sets;		/* Ptr to array of <num_sets> set ptrs */
 	uint16 log_count;		/* Number of event logs from last flush */
 	uint16 rate_hc;			/* Max number of prints per second */
 	uint32 hc_timestamp;		/* Timestamp of last hc window starting */
+	bool cpu_freq_changed;		/* Set to TRUE when CPU freq changed */
 } event_log_top_t;
 
 /* structure of the trailing 3 words in logstrs.bin */
@@ -263,6 +264,31 @@ typedef struct evt_log_tag_entry {
 	uint8	set; /* Set number. */
 	uint8	refcnt; /* Ref_count if sdc is used */
 } evt_log_tag_entry_t;
+
+#ifdef BCMDRIVER
+/* !!! The following section is for kernel mode code only !!! */
+#include <osl_decl.h>
+
+extern bool d3_preserve_enab;
+#if defined(ROM_ENAB_RUNTIME_CHECK)
+	#define D3_PRESERVE_ENAB()   (d3_preserve_enab)
+#elif defined(EVENTLOG_D3_PRESERVE_DISABLED)
+	#define D3_PRESERVE_ENAB()   (0)
+#else
+	#define D3_PRESERVE_ENAB()   (1)
+#endif
+
+#if defined(EVENTLOG_PRSV_PERIODIC)
+extern bool prsv_periodic_enab;
+#if defined(ROM_ENAB_RUNTIME_CHECK)
+	#define PRSV_PRD_ENAB()   (prsv_periodic_enab)
+#elif defined(EVENTLOG_PRSV_PERIODIC_DISABLED)
+	#define PRSV_PRD_ENAB()   (0)
+#else
+	#define PRSV_PRD_ENAB()   (1)
+#endif
+#endif /* EVENTLOG_PRSV_PERIODIC */
+
 /*
  * Use the following macros for generating log events.
  *
@@ -293,7 +319,7 @@ typedef struct evt_log_tag_entry {
  *
  */
 
-#if !defined(EVENT_LOG_DUMPER) && !defined(DHD_EFI)
+#if !defined(EVENT_LOG_DUMPER)
 
 #ifndef EVENT_LOG_COMPILE
 
@@ -316,6 +342,8 @@ typedef struct evt_log_tag_entry {
 
 #define EVENT_LOG_BUFFER(tag, buf, size)
 #define EVENT_LOG_PRSRV_FLUSH()
+#define EVENT_LOG_FORCE_FLUSH_ALL()
+#define EVENT_LOG_FORCE_FLUSH_PRSRV_LOG_ALL()
 
 #else  /* EVENT_LOG_COMPILE */
 
@@ -507,7 +535,15 @@ typedef struct evt_log_tag_entry {
 #define EVENT_LOG_BUFFER(tag, buf, size)	event_log_buffer(tag, buf, size)
 #define EVENT_DUMP	event_log_buffer
 
-#define EVENT_LOG_PRSRV_FLUSH()	event_log_force_flush_all()
+/* EVENT_LOG_PRSRV_FLUSH() will be deprecated. Use EVENT_LOG_FORCE_FLUSH_ALL instead */
+#define EVENT_LOG_PRSRV_FLUSH()		event_log_force_flush_all()
+#define EVENT_LOG_FORCE_FLUSH_ALL()	event_log_force_flush_all()
+
+#ifdef PRESERVE_LOG
+#define EVENT_LOG_FORCE_FLUSH_PRSRV_LOG_ALL()	event_log_force_flush_preserve_all()
+#else
+#define EVENT_LOG_FORCE_FLUSH_PRSRV_LOG_ALL()
+#endif /* PRESERVE_LOG */
 
 extern uint8 *event_log_tag_sets;
 
@@ -545,7 +581,9 @@ extern void event_logv(int num_args, int tag, int fmtNum, va_list ap);
 #endif /* ROM_COMPAT_MSCH_PROFILER */
 
 extern void event_log_time_sync(uint32 ms);
-extern void event_log_buffer(int tag, uint8 *buf, int size);
+extern bool event_log_time_sync_required(void);
+extern void event_log_cpu_freq_changed(void);
+extern void event_log_buffer(int tag, const uint8 *buf, int size);
 extern void event_log_caller_return_address(int tag);
 extern int event_log_set_destination_set(int set, event_log_set_destination_t dest);
 extern event_log_set_destination_t event_log_set_destination_get(int set);
@@ -564,11 +602,19 @@ extern bool event_log_is_preserve_active(uint set);
 extern uint event_log_get_percentage_available_space(uint set);
 extern bool event_log_set_watermark_reached(int set_num);
 
+extern void event_log_set_config(int set, uint32 period, uint16 watermark, uint32 config_flags);
 #ifdef EVENTLOG_D3_PRESERVE
 #define EVENT_LOG_PRESERVE_EXPAND_SIZE	5u
 extern int event_log_preserve_set_shrink(osl_t *osh, int set_num);
 extern void event_log_d3_preserve_active_set(osl_t* osh, int set, bool active);
+extern void event_log_d3_prsv_set_all(osl_t *osh, bool active);
 #endif /* EVENTLOG_D3_PRESERVE */
+
+#ifdef EVENTLOG_PRSV_PERIODIC
+#define EVENT_LOG_SET_SIZE_INVALID	0xFFFFFFFFu
+#define EVENT_LOG_DEFAULT_PERIOD	3000u
+extern void event_log_prsv_periodic_wd_trigger(osl_t *osh);
+#endif /* EVENTLOG_PRSV_PERIODIC */
 
 /* Enable/disable rate health check for a set */
 #ifdef EVENT_LOG_RATE_HC
@@ -594,11 +640,16 @@ extern int event_log_set_is_valid(int set);
 extern int event_log_get_num_sets(void);
 
 /* Given a buffer, return to which set it belongs to */
-extern int event_log_get_set_for_buffer(void *buf);
+extern int event_log_get_set_for_buffer(const void *buf);
 
-#endif /* EVENT_LOG_DUMPER */
-
+extern int event_log_flush_multiple_sets(const int *sets, uint16 num_sets);
+extern int event_log_force_flush_preserve_all(void);
+extern int event_log_get_iovar_handler(int set);
 #endif /* EVENT_LOG_COMPILE */
+
+#endif
+
+#endif /* BCMDRIVER */
 
 #endif /* __ASSEMBLER__ */
 

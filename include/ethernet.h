@@ -1,7 +1,7 @@
 /*
  * From FreeBSD 2.2.7: Fundamental constants relating to ethernet.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: ethernet.h 700076 2017-05-17 14:42:22Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _NET_ETHERNET_H_	/* use native BSD ethernet.h when available */
@@ -28,7 +26,7 @@
 
 #ifndef _TYPEDEFS_H_
 #include "typedefs.h"
-#endif // endif
+#endif
 
 /* This marks the start of a packed structure section. */
 #include <packed_section_start.h>
@@ -129,13 +127,8 @@ BWL_PRE_PACKED_STRUCT struct ether_header {
 BWL_PRE_PACKED_STRUCT struct	ether_addr {
 	uint8 octet[ETHER_ADDR_LEN];
 } BWL_POST_PACKED_STRUCT;
-#elif defined(VX_BSD4_3) && VX_BSD4_3
-/*
- * Structure of a 48-bit Ethernet address.
- */
-BWL_PRE_PACKED_STRUCT struct	ether_addr {
-	uint8 octet[ETHER_ADDR_LEN];
-} BWL_POST_PACKED_STRUCT;
+#endif /* __INCif_etherh */
+#ifdef __INCif_etherh
 #endif	/* !__INCif_etherh Quick and ugly hack for VxWorks */
 
 /*
@@ -143,7 +136,7 @@ BWL_PRE_PACKED_STRUCT struct	ether_addr {
  * address bit in the 48-bit Ethernet address.
  */
 #define ETHER_SET_LOCALADDR(ea)	(((uint8 *)(ea))[0] = (((uint8 *)(ea))[0] | 2))
-#define ETHER_IS_LOCALADDR(ea) 	(((uint8 *)(ea))[0] & 2)
+#define ETHER_IS_LOCALADDR(ea)	(((uint8 *)(ea))[0] & 2)
 #define ETHER_CLR_LOCALADDR(ea)	(((uint8 *)(ea))[0] = (((uint8 *)(ea))[0] & 0xfd))
 #define ETHER_TOGGLE_LOCALADDR(ea)	(((uint8 *)(ea))[0] = (((uint8 *)(ea))[0] ^ 2))
 
@@ -190,24 +183,6 @@ do { \
 	((uint16 *)(d))[6] = ((const uint16 *)(s))[6]; \
 } while (0)
 
-#ifdef DONGLEBUILD
-
-/* Dongles use bcmutils functions instead of macros.
- * Possibly slower but saves over 800 bytes off THUMB dongle image.
- */
-
-extern const struct ether_addr ether_bcast;
-extern const struct ether_addr ether_null;
-extern const struct ether_addr ether_ipv6_mcast;
-
-extern int ether_isbcast(const void *ea);
-extern int ether_isnulladdr(const void *ea);
-
-#define ETHER_ISBCAST(ea)	ether_isbcast(ea)
-#define ETHER_ISNULLADDR(ea)	ether_isnulladdr(ea)
-
-#else /* !DONGLEBUILD */
-
 static const struct ether_addr ether_bcast = {{255, 255, 255, 255, 255, 255}};
 static const struct ether_addr ether_null = {{0, 0, 0, 0, 0, 0}};
 static const struct ether_addr ether_ipv6_mcast = {{0x33, 0x33, 0x00, 0x00, 0x00, 0x01}};
@@ -224,8 +199,6 @@ static const struct ether_addr ether_ipv6_mcast = {{0x33, 0x33, 0x00, 0x00, 0x00
 				  ((const uint8 *)(ea))[3] |		\
 				  ((const uint8 *)(ea))[4] |		\
 				  ((const uint8 *)(ea))[5]) == 0)
-
-#endif /* !DONGLEBUILD */
 
 #define ETHER_ISNULLDEST(da)	((((const uint16 *)(da))[0] |           \
 				  ((const uint16 *)(da))[1] |           \

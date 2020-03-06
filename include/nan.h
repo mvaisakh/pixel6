@@ -2,7 +2,7 @@
  * Fundamental types and constants relating to WFA NAN
  * (Neighbor Awareness Networking)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,15 +19,17 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: nan.h 818571 2019-05-08 04:36:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _NAN_H_
 #define _NAN_H_
 
 #include <typedefs.h>
 #include <802.11.h>
+
+/* Do we want to include p2p.h for constants like P2P_WFDS_HASH_LEN and
+ * maybe P2P_WFDS_MAX_SVC_NAME_LEN etc.?
+ */
 
 /* This marks the start of a packed structure section. */
 #include <packed_section_start.h>
@@ -468,7 +470,7 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_ranging_report_attr_s {
 	See definition in 9.4.2.22.18 in 802.11mc D5.0
 	*/
 	uint8 entry_count;
-	uint8 data[2]; /* includes pad */
+	uint8 data[]; /* Variable size range entry */
 	/*
 	dot11_ftm_range_entry_t entries[entry_count];
 	uint8 error_count;

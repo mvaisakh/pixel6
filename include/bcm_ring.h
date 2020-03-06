@@ -6,7 +6,7 @@
  *
  * NOTE: A ring of size N, may only hold N-1 elements.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,9 +23,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcm_ring.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef __bcm_ring_included__
 #define __bcm_ring_included__
@@ -107,7 +105,7 @@
 #define __ring_aligned                      ____cacheline_aligned
 #else
 #define __ring_aligned
-#endif // endif
+#endif
 
 /* Conditional compile for debug */
 /* #define BCM_RING_DEBUG */

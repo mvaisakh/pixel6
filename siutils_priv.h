@@ -1,7 +1,7 @@
 /*
  * Include file private to the SOC Interconnect support files.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,29 +18,21 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: siutils_priv.h 820975 2019-05-21 20:28:39Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_siutils_priv_h_
 #define	_siutils_priv_h_
 
-#if defined(BCMDBG_ERR) && defined(ERR_USE_LOG_EVENT)
-#define	SI_ERROR(args)	EVENT_LOG_COMPACT_CAST_PAREN_ARGS(EVENT_LOG_TAG_SI_ERROR, args)
-#elif defined(BCMDBG_ERR) || defined(SI_ERROR_ENFORCE)
+#if defined(SI_ERROR_ENFORCE)
 #define	SI_ERROR(args)	printf args
 #else
 #define	SI_ERROR(args)
-#endif	/* BCMDBG_ERR */
+#endif
 
 #if defined(ENABLE_CORECAPTURE)
 
-#if !defined(BCMDBG)
 #define	SI_PRINT(args)	osl_wificc_logDebug args
-#else
-#define	SI_PRINT(args)	printf args
-#endif /* !BCMDBG */
 
 #else
 
@@ -48,17 +40,13 @@
 
 #endif /* ENABLE_CORECAPTURE */
 
-#ifdef BCMDBG
-#define	SI_MSG(args)	printf args
-#else
 #define	SI_MSG(args)
-#endif	/* BCMDBG */
 
 #ifdef BCMDBG_SI
 #define	SI_VMSG(args)	printf args
 #else
 #define	SI_VMSG(args)
-#endif // endif
+#endif
 
 #define	IS_SIM(chippkg)	((chippkg == HDLSIM_PKG_ID) || (chippkg == HWSIM_PKG_ID))
 
@@ -97,33 +85,29 @@ typedef struct axi_wrapper {
 	uint32  wrapper_type;
 	uint32  wrapper_addr;
 	uint32  wrapper_size;
+	uint32  node_type;
 } axi_wrapper_t;
 
-#define SI_MAX_AXI_WRAPPERS		32
-#define AI_REG_READ_TIMEOUT		300 /* in msec */
+#ifdef SOCI_NCI_BUS
+#define SI_MAX_AXI_WRAPPERS		65u
+#else
+#define SI_MAX_AXI_WRAPPERS		32u
+#endif /* SOCI_NCI_BUS */
+#define AI_REG_READ_TIMEOUT		300u /* in msec */
 
 /* for some combo chips, BT side accesses chipcommon->0x190, as a 16 byte addr */
 /* register at 0x19C doesn't exist, so error is logged at the slave wrapper */
+/* Since this can't be fixed in the boot rom, WAR it */
 #define BT_CC_SPROM_BADREG_LO   0x18000190
 #define BT_CC_SPROM_BADREG_SIZE 4
 #define BT_CC_SPROM_BADREG_HI   0
-#define BCM4350_BT_AXI_ID	6
-#define BCM4345_BT_AXI_ID	6
-#define BCM4349_BT_AXI_ID	5
-#define BCM4364_BT_AXI_ID	5
+
+#define BCM4389_BT_AXI_ID	2
 #define BCM4369_BT_AXI_ID	4
 #define BCM4378_BT_AXI_ID	2
 #define BCM4368_BT_AXI_ID	2
 #define BCM43602_BT_AXI_ID	1
 #define BCM4378_ARM_PREFETCH_AXI_ID     9
-
-/* for BT logging and memory dump, ignore failed access to BT memory */
-#define BCM4347_BT_ADDR_HI	0
-#define BCM4347_BT_ADDR_LO	0x19000000	/* BT address space */
-#define BCM4347_BT_SIZE		0x01000000	/* BT address space size */
-#define BCM4347_UNUSED_AXI_ID	0xffffffff
-#define BCM4347_CC_AXI_ID	0
-#define BCM4347_PCIE_AXI_ID	1
 
 #define BCM4378_BT_ADDR_HI	0
 #define BCM4378_BT_ADDR_LO	0x19000000	/* BT address space */
@@ -212,13 +196,6 @@ typedef struct si_info {
 	uint32	oob_router1;		/**< oob router registers for axi */
 
 	si_cores_info_t *cores_info;
-#if !defined(BCMDONGLEHOST)
-	/* Store NVRAM data so that it is available after reclaim. */
-	uint32 nvram_min_mask;
-	bool min_mask_valid;
-	uint32 nvram_max_mask;
-	bool max_mask_valid;
-#endif /* !BCMDONGLEHOST */
 	gci_gpio_item_t	*gci_gpio_head;	/**< gci gpio interrupts head */
 	uint	chipnew;		/**< new chip number */
 	uint second_bar0win;		/**< Backplane region */
@@ -245,6 +222,7 @@ typedef struct si_info {
 	si_res_state_info_t res_state[RES_PEND_STATS_COUNT];
 	uint32	res_pend_count;
 	bool    rfldo3p3_war;		/**< singing cap war enable from nvram */
+	void    *nci_info;
 } si_info_t;
 
 #define	SI_INFO(sih)	((si_info_t *)(uintptr)sih)
@@ -253,7 +231,7 @@ typedef struct si_info {
 		ISALIGNED((x), SI_CORE_SIZE))
 #define	GOODREGS(regs)	((regs) != NULL && ISALIGNED((uintptr)(regs), SI_CORE_SIZE))
 #define BADCOREADDR	0
-#define	GOODIDX(idx)	(((uint)idx) < SI_MAXCORES)
+#define	GOODIDX(idx, maxcores)	(((uint)idx) < maxcores)
 #define	NOREV		(int16)-1		/**< Invalid rev */
 
 #define PCI(si)		((BUSTYPE((si)->pub.bustype) == PCI_BUS) &&	\
@@ -267,8 +245,6 @@ typedef struct si_info {
 
 #define PCIE(si)	(PCIE_GEN1(si) || PCIE_GEN2(si))
 
-#define PCMCIA(si)	((BUSTYPE((si)->pub.bustype) == PCMCIA_BUS) && ((si)->memseg == TRUE))
-
 /** Newer chips can access PCI/PCIE and CC core without requiring to change PCI BAR0 WIN */
 #define SI_FAST(si) (PCIE(si) || (PCI(si) && ((si)->pub.buscorerev >= 13)))
 
@@ -280,13 +256,23 @@ typedef struct si_info {
 /*
  * Macros to disable/restore function core(D11, ENET, ILINE20, etc) interrupts before/
  * after core switching to avoid invalid register accesss inside ISR.
+ * Adding SOCI_NCI_BUS to avoid abandons in the branches that use this MACRO.
  */
+#ifdef SOCI_NCI_BUS
+#define INTR_OFF(si, intr_val) \
+	if ((si)->intrsoff_fn && (si_coreid(&(si)->pub) == (si)->dev_coreid)) { \
+		(*(si)->intrsoff_fn)((si)->intr_arg, intr_val); }
+#define INTR_RESTORE(si, intr_val) \
+	if ((si)->intrsrestore_fn && (si_coreid(&(si)->pub) == (si)->dev_coreid)) { \
+		(*(si)->intrsrestore_fn)((si)->intr_arg, intr_val); }
+#else
 #define INTR_OFF(si, intr_val) \
 	if ((si)->intrsoff_fn && (si)->cores_info->coreid[(si)->curidx] == (si)->dev_coreid) { \
 		(*(si)->intrsoff_fn)((si)->intr_arg, intr_val); }
 #define INTR_RESTORE(si, intr_val) \
 	if ((si)->intrsrestore_fn && (si)->cores_info->coreid[(si)->curidx] == (si)->dev_coreid) { \
 		(*(si)->intrsrestore_fn)((si)->intr_arg, intr_val); }
+#endif /* SOCI_NCI_BUS */
 
 /* dynamic clock control defines */
 #define	LPOMINFREQ		25000		/**< low power oscillator min */
@@ -305,7 +291,7 @@ typedef struct si_info {
 
 #ifndef DEFAULT_GPIOTIMERVAL
 #define DEFAULT_GPIOTIMERVAL  ((DEFAULT_GPIO_ONTIME << GPIO_ONTIME_SHIFT) | DEFAULT_GPIO_OFFTIME)
-#endif // endif
+#endif
 
 /* Silicon Backplane externs */
 extern void sb_scan(si_t *sih, volatile void *regs, uint devid);
@@ -333,16 +319,9 @@ extern int sb_numaddrspaces(const si_t *sih);
 
 extern bool sb_taclear(si_t *sih, bool details);
 
-#ifdef BCMDBG
-extern void sb_view(si_t *sih, bool verbose);
-extern void sb_viewall(si_t *sih, bool verbose);
-#endif // endif
-#if defined(BCMDBG_DUMP)
-extern void sb_dump(si_t *sih, struct bcmstrbuf *b);
-#endif // endif
-#if defined(BCMDBG) || defined(BCMDBG_DUMP)|| defined(BCMDBG_PHYDUMP)
+#if defined(BCMDBG_PHYDUMP)
 extern void sb_dumpregs(si_t *sih, struct bcmstrbuf *b);
-#endif /* BCMDBG || BCMDBG_DUMP|| BCMDBG_PHYDUMP */
+#endif
 
 /* AMBA Interconnect exported externs */
 extern si_t *ai_attach(uint pcidev, osl_t *osh, void *regs, uint bustype,
@@ -382,21 +361,21 @@ extern uint32 ai_clear_backplane_to(si_t *sih);
 void ai_force_clocks(const si_t *sih, uint clock_state);
 extern uint ai_num_slaveports(const si_t *sih, uint coreidx);
 
-#ifdef BCM_BACKPLANE_TIMEOUT
+#ifdef AXI_TIMEOUTS_NIC
 uint32 ai_clear_backplane_to_fast(si_t *sih, void * addr);
-#endif /* BCM_BACKPLANE_TIMEOUT */
+#endif /* AXI_TIMEOUTS_NIC */
 
-#if defined(AXI_TIMEOUTS) || defined(BCM_BACKPLANE_TIMEOUT)
+#ifdef BOOKER_NIC400_INF
+extern void ai_core_reset_ext(const si_t *sih, uint32 bits, uint32 resetbits);
+#endif /* BOOKER_NIC400_INF */
+
+#if defined(AXI_TIMEOUTS) || defined(AXI_TIMEOUTS_NIC)
 extern uint32 ai_clear_backplane_to_per_core(si_t *sih, uint coreid, uint coreunit, void * wrap);
-#endif /* AXI_TIMEOUTS || BCM_BACKPLANE_TIMEOUT */
+#endif /* AXI_TIMEOUTS || AXI_TIMEOUTS_NIC */
 
-#ifdef BCMDBG
-extern void ai_view(const si_t *sih, bool verbose);
-extern void ai_viewall(si_t *sih, bool verbose);
-#endif // endif
-#if defined(BCMDBG) || defined(BCMDBG_DUMP)|| defined(BCMDBG_PHYDUMP)
+#if defined(BCMDBG_PHYDUMP)
 extern void ai_dumpregs(const si_t *sih, struct bcmstrbuf *b);
-#endif /* BCMDBG || BCMDBG_DUMP|| BCMDBG_PHYDUMP */
+#endif
 
 extern uint32 ai_wrapper_dump_buf_size(const si_t *sih);
 extern uint32 ai_wrapper_dump_binary(const si_t *sih, uchar *p);
@@ -404,11 +383,11 @@ extern bool ai_check_enable_backplane_log(const si_t *sih);
 extern uint32 ai_wrapper_dump_last_timeout(const si_t *sih, uint32 *error, uint32 *core,
 	uint32 *ba, uchar *p);
 extern uint32 ai_findcoreidx_by_axiid(const si_t *sih, uint32 axiid);
-#if defined(BCM_BACKPLANE_TIMEOUT) || defined(AXI_TIMEOUTS)
+#if defined(AXI_TIMEOUTS_NIC) || defined(AXI_TIMEOUTS)
 extern void ai_wrapper_get_last_error(const si_t *sih, uint32 *error_status, uint32 *core,
 	uint32 *lo, uint32 *hi, uint32 *id);
 extern uint32 ai_get_axi_timeout_reg(void);
-#endif /* (BCM_BACKPLANE_TIMEOUT) || (AXI_TIMEOUTS) */
+#endif /* (AXI_TIMEOUTS_NIC) || (AXI_TIMEOUTS) */
 
 #ifdef UART_TRAP_DBG
 void ai_dump_APB_Bridge_registers(const si_t *sih);
@@ -435,4 +414,68 @@ void ai_force_clocks(const si_t *sih, uint clock_state);
 #define ub_view(a, b) do {} while (0)
 #define ub_dumpregs(a, b) do {} while (0)
 
+#ifndef SOCI_NCI_BUS
+#define nci_uninit(a) do {} while (0)
+#define nci_scan(a) (0)
+#define nci_dump_erom(a) do {} while (0)
+#define nci_init(a, b, c) (NULL)
+#define nci_setcore(a, b, c) (NULL)
+#define nci_setcoreidx(a, b) (NULL)
+#define nci_findcoreidx(a, b, c) (0)
+#define nci_corereg_addr(a, b, c) (NULL)
+#define nci_corereg_writeonly(a, b, c, d, e) (0)
+#define nci_corereg(a, b, c, d, e) (0)
+#define nci_corerev_minor(a) (0)
+#define nci_corerev(a) (0)
+#define nci_corevendor(a) (0)
+#define nci_get_wrap_reg(a, b, c, d) (0)
+#define nci_core_reset(a, b, c) do {} while (0)
+#define nci_core_disable(a, b) do {} while (0)
+#define nci_iscoreup(a) (FALSE)
+#define nci_coreid(a, b) (0)
+#define nci_numcoreunits(a, b) (0)
+#define nci_addr_space(a, b, c) (0)
+#define nci_addr_space_size(a, b, c) (0)
+#define nci_iscoreup(a) (FALSE)
+#define nci_intflag(a) (0)
+#define nci_flag(a) (0)
+#define nci_flag_alt(a) (0)
+#define nci_setint(a, b) do {} while (0)
+#define nci_oobr_baseaddr(a, b) (0)
+#define nci_coreunit(a) (0)
+#define nci_corelist(a, b) (0)
+#define nci_numaddrspaces(a) (0)
+#define nci_addrspace(a, b, c) (0)
+#define nci_addrspacesize(a, b, c) (0)
+#define nci_coreaddrspaceX(a, b, c, d) do {} while (0)
+#define nci_core_cflags(a, b, c) (0)
+#define nci_core_cflags_wo(a, b, c) do {} while (0)
+#define nci_core_sflags(a, b, c) (0)
+#define nci_wrapperreg(a, b, c, d) (0)
+#define nci_invalidate_second_bar0win(a) do {} while (0)
+#define nci_backplane_access(a, b, c, d, e) (0)
+#define nci_backplane_access_64(a, b, c, d, e) (0)
+#define nci_num_slaveports(a, b) (0)
+#if defined(BCMDBG_PHYDUMP)
+#define nci_dumpregs(a, b) do {} while (0)
+#endif
+#define nci_get_nth_wrapper(a, b) (0)
+#define nci_get_axi_addr(a, b) (0)
+#define nci_wrapper_dump_binary_one(a, b, c) (NULL)
+#define nci_wrapper_dump_binary(a, b) (0)
+#define nci_wrapper_dump_last_timeout(a, b, c, d, e) (0)
+#define nci_check_enable_backplane_log(a) (FALSE)
+#define nci_get_core_baaddr(a, b, c) (0)
+#define nci_clear_backplane_to(a) (0)
+#define nci_clear_backplane_to_per_core(a, b, c, d) (0)
+#define nci_ignore_errlog(a, b, c, d, e, f) (FALSE)
+#define nci_wrapper_get_last_error(a, b, c, d, e, f) do {} while (0)
+#define nci_get_axi_timeout_reg() (0)
+#define nci_findcoreidx_by_axiid(a, b) (0)
+#define nci_wrapper_dump_binary_one(a, b, c) (NULL)
+#define nci_wrapper_dump_binary(a, b) (0)
+#define nci_wrapper_dump_last_timeout(a, b, c, d, e) (0)
+#define nci_check_enable_backplane_log(a) (FALSE)
+#define nci_wrapper_dump_buf_size(a) (0)
+#endif /* SOCI_NCI_BUS */
 #endif	/* _siutils_priv_h_ */

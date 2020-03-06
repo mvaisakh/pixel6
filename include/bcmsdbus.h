@@ -2,7 +2,7 @@
  * Definitions for API from sdio common code (bcmsdh) to individual
  * host controller drivers.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,9 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmsdbus.h 800447 2019-01-22 02:47:42Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_sdio_api_h_
@@ -30,6 +28,12 @@
 #if defined(BT_OVER_SDIO)
 #include <linux/mmc/sdio_func.h>
 #endif /* defined (BT_OVER_SDIO) */
+
+/*
+ * The following were:
+ *	incorrectly in bcmsdio.h
+ *	incorrectly named using SDIOH which indicates BRCM SDIO FPGA host controller
+ */
 
 #define SDIOH_API_RC_SUCCESS                          (0x00)
 #define SDIOH_API_RC_FAIL	                      (0x01)
@@ -68,7 +72,7 @@
 #warning "SDPCM_DEFGLOM_SIZE cannot be higher than SDPCM_MAXGLOM_SIZE!!"
 #undef SDPCM_DEFGLOM_SIZE
 #define SDPCM_DEFGLOM_SIZE SDPCM_MAXGLOM_SIZE
-#endif // endif
+#endif
 
 typedef int SDIOH_API_RC;
 
@@ -91,9 +95,9 @@ extern SDIOH_API_RC sdioh_interrupt_query(sdioh_info_t *si, bool *onoff);
 /* enable or disable SD interrupt */
 extern SDIOH_API_RC sdioh_interrupt_set(sdioh_info_t *si, bool enable_disable);
 
-#if defined(DHD_DEBUG) || defined(BCMDBG)
+#if defined(DHD_DEBUG)
 extern bool sdioh_interrupt_pending(sdioh_info_t *si);
-#endif // endif
+#endif
 
 /* read or write one byte using cmd52 */
 extern SDIOH_API_RC sdioh_request_byte(sdioh_info_t *si, uint rw, uint fnc, uint addr, uint8 *byte);
@@ -143,8 +147,12 @@ extern void sdioh_dwordmode(sdioh_info_t *si, bool set);
 #endif /* BCMSPI */
 
 #if defined(BCMSDIOH_STD)
+	/*
+	 * Only STD host supports cmd14 sleep.
+	 * Using define instead of empty stubs for other hosts for now.
+	 */
 	#define SDIOH_SLEEP_ENABLED
-#endif // endif
+#endif
 extern SDIOH_API_RC sdioh_sleep(sdioh_info_t *si, bool enab);
 
 /* GPIO support */

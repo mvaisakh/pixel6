@@ -1,7 +1,7 @@
 /*
  * osl forward declarations
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: osl_decl.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _osl_decl_h_
@@ -30,4 +28,4 @@
 typedef struct osl_info osl_t;
 typedef struct osl_dmainfo osldma_t;
 extern unsigned int lmtest; /* low memory test */
-#endif // endif
+#endif

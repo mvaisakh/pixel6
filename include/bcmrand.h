@@ -1,7 +1,7 @@
 /*
  * bcmrand.h.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmutils.h 728251 2017-10-25 14:01:24Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmrand_h_
@@ -29,12 +27,6 @@
 /* When HOST driver is for PCIE dongle image, we suppose the HOST must provide the entropy
  * input if it does not define the macro BCM_RNG_NO_HOST_ENTROPY
  */
-#if defined(BCMPCIEDEV) && defined(DONGLEBUILD)
-#if !defined(BCM_RNG_HOST_ENTROPY) && !defined(BCM_RNG_NO_HOST_ENTROPY)
-#define BCM_RNG_HOST_ENTROPY
-#define BCM_RNG_PCIEDEV_DEFAULT
-#endif /* !BCM_RNG_HOST_ENTROPY && !BCM_RNG_NO_HOST_ENTROPY */
-#endif /* BCMPCIEDEV && DONGLEBUILD */
 
 /* the format of current TCM layout during boot
  *

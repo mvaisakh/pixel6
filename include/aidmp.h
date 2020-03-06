@@ -1,7 +1,7 @@
 /*
  * Broadcom AMBA Interconnect definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: aidmp.h 820975 2019-05-21 20:28:39Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_AIDMP_H
@@ -109,6 +107,8 @@
 #define	SD_SZ_MASK		0xfffff000
 #define	SD_SG32			0x00000008
 #define	SD_SZ_ALIGN		0x00000fff
+
+#define WRAPPER_TIMEOUT_CONFIG	0x4u
 
 #if !defined(_LANGUAGE_ASSEMBLY) && !defined(__ASSEMBLY__)
 
@@ -302,27 +302,13 @@ typedef volatile struct _aidmp {
 #define	AI_OOBDINWIDTH		0x364
 #define	AI_OOBDOUTWIDTH		0x368
 
-#if	defined(IL_BIGENDIAN) && defined(BCMHND74K)
-/* Selective swapped defines for those registers we need in
- * big-endian code.
- */
-#define	AI_IOCTRLSET		0x404
-#define	AI_IOCTRLCLEAR		0x400
-#define	AI_IOCTRL		0x40c
-#define	AI_IOSTATUS		0x504
-#define	AI_RESETCTRL		0x804
-#define	AI_RESETSTATUS		0x800
-
-#else	/* !IL_BIGENDIAN || !BCMHND74K */
-
 #define	AI_IOCTRLSET		0x400
 #define	AI_IOCTRLCLEAR		0x404
 #define	AI_IOCTRL		0x408
+#define AI_IOCTRL_BOOKER        0x248 /* Starting from OOBR base - 0x18006000 */
 #define	AI_IOSTATUS		0x500
 #define	AI_RESETCTRL		0x800
 #define	AI_RESETSTATUS		0x804
-
-#endif	/* IL_BIGENDIAN && BCMHND74K */
 
 #define	AI_IOCTRLWIDTH		0x700
 #define	AI_IOSTATUSWIDTH	0x704

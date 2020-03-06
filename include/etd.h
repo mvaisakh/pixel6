@@ -1,7 +1,7 @@
 /*
  * Extended Trap data component interface file.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: etd.h 813064 2019-04-03 11:29:38Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _ETD_H_
@@ -28,7 +26,7 @@
 
 #if defined(ETD) && !defined(WLETD)
 #include <hnd_trap.h>
-#endif // endif
+#endif
 #include <bcmutils.h>
 /* Tags for structures being used by etd info iovar.
  * Related structures are defined in wlioctl.h.
@@ -244,6 +242,9 @@ typedef struct hnd_ext_trap_heap_err {
 #define MEM_TRAP_NUM_WLC_TX_QUEUES		6
 #define HND_EXT_TRAP_WLC_MEM_ERR_VER_V2		2
 
+/* already there are quite a few chips which are ROM'ed wth this structure
+ * Will not be adding version. This will be the V1 structure.
+ */
 typedef struct hnd_ext_trap_wlc_mem_err {
 	uint8 instance;
 	uint8 associated;
@@ -610,13 +611,7 @@ uint etd_get_reg_dump_config_len(void);
 
 extern bool _etd_enab;
 
-#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
 	#define ETD_ENAB(pub)		(_etd_enab)
-#elif defined(ETD_DISABLED)
-	#define ETD_ENAB(pub)		(0)
-#else
-	#define ETD_ENAB(pub)		(1)
-#endif // endif
 
 #else
 #define ETD_ENAB(pub)		(0)

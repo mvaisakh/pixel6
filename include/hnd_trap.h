@@ -1,7 +1,7 @@
 /*
  * HND Trap handling.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hnd_trap.h 800447 2019-01-22 02:47:42Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_hnd_trap_h_
@@ -30,6 +28,6 @@
 #include <hnd_armtrap.h>
 #else
 #error "unsupported CPU architecture"
-#endif // endif
+#endif
 
 #endif	/* _hnd_trap_h_ */

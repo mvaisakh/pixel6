@@ -1,7 +1,7 @@
 /*
  * SiliconBackplane System Memory core
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: sbsysmem.h 806631 2019-02-24 13:48:55Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_SBSYSMEM_H
@@ -53,7 +51,7 @@ typedef volatile struct sysmemregs {
 	uint32	cambankpatchtblbaseaddr;
 	uint32	cambankcmdreg;
 	uint32	cambankdatareg;
-	uint32	cambankmaskreg;
+	uint32	standbywait;
 	uint32	PAD[1];
 	uint32	bankinfo;
 	uint32  PAD[7];
@@ -71,6 +69,11 @@ typedef volatile struct sysmemregs {
 	uint32  sr_address;
 	uint32  sr_data;
 } sysmemregs_t;
+
+/* bus MPU region count mask of sysmemregs_t->mpucapabilities */
+#define ACC_MPU_REGION_CNT_MASK	0x7u
+/* bus MPU disable mask of sysmemregs_t->mpucontrol */
+#define BUSMPU_DISABLE_MASK	0xfu
 
 #endif	/* _LANGUAGE_ASSEMBLY */
 
@@ -172,5 +175,12 @@ typedef volatile struct sysmemregs {
 /* bank info to calculate bank size */
 #define	SYSMEM_BANKINFO_SZBASE          8192
 #define SYSMEM_BANKSIZE_SHIFT		13      /* SYSMEM_BANKINFO_SZBASE */
+
+/* standbycontrol register default values */
+#define SYSMEM_SBYCNTRL_TIMEVAL		0x100000u	/* standbycontrol timeval[23:0] */
+#define SYSMEM_SBYCNTRL_TIMEVAL_MASK	0xffffffu
+
+/* sbywaitcycle register default values (sysme rev 8) */
+#define SYSMEM_SBYWAIT_RAM_TIMEVAL	0xau	/* RAM memory access after standby exit */
 
 #endif	/* _SBSYSMEM_H */

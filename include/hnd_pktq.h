@@ -1,7 +1,7 @@
 /*
  * HND generic pktq operation primitives
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,35 +18,34 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hnd_pktq.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hnd_pktq_h_
 #define _hnd_pktq_h_
 
+#include <osl.h>
 #include <osl_ext.h>
 
 #ifdef __cplusplus
 extern "C" {
-#endif // endif
+#endif
 
 /* mutex macros for thread safe */
 #ifdef HND_PKTQ_THREAD_SAFE
 #define HND_PKTQ_MUTEX_DECL(mutex)		OSL_EXT_MUTEX_DECL(mutex)
 #else
 #define HND_PKTQ_MUTEX_DECL(mutex)
-#endif // endif
+#endif
 
 /* osl multi-precedence packet queue */
 #define PKTQ_LEN_MAX            0xFFFFu  /* Max uint16 65535 packets */
 #ifndef PKTQ_LEN_DEFAULT
 #define PKTQ_LEN_DEFAULT        128u	/* Max 128 packets */
-#endif // endif
+#endif
 #ifndef PKTQ_MAX_PREC
 #define PKTQ_MAX_PREC           16	/* Maximum precedence levels */
-#endif // endif
+#endif
 
 /** Queue for a single precedence level */
 typedef struct pktq_prec {
@@ -108,17 +107,14 @@ typedef struct {
 typedef struct pktq_log pktq_log_t;
 #endif /* PKTQ_LOG */
 
-#define PKTQ_COMMON	\
-	HND_PKTQ_MUTEX_DECL(mutex)							\
-	pktq_log_t *pktqlog;								\
-	uint16 num_prec;        /**< number of precedences in use */			\
-	uint16 hi_prec;         /**< rapid dequeue hint (>= highest non-empty prec) */	\
-	uint16 max_pkts;        /**< max  packets */	\
-	uint16 n_pkts_tot;      /**< total (cummulative over all precedences) number of packets */
-
 /** multi-priority packet queue */
 struct pktq {
-	PKTQ_COMMON
+	HND_PKTQ_MUTEX_DECL(mutex)
+	pktq_log_t *pktqlog;
+	uint16 num_prec;        /**< number of precedences in use */
+	uint16 hi_prec;         /**< rapid dequeue hint (>= highest non-empty prec) */
+	uint16 max_pkts;        /**< max  packets */
+	uint16 n_pkts_tot;      /**< total (cummulative over all precedences) number of packets */
 	/* q array must be last since # of elements can be either PKTQ_MAX_PREC or 1 */
 	struct pktq_prec q[PKTQ_MAX_PREC];
 };
@@ -328,6 +324,6 @@ extern void spktq_cb(void *spq);
 
 #ifdef __cplusplus
 }
-#endif // endif
+#endif
 
 #endif /* _hnd_pktq_h_ */

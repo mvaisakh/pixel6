@@ -1,7 +1,7 @@
 /*
  * Byte order utilities
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- *  $Id: bcmendian.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  * This file by default provides proper behavior on little-endian architectures.
  * On big-endian architectures, IL_BIGENDIAN should be defined.
@@ -69,7 +67,6 @@
  *    Host <=> Little-Endian for 16- and 32-bit values
  */
 #ifndef hton16
-#ifndef IL_BIGENDIAN
 #define HTON16(i) BCMSWAP16(i)
 #define	hton16(i) bcmswap16(i)
 #define	HTON32(i) BCMSWAP32(i)
@@ -88,60 +85,22 @@
 #define htol32(i) (i)
 #define HTOL64(i) (i)
 #define htol64(i) (i)
-#else /* IL_BIGENDIAN */
-#define HTON16(i) (i)
-#define	hton16(i) (i)
-#define	HTON32(i) (i)
-#define	hton32(i) (i)
-#define	NTOH16(i) (i)
-#define	ntoh16(i) (i)
-#define	NTOH32(i) (i)
-#define	ntoh32(i) (i)
-#define	LTOH16(i) BCMSWAP16(i)
-#define	ltoh16(i) bcmswap16(i)
-#define	LTOH32(i) BCMSWAP32(i)
-#define	ltoh32(i) bcmswap32(i)
-#define HTOL16(i) BCMSWAP16(i)
-#define htol16(i) bcmswap16(i)
-#define HTOL32(i) BCMSWAP32(i)
-#define htol32(i) bcmswap32(i)
-#define HTOL64(i) BCMSWAP64(i)
-#define htol64(i) bcmswap64(i)
-#endif /* IL_BIGENDIAN */
 #endif /* hton16 */
 
-#ifndef IL_BIGENDIAN
 #define ltoh16_buf(buf, i)
 #define htol16_buf(buf, i)
 #define ltoh32_buf(buf, i)
 #define htol32_buf(buf, i)
 #define ltoh64_buf(buf, i)
 #define htol64_buf(buf, i)
-#else
-#define ltoh16_buf(buf, i) bcmswap16_buf((uint16 *)(buf), (i))
-#define htol16_buf(buf, i) bcmswap16_buf((uint16 *)(buf), (i))
-#define ltoh32_buf(buf, i) bcmswap32_buf((uint16 *)(buf), (i))
-#define htol32_buf(buf, i) bcmswap32_buf((uint16 *)(buf), (i))
-#define ltoh64_buf(buf, i) bcmswap64_buf((uint16 *)(buf), (i))
-#define htol64_buf(buf, i) bcmswap64_buf((uint16 *)(buf), (i))
-#endif /* IL_BIGENDIAN */
 
 /* Unaligned loads and stores in host byte order */
-#ifndef IL_BIGENDIAN
 #define load32_ua(a)		ltoh32_ua(a)
 #define store32_ua(a, v)	htol32_ua_store(v, a)
 #define load16_ua(a)		ltoh16_ua(a)
 #define store16_ua(a, v)	htol16_ua_store(v, a)
 #define load64_ua(a)		ltoh64_ua(a)
 #define store64_ua(a, v)	htol64_ua_store(v, a)
-#else
-#define load32_ua(a)		ntoh32_ua(a)
-#define store32_ua(a, v)	hton32_ua_store(v, a)
-#define load16_ua(a)		ntoh16_ua(a)
-#define store16_ua(a, v)	hton16_ua_store(v, a)
-#define load64_ua(a)		ntoh64_ua(a)
-#define store64_ua(a, v)	hton64_ua_store(v, a)
-#endif /* IL_BIGENDIAN */
 
 #define _LTOH16_UA(cp)	((uint16)(cp)[0] | ((uint16)(cp)[1] << 8))
 #define _LTOH32_UA(cp)	((uint32)(cp)[0] | ((uint32)(cp)[1] << 8) | \

@@ -2,7 +2,7 @@
  * OS Abstraction Layer Extension - the APIs defined by the "extension" API
  * are only supported by a subset of all operating systems.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,9 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: osl_ext.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _osl_ext_h_
@@ -29,21 +27,15 @@
 
 /* ---- Include Files ---------------------------------------------------- */
 
-#if defined(TARGETOS_symbian)
-	#include <e32def.h>
-	#include <symbian_osl_ext.h>
-#elif defined(THREADX)
+#if defined(THREADX)
 	#include <threadx_osl_ext.h>
 #else
 	#define OSL_EXT_DISABLED
-#endif // endif
-
-/* Include base operating system abstraction. */
-#include <osl.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
-#endif // endif
+#endif
 
 /* ---- Constants and Types ---------------------------------------------- */
 
@@ -57,9 +49,11 @@ typedef enum osl_ext_status_t
 	OSL_EXT_TIMEOUT
 
 } osl_ext_status_t;
+
 #define OSL_EXT_STATUS_DECL(status)	osl_ext_status_t status;
 
 #define OSL_EXT_TIME_FOREVER ((osl_ext_time_ms_t)(-1))
+
 typedef unsigned int osl_ext_time_ms_t;
 typedef unsigned int osl_ext_time_us_t;
 
@@ -449,19 +443,6 @@ osl_ext_task_t *osl_ext_task_current(void);
 osl_ext_status_t osl_ext_task_yield(void);
 
 /****************************************************************************
-* Function:   osl_ext_task_yield
-*
-* Purpose:    Yield the CPU to other tasks of the same priority that are
-*             ready-to-run.
-*
-* Parameters: None.
-*
-* Returns:    OSL_EXT_SUCCESS if successful, else error code.
-*****************************************************************************
-*/
-osl_ext_status_t osl_ext_task_yield(void);
-
-/****************************************************************************
 * Function:   osl_ext_task_suspend
 *
 * Purpose:    Suspend a task.
@@ -766,13 +747,13 @@ void osl_ext_interrupt_restore(osl_ext_interrupt_state_t state);
 	(OSL_EXT_SUCCESS)
 #define osl_ext_event_set(event, event_bits)		(OSL_EXT_SUCCESS)
 
-#define osl_ext_interrupt_disable(void)
+#define osl_ext_interrupt_disable(void)			(0)
 #define osl_ext_interrupt_restore(state)
 
 #endif	/* OSL_EXT_DISABLED */
 
 #ifdef __cplusplus
 }
-#endif // endif
+#endif
 
 #endif	/* _osl_ext_h_ */

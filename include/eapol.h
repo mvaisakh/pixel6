@@ -5,7 +5,7 @@
  * IEEE Std 802.1X-2001
  * IEEE 802.1X RADIUS Usage Guidelines
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,9 +22,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: eapol.h 809460 2019-03-14 00:35:24Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _eapol_h_
@@ -32,7 +30,7 @@
 
 #ifndef _TYPEDEFS_H_
 #include <typedefs.h>
-#endif // endif
+#endif
 
 /* This marks the start of a packed structure section. */
 #include <packed_section_start.h>
@@ -134,7 +132,7 @@ typedef BWL_PRE_PACKED_STRUCT struct {
 #ifndef EAPOL_KEY_HDR_VER_V2
 #define EAPOL_WPA_KEY_MIC_LEN		16u /* deprecated */
 #define EAPOL_WPA_KEY_LEN		95u /* deprecated */
-#endif // endif
+#endif
 
 #define EAPOL_PTK_KEY_MAX_LEN	(EAPOL_WPA_KEY_MAX_MIC_LEN +\
 				EAPOL_WPA_ENCR_KEY_MAX_LEN +\
@@ -224,6 +222,9 @@ typedef eapol_wpa_key_header_v2_t eapol_wpa_key_header_t;
 #define WPA_KEY_ENCRYPTED_DATA	0x1000
 
 /* Key Data encapsulation */
+/* this is really just a vendor-specific info element.  should define
+ * this in 802.11.h
+ */
 typedef BWL_PRE_PACKED_STRUCT struct {
 	uint8 type;
 	uint8 length;

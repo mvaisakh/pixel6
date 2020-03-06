@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: wl_cfgp2p.h 794110 2018-12-12 05:03:21Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -209,31 +207,37 @@ enum wl_cfgp2p_status {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) && !defined(WL_CFG80211_P2P_DEV_IF)
 #define WL_CFG80211_P2P_DEV_IF
 
+#ifdef WL_ENABLE_P2P_IF
+#undef WL_ENABLE_P2P_IF
+#endif
+
 #ifdef WL_SUPPORT_BACKPORTED_KPATCHES
 #undef WL_SUPPORT_BACKPORTED_KPATCHES
-#endif // endif
+#endif
 #else
 #ifdef WLP2P
+#ifndef WL_ENABLE_P2P_IF
 /* Enable P2P network Interface if P2P support is enabled */
 #define WL_ENABLE_P2P_IF
+#endif /* WL_ENABLE_P2P_IF */
 #endif /* WLP2P */
 #endif /* (LINUX_VERSION >= VERSION(3, 8, 0)) */
 
 #ifndef WL_CFG80211_P2P_DEV_IF
 #ifdef WL_NEWCFG_PRIVCMD_SUPPORT
 #undef WL_NEWCFG_PRIVCMD_SUPPORT
-#endif // endif
+#endif
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
-#if 0 && (defined(WL_CFG80211_P2P_DEV_IF) || (LINUX_VERSION_CODE >= KERNEL_VERSION(3, \
-	8, 0)))
+#if defined(WL_ENABLE_P2P_IF) && (defined(WL_CFG80211_P2P_DEV_IF) || \
+	(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)))
 #error Disable 'WL_ENABLE_P2P_IF', if 'WL_CFG80211_P2P_DEV_IF' is enabled \
 	or kernel version is 3.8.0 or above
-#endif // endif
+#endif /* WL_ENABLE_P2P_IF && (WL_CFG80211_P2P_DEV_IF || (LINUX_VERSION >= VERSION(3, 8, 0))) */
 
-#if !defined(WLP2P) && defined(WL_CFG80211_P2P_DEV_IF)
+#if !defined(WLP2P) && (defined(WL_ENABLE_P2P_IF) || defined(WL_CFG80211_P2P_DEV_IF))
 #error WLP2P not defined
-#endif // endif
+#endif /* !WLP2P && (WL_ENABLE_P2P_IF || WL_CFG80211_P2P_DEV_IF) */
 
 #if defined(WL_CFG80211_P2P_DEV_IF)
 #define bcm_struct_cfgdev	struct wireless_dev
@@ -241,6 +245,10 @@ enum wl_cfgp2p_status {
 #define bcm_struct_cfgdev	struct net_device
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
+/* If we take 10 or 30 as count value, operation
+ * may failed due to full scan and noisy environments.
+ * So, we choose 50 as the optimum value for P2P ECSA.
+ */
 #define P2P_ECSA_CNT 50
 
 extern void
@@ -251,8 +259,6 @@ extern bool
 wl_cfgp2p_is_p2p_action(void *frame, u32 frame_len);
 extern bool
 wl_cfgp2p_is_gas_action(void *frame, u32 frame_len);
-extern bool
-wl_cfgp2p_find_gas_subtype(u8 subtype, u8* data, u32 len);
 extern bool
 wl_cfgp2p_is_p2p_gas_action(void *frame, u32 frame_len);
 extern void
@@ -447,5 +453,10 @@ wl_cfgp2p_is_p2p_specific_scan(struct cfg80211_scan_request *request);
 							(subtype == P2P_PAF_PROVDIS_RSP)))
 #define IS_P2P_SOCIAL(ch) ((ch == SOCIAL_CHAN_1) || (ch == SOCIAL_CHAN_2) || (ch == SOCIAL_CHAN_3))
 #define IS_P2P_SSID(ssid, len) (!memcmp(ssid, WL_P2P_WILDCARD_SSID, WL_P2P_WILDCARD_SSID_LEN) && \
-					(len == WL_P2P_WILDCARD_SSID_LEN))
+					(len >= WL_P2P_WILDCARD_SSID_LEN))
+
+/* Min FW ver required to support chanspec
+ * instead of channel in actframe iovar.
+ */
+#define FW_MAJOR_VER_ACTFRAME_CHSPEC    14
 #endif				/* _wl_cfgp2p_h_ */

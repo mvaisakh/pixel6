@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: event_log_tag.h 820429 2019-05-17 22:30:04Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_TAG_H_
@@ -81,6 +79,7 @@
 #define EVENT_LOG_TAG_PCI_DBG	52
 #define EVENT_LOG_TAG_PCI_DATA  53
 #define EVENT_LOG_TAG_PCI_RING	54
+
 #define EVENT_LOG_TAG_RANGING_TRACE	55
 #define EVENT_LOG_TAG_WL_ERROR		56
 #define EVENT_LOG_TAG_PHY_ERROR		57
@@ -123,9 +122,11 @@
 #define EVENT_LOG_TAG_MIMO_PS_INFO	94
 #define EVENT_LOG_TAG_BTCX_STATS	95
 #define EVENT_LOG_TAG_LEAKY_AP_STATS	96
+
 #define EVENT_LOG_TAG_MIMO_PS_STATS	98
 #define EVENT_LOG_TAG_PWRSTATS_PHY	99
 #define EVENT_LOG_TAG_PWRSTATS_SCAN	100
+
 #define EVENT_LOG_TAG_PWRSTATS_WAKE_V2	102
 #define EVENT_LOG_TAG_LQM		103
 #define EVENT_LOG_TAG_TRACE_WL_INFO	104
@@ -180,9 +181,11 @@
 #define EVENT_LOG_TAG_STATS			153
 #define EVENT_LOG_TAG_BAM			154
 #define EVENT_LOG_TAG_TXFAIL			155
+
 #define EVENT_LOG_TAG_RANDMAC_INFO		159
 #define EVENT_LOG_TAG_RANDMAC_DBG		160
 #define EVENT_LOG_TAG_RANDMAC_ERR		161
+
 #define EVENT_LOG_TAG_MSCH_CAL			163
 #define EVENT_LOG_TAG_MSCH_OPP_CAL		164
 #define EVENT_LOG_TAG_MSCH			165
@@ -217,6 +220,7 @@
 #define EVENT_LOG_TAG_PHY_ACI_INFO		208
 #define EVENT_LOG_TAG_WL_COUNTERS_AUX		209
 #define EVENT_LOG_TAG_AMPDU_DUMP_AUX		210
+
 #define EVENT_LOG_TAG_PWRSTATS_PHY_AUX		212
 #define EVENT_LOG_TAG_PWRSTATS_SCAN_AUX		213
 #define EVENT_LOG_TAG_PWRSTATS_WAKE_V2_AUX	214
@@ -392,8 +396,58 @@
 #define EVENT_LOG_TAG_BTCEC_INFO		341
 #define EVENT_LOG_TAG_BTCEC_SCHED		342
 
+#ifdef SLOT_SCHED
+#define EVENT_LOG_TAG_SBSS_HC		344
+#endif /* SLOT_SCHED */
+
+/* wlc_chan_cal */
+#define EVENT_LOG_TAG_WCC_ERR			345
+#define EVENT_LOG_TAG_WCC_INFO			346
+#define EVENT_LOG_TAG_WCC_TRACE			347
+
+/* AMT logging */
+#define EVENT_LOG_TAG_AMT_ERR			348
+#define EVENT_LOG_TAG_AMT_INFO			349
+#define EVENT_LOG_TAG_AMT_TRACE			350
+
+/* OBSS hw logging */
+#define EVENT_LOG_TAG_WLC_OBSS_ERR		351
+#define EVENT_LOG_TAG_WLC_OBSS_TRACE		352
+#define EVENT_LOG_TAG_WLC_OBSS_INFO		353
+
+#define EVENT_LOG_TAG_ALLOC_TRACE		354
+
+/* ASSOC and SUP state machine log tags */
+#define EVENT_LOG_TAG_ASSOC_SM			355
+#define EVENT_LOG_TAG_SUP_SM			356
+/* Place holders for additional state machine logging */
+#define EVENT_LOG_TAG_AUTH_SM			357
+#define EVENT_LOG_TAG_SAE_SM			358
+#define EVENT_LOG_TAG_FTM_SM			359
+#define EVENT_LOG_TAG_NAN_SM			360
+
+/* HP2P - RLLW logging */
+#define EVENT_LOG_TAG_RLLW_TRACE		361
+
+#define EVENT_LOG_TAG_SDTC_INFO			362
+#define EVENT_LOG_TAG_SDTC_ERR			363
+
+/* KEEPALIVE logging */
+#define EVENT_LOG_TAG_KEEPALIVE			364
+#define EVENT_LOG_TAG_DTIM_SCHED_LOG		365
+
+/* For printing PHY init time in the event logs for both slices. */
+#define EVENT_LOG_TAG_PHY_INIT_TM		366
+
+/* SensorC Coex logging */
+#define EVENT_LOG_TAG_SSCCX_ERR			367
+#define EVENT_LOG_TAG_SSCCX_INFO		368
+#define EVENT_LOG_TAG_SSCCX_TRACE		369
+/* TAG for channel info */
+#define EVENT_LOG_TAG_SCAN_CHANNEL_INFO		370
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			342
+#define EVENT_LOG_TAG_MAX			370
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

@@ -1,7 +1,7 @@
 /*
  * DHD debugability header file
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -33,9 +33,6 @@ enum {
 	DEBUG_RING_ID_INVALID	= 0,
 	FW_VERBOSE_RING_ID,
 	DHD_EVENT_RING_ID,
-#ifdef BTLOG
-	BT_LOG_RING_ID,
-#endif	/* BTLOG */
 	/* add new id here */
 	DEBUG_RING_ID_MAX
 };
@@ -73,12 +70,6 @@ enum {
 /* NAN event ring, ring id 4 */
 #define NAN_EVENT_RING_NAME		"nan_event"
 #define NAN_EVENT_RING_SIZE		(64 * 1024)
-
-#ifdef BTLOG
-/* BT log ring, ring id 5 */
-#define BT_LOG_RING_NAME		"bt_log"
-#define BT_LOG_RING_SIZE		(64 * 1024)
-#endif	/* BTLOG */
 
 #define TLV_LOG_SIZE(tlv) ((tlv) ? (sizeof(tlv_log) + (tlv)->len) : 0)
 
@@ -292,11 +283,7 @@ typedef struct per_packet_status_entry {
     uint8 *data;
 } per_packet_status_entry_t;
 
-#if defined(LINUX)
 #define PACKED_STRUCT __attribute__ ((packed))
-#else
-#define PACKED_STRUCT
-#endif // endif
 
 typedef struct log_conn_event {
     uint16 event;
@@ -365,6 +352,11 @@ struct log_level_table {
 				&state, sizeof(state));				\
 	} while (0);								\
 }
+
+/*
+ * Packet logging - HAL specific data
+ * XXX: These should be moved to wl_cfgvendor.h
+ */
 
 #define MD5_PREFIX_LEN				4
 #define MAX_FATE_LOG_LEN			32
@@ -771,9 +763,6 @@ void dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	void *raw_event_ptr, uint datalen, bool msgtrace_hdr_present,
 	uint32 msgtrace_seqnum);
 
-#ifdef BTLOG
-extern void dhd_dbg_bt_log_handler(dhd_pub_t *dhdp, void *data, uint datalen);
-#endif	/* BTLOG */
 extern int dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	dbg_urgent_noti_t os_urgent_notifier, void *os_priv);
 extern void dhd_dbg_detach(dhd_pub_t *dhdp);
@@ -864,4 +853,16 @@ extern void dhd_iov_li_delete(dhd_pub_t *dhd, dll_t *list_head);
 #ifdef DHD_DEBUG
 extern void dhd_mw_list_delete(dhd_pub_t *dhd, dll_t *list_head);
 #endif /* DHD_DEBUG */
+
+void print_roam_enhanced_log(prcd_event_log_hdr_t *plog_hdr);
+
+typedef void (*print_roam_enhance_log_func)(prcd_event_log_hdr_t *plog_hdr);
+typedef struct _pr_roam_tbl {
+	uint8 version;
+	uint8 id;
+	print_roam_enhance_log_func pr_func;
+} pr_roam_tbl_t;
+
+extern uint32 dhd_dbg_get_fwverbose(dhd_pub_t *dhdp);
+extern void dhd_dbg_set_fwverbose(dhd_pub_t *dhdp, uint32 new_val);
 #endif /* _dhd_debug_h_ */

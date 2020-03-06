@@ -1,7 +1,7 @@
 /*
  * Header for Linux cfg80211 scan
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _wl_cfgscan_h_
@@ -41,12 +39,20 @@
 #else
 #define GET_SCAN_WDEV(scan_request) \
 	scan_request ? scan_request->wdev : NULL;
-#endif // endif
+#endif
 #ifdef WL_SCHED_SCAN
 #define GET_SCHED_SCAN_WDEV(scan_request) \
 	(scan_request && scan_request->dev) ? scan_request->dev->ieee80211_ptr : NULL;
 #endif /* WL_SCHED_SCAN */
 
+#ifdef DUAL_ESCAN_RESULT_BUFFER
+#define wl_escan_set_sync_id(a, b) ((a) = (b)->escan_info.cur_sync_id)
+#define wl_escan_set_type(a, b) ((a)->escan_info.escan_type\
+				[((a)->escan_info.cur_sync_id)%SCAN_BUF_CNT] = (b))
+#else
+#define wl_escan_set_sync_id(a, b) ((a) = htod16((b)->escan_sync_id_cntr++))
+#define wl_escan_set_type(a, b)
+#endif /* DUAL_ESCAN_RESULT_BUFFER */
 extern s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
 extern s32 wl_do_escan(struct bcm_cfg80211 *cfg, struct wiphy *wiphy,
@@ -60,10 +66,7 @@ extern s32 wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	struct cfg80211_scan_request *request);
 extern int wl_cfg80211_scan_stop(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev);
 #endif /* WL_CFG80211_P2P_DEV_IF */
-#if defined(DHCP_SCAN_SUPPRESS)
-extern void wl_cfg80211_work_handler(struct work_struct *work);
-extern void wl_cfg80211_scan_supp_timerfunc(ulong data);
-#endif /* DHCP_SCAN_SUPPRESS */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
 extern void wl_cfg80211_abort_scan(struct wiphy *wiphy, struct wireless_dev *wdev);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)) */
@@ -97,6 +100,15 @@ extern s32 wl_cfg80211_custom_scan_time(struct net_device *dev,
 #endif /* CUSTOMER_SCAN_TIMEOUT_SETTING */
 #endif /* WES_SUPPORT */
 
+#if defined(SUPPORT_RANDOM_MAC_SCAN)
+int wl_cfg80211_set_random_mac(struct net_device *dev, bool enable);
+int wl_cfg80211_random_mac_enable(struct net_device *dev);
+int wl_cfg80211_random_mac_disable(struct net_device *dev);
+int wl_cfg80211_scan_mac_enable(struct net_device *dev);
+int wl_cfg80211_scan_mac_disable(struct net_device *dev);
+int wl_cfg80211_scan_mac_config(struct net_device *dev, uint8 *rand_mac, uint8 *rand_mask);
+#endif /* SUPPORT_RANDOM_MAC_SCAN */
+
 #ifdef WL_SCHED_SCAN
 extern int wl_cfg80211_sched_scan_start(struct wiphy *wiphy, struct net_device *dev,
 	struct cfg80211_sched_scan_request *request);
@@ -106,4 +118,26 @@ extern int wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *d
 extern int wl_cfg80211_sched_scan_stop(struct wiphy *wiphy, struct net_device *dev);
 #endif /* LINUX_VER > 4.11 */
 #endif /* WL_SCHED_SCAN */
+extern s32 wl_cfgscan_listen_on_channel(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
+		struct ieee80211_channel *channel, unsigned long duration);
+extern void wl_cfgscan_listen_complete_work(struct work_struct *work);
+extern s32 wl_cfgscan_notify_listen_complete(struct bcm_cfg80211 *cfg);
+extern s32 wl_cfgscan_cancel_listen_on_channel(struct bcm_cfg80211 *cfg, bool notify_user);
+#if defined(WL_CFG80211_P2P_DEV_IF)
+extern s32 wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
+	struct ieee80211_channel *channel, unsigned int duration, u64 *cookie);
+#else
+extern s32 wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
+	struct ieee80211_channel *channel, enum nl80211_channel_type channel_type,
+	unsigned int duration, u64 *cookie);
+#endif /* WL_CFG80211_P2P_DEV_IF */
+extern s32 wl_cfgscan_cancel_remain_on_channel(struct wiphy *wiphy,
+	bcm_struct_cfgdev *cfgdev, u64 cookie);
+extern chanspec_t wl_freq_to_chanspec(int freq);
+extern s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool update_ssid);
+#ifdef WL_GET_RCC
+extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
+#endif /* WL_GET_RCC */
+extern s32 wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
+	struct net_device *dev, wlcfg_assoc_info_t *info);
 #endif /* _wl_cfgscan_h_ */

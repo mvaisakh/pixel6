@@ -1,7 +1,7 @@
 /*
  * DHD debug ring header file - interface
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -28,11 +28,7 @@
 
 #include <bcmutils.h>
 
-#if defined(LINUX)
 #define PACKED_STRUCT __attribute__ ((packed))
-#else
-#define PACKED_STRUCT
-#endif // endif
 
 #define DBGRING_NAME_MAX 32
 

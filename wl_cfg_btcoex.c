@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: wl_cfg_btcoex.c 814554 2019-04-11 23:06:22Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <net/rtnetlink.h>
@@ -38,7 +36,7 @@
 extern uint dhd_pkt_filter_enable;
 extern uint dhd_master_mode;
 extern void dhd_pktfilter_offload_enable(dhd_pub_t * dhd, char *arg, int enable, int master_mode);
-#endif // endif
+#endif
 
 struct btcoex_info {
 	timer_list_compat_t timer;
@@ -130,6 +128,7 @@ dev_wlc_intvar_set_reg(struct net_device *dev, char *name, char *addr, char * va
 	return (dev_wlc_bufvar_set(dev, name, (char *)&reg_addr[0], sizeof(reg_addr)));
 }
 
+/* andrey: bt pkt period independant sco/esco session detection algo.  */
 static bool btcoex_is_sco_active(struct net_device *dev)
 {
 	int ioc_res = 0;
@@ -214,6 +213,7 @@ static int set_btc_esco_params(struct net_device *dev, bool trump_sco)
 			return -1;
 		}
 
+		/* pacify the eSco   */
 		WL_TRACE(("override with [50,51,64,65,71]:"
 			  "0x%x 0x%x 0x%x 0x%x 0x%x\n",
 			  *(u32 *)(buf_reg50va_dhcp_on+4),
@@ -276,14 +276,16 @@ wl_cfg80211_bt_setflag(struct net_device *dev, bool set)
 #if defined(BT_DHCP_USE_FLAGS)
 	char buf_flag7_dhcp_on[8] = { 7, 00, 00, 00, 0x1, 0x0, 0x00, 0x00 };
 	char buf_flag7_default[8]   = { 7, 00, 00, 00, 0x0, 0x00, 0x00, 0x00};
-#endif // endif
+#endif
 
 #if defined(BT_DHCP_eSCO_FIX)
+	/*  ANREY: New Yury's eSco pacifier */
 	/* set = 1, save & turn on  0 - off & restore prev settings */
 	set_btc_esco_params(dev, set);
-#endif // endif
+#endif
 
 #if defined(BT_DHCP_USE_FLAGS)
+/*  ANdrey: old WI-FI priority boost via flags   */
 	WL_TRACE(("WI-FI priority boost via bt flags, set:%d\n", set));
 	if (set == TRUE)
 		/* Forcing bt_flag7  */
@@ -295,7 +297,7 @@ wl_cfg80211_bt_setflag(struct net_device *dev, bool set)
 		dev_wlc_bufvar_set(dev, "btc_flags",
 			(char *)&buf_flag7_default[0],
 			sizeof(buf_flag7_default));
-#endif // endif
+#endif
 }
 
 static void wl_cfg80211_bt_timerfunc(ulong data)
@@ -376,6 +378,7 @@ btc_coex_idle:
 			break;
 	}
 
+	/* why we need this? */
 	net_os_wake_unlock(btcx_inf->dev);
 }
 
@@ -439,13 +442,9 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 	cmd_len = sizeof(BTCOEXMODE);
 	powermode_val = command[cmd_len];
 
+	WL_INFORM_MEM(("BTCOEX MODE: %c\n", powermode_val));
 	if (powermode_val == '1') {
 		WL_TRACE_HW4(("DHCP session starts\n"));
-
-#if defined(DHCP_SCAN_SUPPRESS)
-		/* Suppress scan during the DHCP */
-		wl_cfg80211_scan_suppress(dev, 1);
-#endif /* OEM_ANDROID && DHCP_SCAN_SUPPRESS */
 
 #ifdef PKT_FILTER_SUPPORT
 		dhd->dhcp_in_progress = 1;
@@ -505,11 +504,6 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 	}
 	else if (powermode_val == '2') {
 
-#if defined(DHCP_SCAN_SUPPRESS)
-		/* Since DHCP is complete, enable the scan back */
-		wl_cfg80211_scan_suppress(dev, 0);
-#endif /* OEM_ANDROID */
-
 #ifdef PKT_FILTER_SUPPORT
 		dhd->dhcp_in_progress = 0;
 		WL_TRACE_HW4(("DHCP is complete \n"));
@@ -536,6 +530,7 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 			del_timer_sync(&btco_inf->timer);
 
 			if (btco_inf->bt_state != BT_DHCP_IDLE) {
+			/* ANDREY: case when framework signals DHCP end before STM timeout */
 			/* need to restore original btc flags & extra btc params */
 				WL_TRACE(("bt->bt_state:%d\n", btco_inf->bt_state));
 				/* wake up btcoex thread to restore btlags+params  */
@@ -567,8 +562,7 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 
 	}
 	else {
-		WL_ERR(("Unkwown yet power setting, ignored\n"));
+		WL_ERR(("Unknown yet power setting, ignored\n"));
 	}
-
-	return (snprintf(command, sizeof("OK"), "OK") + 1);
+	return 0;
 }

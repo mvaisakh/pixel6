@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,9 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmmsgbuf.h 814986 2019-04-15 21:18:21Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _bcmmsgbuf_h_
 #define	_bcmmsgbuf_h_
@@ -56,25 +54,30 @@
 
 #define D2HRING_SNAPSHOT_CMPLT_ITEMSIZE		20
 
-#define H2DRING_TXPOST_MAX_ITEM			512
-#define H2DRING_RXPOST_MAX_ITEM			512
 #define H2DRING_CTRL_SUB_MAX_ITEM		64
-#define D2HRING_TXCMPLT_MAX_ITEM		1024
-#define D2HRING_RXCMPLT_MAX_ITEM		512
-
 #define H2DRING_DYNAMIC_INFO_MAX_ITEM          32
 #define D2HRING_DYNAMIC_INFO_MAX_ITEM          32
+
+#define H2DRING_TXPOST_MAX_ITEM			512
+
+#if defined(DHD_HTPUT_TUNABLES)
+#define H2DRING_RXPOST_MAX_ITEM			1024
+#define D2HRING_RXCMPLT_MAX_ITEM		1024
+#define D2HRING_TXCMPLT_MAX_ITEM		2048
+/* Only few htput flowrings use htput max items, other use normal max items */
+#define H2DRING_HTPUT_TXPOST_MAX_ITEM		2048
+#else
+#define H2DRING_RXPOST_MAX_ITEM			512
+#define D2HRING_TXCMPLT_MAX_ITEM		1024
+#define D2HRING_RXCMPLT_MAX_ITEM		512
+#endif /* DHD_HTPUT_TUNABLES */
 
 #define D2HRING_EDL_HDR_SIZE			48u
 #define D2HRING_EDL_ITEMSIZE			2048u
 #define D2HRING_EDL_MAX_ITEM			256u
 #define D2HRING_EDL_WATERMARK			(D2HRING_EDL_MAX_ITEM >> 5u)
 
-#ifdef BCM_ROUTER_DHD
-#define D2HRING_CTRL_CMPLT_MAX_ITEM		256
-#else
 #define D2HRING_CTRL_CMPLT_MAX_ITEM		64
-#endif // endif
 
 enum {
 	DNGL_TO_HOST_MSGBUF,
@@ -210,22 +213,24 @@ typedef enum bcmpcie_msgtype {
 	MSG_TYPE_API_MAX_RSVD		= 0x3F
 } bcmpcie_msg_type_t;
 
+/* message type used in internal queue */
 typedef enum bcmpcie_msgtype_int {
-	MSG_TYPE_INTERNAL_USE_START	= 0x40,
-	MSG_TYPE_EVENT_PYLD		= 0x41,
-	MSG_TYPE_IOCT_PYLD		= 0x42,
+	MSG_TYPE_INTERNAL_USE_START	= 0x40,	/* internal pkt */
+	MSG_TYPE_EVENT_PYLD		= 0x41,	/* wl event pkt */
+	MSG_TYPE_IOCT_PYLD		= 0x42,	/* ioctl compl pkt */
 	MSG_TYPE_RX_PYLD		= 0x43,
 	MSG_TYPE_HOST_FETCH		= 0x44,
-	MSG_TYPE_LPBK_DMAXFER_PYLD	= 0x45,
-	MSG_TYPE_TXMETADATA_PYLD	= 0x46,
-	MSG_TYPE_INDX_UPDATE		= 0x47,
+	MSG_TYPE_LPBK_DMAXFER_PYLD	= 0x45,	/* loopback pkt */
+	MSG_TYPE_TXMETADATA_PYLD	= 0x46,	/* transmit status pkt */
+	MSG_TYPE_INDX_UPDATE		= 0x47,	/* write indx updated */
 	MSG_TYPE_INFO_PYLD		= 0x48,
 	MSG_TYPE_TS_EVENT_PYLD		= 0x49,
 	MSG_TYPE_PVT_BTLOG_CMPLT	= 0x4A,
 	MSG_TYPE_BTLOG_PYLD		= 0x4B,
 	MSG_TYPE_HMAPTEST_PYLD		= 0x4C,
 	MSG_TYPE_PVT_BT_SNAPSHOT_CMPLT  = 0x4D,
-	MSG_TYPE_BT_SNAPSHOT_PYLD       = 0x4E
+	MSG_TYPE_BT_SNAPSHOT_PYLD       = 0x4E,
+	MSG_TYPE_LPBK_DMAXFER_PYLD_ADDR	= 0x4F	/* loopback from addr pkt */
 } bcmpcie_msgtype_int_t;
 
 typedef enum bcmpcie_msgtype_u {
@@ -345,11 +350,7 @@ typedef struct ioctl_resp_evt_buf_post_msg {
 /* buffer post messages for device to use to return dbg buffers */
 typedef ioctl_resp_evt_buf_post_msg_t info_buf_post_msg_t;
 
-#ifdef DHD_EFI
-#define DHD_INFOBUF_RX_BUFPOST_PKTSZ	1800
-#else
 #define DHD_INFOBUF_RX_BUFPOST_PKTSZ	(2 * 1024)
-#endif // endif
 
 #define DHD_BTLOG_RX_BUFPOST_PKTSZ	(2 * 1024)
 
@@ -438,7 +439,9 @@ typedef struct pcie_dma_xfer_params {
 	uint8		flags;
 } pcie_dma_xfer_params_t;
 
-#define BCMPCIE_FLOW_RING_INTF_HP2P 0x1
+#define BCMPCIE_FLOW_RING_INTF_HP2P		0x1
+#define BCMPCIE_FLOW_RING_OPT_EXT_TXSTATUS	0x2
+
 /** Complete msgbuf hdr for flow ring update from host to dongle */
 typedef struct tx_flowring_create_request {
 	cmn_msg_hdr_t   msg;
@@ -482,7 +485,7 @@ typedef enum ring_config_subtype {
 	D2H_RING_CONFIG_SUBTYPE_MSI_DOORBELL = 2   /* MSI configuration */
 } ring_config_subtype_t;
 
-typedef struct ring_config_req {
+typedef struct ring_config_req { /* pulled from upcoming rev6 ... */
 	cmn_msg_hdr_t	msg;
 	uint16	subtype;
 	uint16	ring_id;
@@ -1029,6 +1032,9 @@ typedef struct host_txbuf_post {
 #define BCMPCIE_TXPOST_FLAGS_PRIO_SHIFT		BCMPCIE_PKT_FLAGS_PRIO_SHIFT
 #define BCMPCIE_TXPOST_FLAGS_PRIO_MASK		BCMPCIE_PKT_FLAGS_PRIO_MASK
 
+#define BCMPCIE_TXPOST_RATE_EXT_USAGE		0x80 /* The rate field has extended usage */
+#define BCMPCIE_TXPOST_RATE_PROFILE_IDX_MASK	0x07 /* The Tx profile index in the rate field */
+
 /* H2D Txpost ring work items */
 typedef union txbuf_submit_item {
 	host_txbuf_post_t	txpost;
@@ -1136,7 +1142,7 @@ typedef struct ioct_reqst_hdr {
 	ioctl_hdr_t ioct_hdr;
 #else
 	ioctl_req_hdr_t ioct_hdr;
-#endif // endif
+#endif
 	ret_buf_t ret_buf;
 } ioct_reqst_hdr_t;
 
@@ -1146,7 +1152,7 @@ typedef struct ioctptr_reqst_hdr {
 	ioctlptr_hdr_t ioct_hdr;
 #else
 	ioctl_req_hdr_t ioct_hdr;
-#endif // endif
+#endif
 	ret_buf_t ret_buf;
 	ret_buf_t ioct_buf;
 } ioctptr_reqst_hdr_t;
@@ -1158,7 +1164,7 @@ typedef struct ioct_resp_hdr {
 	uint32	cmd_id;
 #else
 	uint32	pkt_id;
-#endif // endif
+#endif
 	uint32	status;
 	uint32	ret_len;
 	uint32  inline_data;
@@ -1166,7 +1172,7 @@ typedef struct ioct_resp_hdr {
 #else
 	uint16	xt_id;	/**< transaction ID */
 	uint16	rsvd[1];
-#endif // endif
+#endif
 } ioct_resp_hdr_t;
 
 /* ioct resp header used in dongle */
@@ -1328,6 +1334,7 @@ typedef struct tx_idle_flowring_resume_response {
 
 /* timesync related additions */
 
+/* defined similar to bcm_xtlv_t */
 typedef struct _bcm_xtlv {
 	uint16		id; /* TLV idenitifier */
 	uint16		len; /* TLV length in bytes */
@@ -1394,5 +1401,10 @@ typedef struct ts_host_timestamping_config {
 #define FLAG_CONFIG_NODROP	(1 << 1)
 #define IS_CONFIG_NODROP(x)	((x) & FLAG_CONFIG_NODROP)
 #define CLEAR_CONFIG_NODROP(x)	((x) & ~FLAG_CONFIG_NODROP)
+
+/* HP2P RLLW Extended TxStatus info when host enables the same */
+#define D2H_TXSTATUS_EXT_PKT_WITH_OVRRD	0x8000 /**< set when pkt had override bit on */
+#define D2H_TXSTATUS_EXT_PKT_XMIT_ON5G	0x4000 /**< set when pkt xmitted on 5G */
+#define D2H_TXSTATUS_EXT_PKT_BT_DENY	0x2000 /**< set when WLAN is given prio over BT */
 
 #endif /* _bcmmsgbuf_h_ */

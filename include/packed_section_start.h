@@ -15,7 +15,7 @@
  * #include <packed_section_end.h>
  *
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -32,14 +32,10 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: packed_section_start.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
-#if defined(EFI)
-#define _alignment_test_
-#endif /* EFI */
+/* EFI does not support STATIC_ASSERT */
 
 #ifndef _alignment_test_
 #define _alignment_test_
@@ -67,7 +63,7 @@ typedef struct T4 {
 #define VARIABLE_IS_NOT_USED __attribute__ ((unused))
 #else
 #define VARIABLE_IS_NOT_USED
-#endif // endif
+#endif
 static void alignment_test(void);
 static void
 VARIABLE_IS_NOT_USED alignment_test(void)
@@ -85,29 +81,15 @@ VARIABLE_IS_NOT_USED alignment_test(void)
 	#error "BWL_PACKED_SECTION is already defined!"
 #else
 	#define BWL_PACKED_SECTION
-#endif // endif
+#endif
 
 #if defined(BWL_DEFAULT_PACKING)
 	/* generate an error if BWL_DEFAULT_PACKING is defined */
 	#error "BWL_DEFAULT_PACKING not supported any more."
 #endif /* BWL_PACKED_SECTION */
 
-#if defined(_MSC_VER)
-#pragma warning(disable:4103)
-#pragma pack(push)
-#pragma pack(1)
-#endif // endif
-
-#if defined(__GNUC__) && defined(EFI)
-#pragma pack(push)
-#pragma pack(1)
-#endif // endif
-
 /* Declare compiler-specific directives for structure packing. */
-#if defined(_MSC_VER)
-	#define	BWL_PRE_PACKED_STRUCT
-	#define	BWL_POST_PACKED_STRUCT
-#elif defined(__GNUC__) || defined(__lint)
+#if defined(__GNUC__) || defined(__lint)
 	#define	BWL_PRE_PACKED_STRUCT
 	#define	BWL_POST_PACKED_STRUCT	__attribute__ ((packed))
 #elif defined(__CC_ARM)
@@ -115,4 +97,4 @@ VARIABLE_IS_NOT_USED alignment_test(void)
 	#define	BWL_POST_PACKED_STRUCT
 #else
 	#error "Unknown compiler!"
-#endif // endif
+#endif

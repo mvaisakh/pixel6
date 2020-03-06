@@ -1,7 +1,7 @@
 /*
  * Common function shared by Linux WEXT, cfg80211 and p2p drivers
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef __WLDEV_COMMON_H__
 #define __WLDEV_COMMON_H__
@@ -94,7 +92,9 @@ extern int dhd_net_wifi_platform_set_power(struct net_device *dev, bool on,
 extern void dhd_get_customized_country_code(struct net_device *dev, char *country_iso_code,
 	wl_country_t *cspec);
 extern void dhd_bus_country_set(struct net_device *dev, wl_country_t *cspec, bool notify);
+
 extern bool dhd_force_country_change(struct net_device *dev);
+
 extern void dhd_bus_band_set(struct net_device *dev, uint band);
 extern int wldev_set_country(struct net_device *dev, char *country_code, bool notify,
 	bool user_enforced, int revinfo);
@@ -107,6 +107,10 @@ extern int net_os_set_suspend_disable(struct net_device *dev, int val);
 extern int net_os_set_suspend(struct net_device *dev, int val, int force);
 extern int net_os_set_suspend_bcn_li_dtim(struct net_device *dev, int val);
 extern int net_os_set_max_dtim_enable(struct net_device *dev, int val);
+#ifdef DISABLE_DTIM_IN_SUSPEND
+extern int net_os_set_disable_dtim_in_suspend(struct net_device *dev, int val);
+#endif /* DISABLE_DTIM_IN_SUSPEND */
+
 extern int wl_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid,
 	int max, int *bytes_left);
 

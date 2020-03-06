@@ -1,7 +1,7 @@
 /*
  * HND OOBR interface header
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hndoobr.h 772387 2018-07-17 00:58:05Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hndoobr_h_
@@ -37,11 +35,6 @@ uint32 hnd_oobr_get_intstatus(si_t *sih);
 int hnd_oobr_get_intr_config(si_t *sih, uint srccidx, uint srcpidx, uint dstcidx, uint *dstpidx);
 int hnd_oobr_set_intr_src(si_t *sih, uint dstcidx, uint dstpidx, uint intrnum);
 void hnd_oobr_init(si_t *sih);
-
-#ifdef BCMDBG
-/* dump oobr registers values to console */
-void hnd_oobr_dump(si_t *sih);
-#endif // endif
 
 #define OOBR_INVALID_PORT       0xFFu
 
@@ -71,7 +64,16 @@ typedef volatile struct hndoobr_percore_reg {
 } hndoobr_percore_reg_t;
 
 /* capability reg */
-#define OOBR_CAP_CORECNT_MASK   0x1fu
+#define OOBR_CAP_CORECNT_MASK				0x0000001Fu
+#define OOBR_CAP_MAX_INT2CORE_MASK			0x00F00000u
+#define OOBR_CAP_MAX_INT2CORE_SHIFT			20u
+
+#define OOBR_MAX_INT_PER_REG				4u
+
+/* CoreNConfig reg */
+#define OOBR_PERCORE_CORENCONFIG_INTOUTPUTS_MASK	0x0000FF00u
+#define OOBR_PERCORE_CORENCONFIG_INTOUTPUTS_SHIFT	8u
+
 typedef volatile struct hndoobr_reg {
 	uint32 capability;                      /* 0x00 */
 	uint32 reserved[3];

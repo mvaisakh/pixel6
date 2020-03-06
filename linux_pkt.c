@@ -1,7 +1,7 @@
 /*
  * Linux Packet (skb) interface
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: linux_pkt.c 800390 2019-01-21 21:49:55Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -137,6 +135,7 @@ BCMFASTPATH(osl_alloc_skb)(osl_t *osh, unsigned int len)
 	struct sk_buff *skb;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
 	gfp_t flags = (in_atomic() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
+
 #ifdef DHD_USE_ATOMIC_PKTGET
 	flags = GFP_ATOMIC;
 #endif /* DHD_USE_ATOMIC_PKTGET */
@@ -157,36 +156,14 @@ struct sk_buff *
 BCMFASTPATH(osl_pkt_tonative)(osl_t *osh, void *pkt)
 {
 	struct sk_buff *nskb;
-#ifdef BCMDBG_CTRACE
-	struct sk_buff *nskb1, *nskb2;
-#endif // endif
-#ifdef BCMDBG_PKT
-	unsigned long flags;
-#endif // endif
 
 	if (osh->pub.pkttag)
 		OSL_PKTTAG_CLEAR(pkt);
 
 	/* Decrement the packet counter */
 	for (nskb = (struct sk_buff *)pkt; nskb; nskb = nskb->next) {
-#ifdef BCMDBG_PKT
-		OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-		pktlist_remove(&(osh->cmn->pktlist), (void *) nskb);
-		OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-#endif  /* BCMDBG_PKT */
 		atomic_sub(PKTISCHAINED(nskb) ? PKTCCNT(nskb) : 1, &osh->cmn->pktalloced);
 
-#ifdef BCMDBG_CTRACE
-		for (nskb1 = nskb; nskb1 != NULL; nskb1 = nskb2) {
-			if (PKTISCHAINED(nskb1)) {
-				nskb2 = PKTCLINK(nskb1);
-			} else {
-				nskb2 = NULL;
-			}
-
-			DEL_CTRACE(osh, nskb1);
-		}
-#endif /* BCMDBG_CTRACE */
 	}
 	return (struct sk_buff *)pkt;
 }
@@ -195,25 +172,12 @@ BCMFASTPATH(osl_pkt_tonative)(osl_t *osh, void *pkt)
  * In the process, native packet is destroyed, there is no copying
  * Also, a packettag is zeroed out
  */
-#ifdef BCMDBG_PKT
-void *
-osl_pkt_frmnative(osl_t *osh, void *pkt, int line, char *file)
-#else /* BCMDBG_PKT pkt logging for debugging */
-#ifdef BCMDBG_CTRACE
-void *
-BCMFASTPATH(osl_pkt_frmnative)(osl_t *osh, void *pkt, int line, char *file)
-#else
 void *
 BCMFASTPATH(osl_pkt_frmnative)(osl_t *osh, void *pkt)
-#endif /* BCMDBG_CTRACE */
-#endif /* BCMDBG_PKT */
 {
 	struct sk_buff *cskb;
 	struct sk_buff *nskb;
 	unsigned long pktalloced = 0;
-#ifdef BCMDBG_PKT
-	unsigned long flags;
-#endif // endif
 
 	if (osh->pub.pkttag)
 		OSL_PKTTAG_CLEAR(pkt);
@@ -237,15 +201,6 @@ BCMFASTPATH(osl_pkt_frmnative)(osl_t *osh, void *pkt)
 			nskb->prev = NULL;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0) */
 
-#ifdef BCMDBG_PKT
-			OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-			pktlist_add(&(osh->cmn->pktlist), (void *) nskb, line, file);
-			OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-#endif  /* BCMDBG_PKT */
-
-#ifdef BCMDBG_CTRACE
-			ADD_CTRACE(osh, nskb, file, line);
-#endif /* BCMDBG_CTRACE */
 		}
 	}
 
@@ -256,14 +211,6 @@ BCMFASTPATH(osl_pkt_frmnative)(osl_t *osh, void *pkt)
 }
 
 /* Return a new packet. zero out pkttag */
-#ifdef BCMDBG_PKT
-void *
-BCMFASTPATH(linux_pktget)(osl_t *osh, uint len, int line, char *file)
-#else /* BCMDBG_PKT */
-#ifdef BCMDBG_CTRACE
-void *
-BCMFASTPATH(linux_pktget)(osl_t *osh, uint len, int line, char *file)
-#else
 #ifdef BCM_OBJECT_TRACE
 void *
 BCMFASTPATH(linux_pktget)(osl_t *osh, uint len, int line, const char *caller)
@@ -271,13 +218,8 @@ BCMFASTPATH(linux_pktget)(osl_t *osh, uint len, int line, const char *caller)
 void *
 BCMFASTPATH(linux_pktget)(osl_t *osh, uint len)
 #endif /* BCM_OBJECT_TRACE */
-#endif /* BCMDBG_CTRACE */
-#endif /* BCMDBG_PKT */
 {
 	struct sk_buff *skb;
-#ifdef BCMDBG_PKT
-	unsigned long flags;
-#endif // endif
 	uchar num = 0;
 	if (lmtest != FALSE) {
 		get_random_bytes(&num, sizeof(uchar));
@@ -286,22 +228,10 @@ BCMFASTPATH(linux_pktget)(osl_t *osh, uint len)
 	}
 
 	if ((skb = osl_alloc_skb(osh, len))) {
-#ifdef BCMDBG
-		skb_put(skb, len);
-#else
 		skb->tail += len;
 		skb->len  += len;
-#endif // endif
 		skb->priority = 0;
 
-#ifdef BCMDBG_CTRACE
-		ADD_CTRACE(osh, skb, file, line);
-#endif // endif
-#ifdef BCMDBG_PKT
-		OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-		pktlist_add(&(osh->cmn->pktlist), (void *) skb, line, file);
-		OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-#endif // endif
 		atomic_inc(&osh->cmn->pktalloced);
 #ifdef BCM_OBJECT_TRACE
 		bcm_object_trace_opr(skb, BCM_OBJDBG_ADD_PKT, caller, line);
@@ -321,9 +251,6 @@ BCMFASTPATH(linux_pktfree)(osl_t *osh, void *p, bool send)
 #endif /* BCM_OBJECT_TRACE */
 {
 	struct sk_buff *skb, *nskb;
-#ifdef BCMDBG_PKT
-	unsigned long flags;
-#endif // endif
 	if (osh == NULL)
 		return;
 
@@ -361,15 +288,6 @@ BCMFASTPATH(linux_pktfree)(osl_t *osh, void *p, bool send)
 	while (skb) {
 		nskb = skb->next;
 		skb->next = NULL;
-
-#ifdef BCMDBG_CTRACE
-		DEL_CTRACE(osh, skb);
-#endif // endif
-#ifdef BCMDBG_PKT
-		OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-		pktlist_remove(&(osh->cmn->pktlist), (void *) skb);
-		OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-#endif // endif
 
 #ifdef BCM_OBJECT_TRACE
 		bcm_object_trace_opr(skb, BCM_OBJDBG_REMOVE, caller, line);
@@ -590,7 +508,7 @@ osl_pktfree_static(osl_t *osh, void *p, bool send)
 		up(&bcm_static_skb->osl_pkt_sem);
 		return;
 	}
-#endif // endif
+#endif
 	up(&bcm_static_skb->osl_pkt_sem);
 #endif /* DHD_USE_STATIC_CTRLBUF */
 	linux_pktfree(osh, p, send);
@@ -600,14 +518,6 @@ osl_pktfree_static(osl_t *osh, void *p, bool send)
 /* Clone a packet.
  * The pkttag contents are NOT cloned.
  */
-#ifdef BCMDBG_PKT
-void *
-osl_pktdup(osl_t *osh, void *skb, int line, char *file)
-#else /* BCMDBG_PKT */
-#ifdef BCMDBG_CTRACE
-void *
-osl_pktdup(osl_t *osh, void *skb, int line, char *file)
-#else
 #ifdef BCM_OBJECT_TRACE
 void *
 osl_pktdup(osl_t *osh, void *skb, int line, const char *caller)
@@ -615,13 +525,8 @@ osl_pktdup(osl_t *osh, void *skb, int line, const char *caller)
 void *
 osl_pktdup(osl_t *osh, void *skb)
 #endif /* BCM_OBJECT_TRACE */
-#endif /* BCMDBG_CTRACE */
-#endif /* BCMDBG_PKT */
 {
 	void * p;
-#ifdef BCMDBG_PKT
-	unsigned long irqflags;
-#endif // endif
 
 	ASSERT(!PKTISCHAINED(skb));
 
@@ -638,205 +543,12 @@ osl_pktdup(osl_t *osh, void *skb)
 	bcm_object_trace_opr(p, BCM_OBJDBG_ADD_PKT, caller, line);
 #endif /* BCM_OBJECT_TRACE */
 
-#ifdef BCMDBG_CTRACE
-	ADD_CTRACE(osh, (struct sk_buff *)p, file, line);
-#endif // endif
-#ifdef BCMDBG_PKT
-	OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, irqflags);
-	pktlist_add(&(osh->cmn->pktlist), (void *) p, line, file);
-	OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, irqflags);
-#endif // endif
 	return (p);
 }
-
-#ifdef BCMDBG_CTRACE
-int osl_pkt_is_frmnative(osl_t *osh, struct sk_buff *pkt)
-{
-	unsigned long flags;
-	struct sk_buff *skb;
-	int ck = FALSE;
-
-	OSL_CTRACE_LOCK(&osh->ctrace_lock, flags);
-
-	list_for_each_entry(skb, &osh->ctrace_list, ctrace_list) {
-		if (pkt == skb) {
-			ck = TRUE;
-			break;
-		}
-	}
-
-	OSL_CTRACE_UNLOCK(&osh->ctrace_lock, flags);
-	return ck;
-}
-
-void osl_ctrace_dump(osl_t *osh, struct bcmstrbuf *b)
-{
-	unsigned long flags;
-	struct sk_buff *skb;
-	int idx = 0;
-	int i, j;
-
-	OSL_CTRACE_LOCK(&osh->ctrace_lock, flags);
-
-	if (b != NULL)
-		bcm_bprintf(b, " Total %d sbk not free\n", osh->ctrace_num);
-	else
-		printk(" Total %d sbk not free\n", osh->ctrace_num);
-
-	list_for_each_entry(skb, &osh->ctrace_list, ctrace_list) {
-		if (b != NULL)
-			bcm_bprintf(b, "[%d] skb %p:\n", ++idx, skb);
-		else
-			printk("[%d] skb %p:\n", ++idx, skb);
-
-		for (i = 0; i < skb->ctrace_count; i++) {
-			j = (skb->ctrace_start + i) % CTRACE_NUM;
-			if (b != NULL)
-				bcm_bprintf(b, "    [%s(%d)]\n", skb->func[j], skb->line[j]);
-			else
-				printk("    [%s(%d)]\n", skb->func[j], skb->line[j]);
-		}
-		if (b != NULL)
-			bcm_bprintf(b, "\n");
-		else
-			printk("\n");
-	}
-
-	OSL_CTRACE_UNLOCK(&osh->ctrace_lock, flags);
-
-	return;
-}
-#endif /* BCMDBG_CTRACE */
-
-#ifdef BCMDBG_PKT
-#ifdef BCMDBG_PTRACE
-void
-osl_pkttrace(osl_t *osh, void *pkt, uint16 bit)
-{
-	pktlist_trace(&(osh->cmn->pktlist), pkt, bit);
-}
-#endif /* BCMDBG_PTRACE */
-
-char *
-osl_pktlist_dump(osl_t *osh, char *buf)
-{
-	pktlist_dump(&(osh->cmn->pktlist), buf);
-	return buf;
-}
-
-void
-osl_pktlist_add(osl_t *osh, void *p, int line, char *file)
-{
-	unsigned long flags;
-	OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-	pktlist_add(&(osh->cmn->pktlist), p, line, file);
-	OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-}
-
-void
-osl_pktlist_remove(osl_t *osh, void *p)
-{
-	unsigned long flags;
-	OSL_PKTLIST_LOCK(&osh->cmn->pktlist_lock, flags);
-	pktlist_remove(&(osh->cmn->pktlist), p);
-	OSL_PKTLIST_UNLOCK(&osh->cmn->pktlist_lock, flags);
-}
-#endif /* BCMDBG_PKT */
 
 /*
  * BINOSL selects the slightly slower function-call-based binary compatible osl.
  */
-#ifdef BINOSL
-bool
-osl_pktshared(void *skb)
-{
-	return (((struct sk_buff*)skb)->cloned);
-}
-
-uchar*
-osl_pktdata(osl_t *osh, void *skb)
-{
-	return (((struct sk_buff*)skb)->data);
-}
-
-uint
-osl_pktlen(osl_t *osh, void *skb)
-{
-	return (((struct sk_buff*)skb)->len);
-}
-
-uint
-osl_pktheadroom(osl_t *osh, void *skb)
-{
-	return (uint) skb_headroom((struct sk_buff *) skb);
-}
-
-uint
-osl_pkttailroom(osl_t *osh, void *skb)
-{
-	return (uint) skb_tailroom((struct sk_buff *) skb);
-}
-
-void*
-osl_pktnext(osl_t *osh, void *skb)
-{
-	return (((struct sk_buff*)skb)->next);
-}
-
-void
-osl_pktsetnext(void *skb, void *x)
-{
-	((struct sk_buff*)skb)->next = (struct sk_buff*)x;
-}
-
-void
-osl_pktsetlen(osl_t *osh, void *skb, uint len)
-{
-	__skb_trim((struct sk_buff*)skb, len);
-}
-
-uchar*
-osl_pktpush(osl_t *osh, void *skb, int bytes)
-{
-	return (skb_push((struct sk_buff*)skb, bytes));
-}
-
-uchar*
-osl_pktpull(osl_t *osh, void *skb, int bytes)
-{
-	return (skb_pull((struct sk_buff*)skb, bytes));
-}
-
-void*
-osl_pkttag(void *skb)
-{
-	return ((void*)(((struct sk_buff*)skb)->cb));
-}
-
-void*
-osl_pktlink(void *skb)
-{
-	return (((struct sk_buff*)skb)->prev);
-}
-
-void
-osl_pktsetlink(void *skb, void *x)
-{
-	((struct sk_buff*)skb)->prev = (struct sk_buff*)x;
-}
-
-uint
-osl_pktprio(void *skb)
-{
-	return (((struct sk_buff*)skb)->priority);
-}
-
-void
-osl_pktsetprio(void *skb, uint x)
-{
-	((struct sk_buff*)skb)->priority = x;
-}
-#endif	/* BINOSL */
 
 uint
 osl_pktalloced(osl_t *osh)
@@ -850,9 +562,15 @@ osl_pktalloced(osl_t *osh)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) && defined(TSQ_MULTIPLIER)
 #include <linux/kallsyms.h>
 #include <net/sock.h>
+#define DHD_TCP_LIMIT_OUTPUT_BYTES (16 * 1024 * 1024)
 void
 osl_pkt_orphan_partial(struct sk_buff *skb)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+	if (skb->sk) {
+		sock_net(skb->sk)->ipv4.sysctl_tcp_limit_output_bytes = DHD_TCP_LIMIT_OUTPUT_BYTES;
+	}
+#else
 	uint32 fraction;
 	static void *p_tcp_wfree = NULL;
 
@@ -860,6 +578,12 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 		return;
 
 	if (unlikely(!p_tcp_wfree)) {
+		/* this is a hack to get tcp_wfree pointer since it's not
+		 * exported. There are two possible call back function pointer
+		 * stored in skb->destructor: tcp_wfree and sock_wfree.
+		 * This expansion logic should only apply to TCP traffic which
+		 * uses tcp_wfree as skb destructor
+		 */
 		char sym[KSYM_SYMBOL_LEN];
 		sprint_symbol(sym, (unsigned long)skb->destructor);
 		sym[9] = 0;
@@ -879,5 +603,6 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 	fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
 	skb->truesize -= fraction;
 	atomic_sub(fraction, (atomic_t *)&skb->sk->sk_wmem_alloc);
+#endif /* LINUX_VERSION >= 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
 }
 #endif /* LINUX_VERSION >= 3.6.0 && TSQ_MULTIPLIER */

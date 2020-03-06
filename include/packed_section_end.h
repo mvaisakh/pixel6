@@ -15,7 +15,7 @@
  * #include <packed_section_end.h>
  *
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -32,9 +32,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: packed_section_end.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /* Error check - BWL_PACKED_SECTION is defined in packed_section_start.h
@@ -45,16 +43,7 @@
 	#undef BWL_PACKED_SECTION
 #else
 	#error "BWL_PACKED_SECTION is NOT defined!"
-#endif // endif
-
-#if defined(_MSC_VER)
-#pragma warning(disable:4103)
-#pragma pack(pop)
-#endif // endif
-
-#if defined(__GNUC__) && defined(EFI)
-#pragma pack(pop)
-#endif // endif
+#endif
 
 /* Compiler-specific directives for structure packing are declared in
  * packed_section_start.h. This marks the end of the structure packing section,

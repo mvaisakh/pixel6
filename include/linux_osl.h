@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: linux_osl.h 816148 2019-04-23 07:43:55Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _linux_osl_h_
@@ -39,11 +37,7 @@ extern int osl_os_image_size(void *image);
 #ifdef BCMDRIVER
 
 /* OSL initialization */
-#ifdef SHARED_OSL_CMN
-extern osl_t *osl_attach(void *pdev, uint bustype, bool pkttag, void **osh_cmn);
-#else
 extern osl_t *osl_attach(void *pdev, uint bustype, bool pkttag);
-#endif /* SHARED_OSL_CMN */
 
 extern void osl_detach(osl_t *osh);
 extern int osl_static_mem_init(osl_t *osh, void *adapter);
@@ -73,23 +67,25 @@ extern uint32 g_assert_type;
 #endif /* CONFIG_PHYS_ADDR_T_64BIT */
 /* ASSERT */
 #ifndef ASSERT
-#if defined(BCMDBG_ASSERT) || defined(BCMASSERT_LOG)
+#if defined(BCMASSERT_LOG) && !defined(BINCMP)
 	#define ASSERT(exp) \
-	  do { if (!(exp)) osl_assert(#exp, __FILE__, __LINE__); } while (0)
+		do { if (!(exp)) osl_assert(#exp, __FILE__, __LINE__); } while (0)
 extern void osl_assert(const char *exp, const char *file, int line);
 #else
-	#ifdef __GNUC__
-		#define GCC_VERSION \
-			(__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
-		#if GCC_VERSION > 30100
-			#define ASSERT(exp)	do {} while (0)
-		#else
-			/* ASSERT could cause segmentation fault on GCC3.1, use empty instead */
-			#define ASSERT(exp)
-		#endif /* GCC_VERSION > 30100 */
-	#endif /* __GNUC__ */
-#endif /* BCMDBG_ASSERT || BCMASSERT_LOG */
+#ifdef __GNUC__
+	#define GCC_VERSION \
+		(__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+#if GCC_VERSION > 30100
+	#define ASSERT(exp)	do {} while (0)
+#else
+	/* ASSERT could cause segmentation fault on GCC3.1, use empty instead */
+	#define ASSERT(exp)
+#endif /* GCC_VERSION > 30100 */
+#endif /* __GNUC__ */
+#endif
 #endif /* ASSERT */
+
+#define ASSERT_FP(exp) ASSERT(exp)
 
 /* microsecond delay */
 #define	OSL_DELAY(usec)		osl_delay(usec)
@@ -126,13 +122,7 @@ typedef struct {
 	bool mmbus;		/**< Bus supports memory-mapped register accesses */
 	pktfree_cb_fn_t tx_fn;  /**< Callback function for PKTFREE */
 	void *tx_ctx;		/**< Context to the callback function */
-#ifdef OSLREGOPS
-	osl_rreg_fn_t rreg_fn;	/**< Read Register function */
-	osl_wreg_fn_t wreg_fn;	/**< Write Register function */
-	void *reg_ctx;		/**< Context to the reg callback functions */
-#else
-	void	*unused[3];
-#endif // endif
+	void	*unused[3];	/**< temp fix for USBAP cftpool handle currption */
 	void (*rx_fn)(void *rx_ctx, void *p);
 	void *rx_ctx;
 } osl_pubinfo_t;
@@ -153,40 +143,9 @@ extern bool osl_is_flag_set(osl_t *osh, uint32 mask);
 	   ((osl_pubinfo_t*)osh)->rx_ctx = _rx_ctx;	\
 	} while (0)
 
-#ifdef OSLREGOPS
-#define REGOPSSET(osh, rreg, wreg, ctx)			\
-	do {						\
-	   ((osl_pubinfo_t*)osh)->rreg_fn = rreg;	\
-	   ((osl_pubinfo_t*)osh)->wreg_fn = wreg;	\
-	   ((osl_pubinfo_t*)osh)->reg_ctx = ctx;	\
-	} while (0)
-#endif /* OSLREGOPS */
-
 /* host/bus architecture-specific byte swap */
 #define BUS_SWAP32(v)		(v)
 
-#ifdef BCMDBG_MEM
-	#define MALLOC(osh, size)	osl_debug_malloc((osh), (size), __LINE__, __FILE__)
-	#define MALLOCZ(osh, size)	osl_debug_mallocz((osh), (size), __LINE__, __FILE__)
-	#define MFREE(osh, addr, size)	\
-	({osl_debug_mfree((osh), ((void *)addr), (size), __LINE__, __FILE__);(addr) = NULL;})
-	#define VMALLOC(osh, size)	osl_debug_vmalloc((osh), (size), __LINE__, __FILE__)
-	#define VMALLOCZ(osh, size)	osl_debug_vmallocz((osh), (size), __LINE__, __FILE__)
-	#define VMFREE(osh, addr, size)	osl_debug_vmfree((osh), (addr), (size), __LINE__, __FILE__)
-	#define MALLOCED(osh)		osl_malloced((osh))
-	#define MEMORY_LEFTOVER(osh) osl_check_memleak(osh)
-	#define MALLOC_DUMP(osh, b) 	osl_debug_memdump((osh), (b))
-	extern void *osl_debug_malloc(osl_t *osh, uint size, int line, const char* file);
-	extern void *osl_debug_mallocz(osl_t *osh, uint size, int line, const char* file);
-	extern void osl_debug_mfree(osl_t *osh, void *addr, uint size, int line, const char* file);
-	extern void *osl_debug_vmalloc(osl_t *osh, uint size, int line, const char* file);
-	extern void *osl_debug_vmallocz(osl_t *osh, uint size, int line, const char* file);
-	extern void osl_debug_vmfree(osl_t *osh, void *addr, uint size, int line, const char* file);
-	extern uint osl_malloced(osl_t *osh);
-	struct bcmstrbuf;
-	extern int osl_debug_memdump(osl_t *osh, struct bcmstrbuf *b);
-	extern uint osl_check_memleak(osl_t *osh);
-#else
 	#define MALLOC(osh, size)	osl_malloc((osh), (size))
 	#define MALLOCZ(osh, size)	osl_mallocz((osh), (size))
 	#define MFREE(osh, addr, size) ({osl_mfree((osh), ((void *)addr), (size));(addr) = NULL;})
@@ -203,7 +162,6 @@ extern bool osl_is_flag_set(osl_t *osh, uint32 mask);
 	extern void osl_vmfree(osl_t *osh, void *addr, uint size);
 	extern uint osl_malloced(osl_t *osh);
 	extern uint osl_check_memleak(osl_t *osh);
-#endif /* BCMDBG_MEM */
 
 extern int memcpy_s(void *dest, size_t destsz, const void *src, size_t n);
 extern int memset_s(void *dest, size_t destsz, int c, size_t n);
@@ -243,10 +201,10 @@ extern void osl_dma_unmap(osl_t *osh, dmaaddr_t pa, uint size, int direction);
 
 #ifndef PHYS_TO_VIRT
 #define	PHYS_TO_VIRT(pa)	osl_phys_to_virt(pa)
-#endif // endif
+#endif
 #ifndef VIRT_TO_PHYS
 #define	VIRT_TO_PHYS(va)	osl_virt_to_phys(va)
-#endif // endif
+#endif
 extern void * osl_phys_to_virt(void * pa);
 extern void * osl_virt_to_phys(void * va);
 
@@ -278,10 +236,10 @@ extern void osl_preempt_enable(osl_t *osh);
 	#define OSL_PREFETCH(ptr)		BCM_REFERENCE(ptr)
 #endif /* !__ARM_ARCH_7A__ */
 
-#ifdef BCM_BACKPLANE_TIMEOUT
+#ifdef AXI_TIMEOUTS_NIC
 extern void osl_set_bpt_cb(osl_t *osh, void *bpt_cb, void *bpt_ctx);
 extern void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, uint size);
-#endif /* BCM_BACKPLANE_TIMEOUT */
+#endif /* AXI_TIMEOUTS_NIC */
 
 /* register access macros */
 #if defined(BCMSDIO)
@@ -290,19 +248,19 @@ extern void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, uint size);
 		(uintptr)(r), sizeof(*(r)), (v)))
 	#define OSL_READ_REG(osh, r) (bcmsdh_reg_read(osl_get_bus_handle(osh), \
 		(uintptr)(r), sizeof(*(r))))
-#elif defined(BCM_BACKPLANE_TIMEOUT)
+#elif defined(AXI_TIMEOUTS_NIC)
 #define OSL_READ_REG(osh, r) \
 	({\
 		__typeof(*(r)) __osl_v; \
 		osl_bpt_rreg(osh, (uintptr)(r), &__osl_v, sizeof(*(r))); \
 		__osl_v; \
 	})
-#endif // endif
+#endif
 
-#if defined(BCM_BACKPLANE_TIMEOUT)
+#if defined(AXI_TIMEOUTS_NIC)
 	#define SELECT_BUS_WRITE(osh, mmap_op, bus_op) ({BCM_REFERENCE(osh); mmap_op;})
 	#define SELECT_BUS_READ(osh, mmap_op, bus_op) ({BCM_REFERENCE(osh); bus_op;})
-#else /* !BCM_BACKPLANE_TIMEOUT */
+#else /* !AXI_TIMEOUTS_NIC */
 #if defined(BCMSDIO)
 	#define SELECT_BUS_WRITE(osh, mmap_op, bus_op) if (((osl_pubinfo_t*)(osh))->mmbus) \
 		mmap_op else bus_op
@@ -312,7 +270,7 @@ extern void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, uint size);
 	#define SELECT_BUS_WRITE(osh, mmap_op, bus_op) ({BCM_REFERENCE(osh); mmap_op;})
 	#define SELECT_BUS_READ(osh, mmap_op, bus_op) ({BCM_REFERENCE(osh); mmap_op;})
 #endif /* defined(BCMSDIO) */
-#endif /* BCM_BACKPLANE_TIMEOUT */
+#endif /* AXI_TIMEOUTS_NIC */
 
 #define OSL_ERROR(bcmerror)	osl_error(bcmerror)
 extern int osl_error(int bcmerror);
@@ -326,18 +284,12 @@ extern int osl_error(int bcmerror);
  * BINOSL selects the slightly slower function-call-based binary compatible osl.
  * Macros expand to calls to functions defined in linux_osl.c .
  */
-#ifndef BINOSL
 #include <linuxver.h>           /* use current 2.4.x calling conventions */
 #include <linux/kernel.h>       /* for vsn/printf's */
 #include <linux/string.h>       /* for mem*, str* */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 29)
 extern uint64 osl_sysuptime_us(void);
 #define OSL_SYSUPTIME()		((uint32)jiffies_to_msecs(jiffies))
 #define OSL_SYSUPTIME_US()	osl_sysuptime_us()
-#else
-#define OSL_SYSUPTIME()		((uint32)jiffies * (1000 / HZ))
-#error "OSL_SYSUPTIME_US() may need to be defined"
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 29) */
 extern uint64 osl_localtime_ns(void);
 extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_systztime_us(void);
@@ -355,38 +307,36 @@ extern uint64 osl_systztime_us(void);
 #define	bcmp(b1, b2, len)	memcmp((b1), (b2), (len))
 #define	bzero(b, len)		memset((b), '\0', (len))
 
+#if defined(CONFIG_SOC_EXYNOS9830)
+extern int exynos_pcie_l1_exit(int ch_num);
+#endif /* CONFIG_SOC_EXYNOS9830	*/
+
 /* register access macros */
-#if defined(OSLREGOPS)
-#define R_REG(osh, r) (\
-	sizeof(*(r)) == sizeof(uint8) ? osl_readb((osh), (volatile uint8*)(r)) : \
-	sizeof(*(r)) == sizeof(uint16) ? osl_readw((osh), (volatile uint16*)(r)) : \
-	sizeof(*(r)) == sizeof(uint32) ? osl_readl((osh), (volatile uint32*)(r)) : \
-	osl_readq((osh), (volatile uint64*)(r)) \
-)
 
-#define W_REG(osh, r, v) do { \
-	switch (sizeof(*(r))) { \
-	case sizeof(uint8):	osl_writeb((osh), (volatile uint8*)(r), (uint8)(v)); break; \
-	case sizeof(uint16):	osl_writew((osh), (volatile uint16*)(r), (uint16)(v)); break; \
-	case sizeof(uint32):	osl_writel((osh), (volatile uint32*)(r), (uint32)(v)); break; \
-	case sizeof(uint64):	osl_writeq((osh), (volatile uint64*)(r), (uint64)(v)); break; \
-	} \
-} while (0)
-
-extern uint8 osl_readb(osl_t *osh, volatile uint8 *r);
-extern uint16 osl_readw(osl_t *osh, volatile uint16 *r);
-extern uint32 osl_readl(osl_t *osh, volatile uint32 *r);
-extern uint32 osl_readq(osl_t *osh, volatile uint64 *r);
-extern void osl_writeb(osl_t *osh, volatile uint8 *r, uint8 v);
-extern void osl_writew(osl_t *osh, volatile uint16 *r, uint16 v);
-extern void osl_writel(osl_t *osh, volatile uint32 *r, uint32 v);
-extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
-
-#else /* OSLREGOPS */
-
-#ifndef IL_BIGENDIAN
 #ifdef CONFIG_64BIT
 /* readq is defined only for 64 bit platform */
+#if defined(CONFIG_SOC_EXYNOS9830)
+#define R_REG(osh, r) (\
+	SELECT_BUS_READ(osh, \
+		({ \
+			__typeof(*(r)) __osl_v = 0; \
+			exynos_pcie_l1_exit(0); \
+			BCM_REFERENCE(osh);	\
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	__osl_v = \
+					readb((volatile uint8*)(r)); break; \
+				case sizeof(uint16):	__osl_v = \
+					readw((volatile uint16*)(r)); break; \
+				case sizeof(uint32):	__osl_v = \
+					readl((volatile uint32*)(r)); break; \
+				case sizeof(uint64):	__osl_v = \
+					readq((volatile uint64*)(r)); break; \
+			} \
+			__osl_v; \
+		}), \
+		OSL_READ_REG(osh, r)) \
+)
+#else
 #define R_REG(osh, r) (\
 	SELECT_BUS_READ(osh, \
 		({ \
@@ -406,6 +356,7 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 		}), \
 		OSL_READ_REG(osh, r)) \
 )
+#endif /* CONFIG_SOC_EXYNOS9830 */
 #else /* !CONFIG_64BIT */
 #define R_REG(osh, r) (\
 	SELECT_BUS_READ(osh, \
@@ -427,6 +378,25 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 
 #ifdef CONFIG_64BIT
 /* writeq is defined only for 64 bit platform */
+#if defined(CONFIG_SOC_EXYNOS9830)
+#define W_REG(osh, r, v) do { \
+	SELECT_BUS_WRITE(osh, \
+		({ \
+			exynos_pcie_l1_exit(0); \
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	writeb((uint8)(v), \
+						(volatile uint8*)(r)); break; \
+				case sizeof(uint16):	writew((uint16)(v), \
+						(volatile uint16*)(r)); break; \
+				case sizeof(uint32):	writel((uint32)(v), \
+						(volatile uint32*)(r)); break; \
+				case sizeof(uint64):	writeq((uint64)(v), \
+						(volatile uint64*)(r)); break; \
+			} \
+		 }), \
+		(OSL_WRITE_REG(osh, r, v))); \
+	} while (0)
+#else
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \
 		switch (sizeof(*(r))) { \
@@ -437,7 +407,7 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 		}, \
 		(OSL_WRITE_REG(osh, r, v))); \
 	} while (0)
-
+#endif /* CONFIG_SOC_EXYNOS9830 */
 #else /* !CONFIG_64BIT */
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \
@@ -449,77 +419,6 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
 		(OSL_WRITE_REG(osh, r, v))); \
 	} while (0)
 #endif /* CONFIG_64BIT */
-
-#else	/* IL_BIGENDIAN */
-
-#ifdef CONFIG_64BIT
-/* readq and writeq is defined only for 64 bit platform */
-#define R_REG(osh, r) (\
-	SELECT_BUS_READ(osh, \
-		({ \
-			__typeof(*(r)) __osl_v = 0; \
-			switch (sizeof(*(r))) { \
-				case sizeof(uint8):	__osl_v = \
-					readb((volatile uint8*)((uintptr)(r)^3)); break; \
-				case sizeof(uint16):	__osl_v = \
-					readw((volatile uint16*)((uintptr)(r)^2)); break; \
-				case sizeof(uint32):	__osl_v = \
-					readl((volatile uint32*)(r)); break; \
-				case sizeof(uint64):    __osl_v = \
-					readq((volatile uint64*)(r)); break; \
-			} \
-			__osl_v; \
-		}), \
-		OSL_READ_REG(osh, r)) \
-)
-#define W_REG(osh, r, v) do { \
-	SELECT_BUS_WRITE(osh, \
-		switch (sizeof(*(r))) { \
-			case sizeof(uint8):	writeb((uint8)(v), \
-					(volatile uint8*)((uintptr)(r)^3)); break; \
-			case sizeof(uint16):	writew((uint16)(v), \
-					(volatile uint16*)((uintptr)(r)^2)); break; \
-			case sizeof(uint32):	writel((uint32)(v), \
-					(volatile uint32*)(r)); break; \
-			case sizeof(uint64):	writeq((uint64)(v), \
-					(volatile uint64*)(r)); break; \
-		}, \
-		(OSL_WRITE_REG(osh, r, v))); \
-	} while (0)
-
-#else /* !CONFIG_64BIT */
-#define R_REG(osh, r) (\
-	SELECT_BUS_READ(osh, \
-		({ \
-			__typeof(*(r)) __osl_v = 0; \
-			switch (sizeof(*(r))) { \
-				case sizeof(uint8):	__osl_v = \
-					readb((volatile uint8*)((uintptr)(r)^3)); break; \
-				case sizeof(uint16):	__osl_v = \
-					readw((volatile uint16*)((uintptr)(r)^2)); break; \
-				case sizeof(uint32):	__osl_v = \
-					readl((volatile uint32*)(r)); break; \
-			} \
-			__osl_v; \
-		}), \
-		OSL_READ_REG(osh, r)) \
-)
-#define W_REG(osh, r, v) do { \
-	SELECT_BUS_WRITE(osh, \
-		switch (sizeof(*(r))) { \
-			case sizeof(uint8):	writeb((uint8)(v), \
-					(volatile uint8*)((uintptr)(r)^3)); break; \
-			case sizeof(uint16):	writew((uint16)(v), \
-					(volatile uint16*)((uintptr)(r)^2)); break; \
-			case sizeof(uint32):	writel((uint32)(v), \
-					(volatile uint32*)(r)); break; \
-		}, \
-		(OSL_WRITE_REG(osh, r, v))); \
-	} while (0)
-#endif /* CONFIG_64BIT */
-#endif /* IL_BIGENDIAN */
-
-#endif /* OSLREGOPS */
 
 #define	AND_REG(osh, r, v)		W_REG(osh, (r), R_REG(osh, r) & (v))
 #define	OR_REG(osh, r, v)		W_REG(osh, (r), R_REG(osh, r) | (v))
@@ -565,133 +464,6 @@ extern void osl_writeq(osl_t *osh, volatile uint64 *r, uint64 v);
  */
 #include <linuxver.h>		/* use current 2.4.x calling conventions */
 
-#else	/* BINOSL */
-
-/* Where to get the declarations for mem, str, printf, bcopy's? Two basic approaches.
- *
- * First, use the Linux header files and the C standard library replacmenent versions
- * built-in to the kernel.  Use this approach when compiling non hybrid code or compling
- * the OS port files.  The second approach is to use our own defines/prototypes and
- * functions we have provided in the Linux OSL, i.e. linux_osl.c.  Use this approach when
- * compiling the files that make up the hybrid binary.  We are ensuring we
- * don't directly link to the kernel replacement routines from the hybrid binary.
- *
- * NOTE: The issue we are trying to avoid is any questioning of whether the
- * hybrid binary is derived from Linux.  The wireless common code (wlc) is designed
- * to be OS independent through the use of the OSL API and thus the hybrid binary doesn't
- * derive from the Linux kernel at all.  But since we defined our OSL API to include
- * a small collection of standard C library routines and these routines are provided in
- * the kernel we want to avoid even the appearance of deriving at all even though clearly
- * usage of a C standard library API doesn't represent a derivation from Linux.  Lastly
- * note at the time of this checkin 4 references to memcpy/memset could not be eliminated
- * from the binary because they are created internally by GCC as part of things like
- * structure assignment.  I don't think the compiler should be doing this but there is
- * no options to disable it on Intel architectures (there is for MIPS so somebody must
- * agree with me).  I may be able to even remove these references eventually with
- * a GNU binutil such as objcopy via a symbol rename (i.e. memcpy to osl_memcpy).
- */
-	#define	printf(fmt, args...)	printk(fmt , ## args)
-	#include <linux/kernel.h>	/* for vsn/printf's */
-	#include <linux/string.h>	/* for mem*, str* */
-	/* bcopy's: Linux kernel doesn't provide these (anymore) */
-	#define	bcopy(src, dst, len)	memcpy((dst), (src), (len))
-	#define	bcmp(b1, b2, len)	memcmp((b1), (b2), (len))
-	#define	bzero(b, len)		memset((b), '\0', (len))
-
-	/* These are provided only because when compiling linux_osl.c there
-	 * must be an explicit prototype (separate from the definition) because
-	 * we are compiling with GCC option -Wstrict-prototypes.  Conversely
-	 * these could be placed directly in linux_osl.c.
-	 */
-	extern int osl_printf(const char *format, ...);
-	extern int osl_sprintf(char *buf, const char *format, ...);
-	extern int osl_snprintf(char *buf, size_t n, const char *format, ...);
-	extern int osl_vsprintf(char *buf, const char *format, va_list ap);
-	extern int osl_vsnprintf(char *buf, size_t n, const char *format, va_list ap);
-	extern int osl_strcmp(const char *s1, const char *s2);
-	extern int osl_strncmp(const char *s1, const char *s2, uint n);
-	extern int osl_strlen(const char *s);
-	extern char* osl_strcpy(char *d, const char *s);
-	extern char* osl_strncpy(char *d, const char *s, uint n);
-	extern char* osl_strchr(const char *s, int c);
-	extern char* osl_strrchr(const char *s, int c);
-	extern void *osl_memset(void *d, int c, size_t n);
-	extern void *osl_memcpy(void *d, const void *s, size_t n);
-	extern void *osl_memmove(void *d, const void *s, size_t n);
-	extern int osl_memcmp(const void *s1, const void *s2, size_t n);
-
-/* register access macros */
-#if !defined(BCMSDIO)
-#define R_REG(osh, r) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 sizeof(*(r)) == sizeof(uint8) ? osl_readb((volatile uint8*)(r)) : \
-	 sizeof(*(r)) == sizeof(uint16) ? osl_readw((volatile uint16*)(r)) : \
-	 sizeof(*(r)) == sizeof(uint32) ? osl_readl((volatile uint32*)(r)) : \
-	 osl_readq((volatile uint64*)(r)); \
-	 })
-#define W_REG(osh, r, v) do { \
-	BCM_REFERENCE(osh); \
-	switch (sizeof(*(r))) { \
-	case sizeof(uint8):	osl_writeb((uint8)(v), (volatile uint8*)(r)); break; \
-	case sizeof(uint16):	osl_writew((uint16)(v), (volatile uint16*)(r)); break; \
-	case sizeof(uint32):	osl_writel((uint32)(v), (volatile uint32*)(r)); break; \
-	case sizeof(uint64):	osl_writeq((uint64)(v), (volatile uint64*)(r)); break; \
-	} \
-} while (0)
-
-/* else added by johnvb to make sdio and jtag work with BINOSL, at least compile ... UNTESTED */
-#else
-#define R_REG(osh, r) OSL_READ_REG(osh, r)
-#define W_REG(osh, r, v) do { OSL_WRITE_REG(osh, r, v); } while (0)
-#endif /* !defined(BCMSDIO) */
-
-#define	AND_REG(osh, r, v)		W_REG(osh, (r), R_REG(osh, r) & (v))
-#define	OR_REG(osh, r, v)		W_REG(osh, (r), R_REG(osh, r) | (v))
-extern uint8 osl_readb(volatile uint8 *r);
-extern uint16 osl_readw(volatile uint16 *r);
-extern uint32 osl_readl(volatile uint32 *r);
-extern uint64 osl_readq(volatile uint64 *r);
-extern void osl_writeb(uint8 v, volatile uint8 *r);
-extern void osl_writew(uint16 v, volatile uint16 *r);
-extern void osl_writel(uint32 v, volatile uint32 *r);
-extern void osl_writeq(uint64 v, volatile uint64 *r);
-
-/* system up time in ms */
-#define OSL_SYSUPTIME()		osl_sysuptime()
-extern uint32 osl_sysuptime(void);
-
-/* uncached/cached virtual address */
-#define OSL_UNCACHED(va)	osl_uncached((va))
-extern void *osl_uncached(void *va);
-#define OSL_CACHED(va)		osl_cached((va))
-extern void *osl_cached(void *va);
-
-#define OSL_PREF_RANGE_LD(va, sz)
-#define OSL_PREF_RANGE_ST(va, sz)
-
-/* get processor cycle count */
-#define OSL_GETCYCLES(x)	((x) = osl_getcycles())
-extern uint osl_getcycles(void);
-
-/* dereference an address that may target abort */
-#define	BUSPROBE(val, addr)	osl_busprobe(&(val), (addr))
-extern int osl_busprobe(uint32 *val, uint32 addr);
-
-/* map/unmap physical to virtual */
-#define	REG_MAP(pa, size)	osl_reg_map((pa), (size))
-#define	REG_UNMAP(va)		osl_reg_unmap((va))
-extern void *osl_reg_map(uint32 pa, uint size);
-extern void osl_reg_unmap(void *va);
-
-/* shared (dma-able) memory access macros */
-#define	R_SM(r)			*(r)
-#define	W_SM(r, v)		(*(r) = (v))
-#define	OR_SM(r, v)		(*(r) |= (v))
-#define	BZERO_SM(r, len)	bzero((r), (len))
-
-#endif	/* BINOSL */
-
 #define OSL_RAND()		osl_rand()
 extern uint32 osl_rand(void);
 
@@ -703,12 +475,9 @@ extern uint32 osl_rand(void);
 #else /* ! BCMDRIVER */
 
 /* ASSERT */
-#ifdef BCMDBG_ASSERT
-	#include <assert.h>
-	#define ASSERT assert
-#else /* BCMDBG_ASSERT */
 	#define ASSERT(exp)	do {} while (0)
-#endif /* BCMDBG_ASSERT */
+
+#define ASSERT_FP(exp) ASSERT(exp)
 
 /* MALLOC and MFREE */
 #define MALLOC(o, l) malloc(l)
@@ -740,9 +509,6 @@ typedef struct timer_list_compat timer_list_compat_t;
 typedef struct osl_timer {
 	timer_list_compat_t *timer;
 	bool   set;
-#ifdef BCMDBG
-	char    *name;          /* Desription of the timer */
-#endif // endif
 } osl_timer_t;
 
 typedef void (*linux_timer_fn)(ulong arg);
@@ -769,7 +535,7 @@ typedef atomic_t osl_atomic_t;
 #else
 #define OSL_ATOMIC_OR(osh, v, x)	atomic_set_mask(x, v)
 #define OSL_ATOMIC_AND(osh, v, x)	atomic_clear_mask(~x, v)
-#endif // endif
+#endif
 #endif /* BCMDRIVER */
 
 extern void *osl_spin_lock_init(osl_t *osh);

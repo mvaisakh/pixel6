@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: linux_osl.c 813832 2019-04-08 15:31:18Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #define LINUX_PORT
@@ -49,7 +47,7 @@
 #endif /* BCM_OBJECT_TRACE */
 #include "linux_osl_priv.h"
 
-#define PCI_CFG_RETRY		10
+#define PCI_CFG_RETRY		10	/* PR15065: retry count for pci cfg accesses */
 
 #define DUMPBUFSZ 1024
 
@@ -60,11 +58,6 @@ uint32 g_assert_type = 0; /* By Default Kernel Panic */
 #endif /* CUSTOMER_HW4_DEBUG */
 
 module_param(g_assert_type, int, 0);
-
-#if defined(BCMSLTGT)
-/* !!!make sure htclkratio is not 0!!! */
-extern uint htclkratio;
-#endif // endif
 
 #ifdef USE_DMA_LOCK
 static void osl_dma_lock(osl_t *osh);
@@ -92,29 +85,29 @@ static int16 linuxbcmerrormap[] =
 	-EINVAL,		/* BCME_BADKEYIDX */
 	-EINVAL,		/* BCME_RADIOOFF */
 	-EINVAL,		/* BCME_NOTBANDLOCKED */
-	-EINVAL, 		/* BCME_NOCLK */
-	-EINVAL, 		/* BCME_BADRATESET */
-	-EINVAL, 		/* BCME_BADBAND */
+	-EINVAL,		/* BCME_NOCLK */
+	-EINVAL,		/* BCME_BADRATESET */
+	-EINVAL,		/* BCME_BADBAND */
 	-E2BIG,			/* BCME_BUFTOOSHORT */
 	-E2BIG,			/* BCME_BUFTOOLONG */
-	-EBUSY, 		/* BCME_BUSY */
-	-EINVAL, 		/* BCME_NOTASSOCIATED */
-	-EINVAL, 		/* BCME_BADSSIDLEN */
-	-EINVAL, 		/* BCME_OUTOFRANGECHAN */
-	-EINVAL, 		/* BCME_BADCHAN */
-	-EFAULT, 		/* BCME_BADADDR */
-	-ENOMEM, 		/* BCME_NORESOURCE */
+	-EBUSY,			/* BCME_BUSY */
+	-EINVAL,		/* BCME_NOTASSOCIATED */
+	-EINVAL,		/* BCME_BADSSIDLEN */
+	-EINVAL,		/* BCME_OUTOFRANGECHAN */
+	-EINVAL,		/* BCME_BADCHAN */
+	-EFAULT,		/* BCME_BADADDR */
+	-ENOMEM,		/* BCME_NORESOURCE */
 	-EOPNOTSUPP,		/* BCME_UNSUPPORTED */
 	-EMSGSIZE,		/* BCME_BADLENGTH */
 	-EINVAL,		/* BCME_NOTREADY */
 	-EPERM,			/* BCME_EPERM */
-	-ENOMEM, 		/* BCME_NOMEM */
-	-EINVAL, 		/* BCME_ASSOCIATED */
-	-ERANGE, 		/* BCME_RANGE */
-	-EINVAL, 		/* BCME_NOTFOUND */
-	-EINVAL, 		/* BCME_WME_NOT_ENABLED */
-	-EINVAL, 		/* BCME_TSPEC_NOTFOUND */
-	-EINVAL, 		/* BCME_ACM_NOTSUPPORTED */
+	-ENOMEM,		/* BCME_NOMEM */
+	-EINVAL,		/* BCME_ASSOCIATED */
+	-ERANGE,		/* BCME_RANGE */
+	-EINVAL,		/* BCME_NOTFOUND */
+	-EINVAL,		/* BCME_WME_NOT_ENABLED */
+	-EINVAL,		/* BCME_TSPEC_NOTFOUND */
+	-EINVAL,		/* BCME_ACM_NOTSUPPORTED */
 	-EINVAL,		/* BCME_NOT_WME_ASSOCIATION */
 	-EIO,			/* BCME_SDIO_ERROR */
 	-ENODEV,		/* BCME_DONGLE_DOWN */
@@ -126,43 +119,44 @@ static int16 linuxbcmerrormap[] =
 	-ENODATA,		/* BCME_NONRESIDENT */
 	-EINVAL,		/* BCME_SCANREJECT */
 	-EINVAL,		/* BCME_USAGE_ERROR */
-	-EIO,     		/* BCME_IOCTL_ERROR */
+	-EIO,			/* BCME_IOCTL_ERROR */
 	-EIO,			/* BCME_SERIAL_PORT_ERR */
-	-EOPNOTSUPP,	/* BCME_DISABLED, BCME_NOTENABLED */
+	-EOPNOTSUPP,		/* BCME_DISABLED, BCME_NOTENABLED */
 	-EIO,			/* BCME_DECERR */
 	-EIO,			/* BCME_ENCERR */
 	-EIO,			/* BCME_MICERR */
 	-ERANGE,		/* BCME_REPLAY */
 	-EINVAL,		/* BCME_IE_NOTFOUND */
 	-EINVAL,		/* BCME_DATA_NOTFOUND */
-	-EINVAL,        /* BCME_NOT_GC */
-	-EINVAL,        /* BCME_PRS_REQ_FAILED */
-	-EINVAL,        /* BCME_NO_P2P_SE */
-	-EINVAL,        /* BCME_NOA_PND */
-	-EINVAL,        /* BCME_FRAG_Q_FAILED */
-	-EINVAL,        /* BCME_GET_AF_FAILED */
-	-EINVAL,	/* BCME_MSCH_NOTREADY */
-	-EINVAL,	/* BCME_IOV_LAST_CMD */
-	-EINVAL,	/* BCME_MINIPMU_CAL_FAIL */
-	-EINVAL,	/* BCME_RCAL_FAIL */
-	-EINVAL,	/* BCME_LPF_RCCAL_FAIL */
-	-EINVAL,	/* BCME_DACBUF_RCCAL_FAIL */
-	-EINVAL,	/* BCME_VCOCAL_FAIL */
-	-EINVAL,	/* BCME_BANDLOCKED */
-	-EINVAL,	/* BCME_BAD_IE_DATA */
-	-EINVAL,	/* BCME_REG_FAILED */
-	-EINVAL,	/* BCME_NOCHAN */
-	-EINVAL,	/* BCME_PKTTOSS */
-	-EINVAL,	/* BCME_DNGL_DEVRESET */
+	-EINVAL,		/* BCME_NOT_GC */
+	-EINVAL,		/* BCME_PRS_REQ_FAILED */
+	-EINVAL,		/* BCME_NO_P2P_SE */
+	-EINVAL,		/* BCME_NOA_PND */
+	-EINVAL,		/* BCME_FRAG_Q_FAILED */
+	-EINVAL,		/* BCME_GET_AF_FAILED */
+	-EINVAL,		/* BCME_MSCH_NOTREADY */
+	-EINVAL,		/* BCME_IOV_LAST_CMD */
+	-EINVAL,		/* BCME_MINIPMU_CAL_FAIL */
+	-EINVAL,		/* BCME_RCAL_FAIL */
+	-EINVAL,		/* BCME_LPF_RCCAL_FAIL */
+	-EINVAL,		/* BCME_DACBUF_RCCAL_FAIL */
+	-EINVAL,		/* BCME_VCOCAL_FAIL */
+	-EINVAL,		/* BCME_BANDLOCKED */
+	-EINVAL,		/* BCME_BAD_IE_DATA */
+	-EINVAL,		/* BCME_REG_FAILED */
+	-EINVAL,		/* BCME_NOCHAN */
+	-EINVAL,		/* BCME_PKTTOSS */
+	-EINVAL,		/* BCME_DNGL_DEVRESET */
+	-EINVAL,		/* BCME_ROAM */
 
 /* When an new error code is added to bcmutils.h, add os
  * specific error translation here as well
  */
 /* check if BCME_LAST changed since the last time this function was updated */
-#if BCME_LAST != -72
+#if BCME_LAST != BCME_ROAM
 #error "You need to add a OS error translation in the linuxbcmerrormap \
 	for new error code defined in bcmutils.h"
-#endif // endif
+#endif
 };
 uint lmtest = FALSE;
 
@@ -270,16 +264,10 @@ osl_error(int bcmerror)
 	/* Array bounds covered by ASSERT in osl_attach */
 	return linuxbcmerrormap[-bcmerror];
 }
-#ifdef SHARED_OSL_CMN
-osl_t *
-osl_attach(void *pdev, uint bustype, bool pkttag, void **osl_cmn)
-{
-#else
 osl_t *
 osl_attach(void *pdev, uint bustype, bool pkttag)
 {
 	void **osl_cmn = NULL;
-#endif /* SHARED_OSL_CMN */
 	osl_t *osh;
 	gfp_t flags;
 
@@ -303,9 +291,6 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 		osh->cmn->dbgmem_list = NULL;
 		spin_lock_init(&(osh->cmn->dbgmem_lock));
 
-#ifdef BCMDBG_PKT
-		spin_lock_init(&(osh->cmn->pktlist_lock));
-#endif // endif
 		spin_lock_init(&(osh->cmn->pktalloc_lock));
 
 	} else {
@@ -314,10 +299,8 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	atomic_add(1, &osh->cmn->refcount);
 
 	bcm_object_trace_init();
-
 	/* Check that error map has the right number of entries in it */
 	ASSERT(ABS(BCME_LAST) == (ARRAYSIZE(linuxbcmerrormap) - 1));
-
 	osh->failed = 0;
 	osh->pdev = pdev;
 	osh->pub.pkttag = pkttag;
@@ -340,21 +323,7 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 			break;
 	}
 
-#ifdef BCMDBG_CTRACE
-	spin_lock_init(&osh->ctrace_lock);
-	INIT_LIST_HEAD(&osh->ctrace_list);
-	osh->ctrace_num = 0;
-#endif /* BCMDBG_CTRACE */
-
 	DMA_LOCK_INIT(osh);
-
-#ifdef BCMDBG_ASSERT
-	if (pkttag) {
-		struct sk_buff *skb;
-		BCM_REFERENCE(skb);
-		ASSERT(OSL_PKTTAG_SZ <= sizeof(skb->cb));
-	}
-#endif // endif
 
 #ifdef DHD_MAP_LOGGING
 	osh->dhd_map_log = osl_dma_map_log_init(DHD_MAP_LOG_SIZE);
@@ -381,7 +350,7 @@ void* osl_get_bus_handle(osl_t *osh)
 	return osh->bus_handle;
 }
 
-#if defined(BCM_BACKPLANE_TIMEOUT)
+#if defined(AXI_TIMEOUTS_NIC)
 void osl_set_bpt_cb(osl_t *osh, void *bpt_cb, void *bpt_ctx)
 {
 	if (osh) {
@@ -389,25 +358,13 @@ void osl_set_bpt_cb(osl_t *osh, void *bpt_cb, void *bpt_ctx)
 		osh->sih = bpt_ctx;
 	}
 }
-#endif	/* BCM_BACKPLANE_TIMEOUT */
+#endif	/* AXI_TIMEOUTS_NIC */
 
 void
 osl_detach(osl_t *osh)
 {
 	if (osh == NULL)
 		return;
-
-#ifdef BCMDBG_MEM
-	if (MEMORY_LEFTOVER(osh)) {
-		static char dumpbuf[DUMPBUFSZ];
-		struct bcmstrbuf b;
-
-		printf("%s: MEMORY LEAK %d bytes\n", __FUNCTION__, MALLOCED(osh));
-		bcm_binit(&b, dumpbuf, DUMPBUFSZ);
-		MALLOC_DUMP(osh, &b);
-		printf("%s", b.origbuf);
-	}
-#endif // endif
 
 	bcm_object_trace_deinit();
 
@@ -471,7 +428,7 @@ uint32
 osl_pci_read_config(osl_t *osh, uint offset, uint size)
 {
 	uint val = 0;
-	uint retry = PCI_CFG_RETRY;
+	uint retry = PCI_CFG_RETRY;	 /* PR15065: faulty cardbus controller bug */
 
 	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
 
@@ -484,19 +441,13 @@ osl_pci_read_config(osl_t *osh, uint offset, uint size)
 			break;
 	} while (retry--);
 
-#ifdef BCMDBG
-	if (retry < PCI_CFG_RETRY)
-		printk("PCI CONFIG READ access to %d required %d retries\n", offset,
-		       (PCI_CFG_RETRY - retry));
-#endif /* BCMDBG */
-
 	return (val);
 }
 
 void
 osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 {
-	uint retry = PCI_CFG_RETRY;
+	uint retry = PCI_CFG_RETRY;	 /* PR15065: faulty cardbus controller bug */
 
 	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
 
@@ -505,17 +456,15 @@ osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 
 	do {
 		pci_write_config_dword(osh->pdev, offset, val);
+		/* PR15065: PCI_BAR0_WIN is believed to be the only pci cfg write that can occur
+		 * when dma activity is possible
+		 */
 		if (offset != PCI_BAR0_WIN)
 			break;
 		if (osl_pci_read_config(osh, offset, size) == val)
 			break;
 	} while (retry--);
 
-#ifdef BCMDBG
-	if (retry < PCI_CFG_RETRY)
-		printk("PCI CONFIG WRITE access to %d required %d retries\n", offset,
-		       (PCI_CFG_RETRY - retry));
-#endif /* BCMDBG */
 }
 
 /* return bus # for the pci device pointed by osh->pdev */
@@ -524,11 +473,11 @@ osl_pci_bus(osl_t *osh)
 {
 	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
 
-#if defined(__ARM_ARCH_7A__) && LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
+#if defined(__ARM_ARCH_7A__)
 	return pci_domain_nr(((struct pci_dev *)osh->pdev)->bus);
 #else
 	return ((struct pci_dev *)osh->pdev)->bus->number;
-#endif // endif
+#endif
 }
 
 /* return slot # for the pci device pointed by osh->pdev */
@@ -537,11 +486,11 @@ osl_pci_slot(osl_t *osh)
 {
 	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
 
-#if defined(__ARM_ARCH_7A__) && LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
+#if defined(__ARM_ARCH_7A__)
 	return PCI_SLOT(((struct pci_dev *)osh->pdev)->devfn) + 1;
 #else
 	return PCI_SLOT(((struct pci_dev *)osh->pdev)->devfn);
-#endif // endif
+#endif
 }
 
 /* return domain # for the pci device pointed by osh->pdev */
@@ -571,15 +520,6 @@ osl_pci_device(osl_t *osh)
 	return osh->pdev;
 }
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_malloc is only used internally in
- * the implementation of osl_debug_malloc.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_malloc static in
- * the BCMDBG_MEM case.
- */
-static
-#endif // endif
 void *
 osl_malloc(osl_t *osh, uint size)
 {
@@ -636,7 +576,6 @@ original:
 	return (addr);
 }
 
-#ifndef BCMDBG_MEM
 void *
 osl_mallocz(osl_t *osh, uint size)
 {
@@ -650,17 +589,7 @@ osl_mallocz(osl_t *osh, uint size)
 
 	return ptr;
 }
-#endif // endif
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_mfree is only used internally in
- * the implementation of osl_debug_mfree.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_mfree static in
- * the BCMDBG_MEM case.
- */
-static
-#endif // endif
 void
 osl_mfree(osl_t *osh, void *addr, uint size)
 {
@@ -702,15 +631,6 @@ osl_mfree(osl_t *osh, void *addr, uint size)
 	kfree(addr);
 }
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_vmalloc is only used internally in
- * the implementation of osl_debug_vmalloc.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_vmalloc static in
- * the BCMDBG_MEM case.
- */
-static
-#endif // endif
 void *
 osl_vmalloc(osl_t *osh, uint size)
 {
@@ -730,7 +650,6 @@ osl_vmalloc(osl_t *osh, uint size)
 	return (addr);
 }
 
-#ifndef BCMDBG_MEM
 void *
 osl_vmallocz(osl_t *osh, uint size)
 {
@@ -744,17 +663,7 @@ osl_vmallocz(osl_t *osh, uint size)
 
 	return ptr;
 }
-#endif // endif
 
-#ifdef BCMDBG_MEM
-/* In BCMDBG_MEM configurations osl_vmfree is only used internally in
- * the implementation of osl_debug_vmfree.  Because we are using the GCC
- * -Wstrict-prototypes compile option, we must always have a prototype
- * for a global/external function.  So make osl_vmfree static in
- * the BCMDBG_MEM case.
- */
-static
-#endif // endif
 void
 osl_vmfree(osl_t *osh, void *addr, uint size)
 {
@@ -792,310 +701,6 @@ osl_malloc_failed(osl_t *osh)
 	return (osh->failed);
 }
 
-#ifdef BCMDBG_MEM
-void *
-osl_debug_malloc(osl_t *osh, uint size, int line, const char* file)
-{
-	bcm_mem_link_t *p;
-	const char* basename;
-	unsigned long flags = 0;
-	if (!size) {
-		printk("%s: allocating zero sized mem at %s line %d\n", __FUNCTION__, file, line);
-		ASSERT(0);
-	}
-
-	if ((p = (bcm_mem_link_t*)osl_malloc(osh, sizeof(bcm_mem_link_t) + size)) == NULL) {
-		return (NULL);
-	}
-
-	if (osh) {
-		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-
-	p->size = size;
-	p->line = line;
-	p->osh = (void *)osh;
-
-	basename = strrchr(file, '/');
-	/* skip the '/' */
-	if (basename)
-		basename++;
-
-	if (!basename)
-		basename = file;
-
-	strlcpy(p->file, basename, sizeof(p->file));
-
-	/* link this block */
-	if (osh) {
-		p->prev = NULL;
-		p->next = osh->cmn->dbgmem_list;
-		if (p->next)
-			p->next->prev = p;
-		osh->cmn->dbgmem_list = p;
-		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-
-	return p + 1;
-}
-
-void *
-osl_debug_mallocz(osl_t *osh, uint size, int line, const char* file)
-{
-	void *ptr;
-
-	ptr = osl_debug_malloc(osh, size, line, file);
-
-	if (ptr != NULL) {
-		bzero(ptr, size);
-	}
-
-	return ptr;
-}
-
-void
-osl_debug_mfree(osl_t *osh, void *addr, uint size, int line, const char* file)
-{
-	bcm_mem_link_t *p;
-	unsigned long flags = 0;
-
-	ASSERT(osh == NULL || osh->magic == OS_HANDLE_MAGIC);
-
-	if (addr == NULL) {
-		printk("osl_debug_mfree: Free null pointer\n");
-		return;
-	}
-
-	p = (bcm_mem_link_t *)((int8*)addr - sizeof(bcm_mem_link_t));
-	if (p->size == 0) {
-		printk("osl_debug_mfree: double free on addr %p size %d at line %d file %s\n",
-			addr, size, line, file);
-		prhex("bcm_mem_link_t", (void *)p, sizeof(*p));
-		ASSERT(p->size);
-		return;
-	}
-
-	if (p->size != size) {
-		printk("%s: dealloca size does not match alloc size\n", __FUNCTION__);
-		printk("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file);
-		printk("Alloc size %d line %d file %s\n", p->size, p->line, p->file);
-		prhex("bcm_mem_link_t", (void *)p, sizeof(*p));
-		ASSERT(p->size == size);
-		return;
-	}
-
-	if (osh && ((osl_t*)p->osh)->cmn != osh->cmn) {
-		printk("osl_debug_mfree: alloc osh %p does not match dealloc osh %p\n",
-			((osl_t*)p->osh)->cmn, osh->cmn);
-		printk("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file);
-		printk("Alloc size %d line %d file %s\n", p->size, p->line, p->file);
-		prhex("bcm_mem_link_t", (void *)p, sizeof(*p));
-		ASSERT(((osl_t*)p->osh)->cmn == osh->cmn);
-		return;
-	}
-
-	/* unlink this block */
-	if (osh && osh->cmn) {
-		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
-		if (p->prev)
-			p->prev->next = p->next;
-		if (p->next)
-			p->next->prev = p->prev;
-		if (osh->cmn->dbgmem_list == p)
-			osh->cmn->dbgmem_list = p->next;
-		p->next = p->prev = NULL;
-	}
-	p->size = 0;
-
-	if (osh && osh->cmn) {
-		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-	osl_mfree(osh, p, size + sizeof(bcm_mem_link_t));
-}
-
-void *
-osl_debug_vmalloc(osl_t *osh, uint size, int line, const char* file)
-{
-	bcm_mem_link_t *p;
-	const char* basename;
-	unsigned long flags = 0;
-	if (!size) {
-		printk("%s: allocating zero sized mem at %s line %d\n", __FUNCTION__, file, line);
-		ASSERT(0);
-	}
-
-	if ((p = (bcm_mem_link_t*)osl_vmalloc(osh, sizeof(bcm_mem_link_t) + size)) == NULL) {
-		return (NULL);
-	}
-
-	if (osh) {
-		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-
-	p->size = size;
-	p->line = line;
-	p->osh = (void *)osh;
-
-	basename = strrchr(file, '/');
-	/* skip the '/' */
-	if (basename)
-		basename++;
-
-	if (!basename)
-		basename = file;
-
-	strlcpy(p->file, basename, sizeof(p->file));
-
-	/* link this block */
-	if (osh) {
-		p->prev = NULL;
-		p->next = osh->cmn->dbgvmem_list;
-		if (p->next)
-			p->next->prev = p;
-		osh->cmn->dbgvmem_list = p;
-		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-
-	return p + 1;
-}
-
-void *
-osl_debug_vmallocz(osl_t *osh, uint size, int line, const char* file)
-{
-	void *ptr;
-
-	ptr = osl_debug_vmalloc(osh, size, line, file);
-
-	if (ptr != NULL) {
-		bzero(ptr, size);
-	}
-
-	return ptr;
-}
-
-void
-osl_debug_vmfree(osl_t *osh, void *addr, uint size, int line, const char* file)
-{
-	bcm_mem_link_t *p = (bcm_mem_link_t *)((int8*)addr - sizeof(bcm_mem_link_t));
-	unsigned long flags = 0;
-
-	ASSERT(osh == NULL || osh->magic == OS_HANDLE_MAGIC);
-
-	if (p->size == 0) {
-		printk("osl_debug_mfree: double free on addr %p size %d at line %d file %s\n",
-			addr, size, line, file);
-		ASSERT(p->size);
-		return;
-	}
-
-	if (p->size != size) {
-		printk("%s: dealloca size does not match alloc size\n", __FUNCTION__);
-		printk("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file);
-		printk("Alloc size %d line %d file %s\n", p->size, p->line, p->file);
-		ASSERT(p->size == size);
-		return;
-	}
-
-	if (osh && ((osl_t*)p->osh)->cmn != osh->cmn) {
-		printk("osl_debug_mfree: alloc osh %p does not match dealloc osh %p\n",
-			((osl_t*)p->osh)->cmn, osh->cmn);
-		printk("Dealloc addr %p size %d at line %d file %s\n", addr, size, line, file);
-		printk("Alloc size %d line %d file %s\n", p->size, p->line, p->file);
-		ASSERT(((osl_t*)p->osh)->cmn == osh->cmn);
-		return;
-	}
-
-	/* unlink this block */
-	if (osh && osh->cmn) {
-		OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
-		if (p->prev)
-			p->prev->next = p->next;
-		if (p->next)
-			p->next->prev = p->prev;
-		if (osh->cmn->dbgvmem_list == p)
-			osh->cmn->dbgvmem_list = p->next;
-		p->next = p->prev = NULL;
-	}
-	p->size = 0;
-
-	if (osh && osh->cmn) {
-		OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
-	}
-	osl_vmfree(osh, p, size + sizeof(bcm_mem_link_t));
-}
-
-int
-osl_debug_memdump(osl_t *osh, struct bcmstrbuf *b)
-{
-	bcm_mem_link_t *p;
-	unsigned long flags = 0;
-
-	ASSERT((osh && (osh->magic == OS_HANDLE_MAGIC)));
-
-	OSL_MEMLIST_LOCK(&osh->cmn->dbgmem_lock, flags);
-
-	if (osl_check_memleak(osh) && osh->cmn->dbgmem_list) {
-		if (b != NULL)
-			bcm_bprintf(b, "   Address   Size File:line\n");
-		else
-			printk("   Address   Size File:line\n");
-
-		for (p = osh->cmn->dbgmem_list; p; p = p->next) {
-			if (b != NULL)
-				bcm_bprintf(b, "%p %6d %s:%d\n", (char*)p + sizeof(bcm_mem_link_t),
-					p->size, p->file, p->line);
-			else
-				printk("%p %6d %s:%d\n", (char*)p + sizeof(bcm_mem_link_t),
-					p->size, p->file, p->line);
-
-			/* Detects loop-to-self so we don't enter infinite loop */
-			if (p == p->next) {
-				if (b != NULL)
-					bcm_bprintf(b, "WARNING: loop-to-self "
-						"p %p p->next %p\n", p, p->next);
-				else
-					printk("WARNING: loop-to-self "
-						"p %p p->next %p\n", p, p->next);
-
-				break;
-			}
-		}
-	}
-	if (osl_check_memleak(osh) && osh->cmn->dbgvmem_list) {
-		if (b != NULL)
-			bcm_bprintf(b, "Vmem\n   Address   Size File:line\n");
-		else
-			printk("Vmem\n   Address   Size File:line\n");
-
-		for (p = osh->cmn->dbgvmem_list; p; p = p->next) {
-			if (b != NULL)
-				bcm_bprintf(b, "%p %6d %s:%d\n", (char*)p + sizeof(bcm_mem_link_t),
-					p->size, p->file, p->line);
-			else
-				printk("%p %6d %s:%d\n", (char*)p + sizeof(bcm_mem_link_t),
-					p->size, p->file, p->line);
-
-			/* Detects loop-to-self so we don't enter infinite loop */
-			if (p == p->next) {
-				if (b != NULL)
-					bcm_bprintf(b, "WARNING: loop-to-self "
-						"p %p p->next %p\n", p, p->next);
-				else
-					printk("WARNING: loop-to-self "
-						"p %p p->next %p\n", p, p->next);
-
-				break;
-			}
-		}
-	}
-
-	OSL_MEMLIST_UNLOCK(&osh->cmn->dbgmem_lock, flags);
-
-	return 0;
-}
-
-#endif	/* BCMDBG_MEM */
-
 uint
 osl_dma_consistent_align(void)
 {
@@ -1127,6 +732,9 @@ osl_dma_alloc_consistent(osl_t *osh, uint size, uint16 align_bits, uint *alloced
 #else
 		flags = CAN_SLEEP() ? GFP_KERNEL: GFP_ATOMIC;
 #endif /* DHD_ALLOC_COHERENT_MEM_FROM_ATOMIC_POOL */
+#ifdef DHD_ALLOC_COHERENT_MEM_WITH_GFP_COMP
+		flags |= __GFP_COMP;
+#endif /* DHD_ALLOC_COHERENT_MEM_WITH_GFP_COMP */
 		va = dma_alloc_coherent(&hwdev->dev, size, &pap_lin, flags);
 #ifdef BCMDMA64OSL
 		PHYSADDRLOSET(*pap, pap_lin & 0xffffffff);
@@ -1166,7 +774,6 @@ osl_virt_to_phys(void *va)
 	return (void *)(uintptr)virt_to_phys(va);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 #include <asm/cacheflush.h>
 void
 BCMFASTPATH(osl_dma_flush)(osl_t *osh, void *va, uint size, int direction, void *p,
@@ -1174,7 +781,6 @@ BCMFASTPATH(osl_dma_flush)(osl_t *osh, void *va, uint size, int direction, void 
 {
 	return;
 }
-#endif /* LINUX_VERSION_CODE >= 2.6.36 */
 
 dmaaddr_t
 BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p,
@@ -1192,13 +798,8 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 
 	map_addr = pci_map_single(osh->pdev, va, size, dir);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	ret = pci_dma_mapping_error(osh->pdev, map_addr);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 5))
-	ret = pci_dma_mapping_error(map_addr);
-#else
-	ret = 0;
-#endif // endif
+
 	if (ret) {
 		printk("%s: Failed to map memory\n", __FUNCTION__);
 		PHYSADDRLOSET(ret_addr, 0);
@@ -1262,7 +863,7 @@ extern void osl_preempt_enable(osl_t *osh)
 	preempt_enable();
 }
 
-#if defined(BCMDBG_ASSERT) || defined(BCMASSERT_LOG)
+#if defined(BCMASSERT_LOG)
 void
 osl_assert(const char *exp, const char *file, int line)
 {
@@ -1282,23 +883,10 @@ osl_assert(const char *exp, const char *file, int line)
 		exp, basename, line);
 #endif /* BCMASSERT_LOG */
 
-#ifdef BCMDBG_ASSERT
-	snprintf(tempbuf, 256, "assertion \"%s\" failed: file \"%s\", line %d\n",
-		exp, basename, line);
-
-	/* Print assert message and give it time to be written to /var/log/messages */
-	if (!in_interrupt() && g_assert_type != 1 && g_assert_type != 3) {
-		const int delay = 3;
-		printk("%s", tempbuf);
-		printk("panic in %d seconds\n", delay);
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(delay * HZ);
-	}
-#endif /* BCMDBG_ASSERT */
-
 	switch (g_assert_type) {
 	case 0:
-		panic("%s", tempbuf);
+		printk("%s", tempbuf);
+		BUG();
 		break;
 	case 1:
 		/* fall through */
@@ -1313,16 +901,12 @@ osl_assert(const char *exp, const char *file, int line)
 		break;
 	}
 }
-#endif /* BCMDBG_ASSERT || BCMASSERT_LOG */
+#endif
 
 void
 osl_delay(uint usec)
 {
 	uint d;
-
-#ifdef BCMSLTGT
-	usec *= htclkratio;
-#endif // endif
 
 	while (usec > 0) {
 		d = MIN(usec, 1000);
@@ -1334,16 +918,11 @@ osl_delay(uint usec)
 void
 osl_sleep(uint ms)
 {
-#ifdef BCMSLTGT
-	ms *= htclkratio;
-#endif // endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 	if (ms < 20)
 		usleep_range(ms*1000, ms*1000 + 1000);
 	else
-#endif // endif
-	msleep(ms);
+		msleep(ms);
 }
 
 uint64
@@ -1355,10 +934,6 @@ osl_sysuptime_us(void)
 	do_gettimeofday(&tv);
 	/* tv_usec content is fraction of a second */
 	usec = (uint64)tv.tv_sec * 1000000ul + tv.tv_usec;
-#ifdef BCMSLTGT
-	/* scale down the time to match the slow target roughly */
-	usec /= htclkratio;
-#endif // endif
 	return usec;
 }
 
@@ -1367,11 +942,12 @@ osl_localtime_ns(void)
 {
 	uint64 ts_nsec = 0;
 
-#ifdef BCMDONGLEHOST
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+	/* Some Linux based platform cannot use local_clock()
+	 * since it is defined by EXPORT_SYMBOL_GPL().
+	 * GPL-incompatible module (NIC builds wl.ko)
+	 * cannnot use the GPL-only symbol.
+	 */
 	ts_nsec = local_clock();
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36) */
-#endif /* BCMDONGLEHOST */
 	return ts_nsec;
 }
 
@@ -1381,12 +957,13 @@ osl_get_localtime(uint64 *sec, uint64 *usec)
 	uint64 ts_nsec = 0;
 	unsigned long rem_nsec = 0;
 
-#ifdef BCMDONGLEHOST
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+	/* Some Linux based platform cannot use local_clock()
+	 * since it is defined by EXPORT_SYMBOL_GPL().
+	 * GPL-incompatible module (NIC builds wl.ko) can
+	 * not use the GPL-only symbol.
+	 */
 	ts_nsec = local_clock();
 	rem_nsec = do_div(ts_nsec, NSEC_PER_SEC);
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36) */
-#endif /* BCMDONGLEHOST */
 	*sec = (uint64)ts_nsec;
 	*usec = (uint64)(rem_nsec / MSEC_PER_SEC);
 }
@@ -1409,281 +986,10 @@ osl_systztime_us(void)
 /*
  * OSLREGOPS specifies the use of osl_XXX routines to be used for register access
  */
-#ifdef OSLREGOPS
-uint8
-osl_readb(osl_t *osh, volatile uint8 *r)
-{
-	osl_rreg_fn_t rreg	= ((osl_pubinfo_t*)osh)->rreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	return (uint8)((rreg)(ctx, (volatile void*)r, sizeof(uint8)));
-}
-
-uint16
-osl_readw(osl_t *osh, volatile uint16 *r)
-{
-	osl_rreg_fn_t rreg	= ((osl_pubinfo_t*)osh)->rreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	return (uint16)((rreg)(ctx, (volatile void*)r, sizeof(uint16)));
-}
-
-uint32
-osl_readl(osl_t *osh, volatile uint32 *r)
-{
-	osl_rreg_fn_t rreg	= ((osl_pubinfo_t*)osh)->rreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	return (uint32)((rreg)(ctx, (volatile void*)r, sizeof(uint32)));
-}
-
-void
-osl_writeb(osl_t *osh, volatile uint8 *r, uint8 v)
-{
-	osl_wreg_fn_t wreg	= ((osl_pubinfo_t*)osh)->wreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	((wreg)(ctx, (volatile void*)r, v, sizeof(uint8)));
-}
-
-void
-osl_writew(osl_t *osh, volatile uint16 *r, uint16 v)
-{
-	osl_wreg_fn_t wreg	= ((osl_pubinfo_t*)osh)->wreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	((wreg)(ctx, (volatile void*)r, v, sizeof(uint16)));
-}
-
-void
-osl_writel(osl_t *osh, volatile uint32 *r, uint32 v)
-{
-	osl_wreg_fn_t wreg	= ((osl_pubinfo_t*)osh)->wreg_fn;
-	void *ctx		= ((osl_pubinfo_t*)osh)->reg_ctx;
-
-	((wreg)(ctx, (volatile void*)r, v, sizeof(uint32)));
-}
-#endif /* OSLREGOPS */
 
 /*
  * BINOSL selects the slightly slower function-call-based binary compatible osl.
  */
-#ifdef BINOSL
-
-uint32
-osl_sysuptime(void)
-{
-	uint32 msec = ((uint32)jiffies * (1000 / HZ));
-#ifdef BCMSLTGT
-	/* scale down the time to match the slow target roughly */
-	msec /= htclkratio;
-#endif // endif
-	return msec;
-}
-
-int
-osl_printf(const char *format, ...)
-{
-	va_list args;
-	static char printbuf[1024];
-	int len;
-
-	/* sprintf into a local buffer because there *is* no "vprintk()".. */
-	va_start(args, format);
-	len = vsnprintf(printbuf, 1024, format, args);
-	va_end(args);
-
-	if (len > sizeof(printbuf)) {
-		printk("osl_printf: buffer overrun\n");
-		return (0);
-	}
-
-	return (printk("%s", printbuf));
-}
-
-int
-osl_sprintf(char *buf, const char *format, ...)
-{
-	va_list args;
-	int rc;
-
-	va_start(args, format);
-	rc = vsprintf(buf, format, args);
-	va_end(args);
-	return (rc);
-}
-
-int
-osl_snprintf(char *buf, size_t n, const char *format, ...)
-{
-	va_list args;
-	int rc;
-
-	va_start(args, format);
-	rc = vsnprintf(buf, n, format, args);
-	va_end(args);
-	return (rc);
-}
-
-int
-osl_vsprintf(char *buf, const char *format, va_list ap)
-{
-	return (vsprintf(buf, format, ap));
-}
-
-int
-osl_vsnprintf(char *buf, size_t n, const char *format, va_list ap)
-{
-	return (vsnprintf(buf, n, format, ap));
-}
-
-int
-osl_strcmp(const char *s1, const char *s2)
-{
-	return (strcmp(s1, s2));
-}
-
-int
-osl_strncmp(const char *s1, const char *s2, uint n)
-{
-	return (strncmp(s1, s2, n));
-}
-
-int
-osl_strlen(const char *s)
-{
-	return (strlen(s));
-}
-
-char*
-osl_strcpy(char *d, const char *s)
-{
-	return (strcpy(d, s));
-}
-
-char*
-osl_strncpy(char *d, const char *s, uint n)
-{
-	return (strlcpy(d, s, n));
-}
-
-char*
-osl_strchr(const char *s, int c)
-{
-	return (strchr(s, c));
-}
-
-char*
-osl_strrchr(const char *s, int c)
-{
-	return (strrchr(s, c));
-}
-
-void*
-osl_memset(void *d, int c, size_t n)
-{
-	return memset(d, c, n);
-}
-
-void*
-osl_memcpy(void *d, const void *s, size_t n)
-{
-	return memcpy(d, s, n);
-}
-
-void*
-osl_memmove(void *d, const void *s, size_t n)
-{
-	return memmove(d, s, n);
-}
-
-int
-osl_memcmp(const void *s1, const void *s2, size_t n)
-{
-	return memcmp(s1, s2, n);
-}
-
-uint32
-osl_readl(volatile uint32 *r)
-{
-	return (readl(r));
-}
-
-uint16
-osl_readw(volatile uint16 *r)
-{
-	return (readw(r));
-}
-
-uint8
-osl_readb(volatile uint8 *r)
-{
-	return (readb(r));
-}
-
-void
-osl_writel(uint32 v, volatile uint32 *r)
-{
-	writel(v, r);
-}
-
-void
-osl_writew(uint16 v, volatile uint16 *r)
-{
-	writew(v, r);
-}
-
-void
-osl_writeb(uint8 v, volatile uint8 *r)
-{
-	writeb(v, r);
-}
-
-void *
-osl_uncached(void *va)
-{
-	return ((void*)va);
-}
-
-void *
-osl_cached(void *va)
-{
-	return ((void*)va);
-}
-
-uint
-osl_getcycles(void)
-{
-	uint cycles;
-
-#if defined(__i386__)
-	rdtscl(cycles);
-#else
-	cycles = 0;
-#endif /* __i386__ */
-	return cycles;
-}
-
-void *
-osl_reg_map(uint32 pa, uint size)
-{
-	return (ioremap_nocache((unsigned long)pa, (unsigned long)size));
-}
-
-void
-osl_reg_unmap(void *va)
-{
-	iounmap(va);
-}
-
-int
-osl_busprobe(uint32 *val, uint32 addr)
-{
-	*val = readl((uint32 *)(uintptr)addr);
-
-	return 0;
-}
-#endif	/* BINOSL */
 
 uint32
 osl_rand(void)
@@ -1762,7 +1068,7 @@ osl_os_image_size(void *image)
 
 /* Linux Kernel: File Operations: end */
 
-#if defined(BCM_BACKPLANE_TIMEOUT)
+#if defined(AXI_TIMEOUTS_NIC)
 inline void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, uint size)
 {
 	bool poll_timeout = FALSE;
@@ -1797,7 +1103,7 @@ inline void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, uint size)
 		in_si_clear = FALSE;
 	}
 }
-#endif /* BCM_BACKPLANE_TIMEOUT */
+#endif /* AXI_TIMEOUTS_NIC */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
 void
@@ -1829,11 +1135,6 @@ osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 	}
 
 	t->set = TRUE;
-#ifdef BCMDBG
-	if ((t->name = MALLOCZ(NULL, strlen(name) + 1)) != NULL) {
-		strcpy(t->name, name);
-	}
-#endif // endif
 
 	init_timer_compat(t->timer, (linux_timer_fn)fn, arg);
 
@@ -1853,11 +1154,7 @@ osl_timer_add(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 	if (periodic) {
 		printf("Periodic timers are not supported by Linux timer apis\n");
 	}
-#if defined(BCMSLTGT)
-	timer_expires(t->timer) = jiffies + ms*HZ/1000*htclkratio;
-#else
 	timer_expires(t->timer) = jiffies + ms*HZ/1000;
-#endif /* defined(BCMSLTGT) */
 
 	add_timer(t->timer);
 
@@ -1875,11 +1172,7 @@ osl_timer_update(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 		printf("Periodic timers are not supported by Linux timer apis\n");
 	}
 	t->set = TRUE;
-#if defined(BCMSLTGT)
-	timer_expires(t->timer) = jiffies + ms*HZ/1000*htclkratio;
-#else
 	timer_expires(t->timer) = jiffies + ms*HZ/1000;
-#endif /* defined(BCMSLTGT) */
 
 	mod_timer(t->timer, timer_expires(t->timer));
 
@@ -1902,11 +1195,6 @@ osl_timer_del(osl_t *osh, osl_timer_t *t)
 			del_timer(t->timer);
 			MFREE(NULL, t->timer, sizeof(struct timer_list));
 		}
-#ifdef BCMDBG
-		if (t->name) {
-			MFREE(NULL, t->name, strlen(t->name) + 1);
-		}
-#endif // endif
 		MFREE(NULL, t, sizeof(osl_timer_t));
 	}
 	return (TRUE);
@@ -2059,6 +1347,14 @@ osl_mutex_unlock(void *lock, unsigned long flags)
 static void
 osl_dma_lock(osl_t *osh)
 {
+	/* The conditional check is to avoid the scheduling bug.
+	 * If the spin_lock_bh is used under the spin_lock_irqsave,
+	 * Kernel triggered the warning message as the spin_lock_irqsave
+	 * disables the interrupt and the spin_lock_bh doesn't use in case
+	 * interrupt is disabled.
+	 * Please refer to the __local_bh_enable_ip() function
+	 * in kernel/softirq.c to understand the condtion.
+	 */
 	if (likely(in_irq() || irqs_disabled())) {
 		spin_lock(&osh->dma_lock);
 	} else {

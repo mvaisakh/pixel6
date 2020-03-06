@@ -3,7 +3,7 @@
  * Contents are wifi-specific, used by any kernel or app-level
  * software that might want wifi things as it grows.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,9 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -38,13 +36,13 @@
 #include <ctype.h>
 #ifndef ASSERT
 #define ASSERT(exp)
-#endif // endif
+#endif
 #endif /* BCMDRIVER */
 #include <bcmwifi_channels.h>
 
 #if defined(WIN32) && (defined(BCMDLL) || defined(WLMDLL))
-#include <bcmstdlib.h>	/* For wl/exe/GNUmakefile.brcm_wlu and GNUmakefile.wlm_dll */
-#endif // endif
+#include <bcmstdlib.h>	/* For wlexe/Makefile.wlm_dll */
+#endif
 
 #include <bcmutils.h>
 #include <wlioctl.h>
@@ -1174,7 +1172,7 @@ wl_cntbuf_to_xtlv_format(void *ctx, void *cntbuf, int buflen, uint32 corerev)
 	osl_t *osh = ctx;
 #else
 	BCM_REFERENCE(ctx);
-#endif // endif
+#endif
 
 	if (ver >= WL_CNT_VERSION_XTLV) {
 		/* Already in xtlv format. */
@@ -1187,7 +1185,7 @@ wl_cntbuf_to_xtlv_format(void *ctx, void *cntbuf, int buflen, uint32 corerev)
 #else
 	wlccnt = (wl_cnt_wlc_t *)malloc(sizeof(*wlccnt));
 	macstat = (uint32 *)malloc(WL_CNT_MCST_STRUCT_SZ);
-#endif // endif
+#endif
 	if (!wlccnt || !macstat) {
 		printf("wl_cntbuf_to_xtlv_format: malloc fail!\n");
 		res = BCME_NOMEM;
@@ -1273,6 +1271,6 @@ exit:
 	if (macstat) {
 		free(macstat);
 	}
-#endif // endif
+#endif
 	return res;
 }

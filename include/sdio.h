@@ -2,7 +2,7 @@
  * SDIO spec header file
  * Protocol and standard (common) device definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,15 +19,25 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: sdio.h 800447 2019-01-22 02:47:42Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_SDIO_H
 #define	_SDIO_H
 
 #ifdef BCMSDIO
+/*
+ * Standard SD Device Register Map.
+ *
+ * Reference definitions from:
+ *  SD Specifications, Part E1: SDIO Specification
+ *  Version 1.10
+ *  August 18, 2004
+ *  http://www.sdcard.org
+ *
+ * EXCEPTION: The speed_control register defined here is based on a
+ * draft of the next version, and is thus nonstandard.
+ */
 
 /* CCCR structure for function 0 */
 typedef volatile struct {
@@ -280,6 +290,17 @@ typedef volatile struct {
 #define CARDREG_STATUS_BIT_IOCURRENTSTATE0	9
 #define CARDREG_STATUS_BIT_FUN_NUM_ERROR	4
 
+/* ----------------------------------------------------
+ * SDIO Protocol Definitions -- commands and responses
+ *
+ * Reference definitions from SDIO Specification v1.10
+ * of August 18, 2004; and SD Physical Layer v1.10 of
+ * October 15, 2004.
+ * ----------------------------------------------------
+ */
+
+/* Straight defines, mostly used by older driver(s). */
+
 #define SD_CMD_GO_IDLE_STATE		0	/* mandatory for SDIO */
 #define SD_CMD_SEND_OPCOND		1
 #define SD_CMD_MMC_SET_RCA		3
@@ -371,6 +392,8 @@ typedef volatile struct {
 #define SD_RSP_R5_OUT_OF_RANGE		0x01
 
 #define SD_RSP_R5_ERRBITS		0xCB
+
+/* Mask/shift form, commonly used in newer driver(s) */
 
 /* ------------------------------------------------
  *  SDIO Commands and responses

@@ -1,7 +1,7 @@
 /*
  * SDIO access interface for drivers - linux specific (pci only)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -43,9 +43,6 @@ extern void dhdsdio_isr(void * args);
 #include <bcmutils.h>
 #include <dngl_stats.h>
 #include <dhd.h>
-#if defined(CONFIG_ARCH_ODIN)
-#include <linux/platform_data/gpio-odin.h>
-#endif /* defined(CONFIG_ARCH_ODIN) */
 #include <dhd_linux.h>
 
 /* driver info, initialized when bcmsdh_register is called */
@@ -80,11 +77,7 @@ typedef struct bcmsdh_os_info {
 } bcmsdh_os_info_t;
 
 /* debugging macros */
-#ifdef BCMDBG_ERR
-#define SDLX_MSG(x)	printf x
-#else
 #define SDLX_MSG(x)
-#endif /* BCMDBG_ERR */
 
 /**
  * Checks to see if vendor and device IDs match a supported SDIO Host Controller.
@@ -292,7 +285,7 @@ bcmsdh_unregister(void)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 0))
 		if (bcmsdh_pci_driver.node.next == NULL)
 			return;
-#endif // endif
+#endif
 
 	bcmsdh_unregister_client_driver();
 }
@@ -320,6 +313,7 @@ bool bcmsdh_dev_pm_enabled(bcmsdh_info_t *bcmsdh)
 	return bcmsdh_osinfo->dev_wake_enabled;
 }
 
+#if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 int bcmsdh_get_oob_intr_num(bcmsdh_info_t *bcmsdh)
 {
 	bcmsdh_os_info_t *bcmsdh_osinfo = bcmsdh->os_cxt;
@@ -347,12 +341,26 @@ void bcmsdh_oob_intr_set(bcmsdh_info_t *bcmsdh, bool enable)
 	spin_unlock_irqrestore(&bcmsdh_osinfo->oob_irq_spinlock, flags);
 }
 
+#ifdef ENABLE_WAKEUP_PKT_DUMP
+extern volatile bool dhd_mmc_suspend;
+extern volatile bool dhd_mmc_wake;
+#endif /* ENABLE_WAKEUP_PKT_DUMP */
+
 static irqreturn_t wlan_oob_irq(int irq, void *dev_id)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)dev_id;
 	bcmsdh_os_info_t *bcmsdh_osinfo = bcmsdh->os_cxt;
 
+#ifndef BCMSPI_ANDROID
+	bcmsdh_oob_intr_set(bcmsdh, FALSE);
+#endif /* !BCMSPI_ANDROID */
 	bcmsdh_osinfo->oob_irq_handler(bcmsdh_osinfo->oob_irq_handler_context);
+
+#ifdef ENABLE_WAKEUP_PKT_DUMP
+	if (dhd_mmc_suspend) {
+		dhd_mmc_wake = TRUE;
+	}
+#endif /* ENABLE_WAKEUP_PKT_DUMP */
 
 	return IRQ_HANDLED;
 }
@@ -374,13 +382,8 @@ int bcmsdh_oob_intr_register(bcmsdh_info_t *bcmsdh, bcmsdh_cb_fn_t oob_irq_handl
 	bcmsdh_osinfo->oob_irq_handler_context = oob_irq_handler_context;
 	bcmsdh_osinfo->oob_irq_enabled = TRUE;
 	bcmsdh_osinfo->oob_irq_registered = TRUE;
-#if defined(CONFIG_ARCH_ODIN)
-	err = odin_gpio_sms_request_irq(bcmsdh_osinfo->oob_irq_num, wlan_oob_irq,
-		bcmsdh_osinfo->oob_irq_flags, "bcmsdh_sdmmc", bcmsdh);
-#else
 	err = request_irq(bcmsdh_osinfo->oob_irq_num, wlan_oob_irq,
 		bcmsdh_osinfo->oob_irq_flags, "bcmsdh_sdmmc", bcmsdh);
-#endif /* defined(CONFIG_ARCH_ODIN) */
 	if (err) {
 		SDLX_MSG(("%s: request_irq failed with %d\n", __FUNCTION__, err));
 		bcmsdh_osinfo->oob_irq_enabled = FALSE;
@@ -428,8 +431,10 @@ void bcmsdh_oob_intr_unregister(bcmsdh_info_t *bcmsdh)
 	free_irq(bcmsdh_osinfo->oob_irq_num, bcmsdh);
 	bcmsdh_osinfo->oob_irq_registered = FALSE;
 }
+#endif /* defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID) */
 
 /* Module parameters specific to each host-controller driver */
+/* XXX Need to move these to where they really belong! */
 
 extern uint sd_msglevel;	/* Debug message level */
 module_param(sd_msglevel, uint, 0);
@@ -467,7 +472,7 @@ module_param(sd_delay_value, uint, 0);
 extern char dhd_sdiod_uhsi_ds_override[2];
 module_param_string(dhd_sdiod_uhsi_ds_override, dhd_sdiod_uhsi_ds_override, 2, 0);
 
-#endif // endif
+#endif
 
 #ifdef BCMSDH_MODULE
 EXPORT_SYMBOL(bcmsdh_attach);
@@ -478,9 +483,9 @@ EXPORT_SYMBOL(bcmsdh_intr_disable);
 EXPORT_SYMBOL(bcmsdh_intr_reg);
 EXPORT_SYMBOL(bcmsdh_intr_dereg);
 
-#if defined(DHD_DEBUG) || defined(BCMDBG)
+#if defined(DHD_DEBUG)
 EXPORT_SYMBOL(bcmsdh_intr_pending);
-#endif // endif
+#endif
 
 #if defined(BT_OVER_SDIO)
 EXPORT_SYMBOL(bcmsdh_btsdio_interface_init);

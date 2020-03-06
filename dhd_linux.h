@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file (dhd_linux exports for cfg80211 and other components)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -36,15 +36,12 @@
 #include <linux/fs.h>
 #include <dngl_stats.h>
 #include <dhd.h>
-#ifdef DHD_WMF
-#include <dhd_wmf_linux.h>
-#endif // endif
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND)
 #include <linux/earlysuspend.h>
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND) */
 #if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
-#endif // endif
+#endif
 
 #ifdef BCMPCIE
 #include <bcmmsgbuf.h>
@@ -55,12 +52,8 @@
 #endif /* PCIE_FULL_DONGLE */
 
 #ifdef WL_MONITOR
-#ifdef HOST_RADIOTAP_CONV
-#include <bcmwifi_monitor.h>
-#else
 #define MAX_RADIOTAP_SIZE      256 /* Maximum size to hold HE Radiotap header format */
 #define MAX_MON_PKT_SIZE       (4096 + MAX_RADIOTAP_SIZE)
-#endif /* HOST_RADIOTAP_CONV */
 #endif /* WL_MONITOR */
 
 #if !defined(CONFIG_WIFI_CONTROL_FUNC)
@@ -74,7 +67,7 @@ struct wifi_platform_data {
 	int (*get_mac_addr)(unsigned char *buf);
 #ifdef BCMSDIO
 	int (*get_wake_irq)(void);
-#endif // endif
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) || defined(CUSTOM_COUNTRY_CODE)
 	void *(*get_country_code)(char *ccode, u32 flags);
 #else /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 58)) || defined (CUSTOM_COUNTRY_CODE) */
@@ -114,9 +107,6 @@ typedef struct dhd_sta {
 	struct list_head list;  /* link into dhd_if::sta_list */
 	int idx;                /* index of self in dhd_pub::sta_pool[] */
 	int ifidx;              /* index of interface in dhd */
-#ifdef DHD_WMF
-	struct dhd_sta *psta_prim; /* primary index of psta interface */
-#endif /* DHD_WMF */
 } dhd_sta_t;
 typedef dhd_sta_t dhd_sta_pool_t;
 
@@ -143,12 +133,13 @@ typedef enum {
 #include <linux/workqueue.h>
 #include <asm/atomic.h>
 
+/* FIXME: Make this a module param or a sysfs. */
 #if !defined(DHD_LB_PRIMARY_CPUS)
 #define DHD_LB_PRIMARY_CPUS     0x0 /* Big CPU coreids mask */
-#endif // endif
+#endif
 #if !defined(DHD_LB_SECONDARY_CPUS)
 #define DHD_LB_SECONDARY_CPUS   0xFE /* Little CPU coreids mask */
-#endif // endif
+#endif
 
 #define HIST_BIN_SIZE	9
 
@@ -169,22 +160,12 @@ typedef struct dhd_tx_lb_pkttag_fr {
 
 #define FILE_DUMP_MAX_WAIT_TIME 4000
 
-#ifdef IL_BIGENDIAN
-#include <bcmendian.h>
-#define htod32(i) (bcmswap32(i))
-#define htod16(i) (bcmswap16(i))
-#define dtoh32(i) (bcmswap32(i))
-#define dtoh16(i) (bcmswap16(i))
-#define htodchanspec(i) htod16(i)
-#define dtohchanspec(i) dtoh16(i)
-#else
 #define htod32(i) (i)
 #define htod16(i) (i)
 #define dtoh32(i) (i)
 #define dtoh16(i) (i)
 #define htodchanspec(i) (i)
 #define dtohchanspec(i) (i)
-#endif /* IL_BIGENDINA */
 
 #ifdef BLOCK_IPV6_PACKET
 #define HEX_PREF_STR	"0x"
@@ -198,7 +179,7 @@ typedef struct dhd_tx_lb_pkttag_fr {
 #if defined(SOFTAP)
 extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
-#endif // endif
+#endif
 
 #if defined(BCMPCIE)
 extern int dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd, int *dtim_period, int *bcn_interval);
@@ -206,48 +187,38 @@ extern int dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd, int *dtim_period, int *bc
 extern int dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd);
 #endif /* OEM_ANDROID && BCMPCIE */
 
+#ifdef CUSTOMER_HW4
+#ifdef MIMO_ANT_SETTING
+#ifdef DHD_EXPORT_CNTL_FILE
+extern unsigned long antsel;
+#endif /* DHD_EXPORT_CNTL_FILE */
+extern int dhd_sel_ant_from_file(dhd_pub_t *dhd);
+#endif /* MIMO_ANT_SETTING */
+#ifdef WRITE_WLANINFO
+#define MAX_VERSION_LEN		512
+#ifdef DHD_EXPORT_CNTL_FILE
+extern char version_info[MAX_VERSION_LEN];
+#endif /* DHD_EXPORT_CNTL_FILE */
+extern uint32 sec_save_wlinfo(char *firm_ver, char *dhd_ver, char *nvram_p, char *clm_ver);
+#endif /* WRITE_WLANINFO */
+#ifdef LOGTRACE_FROM_FILE
+extern int dhd_logtrace_from_file(dhd_pub_t *dhd);
+#ifdef DHD_EXPORT_CNTL_FILE
+extern unsigned long logtrace_val;
+#endif /* DHD_EXPORT_CNTL_FILE */
+#endif /* LOGTRACE_FROM_FILE */
+#ifdef GEN_SOFTAP_INFO_FILE
+#define SOFTAP_INFO_BUF_SZ 512
+#ifdef DHD_EXPORT_CNTL_FILE
+extern char softapinfostr[SOFTAP_INFO_BUF_SZ];
+#endif /* DHD_EXPORT_CNTL_FILE */
+extern uint32 sec_save_softap_info(void);
+#endif /* GEN_SOFTAP_INFO_FILE */
+#endif /* CUSTOMER_HW4 */
+
 #ifdef DHD_SEND_HANG_PRIVCMD_ERRORS
 extern uint32 report_hang_privcmd_err;
 #endif /* DHD_SEND_HANG_PRIVCMD_ERRORS */
-
-#if defined(ARGOS_CPU_SCHEDULER) && !defined(DHD_LB_IRQSET)
-extern int argos_task_affinity_setup_label(struct task_struct *p, const char *label,
-	struct cpumask * affinity_cpu_mask, struct cpumask * default_cpu_mask);
-extern struct cpumask hmp_slow_cpu_mask;
-extern struct cpumask hmp_fast_cpu_mask;
-extern void set_irq_cpucore(unsigned int irq, cpumask_var_t default_cpu_mask,
-	cpumask_var_t affinity_cpu_mask);
-#endif /* ARGOS_CPU_SCHEDULER && !DHD_LB_IRQSET */
-
-#if (defined(ARGOS_CPU_SCHEDULER) && defined(ARGOS_RPS_CPU_CTL)) || \
-	defined(ARGOS_NOTIFY_CB)
-int argos_register_notifier_init(struct net_device *net);
-int argos_register_notifier_deinit(void);
-
-extern int sec_argos_register_notifier(struct notifier_block *n, char *label);
-extern int sec_argos_unregister_notifier(struct notifier_block *n, char *label);
-
-typedef struct {
-	struct net_device *wlan_primary_netdev;
-	int argos_rps_cpus_enabled;
-} argos_rps_ctrl;
-
-#define RPS_TPUT_THRESHOLD		300
-#define DELAY_TO_CLEAR_RPS_CPUS		300
-#endif /* ARGOS_RPS_CPU_CTL && ARGOS_CPU_SCHEDULER || ARGOS_NOTIFY_CB */
-
-#if defined(BT_OVER_SDIO)
-extern void wl_android_set_wifi_on_flag(bool enable);
-#endif /* BT_OVER_SDIO */
-
-#if defined(SOFTAP_TPUT_ENHANCE)
-extern void dhd_bus_setidletime(dhd_pub_t *dhdp, int idle_time);
-extern void dhd_bus_getidletime(dhd_pub_t *dhdp, int* idle_time);
-#endif /* SOFTAP_TPUT_ENHANCE */
-
-#if defined(BCM_ROUTER_DHD)
-void traffic_mgmt_pkt_set_prio(dhd_pub_t *dhdp, void * pktbuf);
-#endif /* BCM_ROUTER_DHD */
 
 #ifdef DHD_LOG_DUMP
 /* 0: DLD_BUF_TYPE_GENERAL, 1: DLD_BUF_TYPE_PRESERVE
@@ -275,7 +246,7 @@ void traffic_mgmt_pkt_set_prio(dhd_pub_t *dhdp, void * pktbuf);
 	LOG_DUMP_PRESERVE_MAX_BUFSIZE + LOG_DUMP_ECNTRS_MAX_BUFSIZE + LOG_DUMP_RTT_MAX_BUFSIZE \
 	+ LOG_DUMP_FILTER_MAX_BUFSIZE)
 #error "LOG_DUMP_TOTAL_BUFSIZE is lesser than sum of all rings"
-#endif // endif
+#endif
 
 /* Special buffer is allocated as separately in prealloc */
 #define LOG_DUMP_SPECIAL_MAX_BUFSIZE (8 * 1024)
@@ -324,12 +295,6 @@ typedef struct dhd_if {
 	char			name[IFNAMSIZ+1]; /* linux interface name */
 	char			dngl_name[IFNAMSIZ+1]; /* corresponding dongle interface name */
 	struct net_device_stats stats;
-#ifdef DHD_WMF
-	dhd_wmf_t		wmf;		/* per bsscfg wmf setting */
-	bool	wmf_psta_disable;		/* enable/disable MC pkt to each mac
-						 * of MC group behind PSTA
-						 */
-#endif /* DHD_WMF */
 #ifdef PCIE_FULL_DONGLE
 	struct list_head sta_list;		/* sll of associated stations */
 	spinlock_t	sta_list_lock;		/* lock for manipulating sll */
@@ -346,18 +311,11 @@ typedef struct dhd_if {
 	bool grat_arp;
 	bool block_tdls;
 #endif /* DHD_L2_FILTER */
-#if (defined(BCM_ROUTER_DHD) && defined(QOS_MAP_SET))
-	uint8	 *qosmap_up_table;		/* user priority table, size is UP_TABLE_MAX */
-	bool qosmap_up_table_enable;	/* flag set only when app want to set additional UP */
-#endif /* BCM_ROUTER_DHD && QOS_MAP_SET */
 #ifdef DHD_MCAST_REGEN
 	bool mcast_regen_bss_enable;
-#endif // endif
+#endif
 	bool rx_pkt_chainable;		/* set all rx packet to chainable config by default */
 	cumm_ctr_t cumm_ctr;		/* cummulative queue length of child flowrings */
-#ifdef BCM_ROUTER_DHD
-	bool	primsta_dwds;		/* DWDS status of primary sta interface */
-#endif /* BCM_ROUTER_DHD */
 	uint8 tx_paths_active;
 	bool del_in_progress;
 	bool static_if;			/* used to avoid some operations on static_if */
@@ -370,6 +328,8 @@ typedef struct dhd_if {
 	uint32 tsyncack_txed;
 	u64 last_sync;
 	struct work_struct  blk_tsfl_work;
+	uint32 tsync_per_sec;
+	bool disconnect_tsync_flood;
 #endif /* DHDTCPSYNC_FLOOD_BLK */
 #ifdef DHD_POST_EAPOL_M1_AFTER_ROAM_EVT
 	bool recv_reassoc_evt;
@@ -396,14 +356,6 @@ typedef struct dhd_axi_error_dump {
 	struct hnd_ext_trap_axi_error_v1 etd_axi_error_v1;
 } dhd_axi_error_dump_t;
 #endif /* DNGL_AXI_ERROR_LOGGING */
-#ifdef BCM_ROUTER_DHD
-typedef struct dhd_write_file {
-	char file_path[64];
-	uint32 file_flags;
-	uint8 *buf;
-	int bufsize;
-} dhd_write_file_t;
-#endif // endif
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 struct dhd_rx_tx_work {
@@ -450,31 +402,21 @@ void* wifi_platform_get_prealloc_func_ptr(wifi_adapter_info_t *adapter);
 int dhd_get_fw_mode(struct dhd_info *dhdinfo);
 bool dhd_update_fw_nv_path(struct dhd_info *dhdinfo);
 
-#ifdef BCM_ROUTER_DHD
-void dhd_update_dpsta_interface_for_sta(dhd_pub_t* dhdp, int ifidx, void* event_data);
-#endif /* BCM_ROUTER_DHD */
-#ifdef DHD_WMF
-dhd_wmf_t* dhd_wmf_conf(dhd_pub_t *dhdp, uint32 idx);
-int dhd_get_wmf_psta_disable(dhd_pub_t *dhdp, uint32 idx);
-int dhd_set_wmf_psta_disable(dhd_pub_t *dhdp, uint32 idx, int val);
-void dhd_update_psta_interface_for_sta(dhd_pub_t *dhdp, char* ifname,
-		void* mac_addr, void* event_data);
-#endif /* DHD_WMF */
-
-void dhd_generate_mac_addr(struct ether_addr *ea_addr);
-
 #if defined(BT_OVER_SDIO)
 int dhd_net_bus_get(struct net_device *dev);
 int dhd_net_bus_put(struct net_device *dev);
 #endif /* BT_OVER_SDIO */
-#if defined(WLADPS)
+#if defined(WLADPS) || defined(WLADPS_PRIVATE_CMD)
 #define ADPS_ENABLE	1
 #define ADPS_DISABLE	0
 
 int dhd_enable_adps(dhd_pub_t *dhd, uint8 on);
-#endif // endif
+#endif /* WLADPS || WLADPS_PRIVATE_CMD */
 #ifdef DHDTCPSYNC_FLOOD_BLK
 extern void dhd_reset_tcpsync_info_by_ifp(dhd_if_t *ifp);
 extern void dhd_reset_tcpsync_info_by_dev(struct net_device *dev);
 #endif /* DHDTCPSYNC_FLOOD_BLK */
+#ifdef PCIE_FULL_DONGLE
+extern void dhd_net_del_flowrings_sta(dhd_pub_t * dhd, struct net_device * ndev);
+#endif /* PCIE_FULL_DONGLE */
 #endif /* __DHD_LINUX_H__ */

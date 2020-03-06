@@ -1,7 +1,7 @@
 /*
  * BCM43XX PCIE core hardware definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: pcie_core.h 816965 2019-04-27 00:29:34Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef	_PCIE_CORE_H
 #define	_PCIE_CORE_H
@@ -28,17 +26,18 @@
 #include <sbhnddma.h>
 #include <siutils.h>
 
-#define REV_GE_69(rev) (rev >= 69)
-#define REV_GE_68(rev) (rev >= 68)
-#define REV_GE_64(rev) (rev >= 64)
-#define REV_GE_15(rev) (rev >= 15)
+#define REV_GE_73(rev) (PCIECOREREV((rev)) >= 73)
+#define REV_GE_69(rev) (PCIECOREREV((rev)) >= 69)
+#define REV_GE_68(rev) (PCIECOREREV((rev)) >= 68)
+#define REV_GE_64(rev) (PCIECOREREV((rev)) >= 64)
+#define REV_GE_15(rev) (PCIECOREREV((rev)) >= 15)
 
 /* cpp contortions to concatenate w/arg prescan */
 #ifndef PAD
 #define	_PADLINE(line)	pad ## line
 #define	_XSTR(line)	_PADLINE(line)
 #define	PAD		_XSTR(__LINE__)
-#endif // endif
+#endif
 
 /* PCIE Enumeration space offsets */
 #define  PCIE_CORE_CONFIG_OFFSET	0x0
@@ -77,6 +76,26 @@
 #define PCIEDEV_TR3_WINDOW_START 0x0E000000
 #define PCIEDEV_TR3_WINDOW_END   0x0FFFFFFF
 
+#define PCIEDEV_TRANS_WIN_LEN	0x2000000
+#define PCIEDEV_ARM_ADDR_SPACE 0x0FFFFFFF
+
+/* PCIe translation windoes */
+#define PCIEDEV_TRANS_WIN_0 0
+#define PCIEDEV_TRANS_WIN_1 1
+#define PCIEDEV_TRANS_WIN_2 2
+#define PCIEDEV_TRANS_WIN_3 3
+
+#define PCIEDEV_ARM_ADDR(host_addr, win) \
+	(((host_addr) & 0x1FFFFFF) | ((win) << 25) | PCIEDEV_HOSTADDR_MAP_BASE)
+
+/* Current mapping of PCIe translation windows to SW features */
+
+#define PCIEDEV_TRANS_WIN_TRAP_HANDLER	PCIEDEV_TRANS_WIN_0
+#define PCIEDEV_TRANS_WIN_HOSTMEM	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_SWPAGING	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_BT		PCIEDEV_TRANS_WIN_2
+#define PCIEDEV_TRANS_WIN_UNUSED	PCIEDEV_TRANS_WIN_3
+
 /* dma regs to control the flow between host2dev and dev2host  */
 typedef volatile struct pcie_devdmaregs {
 	dma64regs_t	tx;
@@ -100,11 +119,12 @@ typedef struct pcie_doorbell {
 } pcie_doorbell_t;
 
 /* Flow Ring Manager */
-#define IFRM_FR_IDX_MAX	256
-#define IFRM_FR_GID_MAX 4
-#define IFRM_FR_DEV_MAX 8
-#define IFRM_FR_TID_MAX 8
-#define IFRM_FR_DEV_VALID 2
+#define IFRM_FR_IDX_MAX		256
+#define IFRM_FR_CONFIG_GID	2
+#define IFRM_FR_GID_MAX		4
+#define IFRM_FR_DEV_MAX		8
+#define IFRM_FR_TID_MAX		8
+#define IFRM_FR_DEV_VALID	2
 
 #define IFRM_VEC_REG_BITS	32
 
@@ -117,6 +137,8 @@ typedef struct pcie_doorbell {
 /* IFRM_DEV_0 : d11AC, IFRM_DEV_1 : d11AD */
 #define IFRM_DEV_0	0
 #define IFRM_DEV_1	1
+#define IHRM_FR_SW_MASK (1u << IFRM_DEV_0)
+#define IHRM_FR_HW_MASK (1u << IFRM_DEV_1)
 
 #define IFRM_FR_GID_0 0
 #define IFRM_FR_GID_1 1
@@ -187,8 +209,6 @@ typedef struct pcie_hmapviolation {
 	uint32	PAD[1];
 } pcie_hmapviolation_t;
 
-#if !defined(DONGLEBUILD) || defined(BCMSTANDALONE_TEST) || defined(ATE_BUILD) || \
-	defined(BCMDVFS)
 /* SB side: PCIE core and host control registers */
 typedef volatile struct sbpcieregs {
 	uint32 control;		/* host mode only */
@@ -235,7 +255,7 @@ typedef volatile struct sbpcieregs {
 			uint32 pcieindaddr; /* indirect access to the internal register: 0x130 */
 			uint32 pcieinddata;	/* Data to/from the internal regsiter: 0x134 */
 			uint32 clkreqenctrl;	/* >= rev 6, Clkreq rdma control : 0x138 */
-			uint32 PAD[177];
+			uint32 PAD[177]; /* last 0x3FC */
 			/* 0x400 - 0x7FF, PCIE Cfg Space, note: not used anymore in PcieGen2 */
 			uint32 pciecfg[4][64];
 		} pcie1;
@@ -397,7 +417,6 @@ typedef volatile struct sbpcieregs {
 		uint32		PAD[45];		/* 0xC4C-0xCFF */
 	} ftn_ctrl;
 } sbpcieregs_t;
-#endif /* !defined(DONGLEBUILD) || defined(BCMSTANDALONE_TEST) || */
 	/* defined(BCMINTERNAL) || defined(ATE_BUILD) defined(BCMDVFS) */
 
 #define PCIE_CFG_DA_OFFSET 0x400	/* direct access register offset for configuration space */
@@ -930,8 +949,8 @@ typedef volatile struct sbpcieregs {
 #define PCIE2R0_BRCMCAP_BPDATA_OFFSET		52
 #define PCIE2R0_BRCMCAP_CLKCTLSTS_OFFSET	56
 
-/* definition of configuration space registers of PCIe gen2
- * http://hwnbu-twiki.sj.broadcom.com/twiki/pub/Mwgroup/CurrentPcieGen2ProgramGuide/pcie_ep.htm
+/*
+ * definition of configuration space registers of PCIe gen2
  */
 #define PCIECFGREG_STATUS_CMD		0x4
 #define PCIECFGREG_PM_CSR		0x4C
@@ -1004,6 +1023,7 @@ typedef volatile struct sbpcieregs {
 #define PCIH2D_MailBox_2	0x160  /* for dma channel2 which will be used for Implicit DMA */
 #define PCIH2D_DB1_2		0x164
 #define PCID2H_MailBox_2	0x168
+#define PCIH2D_DB1_3		0x174
 #define PCIE_CLK_CTRL		0x1E0
 #define PCIE_PWR_CTRL		0x1E8
 
@@ -1107,7 +1127,6 @@ typedef volatile struct sbpcieregs {
 #define DAR_PCIH2D_DB7_0(rev)	OFFSETOF(sbpcieregs_t, u1.dar_64.h2d_db_7_0)
 #define DAR_PCIH2D_DB7_1(rev)	OFFSETOF(sbpcieregs_t, u1.dar_64.h2d_db_7_1)
 
-#if !defined(DONGLEBUILD) || defined(BCMSTANDALONE_TEST)
 #define DAR_PCIMailBoxInt(rev)	(REV_GE_64(rev) ? \
 						OFFSETOF(sbpcieregs_t, u1.dar_64.mbox_int) : \
 						OFFSETOF(sbpcieregs_t, u1.dar.mbox_int))
@@ -1117,11 +1136,6 @@ typedef volatile struct sbpcieregs {
 #define DAR_PCIE_DAR_CTRL(rev)	(REV_GE_64(rev) ? \
 						OFFSETOF(sbpcieregs_t, u1.dar_64.dar_ctrl) : \
 						OFFSETOF(sbpcieregs_t, u1.dar.dar_ctrl))
-#else
-#define DAR_PCIMailBoxInt(rev)	PCIE_dar_mailboxint_OFFSET(rev)
-#define DAR_PCIE_PWR_CTRL(rev)	PCIE_dar_power_control_OFFSET(rev)
-#define DAR_PCIE_DAR_CTRL(rev)	PCIE_dar_control_OFFSET(rev)
-#endif // endif
 
 #define DAR_FIS_CTRL(rev)      OFFSETOF(sbpcieregs_t, u1.dar_64.fis_ctrl)
 
@@ -1265,15 +1279,11 @@ typedef volatile struct sbpcieregs {
 #define PCIE_FTN_SWPME_MASK			(1 << PCIE_FTN_SWPME_SHIFT)
 
 #ifdef BCMDRIVER
-#if !defined(DONGLEBUILD) || defined(BCMSTANDALONE_TEST)
 void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val);
 void pcie_serdes_iddqdisable(osl_t *osh, si_t *sih, sbpcieregs_t *sbpcieregs);
 void pcie_set_trefup_time_100us(si_t *sih);
 uint32 pcie_cto_to_thresh_default(uint corerev);
-#endif /* !defined(DONGLEBUILD) || defined(BCMSTANDALONE_TEST) */
-#if defined(DONGLEBUILD)
-void pcie_coherent_accenable(osl_t *osh, si_t *sih);
-#endif /* DONGLEBUILD */
+uint32 pcie_corereg(osl_t *osh, volatile void *regs, uint32 offset, uint32 mask, uint32 val);
 #endif /* BCMDRIVER */
 
 /* DMA intstatus and intmask */
@@ -1289,20 +1299,6 @@ void pcie_coherent_accenable(osl_t *osh, si_t *sih);
 #define PD_DMA_INT_MASK_H2D		0x1DC00
 #define PD_DMA_INT_MASK_D2H		0x1DC00
 #define PD_DB_INT_MASK			0xFF0000
-
-#if defined(DONGLEBUILD)
-#if REV_GE_64(BCMPCIEREV)
-#define PD_DEV0_DB_INTSHIFT		8u
-#define PD_DEV1_DB_INTSHIFT		10u
-#define PD_DEV2_DB_INTSHIFT		12u
-#define PD_DEV3_DB_INTSHIFT		14u
-#else
-#define PD_DEV0_DB_INTSHIFT		16u
-#define PD_DEV1_DB_INTSHIFT		18u
-#define PD_DEV2_DB_INTSHIFT		20u
-#define PD_DEV3_DB_INTSHIFT		22u
-#endif /* BCMPCIEREV */
-#endif /* DONGLEBUILD */
 
 #define PCIE_INVALID_OFFSET		0x18003ffc /* Invalid Register Offset for Induce Error */
 #define PCIE_INVALID_DATA		0x55555555 /* Invalid Data for Induce Error */
@@ -1442,6 +1438,10 @@ void pcie_coherent_accenable(osl_t *osh, si_t *sih);
 #define PD_DB_INDEX_VAL_MASK		(0xFFFFu)	/* bits 31:16 */
 
 /* PWI LUT entry fields */
+#define PWI_FLOW_VALID_MASK		(0x1u)
+#define PWI_FLOW_VALID_SHIFT		(22u)
+#define PWI_FLOW_RING_GROUP_ID_MASK	(0x3u)
+#define PWI_FLOW_RING_GROUP_ID_SHIFT	(20u)
 #define PWI_HOST_RINGIDX_MASK	(0xFFu) /* Host Ring Index Number[19:12] */
 #define PWI_HOST_RINGIDX_SHIFT	(12u)
 #define PWI_HWA_RINGTYPE_MASK	(0xFu)	/* HWA Ring Type Mapping-[11:8] */
@@ -1453,9 +1453,9 @@ void pcie_coherent_accenable(osl_t *osh, si_t *sih);
 #define PD_DB_DMA_TYPE_NO_IDMA	(0u)
 #define PD_DB_DMA_TYPE_IDMA	(1u)
 #define PD_DB_DMA_TYPE_PWI	(2u)
-#define PD_DB_DMA_TYPE_RXPOST	(5u)
-#define PD_DB_DMA_TYPE_TXCPL	(6u)
-#define PD_DB_DMA_TYPE_RXCPL	(7u)
+#define PD_DB_DMA_TYPE_RXPOST(rev)	(REV_GE_73((rev)) ? (1u) : (5u))
+#define PD_DB_DMA_TYPE_TXCPL(rev)	(REV_GE_73((rev)) ? (2u) : (6u))
+#define PD_DB_DMA_TYPE_RXCPL(rev)	(REV_GE_73((rev)) ? (3u) : (7u))
 
 /* All ERR_ATTN of F0 */
 #define PD_ERR_FUNCTION0	\

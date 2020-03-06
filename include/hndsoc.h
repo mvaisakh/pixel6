@@ -1,7 +1,7 @@
 /*
  * Broadcom HND chip & on-chip-interconnect-related definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hndsoc.h 806203 2019-02-21 19:08:01Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_HNDSOC_H
@@ -43,22 +41,19 @@
 
 #ifndef SI_ENUM_BASE_DEFAULT
 #define SI_ENUM_BASE_DEFAULT		0x18000000	/* Enumeration space base */
-#endif // endif
+#endif
 
 #ifndef SI_WRAP_BASE_DEFAULT
 #define SI_WRAP_BASE_DEFAULT		0x18100000	/* Wrapper space base */
-#endif // endif
+#endif
+
+#define WL_BRIDGE1_S	(0x18132000)
+#define WL_BRIDGE2_S	(0x18133000)
 
 /** new(er) chips started locating their chipc core at a different BP address than 0x1800_0000 */
-#ifdef DONGLEBUILD
-// firmware is always compiled for a particular chip
-#define SI_ENUM_BASE(sih)	SI_ENUM_BASE_DEFAULT
-#define SI_WRAP_BASE(sih)	SI_WRAP_BASE_DEFAULT
-#else
 // NIC and DHD driver binaries should support both old(er) and new(er) chips at the same time
 #define SI_ENUM_BASE(sih)	((sih)->enum_base)
 #define SI_WRAP_BASE(sih)	(SI_ENUM_BASE(sih) + 0x00100000)
-#endif /* DONGLEBUILD */
 
 #define SI_CORE_SIZE		0x1000		/* each core gets 4Kbytes for registers */
 
@@ -72,15 +67,15 @@
 #define SI_GPV_SL8_BM_ADDR  0x4a024 /* NIC-400 Slave interface 8 Bypass merge */
 #define SI_GPV_SL9_BM_ADDR  0x4b024 /* NIC-400 Slave interface 9 Bypass merge */
 
+/* AXI ID Node numbers wrt GPV base offset */
+#define NODE_HWA_MASTER		67
+#define NODE_HWA_SLAVE		11
+
+/* AXI Slave Interface Block (ASIB) offsets */
+#define ASIB_FN_MOD2		0x24
+
 #ifndef SI_MAXCORES
-#ifdef _RTE_
-#define	SI_MAXCORES		16		/* Max cores (this is arbitrary, for software
-					 * convenience and could be changed if we
-					 * make any larger chips
-					 */
-#else
 #define	SI_MAXCORES		32		/* NorthStar has more cores */
-#endif /* _RTE_ */
 #endif /* SI_MAXCORES */
 
 #define	SI_MAXBR		4		/* Max bridges (this is arbitrary, for software
@@ -110,7 +105,7 @@
 #define	SI_ARMCA7_ROM		0x00000000	/* ARM Cortex-A7 ROM */
 #ifndef SI_ARMCA7_RAM
 #define	SI_ARMCA7_RAM		0x00200000	/* ARM Cortex-A7 RAM */
-#endif // endif
+#endif
 #define	SI_ARM_FLASH1		0xffff0000	/* ARM Flash Region 1 */
 #define	SI_ARM_FLASH1_SZ	0x00010000	/* ARM Size of Flash Region 1 */
 
@@ -127,6 +122,9 @@
 
 /* APB bridge code */
 #define	APB_BRIDGE_ID		0x135		/* APB Bridge 0, 1, etc. */
+
+/* ADB bridge code */
+#define ADB_BRIDGE_ID		0x031
 
 /* AXI-AHB bridge code */
 #define	AXI2AHB_BRIDGE_ID		0x240		/* AXI_AHB Bridge */
@@ -201,6 +199,7 @@
 #define SYSMEM_CORE_ID		0x849		/* System memory core */
 #define HUB_CORE_ID		0x84b           /* Hub core ID */
 #define HWA_CORE_ID		0x851		/* HWA Core ID */
+#define SPMI_SLAVE_CORE_ID	0x855		/* SPMI Slave Core ID */
 #define BT_CORE_ID		0x857		/* Bluetooth Core ID */
 #define HND_OOBR_CORE_ID	0x85c		/* Hnd oob router core ID */
 #define SOE_CORE_ID		0x85d		/* SOE core */
@@ -243,11 +242,12 @@
  */
 #define	SI_CC_IDX		0
 /* SOC Interconnect types (aka chip types) */
-#define	SOCI_SB			0
-#define	SOCI_AI			1
-#define	SOCI_UBUS		2
-#define	SOCI_NAI		3
-#define SOCI_DVTBUS		4 /* BCM7XXX Digital Video Tech bus */
+#define	SOCI_SB			0u
+#define	SOCI_AI			1u
+#define	SOCI_UBUS		2u
+#define	SOCI_NAI		3u
+#define SOCI_DVTBUS		4u /* BCM7XXX Digital Video Tech bus */
+#define SOCI_NCI		6u /* NCI (non coherent interconnect) i.e. BOOKER */
 
 /* Common core control flags */
 #define	SICF_BIST_EN		0x8000

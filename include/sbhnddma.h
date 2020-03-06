@@ -2,7 +2,7 @@
  * Generic Broadcom Home Networking Division (HND) DMA engine HW interface
  * This supports the following chips: BCM42xx, 44xx, 47xx .
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,9 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: sbhnddma.h 817447 2019-05-01 09:34:46Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_sbhnddma_h_
@@ -282,10 +280,10 @@ typedef volatile struct {
 
 #ifndef D64_USBBURSTLEN
 #define D64_USBBURSTLEN	DMA_BL_64
-#endif // endif
+#endif
 #ifndef D64_SDIOBURSTLEN
 #define D64_SDIOBURSTLEN	DMA_BL_32
-#endif // endif
+#endif
 
 /* transmit channel control */
 #define	D64_XC_XE		0x00000001	/**< transmit enable */
@@ -356,13 +354,26 @@ typedef volatile struct {
 #define D64_RC_CO_SHIFT		26
 #define	D64_RC_ROEXT_MASK	0x08000000	/**< receive frame offset extension bit */
 #define	D64_RC_ROEXT_SHIFT	27
+#define D64_RC_MOW_SHIFT	(28u)		/**< multiple outstanding write */
+#define D64_RC_MOW_MASK		((0x3u) << D64_RC_MOW_SHIFT)
+
+/* receive control values */
+/* RcvCtrl.MultipleOutstandingWrites(MOW) valid values(N) listed below.
+ * (N + 1) out standing write(s) supported
+ */
+#define D64_RC_MOW_1		(0u)		/**< 1 outstanding write */
+#define D64_RC_MOW_2		(1u)		/**< 2 outstanding writes */
+#define D64_RC_MOW_3		(2u)		/**< 3 outstanding writes */
+#define D64_RC_MOW_4		(3u)		/**< 4 outstanding writes */
 
 /* flags for dma controller */
 #define DMA_CTRL_PEN		(1u << 0u)	/**< partity enable */
 #define DMA_CTRL_ROC		(1u << 1u)	/**< rx overflow continue */
 #define DMA_CTRL_RXMULTI	(1u << 2u)	/**< allow rx scatter to multiple descriptors */
 #define DMA_CTRL_UNFRAMED	(1u << 3u)	/**< Unframed Rx/Tx data */
-#define DMA_CTRL_USB_BOUNDRY4KB_WAR (1u << 4u)
+#define DMA_CTRL_USB_BOUNDRY4KB_WAR (1u << 4u)	/**< USB core REV9's SETUP dma channel's
+						*  buffer can not crossed 4K boundary PR80468
+						*/
 #define DMA_CTRL_DMA_AVOIDANCE_WAR (1u << 5u)	/**< DMA avoidance WAR for 4331 */
 #define DMA_CTRL_RXSINGLE	(1u << 6u)	/**< always single buffer */
 #define DMA_CTRL_SDIO_RXGLOM	(1u << 7u)	/**< DMA Rx glome is enabled */

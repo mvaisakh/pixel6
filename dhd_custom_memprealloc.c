@@ -1,7 +1,7 @@
 /*
  * Platform Dependent file for usage of Preallocted Memory
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -58,7 +58,7 @@
 #define WLAN_DHD_WLFC_BUF_SIZE		(64 * 1024)
 #define WLAN_DHD_IF_FLOW_LKUP_SIZE	(64 * 1024)
 /* Have 2MB ramsize to accomodate future chips */
-#define WLAN_DHD_MEMDUMP_SIZE		(2048 * 1024)
+#define WLAN_DHD_MEMDUMP_SIZE		(3 * 1024 * 1024)
 
 #define PREALLOC_WLAN_SEC_NUM		4
 #define PREALLOC_WLAN_BUF_NUM		160

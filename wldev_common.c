@@ -1,7 +1,7 @@
 /*
  * Common function shared by Linux WEXT, cfg80211 and p2p drivers
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <osl.h>
@@ -35,22 +33,12 @@
 #include <wl_cfgscan.h>
 #endif /* WL_CFG80211 */
 
-#if defined(IL_BIGENDIAN)
-#include <bcmendian.h>
-#define htod32(i) (bcmswap32(i))
-#define htod16(i) (bcmswap16(i))
-#define dtoh32(i) (bcmswap32(i))
-#define dtoh16(i) (bcmswap16(i))
-#define htodchanspec(i) htod16(i)
-#define dtohchanspec(i) dtoh16(i)
-#else
 #define htod32(i) (i)
 #define htod16(i) (i)
 #define dtoh32(i) (i)
 #define dtoh16(i) (i)
 #define htodchanspec(i) (i)
 #define dtohchanspec(i) (i)
-#endif // endif
 
 #define	WLDEV_ERROR(args)						\
 	do {										\
@@ -72,38 +60,12 @@ static s32 wldev_ioctl(
 	s32 ret = 0;
 	struct wl_ioctl  ioc;
 
-#if defined(BCMDONGLEHOST)
-
 	bzero(&ioc, sizeof(ioc));
 	ioc.cmd = cmd;
 	ioc.buf = arg;
 	ioc.len = len;
 	ioc.set = set;
 	ret = dhd_ioctl_entry_local(dev, (wl_ioctl_t *)&ioc, cmd);
-#else
-	struct ifreq ifr;
-	mm_segment_t fs;
-
-	bzero(&ioc, sizeof(ioc));
-	ioc.cmd = cmd;
-	ioc.buf = arg;
-	ioc.len = len;
-	ioc.set = set;
-
-	strlcpy(ifr.ifr_name, dev->name, sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&ioc;
-
-	fs = get_fs();
-	set_fs(get_ds());
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31)
-	ret = dev->do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
-#else
-	ret = dev->netdev_ops->ndo_do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31) */
-	set_fs(fs);
-
-	ret = 0;
-#endif /* defined(BCMDONGLEHOST) */
 
 	return ret;
 }
@@ -120,11 +82,11 @@ s32 wldev_ioctl_set(
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-qual"
-#endif // endif
+#endif
 	return wldev_ioctl(dev, cmd, (void *)arg, len, 1);
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic pop
-#endif // endif
+#endif
 
 }
 
@@ -497,7 +459,6 @@ int wldev_get_mode(
 int wldev_set_country(
 	struct net_device *dev, char *country_code, bool notify, bool user_enforced, int revinfo)
 {
-#if defined(BCMDONGLEHOST)
 	int error = -1;
 	wl_country_t cspec = {{0}, 0, {0}};
 	scb_val_t scbval;
@@ -519,7 +480,9 @@ int wldev_set_country(
 	}
 
 	if ((error < 0) ||
+
 		dhd_force_country_change(dev) ||
+
 	    (strncmp(country_code, cspec.ccode, WLC_CNTRY_BUF_SZ) != 0)) {
 
 #ifdef WL_CFG80211
@@ -555,6 +518,5 @@ int wldev_set_country(
 		WLDEV_INFO(("wldev_set_country: set country for %s as %s rev %d\n",
 			country_code, cspec.ccode, cspec.rev));
 	}
-#endif /* defined(BCMDONGLEHOST) */
 	return 0;
 }

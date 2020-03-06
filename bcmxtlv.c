@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id$
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -36,7 +34,7 @@
 #include <stdlib.h>
 #ifndef ASSERT
 #define ASSERT(exp)
-#endif // endif
+#endif
 #endif /* !BCMDRIVER */
 
 #include <bcmtlv.h>
@@ -57,7 +55,7 @@ bool
 bcm_valid_xtlv(const bcm_xtlv_t *elt, int buf_len, bcm_xtlv_opts_t opts)
 {
 	return elt != NULL &&
-		buf_len >= bcm_xtlv_hdr_size(opts) &&
+	        buf_len >= bcm_xtlv_hdr_size(opts) &&
 		buf_len  >= bcm_xtlv_size(elt, opts);
 }
 
@@ -122,19 +120,31 @@ bcm_xtlv_id(const bcm_xtlv_t *elt, bcm_xtlv_opts_t opts)
 bcm_xtlv_t *
 bcm_next_xtlv(const bcm_xtlv_t *elt, int *buflen, bcm_xtlv_opts_t opts)
 {
-	int sz;
+	uint sz;
 
 	COV_TAINTED_DATA_SINK(buflen);
 	COV_NEG_SINK(buflen);
 
-#ifdef BCMDBG
 	/* validate current elt */
 	if (!bcm_valid_xtlv(elt, *buflen, opts))
 		return NULL;
-#endif // endif
+
 	/* advance to next elt */
 	sz = BCM_XTLV_SIZE_EX(elt, opts);
 	elt = (const bcm_xtlv_t*)((const uint8 *)elt + sz);
+
+#if defined(__COVERITY__)
+	/* The 'sz' value is tainted in Coverity because it is read from the tainted data pointed
+	 * to by 'elt'.  However, bcm_valid_xtlv() verifies that the elt pointer is a valid element,
+	 * so its size, sz = BCM_XTLV_SIZE_EX(elt, opts), is in the bounds of the buffer.
+	 * Clearing the tainted attribute of 'sz' for Coverity.
+	 */
+	__coverity_tainted_data_sanitize__(sz);
+	if (sz > *buflen) {
+		return NULL;
+	}
+#endif /* __COVERITY__ */
+
 	*buflen -= sz;
 
 	/* validate next elt */
@@ -558,7 +568,7 @@ bcm_unpack_xtlv_buf_to_mem(const uint8 *tlv_buf, int *buflen, xtlv_desc_t *items
 		}
 	}
 
-	if (res == BCME_OK && *buflen != 0)
+	if (res == BCME_OK && *buflen != 0)		/* this does not look right */
 		res =  BCME_BUFTOOSHORT;
 
 	return res;

@@ -1,7 +1,7 @@
 /*
  * TLV and XTLV support
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmtlv_h_
@@ -96,7 +94,7 @@ bcm_tlv_t *bcm_parse_tlvs(const  void *buf, uint buflen, uint key);
 typedef enum {
 	BCM_TLV_ADVANCE_NONE = 0,  // do not adjust the buffer/buflen
 	BCM_TLV_ADVANCE_TO = 1,    // advance to the found tlv
-	BCM_TLV_ADVANCE_PAST = 2,  // advance past the found tlv
+	BCM_TLV_ADVANCE_PAST = 2   // advance past the found tlv
 } bcm_tlv_advance_mode_t;
 
 /* Find an IE of a specific type from a buffer.
@@ -113,7 +111,7 @@ extern bcm_tlv_t *bcm_find_ie(const uint8 *tlvs, uint tlvs_len, uint8 tag,
 
 /* search for a matching tlv id, and adjust the parse buffer pointer/length */
 const bcm_tlv_t *bcm_parse_tlvs_advance(const uint8 **buf, uint *buflen, uint key,
-                                        bcm_tlv_advance_mode_t advance);
+	bcm_tlv_advance_mode_t advance);
 
 /*
  * Traverse tlvs and return pointer to the first tlv that
@@ -363,8 +361,8 @@ struct bcm_const_xlvp {
 typedef struct bcm_const_xlvp bcm_const_xlvp_t;
 
 struct bcm_const_ulvp {
-		uint32 len;
-		const uint8 *data;
+	uint32 len;
+	const uint8 *data;
 };
 
 typedef struct bcm_const_ulvp bcm_const_ulvp_t;

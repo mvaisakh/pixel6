@@ -3,7 +3,7 @@
  * This header file housing the define and function prototype use by
  * both the wl driver, tools & Apps.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,9 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmwifi_channels.h 814809 2019-04-14 21:49:35Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmwifi_channels_h_
@@ -40,20 +38,23 @@ typedef uint16 chanspec_subband_t;
 #define CH_20MHZ_APART                    4u
 #define CH_10MHZ_APART                    2u
 #define CH_5MHZ_APART                     1u    /* 2G band channels are 5 Mhz apart */
+#define CH_160MHZ_APART                  (32u * CH_5MHZ_APART)	/* 32 5Mhz-spaces */
 
 #define CH_MIN_2G_CHANNEL                 1u    /* Min channel in 2G band */
 #define CH_MAX_2G_CHANNEL                14u    /* Max channel in 2G band */
 #define CH_MIN_2G_40M_CHANNEL             3u    /* Min 40MHz center channel in 2G band */
 #define CH_MAX_2G_40M_CHANNEL            11u    /* Max 40MHz center channel in 2G band */
 
-#define CH_MIN_6G_CHANNEL                 1u    /* Min channel in 6G band */
-#define CH_MAX_6G_CHANNEL               253u    /* Max channel in 6G band */
-#define CH_MIN_6G_40M_CHANNEL             3u    /* Min 40MHz center channel in 2G band */
-#define CH_MAX_6G_40M_CHANNEL           227u    /* Max 40MHz center channel in 2G band */
-#define CH_MIN_6G_80M_CHANNEL             7u    /* Min 80MHz center channel in 2G band */
-#define CH_MAX_6G_80M_CHANNEL           215u    /* Max 80MHz center channel in 2G band */
-#define CH_MIN_6G_160M_CHANNEL           15u    /* Min 160MHz center channel in 2G band */
-#define CH_MAX_6G_160M_CHANNEL          207u    /* Max 160MHz center channel in 2G band */
+#define CH_MIN_6G_CHANNEL                 1u    /* Min 20MHz channel in 6G band */
+#define CH_MAX_6G_CHANNEL               253u    /* Max 20MHz channel in 6G band */
+#define CH_MIN_6G_40M_CHANNEL             3u    /* Min 40MHz center channel in 6G band */
+#define CH_MAX_6G_40M_CHANNEL           227u    /* Max 40MHz center channel in 6G band */
+#define CH_MIN_6G_80M_CHANNEL             7u    /* Min 80MHz center channel in 6G band */
+#define CH_MAX_6G_80M_CHANNEL           215u    /* Max 80MHz center channel in 6G band */
+#define CH_MIN_6G_160M_CHANNEL           15u    /* Min 160MHz center channel in 6G band */
+#define CH_MAX_6G_160M_CHANNEL          207u    /* Max 160MHz center channel in 6G band */
+#define CH_MIN_6G_320M_CHANNEL           31u    /* Min 320MHz center channel in 6G band */
+#define CH_MAX_6G_320M_CHANNEL          199u    /* Max 320MHz center channel in 6G band */
 
 /* maximum # channels the s/w supports */
 #define MAXCHANNEL                      254u    /* max # supported channels.
@@ -64,7 +65,17 @@ typedef uint16 chanspec_subband_t;
 #define INVCHANNEL                      255u    /* error value for a bad channel */
 
 /* length of channel vector bitmap is the MAXCHANNEL we want to handle rounded up to a byte */
+/* The actual CHANVEC_LEN fix is leading to high static memory impact
+* in all projects wherein the previous CHANVEC_LEN definition is used.
+*
+* Retaining the previous definition under MAXCHNL_ROM_COMPAT flag.
+* All those chip porgrams where memory impact is observed need to define the same.
+*/
+#ifdef MAXCHNL_ROM_COMPAT
 #define CHANVEC_LEN (MAXCHANNEL + (8 - 1) / 8)
+#else
+#define CHANVEC_LEN ((MAXCHANNEL + (8 - 1)) / 8)
+#endif
 
 /* channel bitvec */
 typedef struct {
@@ -81,13 +92,21 @@ typedef struct {
 #undef  D11AC_IOTYPES
 #define D11AC_IOTYPES
 
+/* For contiguous channel bandwidth other than 320Mhz */
 #define WL_CHANSPEC_CHAN_MASK		0x00ffu
 #define WL_CHANSPEC_CHAN_SHIFT		0u
+
+/* For contiguous channel bandwidth 320Mhz */
+#define WL_CHANSPEC_320_CHAN_MASK	0x0003u
+#define WL_CHANSPEC_320_CHAN_SHIFT	0u
+
+/* For discontiguous channel bandwidth */
 #define WL_CHANSPEC_CHAN0_MASK		0x000fu
 #define WL_CHANSPEC_CHAN0_SHIFT		0u
 #define WL_CHANSPEC_CHAN1_MASK		0x00f0u
 #define WL_CHANSPEC_CHAN1_SHIFT		4u
 
+/* Non-320Mhz channel sideband indication */
 #define WL_CHANSPEC_CTL_SB_MASK		0x0700u
 #define WL_CHANSPEC_CTL_SB_SHIFT	8u
 #define WL_CHANSPEC_CTL_SB_LLL		0x0000u
@@ -108,27 +127,37 @@ typedef struct {
 #define WL_CHANSPEC_CTL_SB_UPPER	WL_CHANSPEC_CTL_SB_LLU
 #define WL_CHANSPEC_CTL_SB_NONE		WL_CHANSPEC_CTL_SB_LLL
 
+/* 320Mhz channel sideband indication */
+#define WL_CHANSPEC_320_SB_MASK		0x0780u
+#define WL_CHANSPEC_320_SB_SHIFT	7u
+
+/* Bandwidth field */
 #define WL_CHANSPEC_BW_MASK		0x3800u
 #define WL_CHANSPEC_BW_SHIFT		11u
-#define WL_CHANSPEC_BW_5		0x0000u
-#define WL_CHANSPEC_BW_10		0x0800u
+#define WL_CHANSPEC_BW_320		0x0000u
+#define WL_CHANSPEC_BW_160160		0x0800u
 #define WL_CHANSPEC_BW_20		0x1000u
 #define WL_CHANSPEC_BW_40		0x1800u
 #define WL_CHANSPEC_BW_80		0x2000u
 #define WL_CHANSPEC_BW_160		0x2800u
 #define WL_CHANSPEC_BW_8080		0x3000u
 
+/* Band field */
 #define WL_CHANSPEC_BAND_MASK		0xc000u
 #define WL_CHANSPEC_BAND_SHIFT		14u
 #define WL_CHANSPEC_BAND_2G		0x0000u
 #define WL_CHANSPEC_BAND_6G		0x4000u
 #define WL_CHANSPEC_BAND_4G		0x8000u
 #define WL_CHANSPEC_BAND_5G		0xc000u
+
 #define INVCHANSPEC			255u
 #define MAX_CHANSPEC			0xFFFFu
 
-#define WL_CHANNEL_BAND(ch) (((uint)(ch) <= CH_MAX_2G_CHANNEL) ?	\
-	WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G)
+#define WL_CHSPEC_BW(chspec)	((chspec & WL_CHANSPEC_BW_MASK) >> WL_CHANSPEC_BW_SHIFT)
+#define MAX_BW_NUM		(uint8)(((WL_CHANSPEC_BW_MASK) >> WL_CHANSPEC_BW_SHIFT))
+
+#define WL_CHANNEL_BAND(ch)	(((uint)(ch) <= CH_MAX_2G_CHANNEL) ? \
+				 WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G)
 
 /* channel defines */
 #define LOWER_20_SB(channel)		(((channel) > CH_10MHZ_APART) ? \
@@ -139,16 +168,17 @@ typedef struct {
 /* pass a 80MHz channel number (uint8) to get respective LL, UU, LU, UL */
 #define LL_20_SB(channel) (((channel) > 3 * CH_10MHZ_APART) ? ((channel) - 3 * CH_10MHZ_APART) : 0)
 #define UU_20_SB(channel) (((channel) < (MAXCHANNEL - 3 * CH_10MHZ_APART)) ? \
-				((channel) + 3 * CH_10MHZ_APART) : 0)
+			   ((channel) + 3 * CH_10MHZ_APART) : 0)
 #define LU_20_SB(channel) LOWER_20_SB(channel)
 #define UL_20_SB(channel) UPPER_20_SB(channel)
 
 #define LOWER_40_SB(channel)		((channel) - CH_20MHZ_APART)
 #define UPPER_40_SB(channel)		((channel) + CH_20MHZ_APART)
+
 #ifndef CHSPEC_WLCBANDUNIT
 #define CHSPEC_WLCBANDUNIT(chspec) \
 	((CHSPEC_IS5G(chspec) || CHSPEC_IS6G(chspec)) ? BAND_5G_INDEX : BAND_2G_INDEX)
-#endif // endif
+#endif
 #define CH20MHZ_CHSPEC(channel)		(chanspec_t)((chanspec_t)(channel) | WL_CHANSPEC_BW_20 | \
 						     WL_CHANNEL_BAND(channel))
 #define NEXT_20MHZ_CHAN(channel)	(((channel) < (MAXCHANNEL - CH_20MHZ_APART)) ? \
@@ -164,33 +194,37 @@ typedef struct {
 					 WL_CHANSPEC_BW_160 | WL_CHANSPEC_BAND_5G)
 
 /* simple MACROs to get different fields of chanspec */
-#ifdef WL11AC_80P80
-#define CHSPEC_CHANNEL(chspec)	wf_chspec_channel(chspec)
-#else
 #define CHSPEC_CHANNEL(chspec)	((uint8)((chspec) & WL_CHANSPEC_CHAN_MASK))
-#endif // endif
-#define CHSPEC_CHAN0(chspec)	((chspec) & WL_CHANSPEC_CHAN0_MASK) >> WL_CHANSPEC_CHAN0_SHIFT
-#define CHSPEC_CHAN1(chspec)	((chspec) & WL_CHANSPEC_CHAN1_MASK) >> WL_CHANSPEC_CHAN1_SHIFT
-#define CHSPEC_BAND(chspec)		((chspec) & WL_CHANSPEC_BAND_MASK)
+#define CHSPEC_CHAN0(chspec)	(((chspec) & WL_CHANSPEC_CHAN0_MASK) >> WL_CHANSPEC_CHAN0_SHIFT)
+#define CHSPEC_CHAN1(chspec)	(((chspec) & WL_CHANSPEC_CHAN1_MASK) >> WL_CHANSPEC_CHAN1_SHIFT)
+#define CHSPEC_BAND(chspec)	((chspec) & WL_CHANSPEC_BAND_MASK)
 #define CHSPEC_CTL_SB(chspec)	((chspec) & WL_CHANSPEC_CTL_SB_MASK)
-#define CHSPEC_BW(chspec)		((chspec) & WL_CHANSPEC_BW_MASK)
+#define CHSPEC_BW(chspec)	((chspec) & WL_CHANSPEC_BW_MASK)
+#define CHSPEC_320_CHAN(chspec)	(((chspec) & WL_CHANSPEC_320_CHAN_MASK)>>WL_CHANSPEC_320_CHAN_SHIFT)
+#define CHSPEC_320_SB(chspec)	((chspec) & WL_CHANSPEC_320_SB_MASK)
 
 #ifdef WL11N_20MHZONLY
 #define CHSPEC_IS20(chspec)	1
 #define CHSPEC_IS20_2G(chspec)	((((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20) && \
-								CHSPEC_IS2G(chspec))
+				 CHSPEC_IS2G(chspec))
 #ifndef CHSPEC_IS40
 #define CHSPEC_IS40(chspec)	0
-#endif // endif
+#endif
 #ifndef CHSPEC_IS80
 #define CHSPEC_IS80(chspec)	0
-#endif // endif
+#endif
 #ifndef CHSPEC_IS160
 #define CHSPEC_IS160(chspec)	0
-#endif // endif
+#endif
 #ifndef CHSPEC_IS8080
 #define CHSPEC_IS8080(chspec)	0
-#endif // endif
+#endif
+#ifndef CHSPEC_IS320
+#define CHSPEC_IS320(chspec)	0
+#endif
+#ifndef CHSPEC_IS160160
+#define CHSPEC_IS160160(chspec)	0
+#endif
 
 /* see FOREACH_20_SB in !WL11N_20MHZONLY section */
 #define FOREACH_20_SB(chspec, channel) \
@@ -205,19 +239,37 @@ typedef struct {
 
 #define CHSPEC_IS20(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20)
 #define CHSPEC_IS20_5G(chspec)	((((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20) && \
-								CHSPEC_IS5G(chspec))
+				 CHSPEC_IS5G(chspec))
 #ifndef CHSPEC_IS40
 #define CHSPEC_IS40(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40)
-#endif // endif
+#endif
 #ifndef CHSPEC_IS80
 #define CHSPEC_IS80(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_80)
-#endif // endif
+#endif
 #ifndef CHSPEC_IS160
 #define CHSPEC_IS160(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_160)
-#endif // endif
+#endif
 #ifndef CHSPEC_IS8080
+#ifdef WFC_NON_CONT_CHAN
 #define CHSPEC_IS8080(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_8080)
-#endif // endif
+#else
+#define CHSPEC_IS8080(chspec)	(FALSE)
+#endif
+#endif /* CHSPEC_IS8080 */
+#ifndef CHSPEC_IS320
+#ifdef WL11BE
+#define CHSPEC_IS320(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_320)
+#else
+#define CHSPEC_IS320(chspec)	(FALSE)
+#endif
+#endif /* CHSPEC_IS320 */
+#ifndef CHSPEC_IS160160
+#ifdef WFC_NON_CONT_CHAN
+#define CHSPEC_IS160160(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_160160)
+#else
+#define CHSPEC_IS160160(chspec)	(FALSE)
+#endif
+#endif /* CHSPEC_IS160160 */
 
 /* pass a center channel and get channel offset from it by 10MHz */
 #define CH_OFF_10MHZ_MULTIPLES(channel, offset)				\
@@ -227,7 +279,9 @@ typedef struct {
 	  ((((uint16)(channel) + (uint16)(offset) * CH_10MHZ_APART) < (uint16)MAXCHANNEL) ? \
 	   ((channel) + (offset) * CH_10MHZ_APART) : 0)))
 
-#if defined(WL11AC_80P80) || defined(WL11AC_160)
+uint wf_chspec_first_20_sb(chanspec_t chspec);
+
+#if defined(WL_BW160MHZ)
 /* pass a 160MHz center channel to get 20MHz subband channel numbers */
 #define LLL_20_SB_160(channel)  CH_OFF_10MHZ_MULTIPLES(channel, -7)
 #define LLU_20_SB_160(channel)  CH_OFF_10MHZ_MULTIPLES(channel, -5)
@@ -259,44 +313,32 @@ typedef struct {
 #define UUU_20_SB_8080(chspec)  CH_OFF_10MHZ_MULTIPLES(UPPER_80_SB(chspec),  3)
 
 /* get lowest 20MHz sideband of a given chspec
- * (works with 20, 40, 80, 160, 80p80)
+ * (works with 20, 40, 80, 160)
  */
 #define CH_FIRST_20_SB(chspec)  ((uint8) (\
 		CHSPEC_IS160(chspec) ? LLL_20_SB_160(CHSPEC_CHANNEL(chspec)) : (\
-		CHSPEC_IS8080(chspec) ? LLL_20_SB_8080(chspec) : (\
 			CHSPEC_IS80(chspec) ? LL_20_SB(CHSPEC_CHANNEL(chspec)) : (\
 				CHSPEC_IS40(chspec) ? LOWER_20_SB(CHSPEC_CHANNEL(chspec)) : \
-					CHSPEC_CHANNEL(chspec))))))
+					CHSPEC_CHANNEL(chspec)))))
 
 /* get upper most 20MHz sideband of a given chspec
- * (works with 20, 40, 80, 160, 80p80)
+ * (works with 20, 40, 80, 160)
  */
 #define CH_LAST_20_SB(chspec)  ((uint8) (\
 		CHSPEC_IS160(chspec) ? UUU_20_SB_160(CHSPEC_CHANNEL(chspec)) : (\
-		CHSPEC_IS8080(chspec) ? UUU_20_SB_8080(chspec) : (\
 			CHSPEC_IS80(chspec) ? UU_20_SB(CHSPEC_CHANNEL(chspec)) : (\
 				CHSPEC_IS40(chspec) ? UPPER_20_SB(CHSPEC_CHANNEL(chspec)) : \
-					CHSPEC_CHANNEL(chspec))))))
+					CHSPEC_CHANNEL(chspec)))))
 
 /* call this with chspec and a valid 20MHz sideband of this channel to get the next 20MHz sideband
- * (works with 80p80 only)
- * resolves to 0 if called with upper most channel
- */
-#define CH_NEXT_20_SB_IN_8080(chspec, channel)  ((uint8) (\
-		((uint8) ((channel) + CH_20MHZ_APART) > CH_LAST_20_SB(chspec) ? 0 : \
-			((channel) == LUU_20_SB_8080(chspec) ? ULL_20_SB_8080(chspec) : \
-				(channel) + CH_20MHZ_APART))))
-
-/* call this with chspec and a valid 20MHz sideband of this channel to get the next 20MHz sideband
- * (works with 20, 40, 80, 160, 80p80)
+ * (works with 20, 40, 80, 160)
  * resolves to 0 if called with upper most channel
  */
 #define CH_NEXT_20_SB(chspec, channel)  ((uint8) (\
-		(CHSPEC_IS8080(chspec) ? CH_NEXT_20_SB_IN_8080((chspec), (channel)) : \
 			((uint8) ((channel) + CH_20MHZ_APART) > CH_LAST_20_SB(chspec) ? 0 : \
-				((channel) + CH_20MHZ_APART)))))
+				((channel) + CH_20MHZ_APART))))
 
-#else /* WL11AC_80P80, WL11AC_160 */
+#else /* WL_BW160MHZ */
 
 #define LLL_20_SB_160(channel)  0
 #define LLU_20_SB_160(channel)  0
@@ -311,15 +353,6 @@ typedef struct {
 
 #define UPPER_80_SB(chspec)	0
 
-#define LLL_20_SB_8080(chspec)	0
-#define LLU_20_SB_8080(chspec)	0
-#define LUL_20_SB_8080(chspec)	0
-#define LUU_20_SB_8080(chspec)	0
-#define ULL_20_SB_8080(chspec)	0
-#define ULU_20_SB_8080(chspec)	0
-#define UUL_20_SB_8080(chspec)	0
-#define UUU_20_SB_8080(chspec)	0
-
 /* get lowest 20MHz sideband of a given chspec
  * (works with 20, 40, 80)
  */
@@ -328,7 +361,7 @@ typedef struct {
 				CHSPEC_IS40(chspec) ? LOWER_20_SB(CHSPEC_CHANNEL(chspec)) : \
 					CHSPEC_CHANNEL(chspec))))
 /* get upper most 20MHz sideband of a given chspec
- * (works with 20, 40, 80, 160, 80p80)
+ * (works with 20, 40, 80, 160)
  */
 #define CH_LAST_20_SB(chspec)  ((uint8) (\
 			CHSPEC_IS80(chspec) ? UU_20_SB(CHSPEC_CHANNEL(chspec)) : (\
@@ -336,21 +369,21 @@ typedef struct {
 					CHSPEC_CHANNEL(chspec))))
 
 /* call this with chspec and a valid 20MHz sideband of this channel to get the next 20MHz sideband
- * (works with 20, 40, 80, 160, 80p80)
+ * (works with 20, 40, 80, 160)
  * resolves to 0 if called with upper most channel
  */
 #define CH_NEXT_20_SB(chspec, channel)  ((uint8) (\
 			((uint8) ((channel) + CH_20MHZ_APART) > CH_LAST_20_SB(chspec) ? 0 : \
 				((channel) + CH_20MHZ_APART))))
 
-#endif /* WL11AC_80P80, WL11AC_160 */
+#endif /* WL_BW160MHZ */
 
 /* Iterator for 20MHz side bands of a chanspec: (chanspec_t chspec, uint8 channel)
  * 'chspec' chanspec_t of interest (used in loop, better to pass a resolved value than a macro)
  * 'channel' must be a variable (not an expression).
  */
 #define FOREACH_20_SB(chspec, channel) \
-		for (channel = CH_FIRST_20_SB(chspec); channel; \
+	for (channel = (uint8)wf_chspec_first_20_sb(chspec); channel;	\
 			channel = CH_NEXT_20_SB((chspec), channel))
 
 /* Uses iterator to populate array with all side bands involved (sorted lower to upper).
@@ -367,7 +400,7 @@ typedef struct {
 /* given a chanspec of any bw, tests if primary20 SB is in lower 20, 40, 80 respectively */
 #define IS_CTL_IN_L20(chspec) !((chspec) & WL_CHANSPEC_CTL_SB_U) /* CTL SB is in low 20 of any 40 */
 #define IS_CTL_IN_L40(chspec) !((chspec) & WL_CHANSPEC_CTL_SB_UL)	/* in low 40 of any 80 */
-#define IS_CTL_IN_L80(chspec) !((chspec) & WL_CHANSPEC_CTL_SB_ULL)	/* in low 80 of 80p80/160 */
+#define IS_CTL_IN_L80(chspec) !((chspec) & WL_CHANSPEC_CTL_SB_ULL)	/* in low 80 of 160 */
 
 #endif /* !WL11N_20MHZONLY */
 
@@ -384,8 +417,13 @@ typedef struct {
 #define CHSPEC_SB_LOWER(chspec)	\
 	((((chspec) & WL_CHANSPEC_CTL_SB_MASK) == WL_CHANSPEC_CTL_SB_LOWER) && \
 	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40))
+
+#ifdef WL_BAND6G
 #define CHSPEC2WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : CHSPEC_IS5G(chspec) ? \
 	WLC_BAND_5G : WLC_BAND_6G)
+#else
+#define CHSPEC2WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : WLC_BAND_5G)
+#endif
 
 #define CHSPEC_BW_CHANGED(prev_chspec, curr_chspec) \
 	(((prev_chspec) & WL_CHANSPEC_BW_MASK) != ((curr_chspec) & WL_CHANSPEC_BW_MASK))
@@ -398,11 +436,16 @@ typedef struct {
 #else
 #define CHSPEC_IS_5G_6G(chspec)		(CHSPEC_IS5G(chspec))
 #define CHSPEC_IS20_5G_6G(chspec)	(CHSPEC_IS20_5G(chspec))
-#endif // endif
+#endif
+
 /**
  * Number of chars needed for wf_chspec_ntoa() destination character buffer.
  */
+#ifdef WL11BE
+#define CHANSPEC_STR_LEN    22
+#else
 #define CHANSPEC_STR_LEN    20
+#endif
 
 /*
  * This function returns TRUE if both the chanspec can co-exist in PHY.
@@ -521,11 +564,10 @@ extern bool wf_chspec_coexist(chanspec_t chspec1, chanspec_t chspec2);
 #define WLC_2G_25MHZ_OFFSET		5	/* 2.4GHz band channel offset */
 
 /**
- *  No of sub-band vlaue of the specified Mhz chanspec
+ *  No of sub-band value of the specified Mhz chanspec
  */
 #define WF_NUM_SIDEBANDS_40MHZ   2u
 #define WF_NUM_SIDEBANDS_80MHZ   4u
-#define WF_NUM_SIDEBANDS_8080MHZ 4u
 #define WF_NUM_SIDEBANDS_160MHZ  8u
 
 /**
@@ -584,6 +626,11 @@ bool wf_valid_80MHz_center_chan(uint center_channel, chanspec_band_t band);
 bool wf_valid_160MHz_center_chan(uint center_channel, chanspec_band_t band);
 
 /**
+ * Verify that the center channel is a valid 320MHz center channel according to 802.11.
+ */
+bool wf_valid_320MHz_center_chan(uint center_channel, chanspec_band_t band);
+
+/**
  * Create a 20MHz chanspec for the given band.
  */
 chanspec_t wf_create_20MHz_chspec(uint channel, chanspec_band_t band);
@@ -610,12 +657,32 @@ chanspec_t wf_create_80MHz_chspec(uint primary_channel, uint center_channel,
                                   chanspec_band_t band);
 
 /**
+ * Returns the chanspec for an 160MHz channel given the primary 20MHz channel number,
+ * the center channel number, and the band.
+ */
+chanspec_t wf_create_160MHz_chspec(uint primary_channel, uint center_channel,
+                                   chanspec_band_t band);
+
+/**
+ * Returns the chanspec for an 320MHz channel given the primary 20MHz channel number,
+ * the center channel number, and the band.
+ */
+chanspec_t wf_create_320MHz_chspec(uint primary_channel, uint center_channel,
+                                   chanspec_band_t band);
+
+/**
  * Returns the chanspec for an 80+80MHz channel given the primary 20MHz channel number,
  * the center channel numbers for each frequency segment, and the band.
  */
 chanspec_t wf_create_8080MHz_chspec(uint primary_channel, uint chan0, uint chan1,
                                     chanspec_band_t band);
 
+/**
+ * Returns the chanspec for an 160+160MHz channel given the primary 20MHz channel number,
+ * the center channel numbers for each frequency segment, and the band.
+ */
+chanspec_t wf_create_160160MHz_chspec(uint primary_channel, uint chan0, uint chan1,
+                                      chanspec_band_t band);
 /**
  * Returns the chanspec given the primary 20MHz channel number,
  * the center channel number, channel width, and the band.
@@ -631,6 +698,32 @@ chanspec_t wf_create_chspec(uint primary_channel, uint center_channel,
  * channel width, and the band.
  */
 chanspec_t wf_create_chspec_from_primary(uint primary_channel, chanspec_bw_t bw,
+                                         chanspec_band_t band);
+
+/**
+ * Returns the chanspec given the index of primary 20MHz channel within whole
+ * channel, the center channel number, channel width, and the band.
+ *
+ * The channel width must be 20, 40, 80, or 160 MHz. 80+80 MHz chanspec creation
+ * is not handled by this function, use  wf_create_8080MHz_chspec_prim_idx() instead.
+ */
+chanspec_t wf_create_chspec_sb(uint sb, uint center_channel, chanspec_bw_t bw,
+                               chanspec_band_t band);
+
+/**
+ * Returns the chanspec for an 80+80MHz channel given the index of primary 20MHz
+ * channel within whole channel pair (0-3 if within chan0, 4-7 if within chan1),
+ * the center channel numbers for each frequency segment, and the band.
+ */
+chanspec_t wf_create_8080MHz_chspec_sb(uint sb, uint chan0, uint chan1,
+                                       chanspec_band_t band);
+
+/**
+ * Returns the chanspec for an 160+160MHz channel given the index of primary 20MHz
+ * channel within whole channel pair (0-3 if within chan0, 4-7 if within chan1),
+ * the center channel numbers for each frequency segment, and the band.
+ */
+chanspec_t wf_create_160160MHz_chspec_sb(uint sb, uint chan0, uint chan1,
                                          chanspec_band_t band);
 
 /**
@@ -757,13 +850,7 @@ extern chanspec_t wf_chspec_secondary80_chspec(chanspec_t chspec);
  */
 extern void wf_chspec_get_80p80_channels(chanspec_t chspec, uint8 *ch);
 
-#ifdef WL11AC_80P80
-/*
- * This function returns the centre chanel for the given chanspec.
- * In case of 80+80 chanspec it returns the primary 80 Mhz centre channel
- */
-extern uint8 wf_chspec_channel(chanspec_t chspec);
-#endif // endif
+/* wf_chanspec_iter_... iterator API is deprecated. Use wlc_clm_chanspec_iter_... API instead */
 
 struct wf_iter_range {
 	uint8 start;
@@ -840,7 +927,7 @@ chanspec_t wf_chanspec_iter_current(wf_chanspec_iter_t *iter);
  *     'chspec' is the chanspec of interest
  *     'pext' must point to an uint8 array of long enough to hold all side bands of the given chspec
  *
- * Works with 20, 40, 80, 80p80 and 160MHz chspec
+ * Works with 20, 40, 80 and 160MHz chspec
  */
 
 extern void wf_get_all_ext(chanspec_t chspec, uint8 *chan_ptr);
@@ -852,4 +939,7 @@ extern void wf_get_all_ext(chanspec_t chspec, uint8 *chan_ptr);
 extern bool wf_chspec_overlap(chanspec_t chspec0, chanspec_t chspec1);
 
 extern uint8 channel_bw_to_width(chanspec_t chspec);
+
+uint8 wf_chspec_320_id2cch(chanspec_t chanspec);
+
 #endif	/* _bcmwifi_channels_h_ */

@@ -1,7 +1,7 @@
 /*
  * Broadcom SiliconBackplane hardware register definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: sbconfig.h 800447 2019-01-22 02:47:42Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_SBCONFIG_H
@@ -31,7 +29,7 @@
 #define	_PADLINE(line)	pad ## line
 #define	_XSTR(line)	_PADLINE(line)
 #define	PAD		_XSTR(__LINE__)
-#endif // endif
+#endif
 
 /* enumeration in SB is based on the premise that cores are contiguous in the
  * enumeration space.

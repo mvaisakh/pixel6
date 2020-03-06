@@ -2,7 +2,7 @@
  * IE/TLV fragmentation/defragmentation support for
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -17,9 +17,9 @@
  * the license of that module.  An independent module is a module which is not
  * derived from this software.  The special exception does not apply to any
  * modifications of the software.
- * $Id$
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ *
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <bcmutils.h>

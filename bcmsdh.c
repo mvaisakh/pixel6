@@ -2,7 +2,7 @@
  *  BCMSDH interface glue
  *  implement bcmsdh API for SDIOH driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -36,9 +36,6 @@
 #include <bcmutils.h>
 #include <hndsoc.h>
 #include <siutils.h>
-#if !defined(BCMDONGLEHOST)
-#include <bcmsrom.h>
-#endif /* !defined(BCMDONGLEHOST) */
 #include <osl.h>
 
 #include <bcmsdh.h>	/* BRCM API for SDIO clients (such as wl, dhd) */
@@ -63,10 +60,6 @@ static dhd_hang_notification process_dhd_hang_notification = NULL;
 static dhd_hang_state_t g_dhd_hang_state = NO_HANG_STATE;
 #endif /* defined (BT_OVER_SDIO) */
 
-#if defined(NDIS) && (NDISVER < 0x0630)
-extern SDIOH_API_RC sdioh_detach(osl_t *osh, sdioh_info_t *sd);
-#endif // endif
-
 #if defined(OOB_INTR_ONLY) && defined(HW_OOB)
 extern int
 sdioh_enable_hw_oob_intr(void *sdioh, bool enable);
@@ -76,7 +69,7 @@ bcmsdh_enable_hw_oob_intr(bcmsdh_info_t *sdh, bool enable)
 {
 	sdioh_enable_hw_oob_intr(sdh->sdioh, enable);
 }
-#endif // endif
+#endif
 
 #if defined(BT_OVER_SDIO)
 void bcmsdh_btsdio_process_hang_state(dhd_hang_state_t new_state)
@@ -195,10 +188,6 @@ bcmsdh_detach(osl_t *osh, void *sdh)
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 
 	if (bcmsdh != NULL) {
-#if defined(NDIS) && (NDISVER < 0x0630)
-		if (bcmsdh->sdioh)
-			sdioh_detach(osh, bcmsdh->sdioh);
-#endif // endif
 		MFREE(osh, bcmsdh, sizeof(bcmsdh_info_t));
 	}
 
@@ -235,13 +224,17 @@ bcmsdh_intr_enable(void *sdh)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 	SDIOH_API_RC status;
+#ifdef BCMSPI_ANDROID
 	uint32 data;
+#endif /* BCMSPI_ANDROID */
 	ASSERT(bcmsdh);
 
 	status = sdioh_interrupt_set(bcmsdh->sdioh, TRUE);
+#ifdef BCMSPI_ANDROID
 	data = bcmsdh_cfg_read_word(sdh, 0, 4, NULL);
 	data |= 0xE0E70000;
 	bcmsdh_cfg_write_word(sdh, 0, 4, data, NULL);
+#endif /* BCMSPI_ANDROID */
 	return (SDIOH_API_SUCCESS(status) ? 0 : BCME_ERROR);
 }
 
@@ -250,13 +243,17 @@ bcmsdh_intr_disable(void *sdh)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 	SDIOH_API_RC status;
+#ifdef BCMSPI_ANDROID
 	uint32 data;
+#endif /* BCMSPI_ANDROID */
 	ASSERT(bcmsdh);
 
 	status = sdioh_interrupt_set(bcmsdh->sdioh, FALSE);
+#ifdef BCMSPI_ANDROID
 	data = bcmsdh_cfg_read_word(sdh, 0, 4, NULL);
 	data &= ~0xE0E70000;
 	bcmsdh_cfg_write_word(sdh, 0, 4, data, NULL);
+#endif /* BCMSPI_ANDROID */
 	return (SDIOH_API_SUCCESS(status) ? 0 : BCME_ERROR);
 }
 
@@ -290,7 +287,7 @@ bcmsdh_intr_dereg(void *sdh)
 	return (SDIOH_API_SUCCESS(status) ? 0 : BCME_ERROR);
 }
 
-#if defined(DHD_DEBUG) || defined(BCMDBG)
+#if defined(DHD_DEBUG)
 bool
 bcmsdh_intr_pending(void *sdh)
 {
@@ -299,7 +296,7 @@ bcmsdh_intr_pending(void *sdh)
 	ASSERT(sdh);
 	return sdioh_interrupt_pending(bcmsdh->sdioh);
 }
-#endif // endif
+#endif
 
 int
 bcmsdh_devremove_reg(void *sdh, bcmsdh_cb_fn_t fn, void *argh)
@@ -325,7 +322,7 @@ bcmsdh_cfg_read(void *sdh, uint fnc_num, uint32 addr, int *err)
 	SDIOH_API_RC status;
 #ifdef SDIOH_API_ACCESS_RETRY_LIMIT
 	int32 retry = 0;
-#endif // endif
+#endif
 	uint8 data = 0;
 
 	if (!bcmsdh)
@@ -337,11 +334,11 @@ bcmsdh_cfg_read(void *sdh, uint fnc_num, uint32 addr, int *err)
 	do {
 		if (retry)	/* wait for 1 ms till bus get settled down */
 			OSL_DELAY(1000);
-#endif // endif
+#endif
 	status = sdioh_cfg_read(bcmsdh->sdioh, fnc_num, addr, (uint8 *)&data);
 #ifdef SDIOH_API_ACCESS_RETRY_LIMIT
 	} while (!SDIOH_API_SUCCESS(status) && (retry++ < SDIOH_API_ACCESS_RETRY_LIMIT));
-#endif // endif
+#endif
 	if (err)
 		*err = (SDIOH_API_SUCCESS(status) ? 0 : BCME_SDIO_ERROR);
 
@@ -358,7 +355,7 @@ bcmsdh_cfg_write(void *sdh, uint fnc_num, uint32 addr, uint8 data, int *err)
 	SDIOH_API_RC status;
 #ifdef SDIOH_API_ACCESS_RETRY_LIMIT
 	int32 retry = 0;
-#endif // endif
+#endif
 
 	if (!bcmsdh)
 		bcmsdh = l_bcmsdh;
@@ -369,11 +366,11 @@ bcmsdh_cfg_write(void *sdh, uint fnc_num, uint32 addr, uint8 data, int *err)
 	do {
 		if (retry)	/* wait for 1 ms till bus get settled down */
 			OSL_DELAY(1000);
-#endif // endif
+#endif
 	status = sdioh_cfg_write(bcmsdh->sdioh, fnc_num, addr, (uint8 *)&data);
 #ifdef SDIOH_API_ACCESS_RETRY_LIMIT
 	} while (!SDIOH_API_SUCCESS(status) && (retry++ < SDIOH_API_ACCESS_RETRY_LIMIT));
-#endif // endif
+#endif
 	if (err)
 		*err = SDIOH_API_SUCCESS(status) ? 0 : BCME_SDIO_ERROR;
 
@@ -488,11 +485,6 @@ bcmsdhsdio_set_sbaddr_window(void *sdh, uint32 address, bool force_set)
 			/* invalidate cached window var */
 			bcmsdh->sbwad = 0;
 
-#ifdef BCMDBG
-		if (err)
-			BCMSDH_ERROR(("%s: error setting address window %08x\n",
-				__FUNCTION__, address));
-#endif /* BCMDBG */
 	}
 
 	return err;
@@ -528,6 +520,7 @@ bcmsdh_reg_read(void *sdh, uintptr addr, uint size)
 	BCMSDH_INFO(("uint32data = 0x%x\n", word));
 
 	/* if ok, return appropriately masked word */
+	/* XXX Masking was put in for NDIS port, remove if not needed */
 	if (SDIOH_API_SUCCESS(status)) {
 		switch (size) {
 			case sizeof(uint8):
@@ -710,57 +703,16 @@ bcmsdh_stop(void *sdh)
 int
 bcmsdh_waitlockfree(void *sdh)
 {
-#ifdef LINUX
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
 
 	return sdioh_waitlockfree(bcmsdh->sdioh);
-#else
-	return 0;
-#endif // endif
 }
 
 int
 bcmsdh_query_device(void *sdh)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
-#if defined(BCMDONGLEHOST)
 	bcmsdh->vendevid = (VENDOR_BROADCOM << 16) | 0;
-#else
-	uint8 *fn0cis[1];
-	int err;
-	char *vars;
-	uint varsz;
-	osl_t *osh = bcmsdh->osh;
-
-	bcmsdh->vendevid = ~(0);
-
-	if (!(fn0cis[0] = MALLOC(osh, SBSDIO_CIS_SIZE_LIMIT))) {
-		BCMSDH_ERROR(("%s: CIS malloc failed\n", __FUNCTION__));
-		return (bcmsdh->vendevid);
-	}
-
-	bzero(fn0cis[0], SBSDIO_CIS_SIZE_LIMIT);
-
-	if ((err = bcmsdh_cis_read(sdh, 0, fn0cis[0], SBSDIO_CIS_SIZE_LIMIT))) {
-		BCMSDH_ERROR(("%s: CIS read err %d, report unknown BRCM device\n",
-		              __FUNCTION__, err));
-		bcmsdh->vendevid = (VENDOR_BROADCOM << 16) | 0;
-		MFREE(osh, fn0cis[0], SBSDIO_CIS_SIZE_LIMIT);
-		return (bcmsdh->vendevid);
-	}
-
-	if (!err) {
-		if ((err = srom_parsecis(NULL, osh, fn0cis, 1, &vars, &varsz))) {
-			BCMSDH_ERROR(("%s: Error parsing CIS = %d\n", __FUNCTION__, err));
-		} else {
-			bcmsdh->vendevid = (getintvar(vars, "vendid") << 16) |
-			                    getintvar(vars, "devid");
-			MFREE(osh, vars, varsz);
-		}
-	}
-
-	MFREE(osh, fn0cis[0], SBSDIO_CIS_SIZE_LIMIT);
-#endif /* BCMDONGLEHOST */
 	return (bcmsdh->vendevid);
 }
 
@@ -783,6 +735,7 @@ bcmsdh_reset(bcmsdh_info_t *sdh)
 	return sdioh_sdio_reset(bcmsdh->sdioh);
 }
 
+/* XXX For use by NDIS port, remove if not needed. */
 void *bcmsdh_get_sdioh(bcmsdh_info_t *sdh)
 {
 	ASSERT(sdh);
@@ -858,7 +811,7 @@ bcmsdh_sleep(void *sdh, bool enab)
 	return sdioh_sleep(sd, enab);
 #else
 	return BCME_UNSUPPORTED;
-#endif // endif
+#endif
 }
 
 int

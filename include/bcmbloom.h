@@ -1,7 +1,7 @@
 /*
  * Bloom filter support
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmbloom.h 800379 2019-01-21 21:10:41Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _bcmbloom_h_
@@ -31,7 +29,7 @@
 #include <osl.h>
 #else
 #include <stddef.h>  /* For size_t */
-#endif // endif
+#endif
 
 struct bcm_bloom_filter;
 typedef struct bcm_bloom_filter bcm_bloom_filter_t;

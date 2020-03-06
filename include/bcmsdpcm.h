@@ -2,7 +2,7 @@
  * Broadcom SDIO/PCMCIA
  * Software-specific definitions shared between device and host side
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,9 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmsdpcm.h 700076 2017-05-17 14:42:22Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmsdpcm_h_
@@ -104,6 +102,7 @@
 /*
  * Software-defined protocol header
  */
+/* Replace all this with packed struct */
 
 /* Current protocol version */
 #define SDPCM_PROT_VERSION	4
@@ -155,7 +154,7 @@
 
 #define SDPCM_FLAG_RESVD0	0x01
 #define SDPCM_FLAG_RESVD1	0x02
-#define SDPCM_FLAG_GSPI_TXENAB	0x04
+#define SDPCM_FLAG_GSPI_TXENAB	0x04	/* GSPI Tx enable (PR55150 only) */
 #define SDPCM_FLAG_GLOMDESC	0x08	/* Superframe descriptor mask */
 
 /* For GLOM_CHANNEL frames, use a flag to indicate descriptor frame */

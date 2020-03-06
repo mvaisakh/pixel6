@@ -1,7 +1,7 @@
 /*
  * pcicfg.h: PCI configuration constants and structures.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: pcicfg.h 800447 2019-01-22 02:47:42Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_h_pcicfg_
@@ -29,20 +27,20 @@
 /* The following inside ifndef's so we don't collide with NTDDK.H */
 #ifndef PCI_MAX_BUS
 #define PCI_MAX_BUS		0x100
-#endif // endif
+#endif
 #ifndef PCI_MAX_DEVICES
 #define PCI_MAX_DEVICES		0x20
-#endif // endif
+#endif
 #ifndef PCI_MAX_FUNCTION
 #define PCI_MAX_FUNCTION	0x8
-#endif // endif
+#endif
 
 #ifndef PCI_INVALID_VENDORID
 #define PCI_INVALID_VENDORID	0xffff
-#endif // endif
+#endif
 #ifndef PCI_INVALID_DEVICEID
 #define PCI_INVALID_DEVICEID	0xffff
-#endif // endif
+#endif
 
 /* Convert between bus-slot-function-register and config addresses */
 
@@ -176,14 +174,6 @@ typedef struct _pci_config_regs {
 #define PCI_CFG_ERRATTN_STATUS_FN1	0x8ac
 #define PCI_CFG_ERRATTN_MASK_CMN	0x8b0
 #define PCI_CFG_ERRATTN_STATUS_CMN	0x8b4
-
-#ifdef EFI
-#undef PCI_CLASS_BRIDGE
-#undef PCI_CLASS_OLD
-#undef PCI_CLASS_DISPLAY
-#undef PCI_CLASS_SERIAL
-#undef PCI_CLASS_SATELLITE
-#endif /* EFI */
 
 /* Classes and subclasses */
 
@@ -558,6 +548,7 @@ typedef struct _pcie_enhanced_caphdr {
 
 #define	PCI_PHY_CTL_0			0x1800
 #define	PCI_SLOW_PMCLK_EXT_RLOCK	(1 << 7)
+#define PCI_REG_TX_DEEMPH_3_5_DB	(1 << 21)
 
 #define	PCI_LINK_STATE_DEBUG	0x1c24
 #define PCI_RECOVERY_HIST		0x1ce4

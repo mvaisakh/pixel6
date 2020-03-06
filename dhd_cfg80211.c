@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -34,24 +34,23 @@
 #ifdef PKT_FILTER_SUPPORT
 #include <dngl_stats.h>
 #include <dhd.h>
-#endif // endif
+#endif
 
 #ifdef PKT_FILTER_SUPPORT
 extern uint dhd_pkt_filter_enable;
 extern uint dhd_master_mode;
 extern void dhd_pktfilter_offload_enable(dhd_pub_t * dhd, char *arg, int enable, int master_mode);
-#endif // endif
+#endif
 
 static int dhd_dongle_up = FALSE;
+#define PKT_FILTER_BUF_SIZE 64
 
-#if defined(BCMDONGLEHOST)
 #include <dngl_stats.h>
 #include <dhd.h>
 #include <dhdioctl.h>
 #include <wlioctl.h>
 #include <brcm_nl80211.h>
 #include <dhd_cfg80211.h>
-#endif /* defined(BCMDONGLEHOST) */
 
 static s32 wl_dongle_up(struct net_device *ndev);
 static s32 wl_dongle_down(struct net_device *ndev);
@@ -76,10 +75,9 @@ s32 dhd_cfg80211_down(struct bcm_cfg80211 *cfg)
 {
 	struct net_device *ndev;
 	s32 err = 0;
-	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
 
 	WL_TRACE(("In\n"));
-	if ((!dhd_dongle_up) || (!dhd->up)) {
+	if (!dhd_dongle_up) {
 		WL_INFORM_MEM(("Dongle is already down\n"));
 		err = 0;
 		goto done;
@@ -87,7 +85,6 @@ s32 dhd_cfg80211_down(struct bcm_cfg80211 *cfg)
 	ndev = bcmcfg_to_prmry_ndev(cfg);
 	wl_dongle_down(ndev);
 done:
-	dhd_dongle_up = FALSE;
 	return err;
 }
 
@@ -96,13 +93,6 @@ s32 dhd_cfg80211_set_p2p_info(struct bcm_cfg80211 *cfg, int val)
 	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
 	dhd->op_mode |= val;
 	WL_ERR(("Set : op_mode=0x%04x\n", dhd->op_mode));
-#ifdef ARP_OFFLOAD_SUPPORT
-	if (dhd->arp_version == 1) {
-		/* IF P2P is enabled, disable arpoe */
-		dhd_arp_offload_set(dhd, 0);
-		dhd_arp_offload_enable(dhd, false);
-	}
-#endif /* ARP_OFFLOAD_SUPPORT */
 
 	return 0;
 }
@@ -112,14 +102,6 @@ s32 dhd_cfg80211_clean_p2p_info(struct bcm_cfg80211 *cfg)
 	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
 	dhd->op_mode &= ~(DHD_FLAG_P2P_GC_MODE | DHD_FLAG_P2P_GO_MODE);
 	WL_ERR(("Clean : op_mode=0x%04x\n", dhd->op_mode));
-
-#ifdef ARP_OFFLOAD_SUPPORT
-	if (dhd->arp_version == 1) {
-		/* IF P2P is disabled, enable arpoe back for STA mode. */
-		dhd_arp_offload_set(dhd, dhd_arp_mode);
-		dhd_arp_offload_enable(dhd, true);
-	}
-#endif /* ARP_OFFLOAD_SUPPORT */
 
 	return 0;
 }
@@ -146,11 +128,20 @@ int wl_cfg80211_register_if(struct bcm_cfg80211 *cfg,
 int wl_cfg80211_remove_if(struct bcm_cfg80211 *cfg,
 	int ifidx, struct net_device* ndev, bool rtnl_lock_reqd)
 {
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(cfg->pub, CAN_SLEEP(), __builtin_return_address(0));
+#endif /* DHD_PCIE_RUNTIMEPM */
 	return dhd_remove_if(cfg->pub, ifidx, rtnl_lock_reqd);
 }
 
 void wl_cfg80211_cleanup_if(struct net_device *net)
 {
+	struct bcm_cfg80211 *cfg = wl_get_cfg(net);
+#ifdef DHD_PCIE_RUNTIMEPM
+	dhdpcie_runtime_bus_wake(cfg->pub, CAN_SLEEP(), __builtin_return_address(0));
+#else
+	BCM_REFERENCE(cfg);
+#endif /* DHD_PCIE_RUNTIMEPM */
 	dhd_cleanup_if(net);
 }
 
@@ -175,7 +166,7 @@ void dhd_netdev_free(struct net_device *ndev)
 {
 #ifdef WL_CFG80211
 	ndev = dhd_cfg80211_netdev_free(ndev);
-#endif // endif
+#endif
 	if (ndev)
 		free_netdev(ndev);
 }
@@ -189,6 +180,9 @@ wl_dongle_up(struct net_device *ndev)
 	err = wldev_ioctl_set(ndev, WLC_UP, &local_up, sizeof(local_up));
 	if (unlikely(err)) {
 		WL_ERR(("WLC_UP error (%d)\n", err));
+	} else {
+		WL_INFORM_MEM(("wl up\n"));
+		dhd_dongle_up = TRUE;
 	}
 	return err;
 }
@@ -203,6 +197,9 @@ wl_dongle_down(struct net_device *ndev)
 	if (unlikely(err)) {
 		WL_ERR(("WLC_DOWN error (%d)\n", err));
 	}
+	WL_INFORM_MEM(("wl down\n"));
+	dhd_dongle_up = FALSE;
+
 	return err;
 }
 
@@ -233,24 +230,26 @@ s32 dhd_config_dongle(struct bcm_cfg80211 *cfg)
 {
 #ifndef DHD_SDALIGN
 #define DHD_SDALIGN	32
-#endif // endif
+#endif
 	struct net_device *ndev;
 	s32 err = 0;
+	dhd_pub_t *dhd = NULL;
 
 	WL_TRACE(("In\n"));
-	if (dhd_dongle_up) {
-		WL_ERR(("Dongle is already up\n"));
-		return err;
-	}
 
 	ndev = bcmcfg_to_prmry_ndev(cfg);
+	dhd = (dhd_pub_t *)(cfg->pub);
 
 	err = wl_dongle_up(ndev);
 	if (unlikely(err)) {
 		WL_ERR(("wl_dongle_up failed\n"));
 		goto default_conf_out;
 	}
-	dhd_dongle_up = true;
+
+	if (dhd && dhd->fw_preinit) {
+		/* Init config will be done by fw preinit context */
+		return BCME_OK;
+	}
 
 default_conf_out:
 

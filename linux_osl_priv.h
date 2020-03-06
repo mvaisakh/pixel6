@@ -1,7 +1,7 @@
 /*
  * Private header file for Linux OS Independent Layer
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: linux_osl_priv.h 800390 2019-01-21 21:49:55Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _LINUX_OSL_PRIV_H_
@@ -127,7 +125,7 @@ typedef struct bcm_mem_link {
 	struct bcm_mem_link *next;
 	uint	size;
 	int	line;
-	void 	*osh;
+	void	*osh;
 	char	file[BCM_MEM_FILENAME_LEN];
 } bcm_mem_link_t;
 
@@ -137,18 +135,14 @@ struct osl_cmn_info {
 	spinlock_t dbgmem_lock;
 	bcm_mem_link_t *dbgmem_list;
 	bcm_mem_link_t *dbgvmem_list;
-#ifdef BCMDBG_PKT    /* pkt logging for debugging */
-	spinlock_t pktlist_lock;
-	pktlist_info_t pktlist;
-#endif  /* BCMDBG_PKT */
 	spinlock_t pktalloc_lock;
 	atomic_t refcount; /* Number of references to this shared structure. */
 };
 typedef struct osl_cmn_info osl_cmn_t;
 
-#if defined(BCM_BACKPLANE_TIMEOUT)
+#if defined(AXI_TIMEOUTS_NIC)
 typedef uint32 (*bpt_cb_fn)(void *ctx, void *addr);
-#endif	/* BCM_BACKPLANE_TIMEOUT */
+#endif	/* AXI_TIMEOUTS_NIC */
 
 struct osl_info {
 	osl_pubinfo_t pub;
@@ -159,16 +153,15 @@ struct osl_info {
 	uint bustype;
 	osl_cmn_t *cmn; /* Common OSL related data shred between two OSH's */
 
+	/* for host drivers, a bus handle is needed when reading from and/or writing to dongle
+	 * registeres, however ai/si utilities only passes osh handle to R_REG and W_REG. as
+	 * a work around, save the bus handle here
+	 */
 	void *bus_handle;
-#ifdef BCMDBG_CTRACE
-	spinlock_t ctrace_lock;
-	struct list_head ctrace_list;
-	int ctrace_num;
-#endif /* BCMDBG_CTRACE */
-#if defined(BCM_BACKPLANE_TIMEOUT)
+#if defined(AXI_TIMEOUTS_NIC)
 	bpt_cb_fn bpt_cb;
 	void *sih;
-#endif	/* BCM_BACKPLANE_TIMEOUT */
+#endif	/* AXI_TIMEOUTS_NIC */
 #ifdef USE_DMA_LOCK
 	spinlock_t dma_lock;
 	bool dma_lock_bh;

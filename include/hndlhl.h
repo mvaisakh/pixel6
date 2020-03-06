@@ -1,7 +1,7 @@
 /*
  * HND SiliconBackplane PMU support.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: hndpmu.h 546588 2015-04-13 09:24:52Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hndlhl_h_
@@ -41,6 +39,7 @@ typedef struct {
 
 extern void si_lhl_timer_config(si_t *sih, osl_t *osh, int timer_type);
 extern void si_lhl_timer_enable(si_t *sih);
+extern void si_lhl_timer_reset(si_t *sih, uint coreunit);
 
 extern void si_lhl_setup(si_t *sih, osl_t *osh);
 extern void si_lhl_enable(si_t *sih, osl_t *osh, bool enable);
@@ -52,6 +51,7 @@ extern void si_set_lv_sleep_mode_lhl_config_4369(si_t *sih);
 extern void si_set_lv_sleep_mode_lhl_config_4362(si_t *sih);
 extern void si_set_lv_sleep_mode_lhl_config_4378(si_t *sih);
 extern void si_set_lv_sleep_mode_lhl_config_4387(si_t *sih);
+extern void si_set_lv_sleep_mode_lhl_config_4389(si_t *sih);
 
 #define HIB_EXT_WAKEUP_CAP(sih)  (PMUREV(sih->pmurev) >= 33)
 
@@ -69,4 +69,11 @@ extern void si_set_lv_sleep_mode_lhl_config_4387(si_t *sih);
 /* LHL rev 6 requires this bit to be set first */
 #define LHL_PWRSEQCTL_WL_FLLPU_EN	(1 << 7)
 
+#define LHL_CBUCK_VOLT_SLEEP_SHIFT	12u
+#define LHL_CBUCK_VOLT_SLEEP_MASK	0x0000F000
+
+#define LHL_ABUCK_VOLT_SLEEP_SHIFT	0u
+#define LHL_ABUCK_VOLT_SLEEP_MASK	0x0000000F
+
+extern void si_lhl_mactim0_set(si_t *sih, uint32 val);
 #endif /* _hndlhl_h_ */

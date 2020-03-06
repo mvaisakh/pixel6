@@ -1,7 +1,7 @@
 /*
  * DHD debugability support
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -47,17 +47,7 @@ static const char *head_log = "";
 		} \
 	} while (0)
 
-#ifdef DHD_EFI
-#define MSCH_EVENT(args) \
-do {	\
-	if (dhd_msg_level & DHD_EVENT_VAL) {	\
-		DHD_LOG_DUMP_WRITE_FW("[%s]: ", dhd_log_dump_get_timestamp()); \
-		DHD_LOG_DUMP_WRITE_FW args; \
-	}	\
-} while (0)
-#else
 #define MSCH_EVENT(args) do {if (dhd_msg_level & DHD_EVENT_VAL) printf args;} while (0)
-#endif /* DHD_EFI */
 
 static uint64 solt_start_time[4], req_start_time[4], profiler_start_time[4];
 static uint32 solt_chanspec[4] = {0, }, req_start[4] = {0, };

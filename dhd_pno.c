@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD)
  * Prefered Network Offload and Wi-Fi Location Service(WLS) code.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,14 +19,12 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: dhd_pno.c 812762 2019-04-02 09:36:26Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #if defined(GSCAN_SUPPORT) && !defined(PNO_SUPPORT)
 #error "GSCAN needs PNO to be enabled!"
-#endif // endif
+#endif
 
 #ifdef PNO_SUPPORT
 #include <typedefs.h>
@@ -36,11 +34,13 @@
 #include <bcmutils.h>
 
 #include <bcmendian.h>
+
 #include <linuxver.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/sort.h>
+
 #include <dngl_stats.h>
 #include <wlioctl.h>
 
@@ -584,14 +584,14 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 			goto exit;
 		}
 	}
-
+#if !defined(WL_USE_RANDOMIZED_SCAN)
 	err = dhd_set_rand_mac_oui(dhd);
 	/* Ignore if chip doesnt support the feature */
 	if (err < 0 && err != BCME_UNSUPPORTED) {
 		DHD_ERROR(("%s : failed to set random mac for PNO scan, %d\n", __FUNCTION__, err));
 		goto exit;
 	}
-
+#endif /* !defined(WL_USE_RANDOMIZED_SCAN */
 #ifdef GSCAN_SUPPORT
 	if (mode == DHD_PNO_BATCH_MODE ||
 	((mode & DHD_PNO_GSCAN_MODE) && pno_params->params_gscan.mscan)) {
@@ -785,7 +785,7 @@ _dhd_pno_convert_format(dhd_pub_t *dhd, struct dhd_pno_batch_params *params_batc
 #ifdef PNO_DEBUG
 	char *_base_bp;
 	char msg[150];
-#endif // endif
+#endif
 	dhd_pno_bestnet_entry_t *iter, *next;
 	dhd_pno_scan_results_t *siter, *snext;
 	dhd_pno_best_header_t *phead, *pprev;
@@ -831,7 +831,7 @@ _dhd_pno_convert_format(dhd_pub_t *dhd, struct dhd_pno_batch_params *params_batc
 #ifdef PNO_DEBUG
 				_base_bp = bp;
 				memset(msg, 0, sizeof(msg));
-#endif // endif
+#endif
 				/* BSSID info */
 				bp += nreadsize = snprintf(bp, nleftsize, "bssid=%s\n",
 				bcm_ether_ntoa((const struct ether_addr *)&iter->BSSID, eabuf));
@@ -868,7 +868,7 @@ _dhd_pno_convert_format(dhd_pub_t *dhd, struct dhd_pno_batch_params *params_batc
 #ifdef PNO_DEBUG
 				memcpy(msg, _base_bp, bp - _base_bp);
 				DHD_PNO(("Entry : \n%s", msg));
-#endif // endif
+#endif
 			}
 			bp += nreadsize = snprintf(bp, nleftsize, "%s", SCAN_END_MARKER);
 			DHD_PNO(("%s", SCAN_END_MARKER));
@@ -1552,7 +1552,7 @@ dhd_pno_set_for_batch(dhd_pub_t *dhd, struct dhd_pno_batch_params *batch_params)
 		}
 		DHD_PNO(("\n"));
 }
-#endif // endif
+#endif
 	if (_params->params_batch.nchan) {
 		/* copy the channel list into local array */
 		memcpy(_chan_list, _params->params_batch.chan_list, sizeof(_chan_list));
@@ -3504,7 +3504,7 @@ dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 			     msecs_to_jiffies(GSCAN_BATCH_GET_MAX_WAIT));
 		}
 	} else
-#endif // endif
+#endif
 	{
 		if (!(_pno_state->pno_mode & DHD_PNO_BATCH_MODE)) {
 			DHD_ERROR(("%s: Batching SCAN mode is not enabled\n", __FUNCTION__));
@@ -3524,7 +3524,7 @@ dhd_pno_get_for_batch(dhd_pub_t *dhd, char *buf, int bufsize, int reason)
 
 #ifdef GSCAN_SUPPORT
 	if (!(_pno_state->pno_mode & DHD_PNO_GSCAN_MODE))
-#endif // endif
+#endif
 	err = params_batch->get_batch.bytes_written;
 exit:
 	return err;
@@ -3559,7 +3559,7 @@ dhd_pno_stop_for_batch(dhd_pub_t *dhd)
 		DHD_PNO(("Gscan is ongoing, nothing to stop here\n"));
 		return err;
 	}
-#endif // endif
+#endif
 
 	if (!(_pno_state->pno_mode & DHD_PNO_BATCH_MODE)) {
 		DHD_ERROR(("%s : PNO BATCH MODE is not enabled\n", __FUNCTION__));
@@ -3710,7 +3710,7 @@ dhd_pno_set_for_hotlist(dhd_pub_t *dhd, wl_pfn_bssid_t *p_pfn_bssid,
 		}
 		DHD_PNO(("\n"));
 }
-#endif // endif
+#endif
 	if (_params->params_hotlist.nchan) {
 		/* copy the channel list into local array */
 		memcpy(_chan_list, _params->params_hotlist.chan_list,
@@ -4309,6 +4309,7 @@ dhd_pno_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 	switch (event_type) {
 	case WLC_E_PFN_BSSID_NET_FOUND:
 	case WLC_E_PFN_BSSID_NET_LOST:
+		/* how can we inform this to framework ? */
 		/* TODO : need to implement event logic using generic netlink */
 		break;
 	case WLC_E_PFN_BEST_BATCHING:
@@ -4369,6 +4370,7 @@ int dhd_pno_init(dhd_pub_t *dhd)
 			FALSE);
 	if (err == BCME_UNSUPPORTED) {
 		_pno_state->wls_supported = FALSE;
+		DHD_ERROR(("Android Location Service, UNSUPPORTED\n"));
 		DHD_INFO(("Current firmware doesn't support"
 			" Android Location Service\n"));
 	} else {
@@ -4414,4 +4416,5 @@ int dhd_pno_deinit(dhd_pub_t *dhd)
 	dhd->pno_state = NULL;
 	return err;
 }
+
 #endif /* PNO_SUPPORT */

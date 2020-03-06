@@ -38,9 +38,6 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
-#ifdef CONFIG_ARCH_MSM
-#include <linux/msm_pcie.h>
-#endif /* CONFIG_ARCH_MSM */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
@@ -61,9 +58,13 @@ static int wlan_host_wake_irq = 0;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 #define WIFI_WLAN_HOST_WAKE_PROPNAME    "wl_host_wake"
 
-#ifdef CONFIG_ARCH_MSM
-#define MSM_PCIE_CH_NUM 0
-#endif /* CONFIG_ARCH_MSM */
+#if defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
+	defined(CONFIG_SOC_GS101)
+#define EXYNOS_PCIE_RC_ONOFF
+int pcie_ch_num = -1;
+extern void exynos_pcie_pm_resume(int);
+extern void exynos_pcie_pm_suspend(int);
+#endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_GS101 */
 
 int
 dhd_wifi_init_gpio(void)
@@ -87,6 +88,15 @@ dhd_wifi_init_gpio(void)
 
 	/* ========== WLAN_PWR_EN ============ */
 	printk(KERN_INFO "%s: gpio_wlan_power : %d\n", __FUNCTION__, wlan_reg_on);
+
+#ifdef EXYNOS_PCIE_RC_ONOFF
+	if (of_property_read_u32(root_node, "ch-num", &pcie_ch_num)) {
+		printk(KERN_INFO "%s: Failed to parse the channel number\n", __FUNCTION__);
+		return -EINVAL;
+	}
+	/* ========== WLAN_PCIE_NUM ============ */
+	printk(KERN_INFO "%s: pcie_ch_num : %d\n", __FUNCTION__, pcie_ch_num);
+#endif /* EXYNOS_PCIE_RC_ONOFF */
 
 	/*
 	 * For reg_on, gpio_request will fail if the gpio is configured to output-high
@@ -117,9 +127,13 @@ dhd_wifi_init_gpio(void)
 
 	/* Wait for WIFI_TURNON_DELAY due to power stability */
 	msleep(WIFI_TURNON_DELAY);
+#ifdef EXYNOS_PCIE_RC_ONOFF
+        exynos_pcie_pm_resume(pcie_ch_num);
+#endif /* EXYNOS_PCIE_RC_ONOFF */
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE
 	/* ========== WLAN_HOST_WAKE ============ */
-	wlan_host_wake_up = of_get_named_gpio(root_node, WIFI_WLAN_HOST_WAKE_PROPNAME, 0);
+	wlan_host_wake_up = of_get_named_gpio(root_node,
+					      WIFI_WLAN_HOST_WAKE_PROPNAME, 0);
 	printk(KERN_INFO "%s: gpio_wlan_host_wake : %d\n", __FUNCTION__, wlan_host_wake_up);
 
 	if (gpio_request_one(wlan_host_wake_up, GPIOF_IN, "WLAN_HOST_WAKE")) {
@@ -138,12 +152,6 @@ dhd_wifi_init_gpio(void)
 
 	wlan_host_wake_irq = gpio_to_irq(wlan_host_wake_up);
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
-
-#ifdef CONFIG_ARCH_MSM
-	printk(KERN_INFO "%s: Call msm_pcie_enumerate\n", __FUNCTION__);
-	msm_pcie_enumerate(MSM_PCIE_CH_NUM);
-#endif /* CONFIG_ARCH_MSM */
-
 	return 0;
 }
 
@@ -169,7 +177,13 @@ dhd_wlan_power(int onoff)
 					"failed to pull up\n", __func__);
 			}
 		}
+#ifdef EXYNOS_PCIE_RC_ONOFF
+		exynos_pcie_pm_resume(pcie_ch_num);
+#endif /* EXYNOS_PCIE_RC_ONOFF */
 	} else {
+#ifdef EXYNOS_PCIE_RC_ONOFF
+		exynos_pcie_pm_suspend(pcie_ch_num);
+#endif /* EXYNOS_PCIE_RC_ONOFF */
 		if (gpio_direction_output(wlan_reg_on, 0)) {
 			printk(KERN_ERR "%s: WL_REG_ON is failed to pull up\n", __FUNCTION__);
 			return -EIO;

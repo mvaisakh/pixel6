@@ -3,7 +3,7 @@
  *
  * Dependencies: bcmeth.h
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,9 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: dnglevent.h $
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  * -----------------------------------------------------------------------------
  *
@@ -38,12 +36,9 @@
 
 #ifndef _TYPEDEFS_H_
 #include <typedefs.h>
-#endif // endif
+#endif
 #include <bcmeth.h>
 #include <ethernet.h>
-#ifdef HEALTH_CHECK
-#include <dngl_defs.h>
-#endif /* HEALTH_CHECK */
 
 /* This marks the start of a packed structure section. */
 #include <packed_section_start.h>
@@ -109,6 +104,7 @@ typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_healthcheck {
 #define HEALTH_CHECK_PCIEDEV_NODS_IND	0x6
 #define HEALTH_CHECK_PCIEDEV_LINKSPEED_FALLBACK_IND	0x7
 #define HEALTH_CHECK_PCIEDEV_DSACK_STALL_IND	0x8
+#define HEALTH_CHECK_PCIEDEV_FLOWRING_IND	0x9
 
 #define HC_PCIEDEV_CONFIG_REGLIST_MAX	25
 typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_pcie_hc {
@@ -120,6 +116,7 @@ typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_pcie_hc {
 	uint32			pcie_config_regs[HC_PCIEDEV_CONFIG_REGLIST_MAX];
 } BWL_POST_PACKED_STRUCT bcm_dngl_pcie_hc_t;
 
+/* define to avoid compile issues in older branches which define hchk_sw_entity_t */
 #ifdef HCHK_COMMON_SW_EVENT
 /* Enumerating top level SW entities for use by health check */
 typedef enum {

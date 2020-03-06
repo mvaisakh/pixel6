@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -16,9 +16,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: wlfc_proto.h 806860 2019-02-26 02:14:43Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  */
 
@@ -77,48 +75,50 @@
 	*/
 
 typedef enum {
-	WLFC_CTL_TYPE_MAC_OPEN = 1,
-	WLFC_CTL_TYPE_MAC_CLOSE	= 2,
-	WLFC_CTL_TYPE_MAC_REQUEST_CREDIT = 3,
-	WLFC_CTL_TYPE_TXSTATUS = 4,
-	WLFC_CTL_TYPE_PKTTAG = 5,	/** host<->dongle */
+	WLFC_CTL_TYPE_MAC_OPEN              = 1,
+	WLFC_CTL_TYPE_MAC_CLOSE             = 2,
+	WLFC_CTL_TYPE_MAC_REQUEST_CREDIT    = 3,
+	WLFC_CTL_TYPE_TXSTATUS              = 4,
+	WLFC_CTL_TYPE_PKTTAG                = 5, /** host<->dongle */
 
-	WLFC_CTL_TYPE_MACDESC_ADD = 6,
-	WLFC_CTL_TYPE_MACDESC_DEL = 7,
-	WLFC_CTL_TYPE_RSSI = 8,
+	WLFC_CTL_TYPE_MACDESC_ADD           = 6,
+	WLFC_CTL_TYPE_MACDESC_DEL           = 7,
+	WLFC_CTL_TYPE_RSSI                  = 8,
 
-	WLFC_CTL_TYPE_INTERFACE_OPEN = 9,
-	WLFC_CTL_TYPE_INTERFACE_CLOSE = 10,
+	WLFC_CTL_TYPE_INTERFACE_OPEN        = 9,
+	WLFC_CTL_TYPE_INTERFACE_CLOSE       = 10,
 
-	WLFC_CTL_TYPE_FIFO_CREDITBACK = 11,
+	WLFC_CTL_TYPE_FIFO_CREDITBACK       = 11,
 
-	WLFC_CTL_TYPE_PENDING_TRAFFIC_BMP = 12,	/** host->dongle */
-	WLFC_CTL_TYPE_MAC_REQUEST_PACKET = 13,
-	WLFC_CTL_TYPE_HOST_REORDER_RXPKTS = 14,
+	WLFC_CTL_TYPE_PENDING_TRAFFIC_BMP   = 12, /** host->dongle */
+	WLFC_CTL_TYPE_MAC_REQUEST_PACKET    = 13,
+	WLFC_CTL_TYPE_HOST_REORDER_RXPKTS   = 14,
 
-	WLFC_CTL_TYPE_TX_ENTRY_STAMP = 15,
-	WLFC_CTL_TYPE_RX_STAMP = 16,
-	WLFC_CTL_TYPE_TX_STATUS_STAMP = 17,	/** obsolete */
+	WLFC_CTL_TYPE_TX_ENTRY_STAMP        = 15,
+	WLFC_CTL_TYPE_RX_STAMP              = 16,
 
-	WLFC_CTL_TYPE_TRANS_ID = 18,
-	WLFC_CTL_TYPE_COMP_TXSTATUS = 19,
+	WLFC_CTL_TYPE_UPD_FLR_FETCH         = 17, /* PCIE_FLOWCTL: Update Flowring Fetch */
 
-	WLFC_CTL_TYPE_TID_OPEN = 20,
-	WLFC_CTL_TYPE_TID_CLOSE = 21,
-	WLFC_CTL_TYPE_UPD_FLR_WEIGHT = 22,
-	WLFC_CTL_TYPE_ENAB_FFSCH = 23,
-	WLFC_CTL_TYPE_UPDATE_FLAGS = 24,	/* clear the flags set in flowring */
-	WLFC_CTL_TYPE_CLEAR_SUPPR = 25,		/* free the supression info in the flowring */
+	WLFC_CTL_TYPE_TRANS_ID              = 18,
+	WLFC_CTL_TYPE_COMP_TXSTATUS         = 19,
 
-	WLFC_CTL_TYPE_FLOWID_OPEN = 26,
-	WLFC_CTL_TYPE_FLOWID_CLOSE = 27,
+	WLFC_CTL_TYPE_TID_OPEN              = 20,
+	WLFC_CTL_TYPE_TID_CLOSE             = 21,
+	WLFC_CTL_TYPE_UPD_FLR_WEIGHT        = 22, /* WLATF_DONGLE */
+	WLFC_CTL_TYPE_ENAB_FFSCH            = 23, /* WLATF_DONGLE */
 
-	WLFC_CTL_TYPE_PENDING_TX_PKTS = 28,	/* Get the outstandinding packets in host flowring
-						 * for the given interface.
-						 */
-	WLFC_CTL_TYPE_UPD_SCB_RATESEL_CHANGE = 29, /* Update flow's max rate dynamically */
-	WLFC_CTL_TYPE_AMSDU_STATE = 30, /* Update flow's AMSDU state(Enabled or disabled) */
-	WLFC_CTL_TYPE_FILLER = 255
+	WLFC_CTL_TYPE_UPDATE_FLAGS          = 24, /* clear the flags set in flowring */
+	WLFC_CTL_TYPE_CLEAR_SUPPR           = 25, /* free the supression info in the flowring */
+
+	WLFC_CTL_TYPE_FLOWID_OPEN           = 26,
+	WLFC_CTL_TYPE_FLOWID_CLOSE          = 27,
+
+	WLFC_CTL_TYPE_PENDING_TX_PKTS       = 28, /* Get the outstandinding packets in host
+	                                           * flowring for the given interface.
+	                                           */
+	WLFC_CTL_TYPE_UPD_SCB_RATESEL_CHANGE= 29, /* Update flow's max rate dynamically */
+	WLFC_CTL_TYPE_AMSDU_STATE           = 30, /* Update flow's AMSDU state (Enabled/Disabled) */
+	WLFC_CTL_TYPE_FILLER                = 255
 } wlfc_ctl_type_t;
 
 #define WLFC_CTL_VALUE_LEN_FLOWID		2
@@ -146,16 +146,39 @@ typedef enum {
 /* free the data stored to be used for suppressed packets in future */
 #define WLFC_CTL_VALUE_LEN_SUPR			8	/** ifindex, tid, MAC */
 
+#define WLFC_CTL_VALUE_LEN_SCB_RATESEL_CHANGE		7	/* ifindex, MAC */
 /* enough space to host all 4 ACs, bc/mc and atim fifo credit */
 #define WLFC_CTL_VALUE_LEN_FIFO_CREDITBACK	6
 
 #define WLFC_CTL_VALUE_LEN_REQUEST_CREDIT	3	/* credit, MAC-handle, prec_bitmap */
 #define WLFC_CTL_VALUE_LEN_REQUEST_PACKET	3	/* credit, MAC-handle, prec_bitmap */
 
+/*
+	WLFC packet identifier: b[31:0] (WLFC_CTL_TYPE_PKTTAG)
+
+	Generation	: b[31]		=> generation number for this packet [host->fw]
+	                           OR, current generation number [fw->host]
+	Flags		: b[30:27]	=> command, status flags
+	FIFO-AC		: b[26:24]	=> AC-FIFO id
+
+	h-slot		: b[23:8]	=> hanger-slot
+	freerun		: b[7:0]	=> A free running counter?
+
+	As far as the firmware is concerned, host generated b[23:0] should be just
+	reflected back on txstatus.
+*/
+
+#ifndef WLFC_PKTFLAG_COMPAT
 #define WLFC_PKTFLAG_PKTFROMHOST	0x01
 #define WLFC_PKTFLAG_PKT_REQUESTED	0x02
 #define WLFC_PKTFLAG_PKT_SENDTOHOST	0x04
 #define WLFC_PKTFLAG_PKT_FLUSHED	0x08
+#else
+#define WLFC_PKTFLAG_PKTFROMHOST_MASK		0x01
+#define WLFC_PKTFLAG_PKT_REQUESTED_MASK		0x02
+#define WLFC_PKTFLAG_PKT_SENDTOHOST_MASK	0x04
+#define WLFC_PKTFLAG_PKT_FLUSHED_MASK		0x08
+#endif /* WLFC_PKTFLAG_COMPAT */
 
 #define WL_TXSTATUS_STATUS_MASK			0xff /* allow 8 bits */
 #define WL_TXSTATUS_STATUS_SHIFT		24
@@ -252,6 +275,18 @@ typedef enum {
 /** returns TRUE if packet has been assigned a d11 seq number by the WL firmware layer */
 #define GET_WL_HAS_ASSIGNED_SEQ(x)	(((x) >> WL_SEQ_FROMFW_SHIFT) & WL_SEQ_FROMFW_MASK)
 
+#ifdef WLFC_PKTFLAG_COMPAT
+/* Helper macros for WLFC pktflags */
+#define WLFC_PKTFLAG_PKTFROMHOST(p) \
+	(WL_TXSTATUS_GET_FLAGS(WLPKTTAG(p)->wl_hdr_information) & WLFC_PKTFLAG_PKTFROMHOST_MASK)
+#define WLFC_PKTFLAG_PKT_REQUESTED(p) \
+	(WL_TXSTATUS_GET_FLAGS(WLPKTTAG(p)->wl_hdr_information) & WLFC_PKTFLAG_PKT_REQUESTED_MASK)
+#define WLFC_PKTFLAG_PKT_SENDTOHOST(p) \
+	(WL_TXSTATUS_GET_FLAGS(WLPKTTAG(p)->wl_hdr_information) & WLFC_PKTFLAG_PKT_SENDTOHOST_MASK)
+#define WLFC_PKTFLAG_PKT_FLUSHED(p) \
+	(WL_TXSTATUS_GET_FLAGS(WLPKTTAG(p)->wl_hdr_information) & WLFC_PKTFLAG_PKT_FLUSHED_MASK)
+#endif /* WLFC_PKTFLAG_COMPAT */
+
 /**
  * Proptxstatus related.
  *
@@ -335,7 +370,7 @@ typedef enum {
 
 #define WLFC_CTL_PKTFLAG_MASK		(0x0f)	/* For 4-bit mask with one extra bit */
 
-#ifdef PROP_TXSTATUS_DEBUG
+#if defined(PROP_TXSTATUS_DEBUG) && !defined(BINCMP)
 #define WLFC_DBGMESG(x) printf x
 /* wlfc-breadcrumb */
 #define WLFC_BREADCRUMB(x) do {if ((x) == NULL) \
@@ -346,7 +381,7 @@ typedef enum {
 #define WLFC_DBGMESG(x)
 #define WLFC_BREADCRUMB(x)
 #define WLFC_WHEREIS(s)
-#endif /* PROP_TXSTATUS_DEBUG */
+#endif /* PROP_TXSTATUS_DEBUG && !BINCMP */
 
 /* AMPDU host reorder packet flags */
 #define WLHOST_REORDERDATA_MAXFLOWS		256
@@ -400,18 +435,23 @@ typedef enum {
 /** returns TRUE if 'reorder suppress' has been agreed upon between host and dongle */
 #define WLFC_GET_REORDERSUPP(x)	(((x) >> WLFC_MODE_REORDERSUPP_SHIFT) & 1)
 
-#define FLOW_RING_CREATE	1
-#define FLOW_RING_DELETE	2
-#define FLOW_RING_FLUSH		3
-#define FLOW_RING_OPEN		4
-#define FLOW_RING_CLOSED	5
-#define FLOW_RING_FLUSHED	6
-#define FLOW_RING_TIM_SET	7
-#define FLOW_RING_TIM_RESET	8
-#define FLOW_RING_FLUSH_TXFIFO	9
-#define FLOW_RING_GET_PKT_MAX	10
-#define FLOW_RING_RESET_WEIGHT	11
-#define FLOW_RING_UPD_PRIOMAP	12
+#define FLOW_RING_CREATE             1u
+#define FLOW_RING_DELETE             2u
+#define FLOW_RING_FLUSH              3u
+#define FLOW_RING_OPEN               4u
+#define FLOW_RING_CLOSED             5u
+#define FLOW_RING_FLUSHED            6u
+#define FLOW_RING_TIM_SET            7u
+#define FLOW_RING_TIM_RESET          8u
+#define FLOW_RING_FLUSH_TXFIFO       9u
+#define FLOW_RING_GET_PKT_MAX        10u
+#define FLOW_RING_RESET_WEIGHT       11u
+#define FLOW_RING_UPD_PRIOMAP        12u
+#define FLOW_RING_HP2P_CREATE        13u
+#define FLOW_RING_HP2P_DELETE        14u
+#define FLOW_RING_GET_BUFFERED_TIME  15u
+#define FLOW_RING_HP2P_TXQ_STRT      16u
+#define FLOW_RING_HP2P_TXQ_STOP      17u
 
 /* bit 7, indicating if is TID(1) or AC(0) mapped info in tid field) */
 #define PCIEDEV_IS_AC_TID_MAP_MASK	0x80
@@ -419,4 +459,7 @@ typedef enum {
 #define WLFC_PCIEDEV_AC_PRIO_MAP	 0
 #define WLFC_PCIEDEV_TID_PRIO_MAP     1
 #define WLFC_PCIEDEV_LLR_PRIO_MAP	2
+
+void wlc_wlfc_set_pkttime(void* pkt, uint16 time);
+
 #endif /* __wlfc_proto_definitions_h__ */

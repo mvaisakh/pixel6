@@ -1,7 +1,7 @@
 /*
  * Packet dump helper functions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1104,11 +1104,20 @@ dhd_check_arp(uint8 *pktdata)
 }
 
 #ifdef DHD_ARP_DUMP
+#ifdef BOARD_HIKEY
+/* On Hikey, due to continuous ARP prints
+ * DPC not scheduled. Hence rate limit the prints.
+ */
+#define DHD_PKTDUMP_ARP DHD_ERROR_RLMT
+#else
+#define DHD_PKTDUMP_ARP DHD_PKTDUMP
+#endif /* BOARD_HIKEY */
+
 #define ARP_PRINT(str) \
 	do { \
 		if (tx) { \
 			if (dump_enabled && pktfate && !TX_FATE_ACKED(pktfate)) { \
-				DHD_PKTDUMP((str "[%s] [TX]" TXFATE_FMT "\n", \
+				DHD_PKTDUMP_ARP((str "[%s] [TX]" TXFATE_FMT "\n", \
 					ifname, TX_PKTHASH(pkthash), \
 					TX_FATE(pktfate))); \
 			} else { \
@@ -1125,7 +1134,7 @@ dhd_check_arp(uint8 *pktdata)
 	do { \
 		if (tx) { \
 			if (dump_enabled && pktfate && !TX_FATE_ACKED(pktfate)) { \
-				DHD_PKTDUMP((str "[%s] [TX] op_code=%d" \
+				DHD_PKTDUMP_ARP((str "[%s] [TX] op_code=%d" \
 					TXFATE_FMT "\n", ifname, opcode, \
 					TX_PKTHASH(pkthash), \
 					TX_FATE(pktfate))); \

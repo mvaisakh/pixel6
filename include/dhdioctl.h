@@ -5,7 +5,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,9 +22,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: dhdioctl.h 820385 2019-05-17 18:31:02Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _dhdioctl_h_
@@ -84,54 +82,7 @@ typedef struct dmaxfer_info {
 #define DHD_DMAXFER_VERSION 0x1
 
 #define DHD_FILENAME_MAX 64
-
-#ifdef EFI
-struct control_signal_ops {
-	uint32 signal;
-	uint32 val;
-};
-enum {
-	WL_REG_ON = 0,
-	DEVICE_WAKE = 1,
-	TIME_SYNC = 2
-};
-
-typedef struct wifi_properties {
-	uint8 version;
-	uint32 vendor;
-	uint32 model;
-	uint8 mac_addr[6];
-	uint32 chip_revision;
-	uint8 silicon_revision;
-	uint8 is_powered;
-	uint8 is_sleeping;
-	char module_revision[16];	/* null terminated string */
-	uint8 is_fw_loaded;
-	char  fw_filename[DHD_FILENAME_MAX];		/* null terminated string */
-	char nvram_filename[DHD_FILENAME_MAX];	/* null terminated string */
-	uint8 channel;
-	uint8 module_sn[6];
-} wifi_properties_t;
-
-#define DHD_WIFI_PROPERTIES_VERSION 0x1
-
-#define DHD_OTP_SIZE_WORDS 912
-
-typedef struct intr_poll_data {
-	uint16 version;
-	uint16 length;
-	uint32 type;
-	uint32 value;
-} intr_poll_t;
-
-typedef enum intr_poll_data_type {
-	INTR_POLL_DATA_PERIOD = 0,
-	INTR_POLL_DATA_NUM_PKTS_THRESH,
-	INTR_POLL_DATA_PKT_INTVL_THRESH
-} intr_poll_type_t;
-
-#define DHD_INTR_POLL_VERSION 0x1u
-#endif /* EFI */
+#define DHD_PATHNAME_MAX 128
 
 typedef struct tput_test {
 	uint16 version;
@@ -166,6 +117,7 @@ typedef enum {
 typedef enum dhd_iftype {
 	DHD_IF_TYPE_STA		= 0,
 	DHD_IF_TYPE_AP		= 1,
+
 	DHD_IF_TYPE_NAN_NMI	= 3,
 	DHD_IF_TYPE_NAN		= 4,
 	DHD_IF_TYPE_P2P_GO	= 5,
@@ -235,11 +187,7 @@ typedef enum dhd_iface_mgmt_policy {
 #define DHD_GLOM_VAL	0x0400
 #define DHD_EVENT_VAL	0x0800
 #define DHD_BTA_VAL	0x1000
-#if defined(NDIS) && (NDISVER >= 0x0630) && defined(BCMDONGLEHOST)
-#define DHD_SCAN_VAL	0x2000
-#else
 #define DHD_ISCAN_VAL	0x2000
-#endif // endif
 #define DHD_ARPOE_VAL	0x4000
 #define DHD_REORDER_VAL	0x8000
 #define DHD_WL_VAL		0x10000
@@ -347,6 +295,7 @@ typedef struct fw_download_info {
 	char    fw_signature_fname[DHD_FILENAME_MAX];
 	char    bootloader_fname[DHD_FILENAME_MAX];
 	uint32  bootloader_start_addr;
+	char    fw_path[DHD_PATHNAME_MAX];
 } fw_download_info_t;
 
 /* max dest supported */
@@ -357,4 +306,38 @@ typedef struct debug_buf_dest_stat {
 	uint32 stat[DEBUG_BUF_DEST_MAX];
 } debug_buf_dest_stat_t;
 
+/* devreset */
+#define DHD_DEVRESET_VERSION 1
+
+typedef struct devreset_info {
+	uint16 version;
+	uint16 length;
+	uint16 mode;
+	int16 status;
+} devreset_info_t;
+
+#ifdef DHD_TX_PROFILE
+
+#define DHD_TX_PROFILE_VERSION	1
+
+/* tx_profile structure for tagging */
+typedef struct dhd_tx_profile_protocol {
+	uint16	version;
+	uint8	profile_index;
+	uint8	layer;
+	uint32	protocol_number;
+	uint16	src_port;
+	uint16	dest_port;
+} dhd_tx_profile_protocol_t;
+
+#define DHD_TX_PROFILE_DATA_LINK_LAYER	(2u)	/* data link layer protocols */
+#define DHD_TX_PROFILE_NETWORK_LAYER	(3u)	/* network layer protocols */
+
+#define DHD_MAX_PROFILE_INDEX	(7u)	/* three bits are available to encode
+					   the tx profile index in the rate
+					   field in host_txbuf_post_t
+					 */
+#define DHD_MAX_PROFILES	(1u)	/* ucode only supports 1 profile atm */
+
+#endif /* defined(DHD_TX_PROFILE) */
 #endif /* _dhdioctl_h_ */

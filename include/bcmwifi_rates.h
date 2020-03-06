@@ -1,7 +1,7 @@
 /*
  * Indices for 802.11 a/b/g/n/ac 1-3 chain symmetric transmit rates
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,9 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmwifi_rates.h 815797 2019-04-19 18:14:43Z $
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _bcmwifi_rates_h_
@@ -53,11 +51,7 @@ typedef enum wl_he_rates {
 	HE_RATE_MCS11
 } wl_he_rates_t;
 
-#if defined(WLPROPRIETARY_11N_RATES)
-#define WL_RATESET_SZ_HT_MCS	WL_RATESET_SZ_VHT_MCS
-#else
 #define WL_RATESET_SZ_HT_MCS	8
-#endif // endif
 
 #define WL_RATESET_SZ_HT_IOCTL	8	/* MAC histogram, compatibility with wl utility */
 
@@ -77,15 +71,7 @@ typedef enum wl_tx_bw {
 	WL_TX_BW_20IN160,
 	WL_TX_BW_40IN160,
 	WL_TX_BW_80IN160,
-	WL_TX_BW_ALL,
-	WL_TX_BW_8080,
-	WL_TX_BW_8080CHAN2,
-	WL_TX_BW_20IN8080,
-	WL_TX_BW_40IN8080,
-	WL_TX_BW_80IN8080,
-	WL_TX_BW_2P5,
-	WL_TX_BW_5,
-	WL_TX_BW_10
+	WL_TX_BW_ALL
 } wl_tx_bw_t;
 
 /*
@@ -1235,21 +1221,15 @@ typedef enum clm_ru_rates {
 #define OFDM_PHY2MAC_RATE(rlpt)         plcp_ofdm_rate_tbl[(rlpt) & 0x7]
 #define CCK_PHY2MAC_RATE(signal)	((signal)/5)
 
+/* 'proprietary' string should not exist in open source(OEM_ANDROID) */
 /* given a proprietary MCS, get number of spatial streams */
 #define GET_PROPRIETARY_11N_MCS_NSS(mcs) (1 + ((mcs) - 85) / 8)
 
 #define GET_11N_MCS_NSS(mcs) ((mcs) < 32 ? (1 + ((mcs) / 8)) : \
 			      ((mcs) == 32 ? 1 : GET_PROPRIETARY_11N_MCS_NSS(mcs)))
 
-#if defined(WLPROPRIETARY_11N_RATES) /* Broadcom proprietary rate support for 11n */
-#define IS_PROPRIETARY_11N_MCS(mcs) \
-	((mcs) == 87 || (mcs) == 88 || (mcs) == 99 || (mcs) == 100 || (mcs) == 101 || (mcs) == 102)
-#define IS_PROPRIETARY_11N_SS_MCS(mcs) \
-	((mcs) == 87 || (mcs) == 88)
-#else
 #define IS_PROPRIETARY_11N_MCS(mcs)	FALSE
 #define IS_PROPRIETARY_11N_SS_MCS(mcs)	FALSE /**< is proprietary HT single stream MCS */
-#endif	/* WLPROPRIETARY_11N_RATES */
 
 /* Macros to be used for calculating rate from PLCP (wf_he_plcp_to_rate) */
 #define HE_SU_PLCP2RATE_MCS_MASK	0x0F
@@ -1287,6 +1267,7 @@ uint wf_he_mcs_to_rate(uint mcs, uint nss, uint bw, uint gi, bool dcm);
 
 uint wf_mcs_to_Ndbps(uint mcs, uint nss, uint bw);
 uint wf_he_mcs_to_Ndbps(uint mcs, uint nss, uint bw, bool dcm);
+uint32 wf_he_mcs_ru_to_ndbps(uint8 mcs, uint8 nss, bool dcm, uint8 ru_index);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

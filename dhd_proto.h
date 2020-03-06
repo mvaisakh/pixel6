@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -33,28 +33,16 @@
 #include <wlioctl.h>
 #ifdef BCMPCIE
 #include <dhd_flowring.h>
-#endif // endif
+#endif
 
 #define DEFAULT_IOCTL_RESP_TIMEOUT	(5 * 1000) /* 5 seconds */
 #ifndef IOCTL_RESP_TIMEOUT
-#if defined(BCMQT_HW)
-#define IOCTL_RESP_TIMEOUT  (300 * 1000) /* 300 sec in real time */
-#elif defined(BCMFPGA_HW)
-#define IOCTL_RESP_TIMEOUT  (60 * 1000) /* 60 sec in real time */
-#else
 /* In milli second default value for Production FW */
 #define IOCTL_RESP_TIMEOUT  DEFAULT_IOCTL_RESP_TIMEOUT
-#endif /* BCMQT */
 #endif /* IOCTL_RESP_TIMEOUT */
 
-#if defined(BCMQT_HW)
-#define IOCTL_DMAXFER_TIMEOUT  (260 * 1000) /* 260 seconds second */
-#elif defined(BCMFPGA_HW)
-#define IOCTL_DMAXFER_TIMEOUT  (120 * 1000) /* 120 seconds */
-#else
 /* In milli second default value for Production FW */
 #define IOCTL_DMAXFER_TIMEOUT  (15 * 1000) /* 15 seconds for Production FW */
-#endif /* BCMQT */
 
 #ifndef MFG_IOCTL_RESP_TIMEOUT
 #define MFG_IOCTL_RESP_TIMEOUT  20000  /* In milli second default value for MFG FW */
@@ -139,9 +127,6 @@ extern int dhd_process_pkt_reorder_info(dhd_pub_t *dhd, uchar *reorder_info_buf,
 extern bool dhd_prot_process_msgbuf_txcpl(dhd_pub_t *dhd, uint bound, int ringtype);
 extern bool dhd_prot_process_msgbuf_rxcpl(dhd_pub_t *dhd, uint bound, int ringtype);
 extern bool dhd_prot_process_msgbuf_infocpl(dhd_pub_t *dhd, uint bound);
-#ifdef BTLOG
-extern bool dhd_prot_process_msgbuf_btlogcpl(dhd_pub_t *dhd, uint bound);
-#endif	/* BTLOG */
 extern int dhd_prot_process_ctrlbuf(dhd_pub_t * dhd);
 extern int dhd_prot_process_trapbuf(dhd_pub_t * dhd);
 extern bool dhd_prot_dtohsplit(dhd_pub_t * dhd);
@@ -180,10 +165,7 @@ extern int dhd_prot_flow_ring_batch_suspend_request(dhd_pub_t *dhd, uint16 *ring
 extern int dhd_prot_flow_ring_resume(dhd_pub_t *dhd, flow_ring_node_t *flow_ring_node);
 #endif /* IDLE_TX_FLOW_MGMT */
 extern int dhd_prot_init_info_rings(dhd_pub_t *dhd);
-#ifdef BTLOG
-extern int dhd_prot_init_btlog_rings(dhd_pub_t *dhd);
-#endif	/* BTLOG */
-
+extern int dhd_prot_check_tx_resource(dhd_pub_t *dhd);
 #endif /* BCMPCIE */
 
 #ifdef DHD_LB
@@ -208,14 +190,6 @@ extern bool dhd_prot_pkt_fixed_rate(dhd_pub_t *dhd, bool enable, bool set);
 #endif /* BCMPCIE */
 
 extern void dhd_prot_dma_indx_free(dhd_pub_t *dhd);
-
-#ifdef SNAPSHOT_UPLOAD
-/* send request to take snapshot */
-int dhd_prot_send_snapshot_request(dhd_pub_t *dhdp, uint8 snapshot_type, uint8 snapshot_param);
-/* get uploaded snapshot */
-int dhd_prot_get_snapshot(dhd_pub_t *dhdp, uint8 snapshot_type, uint32 offset,
-	uint32 dst_buf_size, uint8 *dst_buf, uint32 *dst_size, bool *is_more);
-#endif	/* SNAPSHOT_UPLOAD */
 
 #ifdef EWP_EDL
 int dhd_prot_init_edl_rings(dhd_pub_t *dhd);
@@ -244,4 +218,13 @@ int dhd_get_hscb_buff(dhd_pub_t *dhd, uint32 offset, uint32 length, void * buff)
 #ifdef DHD_MAP_LOGGING
 extern void dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp);
 #endif /* DHD_MAP_LOGGING */
+
+extern uint16 dhd_prot_get_h2d_max_txpost(dhd_pub_t *dhd);
+extern void dhd_prot_set_h2d_max_txpost(dhd_pub_t *dhd, uint16 max_txpost);
+
+#if defined(DHD_HTPUT_TUNABLES)
+extern uint16 dhd_prot_get_h2d_htput_max_txpost(dhd_pub_t *dhd);
+extern void dhd_prot_set_h2d_htput_max_txpost(dhd_pub_t *dhd, uint16 max_txpost);
+#endif /* DHD_HTPUT_TUNABLES */
+
 #endif /* _dhd_proto_h_ */
