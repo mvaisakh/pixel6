@@ -15,7 +15,8 @@
 
 int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 				      bool non_blocking, int bid,
-				      uint64_t offset, uint64_t value)
+				      uint64_t offset, uint64_t value,
+				      int access_size)
 {
 	struct lwis_io_entry entry = {};
 
@@ -29,12 +30,14 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
 	entry.rw.val = value;
 	entry.rw.bid = bid;
 
-	return lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking);
+	return lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking,
+					  access_size);
 }
 
 int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 				     bool non_blocking, int bid,
-				     uint64_t offset, uint64_t *value)
+				     uint64_t offset, uint64_t *value,
+				     int access_size)
 {
 	int ret = -EINVAL;
 	struct lwis_io_entry entry = {};
@@ -48,7 +51,8 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 	entry.rw.offset = offset;
 	entry.rw.bid = bid;
 
-	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking);
+	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking,
+					 access_size);
 	if (!ret && value) {
 		*value = entry.rw.val;
 	}

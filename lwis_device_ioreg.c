@@ -32,7 +32,7 @@ static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev,
 				  struct lwis_io_entry *entry,
-				  bool non_blocking);
+				  bool non_blocking, int access_size);
 
 static struct lwis_device_subclass_operations ioreg_vops = {
 	.register_io = lwis_ioreg_register_io,
@@ -61,10 +61,10 @@ static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev,
 				  struct lwis_io_entry *entry,
-				  bool non_blocking)
+				  bool non_blocking, int access_size)
 {
 	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev,
-				      entry, non_blocking);
+				      entry, non_blocking, access_size);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
@@ -114,6 +114,8 @@ static int __init lwis_ioreg_device_probe(struct platform_device *plat_dev)
 		pr_err("Error in IOREG device initialization\n");
 		goto error_probe;
 	}
+
+	pr_info("IOREG Device [%s] Probe: Success\n", ioreg_dev->base_dev.name);
 
 	return 0;
 

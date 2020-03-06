@@ -33,8 +33,8 @@
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
-				struct lwis_io_entry *entry,
-				bool non_blocking);
+				struct lwis_io_entry *entry, bool non_blocking,
+				int access_size);
 
 static struct lwis_device_subclass_operations i2c_vops = {
 	.register_io = lwis_i2c_register_io,
@@ -82,7 +82,8 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 }
 
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
-				struct lwis_io_entry *entry, bool non_blocking)
+				struct lwis_io_entry *entry, bool non_blocking,
+				int access_size)
 {
 	/* I2C does not currently support non-blocking calls at all */
 	if (non_blocking) {
@@ -190,6 +191,8 @@ static int __init lwis_i2c_device_probe(struct platform_device *plat_dev)
 		pr_err("Error in i2c device initialization\n");
 		goto error_probe;
 	}
+
+	pr_info("I2C Device [%s] Probe: Success\n", i2c_dev->base_dev.name);
 
 	return 0;
 

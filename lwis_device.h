@@ -69,7 +69,8 @@ struct lwis_device_subclass_operations {
 	/* Called by lwis_device when device register needs to be read/written
 	 */
 	int (*register_io)(struct lwis_device *lwis_dev,
-			   struct lwis_io_entry *entry, bool non_blocking);
+			   struct lwis_io_entry *entry, bool non_blocking,
+			   int access_size);
 	/* called by lwis_device when enabling the device */
 	int (*device_enable)(struct lwis_device *lwis_dev);
 	/* called by lwis_device when disabling the device */
@@ -97,8 +98,7 @@ struct lwis_device_subclass_operations {
 struct lwis_event_subscribe_operations {
 	/* Subscribe an event for receiver device */
 	int (*subscribe_event)(struct lwis_device *lwis_dev,
-			       int64_t trigger_event_id,
-			       int trigger_device_id,
+			       int64_t trigger_event_id, int trigger_device_id,
 			       int receiver_device_id);
 	/* Unsubscribe an event for receiver device */
 	int (*unsubscribe_event)(struct lwis_device *lwis_dev,
@@ -157,8 +157,8 @@ struct lwis_device {
 	/* Heartbeat timer structure */
 	struct timer_list heartbeat_timer;
 	/* Register-related properties */
-	unsigned int reg_addr_bitwidth;
-	unsigned int reg_value_bitwidth;
+	unsigned int native_addr_bitwidth;
+	unsigned int native_value_bitwidth;
 	/* Point to lwis_top_dev */
 	struct lwis_device *top_dev;
 	struct lwis_event_subscribe_operations subscribe_ops;

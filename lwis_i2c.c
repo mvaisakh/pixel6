@@ -189,8 +189,8 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
 	struct i2c_msg msg[2];
 
 	const int num_msg = ARRAY_SIZE(msg);
-	const unsigned int offset_bits = i2c->base_dev.reg_addr_bitwidth;
-	const unsigned int value_bits = i2c->base_dev.reg_value_bitwidth;
+	const unsigned int offset_bits = i2c->base_dev.native_addr_bitwidth;
+	const unsigned int value_bits = i2c->base_dev.native_value_bitwidth;
 
 	if (!i2c || !i2c->client) {
 		pr_err("Cannot find i2c instance\n");
@@ -251,8 +251,8 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t value)
 	struct i2c_msg msg;
 
 	const int num_msg = 1;
-	const unsigned int offset_bits = i2c->base_dev.reg_addr_bitwidth;
-	const unsigned int value_bits = i2c->base_dev.reg_value_bitwidth;
+	const unsigned int offset_bits = i2c->base_dev.native_addr_bitwidth;
+	const unsigned int value_bits = i2c->base_dev.native_value_bitwidth;
 	const int msg_bytes = (offset_bits + value_bits) / 8;
 
 	if (!i2c || !i2c->client) {
