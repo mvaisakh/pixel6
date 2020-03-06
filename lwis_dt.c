@@ -274,7 +274,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		u32 *int_reg_bits;
 		int irq_reg_bid = -1;
 		int irq_reg_bid_count;
-		u32 irq_reg_bitwidth = 0;
+		/* To match default value of reg-addr/value-bitwidth. */
+		u32 irq_reg_bitwidth = 32;
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
 
