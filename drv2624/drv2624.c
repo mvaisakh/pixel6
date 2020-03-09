@@ -1735,6 +1735,7 @@ static int drv2624_i2c_remove(struct i2c_client *client)
 	cancel_work_sync(&drv2624->work);
 
 	led_classdev_unregister(&drv2624->led_dev);
+	sysfs_remove_group (&drv2624->dev->kobj, &drv2624_fs_attr_group);
 
 	destroy_workqueue(drv2624->drv2624_wq);
 	mutex_destroy(&drv2624->lock);
