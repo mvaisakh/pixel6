@@ -27,6 +27,105 @@
 #include "lwis_regulator.h"
 #include "lwis_transaction.h"
 
+#define IOCTL_TO_ENUM(x) _IOC_NR(x)
+#define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
+#define STRINGIFY(x) #x
+
+static void print_dbg_msg(unsigned int ioctl_type, int errno)
+{
+	unsigned int type = IOCTL_TO_ENUM(ioctl_type);
+	static char type_name[32];
+	size_t exp_size;
+
+	switch (type) {
+	case IOCTL_TO_ENUM(LWIS_GET_DEVICE_INFO):
+		strcpy(type_name, STRINGIFY(LWIS_GET_DEVICE_INFO));
+		exp_size = IOCTL_ARG_SIZE(LWIS_GET_DEVICE_INFO);
+		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_ALLOC):
+		strcpy(type_name, STRINGIFY(LWIS_BUFFER_ALLOC));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ALLOC);
+		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_FREE):
+		strcpy(type_name, STRINGIFY(LWIS_BUFFER_FREE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_FREE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_ENROLL):
+		strcpy(type_name, STRINGIFY(LWIS_BUFFER_ENROLL));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ENROLL);
+		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_DISENROLL):
+		strcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
+		break;
+	case IOCTL_TO_ENUM(LWIS_REG_READ):
+		strcpy(type_name, STRINGIFY(LWIS_REG_READ));
+		exp_size = IOCTL_ARG_SIZE(LWIS_REG_READ);
+		break;
+	case IOCTL_TO_ENUM(LWIS_REG_WRITE):
+		strcpy(type_name, STRINGIFY(LWIS_REG_WRITE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_REG_WRITE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_REG_IO):
+		strcpy(type_name, STRINGIFY(LWIS_REG_IO));
+		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
+		break;
+	case IOCTL_TO_ENUM(LWIS_DEVICE_ENABLE):
+		strcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_ENABLE);
+		break;
+
+	case IOCTL_TO_ENUM(LWIS_DEVICE_DISABLE):
+		strcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
+		strcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET));
+		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_GET);
+		break;
+	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_SET):
+		strcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_SET));
+		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_SET);
+		break;
+	case IOCTL_TO_ENUM(LWIS_EVENT_DEQUEUE):
+		strcpy(type_name, STRINGIFY(LWIS_EVENT_DEQUEUE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_DEQUEUE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_EVENT_SUBSCRIBE):
+		strcpy(type_name, STRINGIFY(LWIS_EVENT_SUBSCRIBE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_SUBSCRIBE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_EVENT_UNSUBSCRIBE):
+		strcpy(type_name, STRINGIFY(LWIS_EVENT_UNSUBSCRIBE));
+		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_UNSUBSCRIBE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_TIME_QUERY):
+		strcpy(type_name, STRINGIFY(LWIS_TIME_QUERY));
+		exp_size = IOCTL_ARG_SIZE(LWIS_TIME_QUERY);
+		break;
+	case IOCTL_TO_ENUM(LWIS_TRANSACTION_SUBMIT):
+		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_SUBMIT));
+		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_SUBMIT);
+		break;
+	case IOCTL_TO_ENUM(LWIS_TRANSACTION_CANCEL):
+		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL));
+		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_CANCEL);
+		break;
+	default:
+		strcpy(type_name, "UNDEFINED");
+		exp_size = 0;
+		break;
+	};
+
+	if (strcmp(type_name, "UNDEFINED") &&
+	    exp_size != IOCTL_ARG_SIZE(ioctl_type)) {
+		pr_err("Failed to process %s (errno: %d), expecting argument with length of %d, got length of %d. Mismatch kernel version?\n",
+		       type_name, errno, exp_size, IOCTL_ARG_SIZE(ioctl_type));
+	} else {
+		pr_err("Failed to process %s (errno: %d)\n", type_name, errno);
+	}
+}
+
 static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 				 struct lwis_device_info *msg)
 {
@@ -901,6 +1000,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		pr_err("Unknown IOCTL operation\n");
 		ret = -EINVAL;
 	};
+
+	if (ret) {
+		print_dbg_msg(type, ret);
+	}
 
 	return ret;
 }
