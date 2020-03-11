@@ -82,7 +82,7 @@ dhd_wifi_init_gpio(void)
 
 	wlan_reg_on = of_get_named_gpio(root_node, WIFI_WL_REG_ON_PROPNAME, 0);
 	if (!gpio_is_valid(wlan_reg_on)) {
-		printk(KERN_ERR "Invalied gpio pin : %d\n", wlan_reg_on);
+		printk(KERN_ERR "Invalid gpio pin : %d\n", wlan_reg_on);
 		return -ENODEV;
 	}
 
@@ -281,8 +281,12 @@ fail:
 int
 dhd_wlan_deinit(void)
 {
-	gpio_free(wlan_host_wake_up);
-	gpio_free(wlan_reg_on);
+	if (gpio_is_valid(wlan_host_wake_up)) {
+		gpio_free(wlan_host_wake_up);
+	}
+	if (gpio_is_valid(wlan_reg_on)) {
+		gpio_free(wlan_reg_on);
+	}
 	return 0;
 }
 #ifndef BCMDHD_MODULAR
