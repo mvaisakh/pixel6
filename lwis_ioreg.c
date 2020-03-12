@@ -47,6 +47,19 @@ static struct lwis_ioreg *get_block_by_idx(struct lwis_ioreg_device *ioreg_dev,
 	return block;
 }
 
+static int validate_offset(struct lwis_ioreg *block, uint64_t offset,
+			   size_t size_in_bytes)
+{
+	if (offset + size_in_bytes > block->size) {
+		pr_err("Accessing invalid address! Block size is %d.\n",
+		       block->size);
+		pr_err("Offset %llu, size_in_bytes %u, will be out of bound.\n",
+		       offset, size_in_bytes);
+		return -EFAULT;
+	}
+	return 0;
+}
+
 static int validate_access_size(int access_size, int native_value_bitwidth)
 {
 	if (access_size != native_value_bitwidth) {
@@ -345,6 +358,13 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 			ret = PTR_ERR(block);
 			goto rw_func_end;
 		}
+
+		ret = validate_offset(block, entry->rw_batch.offset,
+				      entry->rw_batch.size_in_bytes);
+		if (ret) {
+			goto rw_func_end;
+		}
+
 		ret = ioreg_read_batch_internal(
 			block->base, entry->rw_batch.offset,
 			ioreg_dev->base_dev.native_value_bitwidth,
@@ -365,6 +385,13 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 			ret = PTR_ERR(block);
 			goto rw_func_end;
 		}
+
+		ret = validate_offset(block, entry->rw_batch.offset,
+				      entry->rw_batch.size_in_bytes);
+		if (ret) {
+			goto rw_func_end;
+		}
+
 		ret = ioreg_write_batch_internal(
 			block->base, entry->rw_batch.offset,
 			ioreg_dev->base_dev.native_value_bitwidth,
@@ -416,6 +443,11 @@ int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
 		return PTR_ERR(block);
 	}
 
+	ret = validate_offset(block, offset, access_size);
+	if (ret) {
+		return ret;
+	}
+
 	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
 	ret = validate_access_size(access_size, native_value_bitwidth);
 	if (ret) {
@@ -463,6 +495,11 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
 	block = get_block_by_idx(ioreg_dev, index);
 	if (IS_ERR_OR_NULL(block)) {
 		return PTR_ERR(block);
+	}
+
+	ret = validate_offset(block, offset, access_size);
+	if (ret) {
+		return ret;
 	}
 
 	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
