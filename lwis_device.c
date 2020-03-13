@@ -211,7 +211,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 	mutex_unlock(&lwis_client->lock);
 
 	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
-		pr_err("Error processing IOCTL %d (%d)\n", _IOC_NR(type), ret);
+		lwis_ioctl_pr_err(type, ret);
 	}
 
 	return ret;
@@ -272,7 +272,8 @@ static void lwis_assign_top_to_other(struct lwis_device *top_dev)
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
+	{
 		lwis_dev->top_dev = top_dev;
 	}
 	mutex_unlock(&core.lock);
@@ -386,13 +387,13 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		struct gpio_descs *gpios;
 
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
-			"shared-enable");
+					   "shared-enable");
 		if (IS_ERR_OR_NULL(gpios)) {
 			if (PTR_ERR(gpios) == -EBUSY) {
 				pr_warn("Shared gpios requested by another device\n");
 			} else {
 				pr_err("Failed to obtain shared gpio list (%d)\n",
-					PTR_ERR(gpios));
+				       PTR_ERR(gpios));
 				ret = PTR_ERR(gpios);
 				return ret;
 			}
@@ -480,7 +481,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->shared_enable_gpios_present &&
-		lwis_dev->shared_enable_gpios) {
+	    lwis_dev->shared_enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
 		ret = lwis_gpio_list_set_output_value(
 			lwis_dev->shared_enable_gpios, 0);
@@ -556,7 +557,8 @@ struct lwis_device *lwis_find_top_dev()
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
+	{
 		if (lwis_dev->type == DEVICE_TYPE_TOP) {
 			mutex_unlock(&core.lock);
 			return lwis_dev;
@@ -574,7 +576,8 @@ struct lwis_device *lwis_find_dev_by_id(int dev_id)
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list) {
+	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
+	{
 		if (lwis_dev->id == dev_id) {
 			mutex_unlock(&core.lock);
 			return lwis_dev;
@@ -828,10 +831,10 @@ static void __exit lwis_driver_exit(void)
 		/* Release device gpio list */
 		if (lwis_dev->reset_gpios)
 			lwis_gpio_list_put(lwis_dev->reset_gpios,
-				   &lwis_dev->plat_dev->dev);
+					   &lwis_dev->plat_dev->dev);
 		if (lwis_dev->enable_gpios)
 			lwis_gpio_list_put(lwis_dev->enable_gpios,
-				   &lwis_dev->plat_dev->dev);
+					   &lwis_dev->plat_dev->dev);
 		/* Release event subscription components */
 		if (lwis_dev->type == DEVICE_TYPE_TOP)
 			lwis_dev->top_dev->subscribe_ops.release(lwis_dev);

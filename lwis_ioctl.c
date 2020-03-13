@@ -31,7 +31,7 @@
 #define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
 #define STRINGIFY(x) #x
 
-static void print_dbg_msg(unsigned int ioctl_type, int errno)
+void lwis_ioctl_pr_err(unsigned int ioctl_type, int errno)
 {
 	unsigned int type = IOCTL_TO_ENUM(ioctl_type);
 	static char type_name[32];
@@ -931,7 +931,19 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
 	int ret = 0;
+	bool device_disabled;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	mutex_lock(&lwis_dev->client_lock);
+	device_disabled = (lwis_dev->enabled == 0);
+	mutex_unlock(&lwis_dev->client_lock);
+	if (device_disabled && type != LWIS_GET_DEVICE_INFO &&
+	    type != LWIS_DEVICE_ENABLE && type != LWIS_EVENT_CONTROL_GET &&
+	    type != LWIS_TIME_QUERY) {
+		ret = -EACCES;
+		pr_err("Device is disabled.\n");
+		return ret;
+	}
 
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:
@@ -1000,10 +1012,6 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		pr_err("Unknown IOCTL operation\n");
 		ret = -EINVAL;
 	};
-
-	if (ret) {
-		print_dbg_msg(type, ret);
-	}
 
 	return ret;
 }
