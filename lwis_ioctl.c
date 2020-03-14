@@ -937,10 +937,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	mutex_lock(&lwis_dev->client_lock);
 	device_disabled = (lwis_dev->enabled == 0);
 	mutex_unlock(&lwis_dev->client_lock);
-	if (device_disabled && type != LWIS_GET_DEVICE_INFO &&
-	    type != LWIS_DEVICE_ENABLE && type != LWIS_EVENT_CONTROL_GET &&
-	    type != LWIS_TIME_QUERY) {
-		ret = -EACCES;
+	if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled &&
+	    type != LWIS_GET_DEVICE_INFO && type != LWIS_DEVICE_ENABLE &&
+	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY) {
+		ret = -EBADFD;
 		pr_err("Device is disabled.\n");
 		return ret;
 	}
