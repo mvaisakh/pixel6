@@ -9805,7 +9805,11 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	 * JIRA SWWLAN-142236: Amendment - Changed L1ss enable point
 	 */
 	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
+#if defined(CONFIG_SOC_GS101)
+	exynos_pcie_rc_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI, 1);
+#else
 	exynos_pcie_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI);
+#endif /* CONFIG_SOC_GS101 */
 #endif /* !CONFIG_SOC_EXYNOS8890 && !SUPPORT_EXYNOS7420 */
 #endif /* CONFIG_ARCH_EXYNOS && BCMPCIE */
 #if defined(DHD_DEBUG) && defined(BCMSDIO)
@@ -14859,9 +14863,14 @@ dhd_net_bus_devreset(struct net_device *dev, uint8 flag)
 	 * after firmware download completion due to link down issue
 	 * JIRA SWWLAN-142236: Amendment - Changed L1ss enable point
 	 */
-	printk(KERN_ERR "%s Disable L1ss EP side\n", __FUNCTION__);
+	printk(KERN_ERR "%s: Disable L1ss EP side\n", __FUNCTION__);
 	if (flag == FALSE && dhd->pub.busstate == DHD_BUS_DOWN)
+#if defined(CONFIG_SOC_GS101)
+		exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
+#else
 		exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
+#endif
+
 #endif /* !CONFIG_SOC_EXYNOS8890 && !defined(SUPPORT_EXYNOS7420)  */
 #endif /* CONFIG_ARCH_EXYNOS && BCMPCIE */
 
