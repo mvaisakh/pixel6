@@ -443,7 +443,9 @@ int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index,
 		return PTR_ERR(block);
 	}
 
-	ret = validate_offset(block, offset, access_size);
+	// Access_size is bitwidth
+	// and validate_offset expects size of bytes
+	ret = validate_offset(block, offset, access_size / 8);
 	if (ret) {
 		return ret;
 	}
@@ -497,7 +499,9 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index,
 		return PTR_ERR(block);
 	}
 
-	ret = validate_offset(block, offset, access_size);
+	// Access_size is bitwidth
+	// and validate_offset expects size of bytes
+	ret = validate_offset(block, offset, access_size / 8);
 	if (ret) {
 		return ret;
 	}
