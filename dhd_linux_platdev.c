@@ -247,6 +247,24 @@ int wifi_platform_get_mac_addr(wifi_adapter_info_t *adapter, unsigned char *buf)
 	}
 	return -EOPNOTSUPP;
 }
+
+#ifdef DHD_COREDUMP
+int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf,
+	int buf_len)
+{
+	struct wifi_platform_data *plat_data;
+
+	DHD_ERROR(("%s\n", __FUNCTION__));
+	if (!buf || !adapter || !adapter->wifi_plat_data)
+		return -EINVAL;
+	plat_data = adapter->wifi_plat_data;
+	if (plat_data->set_coredump) {
+		return plat_data->set_coredump(buf, buf_len);
+	}
+	return -EOPNOTSUPP;
+}
+#endif /* DHD_COREDUMP */
+
 #ifdef	CUSTOM_COUNTRY_CODE
 void *wifi_platform_get_country_code(wifi_adapter_info_t *adapter, char *ccode, u32 flags)
 #else

@@ -38,6 +38,9 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
+#ifdef DHD_COREDUMP
+#include <linux/platform_data/sscoredump.h>
+#endif /* DHD_COREDUMP */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
@@ -65,6 +68,43 @@ int pcie_ch_num = -1;
 extern void exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
 #endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_GS101 */
+
+#ifdef DHD_COREDUMP
+#define DEVICE_NAME "wlan"
+
+static void sscd_release(struct device *dev);
+static struct sscd_platform_data sscd_pdata;
+static struct platform_device sscd_dev = {
+	.name            = DEVICE_NAME,
+	.driver_override = SSCD_NAME,
+	.id              = -1,
+	.dev             = {
+		.platform_data = &sscd_pdata,
+		.release       = sscd_release,
+	},
+};
+
+static void sscd_release(struct device *dev)
+{
+	printk(KERN_INFO "%s: enter", __FUNCTION__);
+}
+
+/* trigger coredump */
+static int
+dhd_set_coredump(const char *buf, int buf_len)
+{
+	struct sscd_platform_data *pdata = dev_get_platdata(&sscd_dev.dev);
+	struct sscd_segment seg;
+
+	if (pdata->sscd_report) {
+		memset(&seg, 0, sizeof(seg));
+		seg.addr = (void *) buf;
+		seg.size = buf_len;
+		pdata->sscd_report(&sscd_dev, &seg, 1, 0, "wlan_crash");
+	}
+	return 0;
+}
+#endif /* DHD_COREDUMP */
 
 int
 dhd_wifi_init_gpio(void)
@@ -239,6 +279,9 @@ struct wifi_platform_data dhd_wlan_control = {
 	.set_power	= dhd_wlan_power,
 	.set_reset	= dhd_wlan_reset,
 	.set_carddetect	= dhd_wlan_set_carddetect,
+#ifdef DHD_COREDUMP
+	.set_coredump = dhd_set_coredump,
+#endif /* DHD_COREDUMP */
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 	.mem_prealloc	= dhd_wlan_mem_prealloc,
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
@@ -273,6 +316,10 @@ dhd_wlan_init(void)
 	  }
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
+#ifdef DHD_COREDUMP
+	platform_device_register(&sscd_dev);
+#endif /* DHD_COREDUMP */
+
 fail:
 	printk(KERN_INFO "%s: FINISH.......\n", __FUNCTION__);
 	return ret;
@@ -287,6 +334,11 @@ dhd_wlan_deinit(void)
 	if (gpio_is_valid(wlan_reg_on)) {
 		gpio_free(wlan_reg_on);
 	}
+
+#ifdef DHD_COREDUMP
+	platform_device_unregister(&sscd_dev);
+#endif /* DHD_COREDUMP */
+
 	return 0;
 }
 #ifndef BCMDHD_MODULAR

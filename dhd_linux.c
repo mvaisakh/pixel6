@@ -9222,7 +9222,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #ifdef CUSTOMER_HW4_DEBUG
 	dhd->pub.memdump_enabled = DUMP_DISABLED;
 #else
-	dhd->pub.memdump_enabled = DUMP_MEMFILE_BUGON;
+	dhd->pub.memdump_enabled = DUMP_MEMFILE;
 #endif /* CUSTOMER_HW4_DEBUG */
 	/* Check the memdump capability */
 	dhd_get_memdump_info(&dhd->pub);
@@ -18351,6 +18351,15 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		ret = -EINVAL;
 		goto exit;
 	}
+
+#ifdef DHD_COREDUMP
+	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize)) {
+		DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
+#ifdef DHD_DEBUG_UART
+		dhd->pub.memdump_success = FALSE;
+#endif  /* DHD_DEBUG_UART */
+	}
+#endif /* DHD_COREDUMP */
 
 	/*
 	 * If kernel does not have file write access enabled
