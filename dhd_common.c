@@ -3425,6 +3425,9 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d\n", event_name, eabuf, (int)reason));
 		break;
 
+	case WLC_E_START_AUTH:
+		DHD_EVENT(("MACEVENT: %s, MAC %s, reason %d\n", event_name, eabuf, (int)reason));
+		break;
 	case WLC_E_AUTH:
 	case WLC_E_AUTH_IND:
 		if (auth_type == DOT11_OPEN_SYSTEM)

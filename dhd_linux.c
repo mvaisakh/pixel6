@@ -12198,6 +12198,9 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(mask, WLC_E_ADDTS_IND);
 	setbit(mask, WLC_E_DELTS_IND);
 #endif /* WL_BCNRECV */
+#ifdef WL_CLIENT_SAE
+	setbit(eventmask_msg->mask, WLC_E_START_AUTH);
+#endif /* WL_CLIENT_SAE */
 
 	/* Write updated Event mask */
 	eventmask_msg->ver = EVENTMSGS_VER;

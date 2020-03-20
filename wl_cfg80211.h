@@ -75,9 +75,15 @@ struct bcm_cfg80211;
 struct wl_security;
 struct wl_ibss;
 
+#ifndef WL_CLIENT_SAE
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SAE))
 #define WL_SAE
+#endif // endif
+#else
+#ifdef WL_SAE
+#error "WL_SAE is for dongle-offload and WL_CLIENT_SAE is for wpa_supplicant. Please choose one."
 #endif
+#endif /* !WL_CLIENT_SAE */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SCAN_TYPE))
 #define WL_SCAN_TYPE
@@ -480,6 +486,8 @@ do {									\
 
 #define WL_AKM_SUITE_SHA256_1X  0x000FAC05
 #define WL_AKM_SUITE_SHA256_PSK 0x000FAC06
+
+#define WLAN_AKM_SUITE_SAE_SHA256		0x000FAC08
 
 #ifndef WLAN_AKM_SUITE_FILS_SHA256
 #define WLAN_AKM_SUITE_FILS_SHA256		0x000FAC0E

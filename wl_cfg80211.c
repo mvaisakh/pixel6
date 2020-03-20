@@ -598,6 +598,9 @@ static s32 wl_cfg80211_flush_pmksa(struct wiphy *wiphy,
 	struct net_device *dev);
 static s32 wl_cfg80211_update_pmksa(struct wiphy *wiphy, struct net_device *dev,
 	struct cfg80211_pmksa *pmksa, bool set);
+#ifdef WL_CLIENT_SAE
+static bool wl_is_pmkid_available(struct net_device *dev, const u8 *bssid);
+#endif /* WL_CLIENT_SAE */
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS)
 #if (defined(CONFIG_ARCH_MSM) && defined(TDLS_MGMT_VERSION2)) || (LINUX_VERSION_CODE < \
 	KERNEL_VERSION(3, 16, 0) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0))
@@ -724,6 +727,14 @@ wl_mbo_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
 #endif /* WL_MBO */
 
+#ifdef WL_CLIENT_SAE
+static s32 wl_notify_connect_status_bss(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+       const wl_event_msg_t *e, void *data);
+static s32 wl_notify_start_auth(struct bcm_cfg80211 *cfg,
+       bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data);
+static s32 wl_cfg80211_external_auth(struct wiphy *wiphy,
+       struct net_device *dev, struct cfg80211_external_auth_params *ext_auth);
+#endif /* WL_CLIENT_SAE */
 /*
  * register/deregister parent device
  */
@@ -1298,10 +1309,9 @@ static const rsn_akm_wpa_auth_entry_t rsn_akm_wpa_auth_lookup_tbl[] = {
 	{WLAN_AKM_SUITE_WAPI_CERT, WAPI_AUTH_UNSPECIFIED},
 	{WLAN_AKM_SUITE_WAPI_PSK, WAPI_AUTH_PSK},
 #endif /* BCMWAPI_WPI */
-
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
 	{WLAN_AKM_SUITE_SAE, WPA3_AUTH_SAE_PSK},
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE */
 #ifdef WL_SAE_FT
 	{WLAN_AKM_SUITE_FT_OVER_SAE, WPA3_AUTH_SAE_PSK | WPA2_AUTH_FT},
 #endif /* WL_SAE_FT */
@@ -1574,6 +1584,9 @@ wl_cfg80211_default_mgmt_stypes[NUM_NL80211_IFTYPES] = {
 		.tx = 0xffff,
 		.rx = BIT(IEEE80211_STYPE_ACTION >> 4) |
 		BIT(IEEE80211_STYPE_PROBE_REQ >> 4)
+#ifdef WL_CLIENT_SAE
+		| BIT(IEEE80211_STYPE_AUTH >> 4)
+#endif /* WL_CLIENT_SAE */
 	},
 	[NL80211_IFTYPE_AP] = {
 		.tx = 0xffff,
@@ -5308,15 +5321,22 @@ wl_set_auth_type(struct net_device *dev, struct cfg80211_connect_params *sme)
 		val = WL_AUTH_FILS_PUBLIC;
 		break;
 #endif /* WL_FILS */
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
 	case NL80211_AUTHTYPE_SAE:
-		 /* Fw will choose right auth type
-		 * dynamically based on PMKID availability
-		 */
-		val = WL_AUTH_OPEN_SHARED;
+#ifdef WL_CLIENT_SAE
+		if (!wl_is_pmkid_available(dev, sme->bssid))
+			val = DOT11_SAE;
+		else
+#endif /* WL_CLIENT_SAE */
+		{
+			/* Fw will choose right auth type
+			 * dynamically based on PMKID availability
+			 */
+			val = WL_AUTH_OPEN_SHARED;
+		}
 		WL_DBG(("sae auth type\n"));
 		break;
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE */
 	default:
 		val = 2;
 		WL_ERR(("invalid auth type (%d)\n", sme->auth_type));
@@ -5334,6 +5354,26 @@ wl_set_auth_type(struct net_device *dev, struct cfg80211_connect_params *sme)
 	sec->fw_auth = val;
 	return err;
 }
+
+#ifdef WL_CLIENT_SAE
+static bool
+wl_is_pmkid_available(struct net_device *dev, const u8 *bssid)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	int i;
+
+	/* check the bssid is null or not */
+	if (!bssid) return FALSE;
+
+	for (i = 0; i < cfg->pmk_list->pmkids.count; i++) {
+		if (!memcmp(bssid, &cfg->pmk_list->pmkids.pmkid[i].bssid,
+			ETHER_ADDR_LEN)) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+#endif /* WL_CLIENT_SAE */
 
 static u32
 wl_rsn_cipher_wsec_algo_lookup(uint32 cipher)
@@ -5991,9 +6031,9 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme)
 #ifdef WL_OWE
 			case WLAN_AKM_SUITE_OWE:
 #endif /* WL_OWE */
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
 			case WLAN_AKM_SUITE_SAE:
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE */
 #ifdef WL_SAE_FT
 			case WLAN_AKM_SUITE_FT_OVER_SAE:
 #endif /* WL_SAE_FT */
@@ -9685,7 +9725,27 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 			wl_cfg80211_cancel_scan(cfg);
 #endif /* not WL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST */
 		}
+#ifdef WL_CLIENT_SAE
+		else if (ieee80211_is_auth(mgmt->frame_control)) {
+			int err = 0;
 
+			ack = true;
+			if ((dev == bcmcfg_to_prmry_ndev(cfg)) && cfg->p2p) {
+				bssidx = wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE);
+			}
+
+			WL_DBG(("call scb_auth IOVA, buf=%p, len=%lu\n", buf, len));
+			err = wldev_iovar_setbuf(dev, "scb_auth", buf, len,
+				cfg->ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
+			if (err < 0) {
+				WL_ERR(("seting scb_auth failed code=%d\n", err));
+				ack = false;
+			}
+
+			cfg80211_mgmt_tx_status(cfgdev, *cookie, buf, len, ack, GFP_KERNEL);
+			goto exit;
+		}
+#endif /* WL_CLIENT_SAE */
 	} else {
 		WL_ERR(("Driver only allows MGMT packet type\n"));
 		goto exit;
@@ -12940,6 +13000,9 @@ static struct cfg80211_ops wl_cfg80211_ops = {
 	.set_rekey_data = wl_cfg80211_set_rekey_data,
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0) */
 #endif /* GTK_OFFLOAD_SUPPORT */
+#ifdef WL_CLIENT_SAE
+	.external_auth = wl_cfg80211_external_auth,
+#endif /* WL_CLIENT_SAE */
 #if defined(WL_FILS)
 	/* This should be enabled from kernel version which supports this */
 	.update_connect_params = wl_cfg80211_update_connect_params,
@@ -13313,9 +13376,9 @@ static s32 wl_setup_wiphy(struct wireless_dev *wdev, struct device *sdiofunc_dev
 		wdev->wiphy->max_sched_scan_plans = 1; /* multiple plans not supported */
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && defined(SUPPORT_RANDOM_MAC_SCAN) */
 
-#ifdef WL_SAE
-		wdev->wiphy->features |= NL80211_FEATURE_SAE;
-#endif /* WL_SAE */
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
+	wdev->wiphy->features |= NL80211_FEATURE_SAE;
+#endif /* WL_SAE || WL_CLIENT_SAE */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && defined(BCMSUP_4WAY_HANDSHAKE)
 	if (FW_SUPPORTED(dhd, idsup)) {
 		wiphy_ext_feature_set(wdev->wiphy, NL80211_EXT_FEATURE_4WAY_HANDSHAKE_STA_PSK);
@@ -13464,6 +13527,39 @@ static bool wl_is_nonetwork(struct bcm_cfg80211 *cfg, const wl_event_msg_t *e)
 
 	return false;
 }
+
+#ifdef WL_CLIENT_SAE
+static s32
+wl_notify_start_auth(struct bcm_cfg80211 *cfg,
+	bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data)
+{
+	struct cfg80211_external_auth_params ext_auth_param;
+	struct net_device *ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
+	u32 datalen = be32_to_cpu(e->datalen);
+	wl_ext_auth_evt_t *evt_data = (wl_ext_auth_evt_t *)data;
+
+	WL_DBG(("Enter \n"));
+
+	if (!datalen || !data)
+		return BCME_ERROR;
+
+	ext_auth_param.ssid.ssid_len = MIN(evt_data->ssid.SSID_len, DOT11_MAX_SSID_LEN);
+	if (ext_auth_param.ssid.ssid_len)
+		memcpy(&ext_auth_param.ssid.ssid, evt_data->ssid.SSID,
+			ext_auth_param.ssid.ssid_len);
+
+	memcpy(&ext_auth_param.bssid, &evt_data->bssid, ETHER_ADDR_LEN);
+	ext_auth_param.action = NL80211_EXTERNAL_AUTH_START;
+	ext_auth_param.key_mgmt_suite = ntoh32(WLAN_AKM_SUITE_SAE_SHA256);
+
+	WL_DBG(("call cfg80211_external_auth_request, BSSID:"MACDBG"\n",
+		MAC2STRDBG(&evt_data->bssid)));
+
+	cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);
+
+	return BCME_OK;
+}
+#endif /* WL_CLIENT_SAE */
 
 #ifdef WL_SAE
 static s32
@@ -14018,6 +14114,172 @@ s32 wl_cfg80211_get_connect_failed_status(struct net_device *dev, char* cmd, int
 	return bytes_written;
 }
 #endif /* DHD_ENABLE_BIGDATA_LOGGING */
+
+#ifdef WL_CLIENT_SAE
+static s32
+wl_notify_connect_status_bss(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	const wl_event_msg_t *e, void *data)
+{
+	s32 err = 0;
+	u32 event = ntoh32(e->event_type);
+	u32 reason = ntoh32(e->reason);
+	u32 len = ntoh32(e->datalen);
+	u32 status = ntoh32(e->status);
+
+	bool isfree = false;
+	u8 *mgmt_frame;
+	u8 bsscfgidx = e->bsscfgidx;
+	s32 freq;
+	s32 channel;
+	u8 *body = NULL;
+	u16 fc = 0, rssi = 0;
+	bcm_struct_cfgdev *cfgdev = ndev_to_cfgdev(ndev);
+
+	struct ieee80211_supported_band *band;
+	struct ether_addr da;
+	struct ether_addr bssid;
+	struct wiphy *wiphy = bcmcfg_to_wiphy(cfg);
+	channel_info_t ci;
+
+	WL_DBG(("Enter \n"));
+	WL_DBG(("event %d status %d reason %d\n", event, status, reason));
+
+	if (event == WLC_E_AUTH) {
+		struct wl_security *sec;
+		sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
+
+		if (!(sec->auth_type == NL80211_AUTHTYPE_SAE)) {
+			WL_ERR(("Abort AUTH processing due to NOT SAE"));
+			return 0;
+		}
+	}
+
+	if (!len && (event == WLC_E_DEAUTH)) {
+		len = 2; /* reason code field */
+		data = &reason;
+	}
+
+	if (len) {
+		body = kzalloc(len, GFP_KERNEL);
+
+		if (body == NULL) {
+			WL_ERR(("wl_notify_connect_status: Failed to allocate body\n"));
+			return WL_INVALID;
+		}
+	}
+
+	memset(&bssid, 0, ETHER_ADDR_LEN);
+	if (wl_get_mode_by_netdev(cfg, ndev) == WL_INVALID) {
+		kfree(body);
+		return WL_INVALID;
+	}
+	if (len)
+		memcpy(body, data, len);
+
+	wldev_iovar_getbuf_bsscfg(ndev, "cur_etheraddr",
+		NULL, 0, cfg->ioctl_buf, WLC_IOCTL_SMLEN, bsscfgidx, &cfg->ioctl_buf_sync);
+	memcpy(da.octet, cfg->ioctl_buf, ETHER_ADDR_LEN);
+	err = wldev_ioctl_get(ndev, WLC_GET_BSSID, &bssid, ETHER_ADDR_LEN);
+	/* Use e->addr as bssid for Sta case , before association completed */
+	if (err == BCME_NOTASSOCIATED)
+		memcpy(&bssid, &e->addr, ETHER_ADDR_LEN);
+
+	switch (event) {
+		case WLC_E_ASSOC_IND:
+			fc = FC_ASSOC_REQ;
+			break;
+		case WLC_E_REASSOC_IND:
+			fc = FC_REASSOC_REQ;
+			break;
+		case WLC_E_DISASSOC_IND:
+			fc = FC_DISASSOC;
+			break;
+		case WLC_E_DEAUTH_IND:
+			fc = FC_DISASSOC;
+			break;
+		case WLC_E_DEAUTH:
+			fc = FC_DISASSOC;
+			break;
+		case WLC_E_AUTH:
+			fc = FC_AUTH;
+			break;
+		default:
+			fc = 0;
+			goto exit;
+	}
+	if ((err = wldev_ioctl_get(ndev, WLC_GET_CHANNEL, &ci, sizeof(ci)))) {
+		kfree(body);
+		return err;
+	}
+
+	channel = dtoh32(ci.hw_channel);
+	if (channel <= CH_MAX_2G_CHANNEL)
+		band = wiphy->bands[IEEE80211_BAND_2GHZ];
+	else
+		band = wiphy->bands[IEEE80211_BAND_5GHZ];
+	if (!band) {
+		WL_ERR(("No valid band\n"));
+		if (body)
+			kfree(body);
+		return -EINVAL;
+	}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
+	freq = ieee80211_channel_to_frequency(channel);
+	(void)band->band;
+#else
+	freq = ieee80211_channel_to_frequency(channel, band->band);
+#endif
+
+	err = wl_frame_get_mgmt(cfg, fc, &da, &e->addr, &bssid,
+		&mgmt_frame, &len, body);
+	if (err < 0) {
+		goto exit;
+	}
+	isfree = true;
+
+	if (event == WLC_E_ASSOC_IND && reason == DOT11_SC_SUCCESS) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+		cfg80211_rx_mgmt(cfgdev, freq, rssi,  mgmt_frame, len, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
+		cfg80211_rx_mgmt(ndev, freq, 0, mgmt_frame, len, GFP_ATOMIC);
+#else
+		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
+#endif
+	} else if (event == WLC_E_DISASSOC_IND) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+		cfg80211_rx_mgmt(cfgdev, freq, rssi,  mgmt_frame, len, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
+		cfg80211_rx_mgmt(ndev, freq, 0, mgmt_frame, len, GFP_ATOMIC);
+#else
+		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
+#endif
+	} else if ((event == WLC_E_DEAUTH_IND) || (event == WLC_E_DEAUTH)) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+		cfg80211_rx_mgmt(cfgdev, freq, rssi,  mgmt_frame, len, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
+		cfg80211_rx_mgmt(ndev, freq, 0, mgmt_frame, len, GFP_ATOMIC);
+#else
+		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
+#endif
+	} else if (event == WLC_E_AUTH) {
+		WL_ERR(("%s: send mgmt frame up, len=%d\n", __func__, len));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+		cfg80211_rx_mgmt(cfgdev, freq, rssi,  mgmt_frame, len, 0);
+
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
+		cfg80211_rx_mgmt(ndev, freq, 0, mgmt_frame, len, GFP_ATOMIC);
+#else
+		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
+#endif
+	}
+exit:
+	if (isfree)
+		kfree(mgmt_frame);
+	if (body)
+		kfree(body);
+	return err;
+}
+#endif /* WL_CLIENT_SAE */
 
 static s32
 wl_notify_connect_status_ibss(struct bcm_cfg80211 *cfg, struct net_device *ndev,
@@ -14710,6 +14972,11 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				" connect state. Ignore\n"));
 			return BCME_OK;
 		}
+
+#ifdef WL_CLIENT_SAE
+		if (event == WLC_E_AUTH)
+			wl_notify_connect_status_bss(cfg, ndev, e, data);
+#endif /* WL_CLIENT_SAE */
 
 		if (event == WLC_E_ASSOC || event == WLC_E_AUTH) {
 			wl_get_auth_assoc_status(cfg, ndev, e, data);
@@ -17116,7 +17383,58 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 #ifdef WL_CHAN_UTIL
 	cfg->evt_handler[WLC_E_BSS_LOAD] = wl_cfg80211_bssload_report_event_handler;
 #endif /* WL_CHAN_UTIL */
+#ifdef WL_CLIENT_SAE
+	cfg->evt_handler[WLC_E_START_AUTH] = wl_notify_start_auth;
+#endif /* WL_CLIENT_SAE */
 }
+
+#ifdef WL_CLIENT_SAE
+/** Called by the cfg80211 framework */
+static s32
+wl_cfg80211_external_auth(struct wiphy *wiphy,
+	struct net_device *ndev, struct cfg80211_external_auth_params *ext_auth_param)
+{
+	int err = 0;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	gfp_t kflags;
+	wl_ext_auth_evt_t *evt_data;
+
+	WL_DBG(("Enter\n "));
+
+	if (!ext_auth_param ||
+		ETHER_ISNULLADDR(ext_auth_param->bssid)) {
+		WL_ERR(("Invalid wl_cfg80211_external_auth param\n"));
+		return -EINVAL;
+	}
+
+	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
+	evt_data = (wl_ext_auth_evt_t *)kzalloc(sizeof(wl_ext_auth_evt_t),
+			kflags);
+	if (!evt_data) {
+		WL_ERR(("Failed to allocate external auth evt_data\n"));
+		return -ENOMEM;
+	}
+
+	memcpy(&evt_data->ssid.SSID, &ext_auth_param->ssid.ssid,
+			ext_auth_param->ssid.ssid_len);
+	evt_data->ssid.SSID_len = ext_auth_param->ssid.ssid_len;
+
+	memcpy(&evt_data->bssid, &ext_auth_param->bssid, ETHER_ADDR_LEN);
+	evt_data->status = ext_auth_param->action;
+
+	WL_DBG(("call scb_assoc, BSSID:" MACDBG "\n", MAC2STRDBG(&evt_data->bssid)));
+
+	err = wldev_iovar_setbuf(ndev, "scb_assoc", evt_data, sizeof(wl_ext_auth_evt_t),
+		cfg->ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
+	if (err < 0)
+		WL_ERR(("seting scb_assoc failed code=%d\n", err));
+
+	if (evt_data)
+		kfree(evt_data);
+
+	return err;
+}
+#endif /* WL_CLIENT_SAE */
 
 #if defined(STATIC_WL_PRIV_STRUCT)
 static int

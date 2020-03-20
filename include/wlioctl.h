@@ -1636,6 +1636,13 @@ typedef struct wl_auth_event {
 	uint8 xtlvs[];
 } wl_auth_event_t;
 
+typedef struct wl_ext_auth_evt {
+	wlc_ssid_t ssid;
+	struct ether_addr bssid;
+	unsigned int key_mgmt_suite;
+	int status;
+} wl_ext_auth_evt_t;
+
 #define WL_AUTH_EVENT_FIXED_LEN_V1	OFFSETOF(wl_auth_event_t, xtlvs)
 #define WL_AUTH_EVENT_FIXED_LEN_V2	OFFSETOF(wl_auth_event_t, xtlvs)
 

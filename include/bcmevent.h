@@ -252,6 +252,7 @@ typedef union bcm_event_msg_u {
 #define WLC_E_RRM		141	/* RRM Event */
 #define WLC_E_PFN_SSID_EXT	142	/* SSID EXT event */
 #define WLC_E_ROAM_EXP_EVENT	143	/* Expanded roam event */
+#define WLC_E_START_AUTH		145
 #define WLC_E_ULP			146	/* ULP entered indication */
 #define WLC_E_MACDBG			147	/* Ucode debugging event */
 #define WLC_E_RESERVED			148	/* reserved */
