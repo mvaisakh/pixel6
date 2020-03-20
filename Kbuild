@@ -98,6 +98,7 @@ DHDCFLAGS += -Wall -Wstrict-prototypes -Dlinux -DLINUX -DBCMDRIVER            \
 
 DHDCFLAGS += -DOEM_ANDROID
 DHDCFLAGS += -DAUTO_CHIP_DETECTION
+DHDCFLAGS += -DDHD_COREDUMP
 
 #################
 # Common feature
