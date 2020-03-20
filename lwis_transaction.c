@@ -264,7 +264,9 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
 
-	flush_workqueue(client->transaction_wq);
+	if (client->transaction_wq) {
+		flush_workqueue(client->transaction_wq);
+	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* This shouldn't happen after flush_workqueue, but check anyway. */
@@ -298,7 +300,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		pr_err("Failed to wait for all in-process transactions to complete\n");
 		return ret;
 	}
-	destroy_workqueue(client->transaction_wq);
+	if (client->transaction_wq) {
+		destroy_workqueue(client->transaction_wq);
+	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	hash_for_each_safe(client->transaction_list, i, tmp, it_evt_list, node)
