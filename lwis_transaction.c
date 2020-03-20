@@ -350,8 +350,12 @@ int lwis_transaction_submit(struct lwis_client *client,
 		if (event_state != NULL) {
 			info->current_trigger_event_counter =
 				event_state->event_counter;
-			if (info->trigger_event_counter <=
+			if (info->trigger_event_counter ==
 			    event_state->event_counter) {
+				pr_warn("Event counter == Trigger counter already, turning this into an immediate transaction\n");
+				info->trigger_event_id = LWIS_EVENT_ID_NONE;
+			} else if (info->trigger_event_counter <
+				   event_state->event_counter) {
 				return -ENOENT;
 			}
 		} else {
