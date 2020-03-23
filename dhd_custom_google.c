@@ -266,11 +266,12 @@ dhd_wlan_init(void)
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
-	  ret = dhd_init_wlan_mem();
-	  if (ret < 0) {
-		  printk(KERN_ERR "%s: failed to alloc reserved memory,"
-			  " ret=%d\n", __FUNCTION__, ret);
-	  }
+	ret = dhd_init_wlan_mem();
+	if (ret < 0) {
+		printk(KERN_ERR "%s: failed to alloc reserved memory,"
+			" ret=%d\n", __FUNCTION__, ret);
+		goto fail;
+	}
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
 fail:
