@@ -106,6 +106,79 @@ dhd_set_coredump(const char *buf, int buf_len)
 }
 #endif /* DHD_COREDUMP */
 
+#ifdef GET_CUSTOM_MAC_ENABLE
+
+#define CDB_PATH "/chosen/config"
+#define WIFI_MAC "wlan_mac1"
+static u8 wlan_mac[6] = {0};
+
+static int
+dhd_wlan_get_mac_addr(unsigned char *buf)
+{
+	if (memcmp(wlan_mac, "\0\0\0\0\0\0", 6)) {
+		memcpy(buf, wlan_mac, sizeof(wlan_mac));
+		return 0;
+	}
+	return -EIO;
+}
+
+int
+dhd_wlan_init_mac_addr(void)
+{
+	u8 mac[6] = {0};
+	unsigned int size;
+	unsigned char *mac_addr = NULL;
+	struct device_node *node;
+	unsigned int mac_found = 0;
+
+	node = of_find_node_by_path(CDB_PATH);
+	if (!node) {
+		printk(KERN_ERR "CDB Node not created under %s", CDB_PATH);
+		return -ENODEV;
+	} else {
+		mac_addr = (unsigned char *)
+				of_get_property(node, WIFI_MAC, &size);
+	}
+
+	/* In case Missing Provisioned MAC Address, exit with error */
+	if (!mac_addr) {
+		printk(KERN_ERR "Missing Provisioned MAC address");
+		return -EINVAL;
+	}
+
+	/* Start decoding MAC Address
+	 * Note that 2 formats are supported for now
+	 * AA:BB:CC:DD:EE:FF (with separating colons) and
+	 * AABBCCDDEEFF (without separating colons) */
+	if (sscanf(mac_addr,
+			"%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx",
+			&mac[0], &mac[1], &mac[2], &mac[3], &mac[4],
+			&mac[5]) == 6) {
+		mac_found = 1;
+	} else if (sscanf(mac_addr,
+			"%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx",
+			&mac[0], &mac[1], &mac[2], &mac[3], &mac[4],
+			&mac[5]) == 6) {
+		mac_found = 1;
+	}
+
+	/* Make sure Address decoding succeeds */
+	if (!mac_found) {
+		printk(KERN_ERR "Invalid format for Provisioned MAC Address");
+		return -EINVAL;
+	}
+
+	/* Make sure Provisioned MAC Address is globally Administered */
+	if (mac[0] & 2) {
+		printk(KERN_ERR "Invalid Provisioned MAC Address");
+		return -EINVAL;
+	}
+
+	memcpy(wlan_mac, mac, sizeof(mac));
+	return 0;
+}
+#endif /* GET_CUSTOM_MAC_ENABLE */
+
 int
 dhd_wifi_init_gpio(void)
 {
@@ -285,6 +358,9 @@ struct wifi_platform_data dhd_wlan_control = {
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 	.mem_prealloc	= dhd_wlan_mem_prealloc,
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
+#ifdef GET_CUSTOM_MAC_ENABLE
+	.get_mac_addr = dhd_wlan_get_mac_addr,
+#endif /* GET_CUSTOM_MAC_ENABLE */
 #ifdef BCMSDIO
 	.get_wake_irq	= dhd_wlan_get_wake_irq,
 #endif // endif
@@ -315,6 +391,10 @@ dhd_wlan_init(void)
 			  " ret=%d\n", __FUNCTION__, ret);
 	  }
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
+
+#ifdef GET_CUSTOM_MAC_ENABLE
+	dhd_wlan_init_mac_addr();
+#endif /* GET_CUSTOM_MAC_ENABLE */
 
 #ifdef DHD_COREDUMP
 	platform_device_register(&sscd_dev);
