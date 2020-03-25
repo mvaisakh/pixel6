@@ -937,10 +937,13 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	mutex_lock(&lwis_dev->client_lock);
 	device_disabled = (lwis_dev->enabled == 0);
 	mutex_unlock(&lwis_dev->client_lock);
+	/* Buffer dis/enroll is added here temporarily. Will need a proper
+	   fix to ensure buffer enrollment when device is enabled. */
 	if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled &&
 	    type != LWIS_GET_DEVICE_INFO && type != LWIS_DEVICE_ENABLE &&
 	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
-	    type != LWIS_EVENT_DEQUEUE) {
+	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
+	    type != LWIS_BUFFER_DISENROLL) {
 		ret = -EBADFD;
 		pr_err("Unsupported IOCTL on disabled device.\n");
 		return ret;
