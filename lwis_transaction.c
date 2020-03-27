@@ -173,13 +173,18 @@ static int process_io_entries(struct lwis_client *client,
 	}
 
 event_push:
-	lwis_pending_event_push(pending_events,
-				resp->error_code ? info->emit_error_event_id
-						 : info->emit_success_event_id,
-				(void *)resp, resp_size);
-	spin_lock_irqsave(&client->transaction_lock, flags);
-	list_del(list_node);
-	spin_unlock_irqrestore(&client->transaction_lock, flags);
+	if (pending_events) {
+		lwis_pending_event_push(pending_events,
+					resp->error_code
+						? info->emit_error_event_id
+						: info->emit_success_event_id,
+					(void *)resp, resp_size);
+	}
+	if (list_node) {
+		spin_lock_irqsave(&client->transaction_lock, flags);
+		list_del(list_node);
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
+	}
 	kfree(resp);
 	for (i = 0; i < info->num_io_entries; ++i) {
 		if (info->io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
@@ -307,6 +312,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	hash_for_each_safe(client->transaction_list, i, tmp, it_evt_list, node)
 	{
+		if (it_evt_list->event_id == LWIS_EVENT_ID_CLIENT_CLEANUP) {
+			continue;
+		}
 		list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
 		{
 			transaction =
@@ -318,6 +326,34 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		hash_del(&it_evt_list->node);
 		kfree(it_evt_list);
 	}
+
+	/* Perform client defined clean-up routine. */
+	it_evt_list = event_list_find(client, LWIS_EVENT_ID_CLIENT_CLEANUP);
+	if (it_evt_list == NULL) {
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
+		return 0;
+	}
+
+	list_for_each_prev_safe(it_tran, it_tran_tmp, &it_evt_list->list)
+	{
+		transaction = list_entry(it_tran, struct lwis_transaction,
+					 event_list_node);
+		if (transaction->resp->error_code) {
+			cancel_transaction(transaction, -ECANCELED, NULL);
+		} else {
+			spin_unlock_irqrestore(&client->transaction_lock,
+					       flags);
+			process_io_entries(client, transaction,
+					   /*list_node=*/NULL,
+					   /*pending_events=*/NULL,
+					   /*in_irq=*/false);
+			spin_lock_irqsave(&client->transaction_lock, flags);
+		}
+		list_del(&transaction->event_list_node);
+	}
+	hash_del(&it_evt_list->node);
+	kfree(it_evt_list);
+
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 	return 0;
 }
@@ -346,7 +382,7 @@ int lwis_transaction_submit(struct lwis_client *client,
 		    LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
 		event_state = lwis_device_event_state_find(
 			lwis_dev, info->trigger_event_id);
-		/* Event has happened already */
+		/* Check if event has happened already */
 		if (event_state != NULL) {
 			info->current_trigger_event_counter =
 				event_state->event_counter;
