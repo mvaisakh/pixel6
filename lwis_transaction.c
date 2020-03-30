@@ -153,7 +153,8 @@ static int process_io_entries(struct lwis_client *client,
 					resp->error_code = ret;
 					goto event_push;
 				}
-				if (val == entry->poll.val) {
+				if ((val & entry->poll.mask) ==
+				    (entry->poll.val & entry->poll.mask)) {
 					break;
 				}
 				if (ktime_to_ms(ktime_get()) - start >

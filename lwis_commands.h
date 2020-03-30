@@ -122,6 +122,7 @@ struct lwis_io_entry_poll {
 	int bid;
 	uint64_t offset;
 	uint64_t val;
+	uint64_t mask;
 	uint64_t timeout_ms;
 };
 
