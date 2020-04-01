@@ -205,6 +205,8 @@ static void cancel_transaction(struct lwis_transaction *transaction,
 	resp.id = info->id;
 	resp.error_code = error_code;
 	resp.num_entries = 0;
+	resp.results_size_bytes = 0;
+	resp.completion_index = -1;
 
 	if (pending_events) {
 		lwis_pending_event_push(pending_events,
