@@ -63,7 +63,7 @@ struct wifi_platform_data {
 	int (*set_power)(int val);
 	int (*set_reset)(int val);
 	int (*set_carddetect)(int val);
-	int (*set_coredump)(const char *buf, int buf_len);
+	int (*set_coredump)(const char *buf, int buf_len, const char *info);
 	void *(*mem_prealloc)(int section, unsigned long size);
 	int (*get_mac_addr)(unsigned char *buf);
 #ifdef BCMSDIO
@@ -392,7 +392,8 @@ int wifi_platform_bus_enumerate(wifi_adapter_info_t *adapter, bool device_presen
 int wifi_platform_get_irq_number(wifi_adapter_info_t *adapter, unsigned long *irq_flags_ptr);
 int wifi_platform_get_mac_addr(wifi_adapter_info_t *adapter, unsigned char *buf);
 #ifdef DHD_COREDUMP
-int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf, int buf_len);
+int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf, int buf_len,
+	const char *info);
 #endif /* DHD_COREDUMP */
 #ifdef CUSTOM_COUNTRY_CODE
 void *wifi_platform_get_country_code(wifi_adapter_info_t *adapter, char *ccode,

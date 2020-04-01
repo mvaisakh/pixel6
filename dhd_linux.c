@@ -18301,6 +18301,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	unsigned long flags = 0;
 	int ret = 0;
 	dhd_dump_t *dump = NULL;
+#ifdef DHD_COREDUMP
+	char memdump_type[DHD_MEMDUMP_TYPE_STR_LEN];
+	trap_t *tr;
+#endif /* DHD_COREDUMP */
 
 	DHD_ERROR(("%s: ENTER \n", __FUNCTION__));
 
@@ -18362,7 +18366,17 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 
 #ifdef DHD_COREDUMP
-	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize)) {
+	memset(memdump_type, 0, DHD_MEMDUMP_TYPE_STR_LEN);
+	dhd_convert_memdump_type_to_str(dhdp->memdump_type, memdump_type, DHD_MEMDUMP_TYPE_STR_LEN,
+			dhdp->debug_dump_subcmd);
+	if (dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP &&
+		dhdp->dongle_trap_occured == TRUE) {
+		tr = &dhdp->last_trap_info;
+		sprintf(&memdump_type[strlen(memdump_type)], "_%08x_%08x",
+				ltoh32(tr->epc), ltoh32(tr->r14));
+	}
+	DHD_ERROR(("%s: dump reason: %s\n", __FUNCTION__, memdump_type));
+	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, memdump_type)) {
 		DHD_ERROR(("%s: writing SoC_RAM dump failed\n", __FUNCTION__));
 #ifdef DHD_DEBUG_UART
 		dhd->pub.memdump_success = FALSE;

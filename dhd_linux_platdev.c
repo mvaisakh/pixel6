@@ -250,7 +250,7 @@ int wifi_platform_get_mac_addr(wifi_adapter_info_t *adapter, unsigned char *buf)
 
 #ifdef DHD_COREDUMP
 int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf,
-	int buf_len)
+	int buf_len, const char *info)
 {
 	struct wifi_platform_data *plat_data;
 
@@ -259,7 +259,7 @@ int wifi_platform_set_coredump(wifi_adapter_info_t *adapter, const char *buf,
 		return -EINVAL;
 	plat_data = adapter->wifi_plat_data;
 	if (plat_data->set_coredump) {
-		return plat_data->set_coredump(buf, buf_len);
+		return plat_data->set_coredump(buf, buf_len, info);
 	}
 	return -EOPNOTSUPP;
 }

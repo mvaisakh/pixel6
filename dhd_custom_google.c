@@ -91,7 +91,7 @@ static void sscd_release(struct device *dev)
 
 /* trigger coredump */
 static int
-dhd_set_coredump(const char *buf, int buf_len)
+dhd_set_coredump(const char *buf, int buf_len, const char *info)
 {
 	struct sscd_platform_data *pdata = dev_get_platdata(&sscd_dev.dev);
 	struct sscd_segment seg;
@@ -100,7 +100,7 @@ dhd_set_coredump(const char *buf, int buf_len)
 		memset(&seg, 0, sizeof(seg));
 		seg.addr = (void *) buf;
 		seg.size = buf_len;
-		pdata->sscd_report(&sscd_dev, &seg, 1, 0, "wlan_crash");
+		pdata->sscd_report(&sscd_dev, &seg, 1, 0, info);
 	}
 	return 0;
 }
