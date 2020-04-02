@@ -209,7 +209,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 	mutex_unlock(&lwis_client->lock);
 
 	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
-		lwis_ioctl_pr_err(type, ret);
+		lwis_ioctl_pr_err(lwis_dev, type, ret);
 	}
 
 	return ret;
