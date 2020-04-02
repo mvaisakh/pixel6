@@ -609,20 +609,20 @@ int lwis_i2c_device_parse_dt(struct lwis_i2c_device *i2c_dev)
 
 	dev_node_i2c = of_parse_phandle(dev_node, "i2c-bus", 0);
 	if (!dev_node_i2c) {
-		pr_err("Cannot find i2c-bus node\n");
+		dev_err(i2c_dev->base_dev.dev, "Cannot find i2c-bus node\n");
 		return -ENODEV;
 	}
 
 	i2c_dev->adapter = of_find_i2c_adapter_by_node(dev_node_i2c);
 	if (!i2c_dev->adapter) {
-		pr_err("Cannot find i2c adapter\n");
+		dev_err(i2c_dev->base_dev.dev, "Cannot find i2c adapter\n");
 		return -ENODEV;
 	}
 
 	ret = of_property_read_u32(dev_node, "i2c-addr",
 				   (u32 *)&i2c_dev->address);
 	if (ret) {
-		pr_err("Failed to read i2c-addr\n");
+		dev_err(i2c_dev->base_dev.dev, "Failed to read i2c-addr\n");
 		return ret;
 	}
 
@@ -644,13 +644,14 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 	blocks = of_property_count_elems_of_size(dev_node, "reg",
 						 reg_tuple_size * sizeof(u32));
 	if (blocks <= 0) {
-		pr_err("No register space found\n");
+		dev_err(ioreg_dev->base_dev.dev, "No register space found\n");
 		return -EINVAL;
 	}
 
 	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
 	if (ret) {
-		pr_err("Failed to allocate ioreg list\n");
+		dev_err(ioreg_dev->base_dev.dev,
+		       "Failed to allocate ioreg list\n");
 		return ret;
 	}
 
@@ -658,7 +659,8 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 		of_property_read_string_index(dev_node, "reg-names", i, &name);
 		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name);
 		if (ret) {
-			pr_err("Cannot set ioreg info\n");
+			dev_err(ioreg_dev->base_dev.dev,
+			       "Cannot set ioreg info for %s\n", name);
 			goto error_ioreg;
 		}
 	}

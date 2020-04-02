@@ -59,7 +59,7 @@ static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 	/* Enable the I2C bus */
 	ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
 	if (ret) {
-		pr_err("Error enabling i2c bus (%d)\n", ret);
+		dev_err(lwis_dev->dev, "Error enabling i2c bus (%d)\n", ret);
 		return ret;
 	}
 
@@ -74,7 +74,7 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 	/* Disable the I2C bus */
 	ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
 	if (ret) {
-		pr_err("Error disabling i2c bus (%d)\n", ret);
+		dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
 		return ret;
 	}
 
@@ -117,7 +117,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	/* Parse device tree for device configurations */
 	ret = lwis_i2c_device_parse_dt(i2c_dev);
 	if (ret) {
-		pr_err("Failed to parse device tree\n");
+		dev_err(i2c_dev->base_dev.dev, "Failed to parse device tree\n");
 		return ret;
 	}
 #else
@@ -142,7 +142,8 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 
 	/* Still getting error in obtaining client, return error */
 	if (IS_ERR_OR_NULL(i2c_dev->client)) {
-		pr_err("Failed to create or find i2c device\n");
+		dev_err(i2c_dev->base_dev.dev,
+			"Failed to create or find i2c device\n");
 		return -EINVAL;
 	}
 
@@ -153,8 +154,9 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	/* TODO: Need to figure out why this is parent's parent */
 	pinctrl = devm_pinctrl_get(dev->parent->parent);
 	if (IS_ERR(pinctrl)) {
-		pr_err("Cannot instantiate pinctrl instance (%d)\n",
-		       (int)PTR_ERR(pinctrl));
+		dev_err(i2c_dev->base_dev.dev,
+			"Cannot instantiate pinctrl instance (%d)\n",
+			(int)PTR_ERR(pinctrl));
 		return PTR_ERR(pinctrl);
 	}
 	i2c_dev->state_pinctrl = pinctrl;
@@ -188,11 +190,12 @@ static int __init lwis_i2c_device_probe(struct platform_device *plat_dev)
 	/* Call I2C device specific setup function */
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
-		pr_err("Error in i2c device initialization\n");
+		dev_err(i2c_dev->base_dev.dev,
+			"Error in i2c device initialization\n");
 		goto error_probe;
 	}
 
-	pr_info("I2C Device [%s] Probe: Success\n", i2c_dev->base_dev.name);
+	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
 
 	return 0;
 

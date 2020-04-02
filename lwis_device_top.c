@@ -87,7 +87,7 @@ static void subscribe_work_func(struct work_struct *work)
 	unsigned long flags;
 
 	if (list_empty(&lwis_top_dev->emitted_event_list)) {
-		pr_err("Event list is empty!");
+		dev_err(lwis_top_dev->base_dev.dev, "Event list is empty\n");
 		return;
 	}
 
@@ -175,7 +175,8 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
 	int ret = 0;
 
 	if (lwis_trigger_dev == NULL || lwis_receiver_dev == NULL) {
-		pr_err("LWIS trigger/receiver device not found");
+		dev_err(lwis_top_dev->base_dev.dev,
+			"LWIS trigger/receiver device not found");
 		return -EINVAL;
 	}
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
@@ -191,7 +192,8 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
 	/* Notify trigger device someone subscribe a event */
 	ret = lwis_device_event_subscribed(lwis_trigger_dev, trigger_event_id);
 	if (ret < 0) {
-		pr_err("Failed to subcribe event : %llx", trigger_event_id);
+		dev_err(lwis_top_dev->base_dev.dev,
+			"Failed to subcribe event : %llx\n", trigger_event_id);
 		goto out;
 	}
 
@@ -201,7 +203,8 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
 	if (!new_subscription) {
 		lwis_device_event_unsubscribed(lwis_trigger_dev,
 					       trigger_event_id);
-		pr_err("Failed to allocate memory for new subscription");
+		dev_err(lwis_top_dev->base_dev.dev,
+			"Failed to allocate memory for new subscription\n");
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -272,8 +275,9 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
-			pr_err("Offset (%d) must be < %d\n", entry->rw.offset,
-			       SCRATCH_MEMORY_SIZE);
+			dev_err(top_dev->base_dev.dev,
+				"Offset (%d) must be < %d\n", entry->rw.offset,
+				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
@@ -281,9 +285,10 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		rw_batch = &entry->rw_batch;
 		if (rw_batch->offset + rw_batch->size_in_bytes >
 		    SCRATCH_MEMORY_SIZE) {
-			pr_err("Read range (%d) exceeds scratch memory (%d)\n",
-			       rw_batch->offset + rw_batch->size_in_bytes,
-			       SCRATCH_MEMORY_SIZE);
+			dev_err(top_dev->base_dev.dev,
+				"Read range (%d) exceeds scratch memory (%d)\n",
+				rw_batch->offset + rw_batch->size_in_bytes,
+				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
@@ -292,8 +297,9 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
-			pr_err("Offset (%d) must be < %d\n", entry->rw.offset,
-			       SCRATCH_MEMORY_SIZE);
+			dev_err(top_dev->base_dev.dev,
+				"Offset (%d) must be < %d\n", entry->rw.offset,
+				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
@@ -301,9 +307,10 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		rw_batch = &entry->rw_batch;
 		if (rw_batch->offset + rw_batch->size_in_bytes >
 		    SCRATCH_MEMORY_SIZE) {
-			pr_err("Write range (%d) exceeds scratch memory (%d)\n",
-			       rw_batch->offset + rw_batch->size_in_bytes,
-			       SCRATCH_MEMORY_SIZE);
+			dev_err(top_dev->base_dev.dev,
+				"Write range (%d) exceeds scratch memory (%d)\n",
+				rw_batch->offset + rw_batch->size_in_bytes,
+				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
@@ -312,8 +319,9 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
 		if (entry->mod.offset >= SCRATCH_MEMORY_SIZE) {
-			pr_err("Offset (%d) must be < %d\n", entry->mod.offset,
-			       SCRATCH_MEMORY_SIZE);
+			dev_err(top_dev->base_dev.dev,
+				"Offset (%d) must be < %d\n", entry->mod.offset,
+				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		reg_value = top_dev->scratch_mem[entry->mod.offset];
@@ -321,7 +329,8 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		reg_value |= entry->mod.val_mask & entry->mod.val;
 		top_dev->scratch_mem[entry->rw.offset] = reg_value;
 	} else {
-		pr_err("Invalid IO entry type: %d\n", entry->type);
+		dev_err(top_dev->base_dev.dev, "Invalid IO entry type: %d\n",
+			entry->type);
 		return -EINVAL;
 	}
 
@@ -336,7 +345,7 @@ static int lwis_top_device_setup(struct lwis_top_device *top_dev)
 	/* Parse device tree for device configurations */
 	ret = lwis_top_device_parse_dt(top_dev);
 	if (ret) {
-		pr_err("Failed to parse device tree\n");
+		dev_err(top_dev->base_dev.dev, "Failed to parse device tree\n");
 	}
 #else
 	/* Non-device-tree init: Save for future implementation */
@@ -372,7 +381,8 @@ static int __init lwis_top_device_probe(struct platform_device *plat_dev)
 	/* Call top device specific setup function */
 	ret = lwis_top_device_setup(top_dev);
 	if (ret) {
-		pr_err("Error in top device initialization\n");
+		dev_err(top_dev->base_dev.dev,
+			"Error in top device initialization\n");
 		goto error_probe;
 	}
 

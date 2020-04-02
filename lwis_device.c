@@ -68,8 +68,6 @@ static int lwis_open(struct inode *node, struct file *fp)
 	struct lwis_client *lwis_client;
 	unsigned long flags;
 
-	pr_info("Opening instance %d\n", iminor(node));
-
 	/* Making sure the minor number associated with fp exists */
 	mutex_lock(&core.lock);
 	lwis_dev = idr_find(core.idr, iminor(node));
@@ -78,10 +76,11 @@ static int lwis_open(struct inode *node, struct file *fp)
 		pr_err("No device %d found\n", iminor(node));
 		return -ENODEV;
 	}
+	dev_info(lwis_dev->dev, "Opening instance %d\n", iminor(node));
 
 	lwis_client = kzalloc(sizeof(struct lwis_client), GFP_KERNEL);
 	if (!lwis_client) {
-		pr_err("Failed to allocate lwis client\n");
+		dev_err(lwis_dev->dev, "Failed to allocate lwis client\n");
 		return -ENOMEM;
 	}
 
@@ -152,7 +151,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 	unsigned long flags;
 	int rc = 0;
 
-	pr_info("Closing instance %d\n", iminor(node));
+	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
 	rc = lwis_release_client(lwis_client);
 
@@ -161,8 +160,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 		lwis_dev->enabled--;
 		if (lwis_dev->enabled == 0) {
 			rc = lwis_dev_power_down_locked(lwis_dev);
-			pr_info("No more client, power down %s",
-				lwis_dev->name);
+			dev_info(lwis_dev->dev, "No more client, power down\n");
 		}
 	}
 	mutex_unlock(&lwis_dev->client_lock);
@@ -293,7 +291,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	/* Let's do the platform-specific enable call */
 	ret = lwis_platform_device_enable(lwis_dev);
 	if (ret) {
-		pr_err("Platform-specific device enable fail: %d\n", ret);
+		dev_err(lwis_dev->dev,
+			"Platform-specific device enable fail: %d\n", ret);
 		return ret;
 	}
 
@@ -301,7 +300,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		/* Enable clocks */
 		ret = lwis_clock_enable_all(lwis_dev->clocks);
 		if (ret) {
-			pr_err("Error enabling clocks (%d)\n", ret);
+			dev_err(lwis_dev->dev, "Error enabling clocks (%d)\n",
+				ret);
 			return ret;
 		}
 	}
@@ -311,8 +311,9 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
 		if (IS_ERR_OR_NULL(gpios)) {
-			pr_err("Failed to obtain enable gpio list (%d)\n",
-			       PTR_ERR(gpios));
+			dev_err(lwis_dev->dev,
+				"Failed to obtain enable gpio list (%d)\n",
+				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
 			return ret;
 		}
@@ -320,12 +321,13 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		/* Set enable pins to 1 (i.e. asserted) */
 		ret = lwis_gpio_list_set_output_value(gpios, 1);
 		if (ret) {
-			pr_err("Error enabling GPIO pins (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error enabling GPIO pins (%d)\n", ret);
 			return ret;
 		}
 
 		/* Setting enable_gpios to non-NULL to indicate that this lwis
-		   device is holding onto the GPIO pins. */
+			 device is holding onto the GPIO pins. */
 		lwis_dev->enable_gpios = gpios;
 	}
 
@@ -333,7 +335,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		/* Enable all the regulators related to this sensor */
 		ret = lwis_regulator_enable_all(lwis_dev->regulators);
 		if (ret) {
-			pr_err("Error enabling regulators (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error enabling regulators (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -343,8 +346,9 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
 		if (IS_ERR_OR_NULL(gpios)) {
-			pr_err("Failed to obtain reset gpio list (%d)\n",
-			       PTR_ERR(gpios));
+			dev_err(lwis_dev->dev,
+				"Failed to obtain reset gpio list (%d)\n",
+				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
 			return ret;
 		}
@@ -352,8 +356,9 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		/* Set reset pin to 1 (i.e. asserted) */
 		ret = lwis_gpio_list_set_output_value(gpios, 1);
 		if (ret) {
-			pr_err("Failed to set reset GPIOs to ACTIVE (%d)\n",
-			       ret);
+			dev_err(lwis_dev->dev,
+				"Failed to set reset GPIOs to ACTIVE (%d)\n",
+				ret);
 			return ret;
 		}
 
@@ -363,13 +368,14 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		/* Set reset pin to 0 (i.e. deasserted) */
 		ret = lwis_gpio_list_set_output_value(gpios, 0);
 		if (ret) {
-			pr_err("Failed to set reset GPIOs to INACTIVE (%d)\n",
-			       ret);
+			dev_err(lwis_dev->dev,
+				"Failed to set reset GPIOs to INACTIVE (%d)\n",
+				ret);
 			return ret;
 		}
 
 		/* Setting reset_gpios to non-NULL to indicate that this lwis
-		   device is holding onto the GPIO pins. */
+			 device is holding onto the GPIO pins. */
 		lwis_dev->reset_gpios = gpios;
 	}
 
@@ -378,7 +384,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
 					     MCLK_ON_STRING);
 		if (ret) {
-			pr_err("Error setting mclk state (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error setting mclk state (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -390,10 +397,13 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					   "shared-enable");
 		if (IS_ERR_OR_NULL(gpios)) {
 			if (PTR_ERR(gpios) == -EBUSY) {
-				pr_warn("Shared gpios requested by another device\n");
+				dev_warn(
+					lwis_dev->dev,
+					"Shared gpios requested by another device\n");
 			} else {
-				pr_err("Failed to obtain shared gpio list (%d)\n",
-				       PTR_ERR(gpios));
+				dev_err(lwis_dev->dev,
+					"Failed to obtain shared gpio list (%d)\n",
+					PTR_ERR(gpios));
 				ret = PTR_ERR(gpios);
 				return ret;
 			}
@@ -401,7 +411,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			/* Set enable pins to 1 (i.e. asserted) */
 			ret = lwis_gpio_list_set_output_value(gpios, 1);
 			if (ret) {
-				pr_err("Error enabling GPIO pins (%d)\n", ret);
+				dev_err(lwis_dev->dev,
+					"Error enabling GPIO pins (%d)\n", ret);
 				return ret;
 			}
 			lwis_dev->shared_enable_gpios = gpios;
@@ -413,7 +424,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		ret = lwis_phy_set_power_all(lwis_dev->phys,
 					     /* power_on = */ true);
 		if (ret) {
-			pr_err("Error powering on PHY\n");
+			dev_err(lwis_dev->dev, "Error powering on PHY\n");
 			return ret;
 		}
 	}
@@ -421,7 +432,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->irqs) {
 		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
 		if (ret) {
-			pr_err("Failed to request interrupts (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Failed to request interrupts (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -429,7 +441,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->vops.device_enable) {
 		ret = lwis_dev->vops.device_enable(lwis_dev);
 		if (ret) {
-			pr_err("Error executing device enable function\n");
+			dev_err(lwis_dev->dev,
+				"Error executing device enable function\n");
 			return ret;
 		}
 	}
@@ -451,7 +464,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->vops.device_disable) {
 		ret = lwis_dev->vops.device_disable(lwis_dev);
 		if (ret) {
-			pr_err("Error executing device disable function\n");
+			dev_err(lwis_dev->dev,
+				"Error executing device disable function\n");
 			return ret;
 		}
 	}
@@ -465,7 +479,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		ret = lwis_phy_set_power_all(lwis_dev->phys,
 					     /* power_on = */ false);
 		if (ret) {
-			pr_err("Error powering off PHY\n");
+			dev_err(lwis_dev->dev, "Error powering off PHY\n");
 			return ret;
 		}
 	}
@@ -475,7 +489,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
 					     MCLK_OFF_STRING);
 		if (ret) {
-			pr_err("Error setting mclk state (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error setting mclk state (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -486,7 +501,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		ret = lwis_gpio_list_set_output_value(
 			lwis_dev->shared_enable_gpios, 0);
 		if (ret) {
-			pr_err("Error disabling GPIO pins (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error disabling GPIO pins (%d)\n", ret);
 			return ret;
 		}
 
@@ -501,7 +517,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
 						      0);
 		if (ret) {
-			pr_err("Error disabling GPIO pins (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error disabling GPIO pins (%d)\n", ret);
 			return ret;
 		}
 
@@ -515,7 +532,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		/* Disable all the regulators */
 		ret = lwis_regulator_disable_all(lwis_dev->regulators);
 		if (ret) {
-			pr_err("Error disabling regulators (%d)\n", ret);
+			dev_err(lwis_dev->dev,
+				"Error disabling regulators (%d)\n", ret);
 			return ret;
 		}
 	}
@@ -524,8 +542,9 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		/* Set reset pins to 1 (i.e. asserted) */
 		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
 		if (ret) {
-			pr_err("Error setting reset GPIOs to ACTIVE (%d)\n",
-			       ret);
+			dev_err(lwis_dev->dev,
+				"Error setting reset GPIOs to ACTIVE (%d)\n",
+				ret);
 			return ret;
 		}
 
@@ -543,7 +562,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	/* Let's do the platform-specific disable call */
 	ret = lwis_platform_device_disable(lwis_dev);
 	if (ret) {
-		pr_err("Platform-specific device disable fail: %d\n", ret);
+		dev_err(lwis_dev->dev,
+			"Platform-specific device disable fail: %d\n", ret);
 		return ret;
 	}
 	return ret;
@@ -662,7 +682,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	/* Call platform-specific probe function */
 	lwis_platform_probe(lwis_dev);
 
-	pr_info("Base Probe: Success\n");
+	dev_info(lwis_dev->dev, "Base Probe: Success\n");
 
 	return ret;
 
@@ -696,7 +716,7 @@ static int __init lwis_register_base_device(void)
 	idr_init(core.idr);
 
 	/* Acquire device major number and allocate the range to minor numbers
-	   to the device */
+		 to the device */
 	ret = alloc_chrdev_region(&core.lwis_devt, 0, LWIS_MAX_DEVICES,
 				  LWIS_DEVICE_NAME);
 	if (ret) {

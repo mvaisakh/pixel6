@@ -75,7 +75,8 @@ static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
 	/* Parse device tree for device configurations */
 	ret = lwis_ioreg_device_parse_dt(ioreg_dev);
 	if (ret) {
-		pr_err("Failed to parse device tree\n");
+		dev_err(ioreg_dev->base_dev.dev,
+			"Failed to parse device tree\n");
 	}
 #else
 	/* Non-device-tree init: Save for future implementation */
@@ -111,11 +112,12 @@ static int __init lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	/* Call IOREG device specific setup function */
 	ret = lwis_ioreg_device_setup(ioreg_dev);
 	if (ret) {
-		pr_err("Error in IOREG device initialization\n");
+		dev_err(ioreg_dev->base_dev.dev,
+			"Error in IOREG device initialization\n");
 		goto error_probe;
 	}
 
-	pr_info("IOREG Device [%s] Probe: Success\n", ioreg_dev->base_dev.name);
+	dev_info(ioreg_dev->base_dev.dev, "IOREG Device Probe: Success\n");
 
 	return 0;
 
