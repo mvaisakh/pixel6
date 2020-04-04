@@ -180,6 +180,7 @@ struct lwis_event_control {
 	uint64_t flags;
 };
 
+#define LWIS_TRANSACTION_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
 struct lwis_transaction_info {
 	// Input

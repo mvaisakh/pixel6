@@ -836,6 +836,13 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 	ret = lwis_transaction_submit(client, k_transaction);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to submit transaction\n");
+		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
+		if (copy_to_user((void __user *)user_transaction,
+				 &k_transaction->info,
+				 sizeof(struct lwis_transaction_info))) {
+			dev_err(lwis_dev->dev,
+				"Failed to return info to userspace\n");
+		}
 		goto error_free_buf;
 	}
 
