@@ -134,6 +134,7 @@ struct lwis_device {
 	struct lwis_regulator_list *regulators;
 	struct lwis_clock_list *clocks;
 	struct pinctrl *mclk_ctrl;
+	bool shared_pinctrl;
 	struct lwis_interrupt_list *irqs;
 	struct lwis_phy_list *phys;
 	struct list_head dev_list;

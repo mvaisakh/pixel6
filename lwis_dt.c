@@ -207,6 +207,9 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 
 	lwis_dev->mclk_ctrl = pc;
 
+	lwis_dev->shared_pinctrl = of_property_read_bool(dev_node,
+							 "shared-pinctrl");
+
 	return 0;
 
 error_pinctrl_state:

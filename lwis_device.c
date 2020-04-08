@@ -379,13 +379,35 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->mclk_ctrl) {
-		/* Set MCLK state to on */
-		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-					     MCLK_ON_STRING);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error setting mclk state (%d)\n", ret);
-			goto error_mclk_enable;
+		bool activate_mclk = true;
+
+		if (lwis_dev->shared_pinctrl) {
+			struct lwis_device *lwis_dev_it;
+			/* Look up if pinctrl it's already enabled */
+			mutex_lock(&core.lock);
+			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
+					    dev_list)
+			{
+				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
+					lwis_dev_it->shared_pinctrl &&
+					lwis_dev_it->enabled) {
+					activate_mclk = false;
+					break;
+				}
+			}
+			mutex_unlock(&core.lock);
+		}
+
+		if (activate_mclk) {
+			/* Set MCLK state to on */
+			ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+						     MCLK_ON_STRING);
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Error setting mclk state (%d)\n",
+					ret);
+				goto error_mclk_enable;
+			}
 		}
 	}
 
@@ -551,13 +573,35 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->mclk_ctrl) {
-		/* Set MCLK state to off */
-		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-					     MCLK_OFF_STRING);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error setting mclk state (%d)\n", ret);
-			return ret;
+		bool deactivate_mclk = true;
+
+		if (lwis_dev->shared_pinctrl) {
+			struct lwis_device *lwis_dev_it;
+			/* Look up if pinctrl still used by other device */
+			mutex_lock(&core.lock);
+			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
+					    dev_list)
+			{
+				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
+					lwis_dev_it->shared_pinctrl &&
+					lwis_dev_it->enabled) {
+					deactivate_mclk = false;
+					break;
+				}
+			}
+			mutex_unlock(&core.lock);
+		}
+
+		if (deactivate_mclk) {
+			/* Set MCLK state to off */
+			ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+						     MCLK_OFF_STRING);
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Error setting mclk state (%d)\n",
+					ret);
+				return ret;
+			}
 		}
 	}
 
