@@ -9692,9 +9692,13 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 	action_frame->len = len - DOT11_MGMT_HDR_LEN;
 	WL_DBG(("action_frame->len: %d\n", action_frame->len));
 
-	/* Add the channel */
-	af_params->channel =
-		wl_freq_to_chanspec(channel->center_freq);
+	if (channel) {
+		/* Add the channel */
+		af_params->channel =
+			wl_freq_to_chanspec(channel->center_freq);
+	} else {
+		af_params->channel = 0;
+	}
 	/* Save listen_chan for searching common channel */
 	cfg->afx_hdl->peer_listen_chan = af_params->channel;
 	WL_DBG(("channel from upper layer %d\n", cfg->afx_hdl->peer_listen_chan));
