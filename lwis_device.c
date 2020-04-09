@@ -155,7 +155,8 @@ static int lwis_release(struct inode *node, struct file *fp)
 
 	/* Take this lwis_client off the list of active clients */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_entry_safe(p, n, &lwis_dev->clients, node) {
+	list_for_each_entry_safe(p, n, &lwis_dev->clients, node)
+	{
 		if (lwis_client == p)
 			list_del(&lwis_client->node);
 	}
@@ -390,8 +391,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					    dev_list)
 			{
 				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
-					lwis_dev_it->shared_pinctrl &&
-					lwis_dev_it->enabled) {
+				    lwis_dev_it->shared_pinctrl &&
+				    lwis_dev_it->enabled) {
 					activate_mclk = false;
 					break;
 				}
@@ -405,8 +406,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 						     MCLK_ON_STRING);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error setting mclk state (%d)\n",
-					ret);
+					"Error setting mclk state (%d)\n", ret);
 				goto error_mclk_enable;
 			}
 		}
@@ -482,14 +482,14 @@ error_irq_request:
 		lwis_phy_set_power_all(lwis_dev->phys, /* power_on = */ false);
 	}
 error_phy_set_power:
-	if (lwis_dev->shared_enable_gpios_present
-	    && lwis_dev->shared_enable_gpios) {
+	if (lwis_dev->shared_enable_gpios_present &&
+	    lwis_dev->shared_enable_gpios) {
 		lwis_gpio_list_set_output_value(lwis_dev->shared_enable_gpios,
 						0);
 	}
 error_shared_gpio_set:
-	if (lwis_dev->shared_enable_gpios_present
-	    && lwis_dev->shared_enable_gpios) {
+	if (lwis_dev->shared_enable_gpios_present &&
+	    lwis_dev->shared_enable_gpios) {
 		/* Release "ownership" of the GPIO pins */
 		lwis_gpio_list_put(lwis_dev->shared_enable_gpios,
 				   &lwis_dev->plat_dev->dev);
@@ -584,8 +584,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 					    dev_list)
 			{
 				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
-					lwis_dev_it->shared_pinctrl &&
-					lwis_dev_it->enabled) {
+				    lwis_dev_it->shared_pinctrl &&
+				    lwis_dev_it->enabled) {
 					deactivate_mclk = false;
 					break;
 				}
@@ -599,15 +599,14 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 						     MCLK_OFF_STRING);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error setting mclk state (%d)\n",
-					ret);
+					"Error setting mclk state (%d)\n", ret);
 				return ret;
 			}
 		}
 	}
 
-	if (lwis_dev->shared_enable_gpios_present
-	    && lwis_dev->shared_enable_gpios) {
+	if (lwis_dev->shared_enable_gpios_present &&
+	    lwis_dev->shared_enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
 		ret = lwis_gpio_list_set_output_value(
 			lwis_dev->shared_enable_gpios, 0);
@@ -912,6 +911,11 @@ static int __init lwis_base_device_init(void)
 	ret = lwis_i2c_device_init();
 	if (ret) {
 		pr_err("Failed to lwis_i2c_device_init\n");
+	}
+
+	ret = lwis_slc_device_init();
+	if (ret) {
+		pr_err("Failed to lwis_slc_device_init\n");
 	}
 
 	return ret;

@@ -14,6 +14,7 @@
 
 #include "lwis_buffer.h"
 #include "lwis_device.h"
+#include "lwis_device_slc.h"
 #include "lwis_platform_dma.h"
 
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
@@ -21,33 +22,47 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		      struct lwis_allocated_buffer *buffer)
 {
 	struct dma_buf *dma_buf;
+	int ret = 0;
 
 	BUG_ON(!lwis_client);
 	BUG_ON(!alloc_info);
 
-	alloc_info->size = PAGE_ALIGN(alloc_info->size);
+	if (alloc_info->flags & LWIS_DMA_SYSTEM_CACHE_RESERVATION) {
+		if (lwis_client->lwis_dev->type == DEVICE_TYPE_SLC) {
+			ret = lwis_slc_buffer_alloc(lwis_client->lwis_dev,
+						    alloc_info);
+			if (ret) {
+				return ret;
+			}
+			dma_buf = NULL;
+		} else {
+			pr_err("Can't allocate system cache buffer on non-slc device\n");
+			return -EINVAL;
+		}
+	} else {
+		alloc_info->size = PAGE_ALIGN(alloc_info->size);
+		dma_buf = lwis_platform_dma_buffer_alloc(alloc_info->size,
+							 alloc_info->flags);
+		if (IS_ERR_OR_NULL(dma_buf)) {
+			pr_err("lwis_platform_dma_buffer_alloc failed (%d)\n",
+			       PTR_ERR(dma_buf));
+			return -ENOMEM;
+		}
 
-	dma_buf = lwis_platform_dma_buffer_alloc(alloc_info->size,
-						 alloc_info->flags);
-	if (IS_ERR_OR_NULL(dma_buf)) {
-		pr_err("lwis_platform_dma_buffer_alloc failed (%d)\n",
-		       PTR_ERR(dma_buf));
-		return -ENOMEM;
+		alloc_info->dma_fd = dma_buf_fd(dma_buf, O_CLOEXEC);
+		if (alloc_info->dma_fd < 0) {
+			pr_err("dma_buf_fd failed (%d)\n", alloc_info->dma_fd);
+			dma_buf_put(dma_buf);
+			return alloc_info->dma_fd;
+		}
+
+		/*
+		 * Increment refcount of the fd to 2. Both userspace's close(fd)
+		 * and kernel's lwis_buffer_free() will decrement the refcount
+		 * by 1. Whoever reaches 0 refcount frees the buffer.
+		 */
+		get_dma_buf(dma_buf);
 	}
-
-	alloc_info->dma_fd = dma_buf_fd(dma_buf, O_CLOEXEC);
-	if (alloc_info->dma_fd < 0) {
-		pr_err("dma_buf_fd failed (%d)\n", alloc_info->dma_fd);
-		dma_buf_put(dma_buf);
-		return alloc_info->dma_fd;
-	}
-
-	/*
-	 * Increment refcount of the fd to 2. Both userspace's close(fd)
-	 * and kernel's lwis_buffer_free() will decrement the refcount by 1.
-	 * Whoever reaches 0 refcount frees the buffer.
-	 */
-	get_dma_buf(dma_buf);
 
 	buffer->fd = alloc_info->dma_fd;
 	buffer->dma_buf = dma_buf;
@@ -59,7 +74,16 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 int lwis_buffer_free(struct lwis_client *lwis_client,
 		     struct lwis_allocated_buffer *buffer)
 {
-	dma_buf_put(buffer->dma_buf);
+	if (buffer->dma_buf == NULL) {
+		if (lwis_client->lwis_dev->type == DEVICE_TYPE_SLC) {
+			lwis_slc_buffer_free(lwis_client->lwis_dev, buffer->fd);
+		} else {
+			pr_err("Unexpected NULL dma_buf\n");
+			return -EINVAL;
+		}
+	} else {
+		dma_buf_put(buffer->dma_buf);
+	}
 	hash_del(&buffer->node);
 	return 0;
 }
