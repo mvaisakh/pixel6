@@ -153,28 +153,28 @@ static int lwis_release(struct inode *node, struct file *fp)
 
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
+	/* Take this lwis_client off the list of active clients */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	list_for_each_entry_safe(p, n, &lwis_dev->clients, node) {
+		if (lwis_client == p)
+			list_del(&lwis_client->node);
+	}
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
 	rc = lwis_release_client(lwis_client);
 
 	mutex_lock(&lwis_dev->client_lock);
 	if (lwis_dev->enabled > 0) {
 		lwis_dev->enabled--;
 		if (lwis_dev->enabled == 0) {
-			rc = lwis_dev_power_down_locked(lwis_dev);
 			dev_info(lwis_dev->dev, "No more client, power down\n");
+			rc = lwis_dev_power_down_locked(lwis_dev);
 		}
 	}
+	/* Release device event states if no more clients */
+	if (list_empty(&lwis_dev->clients))
+		lwis_device_event_states_clear_locked(lwis_dev);
 	mutex_unlock(&lwis_dev->client_lock);
-
-	/* Take this lwis_client off the list of active clients */
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_entry_safe(p, n, &lwis_dev->clients,
-				 node) if (lwis_client == p)
-		list_del(&lwis_client->node);
-
-	/* Release device event states */
-	lwis_device_event_states_clear_locked(lwis_dev);
-
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	return rc;
 }
