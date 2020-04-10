@@ -113,13 +113,13 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 
 	if (pm_qos_request_active(&platform->pm_qos_int_cam))
 		pm_qos_remove_request(&platform->pm_qos_int_cam);
-	if (!pm_qos_request_active(&platform->pm_qos_int))
+	if (pm_qos_request_active(&platform->pm_qos_int))
 		pm_qos_remove_request(&platform->pm_qos_int);
-	if (!pm_qos_request_active(&platform->pm_qos_mem))
+	if (pm_qos_request_active(&platform->pm_qos_mem))
 		pm_qos_remove_request(&platform->pm_qos_mem);
-	if (!pm_qos_request_active(&platform->pm_qos_cam))
+	if (pm_qos_request_active(&platform->pm_qos_cam))
 		pm_qos_remove_request(&platform->pm_qos_cam);
-	if (!pm_qos_request_active(&platform->pm_qos_hpg))
+	if (pm_qos_request_active(&platform->pm_qos_hpg))
 		pm_qos_remove_request(&platform->pm_qos_hpg);
 
 	if (lwis_dev->has_iommu) {
