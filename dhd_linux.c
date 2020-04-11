@@ -11113,6 +11113,9 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 #if defined(DHD_8021X_DUMP) && defined(SHOW_LOGTRACE)
 	wl_el_tag_params_t *el_tag = NULL;
 #endif /* DHD_8021X_DUMP */
+#ifdef DHD_RANDMAC_LOGGING
+	uint privacy_mask = 0;
+#endif /* DHD_RANDMAC_LOGGING */
 #ifdef ROAM_ENABLE
 	uint roamvar = 0;
 	int roam_trigger[2] = {CUSTOM_ROAM_TRIGGER_SETTING, WLC_BAND_ALL};
@@ -12200,6 +12203,12 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 		DHD_ERROR(("%s set event_log_tag_control fail %d\n", __FUNCTION__, ret));
 	}
 #endif /* DHD_8021X_DUMP */
+#ifdef DHD_RANDMAC_LOGGING
+	if (dhd_iovar(dhd, 0, "privacy_mask", (char *)&privacy_mask, sizeof(privacy_mask),
+			NULL, 0, TRUE) < 0) {
+		DHD_ERROR(("failed to set privacy mask\n"));
+	}
+#endif /* DHD_RANDMAC_LOGGING */
 
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_CHANNEL_TIME, (char *)&scan_assoc_time,
 			sizeof(scan_assoc_time), TRUE, 0);
