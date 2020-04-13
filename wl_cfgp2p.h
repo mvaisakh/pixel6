@@ -27,6 +27,7 @@
 
 struct bcm_cfg80211;
 extern u32 wl_dbg_level;
+extern u32 wl_dbgring_level;
 
 typedef struct wifi_p2p_ie wifi_wfd_ie_t;
 /* Enumeration of the usages of the BSSCFGs used by the P2P Library.  Do not
@@ -140,9 +141,9 @@ enum wl_cfgp2p_status {
 		if (wl_dbg_level & WL_DBG_ERR) {				\
 			printk(KERN_INFO CFGP2P_ERROR_TEXT "%s : ", __func__);	\
 			printk args;						\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
-			DHD_LOG_DUMP_WRITE args;	\
+		}   \
+		if (wl_dbgring_level & WL_DBG_ERR) {    \
+			DHD_DBG_RING_WRITE args;    \
 		}									\
 	} while (0)
 #define	CFGP2P_INFO(args)									\
@@ -150,9 +151,9 @@ enum wl_cfgp2p_status {
 		if (wl_dbg_level & WL_DBG_INFO) {				\
 			printk(KERN_INFO "CFGP2P-INFO) %s : ", __func__);	\
 			printk args;						\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
-			DHD_LOG_DUMP_WRITE args;	\
+		}   \
+		if (wl_dbgring_level & WL_DBG_INFO) {    \
+			DHD_DBG_RING_WRITE args;    \
 		}									\
 	} while (0)
 #define	CFGP2P_ACTION(args)								\
@@ -160,9 +161,9 @@ enum wl_cfgp2p_status {
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
 			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
 			printk args;							\
-			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
-			dhd_log_dump_get_timestamp(), __func__);	\
-			DHD_LOG_DUMP_WRITE args;	\
+		}   \
+		if (wl_dbgring_level & WL_DBG_P2P_ACTION) {    \
+			DHD_DBG_RING_WRITE args;    \
 		}									\
 	} while (0)
 #else

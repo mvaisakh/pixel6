@@ -44,9 +44,9 @@ dhd_dbg_ring_init(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring, uint16 id, uint8 *name,
 		buf = allocd_buf;
 	}
 
-	ring->lock = DHD_DBG_RING_LOCK_INIT(dhdp->osh);
+	ring->lock = dhd_os_spin_lock_init(dhdp->osh);
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->id = id;
 	strlcpy((char *)ring->name, (char *)name, sizeof(ring->name));
 	ring->ring_size = ring_sz;
@@ -57,7 +57,7 @@ dhd_dbg_ring_init(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring, uint16 id, uint8 *name,
 	ring->rem_len = 0;
 	ring->sched_pull = TRUE;
 	ring->pull_inactive = pull_inactive;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return BCME_OK;
 }
@@ -67,16 +67,16 @@ dhd_dbg_ring_deinit(dhd_pub_t *dhdp, dhd_dbg_ring_t *ring)
 {
 	unsigned long flags = 0;
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->id = 0;
 	ring->name[0] = 0;
 	ring->wp = ring->rp = 0;
 	memset(&ring->stat, 0, sizeof(ring->stat));
 	ring->threshold = 0;
 	ring->state = RING_STOP;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
-	DHD_DBG_RING_LOCK_DEINIT(dhdp->osh, ring->lock);
+	dhd_os_spin_lock_deinit(dhdp->osh, ring->lock);
 }
 
 void
@@ -85,7 +85,7 @@ dhd_dbg_ring_sched_pull(dhd_dbg_ring_t *ring, uint32 pending_len,
 {
 	unsigned long flags = 0;
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	/* if the current pending size is bigger than threshold and
 	 * threshold is set
 	 */
@@ -98,10 +98,10 @@ dhd_dbg_ring_sched_pull(dhd_dbg_ring_t *ring, uint32 pending_len,
 		 * the same layer fro this context, can lead to deadlock.
 		 */
 		ring->sched_pull = FALSE;
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+		dhd_os_spin_unlock(ring->lock, flags);
 		pull_fn(os_pvt, id);
 	} else {
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+		dhd_os_spin_unlock(ring->lock, flags);
 	}
 }
 
@@ -111,7 +111,7 @@ dhd_dbg_ring_get_pending_len(dhd_dbg_ring_t *ring)
 	uint32 pending_len = 0;
 	unsigned long flags = 0;
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	if (ring->stat.written_bytes > ring->stat.read_bytes) {
 		pending_len = ring->stat.written_bytes - ring->stat.read_bytes;
 	} else if (ring->stat.written_bytes < ring->stat.read_bytes) {
@@ -119,7 +119,7 @@ dhd_dbg_ring_get_pending_len(dhd_dbg_ring_t *ring)
 	} else {
 		pending_len = 0;
 	}
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return pending_len;
 }
@@ -136,10 +136,10 @@ dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data)
 		return BCME_BADARG;
 	}
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 
 	if (ring->state != RING_ACTIVE) {
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 		return BCME_OK;
 	}
 
@@ -151,7 +151,7 @@ dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data)
 		ring->ring_buf, ring->ring_size));
 
 	if (w_len > ring->ring_size) {
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+		dhd_os_spin_unlock(ring->lock, flags);
 		DHD_ERROR(("%s: RING%d[%s] w_len=%u, ring_size=%u,"
 			" write size exceeds ring size !\n",
 			__FUNCTION__, ring->id, ring->name, w_len, ring->ring_size));
@@ -201,7 +201,7 @@ dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data)
 						__FUNCTION__, ring->id, ring->name, ring->wp,
 						ring->rp, ring->ring_size));
 					ASSERT(0);
-					DHD_DBG_RING_UNLOCK(ring->lock, flags);
+					dhd_os_spin_unlock(ring->lock, flags);
 					return BCME_BUFTOOSHORT;
 				}
 				ring->rp += ENTRY_LENGTH(r_entry);
@@ -232,7 +232,7 @@ dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data)
 			"wp=%d, ring_size=%d, w_len=%u\n", __FUNCTION__, ring->id,
 			ring->name, ring->wp, ring->ring_size, w_len));
 		ASSERT(0);
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+		dhd_os_spin_unlock(ring->lock, flags);
 		return BCME_BUFTOOLONG;
 	}
 
@@ -253,7 +253,7 @@ dhd_dbg_ring_push(dhd_dbg_ring_t *ring, dhd_dbg_ring_entry_t *hdr, void *data)
 		ring->stat.written_records, ring->stat.written_bytes, ring->stat.read_bytes,
 		ring->threshold, ring->wp, ring->rp));
 
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 	return BCME_OK;
 }
 
@@ -273,7 +273,7 @@ dhd_dbg_ring_pull_single(dhd_dbg_ring_t *ring, void *data, uint32 buf_len, bool 
 		return 0;
 	}
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 
 	/* pull from ring is allowed for inactive (suspended) ring
 	 * in case of ecounters only, this is because, for ecounters
@@ -348,7 +348,7 @@ dhd_dbg_ring_pull_single(dhd_dbg_ring_t *ring, void *data, uint32 buf_len, bool 
 		ring->id, ring->name, ring->stat.read_bytes, ring->wp, ring->rp));
 
 exit:
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return rlen;
 }
@@ -362,12 +362,12 @@ dhd_dbg_ring_pull(dhd_dbg_ring_t *ring, void *data, uint32 buf_len, bool strip_h
 	if (!ring || !data)
 		return 0;
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	if (!ring->pull_inactive && (ring->state != RING_ACTIVE)) {
-		DHD_DBG_RING_UNLOCK(ring->lock, flags);
+		dhd_os_spin_unlock(ring->lock, flags);
 		return 0;
 	}
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	while (buf_len > 0) {
 		r_len = dhd_dbg_ring_pull_single(ring, data, buf_len, strip_hdr);
@@ -392,7 +392,7 @@ dhd_dbg_ring_config(dhd_dbg_ring_t *ring, int log_level, uint32 threshold)
 	if (ring->state == RING_STOP)
 		return BCME_UNSUPPORTED;
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 
 	if (log_level == 0)
 		ring->state = RING_SUSPEND;
@@ -402,7 +402,7 @@ dhd_dbg_ring_config(dhd_dbg_ring_t *ring, int log_level, uint32 threshold)
 	ring->log_level = log_level;
 	ring->threshold = MIN(threshold, DBGRING_FLUSH_THRESHOLD(ring));
 
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return BCME_OK;
 }

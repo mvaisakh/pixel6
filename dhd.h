@@ -765,6 +765,11 @@ typedef enum {
 	DLD_BUF_TYPE_ALL = 5
 } log_dump_type_t;
 
+typedef enum {
+	DBG_RING_TYPE_FW_VERBOSE = 0,
+	DBG_RING_TYPE_DRIVER_LOG = 1,
+} dbg_ring_type_t;
+
 #define LOG_DUMP_MAGIC 0xDEB3DEB3
 #define HEALTH_CHK_BUF_SIZE 256
 #ifdef EWP_ECNTRS_LOGGING
@@ -802,6 +807,11 @@ typedef struct {
 	uint64 timestamp;
 	uint32 length;  /* length of the section that follows */
 } log_dump_section_hdr_t;
+
+struct dhd_dbg_ring_buf
+{
+	void *dhd_pub;
+};
 
 /* below structure describe ring buffer. */
 struct dhd_log_dump_buf
@@ -2114,6 +2124,12 @@ extern void dhd_set_cpucore(dhd_pub_t *dhd, int set);
 #if defined(KEEP_ALIVE)
 extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
 #endif /* KEEP_ALIVE */
+
+/* OS spin lock API */
+extern void *dhd_os_spin_lock_init(osl_t *osh);
+extern void dhd_os_spin_lock_deinit(osl_t *osh, void *lock);
+extern unsigned long dhd_os_spin_lock(void *lock);
+void dhd_os_spin_unlock(void *lock, unsigned long flags);
 
 #if defined(DHD_FW_COREDUMP)
 void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size);

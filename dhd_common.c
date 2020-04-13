@@ -112,13 +112,9 @@
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 int log_print_threshold = 0;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
-
+int dbgring_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL;
 /* For CUSTOMER_HW4/Hikey do not enable DHD_ERROR_MEM_VAL by default */
 int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
-	/* For CUSTOMER_HW4 do not enable DHD_IOVAR_MEM_VAL by default */
-#if !defined(CUSTOMER_HW4) && !defined(BOARD_HIKEY)
-	| DHD_IOVAR_MEM_VAL
-#endif
 	| DHD_PKT_MON_VAL;
 
 #ifdef DHD_DEBUG
@@ -315,6 +311,7 @@ enum {
 	IOV_TX_PROFILE_ENABLE,
 	IOV_TX_PROFILE_DUMP,
 #endif /* defined(DHD_TX_PROFILE) */
+	IOV_DBGRING_MSGLEVEL,
 	IOV_LAST
 };
 
@@ -419,6 +416,7 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"tx_profile_enable",	IOV_TX_PROFILE_ENABLE,	0,	0,	IOVT_BOOL,	0},
 	{"tx_profile_dump",	IOV_TX_PROFILE_DUMP,	0,	0,	IOVT_UINT32,	0},
 #endif /* defined(DHD_TX_PROFILE) */
+	{"dbgring_msglevel",    IOV_DBGRING_MSGLEVEL,       0,  0, IOVT_UINT32, 0},
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -1891,6 +1889,20 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		}
 		break;
 
+	case IOV_GVAL(IOV_DBGRING_MSGLEVEL):
+		int_val = (int32)dbgring_msg_level;
+		bcopy(&int_val, arg, val_size);
+		break;
+	case IOV_SVAL(IOV_DBGRING_MSGLEVEL):
+#ifdef WL_CFG80211
+		if (int_val & DHD_WL_VAL2)
+			wl_cfg80211_enable_dbgring_trace(TRUE, int_val & (~DHD_WL_VAL2));
+		else if (int_val & DHD_WL_VAL)
+			wl_cfg80211_enable_dbgring_trace(FALSE, WL_DBG_DBG);
+		if (!(int_val & DHD_WL_VAL2))
+#endif /* WL_CFG80211 */
+		dbgring_msg_level = int_val;
+		break;
 	case IOV_GVAL(IOV_MSGLEVEL):
 		int_val = (int32)dhd_msg_level;
 		bcopy(&int_val, arg, val_size);
@@ -8112,9 +8124,9 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	/* do not allow further writes to the ring
 	 * till we flush it
 	 */
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_SUSPEND;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	if (dhdp->concise_dbg_buf) {
 		/* re-use concise debug buffer temporarily
@@ -8149,13 +8161,13 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	} else {
 		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
 	}
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_ACTIVE;
 	/* Resetting both read and write pointer,
 	 * since all items are read.
 	 */
 	ring->rp = ring->wp = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return ret;
 }
@@ -8180,9 +8192,9 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 	/* do not allow further writes to the ring
 	 * till we flush it
 	 */
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_SUSPEND;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	if (dhdp->concise_dbg_buf) {
 		/* re-use concise debug buffer temporarily
@@ -8210,9 +8222,9 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 				ret = dhd_os_write_file_posn(file, file_posn, data, rlen);
 				if (ret < 0) {
 					DHD_ERROR(("%s: write file error !\n", __FUNCTION__));
-					DHD_DBG_RING_LOCK(ring->lock, flags);
+					flags = dhd_os_spin_lock(ring->lock);
 					ring->state = RING_ACTIVE;
-					DHD_DBG_RING_UNLOCK(ring->lock, flags);
+					dhd_os_spin_unlock(ring->lock, flags);
 					return BCME_ERROR;
 				}
 			}
@@ -8225,13 +8237,13 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
 	}
 
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_ACTIVE;
 	/* Resetting both read and write pointer,
 	 * since all items are read.
 	 */
 	ring->rp = ring->wp = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 	return BCME_OK;
 }
 

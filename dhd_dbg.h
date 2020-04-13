@@ -30,6 +30,8 @@
 extern char *dhd_log_dump_get_timestamp(void);
 extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
+extern void dhd_dbg_ring_write(int type, char *binary_data,
+        int binary_len, const char *fmt, ...);
 #ifndef _DHD_LOG_DUMP_DEFINITIONS_
 #define _DHD_LOG_DUMP_DEFINITIONS_
 #define GENERAL_LOG_HDR "\n-------------------- General log ---------------------------\n"
@@ -57,6 +59,10 @@ extern void dhd_log_dump_write(int type, char *binary_data,
 #define COOKIE_LOG_HDR "\n-------------------- Cookie List ----------------------------\n"
 #endif /* DHD_LOG_DUMP */
 
+#define DHD_DBG_RING_WRITE(fmt, ...) \
+	dhd_dbg_ring_write(DBG_RING_TYPE_DRIVER_LOG, NULL, 0, fmt, ##__VA_ARGS__)
+#define DHD_DBG_RING_WRITE_EX(fmt, ...) \
+	dhd_dbg_ring_write(DBG_RING_TYPE_FW_VERBOSE, NULL, 0, fmt, ##__VA_ARGS__)
 #if defined(DHD_DEBUG)
 
 /* NON-NDIS cases */
@@ -66,8 +72,9 @@ extern void dhd_log_dump_write(int type, char *binary_data,
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		printf args;	\
-		DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+	if (dbgring_msg_level & DHD_ERROR_VAL) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 
@@ -89,8 +96,9 @@ do {	\
 		if (dhd_msg_level & DHD_ERROR_MEM_VAL) {	\
 			printf args; \
 		}	\
-		DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+	if (dbgring_msg_level & DHD_ERROR_VAL) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define DHD_IOVAR_MEM(args) \
@@ -99,15 +107,18 @@ do {	\
 		if (dhd_msg_level & DHD_IOVAR_MEM_VAL) {	\
 			printf args; \
 		}	\
-		DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+	if (dbgring_msg_level & DHD_IOVAR_MEM_VAL) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define DHD_LOG_MEM(args) \
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
-		DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE args;	\
+		if (dbgring_msg_level & DHD_ERROR_VAL) {    \
+			DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
+			DHD_LOG_DUMP_WRITE args;	\
+		}	\
 	}	\
 } while (0)
 /* NON-EFI builds with LOG DUMP enabled */
@@ -115,8 +126,9 @@ do {	\
 do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
 		printf args; \
-		DHD_LOG_DUMP_WRITE_PRSRV("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE_PRSRV args;	\
+	}   \
+	if (dbgring_msg_level & DHD_EVENT_VAL) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define DHD_PRSRV_MEM(args) \
@@ -124,8 +136,6 @@ do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
 		if (dhd_msg_level & DHD_PRSRV_MEM_VAL) \
 			printf args; \
-		DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp()); \
-		DHD_LOG_DUMP_WRITE args;	\
 	}	\
 } while (0)
 /* Re-using 'DHD_MSGTRACE_VAL' for controlling printing of ecounter binary event
@@ -138,8 +148,6 @@ do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
 		if (dhd_msg_level & DHD_MSGTRACE_VAL) { \
 			printf args; \
-			DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp()); \
-			DHD_LOG_DUMP_WRITE args;	\
 		}	\
 	}	\
 } while (0)
@@ -147,8 +155,6 @@ do {	\
 do {										\
 	if (dhd_msg_level & DHD_ERROR_VAL) {    \
 		printf args;	\
-		DHD_LOG_DUMP_WRITE_EX("[%s]: ", dhd_log_dump_get_timestamp());	\
-		DHD_LOG_DUMP_WRITE_EX args;	\
 	}	\
 } while (0)
 #define DHD_MSGTRACE_LOG(args)	\
@@ -156,8 +162,6 @@ do {	\
 	if (dhd_msg_level & DHD_MSGTRACE_VAL) {	\
 			printf args;	\
 	}	\
-	DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
-	DHD_LOG_DUMP_WRITE args;	\
 } while (0)
 #else /* DHD_LOG_DUMP */
 /* !DHD_LOG_DUMP */
@@ -188,12 +192,17 @@ do {	\
 
 #if defined(DHD_LOG_DUMP)
 #if defined(DHD_LOG_PRINT_RATE_LIMIT)
+#define FW_VERBOSE(args) \
+	do { \
+		if (dbgring_msg_level & DHD_FWLOG_VAL) {    \
+			DHD_DBG_RING_WRITE_EX args;    \
+		} \
+	} while (0)
 #define DHD_FWLOG(args)	\
 	do { \
 		if (dhd_msg_level & DHD_FWLOG_VAL) { \
 			if (control_logtrace && !log_print_threshold) \
 				printf args; \
-			DHD_LOG_DUMP_WRITE args; \
 		} \
 	} while (0)
 #else
@@ -202,11 +211,17 @@ do {	\
 		if (dhd_msg_level & DHD_FWLOG_VAL) { \
 			if (control_logtrace) \
 				printf args; \
-			DHD_LOG_DUMP_WRITE args; \
+		} \
+	} while (0)
+#define FW_VERBOSE(args) \
+	do { \
+		if (dbgring_msg_level & DHD_FWLOG_VAL) {    \
+			DHD_DBG_RING_WRITE_EX args;    \
 		} \
 	} while (0)
 #endif
 #else /* DHD_LOG_DUMP */
+#define FW_VERBOSE(args)
 #define DHD_FWLOG(args)		do {if (dhd_msg_level & DHD_FWLOG_VAL) printf args;} while (0)
 #endif /* DHD_LOG_DUMP */
 
@@ -359,6 +374,7 @@ do {	\
 
 #define DHD_NONE(args)
 extern int dhd_msg_level;
+extern int dbgring_msg_level;
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 extern int log_print_threshold;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */

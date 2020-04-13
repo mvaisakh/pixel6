@@ -85,6 +85,7 @@
 #include <dhd_wlfc.h>
 #endif
 #include <brcm_nl80211.h>
+static uint32 halpid = 0;
 
 char*
 wl_get_kernel_timestamp(void)
@@ -1508,6 +1509,31 @@ wl_cfgvendor_notify_dump_completion(struct wiphy *wiphy,
 #endif /* WL_CFG80211 && DHD_FILE_DUMP_EVENT */
 
 #if defined(WL_CFG80211)
+static int
+wl_cfgvendor_set_hal_pid(struct wiphy *wiphy,
+		struct wireless_dev *wdev, const void  *data, int len)
+{
+	int ret = BCME_OK;
+	uint32 type;
+	if (!data) {
+		WL_DBG(("%s,data is not available\n", __FUNCTION__));
+	} else {
+		if (len > 0) {
+			type = nla_type(data);
+			if (type == SET_HAL_START_ATTRIBUTE_EVENT_SOCK_PID) {
+				if (nla_len(data)) {
+					WL_DBG(("HAL PID = %u\n", nla_get_u32(data)));
+					halpid = nla_get_u32(data);
+				}
+			}
+		} else {
+			WL_ERR(("invalid len %d\n", len));
+			ret = BCME_ERROR;
+		}
+	}
+	return ret;
+}
+
 static int
 wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 		struct wireless_dev *wdev, const void  *data, int len)
@@ -7443,6 +7469,7 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 	struct wiphy *wiphy;
 	gfp_t kflags;
 	struct sk_buff *skb;
+	struct nlmsghdr *nlh;
 	if (!ndev) {
 		WL_ERR(("ndev is NULL\n"));
 		return;
@@ -7452,10 +7479,10 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 	/* Alloc the SKB for vendor_event */
 #if (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
-	skb = cfg80211_vendor_event_alloc(wiphy, NULL, len + 100,
+	skb = cfg80211_vendor_event_alloc(wiphy, NULL, len + CFG80211_VENDOR_EVT_SKB_SZ,
 			GOOGLE_DEBUG_RING_EVENT, kflags);
 #else
-	skb = cfg80211_vendor_event_alloc(wiphy, len + 100,
+	skb = cfg80211_vendor_event_alloc(wiphy, len + CFG80211_VENDOR_EVT_SKB_SZ,
 			GOOGLE_DEBUG_RING_EVENT, kflags);
 #endif /* (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || */
 		/* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0) */
@@ -7463,6 +7490,10 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 		WL_ERR(("skb alloc failed"));
 		return;
 	}
+
+	/* Set halpid for sending unicast event to wifi hal */
+	nlh = (struct nlmsghdr*)skb->data;
+	nlh->nlmsg_pid = halpid;
 	nla_put(skb, DEBUG_ATTRIBUTE_RING_STATUS, sizeof(ring_status), &ring_status);
 	nla_put(skb, DEBUG_ATTRIBUTE_RING_DATA, len, data);
 	cfg80211_vendor_event(skb, kflags);
@@ -9227,6 +9258,14 @@ static const struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = wl_cfgvendor_stop_hal
 	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = DEBUG_SET_HAL_PID
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_set_hal_pid
+	},
 #endif /* WL_CFG80211 */
 #ifdef WL_P2P_RAND
 	{
@@ -9309,7 +9348,7 @@ int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 
 #ifdef DEBUGABILITY
 	dhd_os_dbg_register_callback(FW_VERBOSE_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
-	dhd_os_dbg_register_callback(DHD_EVENT_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
+	dhd_os_dbg_register_callback(DRIVER_LOG_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
 #endif /* DEBUGABILITY */
 #ifdef DHD_LOG_DUMP
 	dhd_os_dbg_register_urgent_notifier(dhd, wl_cfgvendor_dbg_send_file_dump_evt);

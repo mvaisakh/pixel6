@@ -114,6 +114,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DEVENT_LOG_RATE_HC
 endif
 
+DHDCFLAGS += -DDEBUGABILITY
 # Enable wakelock debug function
 DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 

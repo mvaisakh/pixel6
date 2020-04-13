@@ -137,6 +137,7 @@ module_param(wl_reassoc_support, uint, 0660);
 static struct device *cfg80211_parent_dev = NULL;
 static struct bcm_cfg80211 *g_bcmcfg = NULL;
 u32 wl_dbg_level = WL_DBG_ERR | WL_DBG_P2P_ACTION | WL_DBG_INFO;
+u32 wl_dbgring_level = WL_DBG_ERR;
 
 #define	MAX_VIF_OFFSET	15
 #define MAX_WAIT_TIME 1500
@@ -20885,6 +20886,14 @@ int wl_cfg80211_do_driver_init(struct net_device *net)
 		return -1;
 
 	return 0;
+}
+
+void wl_cfg80211_enable_dbgring_trace(bool set, u32 level)
+{
+	if (set)
+		wl_dbgring_level = level & WL_DBG_LEVEL;
+	else
+		wl_dbgring_level |= (WL_DBG_LEVEL & level);
 }
 
 void wl_cfg80211_enable_trace(bool set, u32 level)

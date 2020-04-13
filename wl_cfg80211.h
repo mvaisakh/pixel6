@@ -139,10 +139,15 @@ struct wl_ibss;
 /* Max BAND support */
 #define WL_MAX_BAND_SUPPORT 3
 
+extern void dhd_dbg_ring_write(int type, char *binary_data,
+		int binary_len, const char *fmt, ...);
+#define DHD_DBG_RING_WRITE(fmt, ...) \
+	dhd_dbg_ring_write(DBG_RING_TYPE_DRIVER_LOG, NULL, 0, fmt, ##__VA_ARGS__)
+#define DHD_DBG_RING_WRITE_EX(fmt, ...) \
+	dhd_dbg_ring_write(DBG_RING_TYPE_FW_VERBOSE, NULL, 0, fmt, ##__VA_ARGS__)
 #ifdef DHD_LOG_DUMP
 extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
-extern char *dhd_log_dump_get_timestamp(void);
 #ifndef _DHD_LOG_DUMP_DEFINITIONS_
 #define DHD_LOG_DUMP_WRITE(fmt, ...) \
 	dhd_log_dump_write(DLD_BUF_TYPE_GENERAL, NULL, 0, fmt, ##__VA_ARGS__)
@@ -187,8 +192,9 @@ do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
 		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		printk args;	\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_ERR) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define WL_ERR_KERN(args)	\
@@ -197,12 +203,14 @@ do {	\
 		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		printk args;	\
 	}	\
+	if (wl_dbgring_level & WL_DBG_ERR) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}	\
 } while (0)
 #define	WL_ERR_MEM(args)	\
 do {	\
-	if (wl_dbg_level & WL_DBG_ERR) {	\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-		DHD_LOG_DUMP_WRITE args;	\
+	if (wl_dbgring_level & WL_DBG_ERR) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 /* Prints to debug ring by default. If dbg level is enabled, prints on to
@@ -214,16 +222,18 @@ do {	\
 		printk(KERN_INFO CFG80211_INFO_TEXT "%s : ", __func__);	\
 		printk args;	\
 	}	\
-	DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-	DHD_LOG_DUMP_WRITE args;	\
+	if (wl_dbgring_level & WL_DBG_DBG) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}	\
 } while (0)
 #define	WL_INFORM_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_INFO) {	\
 		printk(KERN_INFO CFG80211_INFO_TEXT "%s : ", __func__);	\
 		printk args;	\
-		DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-		DHD_LOG_DUMP_WRITE args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_INFO) {    \
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_ERR_EX(args)	\
@@ -231,14 +241,16 @@ do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
 		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
 		printk args;	\
-		DHD_LOG_DUMP_WRITE_EX("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-		DHD_LOG_DUMP_WRITE_EX args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_ERR) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define	WL_MEM(args)	\
 do {	\
-	DHD_LOG_DUMP_WRITE("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
-	DHD_LOG_DUMP_WRITE args;	\
+	if (wl_dbgring_level & WL_DBG_DBG) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}	\
 } while (0)
 #else
 #define	WL_ERR(args)									\
@@ -307,6 +319,9 @@ do {										\
 			printk(KERN_INFO "CFG80211-INFO) %s : ", __func__);	\
 			printk args;						\
 		}								\
+	if (wl_dbgring_level & WL_DBG_INFO) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}   \
 } while (0)
 
 #ifdef WL_SCAN
@@ -318,6 +333,9 @@ do {									\
 		printk(KERN_INFO "CFG80211-SCAN) %s :", __func__);	\
 		printk args;							\
 	}									\
+	if (wl_dbgring_level & WL_DBG_SCAN) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}   \
 } while (0)
 #ifdef WL_TRACE
 #undef WL_TRACE
@@ -328,6 +346,9 @@ do {									\
 		printk(KERN_INFO "CFG80211-TRACE) %s :", __func__);	\
 		printk args;							\
 	}									\
+	if (wl_dbgring_level & WL_DBG_TRACE) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}	\
 } while (0)
 #ifdef WL_TRACE_HW4
 #undef WL_TRACE_HW4
@@ -339,6 +360,9 @@ do {										\
 			printk(KERN_INFO "CFG80211-TRACE) %s : ", __func__);	\
 			printk args;						\
 		} 								\
+	if (wl_dbgring_level & WL_DBG_ERR) {    \
+		DHD_DBG_RING_WRITE args;    \
+	}   \
 } while (0)
 #else
 #define	WL_TRACE_HW4			WL_TRACE
@@ -349,6 +373,9 @@ do {									\
 	if (wl_dbg_level & WL_DBG_DBG) {			\
 		printk(KERN_INFO "CFG80211-DEBUG) %s :", __func__);	\
 		printk args;							\
+	}									\
+	if (wl_dbgring_level & WL_DBG_DBG) {    \
+		DHD_DBG_RING_WRITE args;    \
 	}									\
 } while (0)
 #else				/* !(WL_DBG_LEVEL > 0) */
@@ -2335,6 +2362,7 @@ void wl_cfg80211_generate_mac_addr(struct ether_addr *ea_addr);
 extern s32 wl_mode_to_nl80211_iftype(s32 mode);
 int wl_cfg80211_do_driver_init(struct net_device *net);
 void wl_cfg80211_enable_trace(bool set, u32 level);
+void wl_cfg80211_enable_dbgring_trace(bool set, u32 level);
 extern s32 wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify);
 extern s32 wl_cfg80211_if_is_group_owner(void);
 extern chanspec_t wl_chspec_host_to_driver(chanspec_t chanspec);

@@ -503,6 +503,7 @@ static void dhd_update_rx_pkt_chainable_state(dhd_pub_t* dhdp, uint32 idx);
 
 /* Error bits */
 module_param(dhd_msg_level, int, 0);
+module_param(dbgring_msg_level, int, 0);
 
 #ifdef ARP_OFFLOAD_SUPPORT
 /* ARP offload agent mode : Enable ARP Host Auto-Reply and ARP Peer Auto-Reply */
@@ -16680,6 +16681,41 @@ void dhd_os_general_spin_unlock(dhd_pub_t *pub, unsigned long flags)
 	}
 }
 
+/* Linux specific multipurpose spinlock API */
+void *
+dhd_os_spin_lock_init(osl_t *osh)
+{
+	/* Adding 4 bytes since the sizeof(spinlock_t) could be 0 */
+	/* if CONFIG_SMP and CONFIG_DEBUG_SPINLOCK are not defined */
+	/* and this results in kernel asserts in internal builds */
+	spinlock_t * lock = MALLOC(osh, sizeof(spinlock_t) + 4);
+	if (lock)
+		spin_lock_init(lock);
+	return ((void *)lock);
+}
+void
+dhd_os_spin_lock_deinit(osl_t *osh, void *lock)
+{
+	if (lock)
+		MFREE(osh, lock, sizeof(spinlock_t) + 4);
+}
+unsigned long
+dhd_os_spin_lock(void *lock)
+{
+	unsigned long flags = 0;
+
+	if (lock)
+		spin_lock_irqsave((spinlock_t *)lock, flags);
+
+	return flags;
+}
+void
+dhd_os_spin_unlock(void *lock, unsigned long flags)
+{
+	if (lock)
+		spin_unlock_irqrestore((spinlock_t *)lock, flags);
+}
+
 void *
 dhd_os_dbgring_lock_init(osl_t *osh)
 {
@@ -21020,10 +21056,10 @@ dhd_log_dump_init(dhd_pub_t *dhd)
 				__FUNCTION__));
 		goto fail;
 	}
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_ACTIVE;
 	ring->threshold = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	bufptr += LOG_DUMP_ECNTRS_MAX_BUFSIZE;
 #endif /* EWP_ECNTRS_LOGGING */
@@ -21043,10 +21079,10 @@ dhd_log_dump_init(dhd_pub_t *dhd)
 				__FUNCTION__));
 		goto fail;
 	}
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
 	ring->state = RING_ACTIVE;
 	ring->threshold = 0;
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	bufptr += LOG_DUMP_RTT_MAX_BUFSIZE;
 #endif /* EWP_RTT_LOGGING */
@@ -21227,6 +21263,57 @@ dhd_log_dump_deinit(dhd_pub_t *dhd)
 	mutex_destroy(&dhd_info->logdump_lock);
 }
 
+extern struct dhd_dbg_ring_buf g_ring_buf;
+void
+dhd_dbg_ring_write(int type, char *binary_data,
+		int binary_len, const char *fmt, ...)
+{
+	int len = 0;
+	va_list args;
+	struct dhd_dbg_ring_buf *ring_buf = NULL;
+	char buf[DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE] = {0, };
+	char tmp_buf[DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE] = {0, };
+
+	ring_buf = &g_ring_buf;
+
+	va_start(args, fmt);
+	len = vsnprintf(buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, fmt, args);
+	/* Non ANSI C99 compliant returns -1,
+	 * ANSI compliant return len >= DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE
+	 */
+	va_end(args);
+	if (len < 0) {
+		return;
+	}
+
+	if (len >= DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE) {
+		len = DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE - 1;
+		tmp_buf[len] = '\0';
+	}
+
+	if (ring_buf->dhd_pub) {
+		dhd_pub_t *dhdp = (dhd_pub_t *)ring_buf->dhd_pub;
+		if (type == DBG_RING_TYPE_DRIVER_LOG) {
+			if (DBG_RING_ACTIVE(dhdp, DRIVER_LOG_RING_ID)) {
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s]: %s",
+						dhd_log_dump_get_timestamp(), buf);
+				dhd_os_push_push_ring_data(dhdp , DRIVER_LOG_RING_ID,
+						tmp_buf, strlen(tmp_buf));
+				return;
+			}
+		}
+		if (type == DBG_RING_TYPE_FW_VERBOSE){
+			if (DBG_RING_ACTIVE(dhdp, FW_VERBOSE_RING_ID)) {
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s]: %s",
+						dhd_log_dump_get_timestamp(), buf);
+				dhd_os_push_push_ring_data(dhdp , FW_VERBOSE_RING_ID,
+						tmp_buf, strlen(tmp_buf));
+				return;
+			}
+		}
+	}
+	return;
+}
 void
 dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...)

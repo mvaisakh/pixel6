@@ -43,7 +43,7 @@
 #include <dhd_event_log_filter.h>
 #endif /* DHD_EVENT_LOG_FILTER */
 
-uint8 control_logtrace = CUSTOM_CONTROL_LOGTRACE;
+uint8 control_logtrace = LOGTRACE_RAW_FMT;
 
 struct map_table {
 	uint16 fw_id;
@@ -666,7 +666,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 				((0x01u << logset) & dhdp->logset_prsrv_mask)) {
 				DHD_PRSRV_MEM(("%s\n", b.origbuf));
 			} else {
-				DHD_FWLOG(("%s\n", b.origbuf));
+				FW_VERBOSE(("%s\n", b.origbuf));
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 				log_print_count++;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
@@ -715,7 +715,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 	}
 
 	/* print the format string which will be needed for debugging incorrect formats */
-	DHD_INFO(("%s: fmtstr_loc_buf = %s\n", __FUNCTION__, fmtstr_loc_buf));
+
 
 	/* Replace all %p to %x to handle 32 bit %p */
 	replace_percent_p_to_x(fmtstr_loc_buf);
@@ -905,7 +905,6 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	msg_hdr.len = sizeof(*logentry_header) + datalen;
 	memcpy(logbuf + sizeof(*logentry_header), data, datalen);
 	DHD_DBGIF(("%s: datalen %d %d\n", __FUNCTION__, msg_hdr.len, datalen));
-	dhd_dbg_push_to_ring(dhdp, FW_VERBOSE_RING_ID, &msg_hdr, logbuf);
 
 	/* Print sequence number, originating set and length of received
 	 * event log buffer. Refer to event log buffer structure in
@@ -2585,6 +2584,7 @@ print_roam_enhanced_log(prcd_event_log_hdr_t *plog_hdr)
  *
  * Return: An error code or 0 on success.
  */
+struct dhd_dbg_ring_buf g_ring_buf;
 int
 dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	dbg_urgent_noti_t os_urgent_notifier, void *os_priv)
@@ -2593,6 +2593,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	dhd_dbg_ring_t *ring = NULL;
 	int ret = BCME_ERROR, ring_id = 0;
 	void *buf = NULL;
+	struct dhd_dbg_ring_buf *ring_buf;
 
 	dbg = MALLOCZ(dhdp->osh, sizeof(dhd_dbg_t));
 	if (!dbg)
@@ -2614,10 +2615,19 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	if (ret)
 		goto error;
 
+	buf = MALLOCZ(dhdp->osh, DRIVER_LOG_RING_SIZE);
+	if (!buf)
+		goto error;
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[DRIVER_LOG_RING_ID], DRIVER_LOG_RING_ID,
+			(uint8 *)DRIVER_LOG_RING_NAME, DRIVER_LOG_RING_SIZE, buf, FALSE);
+	if (ret)
+		goto error;
+	ring_buf = &g_ring_buf;
 	dbg->private = os_priv;
 	dbg->pullreq = os_pullreq;
 	dbg->urgent_notifier = os_urgent_notifier;
 	dhdp->dbg = dbg;
+	ring_buf->dhd_pub = dhdp;
 
 	return BCME_OK;
 

@@ -117,7 +117,8 @@ dbg_ring_poll_worker(struct work_struct *work)
 	ringid = ring_info->ring_id;
 
 	ring = &dhdp->dbg->dbg_rings[ringid];
-	DHD_DBG_RING_LOCK(ring->lock, flags);
+	flags = dhd_os_spin_lock(ring->lock);
+
 	dhd_dbg_get_ring_status(dhdp, ringid, &ring_status);
 
 	if (ring->wp > ring->rp) {
@@ -125,12 +126,15 @@ dbg_ring_poll_worker(struct work_struct *work)
 	} else if (ring->wp < ring->rp) {
 		buflen = ring->ring_size - ring->rp + ring->wp;
 	} else {
+		dhd_os_spin_unlock(ring->lock, flags);
 		goto exit;
 	}
 
 	if (buflen > ring->ring_size) {
+		dhd_os_spin_unlock(ring->lock, flags);
 		goto exit;
 	}
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
@@ -146,6 +150,8 @@ dbg_ring_poll_worker(struct work_struct *work)
 	}
 
 	hdr = (dhd_dbg_ring_entry_t *)buf;
+	flags = dhd_os_spin_lock(ring->lock);
+
 	while (rlen > 0) {
 		ring_status.read_bytes += ENTRY_LENGTH(hdr);
 		/* offset fw ts to host ts */
@@ -155,9 +161,12 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
+	dhd_os_spin_unlock(ring->lock, flags);
+
 	MFREE(dhdp->osh, buf, buflen);
 
 exit:
+	flags = dhd_os_spin_lock(ring->lock);
 	if (sched) {
 		/* retrigger the work at same interval */
 		if ((ring_status.written_bytes == ring_status.read_bytes) &&
@@ -165,8 +174,7 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
-
-	DHD_DBG_RING_UNLOCK(ring->lock, flags);
+	dhd_os_spin_unlock(ring->lock, flags);
 
 	return;
 }
@@ -351,6 +359,20 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 				return ret;
 			}
 		}
+	} else if (ring_id == FW_VERBOSE_RING_ID) {
+		msg_hdr.type = DBG_RING_ENTRY_DATA_TYPE;
+		msg_hdr.flags |= DBG_RING_ENTRY_FLAGS_HAS_TIMESTAMP;
+		msg_hdr.timestamp = local_clock();
+		/* convert to ms */
+		msg_hdr.timestamp = DIV_U64_BY_U32(msg_hdr.timestamp, NSEC_PER_MSEC);
+		msg_hdr.len = strlen(data);
+	} else if (ring_id == DRIVER_LOG_RING_ID) {
+		msg_hdr.type = DBG_RING_ENTRY_DATA_TYPE;
+		msg_hdr.flags |= DBG_RING_ENTRY_FLAGS_HAS_TIMESTAMP;
+		msg_hdr.timestamp = local_clock();
+		/* convert to ms */
+		msg_hdr.timestamp = DIV_U64_BY_U32(msg_hdr.timestamp, NSEC_PER_MSEC);
+		msg_hdr.len = strlen(data);
 	}
 	ret = dhd_dbg_push_to_ring(dhdp, ring_id, &msg_hdr, event_data);
 	if (ret) {
