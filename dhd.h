@@ -851,17 +851,11 @@ extern void copy_debug_dump_time(char *dest, char *src);
 
 #define FW_LOGSET_MASK_ALL 0xFFFFu
 
-#if defined(CUSTOMER_HW4)
-#ifndef DHD_COMMON_DUMP_PATH
-#define DHD_COMMON_DUMP_PATH	"/data/log/wifi/"
-#endif /* !DHD_COMMON_DUMP_PATH */
-#elif defined(BOARD_HIKEY)
-#define DHD_COMMON_DUMP_PATH	"/data/misc/wifi/"
-#elif defined(__ARM_ARCH_7A__)
-#define DHD_COMMON_DUMP_PATH	"/data/vendor/wifi/"
+#ifdef PLATFORM_PATH
+#define DHD_COMMON_DUMP_PATH	PLATFORM_PATH
 #else
-#define DHD_COMMON_DUMP_PATH	"/installmedia/"
-#endif /* CUSTOMER_HW4 */
+#define DHD_COMMON_DUMP_PATH	"/vendor/etc/wifi/
+#endif /* PLATFORM_PATH*/
 
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ];      /* ISO 3166-1 country abbreviation */

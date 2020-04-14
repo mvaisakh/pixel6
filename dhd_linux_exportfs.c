@@ -590,17 +590,11 @@ static struct dhd_attr dhd_attr_macaddr =
  * New platforms can add their ifdefs accordingly below.
  */
 
-#ifdef CUSTOMER_HW4_DEBUG
+#ifdef PLATFORM_PATH
 #define MEMDUMPINFO PLATFORM_PATH".memdump.info"
-#elif defined(BOARD_HIKEY)
-#define MEMDUMPINFO "/data/misc/wifi/.memdump.info"
-#elif defined(__ARM_ARCH_7A__)
-#define MEMDUMPINFO "/data/misc/wifi/.memdump.info"
 #else
-#define MEMDUMPINFO_LIVE "/installmedia/.memdump.info"
-#define MEMDUMPINFO_INST "/data/.memdump.info"
-#define MEMDUMPINFO MEMDUMPINFO_LIVE
-#endif /* CUSTOMER_HW4_DEBUG */
+#define MEMDUMPINFO "/vendor/etc/wifi/.memdump.info"
+#endif /* PLATFORM_PATH */
 
 uint32
 get_mem_val_from_file(void)
@@ -730,13 +724,11 @@ static struct dhd_attr dhd_attr_memdump =
  * XXX The filename to store assert type is defined for each platform.
  * New platforms can add their ifdefs accordingly below.
  */
-#ifdef CUSTOMER_HW4_DEBUG
+#ifdef PLATFORM_PATH
 #define ASSERTINFO PLATFORM_PATH".assert.info"
-#elif defined(BOARD_HIKEY)
-#define ASSERTINFO "/data/misc/wifi/.assert.info"
 #else
-#define ASSERTINFO "/installmedia/.assert.info"
-#endif /* CUSTOMER_HW4_DEBUG */
+#define ASSERTINFO "/vender/etc/wifi/.assert.info"
+#endif /* PLATFORM_PATH */
 int
 get_assert_val_from_file(void)
 {

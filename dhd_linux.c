@@ -727,15 +727,11 @@ bool dhd_protocol_matches_profile(uint8 *p, int plen, const
 		dhd_tx_profile_protocol_t *proto);
 #endif /* defined(DHD_TX_PROFILE) */
 
-#ifdef CUSTOMER_HW4_DEBUG
+#ifdef PLATFORM_PATH
 #define PATH_BANDLOCK_INFO PLATFORM_PATH".bandlock.info"
-#elif defined(BOARD_HIKEY)
-#define PATH_BANDLOCK_INFO "/data/misc/wifi/.bandlock.info"
-#elif defined(__ARM_ARCH_7A__)
-#define PATH_BANDLOCK_INFO "/data/misc/wifi/.bandlock.info"
 #else
-#define PATH_BANDLOCK_INFO "/installmedia/.bandlock.info"
-#endif /* CUSTOMER_HW4_DEBUG */
+#define PATH_BANDLOCK_INFO "/vendor/etc/wifi/.bandlock.info"
+#endif /* PLATFORM_PATH */
 
 static void dhd_set_bandlock(dhd_pub_t * dhd);
 
