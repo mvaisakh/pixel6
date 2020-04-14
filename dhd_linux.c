@@ -479,6 +479,8 @@ int host_edl_support = TRUE;
 module_param(host_edl_support, int, 0644);
 #endif
 
+static bool dhd_allow_stop = TRUE;
+
 /* deferred handlers */
 static void dhd_ifadd_event_handler(void *handle, void *event_info, u8 event);
 static void dhd_ifdel_event_handler(void *handle, void *event_info, u8 event);
@@ -2656,6 +2658,12 @@ _dhd_set_mac_address(dhd_info_t *dhd, int ifidx, uint8 *addr)
 {
 	int ret;
 
+#ifdef DHD_NOTIFY_MAC_CHANGED
+	DHD_ERROR(("%s: close dev for mac changing\n", __func__));
+	dhd_allow_stop = FALSE;
+	dev_close(dhd->iflist[ifidx]->net);
+#endif /* DHD_NOTIFY_MAC_CHANGED */
+
 	ret = dhd_iovar(&dhd->pub, ifidx, "cur_etheraddr", (char *)addr,
 			ETHER_ADDR_LEN, NULL, 0, TRUE);
 	if (ret < 0) {
@@ -2665,6 +2673,12 @@ _dhd_set_mac_address(dhd_info_t *dhd, int ifidx, uint8 *addr)
 		if (ifidx == 0)
 			memcpy(dhd->pub.mac.octet, addr, ETHER_ADDR_LEN);
 	}
+
+#ifdef DHD_NOTIFY_MAC_CHANGED
+	dev_open(dhd->iflist[ifidx]->net);
+	dhd_allow_stop = TRUE;
+	DHD_ERROR(("%s: notify mac changed done\n", __func__));
+#endif /* DHD_NOTIFY_MAC_CHANGED */
 
 	return ret;
 }
@@ -2961,10 +2975,19 @@ dhd_set_mac_addr_handler(void *handle, void *event_info, u8 event)
 
 	DHD_ERROR(("%s: MACID is overwritten\n", __FUNCTION__));
 	ifp->set_macaddress = FALSE;
+
+#ifdef DHD_NOTIFY_MAC_CHANGED
+	rtnl_lock();
+#endif /* DHD_NOTIFY_MAC_CHANGED */
+
 	if (_dhd_set_mac_address(dhd, ifp->idx, ifp->mac_addr) == 0)
 		DHD_INFO(("%s: MACID is overwritten\n",	__FUNCTION__));
 	else
 		DHD_ERROR(("%s: _dhd_set_mac_address() failed\n", __FUNCTION__));
+
+#ifdef DHD_NOTIFY_MAC_CHANGED
+	rtnl_unlock();
+#endif /* DHD_NOTIFY_MAC_CHANGED */
 
 done:
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
@@ -6966,7 +6989,7 @@ dhd_stop(struct net_device *net)
 
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 	/* If static if is operational, don't reset the chip */
-	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg)) {
+	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg) || !dhd_allow_stop) {
 		DHD_ERROR(("static if operational. skip chip reset.\n"));
 		skip_reset = true;
 		wl_cfg80211_sta_ifdown(net);

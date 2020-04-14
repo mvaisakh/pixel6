@@ -115,6 +115,10 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 endif
 
 DHDCFLAGS += -DDEBUGABILITY
+
+# Notify the MAC changed to wpa_supplicant
+DHDCFLAGS += -DDHD_NOTIFY_MAC_CHANGED
+
 # Enable wakelock debug function
 DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 
