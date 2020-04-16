@@ -164,6 +164,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 	rc = lwis_release_client(lwis_client);
 
 	mutex_lock(&lwis_dev->client_lock);
+	/* Release power if client closed without power down called */
 	if (lwis_dev->enabled > 0) {
 		lwis_dev->enabled--;
 		if (lwis_dev->enabled == 0) {
@@ -171,8 +172,8 @@ static int lwis_release(struct inode *node, struct file *fp)
 			rc = lwis_dev_power_down_locked(lwis_dev);
 		}
 	}
-	/* Release device event states if no more clients */
-	if (list_empty(&lwis_dev->clients))
+	/* Release device event states if no more client is using */
+	if (lwis_dev->enabled == 0)
 		lwis_device_event_states_clear_locked(lwis_dev);
 	mutex_unlock(&lwis_dev->client_lock);
 
