@@ -474,7 +474,18 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 			       ret);
 			return ret;
 		}
+
+		/* Reset hw event counter if hw event has been disabled */
+		if (!event_enabled)
+			state->event_counter = 0;
 	}
+
+	/* Reset sw event counter when it's going to disable */
+	if ((event_id & LWIS_TRANSACTION_EVENT_FLAG ||
+		event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG) &&
+		new_flags == 0)
+		state->event_counter = 0;
+
 	/* Check if our specialization cares about flags updates */
 	if (lwis_dev->vops.event_flags_updated) {
 		ret = lwis_dev->vops.event_flags_updated(lwis_dev, event_id,
