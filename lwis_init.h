@@ -20,4 +20,7 @@ int lwis_top_device_init(void);
 /* lwis_device_i2c.c */
 int lwis_i2c_device_init(void);
 
-#endif  // LWIS_INIT_H_
+/* lwis_device_slc.c */
+int lwis_slc_device_init(void);
+
+#endif // LWIS_INIT_H_

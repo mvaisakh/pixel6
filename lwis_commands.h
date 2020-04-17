@@ -41,6 +41,7 @@ enum lwis_device_types {
 	DEVICE_TYPE_TOP = 0,
 	DEVICE_TYPE_I2C,
 	DEVICE_TYPE_IOREG,
+	DEVICE_TYPE_SLC,
 	NUM_DEVICE_TYPES
 };
 
@@ -62,6 +63,8 @@ enum lwis_dma_alloc_flags {
 	LWIS_DMA_BUFFER_UNINITIALIZED = 1UL << 1,
 	// Allocates a buffer which is stored in contiguous memory.
 	LWIS_DMA_BUFFER_CONTIGUOUS = 1UL << 2,
+	// Allocates a buffer represent system cache reservation.
+	LWIS_DMA_SYSTEM_CACHE_RESERVATION = 1UL << 3,
 };
 
 struct lwis_alloc_buffer_info {
