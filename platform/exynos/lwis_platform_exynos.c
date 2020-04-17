@@ -49,10 +49,13 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	struct lwis_platform *platform;
 	// TODO: Refactor
 	const uint32_t int_cam_qos = 680000;
-	const uint32_t int_qos = 107000;
+	const uint32_t int_qos = 465000;
 	const uint32_t mif_qos = 2093000;
 	const uint32_t cam_qos = 680000;
 	const uint32_t hpg_qos = 1;
+#if defined(CONFIG_SOC_GS101)
+	const uint32_t tnr_qos = 680000;
+#endif
 	BUG_ON(!lwis_dev);
 	platform = lwis_dev->platform;
 	if (!platform) {
@@ -93,6 +96,11 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	if (!pm_qos_request_active(&platform->pm_qos_hpg))
 		pm_qos_add_request(&platform->pm_qos_hpg, PM_QOS_CPU_ONLINE_MIN,
 				   hpg_qos);
+#if defined(CONFIG_SOC_GS101)
+	if (!pm_qos_request_active(&platform->pm_qos_tnr))
+		pm_qos_add_request(&platform->pm_qos_tnr,
+				   PM_QOS_TNR_THROUGHPUT, tnr_qos);
+#endif
 
 
 	return 0;
@@ -121,6 +129,10 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 		pm_qos_remove_request(&platform->pm_qos_cam);
 	if (pm_qos_request_active(&platform->pm_qos_hpg))
 		pm_qos_remove_request(&platform->pm_qos_hpg);
+#if defined(CONFIG_SOC_GS101)
+	if (pm_qos_request_active(&platform->pm_qos_tnr))
+		pm_qos_remove_request(&platform->pm_qos_tnr);
+#endif
 
 	if (lwis_dev->has_iommu) {
 		/* Deactivate IOMMU/SYSMMU */
