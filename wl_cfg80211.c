@@ -8043,7 +8043,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		return -EINVAL;
 	}
 
-	buf = MALLOC(cfg->osh, MAX(sizeof(wl_if_stats_t), WLC_IOCTL_SMLEN));
+	buf = MALLOC(cfg->osh, WLC_IOCTL_MEDLEN);
 	if (buf == NULL) {
 		WL_ERR(("wl_cfg80211_get_station: MALLOC failed\n"));
 		goto error;
@@ -8120,6 +8120,24 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 				WL_ERR(("Wrong Mac address: "MACDBG" != "MACDBG"\n",
 					MAC2STRDBG(mac), MAC2STRDBG(curmacp)));
 			}
+			sta = (sta_info_v4_t *)buf;
+			bzero(sta, WLC_IOCTL_MEDLEN);
+			err = wldev_iovar_getbuf(dev, "sta_info", (const void*)curmacp,
+					ETHER_ADDR_LEN, buf, WLC_IOCTL_MEDLEN, NULL);
+			if (err < 0) {
+				WL_ERR(("GET STA INFO failed, %d\n", err));
+				goto error;
+			}
+			if (sta->ver != WL_STA_VER_4 && sta->ver != WL_STA_VER_5) {
+				WL_ERR(("GET STA INFO version mismatch, %d\n", err));
+				return BCME_VERSION;
+			}
+			sta->rx_rate = dtoh32(sta->rx_rate);
+			if (sta->rx_rate != 0) {
+				sinfo->filled |= STA_INFO_BIT(INFO_RX_BITRATE);
+				sinfo->rxrate.legacy = sta->rx_rate / 100;
+				WL_DBG(("RX Rate %d Mbps\n", (sta->rx_rate / 1000)));
+			}
 			/* go through to get another information */
 		case WL_IF_TYPE_P2P_GC:
 		case WL_IF_TYPE_P2P_DISC:
@@ -8162,7 +8180,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 				rate = dtoh32(rate);
 				sinfo->filled |= STA_INFO_BIT(INFO_TX_BITRATE);
 				sinfo->txrate.legacy = rate * 5;
-				WL_DBG(("Rate %d Mbps\n", (rate / 2)));
+				WL_DBG(("TX Rate %d Mbps\n", (rate / 2)));
 #if defined(USE_DYNAMIC_MAXPKT_RXGLOM)
 				rxpktglom = ((rate/2) > 150) ? 20 : 10;
 
@@ -8180,13 +8198,13 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 #endif
 			}
 			if_stats = (wl_if_stats_t *)buf;
-			bzero(if_stats, sizeof(*if_stats));
+			bzero(if_stats, WLC_IOCTL_MEDLEN);
 			if (FW_SUPPORTED(dhd, ifst)) {
 				err = wl_cfg80211_ifstats_counters(dev, if_stats);
 			} else
 			{
 				err = wldev_iovar_getbuf(dev, "if_counters", NULL, 0,
-						(char *)if_stats, sizeof(*if_stats), NULL);
+						(char *)if_stats, WLC_IOCTL_MEDLEN, NULL);
 			}
 
 			if (err) {
@@ -8245,14 +8263,14 @@ get_station_err:
 			}
 			break;
 		case WL_IF_TYPE_AP:
+			sta = (sta_info_v4_t *)buf;
+			bzero(sta, WLC_IOCTL_MEDLEN);
 			err = wldev_iovar_getbuf(dev, "sta_info", (const   void*)mac,
-					ETHER_ADDR_LEN, buf, WLC_IOCTL_SMLEN, NULL);
+					ETHER_ADDR_LEN, buf, WLC_IOCTL_MEDLEN, NULL);
 			if (err < 0) {
 				WL_ERR(("GET STA INFO failed, %d\n", err));
 				goto error;
 			}
-			sinfo->filled = STA_INFO_BIT(INFO_INACTIVE_TIME);
-			sta = (sta_info_v4_t *)buf;
 			if (sta->ver != WL_STA_VER_4 && sta->ver != WL_STA_VER_5) {
 				WL_ERR(("GET STA INFO version mismatch, %d\n", err));
 				return BCME_VERSION;
@@ -8262,6 +8280,7 @@ get_station_err:
 			sta->flags = dtoh32(sta->flags);
 			sta->idle = dtoh32(sta->idle);
 			sta->in = dtoh32(sta->in);
+			sinfo->filled |= STA_INFO_BIT(INFO_INACTIVE_TIME);
 			sinfo->inactive_time = sta->idle * 1000;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || defined(WL_COMPAT_WIRELESS)
 			if (sta->flags & WL_STA_ASSOC) {
@@ -8280,7 +8299,7 @@ get_station_err:
 	}
 error:
 	if (buf) {
-		MFREE(cfg->osh, buf, MAX(sizeof(wl_if_stats_t), WLC_IOCTL_SMLEN));
+		MFREE(cfg->osh, buf, WLC_IOCTL_MEDLEN);
 	}
 
 	return err;
