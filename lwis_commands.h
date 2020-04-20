@@ -233,8 +233,6 @@ struct lwis_event_subscribe {
 #define LWIS_GET_DEVICE_INFO _IOWR(LWIS_IOC_TYPE, 1, struct lwis_device_info)
 #define LWIS_BUFFER_ENROLL _IOWR(LWIS_IOC_TYPE, 2, struct lwis_buffer_info)
 #define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, uint64_t)
-#define LWIS_REG_READ _IOWR(LWIS_IOC_TYPE, 4, struct lwis_io_entry)
-#define LWIS_REG_WRITE _IOWR(LWIS_IOC_TYPE, 5, struct lwis_io_entry)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)

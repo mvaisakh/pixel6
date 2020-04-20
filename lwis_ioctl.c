@@ -59,14 +59,6 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		strcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
-	case IOCTL_TO_ENUM(LWIS_REG_READ):
-		strcpy(type_name, STRINGIFY(LWIS_REG_READ));
-		exp_size = IOCTL_ARG_SIZE(LWIS_REG_READ);
-		break;
-	case IOCTL_TO_ENUM(LWIS_REG_WRITE):
-		strcpy(type_name, STRINGIFY(LWIS_REG_WRITE));
-		exp_size = IOCTL_ARG_SIZE(LWIS_REG_WRITE);
-		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
 		strcpy(type_name, STRINGIFY(LWIS_REG_IO));
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
@@ -202,28 +194,6 @@ reg_read_exit:
 	}
 	return ret;
 }
-static int ioctl_reg_read(struct lwis_device *lwis_dev,
-			  struct lwis_io_entry *user_msg)
-{
-	int ret = 0;
-	struct lwis_io_entry k_msg;
-	/* register read is not supported for the lwis device, return */
-	if (!lwis_dev->vops.register_io) {
-		dev_err(lwis_dev->dev,
-			"Register IO not supported on this LWIS device\n");
-		return -EINVAL;
-	}
-	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
-	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy register read ioctl from userspace\n");
-		return ret;
-	}
-
-	ret = lwis_reg_read(lwis_dev, &k_msg, user_msg);
-	return ret;
-}
 
 static int lwis_reg_write(struct lwis_device *lwis_dev,
 			  struct lwis_io_entry *write_entry)
@@ -270,27 +240,6 @@ reg_write_exit:
 	if (batch_mode) {
 		kfree(write_entry->rw_batch.buf);
 	}
-	return ret;
-}
-
-static int ioctl_reg_write(struct lwis_device *lwis_dev,
-			   struct lwis_io_entry *user_msg)
-{
-	int ret = 0;
-	struct lwis_io_entry k_msg;
-	/* register write is not supported for the lwis device, return */
-	if (!lwis_dev->vops.register_io) {
-		dev_err(lwis_dev->dev,
-			"Register IO not supported on this LWIS device\n");
-		return -EINVAL;
-	}
-	/* Copy message struct from userspace */
-	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
-	if (ret) {
-		return ret;
-	}
-
-	ret = lwis_reg_write(lwis_dev, &k_msg);
 	return ret;
 }
 
@@ -375,6 +324,7 @@ reg_io_exit:
 	kfree(k_entries);
 	return ret;
 }
+
 static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 			      struct lwis_alloc_buffer_info __user *msg)
 {
@@ -1032,12 +982,6 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_BUFFER_DISENROLL:
 		ret = ioctl_buffer_disenroll(lwis_client, (uint64_t *)param);
-		break;
-	case LWIS_REG_READ:
-		ret = ioctl_reg_read(lwis_dev, (struct lwis_io_entry *)param);
-		break;
-	case LWIS_REG_WRITE:
-		ret = ioctl_reg_write(lwis_dev, (struct lwis_io_entry *)param);
 		break;
 	case LWIS_REG_IO:
 		ret = ioctl_reg_io(lwis_dev, (struct lwis_io_entries *)param);
