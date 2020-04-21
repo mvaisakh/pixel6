@@ -57,6 +57,48 @@ event_list_find_or_create(struct lwis_client *client, int64_t event_id)
 	return (list == NULL) ? event_list_create(client, event_id) : list;
 }
 
+void lwis_entry_bias(struct lwis_io_entry *entry, uint64_t bias)
+{
+	if (entry->type == LWIS_IO_ENTRY_WRITE ||
+	    entry->type == LWIS_IO_ENTRY_READ) {
+		entry->rw.offset += bias;
+	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
+		   entry->type == LWIS_IO_ENTRY_READ_BATCH) {
+		entry->rw_batch.offset += bias;
+	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
+		entry->mod.offset += bias;
+	}
+}
+
+int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
+{
+	uint64_t val, start;
+	int ret = 0;
+
+	/* Read until getting the expected value or timeout */
+	val = ~entry->poll.val;
+	start = ktime_to_ms(ktime_get());
+	while (val != entry->poll.val) {
+		ret = lwis_device_single_register_read(
+			lwis_dev, false, entry->poll.bid, entry->poll.offset,
+			&val, lwis_dev->native_value_bitwidth);
+		if (ret) {
+			pr_err("Failed to read registers\n");
+			return ret;
+		}
+		if ((val & entry->poll.mask) ==
+		    (entry->poll.val & entry->poll.mask)) {
+			return 0;
+		}
+		if (ktime_to_ms(ktime_get()) - start > entry->poll.timeout_ms) {
+			return -ETIMEDOUT;
+		}
+		/* Sleep for 1ms */
+		usleep_range(1000, 1000);
+	}
+	return -ETIMEDOUT;
+}
+
 static int process_io_entries(struct lwis_client *client,
 			      struct lwis_transaction *transaction,
 			      struct list_head *list_node,
@@ -74,8 +116,6 @@ static int process_io_entries(struct lwis_client *client,
 	const int reg_value_bytes = lwis_dev->native_value_bitwidth / 8;
 	unsigned long flags;
 	uint64_t bias = 0;
-	uint64_t start;
-	uint64_t val;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    resp->results_size_bytes;
@@ -85,16 +125,7 @@ static int process_io_entries(struct lwis_client *client,
 
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
-		if (entry->type == LWIS_IO_ENTRY_WRITE ||
-		    entry->type == LWIS_IO_ENTRY_READ) {
-			entry->rw.offset += bias;
-		} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
-			   entry->type == LWIS_IO_ENTRY_READ_BATCH) {
-			entry->rw_batch.offset += bias;
-		} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
-			entry->mod.offset += bias;
-		}
-
+		lwis_entry_bias(entry, bias);
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
@@ -140,30 +171,10 @@ static int process_io_entries(struct lwis_client *client,
 		} else if (entry->type == LWIS_IO_ENTRY_BIAS) {
 			bias = entry->set_bias.bias;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
-			/* Read until getting the expected value or timeout */
-			val = ~entry->poll.val;
-			start = ktime_to_ms(ktime_get());
-			while (val != entry->poll.val) {
-				ret = lwis_device_single_register_read(
-					lwis_dev, false, entry->poll.bid,
-					entry->poll.offset, &val,
-					lwis_dev->native_value_bitwidth);
-				if (ret) {
-					pr_err("Failed to read registers\n");
-					resp->error_code = ret;
-					goto event_push;
-				}
-				if ((val & entry->poll.mask) ==
-				    (entry->poll.val & entry->poll.mask)) {
-					break;
-				}
-				if (ktime_to_ms(ktime_get()) - start >
-				    entry->poll.timeout_ms) {
-					resp->error_code = -ETIMEDOUT;
-					goto event_push;
-				}
-				/* Sleep for 1ms */
-				usleep_range(1000, 1000);
+			ret = lwis_entry_poll(lwis_dev, entry);
+			if (ret) {
+				resp->error_code = ret;
+				goto event_push;
 			}
 		} else {
 			pr_err("Unrecognized io_entry command\n");

@@ -264,6 +264,7 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 	struct lwis_io_entries k_msg;
 	struct lwis_io_entry *k_entries;
 	uint32_t buf_size;
+	uint64_t bias = 0;
 
 	/* Register io is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_io) {
@@ -296,6 +297,7 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 
 	/* Walk through and execute the entries */
 	for (i = 0; i < k_msg.num_io_entries; i++) {
+		lwis_entry_bias(&k_entries[i], bias);
 		switch (k_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
 			ret = lwis_reg_modify(lwis_dev, &k_entries[i]);
@@ -308,6 +310,12 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 		case LWIS_IO_ENTRY_WRITE:
 		case LWIS_IO_ENTRY_WRITE_BATCH:
 			ret = lwis_reg_write(lwis_dev, &k_entries[i]);
+			break;
+		case LWIS_IO_ENTRY_BIAS:
+			bias = k_entries[i].set_bias.bias;
+			break;
+		case LWIS_IO_ENTRY_POLL:
+			ret = lwis_entry_poll(lwis_dev, &k_entries[i]);
 			break;
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
