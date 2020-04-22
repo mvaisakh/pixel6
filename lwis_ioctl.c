@@ -112,12 +112,14 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 
 	if (strcmp(type_name, "UNDEFINED") &&
 	    exp_size != IOCTL_ARG_SIZE(ioctl_type)) {
-		dev_err(lwis_dev->dev,
+		dev_err_ratelimited(
+			lwis_dev->dev,
 			"Failed to process %s (errno: %d), expecting argument with length of %d, got length of %d. Mismatch kernel version?\n",
 			type_name, errno, exp_size, IOCTL_ARG_SIZE(ioctl_type));
 	} else {
-		dev_err(lwis_dev->dev, "Failed to process %s (errno: %d)\n",
-			type_name, errno);
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to process %s (errno: %d)\n",
+				    type_name, errno);
 	}
 }
 
@@ -156,7 +158,8 @@ static int lwis_reg_read(struct lwis_device *lwis_dev,
 		read_entry->rw_batch.buf =
 			kzalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
-			dev_err(lwis_dev->dev,
+			dev_err_ratelimited(
+				lwis_dev->dev,
 				"Failed to allocate register read buffer\n");
 			return -ENOMEM;
 		}
@@ -170,7 +173,8 @@ static int lwis_reg_read(struct lwis_device *lwis_dev,
 	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to read registers\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to read registers\n");
 		goto reg_read_exit;
 	}
 
@@ -180,7 +184,8 @@ static int lwis_reg_read(struct lwis_device *lwis_dev,
 				   read_entry->rw_batch.buf,
 				   read_entry->rw_batch.size_in_bytes);
 		if (ret) {
-			dev_err(lwis_dev->dev,
+			dev_err_ratelimited(
+				lwis_dev->dev,
 				"Failed to copy register read buffer back to userspace\n");
 		}
 	} else {
@@ -210,7 +215,8 @@ static int lwis_reg_write(struct lwis_device *lwis_dev,
 		write_entry->rw_batch.buf = kzalloc(
 			write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
-			dev_err(lwis_dev->dev,
+			dev_err_ratelimited(
+				lwis_dev->dev,
 				"Failed to allocate register write buffer\n");
 			return -ENOMEM;
 		}
@@ -218,11 +224,11 @@ static int lwis_reg_write(struct lwis_device *lwis_dev,
 				     (void __user *)user_buf,
 				     write_entry->rw_batch.size_in_bytes);
 		if (ret) {
-			dev_err(lwis_dev->dev,
+			dev_err_ratelimited(
+				lwis_dev->dev,
 				"Failed to copy write buffer from userspace\n");
 			goto reg_write_exit;
 		}
-
 	} else if (write_entry->type != LWIS_IO_ENTRY_WRITE) {
 		/* Type must be either WRITE or WRITE_BATCH */
 		dev_err(lwis_dev->dev,
@@ -233,7 +239,8 @@ static int lwis_reg_write(struct lwis_device *lwis_dev,
 	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to write registers\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to write registers\n");
 	}
 
 reg_write_exit:
@@ -251,7 +258,8 @@ static int lwis_reg_modify(struct lwis_device *lwis_dev,
 	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to read registers for modify\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to read registers for modify\n");
 	}
 
 	return ret;
@@ -318,12 +326,14 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 			ret = lwis_entry_poll(lwis_dev, &k_entries[i]);
 			break;
 		default:
-			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Unknown io_entry operation\n");
 			ret = -EINVAL;
 		};
 
 		if (ret) {
-			dev_err(lwis_dev->dev, "Register io_entry failed\n");
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Register io_entry failed\n");
 			goto reg_io_exit;
 		}
 	}
@@ -773,7 +783,8 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes,
 					GFP_KERNEL);
 			if (!k_buf) {
-				dev_err(lwis_dev->dev,
+				dev_err_ratelimited(
+					lwis_dev->dev,
 					"Failed to allocate tx write buffer\n");
 				ret = -ENOMEM;
 				goto error_free_buf;
@@ -784,7 +795,8 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 				k_buf, (void __user *)user_buf,
 				k_entries[i].rw_batch.size_in_bytes);
 			if (ret) {
-				dev_err(lwis_dev->dev,
+				dev_err_ratelimited(
+					lwis_dev->dev,
 					"Failed to copy tx write buffer from userspace\n");
 				goto error_free_buf;
 			}
@@ -793,12 +805,14 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 
 	ret = lwis_transaction_submit(client, k_transaction);
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to submit transaction\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to submit transaction\n");
 		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
 		if (copy_to_user((void __user *)user_transaction,
 				 &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
-			dev_err(lwis_dev->dev,
+			dev_err_ratelimited(
+				lwis_dev->dev,
 				"Failed to return info to userspace\n");
 		}
 		goto error_free_buf;
@@ -808,7 +822,8 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 			   &k_transaction->info,
 			   sizeof(struct lwis_transaction_info));
 	if (ret) {
-		dev_err(lwis_dev->dev,
+		dev_err_ratelimited(
+			lwis_dev->dev,
 			"Failed to copy transaction results to userspace\n");
 		return ret;
 	}
@@ -844,8 +859,9 @@ static int ioctl_transaction_cancel(struct lwis_client *client,
 
 	ret = lwis_transaction_cancel(client, id);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to clear transaction id 0x%llx\n", id);
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to clear transaction id 0x%llx\n",
+				    id);
 		return ret;
 	}
 
@@ -967,8 +983,8 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
 	    type != LWIS_BUFFER_DISENROLL) {
 		ret = -EBADFD;
-		dev_err(lwis_dev->dev,
-			"Unsupported IOCTL on disabled device.\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Unsupported IOCTL on disabled device.\n");
 		return ret;
 	}
 
@@ -1030,7 +1046,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
 		break;
 	default:
-		dev_err(lwis_dev->dev, "Unknown IOCTL operation\n");
+		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");
 		ret = -EINVAL;
 	};
 

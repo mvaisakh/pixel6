@@ -83,7 +83,7 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 			lwis_dev, false, entry->poll.bid, entry->poll.offset,
 			&val, lwis_dev->native_value_bitwidth);
 		if (ret) {
-			pr_err("Failed to read registers\n");
+			pr_err_ratelimited("Failed to read registers\n");
 			return ret;
 		}
 		if ((val & entry->poll.mask) ==
@@ -177,7 +177,7 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else {
-			pr_err("Unrecognized io_entry command\n");
+			pr_err_ratelimited("Unrecognized io_entry command\n");
 			resp->error_code = -EINVAL;
 			goto event_push;
 		}
@@ -402,8 +402,9 @@ int lwis_transaction_submit(struct lwis_client *client,
 				event_state->event_counter;
 			if (info->trigger_event_counter ==
 			    event_state->event_counter) {
-				pr_warn("Event counter == Trigger counter already, turning this into an immediate transaction\n");
 				info->trigger_event_id = LWIS_EVENT_ID_NONE;
+				pr_warn_ratelimited(
+					"Event counter == Trigger counter already, turning this into an immediate transaction\n");
 			} else if (info->trigger_event_counter <
 				   event_state->event_counter) {
 				return -ENOENT;
@@ -422,7 +423,7 @@ int lwis_transaction_submit(struct lwis_client *client,
 		    lwis_dev, info->emit_error_event_id)) ||
 	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
 		    client, info->emit_error_event_id))) {
-		pr_err("Cannot create sw events for transaction");
+		pr_err_ratelimited("Cannot create sw events for transaction");
 		return -EINVAL;
 	}
 
@@ -446,7 +447,7 @@ int lwis_transaction_submit(struct lwis_client *client,
 		    read_buf_size;
 	transaction->resp = kzalloc(resp_size, GFP_KERNEL);
 	if (!transaction->resp) {
-		pr_err("Cannot allocate transaction response\n");
+		pr_err_ratelimited("Cannot allocate transaction response\n");
 		return -ENOMEM;
 	}
 	transaction->resp->id = info->id;
@@ -467,7 +468,8 @@ int lwis_transaction_submit(struct lwis_client *client,
 		event_list = event_list_find_or_create(client,
 						       info->trigger_event_id);
 		if (!event_list) {
-			pr_err("Cannot create transaction event list\n");
+			pr_err_ratelimited(
+				"Cannot create transaction event list\n");
 			kfree(transaction->resp);
 			spin_unlock_irqrestore(&client->transaction_lock,
 					       flags);
