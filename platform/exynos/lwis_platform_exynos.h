@@ -20,7 +20,6 @@ struct lwis_platform {
 	struct pm_qos_request pm_qos_cam;
 	struct pm_qos_request pm_qos_mem;
 	struct pm_qos_request pm_qos_hpg;
-	struct pm_qos_request pm_qos_tnr;
 };
 
 
