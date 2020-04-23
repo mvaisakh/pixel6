@@ -126,11 +126,11 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	 */
 	mutex_lock(&lwis_client->lock);
 
-	/* Cancel all pending transactions for the client */
-	lwis_transaction_client_cleanup(lwis_client);
-
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
+
+	/* Cancel all pending transactions for the client */
+        lwis_transaction_client_cleanup(lwis_client);
 
 	/* Disenroll and clear the table of allocated and enrolled buffers */
 	lwis_client_allocated_buffers_clear(lwis_client);
