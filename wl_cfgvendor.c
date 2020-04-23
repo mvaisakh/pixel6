@@ -7116,6 +7116,7 @@ exit:
 #endif /* DHD_LOG_DUMP */
 
 #ifdef DEBUGABILITY
+#ifdef BRCM_EWP
 static int
 wl_cfgvendor_dbg_trigger_mem_dump(struct wiphy *wiphy,
 		struct wireless_dev *wdev, const void  *data, int len)
@@ -7277,6 +7278,7 @@ free_mem:
 exit:
 	return ret;
 }
+#endif /* BRCM_EWP */
 
 static int wl_cfgvendor_dbg_start_logging(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
@@ -8877,6 +8879,7 @@ static const struct wiphy_vendor_command wl_vendor_cmds [] = {
 #endif /* DHD_LOG_DUMP */
 
 #ifdef DEBUGABILITY
+#ifdef BRCM_EWP
 	{
 		{
 			.vendor_id = OUI_GOOGLE,
@@ -8893,6 +8896,7 @@ static const struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = wl_cfgvendor_dbg_get_mem_dump
 	},
+#endif /* BRCM_EWP */
 	{
 		{
 			.vendor_id = OUI_GOOGLE,

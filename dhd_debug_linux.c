@@ -428,7 +428,9 @@ dhd_os_dbg_get_feature(dhd_pub_t *dhdp, int32 *features)
 	/* XXX : we need to find a way to get the features for dbg */
 	*features = 0;
 #ifdef DEBUGABILITY
+#ifdef BRCM_EWP
 	*features |= DBG_MEMORY_DUMP_SUPPORTED;
+#endif /* BRCM_EWP */
 	if (FW_SUPPORTED(dhdp, logtrace)) {
 		*features |= DBG_CONNECT_EVENT_SUPPORTED;
 		*features |= DBG_VERBOSE_LOG_SUPPORTED;
