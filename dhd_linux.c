@@ -15139,6 +15139,9 @@ dhd_dev_get_feature_set(struct net_device *dev)
 		feature_set |= WIFI_FEATURE_RSSI_MONITOR;
 	}
 #endif /* RSSI_MONITOR_SUPPORT */
+#ifdef KEEP_ALIVE
+	feature_set |= WIFI_FEATURE_MKEEP_ALIVE;
+#endif /* KEEP_ALIVE_SUPPORT*/
 #ifdef WL11U
 	feature_set |= WIFI_FEATURE_HOTSPOT;
 #endif /* WL11U */
