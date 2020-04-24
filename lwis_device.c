@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/uaccess.h>
 
 #include "lwis_buffer.h"
@@ -380,20 +381,32 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->mclk_ctrl) {
+	if (lwis_dev->mclk_present) {
 		bool activate_mclk = true;
 
-		if (lwis_dev->shared_pinctrl) {
+		lwis_dev->mclk_ctrl = devm_pinctrl_get(
+				      &lwis_dev->plat_dev->dev);
+		if (IS_ERR(lwis_dev->mclk_ctrl)) {
+			dev_err(lwis_dev->dev, "Failed to get mclk\n");
+			ret = PTR_ERR(lwis_dev->mclk_ctrl);
+			lwis_dev->mclk_ctrl = NULL;
+			goto error_mclk_enable;
+		}
+		if (lwis_dev->shared_pinctrl > 0) {
 			struct lwis_device *lwis_dev_it;
 			/* Look up if pinctrl it's already enabled */
 			mutex_lock(&core.lock);
 			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list)
-			{
-				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
-				    lwis_dev_it->shared_pinctrl &&
-				    lwis_dev_it->enabled) {
+					    dev_list) {
+				if ((lwis_dev->id != lwis_dev_it->id) &&
+					(lwis_dev_it->shared_pinctrl ==
+					lwis_dev->shared_pinctrl) &&
+					lwis_dev_it->enabled) {
 					activate_mclk = false;
+					devm_pinctrl_put(lwis_dev->mclk_ctrl);
+					lwis_dev->mclk_ctrl = NULL;
+					dev_info(lwis_dev->dev,
+						"mclk already be acquired\n");
 					break;
 				}
 			}
@@ -406,7 +419,11 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 						     MCLK_ON_STRING);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error setting mclk state (%d)\n", ret);
+					"Error setting %s state (%d)\n",
+					MCLK_ON_STRING,
+ 					ret);
+				devm_pinctrl_put(lwis_dev->mclk_ctrl);
+				lwis_dev->mclk_ctrl = NULL;
 				goto error_mclk_enable;
 			}
 		}
@@ -574,35 +591,19 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->mclk_ctrl) {
-		bool deactivate_mclk = true;
-
-		if (lwis_dev->shared_pinctrl) {
-			struct lwis_device *lwis_dev_it;
-			/* Look up if pinctrl still used by other device */
-			mutex_lock(&core.lock);
-			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list)
-			{
-				if (lwis_dev_it->type == DEVICE_TYPE_I2C &&
-				    lwis_dev_it->shared_pinctrl &&
-				    lwis_dev_it->enabled) {
-					deactivate_mclk = false;
-					break;
-				}
-			}
-			mutex_unlock(&core.lock);
+		/* Set MCLK state to off */
+		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+					     MCLK_OFF_STRING);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Error setting %s state(%d)\n",
+				MCLK_OFF_STRING, ret);
+			return ret;
 		}
+		dev_info(lwis_dev->dev, "%s disabled mclk", lwis_dev->name);
 
-		if (deactivate_mclk) {
-			/* Set MCLK state to off */
-			ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-						     MCLK_OFF_STRING);
-			if (ret) {
-				dev_err(lwis_dev->dev,
-					"Error setting mclk state (%d)\n", ret);
-				return ret;
-			}
-		}
+		devm_pinctrl_put(lwis_dev->mclk_ctrl);
+		lwis_dev->mclk_ctrl = NULL;
 	}
 
 	if (lwis_dev->shared_enable_gpios_present &&

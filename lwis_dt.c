@@ -16,6 +16,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_gpio.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
 
 #include "lwis_clock.h"
@@ -174,7 +175,6 @@ error_parse_clk:
 
 static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 {
-	int ret = 0;
 	int count;
 	struct device *dev;
 	struct device_node *dev_node;
@@ -184,12 +184,13 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 
+	lwis_dev->mclk_present = false;
+	lwis_dev->shared_pinctrl = 0;
 	count = of_property_count_strings(dev_node, "pinctrl-names");
 
 	/* No pinctrl found, just return */
-	if (count <= 0) {
+	if (count <= 0)
 		return 0;
-	}
 
 	/* Set up pinctrl */
 	pc = devm_pinctrl_get(dev);
@@ -201,20 +202,21 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	pinctrl_state = pinctrl_lookup_state(pc, expected_state);
 	if (IS_ERR(pinctrl_state)) {
 		pr_err("Cannot find pinctrl state %s\n", expected_state);
-		ret = PTR_ERR(pinctrl_state);
-		goto error_pinctrl_state;
+		devm_pinctrl_put(pc);
+		return PTR_ERR(pinctrl_state);
 	}
 
-	lwis_dev->mclk_ctrl = pc;
+	/* Indicate if the pinctrl shared with other devices */
+	of_property_read_u32(dev_node,
+			     "shared-pinctrl", &lwis_dev->shared_pinctrl);
 
-	lwis_dev->shared_pinctrl = of_property_read_bool(dev_node,
-							 "shared-pinctrl");
+	/* The pinctrl is valid, release it as we do not need to hold on to
+	   the pins yet */
+	devm_pinctrl_put(pc);
+
+	lwis_dev->mclk_present = true;
 
 	return 0;
-
-error_pinctrl_state:
-	devm_pinctrl_put(pc);
-	return ret;
 }
 
 static int parse_interrupts(struct lwis_device *lwis_dev)
