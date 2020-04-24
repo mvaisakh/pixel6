@@ -37,6 +37,7 @@ struct dsim_pll_features {
 	u64 foptimum;
 	u64 fout_min, fout_max;
 	u64 fvco_min, fvco_max;
+	/* TODO (longling) move te_idle/te_var to drm_display_mode private */
 	u32 te_idle, te_var;
 	u32 p_min, p_max;
 	u32 m_min, m_max;
@@ -75,6 +76,7 @@ struct dsim_device {
 	int id;
 	spinlock_t slock;
 	struct mutex cmd_lock;
+	struct mutex state_lock;
 	struct completion ph_wr_comp;
 	struct completion rd_comp;
 	struct timer_list cmd_timer;
@@ -88,7 +90,7 @@ struct dsim_device {
 	struct dsim_reg_config config;
 	struct dsim_clks clk_param;
 
-	const struct dsim_pll_param *current_pll_param;
+	struct dsim_pll_param *current_pll_param;
 
 	int idle_ip_index;
 };

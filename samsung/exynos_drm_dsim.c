@@ -159,9 +159,11 @@ void dsim_exit_ulps(struct dsim_device *dsim)
 {
 	dsim_debug(dsim, "%s +\n", __func__);
 
-	if (dsim->state != DSIM_STATE_ULPS)
+	mutex_lock(&dsim->state_lock);
+	if (dsim->state != DSIM_STATE_ULPS) {
+		mutex_unlock(&dsim->state_lock);
 		return;
-
+	}
 #if defined(CONFIG_CPU_IDLE)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 0);
 #endif
@@ -174,6 +176,7 @@ void dsim_exit_ulps(struct dsim_device *dsim)
 	dsim->state = DSIM_STATE_HSCLKEN;
 	enable_irq(dsim->irq);
 
+	mutex_unlock(&dsim->state_lock);
 	dsim_debug(dsim, "%s -\n", __func__);
 }
 
@@ -182,7 +185,9 @@ static void dsim_enable(struct drm_encoder *encoder)
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
+	mutex_lock(&dsim->state_lock);
 	if (dsim->state == DSIM_STATE_HSCLKEN) {
+		mutex_unlock(&dsim->state_lock);
 		dsim_info(dsim, "already enabled(%d)\n", dsim->state);
 		return;
 	}
@@ -201,6 +206,7 @@ static void dsim_enable(struct drm_encoder *encoder)
 	/* TODO: dsi start: enable irq, sfr configuration */
 	dsim->state = DSIM_STATE_HSCLKEN;
 	enable_irq(dsim->irq);
+	mutex_unlock(&dsim->state_lock);
 
 #if defined(DSIM_BIST)
 	dsim_reg_set_bist(dsim->id, true, DSIM_GRAY_GRADATION);
@@ -215,8 +221,11 @@ static void dsim_enable(struct drm_encoder *encoder)
 
 void dsim_enter_ulps(struct dsim_device *dsim)
 {
-	if (dsim->state != DSIM_STATE_HSCLKEN)
+	mutex_lock(&dsim->state_lock);
+	if (dsim->state != DSIM_STATE_HSCLKEN) {
+		mutex_unlock(&dsim->state_lock);
 		return;
+	}
 
 	dsim_debug(dsim, "%s +\n", __func__);
 
@@ -234,6 +243,7 @@ void dsim_enter_ulps(struct dsim_device *dsim)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 1);
 #endif
 
+	mutex_unlock(&dsim->state_lock);
 	dsim_debug(dsim, "%s -\n", __func__);
 }
 
@@ -242,12 +252,13 @@ static void dsim_disable(struct drm_encoder *encoder)
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
+	dsim_debug(dsim, "%s +\n", __func__);
+	mutex_lock(&dsim->state_lock);
 	if (dsim->state == DSIM_STATE_SUSPEND) {
+		mutex_unlock(&dsim->state_lock);
 		dsim_info(dsim, "already disabled(%d)\n", dsim->state);
 		return;
 	}
-
-	dsim_debug(dsim, "%s +\n", __func__);
 
 	/* TODO: 0x1F will be changed */
 	dsim_reg_stop(dsim->id, 0x1F);
@@ -258,6 +269,7 @@ static void dsim_disable(struct drm_encoder *encoder)
 	del_timer(&dsim->cmd_timer);
 	dsim->state = DSIM_STATE_SUSPEND;
 	mutex_unlock(&dsim->cmd_lock);
+	mutex_unlock(&dsim->state_lock);
 
 	dsim_phy_power_off(dsim);
 
@@ -285,18 +297,18 @@ static void dsim_modes_release(struct dsim_pll_params *pll_params)
 	kfree(pll_params);
 }
 
-static const struct dsim_pll_param *
+static struct dsim_pll_param *
 dsim_get_clock_mode(const struct dsim_device *dsim,
 		    const struct drm_display_mode *mode)
 {
 	int i;
 	const struct dsim_pll_params *pll_params = dsim->pll_params;
 	const size_t mlen = strnlen(mode->name, DRM_DISPLAY_MODE_LEN);
-	const struct dsim_pll_param *ret = NULL;
+	struct dsim_pll_param *ret = NULL;
 	size_t plen;
 
 	for (i = 0; i < pll_params->num_modes; i++) {
-		const struct dsim_pll_param *p = pll_params->params[i];
+		struct dsim_pll_param *p = pll_params->params[i];
 
 		plen = strnlen(p->name, DRM_DISPLAY_MODE_LEN);
 
@@ -314,14 +326,9 @@ dsim_get_clock_mode(const struct dsim_device *dsim,
 	return ret;
 }
 
-static int dsim_set_clock_mode(struct dsim_device *dsim,
-			       const struct drm_display_mode *mode)
+static void dsim_update_clock_config(struct dsim_device *dsim,
+				     const struct dsim_pll_param *p)
 {
-	const struct dsim_pll_param *p = dsim_get_clock_mode(dsim, mode);
-
-	if (!p)
-		return -ENOENT;
-
 	dsim->config.dphy_pms.p = p->p;
 	dsim->config.dphy_pms.m = p->m;
 	dsim->config.dphy_pms.s = p->s;
@@ -351,7 +358,18 @@ static int dsim_set_clock_mode(struct dsim_device *dsim,
 		 dsim->clk_param.esc_clk);
 
 	dsim->config.cmd_underrun_cnt[0] = p->cmd_underrun_cnt;
+	dsim_debug(dsim, "\tunderrun_lp_ref 0x%x\n", p->cmd_underrun_cnt);
+}
 
+static int dsim_set_clock_mode(struct dsim_device *dsim,
+			       const struct drm_display_mode *mode)
+{
+	struct dsim_pll_param *p = dsim_get_clock_mode(dsim, mode);
+
+	if (!p)
+		return -ENOENT;
+
+	dsim_update_clock_config(dsim, p);
 	dsim->current_pll_param = p;
 
 	return 0;
@@ -1464,6 +1482,207 @@ static const struct mipi_dsi_host_ops dsim_host_ops = {
 	.transfer = dsim_host_transfer,
 };
 
+static const struct drm_display_mode *dsim_get_current_mode(
+						const struct dsim_device *dsim)
+{
+	struct drm_crtc *crtc = dsim->encoder.crtc;
+
+	if (crtc && crtc->state)
+		return &crtc->state->adjusted_mode;
+
+	return NULL;
+}
+
+static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
+			 struct stdphy_pms *pms, unsigned int hs_clock_mhz)
+{
+	uint64_t hs_clock;
+	uint64_t fvco, q;
+	uint32_t p, m, s, k;
+
+	p = DIV_ROUND_CLOSEST(pll_features->finput, pll_features->foptimum);
+	if (p == 0)
+		p = 1;
+	if ((p < pll_features->p_min) || (p > pll_features->p_max)) {
+		pr_err("%s: p %u is out of range (%u, %u)\n",
+		       __func__, p, pll_features->p_min, pll_features->p_max);
+		return -EINVAL;
+	}
+
+	hs_clock = (uint64_t) hs_clock_mhz * 1000000;
+	if ((hs_clock < pll_features->fout_min) ||
+			(hs_clock > pll_features->fout_max)) {
+		pr_err("%s: hs clock %llu out of range\n", __func__, hs_clock);
+		return -EINVAL;
+	}
+
+	/* find s: vco_min <= fout * 2 ^ s <= vco_max */
+	for (s = 0, fvco = 0; fvco < pll_features->fvco_min; s++)
+		fvco = hs_clock * (1 << s);
+	--s;
+
+	if (fvco > pll_features->fvco_max) {
+		pr_err("%s: no proper s found\n", __func__);
+		return -EINVAL;
+	}
+	if ((s < pll_features->s_min) || (s > pll_features->s_max)) {
+		pr_err("%s: s %u is out of range (%u, %u)\n",
+		       __func__, s, pll_features->s_min, pll_features->s_max);
+		return -EINVAL;
+	}
+
+	/* (hs_clk * 2^s / 2) / (fin / p) = m + k / 2^k_bits */
+	fvco >>= 1;
+	q = fvco << (pll_features->k_bits + 1); /* 1 extra bit for roundup */
+	q /= pll_features->finput / p;
+
+	/* m is the integer part, k is the fraction part */
+	m = q >> (pll_features->k_bits + 1);
+	if ((m < pll_features->m_min) || (m > pll_features->m_max)) {
+		pr_err("%s: m %u is out of range (%u, %u)\n",
+		       __func__, m, pll_features->m_min, pll_features->m_max);
+		return -EINVAL;
+	}
+
+	k = q & ((1 << (pll_features->k_bits + 1)) - 1);
+	k = DIV_ROUND_UP(k, 2);
+
+	/* k is two's complement integer */
+	if (k & (1 << (pll_features->k_bits - 1)))
+		m++;
+
+	pms->p = p;
+	pms->m = m;
+	pms->s = s;
+	pms->k = k;
+
+	return 0;
+}
+
+static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
+			      const struct drm_display_mode *mode,
+			      uint32_t lanes, uint32_t *underrun,
+			      uint32_t hs_clock_mhz)
+{
+	uint32_t bpp;
+	uint32_t number_of_transfer;
+	uint32_t w_threshold;
+	uint64_t wclk;
+	uint64_t max_frame_time;
+	uint64_t frame_data;
+	uint64_t packet_header;
+	uint64_t min_frame_transfer_time;
+	uint64_t max_lp_time;
+
+	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
+
+	if (!mode_priv) {
+		/* dsc, bpc are needed for underrun calculation */
+		return -ENODEV;
+	}
+
+	bpp = mode_priv->bpc * 3;
+	number_of_transfer = mode->vdisplay;
+	w_threshold = (mode_priv->dsc.enabled ?
+		       mode->hdisplay / 3 : mode->hdisplay);
+	wclk = (uint64_t) hs_clock_mhz * 1000000 / 16;
+
+	/* max time to transfer one frame, in the unit of nanosecond */
+	max_frame_time = NSEC_PER_SEC * 100 /
+		(drm_mode_vrefresh(mode) * (100 + pll_features->te_var)) -
+		NSEC_PER_USEC * pll_features->te_idle;
+	/* one frame pixel data (bytes) */
+	frame_data = number_of_transfer * w_threshold * bpp / 8;
+	/* packet header (bytes) */
+	packet_header = number_of_transfer * 7;
+	/* minimum time to transfer one frame, in nanosecond */
+	min_frame_transfer_time = (frame_data + packet_header) *
+					NSEC_PER_SEC / (2 * lanes * wclk);
+
+	if (max_frame_time < min_frame_transfer_time) {
+		pr_err("%s: max frame time %llu < min frame time %llu\n",
+			__func__, max_frame_time, min_frame_transfer_time);
+		return -EINVAL;
+	}
+
+	max_lp_time = max_frame_time - min_frame_transfer_time;
+	/* underrun unit is 100 wclk, round up */
+	*underrun = (uint32_t)
+			DIV_ROUND_UP(max_lp_time * wclk / NSEC_PER_SEC, 100);
+
+	return 0;
+}
+
+static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
+{
+	int ret;
+	struct stdphy_pms pms;
+	const struct drm_display_mode *mode;
+	uint32_t lp_underrun = 0;
+	struct dsim_pll_param *pll_param;
+
+	if (!dsim->pll_params || !dsim->pll_params->features)
+		return -ENODEV;
+
+	memset(&pms, 0, sizeof(pms));
+	ret = dsim_calc_pmsk(dsim->pll_params->features, &pms, hs_clock);
+	if (ret < 0) {
+		dsim_err(dsim, "Failed to update pll for hsclk %d\n", hs_clock);
+		return -EINVAL;
+	}
+
+	drm_modeset_lock(&dsim->encoder.dev->mode_config.connection_mutex,
+			 NULL);
+	mutex_lock(&dsim->state_lock);
+	mode = dsim_get_current_mode(dsim);
+	if (!mode) {
+		ret = -ENODEV;
+		goto out;
+	}
+
+	ret = dsim_calc_underrun(dsim->pll_params->features, mode,
+				 dsim->config.data_lane_cnt, &lp_underrun,
+				 hs_clock);
+	if (ret < 0) {
+		dsim_err(dsim, "Failed to update underrun\n");
+		goto out;
+	}
+
+	pll_param = dsim->current_pll_param;
+	if (!pll_param) {
+		ret = -EAGAIN;
+		goto out;
+	}
+
+	pll_param->pll_freq = hs_clock;
+	pll_param->p = pms.p;
+	pll_param->m = pms.m;
+	pll_param->s = pms.s;
+	pll_param->k = pms.k;
+	pll_param->cmd_underrun_cnt = lp_underrun;
+	dsim_update_clock_config(dsim, pll_param);
+
+	if (dsim->state != DSIM_STATE_HSCLKEN)
+		goto out;
+
+	/* Restart dsim to apply new clock settings */
+	mutex_lock(&dsim->cmd_lock);
+	dsim_reg_stop(dsim->id, 0x1F);
+	disable_irq(dsim->irq);
+
+	dsim_reg_init(dsim->id, &dsim->config, &dsim->clk_param, true);
+	dsim_reg_start(dsim->id);
+	enable_irq(dsim->irq);
+
+	mutex_unlock(&dsim->cmd_lock);
+
+out:
+	mutex_unlock(&dsim->state_lock);
+	drm_modeset_unlock(&dsim->encoder.dev->mode_config.connection_mutex);
+
+	return ret;
+}
+
 static ssize_t bist_mode_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
@@ -1514,6 +1733,36 @@ static ssize_t bist_mode_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(bist_mode);
 
+static ssize_t hs_clock_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", dsim->clk_param.hs_clk);
+}
+
+static ssize_t hs_clock_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t len)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+	int rc;
+	unsigned int hs_clock;
+
+	rc = kstrtouint(buf, 0, &hs_clock);
+	if (rc < 0)
+		return rc;
+
+	/* hs_clock unit: MHz */
+	rc = dsim_set_hs_clock(dsim, hs_clock);
+	if (rc < 0)
+		return rc;
+
+	return len;
+}
+static DEVICE_ATTR_RW(hs_clock);
+
 static int dsim_probe(struct platform_device *pdev)
 {
 	struct dsim_device *dsim;
@@ -1540,6 +1789,7 @@ static int dsim_probe(struct platform_device *pdev)
 
 	spin_lock_init(&dsim->slock);
 	mutex_init(&dsim->cmd_lock);
+	mutex_init(&dsim->state_lock);
 	init_completion(&dsim->ph_wr_comp);
 	init_completion(&dsim->rd_comp);
 
@@ -1549,7 +1799,11 @@ static int dsim_probe(struct platform_device *pdev)
 
 	ret = device_create_file(dsim->dev, &dev_attr_bist_mode);
 	if (ret < 0)
-		dsim_err(dsim, "failed to add sysfs entries\n");
+		dsim_err(dsim, "failed to add sysfs bist_mode entries\n");
+
+	ret = device_create_file(dsim->dev, &dev_attr_hs_clock);
+	if (ret < 0)
+		dsim_err(dsim, "failed to add sysfs hs_clock entries\n");
 
 	platform_set_drvdata(pdev, &dsim->encoder);
 
@@ -1585,6 +1839,7 @@ static int dsim_remove(struct platform_device *pdev)
 	struct dsim_device *dsim = platform_get_drvdata(pdev);
 
 	device_remove_file(dsim->dev, &dev_attr_bist_mode);
+	device_remove_file(dsim->dev, &dev_attr_hs_clock);
 	pm_runtime_disable(&pdev->dev);
 
 	component_del(&pdev->dev, &dsim_component_ops);
