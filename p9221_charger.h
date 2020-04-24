@@ -295,11 +295,16 @@
 #define FAST_SERIAL_ID_HEADER			0x4F
 #define FAST_SERIAL_ID_SIZE			4
 #define ACCESSORY_TYPE_MASK			0x7
+#define CHARGE_STATUS_PACKET_HEADER		0x48
+#define CHARGE_STATUS_PACKET_SIZE		4
+#define PP_TYPE_POWER_CONTROL			0x08
+#define PP_SUBTYPE_SOC				0x10
 #define ACCESSORY_TYPE_PHONE			BIT(2)
 #define AICL_ENABLED				BIT(7)
 #define TX_ACCESSORY_TYPE			(ACCESSORY_TYPE_PHONE | \
 						 AICL_ENABLED)
 #define TXID_SEND_DELAY_MS			(1 * 1000)
+#define TXSOC_SEND_DELAY_MS			(5 * 1000)
 
 /*
  * P9412 unique registers
@@ -420,6 +425,7 @@ struct p9221_charger_data {
 	u16				tx_len;
 	bool				tx_done;
 	bool				tx_busy;
+	bool				com_busy;
 	bool				check_np;
 	bool				check_dc;
 	bool				check_det;
