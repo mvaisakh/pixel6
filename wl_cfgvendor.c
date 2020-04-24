@@ -4560,6 +4560,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->support_2g = nla_get_u8(iter);
+			if (cmd_data->support_2g == 0) {
+				WL_ERR((" 2.4GHz support is not set \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_SUPPORT_2G_CONFIG;
 			break;
 		}
@@ -4598,7 +4603,12 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 			if (cmd_data->sid_beacon.sid_enable) {
 				cmd_data->sid_beacon.sid_count = (sid_beacon >> 1);
 				*nan_attr_mask |= NAN_ATTR_SID_BEACON_CONFIG;
+			} else {
+				WL_ERR((" sid beacon is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
 			}
+
 			break;
 		}
 		case NAN_ATTRIBUTE_SUB_SID_BEACON: {
@@ -4611,6 +4621,10 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 			if (cmd_data->sid_beacon.sub_sid_enable) {
 				cmd_data->sid_beacon.sub_sid_count = (sub_sid_beacon >> 1);
 				*nan_attr_mask |= NAN_ATTR_SUB_SID_BEACON_CONFIG;
+			} else {
+				WL_ERR((" sub sid beacon is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
 			}
 			break;
 		}
@@ -4652,6 +4666,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->hop_count_limit = nla_get_u8(iter);
+			if (cmd_data->hop_count_limit == 0) {
+				WL_ERR((" hop count limit is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_HOP_COUNT_LIMIT_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RANDOM_TIME:
@@ -4762,6 +4781,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->dwell_time[0] = nla_get_u8(iter);
+			if(cmd_data->dwell_time[0] == 0) {
+				WL_ERR((" 2.4GHz dwell time is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_2G_DWELL_TIME_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_SCAN_PERIOD:
@@ -4770,6 +4794,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->scan_period[0] = nla_get_u16(iter);
+			if(cmd_data->scan_period[0] == 0) {
+				WL_ERR((" 2.4GHz scan period is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_2G_SCAN_PERIOD_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_DWELL_TIME_5G:
@@ -4778,6 +4807,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->dwell_time[1] = nla_get_u8(iter);
+			if(cmd_data->dwell_time[1] == 0) {
+				WL_ERR((" 5GHz dwell time is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_5G_DWELL_TIME_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_SCAN_PERIOD_5G:
@@ -4786,6 +4820,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->scan_period[1] = nla_get_u16(iter);
+			if(cmd_data->scan_period[1] == 0) {
+				WL_ERR((" 5GHz scan period is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_5G_SCAN_PERIOD_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_AVAIL_BIT_MAP:
@@ -4808,6 +4847,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_close_2dot4g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_close_2dot4g_val == 0) {
+				WL_ERR((" 2.4GHz rssi close is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_CLOSE_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_MIDDLE:
@@ -4816,6 +4860,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_middle_2dot4g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_middle_2dot4g_val == 0) {
+				WL_ERR((" 2.4GHz rssi middle is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_MIDDLE_2G_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_PROXIMITY:
@@ -4824,6 +4873,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_proximity_2dot4g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_proximity_2dot4g_val == 0) {
+				WL_ERR((" 2.4GHz rssi proximity is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_PROXIMITY_2G_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_CLOSE_5G:
@@ -4832,6 +4886,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_close_5g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_close_5g_val == 0) {
+				WL_ERR((" 5GHz rssi close is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_CLOSE_5G_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_MIDDLE_5G:
@@ -4840,6 +4899,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_middle_5g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_middle_5g_val == 0) {
+				WL_ERR((" 5Hz rssi middle is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_MIDDLE_5G_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_PROXIMITY_5G:
@@ -4848,6 +4912,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_proximity_5g_val = nla_get_s8(iter);
+			if (cmd_data->rssi_attr.rssi_proximity_5g_val == 0) {
+				WL_ERR((" 5GHz rssi proximity is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_PROXIMITY_5G_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_RSSI_WINDOW_SIZE:
@@ -4856,6 +4925,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cmd_data->rssi_attr.rssi_window_size = nla_get_u8(iter);
+			if (cmd_data->rssi_attr.rssi_window_size == 0) {
+				WL_ERR((" rssi window size is not valid \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			*nan_attr_mask |= NAN_ATTR_RSSI_WINDOW_SIZE_CONFIG;
 			break;
 		case NAN_ATTRIBUTE_CIPHER_SUITE_TYPE:
@@ -5016,6 +5090,11 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				goto exit;
 			}
 			cfg->nancfg->ranging_enable = nla_get_u32(iter);
+			if (cfg->nancfg->ranging_enable == 0) {
+				WL_ERR((" ranging enable is not set \n"));
+				cmd_data->status = BCME_BADARG;
+				goto exit;
+			}
 			break;
 		case NAN_ATTRIBUTE_DW_EARLY_TERM:
 			if (nla_len(iter) != sizeof(uint32)) {
@@ -5907,6 +5986,10 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 		WL_ERR(("failed to parse nan vendor args, ret %d\n", ret));
 		goto exit;
 	}
+	if (cmd_data->status == BCME_BADARG) {
+		WL_ERR(("nan vendor args is invalid\n"));
+		goto exit;
+	}
 
 	ret = wl_cfgnan_start_handler(wdev->netdev, cfg, cmd_data, nan_attr_mask);
 	if (ret) {
@@ -6050,6 +6133,10 @@ wl_cfgvendor_nan_config_handler(struct wiphy *wiphy,
 	ret = wl_cfgvendor_nan_parse_args(wiphy, data, len, cmd_data, &nan_attr_mask);
 	if (ret) {
 		WL_ERR(("failed to parse nan vendor args, ret = %d\n", ret));
+		goto exit;
+	}
+	if (cmd_data->status == BCME_BADARG) {
+		WL_ERR(("nan vendor args is invalid\n"));
 		goto exit;
 	}
 
