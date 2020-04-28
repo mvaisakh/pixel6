@@ -2191,6 +2191,11 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		return 0;
 	}
 
+	if (request && request->n_ssids > WL_SCAN_PARAMS_SSID_MAX) {
+		WL_ERR(("request null or n_ssids > WL_SCAN_PARAMS_SSID_MAX\n"));
+		return -EOPNOTSUPP;
+	}
+
 	ndev = ndev_to_wlc_ndev(ndev, cfg);
 
 	if (WL_DRV_STATUS_SENDING_AF_FRM_EXT(cfg)) {
@@ -2199,23 +2204,30 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	}
 
 	WL_DBG(("Enter wiphy (%p)\n", wiphy));
+	mutex_lock(&cfg->scan_sync);
 	if (wl_get_drv_status_all(cfg, SCANNING)) {
 		if (cfg->scan_request == NULL) {
 			wl_clr_drv_status_all(cfg, SCANNING);
 			WL_DBG(("<<<<<<<<<<<Force Clear Scanning Status>>>>>>>>>>>\n"));
 		} else {
 			WL_ERR(("Scanning already\n"));
+			mutex_unlock(&cfg->scan_sync);
 			return -EAGAIN;
 		}
 	}
 	if (wl_get_drv_status(cfg, SCAN_ABORTING, ndev)) {
 		WL_ERR(("Scanning being aborted\n"));
+		mutex_unlock(&cfg->scan_sync);
 		return -EAGAIN;
 	}
-	if (request && request->n_ssids > WL_SCAN_PARAMS_SSID_MAX) {
-		WL_ERR(("request null or n_ssids > WL_SCAN_PARAMS_SSID_MAX\n"));
-		return -EOPNOTSUPP;
+
+	if (cfg->loc.in_progress) {
+		/* Listen in progress, avoid new scan trigger */
+		mutex_unlock(&cfg->scan_sync);
+		return -EBUSY;
 	}
+	mutex_unlock(&cfg->scan_sync);
+
 #ifdef WL_BCNRECV
 	/* check fakeapscan in progress then abort */
 	wl_android_bcnrecv_stop(ndev, WL_BCNRECV_SCANBUSY);
@@ -4471,6 +4483,11 @@ wl_cfgscan_listen_on_channel(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev
 	}
 
 	mutex_lock(&cfg->scan_sync);
+	if (wl_get_drv_status_all(cfg, SCANNING)) {
+		WL_ERR(("Scanning in progress avoid listen on channel\n"));
+		err = -EBUSY;
+		goto exit;
+	}
 	if (cfg->loc.in_progress == true) {
 		WL_ERR(("Listen in progress\n"));
 		err = -EAGAIN;
