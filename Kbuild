@@ -169,6 +169,9 @@ DHDCFLAGS += -DDHD_LOG_PRINT_RATE_LIMIT
 # Block ARP during DHCP on STA/SoftAP concurrent mode
 DHDCFLAGS += -DAPSTA_BLOCK_ARP_DURING_DHCP
 
+# Bypass wpa_supplicant's BSSID selection
+DHDCFLAGS += -DWL_SKIP_CONNECT_HINTS
+
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 # Use spin_lock_bh locks
 	DHDCFLAGS += -DDHD_USE_SPIN_LOCK_BH
