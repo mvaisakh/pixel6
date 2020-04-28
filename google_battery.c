@@ -1521,12 +1521,10 @@ static int batt_chg_stats_cstr(char *buff, int size,
 		len += batt_chg_tier_stats_cstr(&buff[len], size - len,
 						&ce_data->tier_stats[i],
 						verbose);
-		if (soc_next) {
-			len += scnprintf(&buff[len], size - len, "\n");
+		if (soc_next)
 			len += ttf_soc_cstr(&buff[len], size - len,
 					    &ce_data->soc_stats,
 					    soc_in, soc_next);
-		}
 	}
 
 	return len;
