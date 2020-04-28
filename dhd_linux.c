@@ -365,6 +365,7 @@ static void dhd_log_dump(void *handle, void *event_info, u8 event);
 static int do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type);
 static void dhd_print_buf_addr(dhd_pub_t *dhdp, char *name, void *buf, unsigned int size);
 static void dhd_log_dump_buf_addr(dhd_pub_t *dhdp, log_dump_type_t *type);
+void dhd_log_dump_get_system_timestamp(char* timebuf);
 #endif /* DHD_LOG_DUMP */
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
@@ -21263,6 +21264,20 @@ dhd_log_dump_deinit(dhd_pub_t *dhd)
 	mutex_destroy(&dhd_info->logdump_lock);
 }
 
+void
+dhd_log_dump_get_system_timestamp(char* timebuf) {
+	struct timeval tv;
+	unsigned long local_time;
+	struct rtc_time tm;
+	memset(timebuf, 0, DEBUG_DUMP_TIME_BUF_LEN);
+	do_gettimeofday(&tv);
+	local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	rtc_time_to_tm(local_time, &tm);
+	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
+			"%02d:%02d:%02d.%06lu",
+			tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+}
+
 extern struct dhd_dbg_ring_buf g_ring_buf;
 void
 dhd_dbg_ring_write(int type, char *binary_data,
@@ -21293,10 +21308,13 @@ dhd_dbg_ring_write(int type, char *binary_data,
 
 	if (ring_buf->dhd_pub) {
 		dhd_pub_t *dhdp = (dhd_pub_t *)ring_buf->dhd_pub;
+		char tbuf[DEBUG_DUMP_TIME_BUF_LEN];
+		memset(tmp_buf, 0, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE);
+		dhd_log_dump_get_system_timestamp(tbuf);
 		if (type == DBG_RING_TYPE_DRIVER_LOG) {
 			if (DBG_RING_ACTIVE(dhdp, DRIVER_LOG_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s]: %s",
-						dhd_log_dump_get_timestamp(), buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s] [%s]: %s",
+						tbuf, dhd_log_dump_get_timestamp(), buf);
 				dhd_os_push_push_ring_data(dhdp , DRIVER_LOG_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;
@@ -21304,8 +21322,8 @@ dhd_dbg_ring_write(int type, char *binary_data,
 		}
 		if (type == DBG_RING_TYPE_FW_VERBOSE){
 			if (DBG_RING_ACTIVE(dhdp, FW_VERBOSE_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s]: %s",
-						dhd_log_dump_get_timestamp(), buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s] [%s]: %s",
+						tbuf, dhd_log_dump_get_timestamp(), buf);
 				dhd_os_push_push_ring_data(dhdp , FW_VERBOSE_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;
