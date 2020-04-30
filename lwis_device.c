@@ -591,19 +591,42 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->mclk_ctrl) {
-		/* Set MCLK state to off */
-		ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-					     MCLK_OFF_STRING);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error setting %s state(%d)\n",
-				MCLK_OFF_STRING, ret);
-			return ret;
-		}
-		dev_info(lwis_dev->dev, "%s disabled mclk", lwis_dev->name);
+		bool deactivate_mclk = true;
 
-		devm_pinctrl_put(lwis_dev->mclk_ctrl);
-		lwis_dev->mclk_ctrl = NULL;
+		if (lwis_dev->shared_pinctrl) {
+			struct lwis_device *lwis_dev_it;
+			/* Look up if pinctrl still used by other device */
+			mutex_lock(&core.lock);
+			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
+					    dev_list) {
+				if ((lwis_dev->id != lwis_dev_it->id) &&
+					(lwis_dev_it->shared_pinctrl ==
+					lwis_dev->shared_pinctrl) &&
+					lwis_dev_it->enabled) {
+					/* Move mclk owner to the device who
+					   still using it */
+					lwis_dev_it->mclk_ctrl =
+						lwis_dev->mclk_ctrl;
+					lwis_dev->mclk_ctrl = NULL;
+					deactivate_mclk = false;
+					break;
+				}
+			}
+			mutex_unlock(&core.lock);
+		}
+		if (deactivate_mclk) {
+			/* Set MCLK state to off */
+			ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
+						     MCLK_OFF_STRING);
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Error setting %s state (%d)\n",
+					MCLK_OFF_STRING, ret);
+				return ret;
+			}
+			devm_pinctrl_put(lwis_dev->mclk_ctrl);
+			lwis_dev->mclk_ctrl = NULL;
+		}
 	}
 
 	if (lwis_dev->shared_enable_gpios_present &&
