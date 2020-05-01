@@ -134,7 +134,10 @@ DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 DHDCFLAGS += -DDHD_SBN
 
 # Enable inband device wake feature
-#DHDCFLAGS += -DPCIE_INB_DW
+DHDCFLAGS += -DPCIE_INB_DW
+
+# Debug check for PCIe read latency
+#DHDCFLAGS += -DDBG_DW_CHK_PCIE_READ_LATENCY
 
 # Hikey sched is not so optimized and hence need a higher timeout
 DHDCFLAGS += -DWAIT_FOR_DISCONNECT_MAX=20

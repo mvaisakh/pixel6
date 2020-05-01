@@ -8149,6 +8149,11 @@ dhd_fillup_ioct_reqst(dhd_pub_t *dhd, uint16 len, uint cmd, void* buf, int ifidx
 	unsigned long flags;
 	uint16 alloced = 0;
 	msgbuf_ring_t *ring = &prot->h2dring_ctrl_subn;
+#ifdef DBG_DW_CHK_PCIE_READ_LATENCY
+	ulong addr = dhd->bus->ring_sh[ring->idx].ring_state_r;
+	ktime_t begin_time, end_time;
+	s64 diff_ns;
+#endif /* DBG_DW_CHK_PCIE_READ_LATENCY */
 
 	if (dhd_query_bus_erros(dhd)) {
 		return -EIO;
@@ -8166,6 +8171,19 @@ dhd_fillup_ioct_reqst(dhd_pub_t *dhd, uint16 len, uint cmd, void* buf, int ifidx
 #ifdef PCIE_INB_DW
 	if (dhd_prot_inc_hostactive_devwake_assert(dhd->bus) != BCME_OK)
 		return BCME_ERROR;
+
+#ifdef DBG_DW_CHK_PCIE_READ_LATENCY
+	preempt_disable();
+	begin_time = ktime_get();
+	R_REG(dhd->osh, (volatile uint16 *)(dhd->bus->tcm + addr));
+	end_time = ktime_get();
+	preempt_enable();
+	diff_ns = ktime_to_ns(ktime_sub(end_time, begin_time));
+	if (diff_ns > 1000000) {  // 1ms = 1000000ns
+		DHD_ERROR(("%s: found latency over 1ms (%lld ns), ds state=%d\n", __func__,
+		       diff_ns, dhdpcie_bus_get_pcie_inband_dw_state(dhd->bus)));
+	}
+#endif /* DBG_DW_CHK_PCIE_READ_LATENCY */
 #endif /* PCIE_INB_DW */
 
 	DHD_RING_LOCK(ring->ring_lock, flags);
