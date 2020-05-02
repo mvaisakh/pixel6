@@ -280,6 +280,8 @@ static void dsim_modes_release(struct dsim_pll_params *pll_params)
 			kfree(pll_params->params[i]);
 		kfree(pll_params->params);
 	}
+	kfree(pll_params->features);
+
 	kfree(pll_params);
 }
 
@@ -402,6 +404,99 @@ static int dsim_of_parse_modes(struct device_node *entry,
 	return 0;
 }
 
+static struct dsim_pll_features *dsim_of_get_pll_features(
+		struct dsim_device *dsim, struct device_node *np)
+{
+	u64 range64[2];
+	u32 range32[2];
+	struct dsim_pll_features *pll_features;
+
+	pll_features = kzalloc(sizeof(*pll_features), GFP_KERNEL);
+	if (!pll_features)
+		return NULL;
+
+	if (of_property_read_u64(np, "pll-input", &pll_features->finput) < 0) {
+		dsim_err(dsim, "%s failed to get pll-input\n", __func__);
+		goto read_node_fail;
+	}
+
+	if (of_property_read_u64(np, "pll-optimum",
+				 &pll_features->foptimum) < 0) {
+		dsim_err(dsim, "%s failed to get pll-optimum\n", __func__);
+		goto read_node_fail;
+	}
+
+	if (of_property_read_u64_array(np, "pll-out-range", range64, 2) < 0) {
+		dsim_err(dsim, "%s failed to get pll-out-range\n", __func__);
+		goto read_node_fail;
+	}
+	pll_features->fout_min = range64[0];
+	pll_features->fout_max = range64[1];
+
+	if (of_property_read_u64_array(np, "pll-vco-range", range64, 2) < 0) {
+		dsim_err(dsim, "%s failed to get pll-vco-range\n", __func__);
+		goto read_node_fail;
+	}
+	pll_features->fvco_min = range64[0];
+	pll_features->fvco_max = range64[1];
+
+	if (of_property_read_u32(np, "te-idle", &pll_features->te_idle) < 0) {
+		dsim_err(dsim, "%s failed to get te-idle\n", __func__);
+		goto read_node_fail;
+	}
+
+	if (of_property_read_u32(np, "te-var", &pll_features->te_var) < 0) {
+		dsim_err(dsim, "%s failed to get te-var\n", __func__);
+		goto read_node_fail;
+	}
+
+	if (of_property_read_u32_array(np, "p-range", range32, 2) < 0) {
+		dsim_err(dsim, "%s failed to get p-range\n", __func__);
+		goto read_node_fail;
+	}
+	pll_features->p_min = range32[0];
+	pll_features->p_max = range32[1];
+
+	if (of_property_read_u32_array(np, "m-range", range32, 2) < 0) {
+		dsim_err(dsim, "%s failed to get m-range\n", __func__);
+		goto read_node_fail;
+	}
+	pll_features->m_min = range32[0];
+	pll_features->m_max = range32[1];
+
+	if (of_property_read_u32_array(np, "s-range", range32, 2) < 0) {
+		dsim_err(dsim, "%s failed to get s-range\n", __func__);
+		goto read_node_fail;
+	}
+	pll_features->s_min = range32[0];
+	pll_features->s_max = range32[1];
+
+	if (of_property_read_u32(np, "k-bits", &pll_features->k_bits) < 0) {
+		dsim_err(dsim, "%s failed to get k-bits\n", __func__);
+		goto read_node_fail;
+	}
+
+	dsim_debug(dsim, "pll features: input %llu, optimum%llu\n",
+		  pll_features->finput, pll_features->foptimum);
+	dsim_debug(dsim, "pll features: output(%llu, %llu)\n",
+		  pll_features->fout_min, pll_features->fout_max);
+	dsim_debug(dsim, "pll features: vco (%llu, %llu)\n",
+		  pll_features->fvco_min, pll_features->fout_max);
+	dsim_debug(dsim, "te idle %u, te var %u\n", pll_features->te_idle,
+		  pll_features->te_var);
+	dsim_debug(dsim, "pll limits: p(%u, %u), m(%u, %u), s(%u, %u), k(%u)\n",
+		  pll_features->p_min, pll_features->p_max,
+		  pll_features->m_min, pll_features->m_max,
+		  pll_features->s_min, pll_features->s_max,
+		  pll_features->k_bits);
+
+	return pll_features;
+
+read_node_fail:
+	kfree(pll_features);
+	return NULL;
+}
+
 static struct dsim_pll_params *dsim_of_get_clock_mode(struct dsim_device *dsim)
 {
 	struct device *dev = dsim->dev;
@@ -458,6 +553,8 @@ static struct dsim_pll_params *dsim_of_get_clock_mode(struct dsim_device *dsim)
 		pll_params->params[pll_params->num_modes] = pll_param;
 		pll_params->num_modes++;
 	}
+
+	pll_params->features = dsim_of_get_pll_features(dsim, np);
 
 	of_node_put(np);
 	of_node_put(mode_np);
