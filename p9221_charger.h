@@ -283,6 +283,7 @@
 #define PROPRIETARY_PACKET_TYPE			0x80
 #define FAST_SERIAL_ID_HEADER			0x4F
 #define FAST_SERIAL_ID_SIZE			4
+#define ACCESSORY_TYPE_MASK			0x7
 #define ACCESSORY_TYPE_PHONE			BIT(2)
 #define AICL_ENABLED				BIT(7)
 #define TX_ACCESSORY_TYPE			(ACCESSORY_TYPE_PHONE | \
@@ -439,6 +440,7 @@ struct p9221_charger_data {
 	int				rtx_state;
 	u32				rtx_csp;
 	int				rtx_err;
+	bool				chg_on_rtx;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
