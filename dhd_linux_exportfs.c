@@ -200,9 +200,9 @@ wklock_trace_onoff(struct dhd_info *dev, const char *buf, size_t count)
 
 	atomic_set(&trace_wklock_onoff, onoff);
 	if (atomic_read(&trace_wklock_onoff)) {
-		printk("ENABLE WAKLOCK TRACE\n");
+		DHD_ERROR(("ENABLE WAKLOCK TRACE\n"));
 	} else {
-		printk("DISABLE WAKELOCK TRACE\n");
+		DHD_ERROR(("DISABLE WAKELOCK TRACE\n"));
 	}
 
 	return (ssize_t)(onoff+1);

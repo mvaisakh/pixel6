@@ -6334,7 +6334,7 @@ wl_android_ch_res_rl(struct net_device *dev, bool change)
 	int error = 0;
 	s32 srl = 7;
 	s32 lrl = 4;
-	printk("wl_android_ch_res_rl: enter\n");
+	DHD_ERROR(("wl_android_ch_res_rl: enter\n"));
 	if (change) {
 		srl = 4;
 		lrl = 2;
@@ -11109,7 +11109,7 @@ void wl_android_post_init(void)
 
 #ifdef ENABLE_4335BT_WAR
 	bcm_bt_unlock(lock_cookie_wifi);
-	printk("wl_android_post_init: btlock released\n");
+	DHD_ERROR(("wl_android_post_init: btlock released\n"));
 #endif /* ENABLE_4335BT_WAR */
 
 	if (!dhd_download_fw_on_driverload) {

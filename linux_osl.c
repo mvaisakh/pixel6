@@ -40,6 +40,8 @@
 #include <linux/vmalloc.h>
 #include <pcicfg.h>
 
+#include <dhd_dbg.h>
+#include <dhd.h>
 #include <linux/fs.h>
 
 #ifdef BCM_OBJECT_TRACE
@@ -187,16 +189,16 @@ osl_dma_map_dump(osl_t *osh)
 	osl_get_localtime(&ts_sec, &ts_usec);
 
 	if (map_log && unmap_log) {
-		printk("%s: map_idx=%d unmap_idx=%d "
+		DHD_ERROR(("%s: map_idx=%d unmap_idx=%d "
 			"current time=[%5lu.%06lu]\n", __FUNCTION__,
 			map_log->idx, unmap_log->idx, (unsigned long)ts_sec,
-			(unsigned long)ts_usec);
-		printk("%s: dhd_map_log(pa)=0x%llx size=%d,"
+			(unsigned long)ts_usec));
+		DHD_ERROR(("%s: dhd_map_log(pa)=0x%llx size=%d,"
 			" dma_unmap_log(pa)=0x%llx size=%d\n", __FUNCTION__,
 			(uint64)__virt_to_phys((ulong)(map_log->map)),
 			(uint32)(sizeof(dhd_map_item_t) * map_log->items),
 			(uint64)__virt_to_phys((ulong)(unmap_log->map)),
-			(uint32)(sizeof(dhd_map_item_t) * unmap_log->items));
+			(uint32)(sizeof(dhd_map_item_t) * unmap_log->items)));
 	}
 }
 
@@ -240,7 +242,7 @@ osl_dma_map_logging(osl_t *osh, void *handle, dmaaddr_t pa, uint32 len)
 	uint32 idx;
 
 	if (log == NULL) {
-		printk("%s: log is NULL\n", __FUNCTION__);
+		DHD_ERROR(("%s: log is NULL\n", __FUNCTION__));
 		return;
 	}
 
@@ -328,12 +330,12 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 #ifdef DHD_MAP_LOGGING
 	osh->dhd_map_log = osl_dma_map_log_init(DHD_MAP_LOG_SIZE);
 	if (osh->dhd_map_log == NULL) {
-		printk("%s: Failed to alloc dhd_map_log\n", __FUNCTION__);
+		DHD_ERROR(("%s: Failed to alloc dhd_map_log\n", __FUNCTION__));
 	}
 
 	osh->dhd_unmap_log = osl_dma_map_log_init(DHD_MAP_LOG_SIZE);
 	if (osh->dhd_unmap_log == NULL) {
-		printk("%s: Failed to alloc dhd_unmap_log\n", __FUNCTION__);
+		DHD_ERROR(("%s: Failed to alloc dhd_unmap_log\n", __FUNCTION__));
 	}
 #endif /* DHD_MAP_LOGGING */
 
@@ -547,7 +549,7 @@ osl_malloc(osl_t *osh, uint size)
 			if (i == STATIC_BUF_MAX_NUM)
 			{
 				OSL_STATIC_BUF_UNLOCK(&bcm_static_buf->static_lock, irq_flags);
-				printk("all static buff in use!\n");
+				DHD_ERROR(("all static buff in use!\n"));
 				goto original;
 			}
 
@@ -801,7 +803,7 @@ BCMFASTPATH(osl_dma_map)(osl_t *osh, void *va, uint size, int direction, void *p
 	ret = pci_dma_mapping_error(osh->pdev, map_addr);
 
 	if (ret) {
-		printk("%s: Failed to map memory\n", __FUNCTION__);
+		DHD_ERROR(("%s: Failed to map memory\n", __FUNCTION__));
 		PHYSADDRLOSET(ret_addr, 0);
 		PHYSADDRHISET(ret_addr, 0);
 	} else {
@@ -1015,7 +1017,7 @@ osl_os_open_image(char *filename)
 	 * ???
 	 */
 	if (IS_ERR(fp)) {
-		printk("ERROR %ld: Unable to open file %s\n", PTR_ERR(fp), filename);
+		DHD_ERROR(("ERROR %ld: Unable to open file %s\n", PTR_ERR(fp), filename));
 		fp = NULL;
 	}
 
@@ -1123,13 +1125,13 @@ osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 	osl_timer_t *t;
 	BCM_REFERENCE(fn);
 	if ((t = MALLOCZ(NULL, sizeof(osl_timer_t))) == NULL) {
-		printk(KERN_ERR "osl_timer_init: out of memory, malloced %d bytes\n",
-			(int)sizeof(osl_timer_t));
+		DHD_ERROR((KERN_ERR "osl_timer_init: out of memory, malloced %d bytes\n",
+			(int)sizeof(osl_timer_t)));
 		return (NULL);
 	}
 	bzero(t, sizeof(osl_timer_t));
 	if ((t->timer = MALLOCZ(NULL, sizeof(timer_list_compat_t))) == NULL) {
-		printf("osl_timer_init: malloc failed\n");
+		DHD_ERROR(("osl_timer_init: malloc failed\n"));
 		MFREE(NULL, t, sizeof(osl_timer_t));
 		return (NULL);
 	}

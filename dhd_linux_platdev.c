@@ -186,10 +186,10 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 	if (plat_data->set_power) {
 #ifdef ENABLE_4335BT_WAR
 		if (on) {
-			printk("WiFi: trying to acquire BT lock\n");
+			DHD_ERROR(("WiFi: trying to acquire BT lock\n"));
 			if (bcm_bt_lock(lock_cookie_wifi) != 0)
-				printk("** WiFi: timeout in acquiring bt lock**\n");
-			printk("%s: btlock acquired\n", __FUNCTION__);
+				DHD_ERROR(("** WiFi: timeout in acquiring bt lock**\n"));
+			DHD_ERROR(("%s: btlock acquired\n", __FUNCTION__));
 		}
 		else {
 			/* For a exceptional case, release btlock */
