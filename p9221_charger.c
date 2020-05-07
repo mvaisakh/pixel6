@@ -2570,9 +2570,10 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 	int ret = 0, tx_icl = -1;
 
 	if (enable == 0) {
-		logbuffer_log(charger->rtx_log, "disable rtx");
+		logbuffer_log(charger->rtx_log, "disable rtx\n");
+		if (charger->rtx_err != RTX_TX_CONFLICT)
+			ret = charger->chip_tx_mode_en(charger, false);
 
-		ret = charger->chip_tx_mode_en(charger, false);
 		ret = p9382_ben_cfg(charger, RTX_BEN_DISABLED);
 		if (ret < 0)
 			goto exit;
