@@ -49,12 +49,12 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	struct lwis_platform *platform;
 	// TODO: Refactor
 	const uint32_t int_cam_qos = 680000;
-	const uint32_t int_qos = 107000;
+	const uint32_t int_qos = 465000;
 	const uint32_t mif_qos = 2093000;
 	const uint32_t cam_qos = 680000;
 	const uint32_t hpg_qos = 1;
 #if defined(CONFIG_SOC_GS101)
-	const uint32_t tnr_qos = 134000;
+	const uint32_t tnr_qos = 664000;
 #endif
 	BUG_ON(!lwis_dev);
 	platform = lwis_dev->platform;
