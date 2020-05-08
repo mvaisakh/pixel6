@@ -9391,6 +9391,10 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 				fw = VENDOR_PATH CONFIG_BCMDHD_4385_FW_PATH;
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_4385_NVRAM_PATH;
+		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == 0x4389) {
+				fw = VENDOR_PATH CONFIG_BCMDHD_4389_FW_PATH;
+				nv = VENDOR_PATH
+					 CONFIG_BCMDHD_4389_NVRAM_PATH;
 		}
 #endif /* AUTO_CHIP_DETECTION */
 	}
@@ -21535,6 +21539,8 @@ dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 		}
 	} else if (dhd_bus_chip_id(dhdp) == 0x4387) {
 		filepath = VENDOR_PATH CONFIG_BCMDHD_4385_CLM_PATH;
+	} else if (dhd_bus_chip_id(dhdp) == 0x4389) {
+		filepath = VENDOR_PATH CONFIG_BCMDHD_4389_CLM_PATH;
 	}
 #endif /* AUTO_CHIP_DETECTION */
 

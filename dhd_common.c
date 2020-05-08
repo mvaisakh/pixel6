@@ -6459,6 +6459,9 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 		} else if (dhd_bus_chip_id(dhd) == 0x4387) {
 			clm_blob_path = VENDOR_PATH
 						CONFIG_BCMDHD_4385_CLM_PATH;
+		} else if (dhd_bus_chip_id(dhd) == 0x4389) {
+			clm_blob_path = VENDOR_PATH
+						CONFIG_BCMDHD_4389_CLM_PATH;
 		}
 #endif /* AUTO_CHIP_DETECTION */
 	}
