@@ -53,7 +53,7 @@
 #define dtohchanspec(i) (i)
 
 #define DHD_FILTER_ERR_INTERNAL(fmt, ...) DHD_ERROR(("EWPF-" fmt, ##__VA_ARGS__))
-#define DHD_FILTER_TRACE_INTERNAL(fmt, ...) DHD_INFO(("EWPF-" fmt, ##__VA_ARGS__))
+#define DHD_FILTER_TRACE_INTERNAL(fmt, ...) DHD_TRACE(("EWPF-" fmt, ##__VA_ARGS__))
 
 #define DHD_FILTER_ERR(x) DHD_FILTER_ERR_INTERNAL x
 #define DHD_FILTER_TRACE(x) DHD_FILTER_TRACE_INTERNAL x

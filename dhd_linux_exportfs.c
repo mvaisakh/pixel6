@@ -110,7 +110,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 			dbg_verbose_ring)) {
 			DHD_ERROR(("Failed to create /proc/dhd_trace procfs interface\n"));
 		} else {
-			DHD_ERROR(("Created /proc/dhd_trace procfs interface\n"));
+			DHD_INFO(("Created /proc/dhd_trace procfs interface\n"));
 		}
 	} else {
 		DHD_ERROR(("dbg_verbose_ring is NULL, /proc/dhd_trace not created\n"));
@@ -122,7 +122,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 		dhdp->ecntr_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_ecounters procfs interface\n"));
 	} else {
-		DHD_ERROR(("Created /proc/dhd_ecounters procfs interface\n"));
+		DHD_INFO(("Created /proc/dhd_ecounters procfs interface\n"));
 	}
 #endif /* EWP_ECNTRS_LOGGING */
 
@@ -131,7 +131,7 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 		dhdp->rtt_dbg_ring)) {
 		DHD_ERROR(("Failed to create /proc/dhd_rtt procfs interface\n"));
 	} else {
-		DHD_ERROR(("Created /proc/dhd_rtt procfs interface\n"));
+		DHD_INFO(("Created /proc/dhd_rtt procfs interface\n"));
 	}
 #endif /* EWP_RTT_LOGGING */
 }

@@ -3178,14 +3178,14 @@ dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
 		dhd_tcm_test_enable = FALSE;
 	}
 #endif /* DHD_FW_MEM_CORRUPTION */
-	DHD_ERROR(("%s: dhd_tcm_test_enable %u\n", __FUNCTION__, dhd_tcm_test_enable));
+	DHD_INFO(("%s: dhd_tcm_test_enable %u\n", __FUNCTION__, dhd_tcm_test_enable));
 	/* TCM check */
 	if (dhd_tcm_test_enable && !dhd_bus_tcm_test(bus)) {
 		DHD_ERROR(("dhd_bus_tcm_test failed\n"));
 		bcmerror = BCME_ERROR;
 		goto err;
 	}
-	DHD_ERROR(("%s: download firmware %s\n", __FUNCTION__, pfw_path));
+	DHD_INFO(("%s: download firmware %s\n", __FUNCTION__, pfw_path));
 
 	/* Should succeed in opening image if it is actually given through registry
 	 * entry or in module param.
@@ -3312,7 +3312,7 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 		nvram_uefi_exists = TRUE;
 	}
 
-	DHD_ERROR(("%s: dhd_get_download_buffer len %d\n", __FUNCTION__, len));
+	DHD_INFO(("%s: dhd_get_download_buffer len %d\n", __FUNCTION__, len));
 
 	if (len > 0 && len <= MAX_NVRAMBUF_SIZE && memblock != NULL) {
 		bufp = (char *) memblock;
@@ -3324,7 +3324,7 @@ dhdpcie_download_nvram(struct dhd_bus *bus)
 			}
 		}
 
-		DHD_ERROR(("%s: process_nvram_vars len %d\n", __FUNCTION__, len));
+		DHD_INFO(("%s: process_nvram_vars len %d\n", __FUNCTION__, len));
 #ifdef CUSTOMER_HW4_DEBUG
 		if (len < MIN_NVRAMVARS_SIZE) {
 			DHD_ERROR(("%s: invalid nvram size in process_nvram_vars \n",
@@ -4169,7 +4169,7 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 	dhd_pub_t *dhdp = bus->dhd;
 #endif
 
-	DHD_INFO(("%s: flow_id is %d\n", __FUNCTION__, flow_id));
+	DHD_TRACE(("%s: flow_id is %d\n", __FUNCTION__, flow_id));
 
 	/* ASSERT on flow_id */
 	if (flow_id >= bus->max_submission_rings) {
@@ -4259,7 +4259,7 @@ BCMFASTPATH(dhd_bus_schedule_queue)(struct dhd_bus  *bus, uint16 flow_id, bool t
 #ifdef DHD_MEM_STATS
 			DHD_MEM_STATS_LOCK(bus->dhd->mem_stats_lock, flags);
 			bus->dhd->txpath_mem += PKTLEN(bus->dhd->osh, txp);
-			DHD_INFO(("%s txpath_mem: %llu PKTLEN: %d\n",
+			DHD_TRACE(("%s txpath_mem: %llu PKTLEN: %d\n",
 				__FUNCTION__, bus->dhd->txpath_mem, PKTLEN(bus->dhd->osh, txp)));
 			DHD_MEM_STATS_UNLOCK(bus->dhd->mem_stats_lock, flags);
 #endif /* DHD_MEM_STATS */
@@ -4556,7 +4556,7 @@ dhdpcie_bar1_window_switch_enab(dhd_bus_t *bus)
 		bus->bar1_switch_enab = TRUE;
 	}
 
-	DHD_ERROR(("%s: bar1_switch_enab=%d ramstart=0x%x ramend=0x%x bar1_size=0x%x\n",
+	DHD_INFO(("%s: bar1_switch_enab=%d ramstart=0x%x ramend=0x%x bar1_size=0x%x\n",
 		__FUNCTION__, bus->bar1_switch_enab, ramstart, ramend, bus->bar1_size));
 }
 
@@ -4788,7 +4788,7 @@ dhd_bus_cmn_writeshared(dhd_bus_t *bus, void *data, uint32 len, uint8 type, uint
 	uint64 long_data;
 	ulong addr; /* dongle address */
 
-	DHD_INFO(("%s: writing to dongle type %d len %d\n", __FUNCTION__, type, len));
+	DHD_TRACE(("%s: writing to dongle type %d len %d\n", __FUNCTION__, type, len));
 
 	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: PCIe link was down\n", __FUNCTION__));
@@ -4909,7 +4909,7 @@ dhd_bus_cmn_writeshared(dhd_bus_t *bus, void *data, uint32 len, uint8 type, uint
 			long_data = HTOL64(*(uint64 *)data);
 			addr = DHD_PCIE_SHARED_MEMBER_ADDR(bus, host_trap_addr);
 			dhdpcie_bus_membytes(bus, TRUE, addr, (uint8 *) &long_data, len);
-			DHD_INFO(("Wrote trap addr:0x%x\n", (uint32) HTOL32(*(uint32 *)data)));
+			DHD_TRACE(("Wrote trap addr:0x%x\n", (uint32) HTOL32(*(uint32 *)data)));
 			break;
 
 		case HOST_SCB_ADDR:
@@ -4919,7 +4919,7 @@ dhd_bus_cmn_writeshared(dhd_bus_t *bus, void *data, uint32 len, uint8 type, uint
 #else /* !DHD_SUPPORT_64BIT */
 			dhdpcie_bus_wtcm32(bus, addr, *((uint32*)data));
 #endif /* DHD_SUPPORT_64BIT */
-			DHD_INFO(("Wrote host_scb_addr:0x%x\n",
+			DHD_TRACE(("Wrote host_scb_addr:0x%x\n",
 				(uint32) HTOL32(*(uint32 *)data)));
 			break;
 
@@ -5435,7 +5435,7 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	uint val;
 	int retry = 0;
 
-	DHD_ERROR(("******** Perform FLR ********\n"));
+	DHD_INFO(("******** Perform FLR ********\n"));
 
 	/* Kernel Panic for 4378Ax during traptest/devreset4 reload case:
 	 * For 4378Ax, enum registers will not be reset with FLR (producer index WAR).
@@ -5511,14 +5511,14 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 		"is cleared\n",	PCIE_SSRESET_STATUS_BIT, PCIE_CFG_SUBSYSTEM_CONTROL));
 	do {
 		val = OSL_PCI_READ_CONFIG(bus->osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(val));
-		DHD_ERROR(("read_config: reg=0x%x read val=0x%x\n",
+		DHD_INFO(("read_config: reg=0x%x read val=0x%x\n",
 			PCIE_CFG_SUBSYSTEM_CONTROL, val));
 		val = val & (1 << PCIE_SSRESET_STATUS_BIT);
 		OSL_DELAY(DHD_SSRESET_STATUS_RETRY_DELAY);
 	} while (val && (retry++ < DHD_SSRESET_STATUS_RETRIES));
 
 	if (val) {
-		DHD_ERROR(("ERROR: reg=0x%x bit %d is not cleared\n",
+		DHD_INFO(("ERROR: reg=0x%x bit %d is not cleared\n",
 			PCIE_CFG_SUBSYSTEM_CONTROL, PCIE_SSRESET_STATUS_BIT));
 		/* User has to fire the IOVAR again, if force_fail is needed */
 		if (force_fail) {
@@ -5532,7 +5532,7 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	DHD_INFO(("Restore Pcie Config Space\n"));
 	DHD_PCIE_CONFIG_RESTORE(bus);
 
-	DHD_ERROR(("******** FLR Succedeed ********\n"));
+	DHD_INFO(("******** FLR Succedeed ********\n"));
 
 	return BCME_OK;
 }
@@ -5880,7 +5880,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			do {
 				bcmerror = dhdpcie_bus_start_host_dev(bus);
 				if (!bcmerror) {
-					DHD_ERROR(("%s: dhdpcie_bus_start_host_dev OK\n",
+					DHD_INFO(("%s: dhdpcie_bus_start_host_dev OK\n",
 						__FUNCTION__));
 					break;
 				} else {
@@ -6903,11 +6903,11 @@ dhd_bus_dump_dar_registers(struct dhd_bus *bus)
 	dar_erraddr_val = si_corereg(bus->sih, bus->sih->buscoreidx, dar_erraddr_reg, 0, 0);
 	dar_pcie_mbint_val = si_corereg(bus->sih, bus->sih->buscoreidx, dar_pcie_mbint_reg, 0, 0);
 
-	DHD_ERROR(("%s: dar_clk_ctrl(0x%x:0x%x) dar_pwr_ctrl(0x%x:0x%x) dar_intstat(0x%x:0x%x)\n",
+	DHD_INFO(("%s: dar_clk_ctrl(0x%x:0x%x) dar_pwr_ctrl(0x%x:0x%x) dar_intstat(0x%x:0x%x)\n",
 		__FUNCTION__, dar_clk_ctrl_reg, dar_clk_ctrl_val,
 		dar_pwr_ctrl_reg, dar_pwr_ctrl_val, dar_intstat_reg, dar_intstat_val));
 
-	DHD_ERROR(("%s: dar_errlog(0x%x:0x%x) dar_erraddr(0x%x:0x%x) dar_pcie_mbint(0x%x:0x%x)\n",
+	DHD_INFO(("%s: dar_errlog(0x%x:0x%x) dar_erraddr(0x%x:0x%x) dar_pcie_mbint(0x%x:0x%x)\n",
 		__FUNCTION__, dar_errlog_reg, dar_errlog_val,
 		dar_erraddr_reg, dar_erraddr_val, dar_pcie_mbint_reg, dar_pcie_mbint_val));
 }
@@ -6925,14 +6925,14 @@ dhd_bus_hostready(struct  dhd_bus *bus)
 		return;
 	}
 
-	DHD_ERROR(("%s : Read PCICMD Reg: 0x%08X\n", __FUNCTION__,
+	DHD_INFO(("%s : Read PCICMD Reg: 0x%08X\n", __FUNCTION__,
 		dhd_pcie_config_read(bus, PCI_CFG_CMD, sizeof(uint32))));
 
 	dhd_bus_dump_dar_registers(bus);
 
 	si_corereg(bus->sih, bus->sih->buscoreidx, dhd_bus_db1_addr_get(bus), ~0, 0x12345678);
 	bus->hostready_count ++;
-	DHD_ERROR(("%s: Ring Hostready:%d\n", __FUNCTION__, bus->hostready_count));
+	DHD_INFO(("%s: Ring Hostready:%d\n", __FUNCTION__, bus->hostready_count));
 }
 
 /* Clear INTSTATUS */
@@ -10407,10 +10407,10 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		bus->rd_shared_pass_time = OSL_LOCALTIME_NS();
 		elapsed = tmo.elapsed;
 		bus->shared_addr = (ulong)addr;
-		DHD_ERROR(("### Total time ARM OOR to Readshared pass took %llu usec ###\n",
+		DHD_INFO(("### Total time ARM OOR to Readshared pass took %llu usec ###\n",
 			DIV_U64_BY_U32((bus->rd_shared_pass_time - bus->arm_oor_time),
 			NSEC_PER_USEC)));
-		DHD_ERROR(("PCIe shared addr (0x%08x) read took %u usec "
+		DHD_INFO(("PCIe shared addr (0x%08x) read took %u usec "
 			"before dongle is ready\n", addr, elapsed));
 	}
 
@@ -10472,7 +10472,7 @@ dhdpcie_readshared(dhd_bus_t *bus)
 #endif /* PCIE_INB_DW */
 
 #if defined(PCIE_INB_DW)
-	DHD_ERROR(("FW supports Inband dw ? %s\n",
+	DHD_INFO(("FW supports Inband dw ? %s\n",
 		d2h_inband_dw ? "Y":"N"));
 #endif /* defined(PCIE_INB_DW) */
 
@@ -10491,7 +10491,7 @@ dhdpcie_readshared(dhd_bus_t *bus)
 
 	/* Read flag2 HWA bit */
 	bus->dhd->hwa_capable = (sh->flags2 & PCIE_SHARED2_HWA) ? TRUE : FALSE;
-	DHD_ERROR(("FW supports HWA ? %s\n", bus->dhd->hwa_capable ? "Y":"N"));
+	DHD_INFO(("FW supports HWA ? %s\n", bus->dhd->hwa_capable ? "Y":"N"));
 	bus->hwa_db_index_sz = PCIE_HWA_DB_INDEX_SZ;
 
 	if (idma_en) {
@@ -10642,7 +10642,7 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		}
 		DHD_INFO(("ring_info\n"));
 
-		DHD_ERROR(("%s: max H2D queues %d\n",
+		DHD_INFO(("%s: max H2D queues %d\n",
 			__FUNCTION__, ltoh16(ring_info.max_tx_flowrings)));
 
 		DHD_INFO(("mail box address\n"));
@@ -10677,13 +10677,13 @@ dhdpcie_readshared(dhd_bus_t *bus)
 #ifdef EWP_EDL
 	if (host_edl_support) {
 		bus->dhd->dongle_edl_support = (sh->flags2 & PCIE_SHARED2_EDL_RING) ? TRUE : FALSE;
-		DHD_ERROR(("Dongle EDL support: %u\n", bus->dhd->dongle_edl_support));
+		DHD_INFO(("Dongle EDL support: %u\n", bus->dhd->dongle_edl_support));
 	}
 #endif /* EWP_EDL */
 
 	bus->dhd->debug_buf_dest_support =
 		(sh->flags2 & PCIE_SHARED2_DEBUG_BUF_DEST) ? TRUE : FALSE;
-	DHD_ERROR(("FW supports debug buf dest ? %s \n",
+	DHD_INFO(("FW supports debug buf dest ? %s \n",
 		bus->dhd->debug_buf_dest_support ? "Y" : "N"));
 
 #ifdef DHD_DB0TS
@@ -12131,7 +12131,7 @@ dhdpcie_bus_get_pcie_dar_supported(dhd_bus_t *bus)
 void
 dhdpcie_bus_enab_pcie_dw(dhd_bus_t *bus, uint8 dw_option)
 {
-	DHD_ERROR(("ENABLING DW:%d\n", dw_option));
+	DHD_INFO(("ENABLING DW:%d\n", dw_option));
 	bus->dw_option = dw_option;
 }
 

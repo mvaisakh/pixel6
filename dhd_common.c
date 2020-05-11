@@ -113,9 +113,10 @@
 #ifdef DHD_LOG_PRINT_RATE_LIMIT
 int log_print_threshold = 0;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
-int dbgring_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL;
+int dbgring_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_INFO_VAL
+	| DHD_EVENT_VAL | DHD_PKT_MON_VAL | DHD_IOVAR_MEM_VAL;
 /* For CUSTOMER_HW4/Hikey do not enable DHD_ERROR_MEM_VAL by default */
-int dhd_msg_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
+int dhd_msg_level = DHD_ERROR_VAL | DHD_EVENT_VAL
 	| DHD_PKT_MON_VAL;
 
 #ifdef DHD_DEBUG

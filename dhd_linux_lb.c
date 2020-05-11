@@ -1018,7 +1018,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 	dhd = container_of(napi, struct dhd_info, rx_napi_struct);
 	GCC_DIAGNOSTIC_POP();
 
-	DHD_INFO(("%s napi_queue<%d> budget<%d>\n",
+	DHD_TRACE(("%s napi_queue<%d> budget<%d>\n",
 		__FUNCTION__, skb_queue_len(&dhd->rx_napi_queue), budget));
 
 	/*
@@ -1040,7 +1040,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 
 		ifid = DHD_PKTTAG_IFID((dhd_pkttag_fr_t *)PKTTAG(skb));
 
-		DHD_INFO(("%s dhd_rx_frame pkt<%p> ifid<%d>\n",
+		DHD_TRACE(("%s dhd_rx_frame pkt<%p> ifid<%d>\n",
 			__FUNCTION__, skb, ifid));
 
 		dhd_rx_frame(&dhd->pub, ifid, skb, pkt_count, chan);
@@ -1049,7 +1049,7 @@ dhd_napi_poll(struct napi_struct *napi, int budget)
 
 	DHD_LB_STATS_UPDATE_NAPI_HISTO(&dhd->pub, processed);
 
-	DHD_INFO(("%s processed %d\n", __FUNCTION__, processed));
+	DHD_TRACE(("%s processed %d\n", __FUNCTION__, processed));
 
 	if (processed < budget) {
 		napi_complete(napi);
@@ -1077,7 +1077,7 @@ dhd_napi_schedule(void *info)
 	dhd_info_t *dhd = (dhd_info_t *)info;
 	unsigned long flags;
 
-	DHD_INFO(("%s rx_napi_struct<%p> on cpu<%d>\n",
+	DHD_TRACE(("%s rx_napi_struct<%p> on cpu<%d>\n",
 		__FUNCTION__, &dhd->rx_napi_struct, atomic_read(&dhd->rx_napi_cpu)));
 
 	/*
@@ -1185,7 +1185,7 @@ dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp)
 		return;
 	}
 
-	DHD_INFO(("%s append napi_queue<%d> pend_queue<%d>\n", __FUNCTION__,
+	DHD_TRACE(("%s append napi_queue<%d> pend_queue<%d>\n", __FUNCTION__,
 		skb_queue_len(&dhd->rx_napi_queue), skb_queue_len(&dhd->rx_pend_queue)));
 
 	/* append the producer's queue of packets to the napi's rx process queue */
@@ -1226,7 +1226,7 @@ dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp)
 		rx_napi_cpu = atomic_read(&dhd->rx_napi_cpu);
 	}
 
-	DHD_INFO(("%s : schedule to curr_cpu : %d, rx_napi_cpu : %d\n",
+	DHD_TRACE(("%s : schedule to curr_cpu : %d, rx_napi_cpu : %d\n",
 		__FUNCTION__, curr_cpu, rx_napi_cpu));
 	dhd_work_schedule_on(&dhd->rx_napi_dispatcher_work, rx_napi_cpu);
 	DHD_LB_STATS_INCR(dhd->napi_sched_cnt);
@@ -1242,7 +1242,7 @@ dhd_lb_rx_pkt_enqueue(dhd_pub_t *dhdp, void *pkt, int ifidx)
 {
 	dhd_info_t *dhd = dhdp->info;
 
-	DHD_INFO(("%s enqueue pkt<%p> ifidx<%d> pend_queue<%d>\n", __FUNCTION__,
+	DHD_TRACE(("%s enqueue pkt<%p> ifidx<%d> pend_queue<%d>\n", __FUNCTION__,
 		pkt, ifidx, skb_queue_len(&dhd->rx_pend_queue)));
 	DHD_PKTTAG_SET_IFID((dhd_pkttag_fr_t *)PKTTAG(pkt), ifidx);
 	__skb_queue_tail(&dhd->rx_pend_queue, pkt);
@@ -1333,7 +1333,7 @@ dhd_lb_tx_process(dhd_info_t *dhd)
 
 	} while (1);
 
-	DHD_INFO(("%s(): Processed %d packets \r\n", __FUNCTION__, cnt));
+	DHD_TRACE(("%s(): Processed %d packets \r\n", __FUNCTION__, cnt));
 
 	return resched;
 }

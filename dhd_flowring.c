@@ -669,7 +669,7 @@ dhd_flowid_find(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 	}
 	DHD_FLOWID_UNLOCK(dhdp->flowid_lock, flags);
 
-	DHD_INFO(("%s: cannot find flowid\n", __FUNCTION__));
+	DHD_TRACE(("%s: cannot find flowid\n", __FUNCTION__));
 	return FLOWID_INVALID;
 } /* dhd_flowid_find */
 
@@ -785,7 +785,7 @@ dhd_flowid_alloc(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 	}
 	DHD_FLOWID_UNLOCK(dhdp->flowid_lock, flags);
 
-	DHD_INFO(("%s: allocated flowid %d\n", __FUNCTION__, fl_hash_node->flowid));
+	DHD_TRACE(("%s: allocated flowid %d\n", __FUNCTION__, fl_hash_node->flowid));
 
 	if (fl_hash_node->flowid > dhdp->max_tx_flowid) {
 		DHD_ERROR(("%s: flowid=%d max_tx_flowid=%d ifindex=%d prio=%d role=%d\n",
@@ -1030,7 +1030,7 @@ BCMFASTPATH(dhd_flowid_update)(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, void 
 		return BCME_ERROR;
 	}
 
-	DHD_INFO(("%s: prio %d flowid %d\n", __FUNCTION__, prio, flowid));
+	DHD_TRACE(("%s: prio %d flowid %d\n", __FUNCTION__, prio, flowid));
 
 	/* Tag the packet with flowid */
 	DHD_PKT_SET_FLOWID(pktbuf, flowid);

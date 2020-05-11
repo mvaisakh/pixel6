@@ -88,6 +88,9 @@ do {    \
 		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
 		PRINTCFG args;	\
 	}   \
+	if (dbgring_msg_level & DHD_INFO_VAL) {	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
 } while (0)
 #else /* DHD_LOG_DUMP */
 /* !defined(DHD_LOG_DUMP cases) */
@@ -215,7 +218,21 @@ do {	\
 #define DHD_REORDER(args)	do {if (dhd_msg_level & DHD_REORDER_VAL) printf args;} while (0)
 #define DHD_PNO(args)		do {if (dhd_msg_level & DHD_PNO_VAL) printf args;} while (0)
 #define DHD_RTT(args)		do {if (dhd_msg_level & DHD_RTT_VAL) printf args;} while (0)
-#define DHD_PKT_MON(args)	do {if (dhd_msg_level & DHD_PKT_MON_VAL) printf args;} while (0)
+#define DHD_PKT_MON(args)	\
+do {	\
+	if (dhd_msg_level & DHD_ERROR_VAL) {	\
+		if (dhd_msg_level & DHD_PKT_MON_VAL) {	\
+			PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+			PRINTCFG args;	\
+		}	\
+	}	\
+	if (dbgring_msg_level & DHD_PKT_MON_VAL) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
+} while (0)
 
 #if defined(DHD_LOG_DUMP)
 #if defined(DHD_LOG_PRINT_RATE_LIMIT)

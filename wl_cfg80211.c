@@ -136,8 +136,8 @@ module_param(wl_reassoc_support, uint, 0660);
 
 static struct device *cfg80211_parent_dev = NULL;
 static struct bcm_cfg80211 *g_bcmcfg = NULL;
-u32 wl_dbg_level = WL_DBG_ERR | WL_DBG_P2P_ACTION | WL_DBG_INFO;
-u32 wl_dbgring_level = WL_DBG_ERR;
+u32 wl_dbg_level = WL_DBG_ERR | WL_DBG_P2P_ACTION;
+u32 wl_dbgring_level = WL_DBG_ERR | WL_DBG_P2P_ACTION | WL_DBG_INFO;
 
 #define	MAX_VIF_OFFSET	15
 #define MAX_WAIT_TIME 1500
@@ -14675,8 +14675,8 @@ int wl_get_bss_info(struct bcm_cfg80211 *cfg, struct net_device *dev, struct eth
 	}
 	cfg->roam_count = 0;
 
-	WL_ERR(("BSSID:" MACDBG " SSID %s \n", MAC2STRDBG(eabuf), "*****"));
-	WL_ERR(("freq:%d, BW:%s, RSSI:%d dBm, Rate:%d Mbps, 11mode:%d, stream:%d,"
+	WL_INFORM_MEM(("BSSID:" MACDBG " SSID %s \n", MAC2STRDBG(eabuf), "*****"));
+	WL_INFORM_MEM(("freq:%d, BW:%s, RSSI:%d dBm, Rate:%d Mbps, 11mode:%d, stream:%d,"
 				"MU-MIMO:%d, Passpoint:%d, SNR:%d, Noise:%d, \n"
 				"akm:%s, roam:%s, 11kv:%d/%d \n",
 				freq, wf_chspec_to_bw_str(bi->chanspec),
@@ -14719,7 +14719,7 @@ int wl_get_bss_info(struct bcm_cfg80211 *cfg, struct net_device *dev, struct eth
 		}
 #endif /* DHD_PUB_ROAM_EVT */
 		if (cnt_valid) {
-			WL_ERR(("GET_BSS: full roam scan count:%d partial roam scan count:%d\n",
+			WL_INFORM_MEM(("GET_BSS: full roam scan count:%d partial roam scan count:%d\n",
 				full_cnt, partial_cnt));
 			snprintf(&cfg->bss_info[cfg_bss_info_len],
 				GET_BSS_INFO_LEN - cfg_bss_info_len, " %d %d",
@@ -14951,7 +14951,7 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	mode = wl_get_mode_by_netdev(cfg, ndev);
 	/* Push link events to upper layer log */
-	SUPP_LOG(("[%s] Mode:%d event:%d status:0x%x reason:%d\n",
+	WL_INFORM_MEM(("[%s] Mode:%d event:%d status:0x%x reason:%d\n",
 		ndev->name, mode, ntoh32(e->event_type),
 		ntoh32(e->status),  ntoh32(e->reason)));
 	if (mode == WL_MODE_AP) {
@@ -15086,7 +15086,7 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 					ndev->ieee80211_ptr)) < 0) {
 					WL_ERR(("Find index failed\n"));
 				} else {
-					WL_ERR(("link down--clearing disconnect IEs\n"));
+					WL_INFORM_MEM(("link down--clearing disconnect IEs\n"));
 					if ((err =  wl_cfg80211_set_mgmt_vndr_ies(cfg,
 						ndev_to_cfgdev(ndev), bssidx, VNDR_IE_DISASSOC_FLAG,
 						NULL, 0)) != BCME_OK) {
@@ -15566,7 +15566,7 @@ wl_handle_roam_exp_event(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				wdev = ndev->ieee80211_ptr;
 				wdev->ssid_len = min(ssid->SSID_len, (uint32)DOT11_MAX_SSID_LEN);
 				memcpy(wdev->ssid, ssid->SSID, wdev->ssid_len);
-				WL_ERR(("SSID is %s\n", ssid->SSID));
+				WL_INFORM_MEM(("SSID is %s\n", ssid->SSID));
 				wl_update_prof(cfg, ndev, NULL, ssid, WL_PROF_SSID);
 			} else {
 				WL_ERR(("NULL ndev!\n"));
@@ -15766,7 +15766,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 			rssi = wl_rssi_offset(dtoh32(scb_val.val));
 		}
-		WL_ERR(("RSSI %d dBm\n", rssi));
+		WL_INFORM_MEM(("RSSI %d dBm\n", rssi));
 		if (rssi > DPM_UPD_LMT_RSSI) {
 			return err;
 		}
@@ -15791,7 +15791,7 @@ wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				WL_ERR(("Disassoc error %d\n", err));
 				return err;
 			}
-			WL_ERR(("Force Disassoc due to updated DPM event.\n"));
+			WL_INFORM_MEM(("Force Disassoc due to updated DPM event.\n"));
 
 			last_dpm_upd_time = 0;
 		} else {
@@ -16040,7 +16040,7 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	wl_update_prof(cfg, ndev, NULL, &chspec, WL_PROF_CHAN);
 
 	if (!bss) {
-		WL_DBG(("Could not find the AP\n"));
+		WL_INFORM_MEM(("Could not find the AP\n"));
 		if (memcmp(bi->BSSID.octet, curbssid, ETHER_ADDR_LEN)) {
 			WL_ERR(("Bssid doesn't match\n"));
 			err = -EIO;
@@ -16055,7 +16055,7 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		beacon_interval = cpu_to_le16(bi->beacon_period);
 	} else {
 		u16 channel;
-		WL_DBG(("Found the AP in the list - BSSID %pM\n", bss->bssid));
+		WL_INFORM_MEM(("Found the AP in the list - BSSID %pM\n", bss->bssid));
 		channel = wf_chspec_ctlchan(wl_chspec_driver_to_host(bi->chanspec));
 		freq = wl_channel_to_frequency(channel, CHSPEC_BAND(bi->chanspec));
 		bss->channel = ieee80211_get_channel(wiphy, freq);
@@ -16218,7 +16218,7 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 #endif /* CUSTOM_LONG_RETRY_LIMIT */
 	DHD_STATLOG_CTRL(dhdp, ST(REASSOC_INFORM),
 		dhd_net2idx(dhdp->info, ndev), 0);
-	WL_ERR(("Report roam event to upper layer. " MACDBG " (ch:%d)\n",
+	WL_INFORM_MEM(("Report roam event to upper layer. " MACDBG " (ch:%d)\n",
 		MAC2STRDBG((const u8*)(&e->addr)), CHSPEC_CHANNEL(*chanspec)));
 
 #if (defined(CONFIG_ARCH_MSM) && defined(CFG80211_ROAMED_API_UNIFIED)) || \
@@ -16736,7 +16736,7 @@ wl_gon_req_collision(struct bcm_cfg80211 *cfg, wl_action_frame_t *tx_act_frm,
 		}
 	}
 
-	WL_ERR((" GO NEGO Request COLLISION !!! \n"));
+	WL_INFORM_MEM((" GO NEGO Request COLLISION !!! \n"));
 
 	/* if sa(peer) addr is less than da(my) addr,
 	 * my device will process peer's gon request and block to send my gon req.
@@ -16747,7 +16747,7 @@ wl_gon_req_collision(struct bcm_cfg80211 *cfg, wl_action_frame_t *tx_act_frm,
 	if (memcmp(sa.octet, da.octet, ETHER_ADDR_LEN) < 0) {
 		/* block to send tx gon request */
 		cfg->block_gon_req_tx_count = BLOCK_GON_REQ_MAX_NUM;
-		WL_ERR((" block to send gon req tx !!!\n"));
+		WL_INFORM_MEM((" block to send gon req tx !!!\n"));
 
 		/* if we are finding a common channel for sending af,
 		 * do not scan more to block to send current gon req
@@ -17134,7 +17134,7 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 			if (wl_get_drv_status_all(cfg, WAITING_NEXT_ACT_FRM)) {
 				if (cfg->next_af_subtype == act_frm->subtype) {
-					WL_DBG(("We got a right next frame!(%d)\n",
+					WL_INFORM_MEM(("We got a right next frame!(%d)\n",
 						act_frm->subtype));
 					wl_clr_drv_status(cfg, WAITING_NEXT_ACT_FRM, ndev);
 
@@ -20000,7 +20000,7 @@ s32 wl_cfg80211_up(struct net_device *net)
 	if (init_roam_cache(cfg, ioctl_version) == 0) {
 		/* Enable support for Roam cache */
 		cfg->rcc_enabled = true;
-		WL_ERR(("Roam channel cache enabled\n"));
+		WL_INFORM_MEM(("Roam channel cache enabled\n"));
 	} else {
 		WL_ERR(("Failed to enable RCC.\n"));
 	}

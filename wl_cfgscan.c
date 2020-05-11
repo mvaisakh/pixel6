@@ -477,7 +477,7 @@ wl_inform_bss(struct bcm_cfg80211 *cfg)
 	s32 i;
 
 	bss_list = cfg->bss_list;
-	WL_MEM(("scanned AP count (%d)\n", bss_list->count));
+	WL_INFORM_MEM(("scanned AP count (%d)\n", bss_list->count));
 #ifdef ESCAN_CHANNEL_CACHE
 	reset_roam_cache(cfg);
 #endif /* ESCAN_CHANNEL_CACHE */
@@ -1077,7 +1077,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			DBG_EVENT_LOG((dhd_pub_t *)cfg->pub, WIFI_EVENT_DRIVER_SCAN_COMPLETE);
 			cfg->bss_list = wl_escan_get_buf(cfg, FALSE);
 			if (!scan_req_match(cfg)) {
-				WL_TRACE_HW4(("SCAN COMPLETED: scanned AP count=%d\n",
+				WL_INFORM_MEM(("SCAN COMPLETED: scanned AP count=%d\n",
 					cfg->bss_list->count));
 			}
 			wl_inform_bss(cfg);
@@ -1117,7 +1117,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				cfg->bss_list = wl_escan_get_buf(cfg, TRUE);
 
 			if (!scan_req_match(cfg)) {
-				WL_TRACE_HW4(("SCAN ABORTED: scanned AP count=%d\n",
+				WL_INFORM_MEM(("SCAN ABORTED: scanned AP count=%d\n",
 					cfg->bss_list->count));
 			}
 #ifdef DUAL_ESCAN_RESULT_BUFFER
@@ -1166,7 +1166,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		} else if ((likely(cfg->scan_request)) || (cfg->sched_scan_running)) {
 			cfg->bss_list = wl_escan_get_buf(cfg, TRUE);
 			if (!scan_req_match(cfg)) {
-				WL_TRACE_HW4(("SCAN ABORTED(UNEXPECTED): "
+				WL_INFORM_MEM(("SCAN ABORTED(UNEXPECTED): "
 					"scanned AP count=%d\n",
 					cfg->bss_list->count));
 			}
@@ -2060,7 +2060,7 @@ wl_get_scan_timeout_val(struct bcm_cfg80211 *cfg)
 		scan_timer_interval_ms += WL_SCAN_TIMER_INTERVAL_MS_6G;
 	}
 #endif /* WL_6G_BAND */
-	WL_MEM(("scan_timer_interval_ms %d\n", scan_timer_interval_ms));
+	WL_INFORM_MEM(("scan_timer_interval_ms %d\n", scan_timer_interval_ms));
 	return scan_timer_interval_ms;
 }
 
@@ -2493,7 +2493,7 @@ wl_get_scan_wdev(struct bcm_cfg80211 *cfg)
 
 	if (!cfg->scan_request && !cfg->sched_scan_req) {
 		/* No scans in progress */
-		WL_MEM(("no scan in progress \n"));
+		WL_ERR(("no scan in progress \n"));
 		return NULL;
 	}
 
@@ -2504,7 +2504,7 @@ wl_get_scan_wdev(struct bcm_cfg80211 *cfg)
 		wdev = GET_SCHED_SCAN_WDEV(cfg->sched_scan_req);
 #endif /* WL_SCHED_SCAN */
 	} else {
-		WL_MEM(("no scan in progress \n"));
+		WL_INFORM_MEM(("no scan in progress \n"));
 	}
 
 	return wdev;
@@ -3348,7 +3348,7 @@ int wl_cfg80211_scan_mac_config(struct net_device *dev, uint8 *rand_mac, uint8 *
 		/* Disable scan mac for clean-up */
 		return err;
 	}
-	WL_INFORM_MEM(("scanmac configured"));
+	WL_INFORM_MEM(("scanmac configured\n"));
 	cfg->scanmac_config = true;
 
 	return err;

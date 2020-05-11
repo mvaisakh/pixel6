@@ -597,7 +597,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
 {
 	uint32 val;
 
-	DHD_ERROR(("%s: Configure AER registers for EP\n", __FUNCTION__));
+	DHD_INFO(("%s: Configure AER registers for EP\n", __FUNCTION__));
 	val = dhdpcie_ep_access_cap(bus, PCIE_ADVERRREP_CAPID,
 		PCIE_ADV_CORR_ERR_MASK_OFFSET, TRUE, FALSE, 0);
 	if (val != (uint32)-1) {
@@ -609,7 +609,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
 			__FUNCTION__, val));
 	}
 
-	DHD_ERROR(("%s: Configure AER registers for RC\n", __FUNCTION__));
+	DHD_INFO(("%s: Configure AER registers for RC\n", __FUNCTION__));
 	val = dhdpcie_rc_access_cap(bus, PCIE_ADVERRREP_CAPID,
 		PCIE_ADV_CORR_ERR_MASK_OFFSET, TRUE, FALSE, 0);
 	if (val != (uint32)-1) {
@@ -1745,12 +1745,12 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 	}
 
 	/* BAR0 */
-	DHD_ERROR(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_INFO(("%s: BAR0(VA): 0x%pK, BAR0(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->regs, pci_resource_start(bus->dev, 0),
 		DONGLE_REG_MAP_SIZE));
 
 	/* BAR1 */
-	DHD_ERROR(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
+	DHD_INFO(("%s: BAR1(VA): 0x%pK, BAR1(PA): "PRINTF_RESOURCE", SIZE: %d\n",
 		__FUNCTION__, pch->tcm, pci_resource_start(bus->dev, 2),
 		pch->bar1_size));
 }

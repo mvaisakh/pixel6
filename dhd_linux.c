@@ -4861,7 +4861,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 #if defined(DHD_WAKE_STATUS) && defined(DHD_WAKEPKT_DUMP)
 		if (pkt_wake) {
 			prhex("[wakepkt_dump]", (char*)dump_data, MIN(len, 32));
-			DHD_ERROR(("config check in_suspend: %d ", dhdp->in_suspend));
+			DHD_ERROR(("config check in_suspend: %d \n", dhdp->in_suspend));
 #ifdef ARP_OFFLOAD_SUPPORT
 			DHD_ERROR(("arp hmac_update:%d \n", dhdp->hmac_updated));
 #endif /* ARP_OFFLOAD_SUPPORT */
@@ -7276,7 +7276,7 @@ dhd_open(struct net_device *net)
 
 	if (dhd->pub.up == 1) {
 		/* already up */
-		DHD_ERROR(("Primary net_device is already up \n"));
+		DHD_INFO(("Primary net_device is already up \n"));
 		mutex_unlock(&dhd->pub.ndev_op_sync);
 		return BCME_OK;
 	}
@@ -7611,7 +7611,7 @@ dhd_pri_open(struct net_device *net)
 
 	/* Allow transmit calls */
 	dhd_tx_start_queues(net);
-	DHD_ERROR(("[%s] tx queue started\n", net->name));
+	DHD_INFO(("[%s] tx queue started\n", net->name));
 	return ret;
 }
 
@@ -9783,7 +9783,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 		/* max_h2d_rings includes H2D common rings */
 		uint32 max_h2d_rings = dhd_bus_max_h2d_queues(dhd->pub.bus);
 
-		DHD_ERROR(("%s: Initializing %u h2drings\n", __FUNCTION__,
+		DHD_INFO(("%s: Initializing %u h2drings\n", __FUNCTION__,
 			max_h2d_rings));
 		if ((ret = dhd_flow_rings_init(&dhd->pub, max_h2d_rings)) != BCME_OK) {
 #ifdef BCMSDIO
@@ -10365,7 +10365,7 @@ dhd_get_preserve_log_numbers(dhd_pub_t *dhd, uint32 *logset_mask)
 				logset_op.type == EVENT_LOG_SET_TYPE_PRSRV) {
 			*logset_mask |= 0x01u << i;
 			ret = BCME_OK;
-			DHD_ERROR(("[INIT] logset:%d is preserve/chatty\n", i));
+			DHD_INFO(("[INIT] logset:%d is preserve/chatty\n", i));
 		}
 	}
 
@@ -11347,11 +11347,11 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef DHD_PCIE_RUNTIMEPM
 		/* Disable RuntimePM in mfg mode */
 		DHD_DISABLE_RUNTIME_PM(dhd);
-		DHD_ERROR(("%s : Disable RuntimePM in Manufactring Firmware\n", __FUNCTION__));
+		DHD_INFO(("%s : Disable RuntimePM in Manufactring Firmware\n", __FUNCTION__));
 #endif /* DHD_PCIE_RUNTIME_PM */
 		/* Check and adjust IOCTL response timeout for Manufactring firmware */
 		dhd_os_set_ioctl_resp_timeout(MFG_IOCTL_RESP_TIMEOUT);
-		DHD_ERROR(("%s : Set IOCTL response time for Manufactring Firmware\n",
+		DHD_INFO(("%s : Set IOCTL response time for Manufactring Firmware\n",
 			__FUNCTION__));
 	} else {
 		dhd_os_set_ioctl_resp_timeout(IOCTL_RESP_TIMEOUT);
@@ -11381,7 +11381,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 		DHD_ERROR(("%s: axierror_logbuf_addr IOVAR not present, proceed\n", __FUNCTION__));
 		dhd->axierror_logbuf_addr = 0;
 	} else {
-		DHD_ERROR(("%s: axierror_logbuf_addr : 0x%x\n",
+		DHD_INFO(("%s: axierror_logbuf_addr : 0x%x\n",
 			__FUNCTION__, dhd->axierror_logbuf_addr));
 	}
 #endif /* DNGL_AXI_ERROR_LOGGING */
@@ -11392,7 +11392,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	if (ret < 0) {
 		DHD_ERROR(("%s event_log_rate_hc set failed %d\n", __FUNCTION__, ret));
 	} else  {
-		DHD_ERROR(("%s event_log_rate_hc set with threshold:%d\n", __FUNCTION__,
+		DHD_INFO(("%s event_log_rate_hc set with threshold:%d\n", __FUNCTION__,
 			event_log_rate_hc));
 	}
 #endif /* EVENT_LOG_RATE_HC */
@@ -11419,7 +11419,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 			goto done;
 		}
 
-		DHD_ERROR(("%s: use firmware generated mac_address "MACDBG"\n",
+		DHD_INFO(("%s: use firmware generated mac_address "MACDBG"\n",
 			__FUNCTION__, MAC2STRDBG(&buf)));
 
 #ifdef MACADDR_PROVISION_ENFORCED
@@ -15073,7 +15073,7 @@ int net_os_rxfilter_add_remove(struct net_device *dev, int add_remove, int num)
 #ifndef GAN_LITE_NAT_KEEPALIVE_FILTER
 	dhd_info_t *dhd = DHD_DEV_INFO(dev);
 
-	DHD_ERROR(("%s: add_remove = %d, num = %d\n", __FUNCTION__, add_remove, num));
+	DHD_INFO(("%s: add_remove = %d, num = %d\n", __FUNCTION__, add_remove, num));
 	if (!dhd || (num == DHD_UNICAST_FILTER_NUM)) {
 		return 0;
 	}
@@ -15126,7 +15126,7 @@ int net_os_enable_packet_filter(struct net_device *dev, int val)
 {
 	dhd_info_t *dhd = DHD_DEV_INFO(dev);
 
-	DHD_ERROR(("%s: val = %d\n", __FUNCTION__, val));
+	DHD_INFO(("%s: val = %d\n", __FUNCTION__, val));
 	return dhd_os_enable_packet_filter(&dhd->pub, val);
 }
 #endif /* PKT_FILTER_SUPPORT */
@@ -21583,7 +21583,7 @@ dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 			filepath));
 		dhdp->is_blob = FALSE;
 	} else {
-		DHD_ERROR(("%s: ----- blob file exists (%s) -----\n", __FUNCTION__, filepath));
+		DHD_INFO(("%s: ----- blob file exists (%s) -----\n", __FUNCTION__, filepath));
 		dhdp->is_blob = TRUE;
 #if defined(CONCATE_BLOB)
 		strncat(fw_path, "_blob", strlen("_blob"));

@@ -1327,7 +1327,7 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 	struct sk_buff *skb = NULL;
 	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(ndev);
 
-	WL_DBG(("Recv get wake status info cmd.\n"));
+	WL_INFORM_MEM(("Recv get wake status info cmd.\n"));
 
 	pwake_count_info = dhd_get_wakecount(dhdp);
 	mem_needed =  VENDOR_REPLY_OVERHEAD + (ATTRIBUTE_U32_LEN * 20) +
@@ -1340,7 +1340,7 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 		goto exit;
 	}
 #ifdef DHD_WAKE_EVENT_STATUS
-	WL_ERR(("pwake_count_info->rcwake %d\n", pwake_count_info->rcwake));
+	WL_INFORM_MEM(("pwake_count_info->rcwake %d\n", pwake_count_info->rcwake));
 
 	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_TOTAL_DRIVER_FW, 0);
 	if (unlikely(ret)) {
@@ -1381,14 +1381,14 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 #ifdef DHD_DEBUG
 	for (flowid = 0; flowid < MaxWakeReasonStats; flowid++) {
 		if (pwake_count_info->rc_event[flowid] != -1) {
-			WL_INFORM(("Event ID %u = %s\n", pwake_count_info->rc_event[flowid],
+			WL_INFORM_MEM(("Event ID %u = %s\n", pwake_count_info->rc_event[flowid],
 					bcmevent_get_name(pwake_count_info->rc_event[flowid])));
 		}
 	}
 #endif /* DHD_DEBUG */
 #endif /* DHD_WAKE_EVENT_STATUS */
 #ifdef DHD_WAKE_RX_STATUS
-	WL_ERR(("pwake_count_info->rxwake %d\n", pwake_count_info->rxwake));
+	WL_INFORM_MEM(("pwake_count_info->rxwake %d\n", pwake_count_info->rxwake));
 	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_TOTAL_RX_DATA_WAKE, pwake_count_info->rxwake);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Total Wake due RX data, ret=%d\n", ret));

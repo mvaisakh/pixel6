@@ -4370,11 +4370,11 @@ int dhd_pno_init(dhd_pub_t *dhd)
 			FALSE);
 	if (err == BCME_UNSUPPORTED) {
 		_pno_state->wls_supported = FALSE;
-		DHD_ERROR(("Android Location Service, UNSUPPORTED\n"));
+		DHD_INFO(("Android Location Service, UNSUPPORTED\n"));
 		DHD_INFO(("Current firmware doesn't support"
 			" Android Location Service\n"));
 	} else {
-		DHD_ERROR(("%s: Support Android Location Service\n",
+		DHD_INFO(("%s: Support Android Location Service\n",
 			__FUNCTION__));
 	}
 exit:

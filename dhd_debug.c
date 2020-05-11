@@ -107,10 +107,10 @@ struct map_table event_tag_map[] = {
 /* define log level per ring type */
 struct log_level_table fw_verbose_level_map[] = {
 	{1, EVENT_LOG_TAG_PCI_ERROR, "PCI_ERROR"},
-	{1, EVENT_LOG_TAG_PCI_WARN, "PCI_WARN"},
-	{2, EVENT_LOG_TAG_PCI_INFO, "PCI_INFO"},
-	{3, EVENT_LOG_TAG_PCI_DBG, "PCI_DEBUG"},
-	{3, EVENT_LOG_TAG_BEACON_LOG, "BEACON_LOG"},
+	//{1, EVENT_LOG_TAG_PCI_WARN, "PCI_WARN"},
+	//{2, EVENT_LOG_TAG_PCI_INFO, "PCI_INFO"},
+	//{3, EVENT_LOG_TAG_PCI_DBG, "PCI_DEBUG"},
+	//{3, EVENT_LOG_TAG_BEACON_LOG, "BEACON_LOG"},
 	{2, EVENT_LOG_TAG_WL_ASSOC_LOG, "ASSOC_LOG"},
 	{2, EVENT_LOG_TAG_WL_ROAM_LOG, "ROAM_LOG"},
 	{1, EVENT_LOG_TAG_TRACE_WL_INFO, "WL INFO"},
@@ -125,7 +125,14 @@ struct log_level_table fw_verbose_level_map[] = {
 #endif /* CUSTOMER_HW4_DEBUG */
 	{1, EVENT_LOG_TAG_SCAN_ERROR, "SCAN_ERROR"},
 	{2, EVENT_LOG_TAG_SCAN_TRACE_LOW, "SCAN_TRACE_LOW"},
-	{2, EVENT_LOG_TAG_SCAN_TRACE_HIGH, "SCAN_TRACE_HIGH"}
+	{2, EVENT_LOG_TAG_SCAN_TRACE_HIGH, "SCAN_TRACE_HIGH"},
+	{3, EVENT_LOG_TAG_WL_ERROR, "WL_ERROR"},
+	{3, EVENT_LOG_TAG_IE_ERROR, "IE_ERROR"},
+	{3, EVENT_LOG_TAG_ASSOC_ERROR, "ASSOC_ERROR"},
+	{3, EVENT_LOG_TAG_PMU_ERROR, "PMU_ERROR"},
+	{3, EVENT_LOG_TAG_4WAYHANDSHAKE, "8021X_ERROR"},
+	{3, EVENT_LOG_TAG_AMSDU_ERROR, "AMPDU_ERROR"},
+	{3, EVENT_LOG_TAG_SAE_ERROR, "SAE_ERROR"}
 };
 
 /* reference tab table */
@@ -1585,7 +1592,7 @@ dhd_dbg_attach_pkt_monitor(dhd_pub_t *dhdp,
 	dhdp->dbg->pkt_mon.rx_pkt_state = PKT_MON_ATTACHED;
 
 	DHD_PKT_MON_UNLOCK(dhdp->dbg->pkt_mon_lock, flags);
-	DHD_PKT_MON(("%s(): packet monitor attach succeeded\n", __FUNCTION__));
+	DHD_INFO(("%s(): packet monitor attach succeeded\n", __FUNCTION__));
 	return ret;
 
 fail:
@@ -1620,7 +1627,7 @@ fail:
 	dhdp->dbg->pkt_mon.rx_pkt_state = PKT_MON_DETACHED;
 
 	DHD_PKT_MON_UNLOCK(dhdp->dbg->pkt_mon_lock, flags);
-	DHD_ERROR(("%s(): packet monitor attach failed\n", __FUNCTION__));
+	DHD_INFO(("%s(): packet monitor attach failed\n", __FUNCTION__));
 	return ret;
 }
 
@@ -1686,7 +1693,7 @@ dhd_dbg_start_pkt_monitor(dhd_pub_t *dhdp)
 	dhdp->dbg->pkt_mon.rx_pkt_state = PKT_MON_STARTED;
 	DHD_PKT_MON_UNLOCK(dhdp->dbg->pkt_mon_lock, flags);
 
-	DHD_PKT_MON(("%s(): packet monitor started\n", __FUNCTION__));
+	DHD_INFO(("%s(): packet monitor started\n", __FUNCTION__));
 	return BCME_OK;
 }
 

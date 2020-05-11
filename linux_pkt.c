@@ -75,7 +75,7 @@ int osl_static_mem_init(osl_t *osh, void *adapter)
 				ASSERT(osh->magic == OS_HANDLE_MAGIC);
 				return -ENOMEM;
 			} else {
-				DHD_ERROR(("succeed to alloc static buf\n"));
+				DHD_INFO(("succeed to alloc static buf\n"));
 			}
 
 			spin_lock_init(&bcm_static_buf->static_lock);
