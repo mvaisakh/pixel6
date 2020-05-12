@@ -27,11 +27,13 @@
 #define _dhd_dbg_
 
 #ifdef DHD_LOG_DUMP
+extern char *dhd_dbg_get_system_timestamp(void);
 extern char *dhd_log_dump_get_timestamp(void);
 extern void dhd_log_dump_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
 extern void dhd_dbg_ring_write(int type, char *binary_data,
         int binary_len, const char *fmt, ...);
+#define PRINTCFG(fmt, args...)  printk(KERN_CONT fmt, ##args)
 #ifndef _DHD_LOG_DUMP_DEFINITIONS_
 #define _DHD_LOG_DUMP_DEFINITIONS_
 #define GENERAL_LOG_HDR "\n-------------------- General log ---------------------------\n"
@@ -71,22 +73,39 @@ extern void dhd_dbg_ring_write(int type, char *binary_data,
 #define DHD_ERROR(args)	\
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
-		printf args;	\
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
 	}	\
 	if (dbgring_msg_level & DHD_ERROR_VAL) {    \
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 
 /* !defined(DHD_EFI) and defined(DHD_LOG_DUMP) */
-#define DHD_INFO(args)		do {if (dhd_msg_level & DHD_INFO_VAL) printf args;} while (0)
+#define DHD_INFO(args)	\
+do {    \
+	if (dhd_msg_level & DHD_INFO_VAL) {    \
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
+	}   \
+} while (0)
 #else /* DHD_LOG_DUMP */
 /* !defined(DHD_LOG_DUMP cases) */
 #define DHD_ERROR(args)		do {if (dhd_msg_level & DHD_ERROR_VAL) printf args;} while (0)
 #define DHD_INFO(args)		do {if (dhd_msg_level & DHD_INFO_VAL) printf args;} while (0)
 #endif /* DHD_LOG_DUMP */
 
-#define DHD_TRACE(args)		do {if (dhd_msg_level & DHD_TRACE_VAL) printf args;} while (0)
+#define DHD_TRACE(args)	\
+do {    \
+	if (dhd_msg_level & DHD_TRACE_VAL) {	\
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
+	}   \
+} while (0)
+
 
 #ifdef DHD_LOG_DUMP
 /* LOG_DUMP defines common to EFI and NON-EFI */
@@ -94,10 +113,14 @@ do {	\
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		if (dhd_msg_level & DHD_ERROR_MEM_VAL) {	\
-			printf args; \
+			PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+			PRINTCFG args;	\
 		}	\
 	}	\
-	if (dbgring_msg_level & DHD_ERROR_VAL) {    \
+	if (dbgring_msg_level & DHD_ERROR_VAL) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
@@ -105,18 +128,28 @@ do {	\
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		if (dhd_msg_level & DHD_IOVAR_MEM_VAL) {	\
-			printf args; \
+			PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+			PRINTCFG args;	\
 		}	\
 	}	\
-	if (dbgring_msg_level & DHD_IOVAR_MEM_VAL) {    \
+	if (dbgring_msg_level & DHD_IOVAR_MEM_VAL) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
 #define DHD_LOG_MEM(args) \
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
-		if (dbgring_msg_level & DHD_ERROR_VAL) {    \
-			DHD_LOG_DUMP_WRITE("[%s]: ", dhd_log_dump_get_timestamp());	\
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
+	}	\
+	if (dhd_msg_level & DHD_ERROR_VAL) {	\
+		if (dbgring_msg_level & DHD_ERROR_VAL) {	\
+			DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+					dhd_dbg_get_system_timestamp(),	\
+					dhd_log_dump_get_timestamp(),__func__);	\
 			DHD_LOG_DUMP_WRITE args;	\
 		}	\
 	}	\
@@ -125,17 +158,23 @@ do {	\
 #define DHD_EVENT(args) \
 do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
-		printf args; \
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
 	}   \
-	if (dbgring_msg_level & DHD_EVENT_VAL) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (dbgring_msg_level & DHD_EVENT_VAL) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
-#define DHD_PRSRV_MEM(args) \
+#define DHD_PRSRV_MEM(args)	\
 do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
-		if (dhd_msg_level & DHD_PRSRV_MEM_VAL) \
-			printf args; \
+		if (dhd_msg_level & DHD_PRSRV_MEM_VAL) {	\
+			PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+			printf args;	\
+		} \
 	}	\
 } while (0)
 /* Re-using 'DHD_MSGTRACE_VAL' for controlling printing of ecounter binary event
@@ -146,21 +185,24 @@ do {	\
 #define DHD_ECNTR_LOG(args) \
 do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\
-		if (dhd_msg_level & DHD_MSGTRACE_VAL) { \
-			printf args; \
+		if (dhd_msg_level & DHD_MSGTRACE_VAL) {	\
+			PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+			PRINTCFG args;	\
 		}	\
 	}	\
 } while (0)
-#define DHD_ERROR_EX(args)					\
-do {										\
-	if (dhd_msg_level & DHD_ERROR_VAL) {    \
-		printf args;	\
+#define DHD_ERROR_EX(args)	\
+do {	\
+	if (dhd_msg_level & DHD_ERROR_VAL) {	\
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
 	}	\
 } while (0)
 #define DHD_MSGTRACE_LOG(args)	\
 do {	\
 	if (dhd_msg_level & DHD_MSGTRACE_VAL) {	\
-			printf args;	\
+		PRINTCFG("[%s][dhd][wlan] ", dhd_dbg_get_system_timestamp());	\
+		PRINTCFG args;	\
 	}	\
 } while (0)
 #else /* DHD_LOG_DUMP */
@@ -192,19 +234,22 @@ do {	\
 
 #if defined(DHD_LOG_DUMP)
 #if defined(DHD_LOG_PRINT_RATE_LIMIT)
-#define FW_VERBOSE(args) \
-	do { \
-		if (dbgring_msg_level & DHD_FWLOG_VAL) {    \
-			DHD_DBG_RING_WRITE_EX args;    \
-		} \
-	} while (0)
+#define FW_VERBOSE(args)	\
+do {	\
+	if (dbgring_msg_level & DHD_FWLOG_VAL) {	\
+		DHD_DBG_RING_WRITE_EX ("[%s][%s] ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp());	\
+		DHD_DBG_RING_WRITE_EX args;	\
+	}	\
+} while (0)
 #define DHD_FWLOG(args)	\
-	do { \
-		if (dhd_msg_level & DHD_FWLOG_VAL) { \
-			if (control_logtrace && !log_print_threshold) \
-				printf args; \
-		} \
-	} while (0)
+do {	\
+	if (dhd_msg_level & DHD_FWLOG_VAL) {	\
+		if (control_logtrace && !log_print_threshold)	\
+			printf args;	\
+	}	\
+} while (0)
 #else
 #define DHD_FWLOG(args)	\
 	do { \
@@ -214,11 +259,14 @@ do {	\
 		} \
 	} while (0)
 #define FW_VERBOSE(args) \
-	do { \
-		if (dbgring_msg_level & DHD_FWLOG_VAL) {    \
-			DHD_DBG_RING_WRITE_EX args;    \
-		} \
-	} while (0)
+do {	\
+	if (dbgring_msg_level & DHD_FWLOG_VAL) {	\
+		DHD_DBG_RING_WRITE_EX ("[%s][%s] ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp());	\
+		DHD_DBG_RING_WRITE_EX args;	\
+	}	\
+} while (0)
 #endif
 #else /* DHD_LOG_DUMP */
 #define FW_VERBOSE(args)

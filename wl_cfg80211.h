@@ -144,7 +144,7 @@ struct wl_ibss;
 
 /* Max BAND support */
 #define WL_MAX_BAND_SUPPORT 3
-
+extern char *dhd_dbg_get_system_timestamp(void);
 extern void dhd_dbg_ring_write(int type, char *binary_data,
 		int binary_len, const char *fmt, ...);
 #define DHD_DBG_RING_WRITE(fmt, ...) \
@@ -190,33 +190,49 @@ extern void dhd_log_dump_write(int type, char *binary_data,
 #else
 #define CFG80211_ERROR_TEXT		"CFG80211-ERROR) "
 #endif /* CUSTOMER_HW4_DEBUG */
-
+#define PRINTCFG(fmt, args...)  printk(KERN_CONT fmt, ##args)
 #if defined(DHD_DEBUG)
 #ifdef DHD_LOG_DUMP
 #define	WL_ERR(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
-		printk args;	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	}	\
-	if (wl_dbgring_level & WL_DBG_ERR) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbgring_level & WL_DBG_ERR) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+			dhd_dbg_get_system_timestamp(),	\
+			dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define WL_ERR_KERN(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
-		printk args;	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	}	\
-	if (wl_dbgring_level & WL_DBG_ERR) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbgring_level & WL_DBG_ERR) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_ERR_MEM(args)	\
 do {	\
-	if (wl_dbgring_level & WL_DBG_ERR) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbg_level & WL_DBG_ERR) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_ERR) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 /* Prints to debug ring by default. If dbg level is enabled, prints on to
@@ -225,46 +241,67 @@ do {	\
 #define	WL_DBG_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_DBG) {	\
-		printk(KERN_INFO CFG80211_INFO_TEXT "%s : ", __func__);	\
-		printk args;	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	}	\
-	if (wl_dbgring_level & WL_DBG_DBG) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbgring_level & WL_DBG_DBG) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_INFORM_MEM(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_INFO) {	\
-		printk(KERN_INFO CFG80211_INFO_TEXT "%s : ", __func__);	\
-		printk args;	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	}	\
-	if (wl_dbgring_level & WL_DBG_INFO) {    \
+	if (wl_dbgring_level & WL_DBG_INFO) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_ERR_EX(args)	\
 do {	\
 	if (wl_dbg_level & WL_DBG_ERR) {	\
-		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
-		printk args;	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	}	\
-	if (wl_dbgring_level & WL_DBG_ERR) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbgring_level & WL_DBG_ERR) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #define	WL_MEM(args)	\
 do {	\
-	if (wl_dbgring_level & WL_DBG_DBG) {    \
-		DHD_DBG_RING_WRITE args;    \
+	if (wl_dbg_level & WL_DBG_ERR) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_DBG) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #else
-#define	WL_ERR(args)									\
-do {										\
-	if (wl_dbg_level & WL_DBG_ERR) {				\
-			printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
-			printk args;						\
-		}								\
+#define	WL_ERR(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_ERR) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
 } while (0)
 #define WL_ERR_KERN(args) WL_ERR(args)
 #define WL_ERR_MEM(args) WL_ERR(args)
@@ -274,12 +311,13 @@ do {										\
 #define WL_MEM(args) WL_DBG(args)
 #endif /* DHD_LOG_DUMP */
 #else /* defined(DHD_DEBUG) */
-#define	WL_ERR(args)									\
-do {										\
-	if ((wl_dbg_level & WL_DBG_ERR) && net_ratelimit()) {				\
-			printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
-			printk args;						\
-		}								\
+#define	WL_ERR(args)	\
+do {	\
+	if ((wl_dbg_level & WL_DBG_ERR) && net_ratelimit()) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
 } while (0)
 #define WL_ERR_KERN(args) WL_ERR(args)
 #define WL_ERR_MEM(args) WL_ERR(args)
@@ -319,70 +357,90 @@ do {	\
 #undef WL_INFORM
 #endif
 
-#define	WL_INFORM(args)									\
-do {										\
-	if (wl_dbg_level & WL_DBG_INFO) {				\
-			printk(KERN_INFO "CFG80211-INFO) %s : ", __func__);	\
-			printk args;						\
-		}								\
-	if (wl_dbgring_level & WL_DBG_INFO) {    \
-		DHD_DBG_RING_WRITE args;    \
-	}   \
+#define	WL_INFORM(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_INFO) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ", \
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_INFO) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
 } while (0)
 
 #ifdef WL_SCAN
 #undef WL_SCAN
 #endif
-#define	WL_SCAN(args)								\
-do {									\
-	if (wl_dbg_level & WL_DBG_SCAN) {			\
-		printk(KERN_INFO "CFG80211-SCAN) %s :", __func__);	\
-		printk args;							\
-	}									\
-	if (wl_dbgring_level & WL_DBG_SCAN) {    \
-		DHD_DBG_RING_WRITE args;    \
-	}   \
+#define	WL_SCAN(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_SCAN) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_SCAN) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(), __func__);	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
 } while (0)
 #ifdef WL_TRACE
 #undef WL_TRACE
 #endif
-#define	WL_TRACE(args)								\
-do {									\
-	if (wl_dbg_level & WL_DBG_TRACE) {			\
-		printk(KERN_INFO "CFG80211-TRACE) %s :", __func__);	\
-		printk args;							\
-	}									\
-	if (wl_dbgring_level & WL_DBG_TRACE) {    \
-		DHD_DBG_RING_WRITE args;    \
+#define	WL_TRACE(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_TRACE) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_TRACE) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
 #ifdef WL_TRACE_HW4
 #undef WL_TRACE_HW4
 #endif
 #ifdef CUSTOMER_HW4_DEBUG
-#define	WL_TRACE_HW4(args)					\
-do {										\
-	if (wl_dbg_level & WL_DBG_ERR) {				\
-			printk(KERN_INFO "CFG80211-TRACE) %s : ", __func__);	\
-			printk args;						\
-		} 								\
-	if (wl_dbgring_level & WL_DBG_ERR) {    \
-		DHD_DBG_RING_WRITE args;    \
-	}   \
+#define	WL_TRACE_HW4(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_ERR) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	} 	\
+	if (wl_dbgring_level & WL_DBG_ERR) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
 } while (0)
 #else
 #define	WL_TRACE_HW4			WL_TRACE
 #endif /* CUSTOMER_HW4_DEBUG */
 #if (WL_DBG_LEVEL > 0)
-#define	WL_DBG(args)								\
-do {									\
-	if (wl_dbg_level & WL_DBG_DBG) {			\
-		printk(KERN_INFO "CFG80211-DEBUG) %s :", __func__);	\
-		printk args;							\
-	}									\
-	if (wl_dbgring_level & WL_DBG_DBG) {    \
-		DHD_DBG_RING_WRITE args;    \
-	}									\
+#define	WL_DBG(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_DBG) {	\
+		PRINTCFG("[%s][cfg80211][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
+	}	\
+	if (wl_dbgring_level & WL_DBG_DBG) {	\
+		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
+				dhd_dbg_get_system_timestamp(),	\
+				dhd_log_dump_get_timestamp(),__func__);	\
+		DHD_DBG_RING_WRITE args;	\
+	}	\
 } while (0)
 #else				/* !(WL_DBG_LEVEL > 0) */
 #define	WL_DBG(args)

@@ -365,7 +365,7 @@ static void dhd_log_dump(void *handle, void *event_info, u8 event);
 static int do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type);
 static void dhd_print_buf_addr(dhd_pub_t *dhdp, char *name, void *buf, unsigned int size);
 static void dhd_log_dump_buf_addr(dhd_pub_t *dhdp, log_dump_type_t *type);
-void dhd_log_dump_get_system_timestamp(char* timebuf);
+char *dhd_dbg_get_system_timestamp(void);
 #endif /* DHD_LOG_DUMP */
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
@@ -14900,7 +14900,7 @@ dhd_net_bus_devreset(struct net_device *dev, uint8 flag)
 	 * after firmware download completion due to link down issue
 	 * JIRA SWWLAN-142236: Amendment - Changed L1ss enable point
 	 */
-	printk(KERN_ERR "%s: Disable L1ss EP side\n", __FUNCTION__);
+	DHD_ERROR(("%s Disable L1ss EP side\n", __FUNCTION__));
 	if (flag == FALSE && dhd->pub.busstate == DHD_BUS_DOWN)
 #if defined(CONFIG_SOC_GS101)
 		exynos_pcie_rc_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI, 1);
@@ -17269,20 +17269,24 @@ static inline void dhd_wk_lock_rec_dump(void)
 			GCC_DIAGNOSTIC_POP();
 			switch (wklock_info->lock_type) {
 				case DHD_WAKE_LOCK:
-					printk("wakelock lock : %pS  lock_counter : %llu \n",
-						(void *)wklock_info->addr, wklock_info->counter);
+					DHD_ERROR(("wakelock lock : %pS"
+						"lock_counter : %llu \n", (void *)wklock_info->addr,
+						wklock_info->counter));
 					break;
 				case DHD_WAKE_UNLOCK:
-					printk("wakelock unlock : %pS, unlock_counter : %llu \n",
-						(void *)wklock_info->addr, wklock_info->counter);
+					DHD_ERROR(("wakelock unlock : %pS,"
+						" unlock_counter : %llu \n",
+						(void *)wklock_info->addr, wklock_info->counter));
 					break;
 				case DHD_WAIVE_LOCK:
-					printk("wakelock waive : %pS  before_waive : %llu \n",
-						(void *)wklock_info->addr, wklock_info->counter);
+					DHD_ERROR(("wakelock waive : %pS"
+						" before_waive : %llu \n",
+						(void *)wklock_info->addr, wklock_info->counter));
 					break;
 				case DHD_RESTORE_LOCK:
-					printk("wakelock restore : %pS, after_waive : %llu \n",
-						(void *)wklock_info->addr, wklock_info->counter);
+					DHD_ERROR(("wakelock restore : %pS,"
+						" after_waive : %llu \n",
+						(void *)wklock_info->addr, wklock_info->counter));
 					break;
 			}
 		}
@@ -17343,7 +17347,7 @@ void dhd_wk_lock_stats_dump(dhd_pub_t *dhdp)
 	dhd_info_t *dhd = (dhd_info_t *)(dhdp->info);
 	unsigned long flags;
 
-	printk(KERN_ERR"DHD Printing wl_wake Lock/Unlock Record \r\n");
+	DHD_ERROR(("DHD Printing wl_wake Lock/Unlock Record \r\n"));
 	DHD_WAKE_SPIN_LOCK(&dhd->wakelock_spinlock, flags);
 	dhd_wk_lock_rec_dump();
 	DHD_WAKE_SPIN_UNLOCK(&dhd->wakelock_spinlock, flags);
@@ -21294,8 +21298,10 @@ dhd_log_dump_deinit(dhd_pub_t *dhd)
 	mutex_destroy(&dhd_info->logdump_lock);
 }
 
-void
-dhd_log_dump_get_system_timestamp(char* timebuf) {
+char*
+dhd_dbg_get_system_timestamp(void)
+{
+	static char timebuf[DEBUG_DUMP_TIME_BUF_LEN];
 	struct timeval tv;
 	unsigned long local_time;
 	struct rtc_time tm;
@@ -21306,6 +21312,7 @@ dhd_log_dump_get_system_timestamp(char* timebuf) {
 	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
 			"%02d:%02d:%02d.%06lu",
 			tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+	return timebuf;
 }
 
 extern struct dhd_dbg_ring_buf g_ring_buf;
@@ -21338,13 +21345,11 @@ dhd_dbg_ring_write(int type, char *binary_data,
 
 	if (ring_buf->dhd_pub) {
 		dhd_pub_t *dhdp = (dhd_pub_t *)ring_buf->dhd_pub;
-		char tbuf[DEBUG_DUMP_TIME_BUF_LEN];
 		memset(tmp_buf, 0, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE);
-		dhd_log_dump_get_system_timestamp(tbuf);
 		if (type == DBG_RING_TYPE_DRIVER_LOG) {
 			if (DBG_RING_ACTIVE(dhdp, DRIVER_LOG_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s] [%s]: %s",
-						tbuf, dhd_log_dump_get_timestamp(), buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "%s",
+						buf);
 				dhd_os_push_push_ring_data(dhdp , DRIVER_LOG_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;
@@ -21352,8 +21357,8 @@ dhd_dbg_ring_write(int type, char *binary_data,
 		}
 		if (type == DBG_RING_TYPE_FW_VERBOSE){
 			if (DBG_RING_ACTIVE(dhdp, FW_VERBOSE_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "[%s] [%s]: %s",
-						tbuf, dhd_log_dump_get_timestamp(), buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "%s",
+						buf);
 				dhd_os_push_push_ring_data(dhdp , FW_VERBOSE_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;

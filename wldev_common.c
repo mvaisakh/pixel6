@@ -39,17 +39,20 @@
 #define dtoh16(i) (i)
 #define htodchanspec(i) (i)
 #define dtohchanspec(i) (i)
-
+extern char *dhd_dbg_get_system_timestamp(void);
+#define PRINTCFG(fmt, args...)  printk(KERN_CONT fmt, ##args)
 #define	WLDEV_ERROR(args)						\
 	do {										\
-		printk(KERN_ERR "WLDEV-ERROR) ");	\
-		printk args;							\
+		PRINTCFG("[%s][wldev][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	} while (0)
 
 #define	WLDEV_INFO(args)						\
 	do {										\
-		printk(KERN_INFO "WLDEV-INFO) ");	\
-		printk args;							\
+		PRINTCFG("[%s][wldev][wlan] %s : ",	\
+				dhd_dbg_get_system_timestamp(), __func__);	\
+		PRINTCFG args;	\
 	} while (0)
 
 extern int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd);

@@ -38,6 +38,9 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
+#include <dhd_dbg.h>
+#include <dhd.h>
+
 #ifdef DHD_COREDUMP
 #include <linux/platform_data/sscoredump.h>
 #endif /* DHD_COREDUMP */
@@ -47,7 +50,6 @@ extern int dhd_init_wlan_mem(void);
 extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
-#define WIFI_TURNON_DELAY		200
 #define WLAN_REG_ON_GPIO		491
 #define WLAN_HOST_WAKE_GPIO		493
 
@@ -86,7 +88,7 @@ static struct platform_device sscd_dev = {
 
 static void sscd_release(struct device *dev)
 {
-	printk(KERN_INFO "%s: enter", __FUNCTION__);
+	DHD_INFO(("%s: enter\n", __FUNCTION__));
 }
 
 /* trigger coredump */
@@ -133,7 +135,7 @@ dhd_wlan_init_mac_addr(void)
 
 	node = of_find_node_by_path(CDB_PATH);
 	if (!node) {
-		printk(KERN_ERR "CDB Node not created under %s", CDB_PATH);
+		DHD_ERROR(("CDB Node not created under %s\n", CDB_PATH));
 		return -ENODEV;
 	} else {
 		mac_addr = (unsigned char *)
@@ -142,7 +144,7 @@ dhd_wlan_init_mac_addr(void)
 
 	/* In case Missing Provisioned MAC Address, exit with error */
 	if (!mac_addr) {
-		printk(KERN_ERR "Missing Provisioned MAC address");
+		DHD_ERROR(("Missing Provisioned MAC address\n"));
 		return -EINVAL;
 	}
 
@@ -164,13 +166,13 @@ dhd_wlan_init_mac_addr(void)
 
 	/* Make sure Address decoding succeeds */
 	if (!mac_found) {
-		printk(KERN_ERR "Invalid format for Provisioned MAC Address");
+		DHD_ERROR(("Invalid format for Provisioned MAC Address\n"));
 		return -EINVAL;
 	}
 
 	/* Make sure Provisioned MAC Address is globally Administered */
 	if (mac[0] & 2) {
-		printk(KERN_ERR "Invalid Provisioned MAC Address");
+		DHD_ERROR(("Invalid Provisioned MAC Address\n"));
 		return -EINVAL;
 	}
 
@@ -189,26 +191,26 @@ dhd_wifi_init_gpio(void)
 
 	root_node = of_find_compatible_node(NULL, NULL, wlan_node);
 	if (!root_node) {
-		printk(KERN_ERR "failed to get device node of BRCM WLAN");
+		DHD_ERROR(("failed to get device node of BRCM WLAN\n"));
 		return -ENODEV;
 	}
 
 	wlan_reg_on = of_get_named_gpio(root_node, WIFI_WL_REG_ON_PROPNAME, 0);
 	if (!gpio_is_valid(wlan_reg_on)) {
-		printk(KERN_ERR "Invalid gpio pin : %d\n", wlan_reg_on);
+		DHD_ERROR(("Invalid gpio pin : %d\n", wlan_reg_on));
 		return -ENODEV;
 	}
 
 	/* ========== WLAN_PWR_EN ============ */
-	printk(KERN_INFO "%s: gpio_wlan_power : %d\n", __FUNCTION__, wlan_reg_on);
+	DHD_INFO(("%s: gpio_wlan_power : %d\n", __FUNCTION__, wlan_reg_on));
 
 #ifdef EXYNOS_PCIE_RC_ONOFF
 	if (of_property_read_u32(root_node, "ch-num", &pcie_ch_num)) {
-		printk(KERN_INFO "%s: Failed to parse the channel number\n", __FUNCTION__);
+		DHD_INFO(("%s: Failed to parse the channel number\n", __FUNCTION__));
 		return -EINVAL;
 	}
 	/* ========== WLAN_PCIE_NUM ============ */
-	printk(KERN_INFO "%s: pcie_ch_num : %d\n", __FUNCTION__, pcie_ch_num);
+	DHD_INFO(("%s: pcie_ch_num : %d\n", __FUNCTION__, pcie_ch_num));
 #endif /* EXYNOS_PCIE_RC_ONOFF */
 
 	/*
@@ -216,27 +218,27 @@ dhd_wifi_init_gpio(void)
 	 * in the dts using gpio-hog, so do not return error for failure.
 	 */
 	if (gpio_request_one(wlan_reg_on, GPIOF_OUT_INIT_HIGH, "WL_REG_ON")) {
-		printk(KERN_ERR "%s: Failed to request gpio %d for WL_REG_ON, "
+		DHD_ERROR(("%s: Failed to request gpio %d for WL_REG_ON, "
 			"might have configured in the dts\n",
-			__FUNCTION__, wlan_reg_on);
+			__FUNCTION__, wlan_reg_on));
 	} else {
-		printk(KERN_ERR "%s: gpio_request WL_REG_ON done - WLAN_EN: GPIO %d\n",
-			__FUNCTION__, wlan_reg_on);
+		DHD_ERROR(("%s: gpio_request WL_REG_ON done - WLAN_EN: GPIO %d\n",
+			__FUNCTION__, wlan_reg_on));
 	}
 
 	gpio_reg_on_val = gpio_get_value(wlan_reg_on);
-	printk(KERN_INFO "%s: Initial WL_REG_ON: [%d]\n",
-		__FUNCTION__, gpio_get_value(wlan_reg_on));
+	DHD_INFO(("%s: Initial WL_REG_ON: [%d]\n",
+		__FUNCTION__, gpio_get_value(wlan_reg_on)));
 
 	if (gpio_reg_on_val == 0) {
-		printk(KERN_INFO "%s: WL_REG_ON is LOW, drive it HIGH\n", __FUNCTION__);
+		DHD_INFO(("%s: WL_REG_ON is LOW, drive it HIGH\n", __FUNCTION__));
 		if (gpio_direction_output(wlan_reg_on, 1)) {
-			printk(KERN_ERR "%s: WL_REG_ON is failed to pull up\n", __FUNCTION__);
+			DHD_ERROR(("%s: WL_REG_ON is failed to pull up\n", __FUNCTION__));
 			return -EIO;
 		}
 	}
 
-	printk(KERN_ERR "%s: WL_REG_ON is pulled up\n", __FUNCTION__);
+	DHD_ERROR(("%s: WL_REG_ON is pulled up\n", __FUNCTION__));
 
 	/* Wait for WIFI_TURNON_DELAY due to power stability */
 	msleep(WIFI_TURNON_DELAY);
@@ -247,20 +249,20 @@ dhd_wifi_init_gpio(void)
 	/* ========== WLAN_HOST_WAKE ============ */
 	wlan_host_wake_up = of_get_named_gpio(root_node,
 					      WIFI_WLAN_HOST_WAKE_PROPNAME, 0);
-	printk(KERN_INFO "%s: gpio_wlan_host_wake : %d\n", __FUNCTION__, wlan_host_wake_up);
+	DHD_INFO(("%s: gpio_wlan_host_wake : %d\n", __FUNCTION__, wlan_host_wake_up));
 
 	if (gpio_request_one(wlan_host_wake_up, GPIOF_IN, "WLAN_HOST_WAKE")) {
-		printk(KERN_ERR "%s: Failed to request gpio %d for WLAN_HOST_WAKE\n",
-			__FUNCTION__, wlan_host_wake_up);
+		DHD_ERROR(("%s: Failed to request gpio %d for WLAN_HOST_WAKE\n",
+			__FUNCTION__, wlan_host_wake_up));
 			return -ENODEV;
 	} else {
-		printk(KERN_ERR "%s: gpio_request WLAN_HOST_WAKE done"
+		DHD_ERROR(("%s: gpio_request WLAN_HOST_WAKE done"
 			" - WLAN_HOST_WAKE: GPIO %d\n",
-			__FUNCTION__, wlan_host_wake_up);
+			__FUNCTION__, wlan_host_wake_up));
 	}
 
 	if (gpio_direction_input(wlan_host_wake_up)) {
-		printk(KERN_ERR "%s: Failed to set WL_HOST_WAKE gpio direction\n", __FUNCTION__);
+		DHD_ERROR(("%s: Failed to set WL_HOST_WAKE gpio direction\n", __FUNCTION__));
 	}
 
 	wlan_host_wake_irq = gpio_to_irq(wlan_host_wake_up);
@@ -271,23 +273,23 @@ dhd_wifi_init_gpio(void)
 int
 dhd_wlan_power(int onoff)
 {
-	printk(KERN_INFO"------------------------------------------------");
-	printk(KERN_INFO"------------------------------------------------\n");
-	printk(KERN_INFO"%s Enter: power %s\n", __func__, onoff ? "on" : "off");
+	DHD_INFO(("------------------------------------------------\n"));
+	DHD_INFO(("------------------------------------------------\n"));
+	DHD_INFO(("%s Enter: power %s\n", __func__, onoff ? "on" : "off"));
 
 	if (onoff) {
 		if (gpio_direction_output(wlan_reg_on, 1)) {
-			printk(KERN_ERR "%s: WL_REG_ON is failed to pull up\n", __FUNCTION__);
+			DHD_ERROR(("%s: WL_REG_ON is failed to pull up\n", __FUNCTION__));
 			return -EIO;
 		}
 		if (gpio_get_value(wlan_reg_on)) {
-			printk(KERN_INFO"WL_REG_ON on-step-2 : [%d]\n",
-				gpio_get_value(wlan_reg_on));
+			DHD_INFO(("WL_REG_ON on-step-2 : [%d]\n",
+				gpio_get_value(wlan_reg_on)));
 		} else {
-			printk("[%s] gpio value is 0. We need reinit.\n", __func__);
+			DHD_ERROR(("[%s] gpio value is 0. We need reinit.\n", __func__));
 			if (gpio_direction_output(wlan_reg_on, 1)) {
-				printk(KERN_ERR "%s: WL_REG_ON is "
-					"failed to pull up\n", __func__);
+				DHD_ERROR(("%s: WL_REG_ON is "
+					"failed to pull up\n", __func__));
 			}
 		}
 #ifdef EXYNOS_PCIE_RC_ONOFF
@@ -298,12 +300,12 @@ dhd_wlan_power(int onoff)
 		exynos_pcie_pm_suspend(pcie_ch_num);
 #endif /* EXYNOS_PCIE_RC_ONOFF */
 		if (gpio_direction_output(wlan_reg_on, 0)) {
-			printk(KERN_ERR "%s: WL_REG_ON is failed to pull up\n", __FUNCTION__);
+			DHD_ERROR(("%s: WL_REG_ON is failed to pull up\n", __FUNCTION__));
 			return -EIO;
 		}
 		if (gpio_get_value(wlan_reg_on)) {
-			printk(KERN_INFO"WL_REG_ON on-step-2 : [%d]\n",
-				gpio_get_value(wlan_reg_on));
+			DHD_INFO(("WL_REG_ON on-step-2 : [%d]\n",
+				gpio_get_value(wlan_reg_on)));
 		}
 	}
 	return 0;
@@ -372,11 +374,11 @@ dhd_wlan_init(void)
 {
 	int ret;
 
-	printk(KERN_INFO"%s: START.......\n", __FUNCTION__);
+	DHD_INFO(("%s: START.......\n", __FUNCTION__));
 	ret = dhd_wifi_init_gpio();
 	if (ret < 0) {
-		printk(KERN_ERR "%s: failed to initiate GPIO, ret=%d\n",
-			__FUNCTION__, ret);
+		DHD_ERROR(("%s: failed to initiate GPIO, ret=%d\n",
+			__FUNCTION__, ret));
 		goto fail;
 	}
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE
@@ -387,9 +389,8 @@ dhd_wlan_init(void)
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 	ret = dhd_init_wlan_mem();
 	if (ret < 0) {
-		printk(KERN_ERR "%s: failed to alloc reserved memory,"
-			" ret=%d\n", __FUNCTION__, ret);
-		goto fail;
+		DHD_ERROR(("%s: failed to alloc reserved memory,"
+					" ret=%d\n", __FUNCTION__, ret));
 	}
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
@@ -402,7 +403,7 @@ dhd_wlan_init(void)
 #endif /* DHD_COREDUMP */
 
 fail:
-	printk(KERN_INFO "%s: FINISH.......\n", __FUNCTION__);
+	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));
 	return ret;
 }
 
