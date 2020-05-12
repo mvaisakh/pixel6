@@ -359,7 +359,8 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	{
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
-		if (transaction->resp->error_code) {
+		if (transaction->resp->error_code ||
+		    client->lwis_dev->enabled == 0) {
 			cancel_transaction(transaction, -ECANCELED, NULL);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock,
