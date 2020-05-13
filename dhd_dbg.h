@@ -65,11 +65,20 @@ extern void dhd_dbg_ring_write(int type, char *binary_data,
 	dhd_dbg_ring_write(DBG_RING_TYPE_DRIVER_LOG, NULL, 0, fmt, ##__VA_ARGS__)
 #define DHD_DBG_RING_WRITE_EX(fmt, ...) \
 	dhd_dbg_ring_write(DBG_RING_TYPE_FW_VERBOSE, NULL, 0, fmt, ##__VA_ARGS__)
+#define DHD_DBG_RING_WRITE_ROAM(fmt, ...) \
+	dhd_dbg_ring_write(DBG_RING_TYPE_ROAM_STATS, NULL, 0, fmt, ##__VA_ARGS__)
 #if defined(DHD_DEBUG)
 
 /* NON-NDIS cases */
 #ifdef DHD_LOG_DUMP
 /* Common case for EFI and non EFI */
+#define DHD_ROAM(args)	\
+do {	\
+	if (dbgring_msg_level & DHD_ERROR_VAL) {	\
+		DHD_DBG_RING_WRITE_ROAM args;	\
+	}	\
+} while (0)
+
 #define DHD_ERROR(args)	\
 do {	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\

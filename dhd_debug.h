@@ -34,6 +34,7 @@ enum {
 	FW_VERBOSE_RING_ID,
 	DHD_EVENT_RING_ID,
 	DRIVER_LOG_RING_ID,
+	ROAM_STATS_RING_ID,
 	/* add new id here */
 	DEBUG_RING_ID_MAX
 };
@@ -60,20 +61,22 @@ enum {
 };
 
 /* firmware verbose ring, ring id 1 */
-#define FW_VERBOSE_RING_NAME		"fw_verbose"
-#define FW_VERBOSE_RING_SIZE		(256 * 1024)
+#define FW_VERBOSE_RING_NAME	"fw_verbose"
+#define FW_VERBOSE_RING_SIZE	(256 * 1024)
 /* firmware event ring, ring id 2 */
 #define FW_EVENT_RING_NAME		"fw_event"
 #define FW_EVENT_RING_SIZE		(64 * 1024)
 /* DHD driver log ring, ring id 3 */
-#define DRIVER_LOG_RING_NAME        "driver_log"
-#define DRIVER_LOG_RING_SIZE        (256 * 1024)
+#define DRIVER_LOG_RING_NAME	"driver_log"
+#define DRIVER_LOG_RING_SIZE	(256 * 1024)
 /* DHD connection event ring */
 #define DHD_EVENT_RING_NAME		"dhd_event"
 #define DHD_EVENT_RING_SIZE		(64 * 1024)
 /* NAN event ring */
 #define NAN_EVENT_RING_NAME		"nan_event"
 #define NAN_EVENT_RING_SIZE		(64 * 1024)
+#define ROAM_STATS_RING_NAME	"roam_stats"
+#define ROAM_STATS_RING_SIZE	(64 * 1024)
 
 
 #define TLV_LOG_SIZE(tlv) ((tlv) ? (sizeof(tlv_log) + (tlv)->len) : 0)

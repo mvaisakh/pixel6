@@ -21393,6 +21393,16 @@ dhd_dbg_ring_write(int type, char *binary_data,
 				return;
 			}
 		}
+		if (type == DBG_RING_TYPE_ROAM_STATS){
+			if (DBG_RING_ACTIVE(dhdp, ROAM_STATS_RING_ID)) {
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE,
+					"[%s][%s] %s", dhd_dbg_get_system_timestamp(),
+						dhd_log_dump_get_timestamp(), buf);
+				dhd_os_push_push_ring_data(dhdp , ROAM_STATS_RING_ID,
+						tmp_buf, strlen(tmp_buf));
+				return;
+			}
+		}
 	}
 	return;
 }

@@ -768,6 +768,7 @@ typedef enum {
 typedef enum {
 	DBG_RING_TYPE_FW_VERBOSE = 0,
 	DBG_RING_TYPE_DRIVER_LOG = 1,
+	DBG_RING_TYPE_ROAM_STATS = 2,
 } dbg_ring_type_t;
 
 #define LOG_DUMP_MAGIC 0xDEB3DEB3

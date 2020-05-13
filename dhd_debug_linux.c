@@ -366,6 +366,13 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 		/* convert to ms */
 		msg_hdr.timestamp = DIV_U64_BY_U32(msg_hdr.timestamp, NSEC_PER_MSEC);
 		msg_hdr.len = strlen(data);
+	} else if (ring_id == ROAM_STATS_RING_ID) {
+		msg_hdr.type = DBG_RING_ENTRY_DATA_TYPE;
+		msg_hdr.flags |= DBG_RING_ENTRY_FLAGS_HAS_TIMESTAMP;
+		msg_hdr.timestamp = local_clock();
+		/* convert to ms */
+		msg_hdr.timestamp = DIV_U64_BY_U32(msg_hdr.timestamp, NSEC_PER_MSEC);
+		msg_hdr.len = strlen(data);
 	}
 	ret = dhd_dbg_push_to_ring(dhdp, ring_id, &msg_hdr, event_data);
 	if (ret) {

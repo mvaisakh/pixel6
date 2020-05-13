@@ -156,6 +156,8 @@ struct tracelog_header {
 	int seq_num;
 };
 #define TRACE_LOG_MAGIC_NUMBER 0xEAE47C06
+static void print_roam_chan_list(char *prefix, uint chan_num, uint16 band_2g,
+	uint16 uni2a, uint8 uni3, uint8 *uni2c);
 
 int
 dhd_dbg_push_to_ring(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_entry_t *hdr, void *data)
@@ -805,6 +807,112 @@ exit:
 	MFREE(dhdp->osh, str_buf, (MAX_NO_OF_ARG * SIZE_LOC_STR));
 }
 
+typedef struct roam_ap_info {
+	uint8   ctrl_chan;
+	struct ether_addr BSSID;
+	int16   rssi;
+	uint32  score;
+	uint8	target;
+} roam_ap_info_t;
+
+#define ROAM_STATS_MAX_AP_COUNT	32
+enum {
+	ROAM_STOP_REASON_NO_ROAM_CACHE = 0,
+	ROAM_STOP_REASON_WAIT_RCV_BCN = 1,
+	ROAM_STOP_REASON_RSSI_RESUME = 2,
+	ROAM_STOP_REASON_TX_RESUME = 3,
+	ROAM_STOP_REASON_ROAM_IN_PROGRESS = 4,
+	ROAM_STOP_REASON_LAST = 5,
+};
+
+#define ROAM_STATUS_STOP_ROAM   0xdead
+typedef struct roam_log_done {
+	msgtrace_hdr_t hdr;
+	uint32	roam_reason;
+	uint32	roam_status;
+	uint8   partial_roam_chan_cnt;  /* partial roam scan channel count */
+	uint16  roam_scan_band2g_chan_list;
+	uint16  roam_scan_uni2a_chan_list;
+	uint8   roam_scan_uni2c_chan_list[3];
+	uint8   roam_scan_uni3_chan_list;
+	uint32  ap_count;
+	roam_ap_info_t *roamapinfo;
+} roam_log_done_t;
+
+void
+dhd_dbg_msgtrace_log_roam(dhd_pub_t *dhdp, void *event_data, uint datalen)
+{
+	roam_log_done_t *roam_data = (roam_log_done_t *)event_data;
+	int i;
+	roam_ap_info_t *ap_info = (roam_ap_info_t *)&roam_data->roamapinfo;
+	const char *reason_name[] = {
+		"INITIAL ASSOCIATION", /* WLC_E_REASON_INITIAL_ASSOC */
+		"LOW_RSSI", /* WLC_E_REASON_LOW_RSSI */
+		"RECEIVED DEAUTHENTICATION", /* WLC_E_REASON_DEAUTH */
+		"RECEIVED DISASSOCATION", /* WLC_E_REASON_DISASSOC */
+		"BEACONS LOST", /* WLC_E_REASON_BCNS_LOST */
+		"N/A",
+		"N/A",
+		"N/A",
+		"BETTER AP FOUND", /* WLC_E_REASON_BETTER_AP */
+		"STUCK AT MIN TX RATE", /* WLC_E_REASON_MINTXRATE */
+		"TOO MANY TXFAILURES", /* WLC_E_REASON_TXFAIL */
+		"REQUESTED ROAM" /* WLC_E_REASON_BSSTRANS_REQ */
+	};
+
+	const char *roam_stop_reason[] = {
+		"no roam cache for tx rate drop/tx fail roaming",
+				/* ROAM_STOP_REASON_NO_ROAM_CACHE */
+		"previous roaming done, waiting for receive beacon",
+				/* ROAM_STOP_REASON_WAIT_RCV_BCN */
+		"link rssi back to normal", /* ROAM_STOP_REASON_RSSI_RESUME */
+		"tx back to normal from rate drop/txfail", /* ROAM_STOP_REASON_TX_RESUME */
+		"another roaming in progress" /* ROAM_STOP_REASON_ROAM_IN_PROGRESS */
+	};
+
+	if (roam_data->ap_count > ROAM_STATS_MAX_AP_COUNT) {
+		DHD_ROAM(("Invalid roam statistics data!\n"));
+		return;
+	}
+
+	if (roam_data->roam_status == ROAM_STATUS_STOP_ROAM) {
+		DHD_ROAM(("roaming aborted, due to %s\n",
+			(roam_data->roam_reason < ROAM_STOP_REASON_LAST) ?
+				roam_stop_reason[roam_data->roam_reason]:"unknown reason"));
+		return;
+	}
+
+	/* reason */
+	DHD_ROAM(("roam reason: %s\n",
+		(roam_data->roam_reason <= WLC_E_REASON_BSSTRANS_REQ) ?
+			reason_name[roam_data->roam_reason]:"N/A"));
+
+	/* status */
+	DHD_ROAM(("roam status: %d\n", roam_data->roam_status));
+
+	/* scan channel */
+	if (roam_data->partial_roam_chan_cnt == 0)
+		DHD_ROAM(("roam scan channels: full scan\n"));
+	else {
+		print_roam_chan_list("roam scan channels",
+			roam_data->partial_roam_chan_cnt, roam_data->roam_scan_band2g_chan_list,
+			roam_data->roam_scan_uni2a_chan_list, roam_data->roam_scan_uni3_chan_list,
+			roam_data->roam_scan_uni2c_chan_list);
+	}
+
+	DHD_ROAM(("Candidate AP number: %d\n", roam_data->ap_count));
+	if (roam_data->ap_count > 0) {
+		for (i = 0; i < roam_data->ap_count; i++) {
+			DHD_ROAM(("  ROAM_AP_CANDIDATE %d: " MACDBG
+				" rssi:%d score:%d channel:%d %s\n",
+				i, MAC2STRDBG((uint8 *)&ap_info[i].BSSID),
+				ap_info[i].rssi, ap_info[i].score,
+				ap_info[i].ctrl_chan,
+				ap_info[i].target?"[connected]":""));
+		}
+	}
+}
+
 void
 dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	void *raw_event_ptr, uint datalen, bool msgtrace_hdr_present,
@@ -1142,6 +1250,8 @@ dhd_dbg_trace_evnt_handler(dhd_pub_t *dhdp, void *event_data,
 		dhd_dbg_msgtrace_msg_parser(event_data);
 	else if (hdr->trace_type == MSGTRACE_HDR_TYPE_LOG)
 		dhd_dbg_msgtrace_log_parser(dhdp, event_data, raw_event_ptr, datalen, TRUE, 0);
+	else if (hdr->trace_type == MSGTRACE_HDR_TYPE_ROAM)
+		dhd_dbg_msgtrace_log_roam(dhdp, event_data, datalen);
 }
 
 /*
@@ -2208,7 +2318,7 @@ dhd_dbg_process_tx_status(dhd_pub_t *dhdp, void *pkt,
 	} \
 }
 
-void print_roam_chan_list(char *prefix, uint chan_num, uint16 band_2g,
+static void print_roam_chan_list(char *prefix, uint chan_num, uint16 band_2g,
 	uint16 uni2a, uint8 uni3, uint8 *uni2c)
 {
 	struct bcmstrbuf b;
@@ -2256,7 +2366,7 @@ void print_roam_chan_list(char *prefix, uint chan_num, uint16 band_2g,
 	}
 
 	if (cnt != 0) {
-		DHD_ERROR(("%s\n", b.origbuf));
+		DHD_ROAM(("%s\n", b.origbuf));
 	}
 }
 
@@ -2629,6 +2739,15 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 			(uint8 *)DRIVER_LOG_RING_NAME, DRIVER_LOG_RING_SIZE, buf, FALSE);
 	if (ret)
 		goto error;
+
+	buf = MALLOCZ(dhdp->osh, ROAM_STATS_RING_SIZE);
+	if (!buf)
+		goto error;
+	ret = dhd_dbg_ring_init(dhdp, &dbg->dbg_rings[ROAM_STATS_RING_ID], ROAM_STATS_RING_ID,
+			(uint8 *)ROAM_STATS_RING_NAME, ROAM_STATS_RING_SIZE, buf, FALSE);
+	if (ret)
+		goto error;
+
 	ring_buf = &g_ring_buf;
 	dbg->private = os_priv;
 	dbg->pullreq = os_pullreq;

@@ -9412,6 +9412,7 @@ int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 #ifdef DEBUGABILITY
 	dhd_os_dbg_register_callback(FW_VERBOSE_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
 	dhd_os_dbg_register_callback(DRIVER_LOG_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
+	dhd_os_dbg_register_callback(ROAM_STATS_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
 #endif /* DEBUGABILITY */
 #ifdef DHD_LOG_DUMP
 	dhd_os_dbg_register_urgent_notifier(dhd, wl_cfgvendor_dbg_send_file_dump_evt);

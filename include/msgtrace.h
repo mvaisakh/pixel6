@@ -39,6 +39,7 @@ typedef BWL_PRE_PACKED_STRUCT struct msgtrace_hdr {
 	uint8   trace_type;
 #define MSGTRACE_HDR_TYPE_MSG 0
 #define MSGTRACE_HDR_TYPE_LOG 1
+#define MSGTRACE_HDR_TYPE_ROAM 2
 	uint16	len;	/* Len of the trace */
 	uint32	seqnum;	/* Sequence number of message. Useful if the messsage has been lost
 			 * because of DMA error or a bus reset (ex: SDIO Func2)
