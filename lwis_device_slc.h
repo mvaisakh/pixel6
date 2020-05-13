@@ -14,7 +14,7 @@
 
 #include "pt/pt.h"
 
-#define NUM_PT 4
+#define NUM_PT 5
 
 struct slc_partition {
 	int id;
