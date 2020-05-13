@@ -51,7 +51,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 #ifdef CONFIG_OF
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	struct device_node *node = lwis_dev->plat_dev->dev.of_node;
-	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048 };
+	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048, 3072 };
 	int num_pt = 0, i = 0;
 
 	num_pt = of_property_count_strings(node, "pt_id");
