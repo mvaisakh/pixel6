@@ -373,7 +373,8 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 }
 
 static int check_transaction_param(struct lwis_client *client,
-				   struct lwis_transaction *transaction)
+				   struct lwis_transaction *transaction,
+				   bool allow_counter_eq)
 {
 	struct lwis_device_event_state *event_state;
 	struct lwis_transaction_info *info = &transaction->info;
@@ -394,9 +395,14 @@ static int check_transaction_param(struct lwis_client *client,
 				event_state->event_counter;
 			if (info->trigger_event_counter ==
 			    event_state->event_counter) {
-				info->trigger_event_id = LWIS_EVENT_ID_NONE;
-				pr_warn_ratelimited(
-					"Event counter == Trigger counter already, turning this into an immediate transaction\n");
+				if (allow_counter_eq) {
+					info->trigger_event_id =
+						LWIS_EVENT_ID_NONE;
+					pr_warn_ratelimited(
+						"Event counter == Trigger counter already, turning this into an immediate transaction\n");
+				} else {
+					return -ENOENT;
+				}
 			} else if (info->trigger_event_counter <
 				   event_state->event_counter) {
 				return -ENOENT;
@@ -499,7 +505,8 @@ int lwis_transaction_submit(struct lwis_client *client,
 	unsigned long flags;
 	int ret;
 
-	ret = check_transaction_param(client, transaction);
+	ret = check_transaction_param(client, transaction,
+				      /*allow_counter_eq=*/true);
 	if (ret)
 		return ret;
 
@@ -646,7 +653,8 @@ int lwis_transaction_replace(struct lwis_client *client,
 	int ret;
 	unsigned long lock_flags;
 
-	ret = check_transaction_param(client, transaction);
+	ret = check_transaction_param(client, transaction,
+				      /*allow_counter_eq=*/false);
 	if (ret)
 		return ret;
 
