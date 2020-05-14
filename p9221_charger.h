@@ -53,7 +53,6 @@
 #define P9221_NEG_POWER_10W		(10 / 0.5)
 #define P9221_PTMC_EPP_TX_1912		0x32
 
-#define P9382A_DC_ICL_EPP_1200		1200000
 #define P9382A_DC_ICL_EPP_1000		1000000
 #define P9382A_NEG_POWER_10W		(10 / 0.5)
 #define P9382A_NEG_POWER_11W		(11 / 0.5)
@@ -465,10 +464,6 @@ struct p9221_charger_data {
 			   u8 val);
 	int (*reg_write_16)(struct p9221_charger_data *charger, u16 reg,
 			    u16 val);
-
-	/* chip_id dependent values */
-	int				ocp_icl_lmt;
-	int				ocp_icl_val;
 
 	int (*chip_set_data_buf)(struct p9221_charger_data *chgr,
 				 const u8 data[], size_t len);

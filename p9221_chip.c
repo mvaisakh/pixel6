@@ -771,8 +771,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 
 	switch (chip_id) {
 	case P9412_CHIP_ID:
-		chgr->ocp_icl_lmt = P9382A_DC_ICL_EPP_1200;
-		chgr->ocp_icl_val = P9382A_DC_ICL_EPP_1200;
 		chgr->rtx_state = RTX_AVAILABLE;
 		chgr->rx_buf_size = P9412_DATA_BUF_SIZE;
 		chgr->tx_buf_size = P9412_DATA_BUF_SIZE;
@@ -798,8 +796,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9412_chip_renegotiate_pwr;
 		break;
 	case P9382A_CHIP_ID:
-		chgr->ocp_icl_lmt = P9382A_DC_ICL_EPP_1200;
-		chgr->ocp_icl_val = P9382A_DC_ICL_EPP_1200;
 		chgr->rtx_state = RTX_AVAILABLE;
 		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
 		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
@@ -825,8 +821,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		break;
 	default:
-		chgr->ocp_icl_lmt = 0;
-		chgr->ocp_icl_val = P9382A_DC_ICL_EPP_1200;
 		chgr->rtx_state = RTX_NOTSUPPORTED;
 		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
 		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
