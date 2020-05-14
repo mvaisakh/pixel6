@@ -572,6 +572,13 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	{
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
+		if (transaction->resp->error_code) {
+			list_add_tail(&transaction->process_queue_node,
+				      &client->transaction_process_queue);
+			list_del(&transaction->event_list_node);
+			continue;
+		}
+
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		process_transaction(client, transaction, event_counter,
 				    pending_events, in_irq);
@@ -598,7 +605,6 @@ static int cancel_waiting_transaction_locked(struct lwis_client *client,
 	struct lwis_transaction_event_list *it_evt_list;
 	struct lwis_transaction *transaction;
 
-	/* Check the event list first. */
 	hash_for_each_safe(client->transaction_list, i, tmp, it_evt_list, node)
 	{
 		list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
@@ -608,26 +614,8 @@ static int cancel_waiting_transaction_locked(struct lwis_client *client,
 					   event_list_node);
 			if (transaction->info.id == id) {
 				transaction->resp->error_code = -ECANCELED;
-				list_add_tail(
-					&transaction->process_queue_node,
-					&client->transaction_process_queue);
-				list_del(&transaction->event_list_node);
-				queue_work(client->transaction_wq,
-					   &client->transaction_work);
 				return 0;
 			}
-		}
-	}
-
-	/* Then check the processing queue. */
-	list_for_each_safe(it_tran, it_tran_tmp,
-			   &client->transaction_process_queue)
-	{
-		transaction = list_entry(it_tran, struct lwis_transaction,
-					 process_queue_node);
-		if (transaction->info.id == id) {
-			transaction->resp->error_code = -ECANCELED;
-			return 0;
 		}
 	}
 	return -ENOENT;
