@@ -57,6 +57,7 @@
 #define P9382A_DC_ICL_EPP_1000		1000000
 #define P9382A_NEG_POWER_10W		(10 / 0.5)
 #define P9382A_NEG_POWER_11W		(11 / 0.5)
+#define P9382_RTX_TIMEOUT_MS		(10 * 1000)
 
 /*
  * P9221 common registers
@@ -405,6 +406,7 @@ struct p9221_charger_data {
 	struct delayed_work		tx_work;
 	struct delayed_work		icl_ramp_work;
 	struct delayed_work		txid_work;
+	struct delayed_work		rtx_work;
 	struct work_struct		uevent_work;
 	struct work_struct		rtx_disable_work;
 	struct alarm			icl_ramp_alarm;
@@ -531,6 +533,7 @@ enum p9382_rtx_err {
 	RTX_OVER_TEMP,
 	RTX_TX_CONFLICT,
 	RTX_HARD_OCP,
+	RTX_VOUT_DROP,
 };
 
 #define P9221_MA_TO_UA(ma)((ma) * 1000)
