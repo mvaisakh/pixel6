@@ -33,6 +33,9 @@
 #if defined(DHD_ADPS_BAM_EXPORT) && defined(WL_BAM)
 #include <wl_bam.h>
 #endif	/* DHD_ADPS_BAM_EXPORT && WL_BAM */
+#ifdef PWRSTATS_SYSFS
+#include <wldev_common.h>
+#endif
 
 #ifdef SHOW_LOGTRACE
 extern dhd_pub_t* g_dhd_pub;
@@ -492,6 +495,164 @@ store_nvram_path(struct dhd_info *dev, const char *buf, size_t count)
 	return count;
 }
 
+#ifdef PWRSTATS_SYSFS
+typedef struct wlc_pwrstats_sysfs {
+	uint64	current_ts;
+	uint64	pm_cnt;
+	uint64	pm_dur;
+	uint64	pm_last_entry_us;
+	uint64	awake_cnt;
+	uint64	awake_dur;
+	uint64	awake_last_entry_us;
+	uint64	l0_cnt;
+	uint64	l0_dur_us;
+	uint64	l1_cnt;
+	uint64	l1_dur_us;
+	uint64	l1_1_cnt;
+	uint64	l1_1_dur_us;
+	uint64	l1_2_cnt;
+	uint64	l1_2_dur_us;
+	uint64	l2_cnt;
+	uint64	l2_dur_us;
+}wlc_pwrstats_sysfs_t;
+
+uint64 last_delta = 0;
+wlc_pwrstats_sysfs_t accumstats = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+wlc_pwrstats_sysfs_t laststats = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static const char pwrstr_cnt[] = "count:";
+static const char pwrstr_dur[] = "duration_usec:";
+static const char pwrstr_ts[] = "last_entry_timestamp_usec:";
+
+void update_pwrstats_cum(uint64 *accum, uint64 *last, uint64 *now, bool force)
+{
+	if (accum) { /* accumulation case, ex; counts, duration */
+		if (*now < *last) {
+			if (force || ((*last - *now) > USEC_PER_MSEC)) {
+			/* not to update accum for pm_dur/awake_dur case */
+				*accum += *now;
+				*last = *now;
+			}
+		} else {
+			*accum += (*now - *last);
+			*last = *now;
+		}
+	} else if (*now != 0) { /* last entry timestamp case */
+		*last = *now + last_delta;
+	}
+}
+
+static ssize_t
+show_pwrstats_path(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	struct net_device *ndev = dhd_linux_get_primary_netdev(&dhd->pub);
+	wlc_pwrstats_sysfs_t *pwrstats;
+	uint buf_len = sizeof(wlc_pwrstats_sysfs_t) + (uint)strlen("pwrstats_sysfs") + 1;
+	uint64 ts_sec, ts_usec;
+	uint64 delta;
+
+	ASSERT(g_dhd_pub);
+	pwrstats = (wlc_pwrstats_sysfs_t *)MALLOCZ(g_dhd_pub->osh, buf_len);
+	if (!pwrstats) {
+		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
+		goto done;
+	}
+
+	if (wldev_iovar_getbuf(ndev, "pwrstats_sysfs", NULL, 0, pwrstats, buf_len, NULL)
+		< 0) {
+		goto done;
+	}
+
+	OSL_GET_LOCALTIME(&ts_sec, &ts_usec);
+	delta = ts_sec * USEC_PER_SEC + ts_usec - pwrstats->current_ts;
+	if ((delta > last_delta) && ((delta - last_delta) > USEC_PER_SEC))
+		last_delta = delta;
+
+	update_pwrstats_cum(&accumstats.awake_cnt, &laststats.awake_cnt,
+		&pwrstats->awake_cnt, TRUE);
+	update_pwrstats_cum(&accumstats.awake_dur, &laststats.awake_dur,
+		&pwrstats->awake_dur, FALSE);
+	update_pwrstats_cum(&accumstats.pm_cnt, &laststats.pm_cnt, &pwrstats->pm_cnt,
+		TRUE);
+	update_pwrstats_cum(&accumstats.pm_dur, &laststats.pm_dur, &pwrstats->pm_dur,
+		FALSE);
+	update_pwrstats_cum(NULL, &laststats.awake_last_entry_us,
+		&pwrstats->awake_last_entry_us, TRUE);
+	update_pwrstats_cum(NULL, &laststats.pm_last_entry_us,
+		&pwrstats->pm_last_entry_us, TRUE);
+
+	ret += scnprintf(buf, PAGE_SIZE - 1, "AWAKE:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.awake_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.awake_dur);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_ts,
+		laststats.awake_last_entry_us);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "ASLEEP:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.pm_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.pm_dur);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_ts,
+		laststats.pm_last_entry_us);
+
+	update_pwrstats_cum(&accumstats.l0_cnt, &laststats.l0_cnt, &pwrstats->l0_cnt,
+		TRUE);
+	update_pwrstats_cum(&accumstats.l0_dur_us, &laststats.l0_dur_us,
+		&pwrstats->l0_dur_us, TRUE);
+	update_pwrstats_cum(&accumstats.l1_cnt, &laststats.l1_cnt, &pwrstats->l1_cnt,
+		TRUE);
+	update_pwrstats_cum(&accumstats.l1_dur_us, &laststats.l1_dur_us,
+		&pwrstats->l1_dur_us, TRUE);
+	update_pwrstats_cum(&accumstats.l1_1_cnt, &laststats.l1_1_cnt,
+		&pwrstats->l1_1_cnt, TRUE);
+	update_pwrstats_cum(&accumstats.l1_1_dur_us, &laststats.l1_1_dur_us,
+		&pwrstats->l1_1_dur_us, TRUE);
+	update_pwrstats_cum(&accumstats.l1_2_cnt, &laststats.l1_2_cnt,
+		&pwrstats->l1_2_cnt, TRUE);
+	update_pwrstats_cum(&accumstats.l1_2_dur_us, &laststats.l1_2_dur_us,
+		&pwrstats->l1_2_dur_us, TRUE);
+	update_pwrstats_cum(&accumstats.l2_cnt, &laststats.l2_cnt, &pwrstats->l2_cnt,
+		TRUE);
+	update_pwrstats_cum(&accumstats.l2_dur_us, &laststats.l2_dur_us,
+		&pwrstats->l2_dur_us, TRUE);
+
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "L0:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.l0_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.l0_dur_us);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "L1:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.l1_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.l1_dur_us);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "L1_1:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.l1_1_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.l1_1_dur_us);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "L1_2:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.l1_2_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.l1_2_dur_us);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "L2:\n");
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_cnt,
+		accumstats.l2_cnt);
+	ret += scnprintf(buf + ret, PAGE_SIZE - 1 - ret, "%s 0x%0llx\n", pwrstr_dur,
+		accumstats.l2_dur_us);
+
+done:
+	if (pwrstats) {
+		MFREE(g_dhd_pub->osh, pwrstats, buf_len);
+	}
+
+	return ret;
+}
+#endif
+
 /*
  * Generic Attribute Structure for DHD.
  * If we have to add a new sysfs entry under /sys/bcm-dhd/, we have
@@ -546,6 +707,11 @@ static struct dhd_attr dhd_attr_firmware_path =
 
 static struct dhd_attr dhd_attr_nvram_path =
 	__ATTR(nvram_path, 0660, show_nvram_path, store_nvram_path);
+
+#ifdef PWRSTATS_SYSFS
+static struct dhd_attr dhd_attr_pwrstats_path =
+	__ATTR(power_stats, 0660, show_pwrstats_path, NULL);
+#endif
 
 #define to_dhd(k) container_of(k, struct dhd_info, dhd_kobj)
 #define to_attr(a) container_of(a, struct dhd_attr, attr)
@@ -1486,6 +1652,9 @@ static struct attribute *default_file_attrs[] = {
 #if defined(WLAN_ACCEL_BOOT)
 	&dhd_attr_wl_accel_force_reg_on.attr,
 #endif /* WLAN_ACCEL_BOOT */
+#ifdef PWRSTATS_SYSFS
+	&dhd_attr_pwrstats_path.attr,
+#endif
 	NULL
 };
 

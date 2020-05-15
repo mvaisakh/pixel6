@@ -130,6 +130,9 @@ DHDCFLAGS += -DDHD_NOTIFY_MAC_CHANGED
 # Enable wakelock debug function
 DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 
+# Support of power stats in sysfs
+DHDCFLAGS += -DPWRSTATS_SYSFS
+
 # Enable SBN feature
 DHDCFLAGS += -DDHD_SBN
 
