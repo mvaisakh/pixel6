@@ -2556,9 +2556,10 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 
 	if (enable == 0) {
 		logbuffer_log(charger->rtx_log, "disable rtx\n");
-		if (charger->rtx_err != RTX_TX_CONFLICT)
+		if (charger->is_rtx_mode) {
 			ret = charger->chip_tx_mode_en(charger, false);
-
+			charger->is_rtx_mode = false;
+		}
 		ret = p9382_ben_cfg(charger, RTX_BEN_DISABLED);
 		if (ret < 0)
 			goto exit;
@@ -2610,6 +2611,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 
 		charger->rtx_csp = 0;
 		charger->rtx_err = RTX_NO_ERROR;
+		charger->is_rtx_mode = false;
 
 		ret = p9382_ben_cfg(charger, RTX_BEN_ON);
 		if (ret < 0)
@@ -2978,6 +2980,8 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 				ret);
 			return;
 		}
+		if (mode_reg & P9382A_MODE_TXMODE)
+			charger->is_rtx_mode = true;
 		dev_info(&charger->client->dev,
 			 "P9221_SYSTEM_MODE_REG reg: %02x\n",
 			 mode_reg);
@@ -2993,14 +2997,18 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		return;
 	}
 
-	if (irq_src & P9382_STAT_TXCONFLICT) {
-		charger->rtx_err = RTX_TX_CONFLICT;
-		dev_info(&charger->client->dev,
-			 "TX conflict, disable RTx. STATUS_REG=%04x",
-			 status_reg);
-		logbuffer_log(charger->rtx_log,
-			      "TX conflict, disable RTx. STATUS_REG=%04x",
-			      status_reg);
+	if (irq_src & (P9382_STAT_HARD_OCP | P9382_STAT_TXCONFLICT)) {
+		if (irq_src & P9382_STAT_HARD_OCP)
+			charger->rtx_err = RTX_HARD_OCP;
+		else
+			charger->rtx_err = RTX_TX_CONFLICT;
+
+		dev_info(&charger->client->dev, "rtx_err=%d, STATUS_REG=%04x",
+			 charger->rtx_err, status_reg);
+		logbuffer_log(charger->rtx_log, "rtx_err=%d, STATUS_REG=%04x",
+			      charger->rtx_err, status_reg);
+
+		charger->is_rtx_mode = false;
 		p9382_set_rtx(charger, false);
 	}
 

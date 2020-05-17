@@ -271,6 +271,7 @@
 /*
  * Interrupt/Status flags for P9382
  */
+#define P9382_STAT_HARD_OCP			BIT(1)
 #define P9382_STAT_TXCONFLICT			BIT(3)
 #define P9382_STAT_CSP				BIT(4)
 #define P9382_STAT_TXUVLO			BIT(6)
@@ -451,6 +452,7 @@ struct p9221_charger_data {
 	u32				rtx_csp;
 	int				rtx_err;
 	bool				chg_on_rtx;
+	bool				is_rtx_mode;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -513,6 +515,7 @@ enum p9382_rtx_err {
 	RTX_BATT_LOW,
 	RTX_OVER_TEMP,
 	RTX_TX_CONFLICT,
+	RTX_HARD_OCP,
 };
 
 #define P9221_MA_TO_UA(ma)((ma) * 1000)
