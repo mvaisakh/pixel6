@@ -383,32 +383,41 @@ static int check_transaction_param(struct lwis_client *client,
 	BUG_ON(!client);
 	BUG_ON(!transaction);
 
+	/* Initialize event counter return value  */
+	info->current_trigger_event_counter = -1LL;
+
+	/* Look for the trigger event state, if specified */
+	if (info->trigger_event_id != LWIS_EVENT_ID_NONE) {
+		event_state = lwis_device_event_state_find(
+			lwis_dev, info->trigger_event_id);
+		if (event_state == NULL) {
+			/* Event has not been encountered, setting event counter
+			 * to zero */
+			info->current_trigger_event_counter = 0;
+		} else {
+			/* Event found, return current counter to userspace */
+			info->current_trigger_event_counter =
+				event_state->event_counter;
+		}
+	}
+
 	/* Both trigger event ID and counter are defined */
 	if (info->trigger_event_id != LWIS_EVENT_ID_NONE &&
 	    info->trigger_event_counter !=
 		    LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
-		event_state = lwis_device_event_state_find(
-			lwis_dev, info->trigger_event_id);
 		/* Check if event has happened already */
-		if (event_state != NULL) {
-			info->current_trigger_event_counter =
-				event_state->event_counter;
-			if (info->trigger_event_counter ==
-			    event_state->event_counter) {
-				if (allow_counter_eq) {
-					info->trigger_event_id =
-						LWIS_EVENT_ID_NONE;
-					pr_warn_ratelimited(
-						"Event counter == Trigger counter already, turning this into an immediate transaction\n");
-				} else {
-					return -ENOENT;
-				}
-			} else if (info->trigger_event_counter <
-				   event_state->event_counter) {
+		if (info->trigger_event_counter ==
+		    info->current_trigger_event_counter) {
+			if (allow_counter_eq) {
+				info->trigger_event_id = LWIS_EVENT_ID_NONE;
+				pr_warn_ratelimited(
+					"Event counter == Trigger counter already, turning this into an immediate transaction\n");
+			} else {
 				return -ENOENT;
 			}
-		} else {
-			info->current_trigger_event_counter = 0;
+		} else if (info->trigger_event_counter <
+			   info->current_trigger_event_counter) {
+			return -ENOENT;
 		}
 	}
 
