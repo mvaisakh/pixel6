@@ -837,7 +837,7 @@ static int p9382_get_ptmc_id_str(char *buffer, int len,
 	int ret;
 	uint16_t ptmc_id;
 
-	if (!charger->ben_state || (charger->chip_id < P9382A_CHIP_ID))
+	if (!p9221_is_online(charger))
 		return -ENODEV;
 
 	pm_runtime_get_sync(charger->dev);
