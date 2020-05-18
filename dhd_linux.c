@@ -9377,7 +9377,7 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 		nv = VENDOR_PATH CONFIG_BCMDHD_NVRAM_PATH;
 #endif /* CONFIG_BCMDHD_NVRAM_PATH */
 #ifdef AUTO_CHIP_DETECTION
-		if (dhdp->bus && dhd_bus_chip_id(dhdp) == 0x4375) {
+		if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM4375_CHIP_ID) {
 			if (dhd_bus_chiprev_id(dhdp) == 1) {
 				fw = VENDOR_PATH CONFIG_BCMDHD_4375b0_FW_PATH;
 				nv = VENDOR_PATH
@@ -9387,11 +9387,14 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_4375b1_NVRAM_PATH;
 			}
-		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == 0x4387) {
+		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM4387_CHIP_ID) {
 				fw = VENDOR_PATH CONFIG_BCMDHD_4385_FW_PATH;
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_4385_NVRAM_PATH;
-		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == 0x4389) {
+		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM43752_CHIP_ID) {
+				nv = VENDOR_PATH
+					 CONFIG_BCMDHD_43752_NVRAM_PATH;
+		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM4389_CHIP_ID) {
 				fw = VENDOR_PATH CONFIG_BCMDHD_4389_FW_PATH;
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_4389_NVRAM_PATH;
@@ -21536,15 +21539,15 @@ dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 	char *filepath = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
 
 #ifdef AUTO_CHIP_DETECTION
-	if (dhd_bus_chip_id(dhdp) == 0x4375) {
+	if (dhd_bus_chip_id(dhdp) == BCM4375_CHIP_ID) {
 		if (dhd_bus_chiprev_id(dhdp) == 1) {
 			filepath = VENDOR_PATH CONFIG_BCMDHD_4375b0_CLM_PATH;
 		} else if (dhd_bus_chiprev_id(dhdp) == 5) {
 			filepath = VENDOR_PATH CONFIG_BCMDHD_4375b1_CLM_PATH;
 		}
-	} else if (dhd_bus_chip_id(dhdp) == 0x4387) {
+	} else if (dhd_bus_chip_id(dhdp) == BCM4387_CHIP_ID) {
 		filepath = VENDOR_PATH CONFIG_BCMDHD_4385_CLM_PATH;
-	} else if (dhd_bus_chip_id(dhdp) == 0x4389) {
+	} else if (dhd_bus_chip_id(dhdp) == BCM4389_CHIP_ID) {
 		filepath = VENDOR_PATH CONFIG_BCMDHD_4389_CLM_PATH;
 	}
 #endif /* AUTO_CHIP_DETECTION */

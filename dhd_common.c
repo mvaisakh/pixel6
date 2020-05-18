@@ -26,6 +26,7 @@
 #include <osl.h>
 
 #include <epivers.h>
+#include <bcmdevs.h>
 #include <bcmutils.h>
 #include <bcmstdlib_s.h>
 
@@ -6448,7 +6449,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	} else {
 		clm_blob_path = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
 #if defined(AUTO_CHIP_DETECTION)
-		if (dhd_bus_chip_id(dhd) == 0x4375) {
+		if (dhd_bus_chip_id(dhd) == BCM4375_CHIP_ID) {
 			if (dhd_bus_chiprev_id(dhd) == 1) {
 				clm_blob_path = VENDOR_PATH
 						CONFIG_BCMDHD_4375b0_CLM_PATH;
@@ -6456,10 +6457,10 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 				clm_blob_path = VENDOR_PATH
 						CONFIG_BCMDHD_4375b1_CLM_PATH;
 			}
-		} else if (dhd_bus_chip_id(dhd) == 0x4387) {
+		} else if (dhd_bus_chip_id(dhd) == BCM4387_CHIP_ID) {
 			clm_blob_path = VENDOR_PATH
 						CONFIG_BCMDHD_4385_CLM_PATH;
-		} else if (dhd_bus_chip_id(dhd) == 0x4389) {
+		} else if (dhd_bus_chip_id(dhd) == BCM4389_CHIP_ID) {
 			clm_blob_path = VENDOR_PATH
 						CONFIG_BCMDHD_4389_CLM_PATH;
 		}
