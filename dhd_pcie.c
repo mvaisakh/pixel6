@@ -8805,8 +8805,8 @@ void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		dhdp->bus->wake_counts.rx_icmpv6_ns);
 #endif /* DHD_WAKE_RX_STATUS */
 #ifdef DHD_WAKE_EVENT_STATUS
-	for (flowid = 0; flowid < WLC_E_LAST; flowid++)
-		if (dhdp->bus->wake_counts.rc_event[flowid] != 0)
+	for (flowid = 0; flowid < MaxWakeReasonStats; flowid++)
+		if (dhdp->bus->wake_counts.rc_event[flowid] != -1)
 			bcm_bprintf(strbuf, " %s = %u\n", bcmevent_get_name(flowid),
 				dhdp->bus->wake_counts.rc_event[flowid]);
 	bcm_bprintf(strbuf, "\n");

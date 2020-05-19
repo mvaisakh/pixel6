@@ -1310,6 +1310,8 @@ static int wl_cfgvendor_set_rssi_monitor(struct wiphy *wiphy,
 #endif /* RSSI_MONITOR_SUPPORT */
 
 #ifdef DHD_WAKE_STATUS
+extern int rc_event_idx;
+extern int tmp_rc_event[MaxWakeReasonStats];
 static int
 wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
         struct wireless_dev *wdev, const void *data, int len)
@@ -1319,6 +1321,8 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 	int ret, mem_needed;
 #if defined(DHD_DEBUG) && defined(DHD_WAKE_EVENT_STATUS)
 	int flowid;
+	int rc_event_used_cnt = 0;
+	int front = rc_event_idx - 1;
 #endif /* DHD_DEBUG && DHD_WAKE_EVENT_STATUS */
 	struct sk_buff *skb = NULL;
 	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(ndev);
@@ -1337,27 +1341,48 @@ wl_cfgvendor_get_wake_reason_stats(struct wiphy *wiphy,
 	}
 #ifdef DHD_WAKE_EVENT_STATUS
 	WL_ERR(("pwake_count_info->rcwake %d\n", pwake_count_info->rcwake));
+
+	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_TOTAL_DRIVER_FW, 0);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put total count of driver fw\n"));
+		goto exit;
+	}
+
 	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT, pwake_count_info->rcwake);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Total count of CMD event, ret=%d\n", ret));
 		goto exit;
 	}
-	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT_USED, WLC_E_LAST);
+
+	for (flowid = 0; flowid < MaxWakeReasonStats; flowid++) {
+		/* Reorder the rc_event, the latest event in the header index */
+		if (front < 0)
+			front = MaxWakeReasonStats -1;
+		if (tmp_rc_event[front] != -1) {
+			rc_event_used_cnt++;
+			pwake_count_info->rc_event[flowid] = tmp_rc_event[front];
+		}
+		front--;
+	}
+
+	ret = nla_put_u32(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT_USED, rc_event_used_cnt);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Max count of event used, ret=%d\n", ret));
 		goto exit;
 	}
-	ret = nla_put(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE, (WLC_E_LAST * sizeof(uint)),
+
+	ret = nla_put(skb, WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE, (MaxWakeReasonStats * sizeof(uint)),
 		pwake_count_info->rc_event);
 	if (unlikely(ret)) {
 		WL_ERR(("Failed to put Event wake data, ret=%d\n", ret));
 		goto exit;
 	}
+
 #ifdef DHD_DEBUG
-	for (flowid = 0; flowid < WLC_E_LAST; flowid++) {
-		if (pwake_count_info->rc_event[flowid] != 0) {
-			WL_ERR((" %s = %u\n", bcmevent_get_name(flowid),
-				pwake_count_info->rc_event[flowid]));
+	for (flowid = 0; flowid < MaxWakeReasonStats; flowid++) {
+		if (pwake_count_info->rc_event[flowid] != -1) {
+			WL_INFORM(("Event ID %u = %s\n", pwake_count_info->rc_event[flowid],
+					bcmevent_get_name(pwake_count_info->rc_event[flowid])));
 		}
 	}
 #endif /* DHD_DEBUG */

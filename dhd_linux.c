@@ -4525,6 +4525,8 @@ update_wake_pkt_info(struct sk_buff *skb)
 }
 #endif /* ENABLE_WAKEUP_PKT_DUMP */
 
+int rc_event_idx = 0;
+int tmp_rc_event[MaxWakeReasonStats] = {[0 ... MaxWakeReasonStats-1] = -1};
 /** Called when a frame is received by the dongle on interface 'ifidx' */
 void
 dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
@@ -4957,7 +4959,13 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 			if (unlikely(pkt_wake)) {
 #ifdef DHD_WAKE_EVENT_STATUS
 				if (event.event_type < WLC_E_LAST) {
-					wcp->rc_event[event.event_type]++;
+					if (rc_event_idx == MaxWakeReasonStats)
+						rc_event_idx = 0;
+					DHD_ERROR(("[pkt_wake] event id %u = %s\n",
+						event.event_type,
+						bcmevent_get_name(event.event_type)));
+					tmp_rc_event[rc_event_idx] = event.event_type;
+					rc_event_idx++;
 					wcp->rcwake++;
 					pkt_wake = 0;
 				}

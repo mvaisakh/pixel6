@@ -1483,6 +1483,7 @@ int dhd_wifi_platform_set_power(dhd_pub_t *pub, bool on);
 static INLINE int dhd_wifi_platform_set_power(dhd_pub_t *pub, bool on)  { return 0; }
 #endif /* __linux__ */
 
+#define MaxWakeReasonStats 32
 typedef struct {
 	uint rxwake;
 	uint rcwake;
@@ -1500,7 +1501,7 @@ typedef struct {
 	uint rx_ucast;
 #endif /* DHD_WAKE_RX_STATUS */
 #ifdef DHD_WAKE_EVENT_STATUS
-	uint rc_event[WLC_E_LAST];
+	uint rc_event[MaxWakeReasonStats];
 #endif /* DHD_WAKE_EVENT_STATUS */
 } wake_counts_t;
 
