@@ -265,31 +265,46 @@ int exynos_panel_get_modes(struct drm_panel *panel)
 	struct drm_connector *connector = panel->connector;
 	struct exynos_panel *ctx =
 		container_of(panel, struct exynos_panel, panel);
-	struct drm_display_mode *mode;
+	struct drm_display_mode *preferred_mode = NULL;
+	int i;
 
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 
-	mode = drm_mode_duplicate(panel->drm, ctx->desc->mode);
-	if (!mode) {
-		dev_err(ctx->dev, "failed to add mode %ux%ux@%u\n",
-			ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-			ctx->desc->mode->vrefresh);
-		return -ENOMEM;
+	for (i = 0; i < ctx->desc->num_modes; i++) {
+		struct drm_display_mode *mode;
+
+		mode = drm_mode_duplicate(panel->drm, &ctx->desc->modes[i]);
+		if (!mode) {
+			dev_err(ctx->dev, "failed to add mode %ux%ux@%u\n",
+				mode->hdisplay, mode->vdisplay, mode->vrefresh);
+			return -ENOMEM;
+		}
+
+		drm_mode_set_name(mode);
+
+		mode->clock = mode->vtotal * mode->htotal *
+			mode->vrefresh / 1000;
+		mode->type |= DRM_MODE_TYPE_DRIVER;
+		drm_mode_probed_add(connector, mode);
+
+		dev_dbg(ctx->dev, "added display mode: %s@%u\n", mode->name,
+			 mode->vrefresh);
+
+		if (!preferred_mode || (mode->type & DRM_MODE_TYPE_PREFERRED))
+			preferred_mode = mode;
 	}
 
-	mode->clock = mode->vtotal * mode->htotal * mode->vrefresh / 1000;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(connector, mode);
-
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
+	if (preferred_mode) {
+		dev_dbg(ctx->dev, "preferred display mode: %s@%u\n",
+			 preferred_mode->name, preferred_mode->vrefresh);
+		preferred_mode->type |= DRM_MODE_TYPE_PREFERRED;
+		connector->display_info.width_mm = preferred_mode->width_mm;
+		connector->display_info.height_mm = preferred_mode->height_mm;
+	}
 
 	dev_dbg(ctx->dev, "%s -\n", __func__);
 
-	return 1;
+	return i;
 }
 EXPORT_SYMBOL(exynos_panel_get_modes);
 
@@ -392,6 +407,12 @@ void exynos_drm_connector_print_state(struct drm_printer *p,
 	const struct exynos_panel_desc *desc = ctx->desc;
 
 	drm_printf(p, "\tenabled: %d\n", ctx->enabled);
+	if (ctx->current_mode) {
+		const struct drm_display_mode *m = ctx->current_mode;
+
+		drm_printf(p, " \tcurrent mode: %dx%d@%d\n", m->hdisplay,
+			   m->vdisplay, m->vrefresh);
+	}
 	drm_printf(p, "\text_info: %s\n", ctx->panel_extinfo);
 	drm_printf(p, "\tluminance: [%u, %u] avg: %u\n",
 		   desc->min_luminance, desc->max_luminance,
@@ -606,6 +627,12 @@ static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
 
 	list_for_each_entry(m, &ctx->connector.modes, head) {
 		if (drm_mode_equal(m, adjusted_mode)) {
+			/*
+			 * vrefresh is optional and not compared but our panels
+			 * define this instead of pixel clock, so store it
+			 */
+			adjusted_mode->vrefresh = m->vrefresh;
+
 			adjusted_mode->private = m->private;
 			adjusted_mode->private_flags = m->private_flags;
 
@@ -618,6 +645,38 @@ static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
 	return false;
 }
 
+static void exynos_panel_mode_set(struct drm_bridge *bridge,
+				  const struct drm_display_mode *mode,
+				  const struct drm_display_mode *adjusted_mode)
+{
+	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	const struct drm_display_mode *pmode;
+	const struct exynos_display_mode *mode_priv;
+	int i;
+
+	for (i = 0; i < ctx->desc->num_modes; i++) {
+		pmode = &ctx->desc->modes[i];
+
+		/* our panels don't have clocks defined, use vrefresh instead */
+		if (drm_mode_equal_no_clocks(pmode, adjusted_mode) &&
+		    (pmode->vrefresh == adjusted_mode->vrefresh) &&
+		    (pmode->private == adjusted_mode->private)) {
+			ctx->current_mode = pmode;
+			break;
+		}
+	}
+
+	if (WARN_ON(i == ctx->desc->num_modes))
+		return;
+
+	dev_dbg(ctx->dev, "changing display mode to %dx%d@%d\n",
+		pmode->hdisplay, pmode->vdisplay, pmode->vrefresh);
+
+	mode_priv = drm_mode_to_exynos(adjusted_mode);
+	dsi->mode_flags = mode_priv->mode_flags;
+}
+
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.attach = exynos_panel_bridge_attach,
 	.detach = exynos_panel_bridge_detach,
@@ -626,13 +685,13 @@ static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.disable = exynos_panel_disable,
 	.post_disable = exynos_panel_post_disable,
 	.mode_fixup = exynos_panel_mode_fixup,
+	.mode_set = exynos_panel_mode_set,
 };
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct exynos_panel *ctx;
-	const struct exynos_display_mode *mode_priv;
 	int ret = 0;
 	char name[32];
 
@@ -645,15 +704,9 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	mipi_dsi_set_drvdata(dsi, ctx);
 	ctx->dev = dev;
 	ctx->desc = of_device_get_match_data(dev);
-	mode_priv = drm_mode_to_exynos(ctx->desc->mode);
-	if (!mode_priv) {
-		dev_err(ctx->dev, "missing exynos display mode config\n");
-		return -EINVAL;
-	}
 
 	dsi->lanes = ctx->desc->data_lane_cnt;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = mode_priv->mode_flags;
 
 	exynos_panel_parse_dt(ctx);
 

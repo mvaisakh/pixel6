@@ -106,7 +106,8 @@ static const struct drm_panel_funcs emul_drm_funcs = {
 
 const struct exynos_panel_desc samsung_emul = {
 	.data_lane_cnt = 4,
-	.mode = &emul_mode,
+	.modes = &emul_mode,
+	.num_modes = 1,
 	.panel_func = &emul_drm_funcs,
 };
 

@@ -49,7 +49,8 @@ struct exynos_panel_desc {
 	u32 min_luminance;
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
-	const struct drm_display_mode *mode;
+	const struct drm_display_mode *modes;
+	size_t num_modes;
 	const struct drm_panel_funcs *panel_func;
 	const struct exynos_panel_funcs *exynos_panel_func;
 };
@@ -68,6 +69,7 @@ struct exynos_panel {
 	struct drm_connector connector;
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;
+	const struct drm_display_mode *current_mode;
 	struct backlight_device *bl;
 	bool enabled;
 	bool initialized;

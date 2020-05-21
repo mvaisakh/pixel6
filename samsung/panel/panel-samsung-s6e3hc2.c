@@ -222,7 +222,8 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.max_luminance = 5400000,
 	.max_avg_luminance = 1200000,
 	.min_luminance = 5,
-	.mode = &s6e3hc2_wqhd_mode,
+	.modes = &s6e3hc2_wqhd_mode,
+	.num_modes = 1,
 	.panel_func = &s6e3hc2_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
@@ -238,7 +239,8 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.max_luminance = 5400000,
 	.max_avg_luminance = 1200000,
 	.min_luminance = 5,
-	.mode = &s6e3hc2_fhd_mode,
+	.modes = &s6e3hc2_fhd_mode,
+	.num_modes = 1,
 	.panel_func = &s6e3hc2_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
