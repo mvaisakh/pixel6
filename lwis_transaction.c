@@ -191,6 +191,13 @@ event_push:
 						? info->emit_error_event_id
 						: info->emit_success_event_id,
 					(void *)resp, resp_size);
+	} else {
+		/* No pending events indicates it's cleanup io_entries. */
+		if (resp->error_code) {
+			pr_err("Device %s clean-up fails with error code %d, transaction %d, io_entries[%d], entry_type %d",
+			       lwis_dev->name, transaction->info.id, i,
+			       entry->type);
+		}
 	}
 	if (list_node) {
 		spin_lock_irqsave(&client->transaction_lock, flags);
