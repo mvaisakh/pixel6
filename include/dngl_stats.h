@@ -207,6 +207,9 @@ typedef struct {
 	uint32 on_time_pno_scan;
 	uint32 on_time_hs20;
 	uint32 num_channels;
+#ifdef CHAN_STATS_SUPPORT
+	wifi_channel_stat channels[];
+#endif
 } wifi_radio_stat_h;
 
 /* per rate statistics */

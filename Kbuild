@@ -133,6 +133,9 @@ DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 # Support of power stats in sysfs
 DHDCFLAGS += -DPWRSTATS_SYSFS
 
+# Support of channel stats in HAL V1.3
+DHDCFLAGS += -DCHAN_STATS_SUPPORT
+
 # Enable SBN feature
 DHDCFLAGS += -DDHD_SBN
 

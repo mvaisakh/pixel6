@@ -6748,7 +6748,13 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	int err = 0, i;
 	wifi_radio_stat *radio;
+#ifdef CHAN_STATS_SUPPORT
+	wifi_radio_stat_h *radio_h = NULL;
+	wifi_channel_stat *chan_stats = NULL;
+	uint msize = 0, buf_len;
+#else
 	wifi_radio_stat_h radio_h;
+#endif
 	const wl_cnt_wlc_t *wlc_cnt;
 	scb_val_t scbval;
 	char *output = NULL;
@@ -6793,6 +6799,38 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	}
 	radio = (wifi_radio_stat *)iovar_buf;
 
+#ifdef CHAN_STATS_SUPPORT
+	err = wldev_iovar_getint(bcmcfg_to_prmry_ndev(cfg), "cca_chan_cnt", &buf_len);
+	if (unlikely(err)) {
+		WL_ERR(("Could not get cca_chan_cnt %d\n", err));
+		goto exit;
+	}
+	msize = sizeof(wifi_radio_stat_h) + buf_len * sizeof(wifi_channel_stat);
+	radio_h = (void *)MALLOCZ(cfg->osh, msize);
+	bzero(radio_h, msize);
+	radio_h->on_time = radio->on_time;
+	radio_h->tx_time = radio->tx_time;
+	radio_h->rx_time = radio->rx_time;
+	radio_h->on_time_scan = radio->on_time_scan;
+	radio_h->on_time_nbd = radio->on_time_nbd;
+	radio_h->on_time_gscan = radio->on_time_gscan;
+	radio_h->on_time_roam_scan = radio->on_time_roam_scan;
+	radio_h->on_time_pno_scan = radio->on_time_pno_scan;
+	radio_h->on_time_hs20 = radio->on_time_hs20;
+	radio_h->num_channels = buf_len;
+
+	buf_len = sizeof(wifi_channel_stat) * radio_h->num_channels + (uint)strlen("cca_chan_stats") + 1;
+	chan_stats = (wifi_channel_stat *)MALLOCZ(cfg->osh, buf_len);
+	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cca_chan_stats", NULL, 0,
+		chan_stats, buf_len, NULL);
+	if (err != BCME_OK) {
+		WL_ERR(("error (%d) getting cca_chan_stats num_channels = %d\n", err, radio_h->num_channels));
+		goto exit;
+	}
+	memcpy(radio_h->channels, chan_stats, sizeof(wifi_channel_stat) * radio_h->num_channels);
+	memcpy(output, radio_h, msize);
+	output += msize;
+#else
 	bzero(&radio_h, sizeof(wifi_radio_stat_h));
 	radio_h.on_time = radio->on_time;
 	radio_h.tx_time = radio->tx_time;
@@ -6809,6 +6847,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 
 	output += sizeof(wifi_radio_stat_h);
 	output += (NUM_CHAN * sizeof(wifi_channel_stat));
+#endif
 
 	COMPAT_BZERO_IFACE(wifi_iface_stat, iface);
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].ac, WIFI_AC_VO);
@@ -6923,8 +6962,12 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 		output += sizeof(p_wifi_rate_stat_v1->retries_long);
 	}
 
+#ifdef CHAN_STATS_SUPPORT
+	total_len = msize;
+#else
 	total_len = sizeof(wifi_radio_stat_h) +
 		NUM_CHAN * sizeof(wifi_channel_stat);
+#endif
 
 	total_len = total_len - sizeof(wifi_peer_info) +
 		NUM_PEER * (sizeof(wifi_peer_info) - sizeof(wifi_rate_stat_v1) +
@@ -6947,6 +6990,14 @@ exit:
 	if (if_stats) {
 		MFREE(cfg->osh, if_stats, sizeof(wl_if_stats_t));
 	}
+#ifdef CHAN_STATS_SUPPORT
+	if (chan_stats) {
+		MFREE(cfg->osh, chan_stats, sizeof(wifi_channel_stat) * radio_h->num_channels);
+	}
+	if (radio_h) {
+		MFREE(cfg->osh, radio_h, msize);
+	}
+#endif /* CHAN_STATS_SUPPORT */
 	return err;
 }
 #endif /* LINKSTAT_SUPPORT */
