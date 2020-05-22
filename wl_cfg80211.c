@@ -1166,12 +1166,68 @@ static struct ieee80211_channel __wl_5ghz_a_channels[] = {
 #endif /* WL_6G_BAND */
 };
 
+static struct ieee80211_sband_iftype_data __wl_he_cap = {
+    .types_mask = BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_AP),
+    .he_cap = {
+        .has_he = true,
+        .he_cap_elem = {
+            .mac_cap_info[0] =
+                IEEE80211_HE_MAC_CAP0_HTC_HE |
+                IEEE80211_HE_MAC_CAP0_TWT_REQ,
+            .mac_cap_info[1] =
+                IEEE80211_HE_MAC_CAP1_TF_MAC_PAD_DUR_16US,
+            .mac_cap_info[2] =
+                IEEE80211_HE_MAC_CAP2_BSR |
+                IEEE80211_HE_MAC_CAP2_BCAST_TWT,
+
+            /* The kernel is too old. So remove this for
+               backward compatibility and memory safety
+            .mac_cap_info[5] = IEEE80211_HE_MAC_CAP5_HT_VHT_TRIG_FRAME_RX,
+           */
+
+            .phy_cap_info[0] =
+                IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
+                IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+                IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_RU_MAPPING_IN_2G |
+                IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_RU_MAPPING_IN_5G,
+            .phy_cap_info[1] =
+                IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
+                IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD,
+            .phy_cap_info[4] =
+                IEEE80211_HE_PHY_CAP4_SU_BEAMFORMEE |
+                IEEE80211_HE_PHY_CAP4_BEAMFORMEE_MAX_STS_UNDER_80MHZ_4,
+            .phy_cap_info[6] =
+                IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_42_SU |
+                IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_75_MU |
+                IEEE80211_HE_PHY_CAP6_TRIG_SU_BEAMFORMER_FB |
+                IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMER_FB |
+                IEEE80211_HE_PHY_CAP6_TRIG_CQI_FB |
+                IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT,
+            .phy_cap_info[7] =
+                IEEE80211_HE_PHY_CAP7_MAX_NC_1,
+            .phy_cap_info[8] =
+                IEEE80211_HE_PHY_CAP8_20MHZ_IN_160MHZ_HE_PPDU |
+                IEEE80211_HE_PHY_CAP8_80MHZ_IN_160MHZ_HE_PPDU,
+        },
+        .he_mcs_nss_supp = {
+            .rx_mcs_80 = cpu_to_le16(0xfffa),
+            .tx_mcs_80 = cpu_to_le16(0xfffa),
+            .rx_mcs_160 = cpu_to_le16((0xffff)),
+            .tx_mcs_160 = cpu_to_le16((0xffff)),
+            .rx_mcs_80p80 = cpu_to_le16(0xffff),
+            .tx_mcs_80p80 = cpu_to_le16(0xffff),
+        }
+    }
+};
+
 static struct ieee80211_supported_band __wl_band_2ghz = {
 	.band = IEEE80211_BAND_2GHZ,
 	.channels = __wl_2ghz_channels,
 	.n_channels = ARRAY_SIZE(__wl_2ghz_channels),
 	.bitrates = wl_g_rates,
-	.n_bitrates = wl_g_rates_size
+	.n_bitrates = wl_g_rates_size,
+	.iftype_data = &__wl_he_cap,
+	.n_iftype_data = 1
 };
 
 static struct ieee80211_supported_band __wl_band_5ghz_a = {
@@ -1179,7 +1235,9 @@ static struct ieee80211_supported_band __wl_band_5ghz_a = {
 	.channels = __wl_5ghz_a_channels,
 	.n_channels = ARRAY_SIZE(__wl_5ghz_a_channels),
 	.bitrates = wl_a_rates,
-	.n_bitrates = wl_a_rates_size
+	.n_bitrates = wl_a_rates_size,
+	.iftype_data = &__wl_he_cap,
+	.n_iftype_data = 1
 };
 
 static const u32 __wl_cipher_suites[] = {
