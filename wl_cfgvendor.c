@@ -7484,12 +7484,19 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 	gfp_t kflags;
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
+	struct bcm_cfg80211 *cfg;
 	if (!ndev) {
 		WL_ERR(("ndev is NULL\n"));
 		return;
 	}
 	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 	wiphy = ndev->ieee80211_ptr->wiphy;
+	cfg = wiphy_priv(wiphy);
+
+	/* If wifi hal is not start, don't send event to wifi hal */
+	if (!cfg->hal_started)
+		return;
+
 	/* Alloc the SKB for vendor_event */
 #if (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)

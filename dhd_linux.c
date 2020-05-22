@@ -7122,6 +7122,10 @@ dhd_stop(struct net_device *net)
 		}
 	}
 #endif /* SHOW_LOGTRACE */
+#ifdef DEBUGABILITY
+	/* Stop all ring buffer */
+	dhd_os_reset_logging(&dhd->pub);
+#endif
 #ifdef APF
 	dhd_dev_apf_delete_filter(net);
 #endif /* APF */

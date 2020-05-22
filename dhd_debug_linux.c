@@ -126,15 +126,12 @@ dbg_ring_poll_worker(struct work_struct *work)
 	} else if (ring->wp < ring->rp) {
 		buflen = ring->ring_size - ring->rp + ring->wp;
 	} else {
-		dhd_os_spin_unlock(ring->lock, flags);
 		goto exit;
 	}
 
 	if (buflen > ring->ring_size) {
-		dhd_os_spin_unlock(ring->lock, flags);
 		goto exit;
 	}
-	dhd_os_spin_unlock(ring->lock, flags);
 
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
@@ -150,7 +147,6 @@ dbg_ring_poll_worker(struct work_struct *work)
 	}
 
 	hdr = (dhd_dbg_ring_entry_t *)buf;
-	flags = dhd_os_spin_lock(ring->lock);
 
 	while (rlen > 0) {
 		ring_status.read_bytes += ENTRY_LENGTH(hdr);
@@ -161,12 +157,9 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
-	dhd_os_spin_unlock(ring->lock, flags);
-
 	MFREE(dhdp->osh, buf, buflen);
 
 exit:
-	flags = dhd_os_spin_lock(ring->lock);
 	if (sched) {
 		/* retrigger the work at same interval */
 		if ((ring_status.written_bytes == ring_status.read_bytes) &&
@@ -211,7 +204,7 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 	if (!VALID_RING(ring_id))
 		return BCME_UNSUPPORTED;
 
-	DHD_DBGIF(("%s , log_level : %d, time_intval : %d, threshod %d Bytes\n",
+	DHD_INFO(("%s , log_level : %d, time_intval : %d, threshod %d Bytes\n",
 		__FUNCTION__, log_level, time_intval, threshold));
 
 	/* change the configuration */
@@ -251,7 +244,7 @@ dhd_os_reset_logging(dhd_pub_t *dhdp)
 
 	/* Stop all rings */
 	for (ring_id = DEBUG_RING_ID_INVALID + 1; ring_id < DEBUG_RING_ID_MAX; ring_id++) {
-		DHD_DBGIF(("%s: Stop ring buffer %d\n", __FUNCTION__, ring_id));
+		DHD_INFO(("%s: Stop ring buffer %d\n", __FUNCTION__, ring_id));
 
 		ring_info = &os_priv[ring_id];
 		/* cancel any pending work */
