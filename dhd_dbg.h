@@ -77,9 +77,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (dbgring_msg_level & DHD_ERROR_VAL) {    \
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
@@ -118,9 +115,6 @@ do {	\
 		}	\
 	}	\
 	if (dbgring_msg_level & DHD_ERROR_VAL) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
@@ -133,9 +127,6 @@ do {	\
 		}	\
 	}	\
 	if (dbgring_msg_level & DHD_IOVAR_MEM_VAL) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;    \
 	}	\
 } while (0)
@@ -147,9 +138,6 @@ do {	\
 	}	\
 	if (dhd_msg_level & DHD_ERROR_VAL) {	\
 		if (dbgring_msg_level & DHD_ERROR_VAL) {	\
-			DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-					dhd_dbg_get_system_timestamp(),	\
-					dhd_log_dump_get_timestamp(),__func__);	\
 			DHD_LOG_DUMP_WRITE args;	\
 		}	\
 	}	\
@@ -162,9 +150,6 @@ do {	\
 		PRINTCFG args;	\
 	}   \
 	if (dbgring_msg_level & DHD_EVENT_VAL) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -237,9 +222,6 @@ do {	\
 #define FW_VERBOSE(args)	\
 do {	\
 	if (dbgring_msg_level & DHD_FWLOG_VAL) {	\
-		DHD_DBG_RING_WRITE_EX ("[%s][%s] ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp());	\
 		DHD_DBG_RING_WRITE_EX args;	\
 	}	\
 } while (0)
@@ -261,9 +243,6 @@ do {	\
 #define FW_VERBOSE(args) \
 do {	\
 	if (dbgring_msg_level & DHD_FWLOG_VAL) {	\
-		DHD_DBG_RING_WRITE_EX ("[%s][%s] ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp());	\
 		DHD_DBG_RING_WRITE_EX args;	\
 	}	\
 } while (0)

@@ -201,9 +201,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_ERR) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-			dhd_dbg_get_system_timestamp(),	\
-			dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -215,9 +212,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_ERR) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -229,9 +223,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_ERR) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -246,9 +237,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_DBG) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -260,9 +248,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_INFO) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -274,9 +259,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_ERR) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -288,9 +270,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_DBG) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -365,9 +344,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_INFO) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -383,9 +359,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_SCAN) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(), __func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -400,9 +373,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_TRACE) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -418,9 +388,6 @@ do {	\
 		PRINTCFG args;	\
 	} 	\
 	if (wl_dbgring_level & WL_DBG_ERR) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)
@@ -436,9 +403,6 @@ do {	\
 		PRINTCFG args;	\
 	}	\
 	if (wl_dbgring_level & WL_DBG_DBG) {	\
-		DHD_DBG_RING_WRITE ("[%s][%s] %s: ",	\
-				dhd_dbg_get_system_timestamp(),	\
-				dhd_log_dump_get_timestamp(),__func__);	\
 		DHD_DBG_RING_WRITE args;	\
 	}	\
 } while (0)

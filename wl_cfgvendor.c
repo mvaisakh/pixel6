@@ -7500,10 +7500,10 @@ static void wl_cfgvendor_dbg_ring_send_evt(void *ctx,
 	/* Alloc the SKB for vendor_event */
 #if (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
-	skb = cfg80211_vendor_event_alloc(wiphy, NULL, len + CFG80211_VENDOR_EVT_SKB_SZ,
+	skb = cfg80211_vendor_event_alloc(wiphy, NULL, len + 100,
 			GOOGLE_DEBUG_RING_EVENT, kflags);
 #else
-	skb = cfg80211_vendor_event_alloc(wiphy, len + CFG80211_VENDOR_EVT_SKB_SZ,
+	skb = cfg80211_vendor_event_alloc(wiphy, len + 100,
 			GOOGLE_DEBUG_RING_EVENT, kflags);
 #endif /* (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || */
 		/* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0) */

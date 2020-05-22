@@ -21355,8 +21355,9 @@ dhd_dbg_ring_write(int type, char *binary_data,
 		memset(tmp_buf, 0, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE);
 		if (type == DBG_RING_TYPE_DRIVER_LOG) {
 			if (DBG_RING_ACTIVE(dhdp, DRIVER_LOG_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "%s",
-						buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE,
+					"[%s][%s] %s", dhd_dbg_get_system_timestamp(),
+						dhd_log_dump_get_timestamp(), buf);
 				dhd_os_push_push_ring_data(dhdp , DRIVER_LOG_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;
@@ -21364,8 +21365,9 @@ dhd_dbg_ring_write(int type, char *binary_data,
 		}
 		if (type == DBG_RING_TYPE_FW_VERBOSE){
 			if (DBG_RING_ACTIVE(dhdp, FW_VERBOSE_RING_ID)) {
-				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE, "%s",
-						buf);
+				snprintf(tmp_buf, DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE,
+					"[%s][%s] %s", dhd_dbg_get_system_timestamp(),
+						dhd_log_dump_get_timestamp(), buf);
 				dhd_os_push_push_ring_data(dhdp , FW_VERBOSE_RING_ID,
 						tmp_buf, strlen(tmp_buf));
 				return;
