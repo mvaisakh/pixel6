@@ -88,11 +88,31 @@ static int s6e3hc2_prepare(struct drm_panel *panel)
 	return 0;
 }
 
+static void s6e3hc2_set_mode(struct exynos_panel *ctx,
+			     const struct drm_display_mode *mode)
+{
+	u8 val;
+
+	val = 0x20;
+	if (mode->vrefresh == 90)
+		val |= 0x10;
+
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, val); /* enable brightness control */
+
+	/* TODO: need to perform gamma updates */
+}
+
 static int s6e3hc2_enable(struct drm_panel *panel)
 {
 	struct exynos_panel *ctx;
+	const struct drm_display_mode *mode;
 
 	ctx = container_of(panel, struct exynos_panel, panel);
+	mode = ctx->current_mode;
+	if (!mode) {
+		pr_err("no current mode set\n");
+		return -EINVAL;
+	}
 
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 
@@ -123,7 +143,8 @@ static int s6e3hc2_enable(struct drm_panel *panel)
 			0xF2, 0x03, 0x00, 0xFF, 0x02, 0x0A, 0x0A, 0x0A, 0x0A,
 			0x0F, 0x23);
 
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, 0x20); /* enable brightness control */
+	s6e3hc2_set_mode(ctx, mode);
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x51, 0x01, 0x80); /* brightness level */
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
@@ -154,21 +175,39 @@ static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
 	},
 };
 
-static const struct drm_display_mode s6e3hc2_wqhd_mode = {
-	.hdisplay = 1440,
-	.hsync_start = 1440 + 2,
-	.hsync_end = 1440 + 2 + 2,
-	.htotal = 1440 + 2 + 2 + 2,
-	.vdisplay = 3040,
-	.vsync_start = 3040 + 8,
-	.vsync_end = 3040 + 8 + 1,
-	.vtotal = 3040 + 8 + 1 + 15,
-	.vrefresh = 60,
-	.flags = 0,
-	.width_mm = 69,
-	.height_mm = 142,
-	.private = (int *) &s6e3hc2_wqhd_mode_private,
-	.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+static const struct drm_display_mode s6e3hc2_wqhd_modes[] = {
+	{ /* 1440x3040 @ 60Hz */
+		.hdisplay = 1440,
+		.hsync_start = 1440 + 2,
+		.hsync_end = 1440 + 2 + 2,
+		.htotal = 1440 + 2 + 2 + 2,
+		.vdisplay = 3040,
+		.vsync_start = 3040 + 8,
+		.vsync_end = 3040 + 8 + 1,
+		.vtotal = 3040 + 8 + 1 + 15,
+		.vrefresh = 60,
+		.flags = 0,
+		.width_mm = 69,
+		.height_mm = 142,
+		.private = (int *)&s6e3hc2_wqhd_mode_private,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
+	{ /* 1440x3040 @ 90Hz */
+		.hdisplay = 1440,
+		.hsync_start = 1440 + 2,
+		.hsync_end = 1440 + 2 + 2,
+		.htotal = 1440 + 2 + 2 + 2,
+		.vdisplay = 3040,
+		.vsync_start = 3040 + 8,
+		.vsync_end = 3040 + 8 + 1,
+		.vtotal = 3040 + 8 + 1 + 15,
+		.vrefresh = 90,
+		.flags = 0,
+		.width_mm = 69,
+		.height_mm = 142,
+		.private = (int *)&s6e3hc2_wqhd_mode_private,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
 };
 
 static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
@@ -182,21 +221,39 @@ static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
 	},
 };
 
-static const struct drm_display_mode s6e3hc2_fhd_mode = {
-	.hdisplay = 1080,
-	.hsync_start = 1080 + 32, // add hfp
-	.hsync_end = 1080 + 32 + 12, // add hsa
-	.htotal = 1080 + 32 + 12 + 16, // add hbp
-	.vdisplay = 2340,
-	.vsync_start = 2340 + 12, // add vfp
-	.vsync_end = 2340 + 12 + 4, // add vsa
-	.vtotal = 2340 + 12 + 4 + 16, // add vbp
-	.vrefresh = 60,
-	.flags = 0,
-	.width_mm = 63,
-	.height_mm = 137,
-	.private = (int *) &s6e3hc2_fhd_mode_private,
-	.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
+	{ /* 1080x2340 @ 60Hz */
+		.hdisplay = 1080,
+		.hsync_start = 1080 + 32, // add hfp
+		.hsync_end = 1080 + 32 + 12, // add hsa
+		.htotal = 1080 + 32 + 12 + 16, // add hbp
+		.vdisplay = 2340,
+		.vsync_start = 2340 + 12, // add vfp
+		.vsync_end = 2340 + 12 + 4, // add vsa
+		.vtotal = 2340 + 12 + 4 + 16, // add vbp
+		.vrefresh = 60,
+		.flags = 0,
+		.width_mm = 63,
+		.height_mm = 137,
+		.private = (int *)&s6e3hc2_fhd_mode_private,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
+	{ /* 1080x2340 @ 90Hz */
+		.hdisplay = 1080,
+		.hsync_start = 1080 + 32, // add hfp
+		.hsync_end = 1080 + 32 + 12, // add hsa
+		.htotal = 1080 + 32 + 12 + 16, // add hbp
+		.vdisplay = 2340,
+		.vsync_start = 2340 + 12, // add vfp
+		.vsync_end = 2340 + 12 + 4, // add vsa
+		.vtotal = 2340 + 12 + 4 + 16, // add vbp
+		.vrefresh = 90,
+		.flags = 0,
+		.width_mm = 63,
+		.height_mm = 137,
+		.private = (int *)&s6e3hc2_fhd_mode_private,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
 };
 
 static const struct drm_panel_funcs s6e3hc2_drm_funcs = {
@@ -222,8 +279,8 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.max_luminance = 5400000,
 	.max_avg_luminance = 1200000,
 	.min_luminance = 5,
-	.modes = &s6e3hc2_wqhd_mode,
-	.num_modes = 1,
+	.modes = s6e3hc2_wqhd_modes,
+	.num_modes = ARRAY_SIZE(s6e3hc2_wqhd_modes),
 	.panel_func = &s6e3hc2_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
@@ -239,8 +296,8 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.max_luminance = 5400000,
 	.max_avg_luminance = 1200000,
 	.min_luminance = 5,
-	.modes = &s6e3hc2_fhd_mode,
-	.num_modes = 1,
+	.modes = s6e3hc2_fhd_modes,
+	.num_modes = ARRAY_SIZE(s6e3hc2_fhd_modes),
 	.panel_func = &s6e3hc2_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
