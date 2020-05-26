@@ -376,6 +376,9 @@ typedef struct dhd_info {
 	/* indicates mem_dump was scheduled as work queue or called directly */
 	bool scheduled_memdump;
 	struct work_struct dhd_hang_process_work;
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	struct work_struct dhd_alert_process_work;
+#endif
 } dhd_info_t;
 
 #ifdef WL_MONITOR

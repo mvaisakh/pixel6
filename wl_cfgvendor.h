@@ -434,6 +434,7 @@ enum debug_attributes {
 //	DEBUG_ATTRIBUTE_DUMP_FILENAME,
 	DEBUG_ATTRIBUTE_FW_DUMP_LEN,
 	DEBUG_ATTRIBUTE_FW_DUMP_DATA,
+	DEBUG_ATTRIBUTE_FW_ERR_CODE,
 	DEBUG_ATTRIBUTE_RING_DATA,
 	DEBUG_ATTRIBUTE_RING_STATUS,
 	DEBUG_ATTRIBUTE_RING_NUM,
@@ -825,4 +826,8 @@ int wl_cfgvendor_connect_params_handler(struct wiphy *wiphy, struct wireless_dev
 	const void  *data, int len);
 int wl_cfgvendor_start_ap_params_handler(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const void  *data, int len);
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+void wl_cfgvendor_send_alert_event(struct net_device *dev, uint32 reason);
+#endif
 #endif /* _wl_cfgvendor_h_ */

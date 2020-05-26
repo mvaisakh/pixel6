@@ -3769,6 +3769,10 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size)
 #ifdef WL_CFGVENDOR_SEND_HANG_EVENT
 		copy_hang_info_trap(bus->dhd);
 #endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+		bus->dhd->alert_reason = ALERT_DONGLE_TRAP;
+		dhd_os_send_alert_message(bus->dhd);
+#endif
 
 		dhd_schedule_reset(bus->dhd);
 

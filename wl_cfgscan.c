@@ -2431,6 +2431,9 @@ wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 #if defined(WL_CFG80211_P2P_DEV_IF)
 	struct net_device *ndev = wdev_to_wlc_ndev(request->wdev, cfg);
 #endif /* WL_CFG80211_P2P_DEV_IF */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
+#endif
 
 	WL_DBG(("Enter\n"));
 	RETURN_EIO_IF_NOT_UP(cfg);
@@ -2453,6 +2456,15 @@ wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	err = __wl_cfg80211_scan(wiphy, ndev, request, NULL);
 	if (unlikely(err)) {
 		WL_ERR(("scan error (%d)\n", err));
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+		if (err == -EBUSY) {
+			dhdp->alert_reason = ALERT_SCAN_BUSY;
+		}else {
+			dhdp->alert_reason = ALERT_SCAN_ERR;
+		}
+		dhd_os_send_alert_message(dhdp);
+#endif
 	}
 #ifdef WL_DRV_AVOID_SCANCACHE
 	/* Reset roam cache after successful scan request */
@@ -3793,6 +3805,11 @@ static void wl_scan_timeout(unsigned long data)
 	if (!wl_scan_timeout_dbg_enabled)
 		wl_scan_timeout_dbg_set();
 #endif /* CUSTOMER_HW4_DEBUG */
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	dhdp->alert_reason = ALERT_SCAN_ERR;
+	dhd_os_send_alert_message(dhdp);
+#endif
 }
 
 s32 wl_init_scan(struct bcm_cfg80211 *cfg)

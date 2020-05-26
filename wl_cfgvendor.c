@@ -9590,3 +9590,41 @@ wl_copy_hang_info_if_falure(struct net_device *dev, u16 reason, s32 ret)
 	return;
 }
 #endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+void
+wl_cfgvendor_send_alert_event(struct net_device *dev, uint32 reason)
+{
+	struct bcm_cfg80211 *cfg;
+	struct wiphy *wiphy;
+	struct sk_buff *msg;
+	gfp_t kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
+
+	WL_DBG(("wl_cfgvendor_send_fw_dump_event %d\n", reason));
+
+	cfg = wl_cfg80211_get_bcmcfg();
+	if (!cfg || !cfg->wdev) {
+		WL_ERR(("fw dump evt invalid arg\n"));
+		return;
+	}
+
+	wiphy = bcmcfg_to_wiphy(cfg);
+	if (!wiphy) {
+		WL_ERR(("wiphy is NULL\n"));
+		return;
+	}
+
+	/* Allocate the skb for vendor event */
+	msg = CFG80211_VENDOR_EVENT_ALLOC(wiphy, ndev_to_wdev(dev), sizeof(uint32),
+		GOOGLE_FW_DUMP_EVENT, kflags);
+	if (!msg) {
+		WL_ERR(("%s: fail to allocate skb for vendor event\n", __FUNCTION__));
+		return;
+	}
+
+	nla_put_u32(msg, DEBUG_ATTRIBUTE_FW_ERR_CODE, reason);
+
+	cfg80211_vendor_event(msg, kflags);
+	return;
+}
+#endif

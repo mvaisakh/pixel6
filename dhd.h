@@ -1475,6 +1475,9 @@ typedef struct dhd_pub {
 	uint64 txpath_mem;
 	uint64 rxpath_mem;
 #endif /* DHD_MEM_STATS */
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	uint32 alert_reason;		/* reason codes for alert event */
+#endif
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -3654,4 +3657,18 @@ extern void dhd_hdm_wlan_sysfs_deinit(struct work_struct *);
 #define SYSFS_DEINIT_MS 10
 #endif /* DHD_SUPPORT_HDM */
 
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+typedef enum wifi_alert_reason_codes {
+	ALERT_BCN_LOST,
+	ALERT_TX_STALL,
+	ALERT_RX_STALL,
+	ALERT_IOCTL_TIMEOUT,
+	ALERT_DONGLE_TRAP,
+	ALERT_SCAN_STALL,
+	ALERT_SCAN_ERR,
+	ALERT_SCAN_BUSY,
+	ALERT_FW_QUEUE_STALL
+} wifi_alert_reason_codes_t;
+int dhd_os_send_alert_message(dhd_pub_t *dhdp);
+#endif
 #endif /* _dhd_h_ */

@@ -739,6 +739,10 @@ bool dhd_protocol_matches_profile(uint8 *p, int plen, const
 
 static void dhd_set_bandlock(dhd_pub_t * dhd);
 
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+static void dhd_alert_process(struct work_struct *work_data);
+#endif
+
 static void
 dhd_tx_stop_queues(struct net_device *net)
 {
@@ -9318,6 +9322,10 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	}
 #endif /* defined(DHD_TX_PROFILE) */
 
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	INIT_WORK(&dhd->dhd_alert_process_work, dhd_alert_process);
+#endif
+
 	return &dhd->pub;
 
 fail:
@@ -13842,6 +13850,9 @@ void dhd_detach(dhd_pub_t *dhdp)
 	(void)dhd_tx_profile_detach(dhdp);
 #endif /* defined(DHD_TX_PROFILE) */
 
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+	cancel_work_sync(&dhd->dhd_alert_process_work);
+#endif
 } /* dhd_detach */
 
 void
@@ -24127,3 +24138,66 @@ dhd_net_del_flowrings_sta(dhd_pub_t *dhd, struct net_device *ndev)
 	dhd_flow_rings_delete(dhd, ifp->idx);
 }
 #endif /* PCIE_FULL_DONGLE */
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+static void dhd_alert_process(struct work_struct *work_data)
+{
+	struct net_device *dev;
+	struct dhd_info *dhd;
+	/* Ignore compiler warnings due to -Werror=cast-qual */
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	dhd = container_of(work_data, dhd_info_t, dhd_alert_process_work);
+	GCC_DIAGNOSTIC_POP();
+
+	dev = dhd->iflist[0]->net;
+
+	if (dev) {
+#if defined(WL_CFG80211)
+		wl_cfg80211_alert(dev);
+#endif
+	}
+}
+
+int dhd_os_send_alert_message(dhd_pub_t *dhdp)
+{
+	int ret = 0;
+	dhd_info_t *dhd_info = NULL;
+#ifdef WL_CFG80211
+	struct net_device *primary_ndev;
+	struct bcm_cfg80211 *cfg;
+#endif /* WL_CFG80211 */
+
+	DHD_ERROR(("%s enter\n", __FUNCTION__));
+
+	if (!dhdp) {
+		DHD_ERROR(("%s: dhdp is null\n", __FUNCTION__));
+		return -EINVAL;
+	}
+
+	dhd_info = (dhd_info_t *)dhdp->info;
+	BCM_REFERENCE(dhd_info);
+
+#ifdef WL_CFG80211
+	primary_ndev = dhd_linux_get_primary_netdev(dhdp);
+	if (!primary_ndev) {
+		DHD_ERROR(("%s: Cannot find primary netdev\n", __FUNCTION__));
+		return -ENODEV;
+	}
+	cfg = wl_get_cfg(primary_ndev);
+	if (!cfg) {
+		DHD_ERROR(("%s: Cannot find cfg\n", __FUNCTION__));
+		return -EINVAL;
+	}
+
+	/* Skip sending ALERT event to framework if driver is not ready */
+	if (!wl_get_drv_status(cfg, READY, primary_ndev)) {
+		DHD_ERROR(("%s: device is not ready\n", __FUNCTION__));
+		return -ENODEV;
+	}
+#endif /* WL_CFG80211 */
+
+	schedule_work(&dhdp->info->dhd_alert_process_work);
+
+	return ret;
+}
+#endif

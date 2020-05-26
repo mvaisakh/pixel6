@@ -2704,4 +2704,8 @@ static inline s32 wl_rssi_offset(s32 rssi)
 extern int wl_channel_to_frequency(u32 chan, chanspec_band_t band);
 extern int wl_cfg80211_config_rsnxe_ie(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		const u8 *parse, u32 len);
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+extern int wl_cfg80211_alert(struct net_device *dev);
+#endif
 #endif /* _wl_cfg80211_h_ */

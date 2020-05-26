@@ -3949,6 +3949,37 @@ dhd_parse_hck_common_sw_event(bcm_xtlv_t *wl_hc)
 
 #endif /* PARSE_DONGLE_HOST_EVENT */
 
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+static void
+dhd_send_error_alert_event(dhd_pub_t *dhdp, bcm_xtlv_t *wl_hc)
+{
+	uint16 id;
+
+	id = ltoh16(wl_hc->id);
+
+	switch (id) {
+		case WL_HC_DD_RX_STALL:
+				dhdp->alert_reason = ALERT_RX_STALL;
+				dhd_os_send_alert_message(dhdp);
+				break;
+		case WL_HC_DD_TX_STALL:
+				dhdp->alert_reason = ALERT_TX_STALL;
+				dhd_os_send_alert_message(dhdp);
+				break;
+		case WL_HC_DD_SCAN_STALL:
+				dhdp->alert_reason = ALERT_SCAN_STALL;
+				dhd_os_send_alert_message(dhdp);
+				break;
+		case WL_HC_DD_TXQ_STALL:
+				dhdp->alert_reason = ALERT_FW_QUEUE_STALL;
+				dhd_os_send_alert_message(dhdp);
+				break;
+		default:
+			break;
+	}
+}
+#endif
+
 void
 dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 	bcm_dngl_event_msg_t *dngl_event, size_t pktlen)
@@ -4063,6 +4094,10 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 #ifdef PARSE_DONGLE_HOST_EVENT
 						dhd_parse_hck_common_sw_event(wl_hc);
 #endif /* PARSE_DONGLE_HOST_EVENT */
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+						dhd_send_error_alert_event(dhdp, wl_hc);
+#endif
 						break;
 
 					}

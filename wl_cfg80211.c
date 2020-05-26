@@ -15340,6 +15340,11 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 						}
 					}
 #endif /* WL_ANALYTICS */
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+					dhdp->alert_reason = ALERT_BCN_LOST;
+					dhd_os_send_alert_message(dhdp);
+#endif
 				}
 #if defined(DHDTCPSYNC_FLOOD_BLK) && defined(CUSTOMER_TCPSYNC_FLOOD_DIS_RC)
 				ifp = dhd_get_ifp(dhdp, e->ifidx);
@@ -26308,3 +26313,24 @@ wl_cfg80211_handle_hang_event(struct net_device *ndev, uint16 hang_reason, uint3
 
 	return BCME_OK;
 }
+
+#ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
+int wl_cfg80211_alert(struct net_device *dev)
+{
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	dhd_pub_t *dhd;
+
+	if (!cfg) {
+		return BCME_ERROR;
+	}
+
+	RETURN_EIO_IF_NOT_UP(cfg);
+
+	dhd = (dhd_pub_t *)(cfg->pub);
+
+	WL_ERR(("In : error alert eventing, reason=0x%x\n", (uint32)(dhd->alert_reason)));
+	wl_cfgvendor_send_alert_event(dev, dhd->alert_reason);
+
+	return 0;
+}
+#endif
