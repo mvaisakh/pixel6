@@ -1305,6 +1305,26 @@ typedef enum
 	NR_Sub6_SAR_BACKOFF_ENABLE,
 	SAR_BACKOFF_DISABLE_ALL
 } sar_modes;
+typedef enum
+{
+	SAR_DISABLE = 0,
+	SAR_HEAD,
+	SAR_GRIP,
+	SAR_HEAD_GRIP,
+	SAR_NR_mW_ONLY,
+	SAR_NR_mW_HEAD,
+	SAR_NR_mW_GRIP,
+	SAR_NR_mW_HEAD_GRIP,
+	SAR_NR_SUB6_ONLY,
+	SAR_NR_SUB6_HEAD,
+	SAR_NR_SUB6_GRIP,
+	SAR_NR_SUB6_HEAD_GRIP,
+	SAR_NR_SUB6_mW_INVALID1,
+	SAR_NR_SUB6_mW_INVALID2,
+	SAR_NR_SUB6_mW_INVALID3,
+	SAR_NR_SUB6_mW_INVALID4,
+	SAR_BT = 16,
+} sar_advance_modes;
 
 /* Pre selected Power scenarios to be applied from BDF file */
 typedef enum
