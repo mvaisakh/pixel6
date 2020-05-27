@@ -368,7 +368,7 @@ struct dhd_rx_tx_work {
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
 #ifdef FILTER_IE
-#define FILTER_IE_PATH "/etc/wifi/filter_ie"
+#define FILTER_IE_PATH "/vendor/etc/wifi/filter_ie"
 #define FILTER_IE_BUFSZ 1024 /* ioc buffsize for FILTER_IE */
 #define FILE_BLOCK_READ_SIZE 256
 #define WL_FILTER_IE_IOV_HDR_SIZE OFFSETOF(wl_filter_ie_iov_v1_t, tlvs)
