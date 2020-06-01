@@ -17,6 +17,8 @@
 #include "lwis_device_slc.h"
 #include "lwis_platform_dma.h"
 
+#include "pt/pt.h"
+
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		      struct lwis_alloc_buffer_info *alloc_info,
 		      struct lwis_allocated_buffer *buffer)
@@ -55,6 +57,8 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 			dma_buf_put(dma_buf);
 			return alloc_info->dma_fd;
 		}
+
+		alloc_info->partition_id = PT_PTID_INVALID;
 
 		/*
 		 * Increment refcount of the fd to 2. Both userspace's close(fd)
@@ -250,7 +254,9 @@ int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
 
 	hash_for_each_safe (lwis_client->allocated_buffers, i, n, buffer,
 			    node) {
-		lwis_buffer_free(lwis_client, buffer);
+		if (lwis_client->lwis_dev->type != DEVICE_TYPE_SLC) {
+			lwis_buffer_free(lwis_client, buffer);
+		}
 		kfree(buffer);
 	}
 	return 0;

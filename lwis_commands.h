@@ -88,6 +88,7 @@ struct lwis_alloc_buffer_info {
 	uint32_t flags; // lwis_dma_alloc_flags
 	// IOCTL output for BUFFER_ALLOC
 	int dma_fd;
+	int partition_id;
 };
 
 struct lwis_buffer_info {
