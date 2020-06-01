@@ -9728,19 +9728,36 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 #ifdef WL_CLIENT_SAE
 		else if (ieee80211_is_auth(mgmt->frame_control)) {
 			int err = 0;
+			wl_assoc_mgr_cmd_t *cmd;
+			char *ambuf = NULL;
+			int param_len;
 
 			ack = true;
 			if ((dev == bcmcfg_to_prmry_ndev(cfg)) && cfg->p2p) {
 				bssidx = wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE);
 			}
 
-			WL_DBG(("call scb_auth IOVA, buf=%p, len=%lu\n", buf, len));
-			err = wldev_iovar_setbuf(dev, "scb_auth", buf, len,
-				cfg->ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-			if (err < 0) {
-				WL_ERR(("seting scb_auth failed code=%d\n", err));
+			param_len = sizeof(wl_assoc_mgr_cmd_t) + len;
+			ambuf = MALLOCZ(cfg->osh, param_len);
+			if (ambuf == NULL)
+			{
+				WL_ERR(("unable to allocate frame\n"));
+				return -ENOMEM;
+			}
+
+			cmd = (wl_assoc_mgr_cmd_t*)ambuf;
+			cmd->version = WL_ASSOC_MGR_CURRENT_VERSION;
+			cmd->length = len;
+			cmd->cmd = WL_ASSOC_MGR_CMD_SEND_AUTH;
+			memcpy(&cmd->params, buf, len);
+			err = wldev_iovar_setbuf(dev, "assoc_mgr_cmd", ambuf, param_len,
+				cfg->ioctl_buf, WLC_IOCTL_SMLEN, &cfg->ioctl_buf_sync);
+			if (unlikely(err)) {
+				WL_ERR(("%s: Failed to send auth(%d)\n", __func__, err));
 				ack = false;
 			}
+
+			MFREE(cfg->osh, ambuf, param_len);
 
 			cfg80211_mgmt_tx_status(cfgdev, *cookie, buf, len, ack, GFP_KERNEL);
 			goto exit;
@@ -13537,6 +13554,9 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
 	u32 datalen = be32_to_cpu(e->datalen);
 	wl_ext_auth_evt_t *evt_data = (wl_ext_auth_evt_t *)data;
+	wl_assoc_mgr_cmd_t cmd;
+	struct wireless_dev *wdev = ndev->ieee80211_ptr;
+	int err, retry = 3;
 
 	WL_DBG(("Enter \n"));
 
@@ -13552,10 +13572,32 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 	ext_auth_param.action = NL80211_EXTERNAL_AUTH_START;
 	ext_auth_param.key_mgmt_suite = ntoh32(WLAN_AKM_SUITE_SAE_SHA256);
 
-	WL_DBG(("call cfg80211_external_auth_request, BSSID:"MACDBG"\n",
+	WL_INFORM_MEM(("call cfg80211_external_auth_request, BSSID:"MACDBG"\n",
 		MAC2STRDBG(&evt_data->bssid)));
 
-	cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);
+	/* Wait for conn_owner_nlportid been assigned in nl80211_connect */
+	for (retry = 3; retry > 0; retry--) {
+		if (wdev->conn_owner_nlportid)
+			break;
+
+		wl_delay(10);
+	}
+
+	err = cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);
+	if (err) {
+		WL_ERR(("Send external auth request failed, ret %d\n", err));
+		return BCME_ERROR;
+	}
+
+	cmd.version = WL_ASSOC_MGR_CURRENT_VERSION;
+	cmd.length = sizeof(cmd);
+	cmd.cmd = WL_ASSOC_MGR_CMD_PAUSE_ON_EVT;
+	cmd.params = WL_ASSOC_MGR_PARAMS_PAUSE_EVENT_AUTH_RESP;
+	err = wldev_iovar_setbuf(ndev, "assoc_mgr_cmd", (void *)&cmd, sizeof(cmd), cfg->ioctl_buf,
+		WLC_IOCTL_SMLEN, &cfg->ioctl_buf_sync);
+	if (unlikely(err)) {
+		WL_ERR(("%s: Failed to pause assoc(%d)\n", __func__, err));
+	}
 
 	return BCME_OK;
 }
@@ -17389,7 +17431,7 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 	cfg->evt_handler[WLC_E_BSS_LOAD] = wl_cfg80211_bssload_report_event_handler;
 #endif /* WL_CHAN_UTIL */
 #ifdef WL_CLIENT_SAE
-	cfg->evt_handler[WLC_E_START_AUTH] = wl_notify_start_auth;
+	cfg->evt_handler[WLC_E_JOIN_START] = wl_notify_start_auth;
 #endif /* WL_CLIENT_SAE */
 }
 
@@ -17401,8 +17443,7 @@ wl_cfg80211_external_auth(struct wiphy *wiphy,
 {
 	int err = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	gfp_t kflags;
-	wl_ext_auth_evt_t *evt_data;
+	wl_assoc_mgr_cmd_t cmd;
 
 	WL_DBG(("Enter\n "));
 
@@ -17412,30 +17453,15 @@ wl_cfg80211_external_auth(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
-	evt_data = (wl_ext_auth_evt_t *)kzalloc(sizeof(wl_ext_auth_evt_t),
-			kflags);
-	if (!evt_data) {
-		WL_ERR(("Failed to allocate external auth evt_data\n"));
-		return -ENOMEM;
+	cmd.version = WL_ASSOC_MGR_CURRENT_VERSION;
+	cmd.length = sizeof(cmd);
+	cmd.cmd = WL_ASSOC_MGR_CMD_PAUSE_ON_EVT;
+	cmd.params = WL_ASSOC_MGR_PARAMS_EVENT_NONE;
+	err = wldev_iovar_setbuf(ndev, "assoc_mgr_cmd", (void *)&cmd, sizeof(cmd),
+		cfg->ioctl_buf, WLC_IOCTL_SMLEN, &cfg->ioctl_buf_sync);
+	if (unlikely(err)) {
+		WL_ERR(("%s: Failed to pause assoc(%d)\n", __func__, err));
 	}
-
-	memcpy(&evt_data->ssid.SSID, &ext_auth_param->ssid.ssid,
-			ext_auth_param->ssid.ssid_len);
-	evt_data->ssid.SSID_len = ext_auth_param->ssid.ssid_len;
-
-	memcpy(&evt_data->bssid, &ext_auth_param->bssid, ETHER_ADDR_LEN);
-	evt_data->status = ext_auth_param->action;
-
-	WL_DBG(("call scb_assoc, BSSID:" MACDBG "\n", MAC2STRDBG(&evt_data->bssid)));
-
-	err = wldev_iovar_setbuf(ndev, "scb_assoc", evt_data, sizeof(wl_ext_auth_evt_t),
-		cfg->ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
-	if (err < 0)
-		WL_ERR(("seting scb_assoc failed code=%d\n", err));
-
-	if (evt_data)
-		kfree(evt_data);
 
 	return err;
 }

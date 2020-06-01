@@ -17928,6 +17928,7 @@ enum wl_sae_auth_xtlv_id {
 #define WL_ASSOC_MGR_CMD_PAUSE_ON_EVT		0 /* have assoc pause on certain events */
 #define WL_ASSOC_MGR_CMD_ABORT_ASSOC		1
 #define WL_ASSOC_MGR_CMD_SET_SAE_FRAME		2
+#define WL_ASSOC_MGR_CMD_SEND_AUTH              3
 
 #define WL_ASSOC_MGR_PARAMS_EVENT_NONE			0 /* use this to resume as well as clear */
 #define WL_ASSOC_MGR_PARAMS_PAUSE_EVENT_AUTH_RESP	1
