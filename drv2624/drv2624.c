@@ -50,6 +50,8 @@
 static struct drv2624_data *drv2624_plat_data;
 
 static bool drv2624_is_volatile_reg(struct device *dev, unsigned int reg);
+static void drv2624_lp_trigger_enable(struct drv2624_data *drv2624);
+static void drv2624_lp_trigger_disable(struct drv2624_data *drv2624);
 
 static int drv2624_reg_read(struct drv2624_data *drv2624, unsigned char reg)
 {
@@ -1537,6 +1539,46 @@ static ssize_t lp_trigger_scale_store(struct device *dev,
 	return count;
 }
 
+static ssize_t lp_trigger_enable_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct drv2624_data *drv2624 = dev_get_drvdata(dev);
+	int ret;
+
+	ret = drv2624_reg_read(drv2624, DRV2624_REG_MODE);
+	if (ret < 0) {
+		return ret;
+	}
+	ret &= PINFUNC_MASK;
+	ret >>= PINFUNC_SHIFT;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", ret != PINFUNC_INT);
+}
+
+static ssize_t lp_trigger_enable_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct drv2624_data *drv2624 = dev_get_drvdata(dev);
+	bool enable;
+	int ret;
+
+	ret = kstrtobool(buf, &enable);
+	if (ret) {
+		dev_err(dev, "Invalid input for lp_trigger_enable: ret = %d\n",
+			ret);
+		return ret;
+	}
+
+	if (enable) {
+		drv2624_lp_trigger_enable(drv2624);
+	} else {
+		drv2624_lp_trigger_disable(drv2624);
+	}
+
+	return count;
+}
+
 static ssize_t dump_reg_show(struct device *dev,
 			     struct device_attribute *attr, char *buf)
 {
@@ -1592,6 +1634,7 @@ static DEVICE_ATTR(lra_wave_shape, 0660, lra_wave_shape_show,
 static DEVICE_ATTR(lp_trigger_effect, 0660, lp_trigger_effect_show,
 		   lp_trigger_effect_store);
 static DEVICE_ATTR_RW(lp_trigger_scale);
+static DEVICE_ATTR_RW(lp_trigger_enable);
 static DEVICE_ATTR(dump_reg, 0660, dump_reg_show, dump_reg_store);
 
 static struct attribute *drv2624_fs_attrs[] = {
@@ -1611,6 +1654,7 @@ static struct attribute *drv2624_fs_attrs[] = {
 	&dev_attr_lra_wave_shape.attr,
 	&dev_attr_lp_trigger_effect.attr,
 	&dev_attr_lp_trigger_scale.attr,
+	&dev_attr_lp_trigger_enable.attr,
 	&dev_attr_dump_reg.attr,
 	NULL,
 };
@@ -1789,16 +1833,14 @@ static const struct of_device_id drv2624_of_match[] = {
 MODULE_DEVICE_TABLE(of, drv2624_of_match);
 #endif
 
-void drv2624_trigger_mode(struct drv2624_data *drv2624, int mode)
+static void drv2624_trigger_mode(struct drv2624_data *drv2624, int mode)
 {
 	drv2624_set_bits(drv2624, DRV2624_REG_MODE, PINFUNC_MASK,
 			 (mode << PINFUNC_SHIFT));
 }
 
-#ifdef CONFIG_PM
-static int drv2624_suspend(struct device *dev)
+static void drv2624_lp_trigger_enable(struct drv2624_data *drv2624)
 {
-	struct drv2624_data *drv2624 = dev_get_drvdata(dev);
 	struct drv2624_waveform_sequencer sequencer;
 
 	memset(&sequencer, 0, sizeof(sequencer));
@@ -1821,6 +1863,19 @@ static int drv2624_suspend(struct device *dev)
 
 		drv2624_trigger_mode(drv2624, PINFUNC_TRIG_PULSE);
 	}
+}
+
+static void drv2624_lp_trigger_disable(struct drv2624_data *drv2624)
+{
+	drv2624_trigger_mode(drv2624, PINFUNC_INT);
+}
+
+#ifdef CONFIG_PM
+static int drv2624_suspend(struct device *dev)
+{
+	struct drv2624_data *drv2624 = dev_get_drvdata(dev);
+
+	drv2624_lp_trigger_enable(drv2624);
 
 	return 0;
 }
@@ -1829,7 +1884,7 @@ static int drv2624_resume(struct device *dev)
 {
 	struct drv2624_data *drv2624 = dev_get_drvdata(dev);
 
-	drv2624_trigger_mode(drv2624, PINFUNC_INT);
+	drv2624_lp_trigger_disable(drv2624);
 
 	return 0;
 }
