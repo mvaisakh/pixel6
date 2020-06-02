@@ -1538,26 +1538,6 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 
 	DHD_TRACE(("%s: ENTER\n", __FUNCTION__));
 
-	/* Configure CTO Prevention functionality */
-#if defined(BCMPCIE_CTO_PREVENTION)
-	chipid = dhd_get_chipid(bus);
-
-	if (BCM4349_CHIP(chipid) || BCM4350_CHIP(chipid) || BCM4345_CHIP(chipid)) {
-		DHD_ERROR(("Disable CTO\n"));
-		bus->cto_enable = FALSE;
-	} else {
-		DHD_ERROR(("Enable CTO\n"));
-		bus->cto_enable = TRUE;
-	}
-#else
-	DHD_ERROR(("Disable CTO\n"));
-	bus->cto_enable = FALSE;
-#endif /* BCMPCIE_CTO_PREVENTION */
-
-	if (PCIECTO_ENAB(bus)) {
-		dhdpcie_cto_init(bus, TRUE);
-	}
-
 #ifdef CONFIG_ARCH_EXYNOS
 	link_recovery = bus->dhd;
 #endif /* CONFIG_ARCH_EXYNOS */
@@ -1596,6 +1576,26 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 	                           &bus->vars, &bus->varsz))) {
 		DHD_ERROR(("%s: si_attach failed!\n", __FUNCTION__));
 		goto fail;
+	}
+
+	/* Configure CTO Prevention functionality */
+#if defined(BCMPCIE_CTO_PREVENTION)
+	chipid = dhd_get_chipid(bus);
+
+	if (BCM4349_CHIP(chipid) || BCM4350_CHIP(chipid) || BCM4345_CHIP(chipid)) {
+		DHD_ERROR(("Disable CTO\n"));
+		bus->cto_enable = FALSE;
+	} else {
+		DHD_ERROR(("Enable CTO\n"));
+		bus->cto_enable = TRUE;
+	}
+#else
+	DHD_ERROR(("Disable CTO\n"));
+	bus->cto_enable = FALSE;
+#endif /* BCMPCIE_CTO_PREVENTION */
+
+	if (PCIECTO_ENAB(bus)) {
+		dhdpcie_cto_init(bus, TRUE);
 	}
 
 	if (MULTIBP_ENAB(bus->sih) && (bus->sih->buscorerev >= 66)) {
