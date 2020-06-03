@@ -2716,6 +2716,8 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 	}
 exit:
 	schedule_work(&charger->uevent_work);
+	if (enable == 0)
+		pm_relax(charger->dev);
 	return ret;
 }
 
@@ -3057,8 +3059,10 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 				ret);
 			return;
 		}
-		if (mode_reg & P9382A_MODE_TXMODE)
+		if (mode_reg & P9382A_MODE_TXMODE) {
 			charger->is_rtx_mode = true;
+			pm_stay_awake(charger->dev);
+		}
 		dev_info(&charger->client->dev,
 			 "P9221_SYSTEM_MODE_REG reg: %02x\n",
 			 mode_reg);
