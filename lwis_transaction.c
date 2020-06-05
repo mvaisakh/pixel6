@@ -355,7 +355,7 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		return 0;
 	}
 
-	list_for_each_prev_safe(it_tran, it_tran_tmp, &it_evt_list->list)
+	list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
 	{
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
