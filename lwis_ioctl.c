@@ -20,6 +20,7 @@
 #include "lwis_commands.h"
 #include "lwis_device_i2c.h"
 #include "lwis_device_ioreg.h"
+#include "lwis_dpm.h"
 #include "lwis_event.h"
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"
@@ -41,76 +42,98 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 
 	switch (type) {
 	case IOCTL_TO_ENUM(LWIS_GET_DEVICE_INFO):
-		strcpy(type_name, STRINGIFY(LWIS_GET_DEVICE_INFO));
+		strlcpy(type_name, STRINGIFY(LWIS_GET_DEVICE_INFO),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_GET_DEVICE_INFO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_ALLOC):
-		strcpy(type_name, STRINGIFY(LWIS_BUFFER_ALLOC));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ALLOC),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ALLOC);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_FREE):
-		strcpy(type_name, STRINGIFY(LWIS_BUFFER_FREE));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_FREE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_FREE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_ENROLL):
-		strcpy(type_name, STRINGIFY(LWIS_BUFFER_ENROLL));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ENROLL),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ENROLL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_DISENROLL):
-		strcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
-		strcpy(type_name, STRINGIFY(LWIS_REG_IO));
+		strlcpy(type_name, STRINGIFY(LWIS_REG_IO),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DEVICE_ENABLE):
-		strcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE));
+		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_ENABLE);
 		break;
 
 	case IOCTL_TO_ENUM(LWIS_DEVICE_DISABLE):
-		strcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE));
+		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
-		strcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_GET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_SET):
-		strcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_SET));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_SET),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_SET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_DEQUEUE):
-		strcpy(type_name, STRINGIFY(LWIS_EVENT_DEQUEUE));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_DEQUEUE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_DEQUEUE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_SUBSCRIBE):
-		strcpy(type_name, STRINGIFY(LWIS_EVENT_SUBSCRIBE));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_SUBSCRIBE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_SUBSCRIBE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_UNSUBSCRIBE):
-		strcpy(type_name, STRINGIFY(LWIS_EVENT_UNSUBSCRIBE));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_UNSUBSCRIBE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_UNSUBSCRIBE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TIME_QUERY):
-		strcpy(type_name, STRINGIFY(LWIS_TIME_QUERY));
+		strlcpy(type_name, STRINGIFY(LWIS_TIME_QUERY),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TIME_QUERY);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_SUBMIT):
-		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_SUBMIT));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_SUBMIT),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_SUBMIT);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_CANCEL):
-		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_CANCEL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_REPLACE):
-		strcpy(type_name, STRINGIFY(LWIS_TRANSACTION_REPLACE));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_REPLACE),
+			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_REPLACE);
 		break;
+	case IOCTL_TO_ENUM(LWIS_DPM_CLK_UPDATE):
+		strlcpy(type_name, STRINGIFY(LWIS_DPM_CLK_UPDATE),
+			sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_CLK_UPDATE);
+		break;
 	default:
-		strcpy(type_name, "UNDEFINED");
+		strlcpy(type_name, "UNDEFINED", sizeof(type_name));
 		exp_size = 0;
 		break;
 	};
@@ -131,11 +154,22 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 				 struct lwis_device_info *msg)
 {
-	int ret;
+	int ret, i;
 	struct lwis_device_info k_info = { .id = lwis_dev->id,
-					   .type = lwis_dev->type };
+					   .type = lwis_dev->type,
+					   .num_clks = 0 };
+	strlcpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
 
-	strncpy(k_info.name, lwis_dev->name, LWIS_MAX_DEVICE_NAME_STRING);
+	if (lwis_dev->clocks) {
+		k_info.num_clks = lwis_dev->clocks->count;
+		for (i = 0; i < lwis_dev->clocks->count; i++) {
+			strlcpy(k_info.clks[i].name,
+				lwis_dev->clocks->clk[i].name,
+				LWIS_MAX_NAME_STRING_LEN);
+			k_info.clks[i].clk_index = i;
+			k_info.clks[i].frequency = 0;
+		}
+	}
 
 	ret = copy_to_user((void __user *)msg, &k_info, sizeof(k_info));
 	if (ret) {
@@ -1212,6 +1246,42 @@ static int ioctl_periodic_io_cancel(struct lwis_client *client,
 
 	return 0;
 }
+static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
+				struct lwis_dpm_clk_settings __user *msg)
+{
+	struct lwis_dpm_clk_settings k_msg;
+	struct lwis_clk_setting *clk_settings;
+	int ret;
+	size_t buf_size;
+
+	ret = copy_from_user((void *)&k_msg, (void __user *)msg,
+			     sizeof(struct lwis_dpm_clk_settings));
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy ioctl message from user\n");
+		return ret;
+	}
+
+	buf_size = sizeof(struct lwis_clk_setting) * k_msg.num_settings;
+	clk_settings = kzalloc(buf_size, GFP_KERNEL);
+	if (!clk_settings) {
+		dev_err(lwis_dev->dev,
+			"Failed to allocate clock settings\n");
+		return -ENOMEM;
+	}
+	ret = copy_from_user(clk_settings, (void __user *)k_msg.settings,
+			     buf_size);
+
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy clk settings from user\n");
+		kfree(clk_settings);
+		return ret;
+	}
+
+	return lwis_dpm_update_clock(lwis_dev, clk_settings,
+				     k_msg.num_settings);
+}
 
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
@@ -1303,6 +1373,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_PERIODIC_IO_CANCEL:
 		ret = ioctl_periodic_io_cancel(lwis_client, (int64_t *)param);
+		break;
+	case LWIS_DPM_CLK_UPDATE:
+		ret = ioctl_dpm_clk_update(
+			lwis_dev, (struct lwis_dpm_clk_settings *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

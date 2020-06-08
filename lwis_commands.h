@@ -47,12 +47,25 @@ enum lwis_device_types {
 
 /* Device tree strings have a maximum length of 31, according to specs.
    Adding 1 byte for the null character. */
-#define LWIS_MAX_DEVICE_NAME_STRING 32
+#define LWIS_MAX_NAME_STRING_LEN 32
+/* Maximum clock number defined in device tree. */
+#define LWIS_MAX_CLOCK_NUM 20
+
+struct lwis_clk_setting {
+	// clock name defined in device tree.
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	// clock index stored in lwis_dev->clocks
+	int32_t clk_index;
+	// clock rate
+	uint32_t frequency;
+};
 
 struct lwis_device_info {
 	int id;
 	enum lwis_device_types type;
-	char name[LWIS_MAX_DEVICE_NAME_STRING];
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	struct lwis_clk_setting clks[LWIS_MAX_CLOCK_NUM];
+	int32_t num_clks;
 };
 
 enum lwis_dma_alloc_flags {
@@ -251,6 +264,11 @@ struct lwis_periodic_io_result {
 	struct lwis_io_result io_result;
 };
 
+struct lwis_dpm_clk_settings {
+	struct lwis_clk_setting *settings;
+	size_t num_settings;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -285,6 +303,10 @@ struct lwis_periodic_io_result {
 #define LWIS_PERIODIC_IO_SUBMIT                                            \
 	_IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
 #define LWIS_PERIODIC_IO_CANCEL _IOWR(LWIS_IOC_TYPE, 41, int64_t)
+
+#define LWIS_DPM_CLK_UPDATE						       \
+	_IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */

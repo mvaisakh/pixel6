@@ -124,7 +124,7 @@ struct lwis_device {
 	struct lwis_platform *platform;
 	int id;
 	enum lwis_device_types type;
-	char name[LWIS_MAX_DEVICE_NAME_STRING];
+	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct device *dev;
 	struct platform_device *plat_dev;
 	bool reset_gpios_present;

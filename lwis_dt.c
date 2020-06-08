@@ -539,7 +539,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Error parsing node name\n");
 		return -EINVAL;
 	}
-	strncpy(lwis_dev->name, name_str, LWIS_MAX_DEVICE_NAME_STRING);
+	strlcpy(lwis_dev->name, name_str, LWIS_MAX_NAME_STRING_LEN);
 
 	pr_info("Device tree entry [%s] - begin\n", lwis_dev->name);
 
