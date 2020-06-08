@@ -292,6 +292,7 @@ struct lwis_dpm_clk_settings {
 #define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, int64_t)
 #define LWIS_REG_IO _IOWR(LWIS_IOC_TYPE, 11, struct lwis_io_entries)
 #define LWIS_ECHO _IOWR(LWIS_IOC_TYPE, 12, struct lwis_echo)
+#define LWIS_DEVICE_RESET _IOWR(LWIS_IOC_TYPE, 13, struct lwis_io_entries)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)

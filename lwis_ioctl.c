@@ -81,6 +81,10 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
 		break;
+	case IOCTL_TO_ENUM(LWIS_DEVICE_RESET):
+		strcpy(type_name, STRINGIFY(LWIS_DEVICE_RESET));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_RESET);
+		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
 		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET),
 			sizeof(type_name));
@@ -307,14 +311,14 @@ static int lwis_reg_modify(struct lwis_device *lwis_dev,
 	return ret;
 }
 
-static int ioctl_reg_io(struct lwis_device *lwis_dev,
-			struct lwis_io_entries *user_msg)
+static int lwis_copy_io_entries(struct lwis_device *lwis_dev,
+				struct lwis_io_entries *user_msg,
+				struct lwis_io_entries *k_msg,
+				struct lwis_io_entry **k_entries)
 {
-	int ret = 0, i = 0;
-	struct lwis_io_entries k_msg;
-	struct lwis_io_entry *k_entries;
+	int ret = 0;
+	struct lwis_io_entry *io_entries;
 	uint32_t buf_size;
-	uint64_t bias = 0;
 
 	/* Register io is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_io) {
@@ -323,65 +327,94 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	/* Copy message from userspace */
-	ret = copy_from_user(&k_msg, (void __user *)user_msg, sizeof(k_msg));
+	/* Copy io_entries from userspace */
+	ret = copy_from_user(k_msg, (void __user *)user_msg, sizeof(*k_msg));
 	if (ret) {
 		dev_err(lwis_dev->dev,
 			"Failed to copy io_entries header from userspace.");
 		return ret;
 	}
-	buf_size = sizeof(struct lwis_io_entry) * k_msg.num_io_entries;
-	k_entries = kzalloc(buf_size, GFP_KERNEL);
-	if (!k_entries) {
+	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
+	io_entries = kzalloc(buf_size, GFP_KERNEL);
+	if (!io_entries) {
 		dev_err(lwis_dev->dev,
 			"Failed to allocate io_entries buffer\n");
 		return -ENOMEM;
 	}
-	ret = copy_from_user(k_entries, (void __user *)k_msg.io_entries,
+	ret = copy_from_user(io_entries, (void __user *)k_msg->io_entries,
 			     buf_size);
 	if (ret) {
+		kfree(io_entries);
 		dev_err(lwis_dev->dev,
 			"Failed to copy io_entries from userspace.");
 		return ret;
 	}
+	*k_entries = io_entries;
 
-	/* Walk through and execute the entries */
-	for (i = 0; i < k_msg.num_io_entries; i++) {
-		lwis_entry_bias(&k_entries[i], bias);
-		switch (k_entries[i].type) {
+	return 0;
+}
+
+static int lwis_synchronous_process_io_entries(struct lwis_device *lwis_dev,
+					       int num_io_entries,
+					       struct lwis_io_entry *io_entries,
+					       struct lwis_io_entry *user_msg)
+{
+	int ret = 0, i = 0;
+	uint64_t bias = 0;
+
+	for (i = 0; i < num_io_entries; i++) {
+		lwis_entry_bias(&io_entries[i], bias);
+		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
-			ret = lwis_reg_modify(lwis_dev, &k_entries[i]);
+			ret = lwis_reg_modify(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_READ:
 		case LWIS_IO_ENTRY_READ_BATCH:
-			ret = lwis_reg_read(lwis_dev, &k_entries[i],
-					    k_msg.io_entries + i);
+			ret = lwis_reg_read(lwis_dev, &io_entries[i],
+					    user_msg + i);
 			break;
 		case LWIS_IO_ENTRY_WRITE:
 		case LWIS_IO_ENTRY_WRITE_BATCH:
-			ret = lwis_reg_write(lwis_dev, &k_entries[i]);
+			ret = lwis_reg_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_BIAS:
-			bias = k_entries[i].set_bias.bias;
+			bias = io_entries[i].set_bias.bias;
 			break;
 		case LWIS_IO_ENTRY_POLL:
-			ret = lwis_entry_poll(lwis_dev, &k_entries[i]);
+			ret = lwis_entry_poll(lwis_dev, &io_entries[i]);
 			break;
 		default:
-			dev_err_ratelimited(lwis_dev->dev,
-					    "Unknown io_entry operation\n");
+			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
 			ret = -EINVAL;
 		};
-
 		if (ret) {
-			dev_err_ratelimited(lwis_dev->dev,
-					    "Register io_entry failed\n");
-			goto reg_io_exit;
+			dev_err(lwis_dev->dev, "Register io_entry failed\n");
+			return ret;
 		}
 	}
+	return 0;
+}
+
+static int ioctl_reg_io(struct lwis_device *lwis_dev,
+			struct lwis_io_entries *user_msg)
+{
+	int ret = 0;
+	struct lwis_io_entries k_msg;
+	struct lwis_io_entry *k_entries = NULL;
+
+	ret = lwis_copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
+	if (ret) {
+		goto reg_io_exit;
+	}
+
+	/* Walk through and execute the entries */
+	ret = lwis_synchronous_process_io_entries(
+		lwis_dev, k_msg.num_io_entries, k_entries, k_msg.io_entries);
 
 reg_io_exit:
-	kfree(k_entries);
+	if (k_entries) {
+		kfree(k_entries);
+	}
 	return ret;
 }
 
@@ -642,6 +675,53 @@ static int ioctl_echo(struct lwis_device *lwis_dev,
 	buffer[echo_msg.size] = '\0';
 	dev_info(lwis_dev->dev, "LWIS_ECHO: %s\n", buffer);
 	return 0;
+}
+
+static int ioctl_device_reset(struct lwis_client *lwis_client,
+			      struct lwis_io_entries *user_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_io_entries k_msg;
+	struct lwis_io_entry *k_entries = NULL;
+	unsigned long flags;
+
+	ret = lwis_copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
+	if (ret) {
+		goto soft_reset_exit;
+	}
+
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to wait for in-process periodic io to complete\n");
+	}
+
+	/* Wait for all in-process transactions to complete. */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to wait for in-process transaction to complete\n");
+	}
+
+	/* Perform reset routine defined by the io_entries */
+	ret = lwis_synchronous_process_io_entries(
+		lwis_dev, k_msg.num_io_entries, k_entries, k_msg.io_entries);
+
+	/* Clear event states and transactions for this client */
+	mutex_lock(&lwis_dev->client_lock);
+	lwis_client_event_states_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	lwis_device_event_states_clear_locked(lwis_dev);
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+soft_reset_exit:
+	if (k_entries) {
+		kfree(k_entries);
+	}
+	return ret;
 }
 
 static int ioctl_event_control_get(struct lwis_client *lwis_client,
@@ -1330,9 +1410,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	   fix to ensure buffer enrollment when device is enabled. */
 	if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled &&
 	    type != LWIS_GET_DEVICE_INFO && type != LWIS_DEVICE_ENABLE &&
-	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
-	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
-	    type != LWIS_BUFFER_DISENROLL && type != LWIS_BUFFER_FREE) {
+	    type != LWIS_DEVICE_RESET && type != LWIS_EVENT_CONTROL_GET &&
+	    type != LWIS_TIME_QUERY && type != LWIS_EVENT_DEQUEUE &&
+	    type != LWIS_BUFFER_ENROLL && type != LWIS_BUFFER_DISENROLL &&
+	    type != LWIS_BUFFER_FREE) {
 		ret = -EBADFD;
 		dev_err_ratelimited(lwis_dev->dev,
 				    "Unsupported IOCTL on disabled device.\n");
@@ -1369,6 +1450,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_ECHO:
 		ret = ioctl_echo(lwis_dev, (struct lwis_echo *)param);
+	case LWIS_DEVICE_RESET:
+		ret = ioctl_device_reset(lwis_client,
+					 (struct lwis_io_entries *)param);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
 		ret = ioctl_event_control_get(
