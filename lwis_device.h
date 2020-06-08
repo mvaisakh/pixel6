@@ -37,6 +37,7 @@
 #define EVENT_HASH_BITS 8
 #define BUFFER_HASH_BITS 8
 #define TRANSACTION_HASH_BITS 8
+#define PERIODIC_IO_HASH_BITS 8
 
 /* Forward declaration for lwis_device. This is needed for the declaration for
    lwis_device_subclass_operations data struct. */
@@ -198,6 +199,17 @@ struct lwis_client {
 	struct list_head transaction_process_queue;
 	/* Transaction counter, which also provides transacton ID */
 	int64_t transaction_counter;
+	/* Hash table of hrtimer keyed by time out duration */
+	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
+	/* Workqueue variables for periodic io */
+	struct workqueue_struct *periodic_io_wq;
+	struct work_struct periodic_io_work;
+	/* Mutex used to synchronize access to periodic io data structs */
+	struct mutex periodic_io_lock;
+	/* Queue of all periodic_io pending processing */
+	struct list_head periodic_io_process_queue;
+	/* Periodic IO counter, which also provides periodic io ID */
+	int64_t periodic_io_counter;
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };

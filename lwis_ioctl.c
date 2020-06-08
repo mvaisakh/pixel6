@@ -23,6 +23,7 @@
 #include "lwis_event.h"
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"
+#include "lwis_periodic_io.h"
 #include "lwis_platform.h"
 #include "lwis_regulator.h"
 #include "lwis_transaction.h"
@@ -536,6 +537,13 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	int ret;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to wait for in-process periodic io to compelte\n");
+	}
+
 	/* Wait for all in-process transactions to complete. */
 	ret = lwis_transaction_client_flush(lwis_client);
 	if (ret) {
@@ -850,7 +858,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 
 	ret = lwis_transaction_submit(client, k_transaction);
 	if (ret) {
-		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
+		k_transaction->info.id = LWIS_ID_INVALID;
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
 			dev_err_ratelimited(
@@ -887,7 +895,7 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 
 	ret = lwis_transaction_replace(client, k_transaction);
 	if (ret) {
-		k_transaction->info.id = LWIS_TRANSACTION_ID_INVALID;
+		k_transaction->info.id = LWIS_ID_INVALID;
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
 			dev_err_ratelimited(
@@ -1032,6 +1040,179 @@ static int ioctl_event_unsubscribe(struct lwis_client *client,
 	return ret;
 }
 
+static int lwis_io_entry_prepare(struct lwis_client *client,
+				 struct lwis_io_entry *user_entries,
+				 size_t num_io_entries,
+				 struct lwis_io_entry **io_entries)
+{
+	int i, ret;
+	int last_buf_alloc_idx = 0;
+	size_t entry_size;
+	struct lwis_io_entry *k_entries;
+	uint8_t *user_buf;
+	uint8_t *k_buf;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
+	k_entries = kzalloc(entry_size, GFP_KERNEL);
+	if (!k_entries) {
+		dev_err(lwis_dev->dev,
+			"Failed to allocate periodic io entries\n");
+		return -ENOMEM;
+	}
+	*io_entries = k_entries;
+
+	ret = copy_from_user((void *)k_entries, (void __user *)user_entries,
+			     entry_size);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy periodic io entries from user\n");
+		goto error_free_entries;
+	}
+
+	/* For batch writes, ened to allocate kernel buffers to deep copy the
+	 * write values. Don't need to do this for batch reads because memory
+	 * will be allocated in the form of lwis_io_result in io processing.
+	 */
+	for (i = 0; i < num_io_entries; ++i) {
+		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
+			user_buf = k_entries[i].rw_batch.buf;
+			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes,
+					GFP_KERNEL);
+			if (!k_buf) {
+				dev_err_ratelimited(
+					lwis_dev->dev,
+					"Failed to allocate periodic io write buffer\n");
+				ret = -ENOMEM;
+				goto error_free_buf;
+			}
+			last_buf_alloc_idx = i;
+			k_entries[i].rw_batch.buf = k_buf;
+			ret = copy_from_user(
+				k_buf, (void __user *)user_buf,
+				k_entries[i].rw_batch.size_in_bytes);
+			if (ret) {
+				dev_err_ratelimited(
+					lwis_dev->dev,
+					"Failed to copy periodic io write buffer from userspace\n");
+				goto error_free_buf;
+			}
+		}
+	}
+	return 0;
+
+error_free_buf:
+	for (i = 0; i <= last_buf_alloc_idx; ++i) {
+		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
+			kfree(k_entries[i].rw_batch.buf);
+		}
+	}
+error_free_entries:
+	kfree(k_entries);
+	return ret;
+}
+
+static int lwis_periodic_io_prepare(struct lwis_client *client,
+				    struct lwis_periodic_io_info __user *msg,
+				    struct lwis_periodic_io **periodic_io)
+{
+	int ret;
+	struct lwis_periodic_io *k_periodic_io;
+	struct lwis_periodic_io_info *user_periodic_io;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	k_periodic_io = kzalloc(sizeof(struct lwis_periodic_io), GFP_KERNEL);
+	if (!k_periodic_io) {
+		dev_err(lwis_dev->dev, "Failed to allocate periodic io\n");
+		return -ENOMEM;
+	}
+
+	user_periodic_io = (struct lwis_periodic_io_info *)msg;
+	ret = copy_from_user((void *)&k_periodic_io->info,
+			     (void __user *)user_periodic_io,
+			     sizeof(struct lwis_periodic_io_info));
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy periodic io info from user\n");
+		goto error_free_periodic_io;
+	}
+
+	ret = lwis_io_entry_prepare(client, k_periodic_io->info.io_entries,
+				    k_periodic_io->info.num_io_entries,
+				    &k_periodic_io->info.io_entries);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to prepare lwis io entries for periodic io\n");
+		goto error_free_periodic_io;
+	}
+	*periodic_io = k_periodic_io;
+	return 0;
+
+error_free_periodic_io:
+	kfree(k_periodic_io);
+	return ret;
+}
+
+static int ioctl_periodic_io_submit(struct lwis_client *client,
+				    struct lwis_periodic_io_info __user *msg)
+{
+	int ret;
+	struct lwis_periodic_io *k_periodic_io = NULL;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = lwis_periodic_io_prepare(client, msg, &k_periodic_io);
+	if (ret)
+		return ret;
+
+	ret = lwis_periodic_io_submit(client, k_periodic_io);
+	if (ret) {
+		k_periodic_io->info.id = LWIS_ID_INVALID;
+		if (copy_to_user((void __user *)msg, &k_periodic_io->info,
+				 sizeof(struct lwis_periodic_io_info))) {
+			dev_err_ratelimited(
+				lwis_dev->dev,
+				"Failed to return info to userspace\n");
+		}
+		lwis_periodic_io_clean(k_periodic_io);
+		return ret;
+	}
+
+	ret = copy_to_user((void __user *)msg, &k_periodic_io->info,
+			   sizeof(struct lwis_periodic_io_info));
+	if (ret) {
+		dev_err_ratelimited(
+			lwis_dev->dev,
+			"Failed to copy periodic io results to userspace\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int ioctl_periodic_io_cancel(struct lwis_client *client,
+				    int64_t __user *msg)
+{
+	int ret;
+	int64_t id;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = copy_from_user((void *)&id, (void __user *)msg, sizeof(id));
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy periodic io ID from user\n");
+		return ret;
+	}
+
+	ret = lwis_periodic_io_cancel(client, id);
+	if (ret) {
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to clear periodic io id 0x%llx\n",
+				    id);
+	}
+
+	return 0;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
@@ -1115,6 +1296,13 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	case LWIS_TRANSACTION_REPLACE:
 		ret = ioctl_transaction_replace(
 			lwis_client, (struct lwis_transaction_info *)param);
+		break;
+	case LWIS_PERIODIC_IO_SUBMIT:
+		ret = ioctl_periodic_io_submit(
+			lwis_client, (struct lwis_periodic_io_info *)param);
+		break;
+	case LWIS_PERIODIC_IO_CANCEL:
+		ret = ioctl_periodic_io_cancel(lwis_client, (int64_t *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

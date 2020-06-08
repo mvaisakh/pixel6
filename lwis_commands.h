@@ -183,7 +183,8 @@ struct lwis_event_control {
 	uint64_t flags;
 };
 
-#define LWIS_TRANSACTION_ID_INVALID (-1LL)
+// Invalid ID for Transaction id and Periodic IO id
+#define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
 struct lwis_transaction_info {
 	// Input
@@ -223,6 +224,33 @@ struct lwis_event_subscribe {
 	int64_t trigger_event_id;
 };
 
+struct lwis_periodic_io_info {
+	// Input
+	int batch_size;
+	int64_t period_ms;
+	size_t num_io_entries;
+	struct lwis_io_entry *io_entries;
+	int64_t emit_success_event_id;
+	int64_t emit_error_event_id;
+	// Output
+	int64_t id;
+};
+
+// Header of a periodic_io response as a payload of lwis_event_info
+// Actual size of this struct depends on batch_size and num_entries_per_period
+struct lwis_periodic_io_response_header {
+	int64_t id;
+	int error_code;
+	int batch_size;
+	size_t num_entries_per_period;
+	size_t results_size_bytes;
+};
+
+struct lwis_periodic_io_result {
+	int64_t timestamp_ns;
+	struct lwis_io_result io_result;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -254,6 +282,9 @@ struct lwis_event_subscribe {
 #define LWIS_TRANSACTION_REPLACE                                               \
 	_IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
 
+#define LWIS_PERIODIC_IO_SUBMIT                                            \
+	_IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
+#define LWIS_PERIODIC_IO_CANCEL _IOWR(LWIS_IOC_TYPE, 41, int64_t)
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */

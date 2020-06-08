@@ -30,6 +30,7 @@
 #include "lwis_gpio.h"
 #include "lwis_init.h"
 #include "lwis_ioctl.h"
+#include "lwis_periodic_io.h"
 #include "lwis_pinctrl.h"
 #include "lwis_platform.h"
 #include "lwis_transaction.h"
@@ -88,6 +89,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 	lwis_client->lwis_dev = lwis_dev;
 	/* Initialize locks */
 	mutex_init(&lwis_client->lock);
+	mutex_init(&lwis_client->periodic_io_lock);
 	spin_lock_init(&lwis_client->event_lock);
 
 	/* Empty hash table for client event states */
@@ -107,6 +109,9 @@ static int lwis_open(struct inode *node, struct file *fp)
 
 	/* Start transaction processor task */
 	lwis_transaction_init(lwis_client);
+
+	/* Start periodic io processor task */
+	lwis_periodic_io_init(lwis_client);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_add(&lwis_client->node, &lwis_dev->clients);
@@ -128,6 +133,9 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
+
+	/* Clean up all periodic io state for the client */
+	lwis_periodic_io_client_cleanup(lwis_client);
 
 	/* Cancel all pending transactions for the client */
 	lwis_transaction_client_cleanup(lwis_client);

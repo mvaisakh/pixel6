@@ -9,6 +9,7 @@ lwis-objs += lwis_i2c.o
 lwis-objs += lwis_interrupt.o
 lwis-objs += lwis_ioctl.o
 lwis-objs += lwis_ioreg.o
+lwis-objs += lwis_periodic_io.o
 lwis-objs += lwis_phy.o
 lwis-objs += lwis_pinctrl.o
 lwis-objs += lwis_regulator.o
