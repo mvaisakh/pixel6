@@ -1048,7 +1048,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	    type != LWIS_GET_DEVICE_INFO && type != LWIS_DEVICE_ENABLE &&
 	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
 	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
-	    type != LWIS_BUFFER_DISENROLL) {
+	    type != LWIS_BUFFER_DISENROLL && type != LWIS_BUFFER_FREE) {
 		ret = -EBADFD;
 		dev_err_ratelimited(lwis_dev->dev,
 				    "Unsupported IOCTL on disabled device.\n");
