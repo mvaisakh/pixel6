@@ -18,6 +18,7 @@ lwis-objs += lwis_transaction.o
 lwis-objs += lwis_event.o
 lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o
+lwis-objs += lwis_debug.o
 
 # Exynos specific files
 ifeq ($(CONFIG_SOC_EXYNOS9820), y)

@@ -58,3 +58,20 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 	}
 	return ret;
 }
+
+const char *lwis_device_type_to_string(enum lwis_device_types type)
+{
+	switch (type) {
+	case DEVICE_TYPE_TOP:
+		return "TOP";
+	case DEVICE_TYPE_I2C:
+		return "I2C";
+	case DEVICE_TYPE_IOREG:
+		return "IOREG";
+	case DEVICE_TYPE_SLC:
+		return "SLC";
+	case DEVICE_TYPE_UNKNOWN:
+	default:
+		return "UNKNOWN";
+	}
+}

@@ -12,6 +12,7 @@
 #define LWIS_DEVICE_H_
 
 #include <linux/cdev.h>
+#include <linux/debugfs.h>
 #include <linux/fs.h>
 #include <linux/hashtable.h>
 #include <linux/idr.h>
@@ -59,6 +60,7 @@ struct lwis_core {
 	dev_t lwis_devt;
 	int device_major;
 	struct list_head lwis_dev_list;
+	struct dentry *dbg_root;
 };
 
 /* struct lwis_device_subclass_operations
@@ -166,6 +168,11 @@ struct lwis_device {
 	/* Point to lwis_top_dev */
 	struct lwis_device *top_dev;
 	struct lwis_event_subscribe_operations subscribe_ops;
+#ifdef CONFIG_DEBUG_FS
+	/* DebugFS directory and files */
+	struct dentry *dbg_dir;
+	struct dentry *dbg_file;
+#endif
 };
 
 /*

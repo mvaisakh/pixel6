@@ -24,6 +24,7 @@
 #include "lwis_buffer.h"
 #include "lwis_clock.h"
 #include "lwis_commands.h"
+#include "lwis_debug.h"
 #include "lwis_device.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
@@ -825,6 +826,8 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	/* Call platform-specific probe function */
 	lwis_platform_probe(lwis_dev);
 
+	lwis_device_debugfs_setup(lwis_dev, core.dbg_root);
+
 	dev_info(lwis_dev->dev, "Base Probe: Success\n");
 
 	return ret;
@@ -894,6 +897,17 @@ static int __init lwis_register_base_device(void)
 	}
 
 	INIT_LIST_HEAD(&core.lwis_dev_list);
+
+#ifdef CONFIG_DEBUG_FS
+	/* Create DebugFS directory for LWIS, if avaiable */
+	core.dbg_root = debugfs_create_dir("lwis", NULL);
+	if (IS_ERR_OR_NULL(core.dbg_root)) {
+		/* No need to return error as this is just informational that
+		   DebugFS is not present */
+		pr_info("Failed to create DebugFS dir - DebugFS not present?");
+		core.dbg_root = NULL;
+	}
+#endif
 
 	mutex_unlock(&core.lock);
 
@@ -969,6 +983,7 @@ static void __exit lwis_driver_exit(void)
 	{
 		pr_info("Destroy device %s id %d", lwis_dev->name,
 			lwis_dev->id);
+		lwis_device_debugfs_cleanup(lwis_dev);
 		/* Disable lwis device events */
 		lwis_device_event_enable(lwis_dev, LWIS_EVENT_ID_HEARTBEAT,
 					 false);

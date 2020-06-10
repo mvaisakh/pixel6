@@ -13,6 +13,8 @@
 
 #include <linux/kernel.h>
 
+#include "lwis_commands.h"
+
 /* Forward declaration for lwis_device. This is needed for the function
  * prototypes below that take a pointer to lwis_device */
 struct lwis_device;
@@ -52,5 +54,7 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 				     bool non_blocking, int bid,
 				     uint64_t offset, uint64_t *value,
 				     int access_size);
+
+const char *lwis_device_type_to_string(enum lwis_device_types type);
 
 #endif // LWIS_UTIL_H_
