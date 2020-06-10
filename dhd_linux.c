@@ -2672,6 +2672,10 @@ _dhd_set_mac_address(dhd_info_t *dhd, int ifidx, uint8 *addr)
 			ETHER_ADDR_LEN, NULL, 0, TRUE);
 	if (ret < 0) {
 		DHD_ERROR(("%s: set cur_etheraddr failed\n", dhd_ifname(&dhd->pub, ifidx)));
+#ifdef DHD_NOTIFY_MAC_CHANGED
+		dhd_allow_stop = TRUE;
+		return ret;
+#endif /* DHD_NOTIFY_MAC_CHANGED */
 	} else {
 		memcpy(dhd->iflist[ifidx]->net->dev_addr, addr, ETHER_ADDR_LEN);
 		if (ifidx == 0)
@@ -7696,7 +7700,7 @@ dhd_static_if_stop(struct net_device *net)
 	DHD_INFO(("[%s][STATIC_IF] Enter \n", net->name));
 
 	cfg = wl_get_cfg(net);
-	if (!IS_CFG80211_STATIC_IF(cfg, net)) {
+	if (!IS_CFG80211_STATIC_IF(cfg, net) || !dhd_allow_stop) {
 		DHD_TRACE(("non-static interface (%s)..do nothing \n", net->name));
 		return BCME_OK;
 	}
