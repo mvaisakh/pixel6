@@ -171,7 +171,9 @@ struct lwis_device {
 #ifdef CONFIG_DEBUG_FS
 	/* DebugFS directory and files */
 	struct dentry *dbg_dir;
-	struct dentry *dbg_file;
+	struct dentry *dbg_dev_info_file;
+	struct dentry *dbg_event_file;
+	struct dentry *dbg_transaction_file;
 #endif
 };
 
