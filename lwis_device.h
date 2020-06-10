@@ -192,7 +192,7 @@ struct lwis_client {
 	/* Transaction task-related variables */
 	struct workqueue_struct *transaction_wq;
 	struct work_struct transaction_work;
-	/* Spinlock  used to synchornize access to transaction data structs */
+	/* Spinlock used to synchronize access to transaction data structs */
 	spinlock_t transaction_lock;
 	/* List of transaction triggers */
 	struct list_head transaction_process_queue;

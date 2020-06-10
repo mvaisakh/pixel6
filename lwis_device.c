@@ -17,8 +17,8 @@
 #include <linux/hashtable.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/slab.h>
 #include <linux/uaccess.h>
 
 #include "lwis_buffer.h"
@@ -130,7 +130,7 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	lwis_client_event_states_clear(lwis_client);
 
 	/* Cancel all pending transactions for the client */
-        lwis_transaction_client_cleanup(lwis_client);
+	lwis_transaction_client_cleanup(lwis_client);
 
 	/* Disenroll and clear the table of allocated and enrolled buffers */
 	lwis_client_allocated_buffers_clear(lwis_client);
@@ -384,8 +384,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->mclk_present) {
 		bool activate_mclk = true;
 
-		lwis_dev->mclk_ctrl = devm_pinctrl_get(
-				      &lwis_dev->plat_dev->dev);
+		lwis_dev->mclk_ctrl =
+			devm_pinctrl_get(&lwis_dev->plat_dev->dev);
 		if (IS_ERR(lwis_dev->mclk_ctrl)) {
 			dev_err(lwis_dev->dev, "Failed to get mclk\n");
 			ret = PTR_ERR(lwis_dev->mclk_ctrl);
@@ -397,16 +397,17 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			/* Look up if pinctrl it's already enabled */
 			mutex_lock(&core.lock);
 			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list) {
+					    dev_list)
+			{
 				if ((lwis_dev->id != lwis_dev_it->id) &&
-					(lwis_dev_it->shared_pinctrl ==
-					lwis_dev->shared_pinctrl) &&
-					lwis_dev_it->enabled) {
+				    (lwis_dev_it->shared_pinctrl ==
+				     lwis_dev->shared_pinctrl) &&
+				    lwis_dev_it->enabled) {
 					activate_mclk = false;
 					devm_pinctrl_put(lwis_dev->mclk_ctrl);
 					lwis_dev->mclk_ctrl = NULL;
 					dev_info(lwis_dev->dev,
-						"mclk already be acquired\n");
+						 "mclk already be acquired\n");
 					break;
 				}
 			}
@@ -420,8 +421,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			if (ret) {
 				dev_err(lwis_dev->dev,
 					"Error setting %s state (%d)\n",
-					MCLK_ON_STRING,
- 					ret);
+					MCLK_ON_STRING, ret);
 				devm_pinctrl_put(lwis_dev->mclk_ctrl);
 				lwis_dev->mclk_ctrl = NULL;
 				goto error_mclk_enable;
@@ -598,11 +598,12 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			/* Look up if pinctrl still used by other device */
 			mutex_lock(&core.lock);
 			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list) {
+					    dev_list)
+			{
 				if ((lwis_dev->id != lwis_dev_it->id) &&
-					(lwis_dev_it->shared_pinctrl ==
-					lwis_dev->shared_pinctrl) &&
-					lwis_dev_it->enabled) {
+				    (lwis_dev_it->shared_pinctrl ==
+				     lwis_dev->shared_pinctrl) &&
+				    lwis_dev_it->enabled) {
 					/* Move mclk owner to the device who
 					   still using it */
 					lwis_dev_it->mclk_ctrl =
