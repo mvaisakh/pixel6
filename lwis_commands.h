@@ -26,7 +26,7 @@ extern "C" {
 #endif /* __cplusplus */
 
 /*
- *  IOCTL Types and Data Structures
+ *  IOCTL Types and Data Structures.
  */
 
 /*
