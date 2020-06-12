@@ -9864,7 +9864,7 @@ dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data)
 						DHD_TRACE(("D2H_MB_DATA: sent DEEP SLEEP"
 							"ACK to DNGL\n"));
 					} else {
-						DHD_ERROR(("%s: Failed to send DS-ACK, "
+						DHD_TRACE(("%s: Failed to send DS-ACK, "
 							"host_active_cnt is %d\n",
 							__FUNCTION__, bus->host_active_cnt));
 					}
