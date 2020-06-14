@@ -2544,6 +2544,9 @@ extern s32 wl_cfgvendor_send_as_rtt_legacy_event(struct wiphy *wiphy,
 #ifdef WL_CFG80211_P2P_DEV_IF
 extern void wl_cfg80211_del_p2p_wdev(struct net_device *dev);
 #endif /* WL_CFG80211_P2P_DEV_IF */
+#if defined(WL_SUPPORT_AUTO_CHANNEL)
+extern int wl_cfg80211_set_spect(struct net_device *dev, int spect);
+#endif /* WL_SUPPORT_AUTO_CHANNEL */
 extern int wl_cfg80211_get_sta_channel(struct bcm_cfg80211 *cfg);
 #ifdef WL_CFG80211_SYNC_GON
 #define WL_DRV_STATUS_SENDING_AF_FRM_EXT(cfg) \
@@ -2722,6 +2725,8 @@ static inline s32 wl_rssi_offset(s32 rssi)
 #define wl_rssi_offset(x)	x
 #endif
 extern int wl_channel_to_frequency(u32 chan, chanspec_band_t band);
+extern chanspec_t
+wl_channel_to_chanspec(struct wiphy *wiphy, struct net_device *dev, u32 channel, u32 bw_cap);
 extern int wl_cfg80211_config_rsnxe_ie(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		const u8 *parse, u32 len);
 

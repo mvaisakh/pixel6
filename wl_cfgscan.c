@@ -2188,7 +2188,7 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	 */
 	if (request && (scan_req_iftype(request) == NL80211_IFTYPE_AP)) {
 		WL_DBG(("Scan Command on SoftAP Interface. Ignoring...\n"));
-		return 0;
+		return -EOPNOTSUPP;
 	}
 
 	if (request && request->n_ssids > WL_SCAN_PARAMS_SSID_MAX) {

@@ -39,8 +39,79 @@ enum wl_vendor_subcmd {
 	BRCM_VENDOR_SCMD_SET_MAC		= 6,
 	BRCM_VENDOR_SCMD_SET_CONNECT_PARAMS	= 7,
 	BRCM_VENDOR_SCMD_SET_START_AP_PARAMS	= 8,
-	BRCM_VENDOR_SCMD_MAX			= 9
+	BRCM_VENDOR_SCMD_ACS			= 9,
+	BRCM_VENDOR_SCMD_MAX			= 10
 };
+
+/* Added for HOSTAPD required ACS action */
+#ifdef WL_SUPPORT_AUTO_CHANNEL
+#define APCS_MAX_RETRY        10
+#define APCS_DEFAULT_2G_CH    1
+#define APCS_DEFAULT_5G_CH    149
+
+enum wl_vendor_attr_acs_offload {
+	BRCM_VENDOR_ATTR_ACS_CHANNEL_INVALID = 0,
+	BRCM_VENDOR_ATTR_ACS_PRIMARY_FREQ,
+	BRCM_VENDOR_ATTR_ACS_SECONDARY_FREQ,
+	BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL,
+	BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL,
+
+	BRCM_VENDOR_ATTR_ACS_HW_MODE,
+	BRCM_VENDOR_ATTR_ACS_HT_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_HT40_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_VHT_ENABLED,
+	BRCM_VENDOR_ATTR_ACS_CHWIDTH,
+	BRCM_VENDOR_ATTR_ACS_CH_LIST,
+	BRCM_VENDOR_ATTR_ACS_FREQ_LIST,
+
+	BRCM_VENDOR_ATTR_ACS_LAST
+};
+
+/* defined for hw_mode in hostapd.conf */
+enum hostapd_hw_mode {
+	HOSTAPD_MODE_IEEE80211B,
+	HOSTAPD_MODE_IEEE80211G,
+	HOSTAPD_MODE_IEEE80211A,
+	HOSTAPD_MODE_IEEE80211AD,
+	HOSTAPD_MODE_IEEE80211ANY,
+	NUM_HOSTAPD_MODES
+};
+
+typedef struct acs_selected_channels {
+	u32 pri_freq; /* save slelcted primary frequency */
+	u32 sec_freq; /* save slelcted secondary frequency */
+	u8 vht_seg0_center_ch;
+	u8 vht_seg1_center_ch;
+	u16 ch_width;
+	enum hostapd_hw_mode hw_mode;
+} acs_selected_channels_t;
+
+typedef struct drv_acs_params {
+	enum hostapd_hw_mode hw_mode;
+	int band;
+
+	int ht_enabled;
+	int ht40_enabled;
+	int vht_enabled;
+	int he_enabled;
+
+	u16 ch_width;
+
+	unsigned int ch_list_len;
+	const u8 *ch_list;
+
+	const int *freq_list;
+} drv_acs_params_t;
+
+typedef struct acs_delay_work {
+	struct delayed_work acs_delay_work;
+	int init_flag;
+
+	struct net_device *ndev;
+	chanspec_t ch_chosen;
+	drv_acs_params_t parameter;
+} acs_delay_work_t;
+#endif /* WL_SUPPORT_AUTO_CHANNEL */
 
 struct bcm_nlmsg_hdr {
 	uint cmd;	/* common ioctl definition */
