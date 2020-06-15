@@ -823,6 +823,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	lwis_platform_probe(lwis_dev);
 
 	lwis_device_debugfs_setup(lwis_dev, core.dbg_root);
+	memset(&lwis_dev->debug_info, 0, sizeof(lwis_dev->debug_info));
 
 	dev_info(lwis_dev->dev, "Base Probe: Success\n");
 

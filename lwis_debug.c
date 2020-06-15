@@ -116,6 +116,7 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 {
 	/* Main buffer for all information. */
 	char k_buf[2048] = {};
+	const size_t k_buf_size = sizeof(k_buf);
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[64] = {};
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
@@ -132,21 +133,37 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	if (hash_empty(lwis_dev->event_states)) {
-		strlcat(k_buf, "  No events being monitored\n", sizeof(k_buf));
+		strlcat(k_buf, "  No events being monitored\n", k_buf_size);
 		goto exit;
 	}
-	strlcat(k_buf, "Enabled Device Events:\n", sizeof(k_buf));
+	strlcat(k_buf, "Enabled Device Events:\n", k_buf_size);
 	hash_for_each (lwis_dev->event_states, i, state, node) {
 		if (state->enable_counter > 0) {
 			snprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", idx++,
 				 state->event_id, state->event_counter);
-			strlcat(k_buf, tmp_buf, sizeof(k_buf));
+			strlcat(k_buf, tmp_buf, k_buf_size);
 			enabled_event_present = true;
 		}
 	}
 	if (!enabled_event_present) {
-		strlcat(k_buf, "No enabled events\n", sizeof(k_buf));
+		strlcat(k_buf, "No enabled events\n", k_buf_size);
+	}
+	strlcat(k_buf, "Last Events:\n", k_buf_size);
+	idx = lwis_dev->debug_info.cur_event_hist_idx;
+	for (i = 0; i < EVENT_DEBUG_HISTORY_SIZE; ++i) {
+		state = &lwis_dev->debug_info.event_hist[idx];
+		/* Skip uninitialized entries */
+		if (state->event_id != 0) {
+			snprintf(tmp_buf, sizeof(tmp_buf),
+				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", i,
+				 state->event_id, state->event_counter);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+		}
+		idx++;
+		if (idx >= EVENT_DEBUG_HISTORY_SIZE) {
+			idx = 0;
+		}
 	}
 
 exit:

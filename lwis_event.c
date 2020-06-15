@@ -142,7 +142,7 @@ lwis_client_event_state_find_or_create(struct lwis_client *lwis_client,
  * event state list and tries to find a lwis_device_event_state object with the
  * matching event_id. If not found, returns NULL
  *
- * Assumes: lwisdwis->lock is locked
+ * Assumes: lwis_dev->lock is locked
  * Alloc: No
  * Returns: device event state object, if found, NULL otherwise
  */
@@ -163,6 +163,28 @@ lwis_device_event_state_find_locked(struct lwis_device *lwis_dev,
 
 	return NULL;
 }
+
+/*
+ * save_device_event_state_to_history_locked: Saves the emitted events in a
+ * history buffer for better debugability.
+ *
+ * Assumes: lwis_dev->lock is locked
+ * Alloc : No
+ * Returns: None
+ */
+static void
+save_device_event_state_to_history_locked(struct lwis_device *lwis_dev,
+					  struct lwis_device_event_state *state)
+{
+	lwis_dev->debug_info
+		.event_hist[lwis_dev->debug_info.cur_event_hist_idx] = *state;
+	lwis_dev->debug_info.cur_event_hist_idx++;
+	if (lwis_dev->debug_info.cur_event_hist_idx >=
+	    EVENT_DEBUG_HISTORY_SIZE) {
+		lwis_dev->debug_info.cur_event_hist_idx = 0;
+	}
+}
+
 /*
  * lwis_device_event_state_find: Looks through the provided device's
  * event state list and tries to find a lwis_device_event_state object with the
@@ -588,6 +610,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 	device_event_state->event_counter++;
 	/* Save event counter to local variable */
 	event_counter = device_event_state->event_counter;
+	/* Saves this event to history buffer */
+	save_device_event_state_to_history_locked(lwis_dev, device_event_state);
 
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);

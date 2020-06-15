@@ -25,6 +25,7 @@
 
 #include "lwis_clock.h"
 #include "lwis_commands.h"
+#include "lwis_event.h"
 #include "lwis_gpio.h"
 #include "lwis_interrupt.h"
 #include "lwis_phy.h"
@@ -118,15 +119,25 @@ struct lwis_event_subscribe_operations {
 	void (*release)(struct lwis_device *lwis_dev);
 };
 
-/* struct lwis_debug_info
+/* struct lwis_client_debug_info
  * This struct applies to each of the LWIS clients, and the purpose is to
  * store information in help debugability.
  */
 #define TRANSACTION_DEBUG_HISTORY_SIZE 8
-struct lwis_debug_info {
+struct lwis_client_debug_info {
 	struct lwis_transaction_info
 		transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
 	int cur_transaction_hist_idx;
+};
+
+/* struct lwis_device_debug_info
+ * This struct applies to each of the LWIS devices, and the purpose is to
+ * store information in help debugability.
+ */
+#define EVENT_DEBUG_HISTORY_SIZE 16
+struct lwis_device_debug_info {
+	struct lwis_device_event_state event_hist[EVENT_DEBUG_HISTORY_SIZE];
+	int cur_event_hist_idx;
 };
 
 /*
@@ -186,6 +197,8 @@ struct lwis_device {
 	struct dentry *dbg_event_file;
 	struct dentry *dbg_transaction_file;
 #endif
+	/* Structure to store info to help debugging device data */
+	struct lwis_device_debug_info debug_info;
 };
 
 /*
@@ -230,8 +243,8 @@ struct lwis_client {
 	struct list_head periodic_io_process_queue;
 	/* Periodic IO counter, which also provides periodic io ID */
 	int64_t periodic_io_counter;
-	/* Structure to store info to help debugging */
-	struct lwis_debug_info debug_info;
+	/* Structure to store info to help debugging client data */
+	struct lwis_client_debug_info debug_info;
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };
