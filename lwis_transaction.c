@@ -99,6 +99,23 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 	return -ETIMEDOUT;
 }
 
+static void
+save_transaction_to_history(struct lwis_client *client,
+			    struct lwis_transaction_info *trans_info)
+{
+	unsigned long flags = 0;
+	spin_lock_irqsave(&client->transaction_lock, flags);
+	client->debug_info
+		.transaction_hist[client->debug_info.cur_transaction_hist_idx] =
+		*trans_info;
+	client->debug_info.cur_transaction_hist_idx++;
+	if (client->debug_info.cur_transaction_hist_idx >=
+	    TRANSACTION_DEBUG_HISTORY_SIZE) {
+		client->debug_info.cur_transaction_hist_idx = 0;
+	}
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
+}
+
 static int process_io_entries(struct lwis_client *client,
 			      struct lwis_transaction *transaction,
 			      struct list_head *list_node,
@@ -185,6 +202,7 @@ static int process_io_entries(struct lwis_client *client,
 	}
 
 event_push:
+	save_transaction_to_history(client, info);
 	if (pending_events) {
 		lwis_pending_event_push(pending_events,
 					resp->error_code ?

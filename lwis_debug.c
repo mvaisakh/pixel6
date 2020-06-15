@@ -25,11 +25,12 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[128] = {};
-	int i;
+	int i, hist_idx;
 	unsigned long flags;
 	struct lwis_transaction_event_list *transaction_list;
 	struct lwis_transaction *transaction;
 	struct list_head *it_tran;
+	struct lwis_transaction_info *trans_hist;
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	if (hash_empty(client->transaction_list)) {
@@ -60,6 +61,30 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 				 transaction->info.emit_success_event_id,
 				 transaction->info.emit_error_event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
+		}
+	}
+
+	strlcat(k_buf, "Last Transactions:\n", k_buf_size);
+	hist_idx = client->debug_info.cur_transaction_hist_idx;
+	for (i = 0; i < TRANSACTION_DEBUG_HISTORY_SIZE; ++i) {
+		trans_hist = &client->debug_info.transaction_hist[hist_idx];
+		/* Skip uninitialized entries */
+		if (trans_hist->trigger_event_id != 0) {
+			snprintf(
+				tmp_buf, sizeof(tmp_buf),
+				"[%2d] ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n",
+				i, trans_hist->id, trans_hist->trigger_event_id,
+				trans_hist->trigger_event_counter);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+			snprintf(tmp_buf, sizeof(tmp_buf),
+				 "     Emit Success: 0x%llx Error: %llx\n",
+				 trans_hist->emit_success_event_id,
+				 trans_hist->emit_error_event_id);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+		}
+		hist_idx++;
+		if (hist_idx >= TRANSACTION_DEBUG_HISTORY_SIZE) {
+			hist_idx = 0;
 		}
 	}
 exit:

@@ -118,6 +118,17 @@ struct lwis_event_subscribe_operations {
 	void (*release)(struct lwis_device *lwis_dev);
 };
 
+/* struct lwis_debug_info
+ * This struct applies to each of the LWIS clients, and the purpose is to
+ * store information in help debugability.
+ */
+#define TRANSACTION_DEBUG_HISTORY_SIZE 8
+struct lwis_debug_info {
+	struct lwis_transaction_info
+		transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
+	int cur_transaction_hist_idx;
+};
+
 /*
  *  struct lwis_device
  *  This struct applies to each of the LWIS devices, e.g. /dev/lwis*
@@ -219,6 +230,8 @@ struct lwis_client {
 	struct list_head periodic_io_process_queue;
 	/* Periodic IO counter, which also provides periodic io ID */
 	int64_t periodic_io_counter;
+	/* Structure to store info to help debugging */
+	struct lwis_debug_info debug_info;
 	/* Each device has a linked list of clients */
 	struct list_head node;
 };

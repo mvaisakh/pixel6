@@ -114,6 +114,8 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Start periodic io processor task */
 	lwis_periodic_io_init(lwis_client);
 
+	memset(&lwis_client->debug_info, 0, sizeof(lwis_client->debug_info));
+
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_add(&lwis_client->node, &lwis_dev->clients);
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
