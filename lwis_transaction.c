@@ -660,29 +660,23 @@ int lwis_transaction_replace(struct lwis_client *client,
 
 	ret = check_transaction_param(client, transaction,
 				      /*allow_counter_eq=*/false);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
-
-	ret = prepare_response(client, transaction);
-	if (ret) {
-		return ret;
-	}
 
 	spin_lock_irqsave(&client->transaction_lock, lock_flags);
 	ret = cancel_waiting_transaction_locked(client, transaction->info.id);
 	if (ret) {
 		spin_unlock_irqrestore(&client->transaction_lock, lock_flags);
-		/* kzalloc came from prepare_response */
-		kfree(transaction->resp);
+		return ret;
+	}
+
+	ret = prepare_response(client, transaction);
+	if (ret) {
+		spin_unlock_irqrestore(&client->transaction_lock, lock_flags);
 		return ret;
 	}
 
 	ret = queue_transaction_locked(client, transaction);
 	spin_unlock_irqrestore(&client->transaction_lock, lock_flags);
-	if (ret) {
-		/* kzalloc came from prepare_response */
-		kfree(transaction->resp);
-	}
 	return ret;
 }
