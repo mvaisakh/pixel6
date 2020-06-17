@@ -417,9 +417,8 @@ static int check_transaction_param(struct lwis_client *client,
 		if (info->trigger_event_counter ==
 		    info->current_trigger_event_counter) {
 			if (allow_counter_eq) {
+				/* Convert this transaction into an immediate one */
 				info->trigger_event_id = LWIS_EVENT_ID_NONE;
-				pr_warn_ratelimited(
-					"Event counter == Trigger counter already, turning this into an immediate transaction\n");
 			} else {
 				return -ENOENT;
 			}
