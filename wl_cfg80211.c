@@ -25377,12 +25377,21 @@ bool wl_cfg80211_check_in_progress(struct net_device *dev)
 {
 	struct bcm_cfg80211 *cfg;
 	struct net_device *pri_dev;
+	dhd_pub_t *dhdp = NULL;
 	u8 reason = WL_STATE_IDLE;
 	u64 timeout;
 	u64 start_time = 0;
 
 	cfg = wl_get_cfg(dev);
 	pri_dev = bcmcfg_to_prmry_ndev(cfg);
+	dhdp = (dhd_pub_t *)(cfg->pub);
+
+	if(dhd_query_bus_erros(dhdp)) {
+		/* Becasue bus_error/dongle_trap ... etc,
+		 * driver don't allow enter suspend, return TRUE
+		 */
+		return true;
+	}
 
 	/* check states like scan in progress, four way handshake, etc
 	 * before entering Deep Sleep.

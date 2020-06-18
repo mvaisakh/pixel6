@@ -9378,7 +9378,8 @@ dhd_bus_dw_deassert(dhd_pub_t *dhd)
 
 	/* If haven't communicated with device for a while, deassert the Device_Wake GPIO */
 	if (dhd_doorbell_timeout != 0 && bus->dhd->busstate == DHD_BUS_DATA &&
-		dhd_timeout_expired(&bus->doorbell_timer)) {
+		dhd_timeout_expired(&bus->doorbell_timer) &&
+		!dhd_query_bus_erros(bus->dhd)) {
 		DHD_GENERAL_LOCK(dhd, flags);
 		if (DHD_BUS_BUSY_CHECK_IDLE(dhd) &&
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd)) {
