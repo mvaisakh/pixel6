@@ -623,10 +623,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 		bool emit = false;
 		lwis_client = list_entry(p, struct lwis_client, node);
 
-		/* Lock the event lock instead.
-		 * WARNING: Deadlock potential if something else locks
-		 * event_lock first and then lwis_dev->lock second */
-		spin_lock(&lwis_client->event_lock);
+		/* Lock the event lock instead */
+		spin_lock_irqsave(&lwis_client->event_lock, flags);
 		client_event_state = lwis_client_event_state_find_locked(
 			lwis_client, event_id);
 
@@ -637,8 +635,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 			}
 		}
 
-		/* Restore the lock */
-		spin_unlock(&lwis_client->event_lock);
+		/* Restore the event lock */
+		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 		if (emit) {
 			event = kzalloc(sizeof(struct lwis_event_entry) +
 						payload_size,
@@ -823,7 +821,8 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 		emit = false;
 		lwis_client = list_entry(p, struct lwis_client, node);
 
-		spin_lock(&lwis_client->event_lock);
+		/* Lock the event lock instead */
+		spin_lock_irqsave(&lwis_client->event_lock, flags);
 		client_event_state = lwis_client_event_state_find_locked(
 			lwis_client, event_id);
 
@@ -833,8 +832,8 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 				emit = true;
 			}
 		}
-		/* Restore the lock */
-		spin_unlock(&lwis_client->event_lock);
+		/* Restore the event lock */
+		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
 		if (emit) {
 			event = kzalloc(sizeof(struct lwis_event_entry),
