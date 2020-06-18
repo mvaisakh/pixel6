@@ -196,6 +196,7 @@ struct lwis_device {
 	struct dentry *dbg_dev_info_file;
 	struct dentry *dbg_event_file;
 	struct dentry *dbg_transaction_file;
+	struct dentry *dbg_buffer_file;
 #endif
 	/* Structure to store info to help debugging device data */
 	struct lwis_device_debug_info debug_info;

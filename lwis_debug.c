@@ -13,6 +13,7 @@
 #include <linux/hashtable.h>
 #include <linux/list.h>
 
+#include "lwis_buffer.h"
 #include "lwis_debug.h"
 #include "lwis_device.h"
 #include "lwis_event.h"
@@ -89,6 +90,51 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 	}
 exit:
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+}
+
+static void list_allocated_buffers(struct lwis_client *client, char *k_buf,
+				   size_t k_buf_size)
+{
+	char tmp_buf[64] = {};
+	struct lwis_allocated_buffer *buffer;
+	int i;
+	int idx = 0;
+
+	if (hash_empty(client->allocated_buffers)) {
+		strlcat(k_buf, "Allocated buffers: None\n", k_buf_size);
+		return;
+	}
+
+	strlcat(k_buf, "Allocated buffers:\n", k_buf_size);
+	hash_for_each (client->allocated_buffers, i, buffer, node) {
+		snprintf(tmp_buf, sizeof(tmp_buf), "[%2d] FD: %d Size: %d\n",
+			 idx++, buffer->fd, buffer->size);
+		strlcat(k_buf, tmp_buf, k_buf_size);
+	}
+}
+
+static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
+				  size_t k_buf_size)
+{
+	char tmp_buf[64] = {};
+	struct lwis_enrolled_buffer *buffer;
+	int i;
+	int idx = 0;
+
+	if (hash_empty(client->enrolled_buffers)) {
+		strlcat(k_buf, "Enrolled buffers: None\n", k_buf_size);
+		return;
+	}
+
+	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
+	hash_for_each (client->enrolled_buffers, i, buffer, node) {
+		snprintf(tmp_buf, sizeof(tmp_buf),
+			 "[%2d] FD: %d Mode: %s%s Addr: 0x%8x\n", idx++,
+			 buffer->info.fd, buffer->info.dma_read ? "r" : "",
+			 buffer->info.dma_write ? "w" : "",
+			 buffer->info.dma_vaddr);
+		strlcat(k_buf, tmp_buf, k_buf_size);
+	}
 }
 
 static ssize_t dev_info_read(struct file *fp, char __user *user_buf,
@@ -204,6 +250,41 @@ exit:
 				       strlen(k_buf));
 }
 
+static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
+				size_t count, loff_t *position)
+{
+	/* Main buffer for all information. */
+	char k_buf[2048] = {};
+	const size_t k_buf_size = sizeof(k_buf);
+	/* Temporary buffer to be concatenated to the main buffer. */
+	char tmp_buf[64] = {};
+	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+	struct lwis_client *client;
+	int idx = 0;
+
+	if (lwis_dev == NULL) {
+		pr_err("Unknown LWIS device pointer\n");
+		return -EINVAL;
+	}
+
+	if (list_empty(&lwis_dev->clients)) {
+		snprintf(k_buf, k_buf_size, "No clients opened\n");
+		goto exit;
+	}
+
+	list_for_each_entry (client, &lwis_dev->clients, node) {
+		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
+		strlcat(k_buf, tmp_buf, k_buf_size);
+		list_allocated_buffers(client, k_buf, k_buf_size);
+		list_enrolled_buffers(client, k_buf, k_buf_size);
+		idx++;
+	}
+
+exit:
+	return simple_read_from_buffer(user_buf, count, position, k_buf,
+				       strlen(k_buf));
+}
+
 static struct file_operations dev_info_fops = {
 	.owner = THIS_MODULE,
 	.read = dev_info_read,
@@ -219,6 +300,11 @@ static struct file_operations transaction_info_fops = {
 	.read = transaction_info_read,
 };
 
+static struct file_operations buffer_info_fops = {
+	.owner = THIS_MODULE,
+	.read = buffer_info_read,
+};
+
 int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 			      struct dentry *dbg_root)
 {
@@ -226,6 +312,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 	struct dentry *dbg_dev_info_file;
 	struct dentry *dbg_event_file;
 	struct dentry *dbg_transaction_file;
+	struct dentry *dbg_buffer_file;
 
 	/* DebugFS not present, just return */
 	if (dbg_root == NULL) {
@@ -268,10 +355,20 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 		dbg_transaction_file = NULL;
 	}
 
+	dbg_buffer_file = debugfs_create_file("buffer_info", 0444, dbg_dir,
+					      lwis_dev, &buffer_info_fops);
+	if (IS_ERR_OR_NULL(dbg_buffer_file)) {
+		dev_warn(lwis_dev->dev,
+			 "Failed to create DebugFS buffer_info - %d",
+			 PTR_ERR(dbg_buffer_file));
+		dbg_buffer_file = NULL;
+	}
+
 	lwis_dev->dbg_dir = dbg_dir;
 	lwis_dev->dbg_dev_info_file = dbg_dev_info_file;
 	lwis_dev->dbg_event_file = dbg_event_file;
 	lwis_dev->dbg_transaction_file = dbg_transaction_file;
+	lwis_dev->dbg_buffer_file = dbg_buffer_file;
 
 	return 0;
 }
@@ -287,6 +384,7 @@ int lwis_device_debugfs_cleanup(struct lwis_device *lwis_dev)
 	lwis_dev->dbg_dev_info_file = NULL;
 	lwis_dev->dbg_event_file = NULL;
 	lwis_dev->dbg_transaction_file = NULL;
+	lwis_dev->dbg_buffer_file = NULL;
 	return 0;
 }
 
