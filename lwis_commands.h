@@ -78,6 +78,8 @@ enum lwis_dma_alloc_flags {
 	LWIS_DMA_BUFFER_CONTIGUOUS = 1UL << 2,
 	// Allocates a buffer represent system cache reservation.
 	LWIS_DMA_SYSTEM_CACHE_RESERVATION = 1UL << 3,
+	// Allocates a secure buffer.
+	LWIS_DMA_BUFFER_SECURE = 1UL << 4,
 };
 
 struct lwis_alloc_buffer_info {
