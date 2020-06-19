@@ -203,6 +203,11 @@ enum dpu_event_type {
 
 	DPU_EVT_FRAMESTART_TIMEOUT,
 
+	DPU_EVT_BTS_ACQUIRE_BW,
+	DPU_EVT_BTS_RELEASE_BW,
+	DPU_EVT_BTS_CALC_BW,
+	DPU_EVT_BTS_UPDATE_BW,
+
 	DPU_EVT_MAX, /* End of EVENT */
 };
 
@@ -251,6 +256,22 @@ struct dpu_log_crtc_info {
 	bool active_changed;
 };
 
+struct dpu_log_freqs {
+	unsigned long mif_freq;
+	unsigned long int_freq;
+	unsigned long disp_freq;
+};
+
+struct dpu_log_bts {
+	struct dpu_log_freqs freqs;
+	unsigned int calc_disp;
+};
+
+struct dpu_log_underrun {
+	struct dpu_log_freqs freqs;
+	unsigned int underrun_cnt;
+};
+
 struct dpu_log {
 	ktime_t time;
 	enum dpu_event_type type;
@@ -263,6 +284,9 @@ struct dpu_log {
 		struct dpu_log_pd pd;
 		struct dpu_log_win win;
 		struct dpu_log_crtc_info crtc_info;
+		struct dpu_log_freqs freqs;
+		struct dpu_log_bts bts;
+		struct dpu_log_underrun underrun;
 	} data;
 };
 
