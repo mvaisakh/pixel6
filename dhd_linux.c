@@ -6139,6 +6139,23 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 		}
 	}
 
+	if (skb_headroom(dhd->monitor_skb) < ETHER_HDR_LEN) {
+		struct sk_buff *skb2;
+
+		DHD_INFO(("%s: insufficient headroom\n",
+		          dhd_ifname(&dhd->pub, ifidx)));
+
+		skb2 = skb_realloc_headroom(dhd->monitor_skb, ETHER_HDR_LEN);
+
+		dev_kfree_skb(dhd->monitor_skb);
+		if ((dhd->monitor_skb = skb2) == NULL) {
+			DHD_ERROR(("%s: skb_realloc_headroom failed\n",
+			           dhd_ifname(&dhd->pub, ifidx)));
+			return;
+		}
+	}
+	PKTPUSH(dhd->pub.osh, dhd->monitor_skb, ETHER_HDR_LEN);
+
 	/* XXX WL here makes sure data is 4-byte aligned? */
 	if (in_interrupt()) {
 		bcm_object_trace_opr(skb, BCM_OBJDBG_REMOVE,
