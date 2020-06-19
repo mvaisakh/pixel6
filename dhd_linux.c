@@ -18605,7 +18605,9 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 	dhd_deferred_schedule_work(dhdp->info->dhd_deferred_wq, (void *)dump,
 		DHD_WQ_WORK_SOC_RAM_DUMP, (void *)dhd_mem_dump, DHD_WQ_WORK_PRIORITY_HIGH);
 }
-
+#if defined(WL_CFGVENDOR_SEND_HANG_EVENT)
+char hang_reason_str[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
+#endif
 static int
 dhd_mem_dump(void *handle, void *event_info, u8 event)
 {
@@ -18697,6 +18699,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
 		sprintf(&memdump_type[strlen(memdump_type)], "_%.79s_%.79s",
 				pc_fn, lr_fn);
+#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+		/* copy memdump_type to hang_reason_str send up to wifi hal */
+		memcpy(hang_reason_str, memdump_type, strlen(memdump_type));
+#endif
 	}
 	DHD_ERROR(("%s: dump reason: %s\n", __FUNCTION__, memdump_type));
 	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, memdump_type)) {

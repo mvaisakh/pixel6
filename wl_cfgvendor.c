@@ -9486,109 +9486,43 @@ int wl_cfgvendor_detach(struct wiphy *wiphy)
 #endif /* (LINUX_VERSION_CODE > KERNEL_VERSION(3, 13, 0)) || defined(WL_VENDOR_EXT_SUPPORT) */
 
 #ifdef WL_CFGVENDOR_SEND_HANG_EVENT
+#define DHD_MEMDUMP_TYPE_LONGSTR_LEN 180
+extern char hang_reason_str[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
 void
-wl_cfgvendor_send_hang_event(struct net_device *dev, u16 reason, char *string, int hang_info_cnt)
+wl_cfgvendor_send_hang_event(struct net_device *dev, u16 reason)
 {
-	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+	struct bcm_cfg80211 *cfg;
 	struct wiphy *wiphy;
-	char *hang_info;
-	int len = 0;
-	int bytes_written;
-	uint32 dummy_data = 0;
-	int reason_hang_info = 0;
-	int cnt = 0;
-	dhd_pub_t *dhd;
-	int hang_reason_mismatch = FALSE;
+	struct sk_buff *msg;
+	gfp_t kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 
+	WL_ERR(("wl_cfgvendor_send_fw_dump_event 0x%x\n", reason));
+
+	cfg = wl_cfg80211_get_bcmcfg();
 	if (!cfg || !cfg->wdev) {
-		WL_ERR(("cfg=%p wdev=%p\n", cfg, (cfg ? cfg->wdev : NULL)));
+		WL_ERR(("fw dump evt invalid arg\n"));
 		return;
 	}
 
-	wiphy = cfg->wdev->wiphy;
-
+	wiphy = bcmcfg_to_wiphy(cfg);
 	if (!wiphy) {
 		WL_ERR(("wiphy is NULL\n"));
 		return;
 	}
 
-	hang_info = MALLOCZ(cfg->osh, VENDOR_SEND_HANG_EXT_INFO_LEN);
-	if (hang_info == NULL) {
-		WL_ERR(("alloc hang_info failed\n"));
+	/* Allocate the skb for vendor event */
+	msg = CFG80211_VENDOR_EVENT_ALLOC(wiphy, ndev_to_wdev(dev),
+			DHD_MEMDUMP_TYPE_LONGSTR_LEN, BRCM_VENDOR_EVENT_HANGED, kflags);
+	if (!msg) {
+		WL_ERR(("%s: fail to allocate skb for vendor event\n", __FUNCTION__));
 		return;
 	}
 
-	dhd = (dhd_pub_t *)(cfg->pub);
+	WL_ERR(("hang reason: %s\n", hang_reason_str));
+	nla_put(msg, DEBUG_ATTRIBUTE_HANG_REASON, DHD_MEMDUMP_TYPE_LONGSTR_LEN, hang_reason_str);
 
-#ifdef WL_BCNRECV
-	/* check fakeapscan in progress then stop scan */
-	if (cfg->bcnrecv_info.bcnrecv_state == BEACON_RECV_STARTED) {
-		wl_android_bcnrecv_stop(dev, WL_BCNRECV_HANG);
-	}
-#endif /* WL_BCNRECV */
-	sscanf(string, "%d", &reason_hang_info);
-	bytes_written = 0;
-	len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
-	if (strlen(string) == 0 || (reason_hang_info != reason)) {
-		WL_ERR(("hang reason mismatch: string len %d reason_hang_info %d\n",
-			(int)strlen(string), reason_hang_info));
-		hang_reason_mismatch = TRUE;
-		if (dhd) {
-			get_debug_dump_time(dhd->debug_dump_time_hang_str);
-			copy_debug_dump_time(dhd->debug_dump_time_str,
-					dhd->debug_dump_time_hang_str);
-		}
-		/* Fill bigdata key with */
-		bytes_written += scnprintf(&hang_info[bytes_written], len,
-				"%d %d %s %08x %08x %08x %08x %08x %08x %08x",
-				reason, VENDOR_SEND_HANG_EXT_INFO_VER,
-				dhd->debug_dump_time_hang_str,
-				0, 0, 0, 0, 0, 0, 0);
-		if (dhd) {
-			clear_debug_dump_time(dhd->debug_dump_time_hang_str);
-		}
-	} else {
-		bytes_written += scnprintf(&hang_info[bytes_written], len, "%s", string);
-	}
-
-	WL_ERR(("hang reason: %d info cnt: %d\n", reason, hang_info_cnt));
-
-	if (hang_reason_mismatch == FALSE) {
-		cnt = hang_info_cnt;
-	} else {
-		cnt = HANG_FIELD_MISMATCH_CNT;
-	}
-
-	while (cnt < HANG_FIELD_CNT_MAX) {
-		len = VENDOR_SEND_HANG_EXT_INFO_LEN - bytes_written;
-		if (len <= 0) {
-			break;
-		}
-		bytes_written += scnprintf(&hang_info[bytes_written], len,
-				"%c%08x", HANG_RAW_DEL, dummy_data);
-		cnt++;
-	}
-
-	WL_ERR(("hang info cnt: %d len: %d\n", cnt, (int)strlen(hang_info)));
-	WL_ERR(("hang info data: %s\n", hang_info));
-
-	wl_cfgvendor_send_async_event(wiphy,
-			bcmcfg_to_prmry_ndev(cfg), BRCM_VENDOR_EVENT_HANGED,
-			hang_info, (int)strlen(hang_info));
-
-	memset(string, 0, VENDOR_SEND_HANG_EXT_INFO_LEN);
-
-	if (hang_info) {
-		MFREE(cfg->osh, hang_info, VENDOR_SEND_HANG_EXT_INFO_LEN);
-	}
-
-#ifdef DHD_LOG_DUMP
-	dhd_logdump_cookie_save(dhd, dhd->debug_dump_time_hang_str, "HANG");
-#endif /*  DHD_LOG_DUMP */
-
-	if (dhd) {
-		clear_debug_dump_time(dhd->debug_dump_time_str);
-	}
+	cfg80211_vendor_event(msg, kflags);
+	return;
 }
 
 void

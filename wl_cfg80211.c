@@ -6896,20 +6896,20 @@ wl_conn_debug_info(struct bcm_cfg80211 *cfg, struct net_device *dev, wlcfg_assoc
 	dbg = true;
 #endif /* SIMPLE_MAC_PRINT */
 	if (dbg) {
-		WL_INFORM_MEM(("[%s] Connecting with " MACDBG " ssid \"%s\" ssid_len:%d chan_cnt:%d"
+		WL_ERR(("[%s] Connecting with " MACDBG " ssid \"%s\" ssid_len:%d chan_cnt:%d"
 			" akm:%x auth:%x wpaver:%x pwise:%x gwise:%x \n",
 			dev->name, MAC2STRDBG((u8*)(&info->bssid)),
 			info->ssid, info->ssid_len, info->chan_cnt,
 			sec->wpa_auth, sec->auth_type, sec->wpa_versions,
 			sec->cipher_pairwise, sec->cipher_group));
-		WL_INFORM_MEM(("wpa_auth:0x%x auth:0x%x wsec:0x%x mfp:0x%x\n",
+		WL_ERR(("wpa_auth:0x%x auth:0x%x wsec:0x%x mfp:0x%x\n",
 				sec->fw_wpa_auth, sec->fw_auth, sec->fw_wsec, sec->fw_mfp));
 		/* print channels for assoc */
 		prhex("chanspecs", (const u8 *)info->chanspecs,
 				(info->chan_cnt * sizeof(chanspec_t)));
 	} else {
 		/* Limited info */
-		WL_INFORM_MEM(("[%s] Connecting with " MACDBG " ssid_len:%d chan_cnt:%d",
+		WL_ERR(("[%s] Connecting with " MACDBG " ssid_len:%d chan_cnt:%d",
 			dev->name, MAC2STRDBG((u8*)(&info->bssid)),
 			info->ssid_len, info->chan_cnt));
 	}
@@ -20154,10 +20154,7 @@ int wl_cfg80211_hang(struct net_device *dev, u16 reason)
 {
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	dhd_pub_t *dhd;
-#if defined(SOFTAP_SEND_HANGEVT)
-	/* specifc mac address used for hang event */
-	uint8 hang_mac[ETHER_ADDR_LEN] = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11};
-#endif /* SOFTAP_SEND_HANGEVT */
+
 	if (!cfg) {
 		return BCME_ERROR;
 	}
@@ -20165,52 +20162,9 @@ int wl_cfg80211_hang(struct net_device *dev, u16 reason)
 	RETURN_EIO_IF_NOT_UP(cfg);
 
 	dhd = (dhd_pub_t *)(cfg->pub);
-#if defined(DHD_HANG_SEND_UP_TEST)
-	if (dhd->req_hang_type) {
-		WL_ERR(("wl_cfg80211_hang, Clear HANG test request 0x%x\n",
-			dhd->req_hang_type));
-		dhd->req_hang_type = 0;
-	}
-#endif /* DHD_HANG_SEND_UP_TEST */
-	if ((dhd->hang_reason <= HANG_REASON_MASK) || (dhd->hang_reason >= HANG_REASON_MAX)) {
-		WL_ERR(("wl_cfg80211_hang, Invalid hang reason 0x%x\n",
-			dhd->hang_reason));
-		dhd->hang_reason = HANG_REASON_UNKNOWN;
-	}
-#ifdef DHD_USE_EXTENDED_HANG_REASON
-	/* The proper dhd->hang_reason handling codes should be implemented
-	 * in the WPA Supplicant/Hostapd or Android framework.
-	 * If not, HANG event may not be sent to Android framework and
-	 * driver cannot be reloaded.
-	 * Please do not enable DHD_USE_EXTENDED_HANG_REASON if your Android platform
-	 * cannot handle the dhd->hang_reason value.
-	 */
-	if (dhd->hang_reason != 0) {
-		reason = dhd->hang_reason;
-	}
-#endif /* DHD_USE_EXTENDED_HANG_REASON */
-	WL_ERR(("In : chip crash eventing, reason=0x%x\n", (uint32)(dhd->hang_reason)));
 
-	wl_add_remove_pm_enable_work(cfg, WL_PM_WORKQ_DEL);
-#ifdef SOFTAP_SEND_HANGEVT
-	if (dhd->op_mode & DHD_FLAG_HOSTAP_MODE) {
-		cfg80211_del_sta(dev, hang_mac, GFP_ATOMIC);
-	} else
-#endif /* SOFTAP_SEND_HANGEVT */
-	{
-		if (dhd->up == TRUE) {
-#ifdef WL_CFGVENDOR_SEND_HANG_EVENT
-			wl_cfgvendor_send_hang_event(dev, reason,
-					dhd->hang_info, dhd->hang_info_cnt);
-#else
-			CFG80211_DISCONNECTED(dev, reason, NULL, 0, false, GFP_KERNEL);
-#endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
-		}
-	}
-	if (cfg != NULL) {
-		/* Do we need to call wl_cfg80211_down here ? */
-		wl_link_down(cfg);
-	}
+	WL_ERR(("In : HANG , reason=0x%x\n", dhd->hang_reason));
+	wl_cfgvendor_send_hang_event(dev, dhd->hang_reason);
 	return 0;
 }
 

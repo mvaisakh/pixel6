@@ -441,7 +441,8 @@ enum debug_attributes {
 	DEBUG_ATTRIBUTE_DRIVER_DUMP_LEN,
 	DEBUG_ATTRIBUTE_DRIVER_DUMP_DATA,
 	DEBUG_ATTRIBUTE_PKT_FATE_NUM,
-	DEBUG_ATTRIBUTE_PKT_FATE_DATA
+	DEBUG_ATTRIBUTE_PKT_FATE_DATA,
+	DEBUG_ATTRIBUTE_HANG_REASON
 };
 
 typedef enum {
@@ -815,8 +816,7 @@ int wl_cfgvendor_notify_supp_event_str(const char *evt_name, const char *fmt, ..
 int wl_cfgvendor_nan_send_async_disable_resp(struct wireless_dev *wdev);
 
 #ifdef WL_CFGVENDOR_SEND_HANG_EVENT
-void wl_cfgvendor_send_hang_event(struct net_device *dev, u16 reason,
-	char *string, int hang_info_cnt);
+void wl_cfgvendor_send_hang_event(struct net_device *dev, u16 reason);
 void wl_copy_hang_info_if_falure(struct net_device *dev, u16 reason, s32 ret);
 #endif /* WL_CFGVENDOR_SEND_HANG_EVENT */
 #ifdef DHD_PKT_LOGGING
