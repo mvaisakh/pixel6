@@ -65,6 +65,7 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 	}
 
 	buffer->fd = alloc_info->dma_fd;
+	buffer->size = alloc_info->size;
 	buffer->dma_buf = dma_buf;
 	hash_add(lwis_client->allocated_buffers, &buffer->node, buffer->fd);
 

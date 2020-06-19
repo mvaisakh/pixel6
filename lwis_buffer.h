@@ -30,6 +30,7 @@ struct lwis_enrolled_buffer {
 
 struct lwis_allocated_buffer {
 	int fd;
+	size_t size;
 	struct dma_buf *dma_buf;
 	struct hlist_node node;
 };
