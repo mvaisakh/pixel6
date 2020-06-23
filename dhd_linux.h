@@ -424,4 +424,7 @@ extern void dhd_reset_tcpsync_info_by_dev(struct net_device *dev);
 #ifdef PCIE_FULL_DONGLE
 extern void dhd_net_del_flowrings_sta(dhd_pub_t * dhd, struct net_device * ndev);
 #endif /* PCIE_FULL_DONGLE */
+#ifdef ANQP_RANDOM_SA
+int _dhd_set_mac_address(struct dhd_info *dhdinfo, int ifidx, uint8 *addr);
+#endif /* ANQP_RANDOM_SA */
 #endif /* __DHD_LINUX_H__ */

@@ -1483,6 +1483,9 @@ typedef struct dhd_pub {
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 	uint32 alert_reason;		/* reason codes for alert event */
 #endif
+#ifdef ANQP_RANDOM_SA
+	struct ether_addr anqp_sa;	/* ANQP SA Random */
+#endif /* ANQP_RANDOM_SA */
 } dhd_pub_t;
 
 #if defined(__linux__)

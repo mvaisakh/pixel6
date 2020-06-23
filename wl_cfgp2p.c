@@ -57,6 +57,9 @@
 #include <dhd_bus.h>
 
 static s8 scanparambuf[WLC_IOCTL_MEDLEN];
+#ifdef ANQP_RANDOM_SA
+static bool tx_gas_init_reg = FALSE;
+#endif /* ANQP_RANDOM_SA */
 static bool wl_cfgp2p_has_ie(const bcm_tlv_t *ie, const u8 **tlvs, u32 *tlvs_len,
                              const u8 *oui, u32 oui_len, u8 type);
 
@@ -294,6 +297,7 @@ void wl_cfgp2p_print_actframe(bool tx, void *frame, u32 frame_len, u32 channel)
 		sd_act_frm = (wifi_p2psd_gas_pub_act_frame_t *)frame;
 		switch (sd_act_frm->action) {
 			case P2PSD_ACTION_ID_GAS_IREQ:
+				tx_gas_init_reg = TRUE;
 				CFGP2P_ACTION(("%s GAS Initial Request,"
 					" channel=%d\n", (tx)? "TX" : "RX", channel));
 				break;
@@ -1698,6 +1702,9 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	s32 evt_ret = BCME_OK;
 	s32 timeout = 0;
 	wl_eventmsg_buf_t buf;
+#ifdef ANQP_RANDOM_SA
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(dev);
+#endif /* ANQP_RANDOM_SA */
 
 	CFGP2P_DBG(("\n"));
 	CFGP2P_ACTION(("channel : %u , dwell time : %u wait_afrx:%d\n",
@@ -1720,6 +1727,14 @@ wl_cfgp2p_tx_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev,
 #ifdef WL_CFG80211_SYNC_GON
 	cfg->af_tx_sent_jiffies = jiffies;
 #endif /* WL_CFG80211_SYNC_GON */
+
+#ifdef ANQP_RANDOM_SA
+	if((tx_gas_init_reg == TRUE) && memcmp(dhdp->anqp_sa.octet, dhdp->mac.octet, ETH_ALEN)){
+		_dhd_set_mac_address(dhdp->info, 0, dhdp->anqp_sa.octet);
+		CFGP2P_ACTION(("actframe SA " MACDBG "\n", MAC2STRDBG(dhdp->mac.octet)));
+	}
+	tx_gas_init_reg = FALSE;
+#endif /* ANQP_RANDOM_SA */
 
 	ret = wldev_iovar_setbuf_bsscfg(dev, "actframe", af_params, sizeof(*af_params),
 		cfg->ioctl_buf, WLC_IOCTL_MAXLEN, bssidx, &cfg->ioctl_buf_sync);

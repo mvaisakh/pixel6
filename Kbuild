@@ -131,6 +131,9 @@ DHDCFLAGS += -DDEBUGABILITY
 # Notify the MAC changed to wpa_supplicant
 DHDCFLAGS += -DDHD_NOTIFY_MAC_CHANGED
 
+# Random ANQP source address
+DHDCFLAGS += -DANQP_RANDOM_SA
+
 # Enable wakelock debug function
 DHDCFLAGS += -DDHD_TRACE_WAKE_LOCK
 

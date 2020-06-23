@@ -9657,6 +9657,9 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 	u32 id;
 	bool ack = false;
 	s8 eabuf[ETHER_ADDR_STR_LEN];
+#ifdef ANQP_RANDOM_SA
+	dhd_pub_t *dhd = cfg->pub;
+#endif /* ANQP_RANDOM_SA */
 
 	WL_DBG(("Enter \n"));
 
@@ -9769,6 +9772,9 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 			goto exit;
 
 		} else if (ieee80211_is_action(mgmt->frame_control)) {
+#ifdef ANQP_RANDOM_SA
+			memcpy(dhd->anqp_sa.octet, mgmt->sa, ETH_ALEN);
+#endif /* ANQP_RANDOM_SA */
 			/* Abort the dwell time of any previous off-channel
 			* action frame that may be still in effect.  Sending
 			* off-channel action frames relies on the driver's
@@ -13474,6 +13480,9 @@ static s32 wl_setup_wiphy(struct wireless_dev *wdev, struct device *sdiofunc_dev
 	wiphy_ext_feature_set(wdev->wiphy, NL80211_EXT_FEATURE_OCE_PROBE_REQ_HIGH_TX_RATE);
 	wiphy_ext_feature_set(wdev->wiphy, NL80211_EXT_FEATURE_OCE_PROBE_REQ_DEFERRAL_SUPPRESSION);
 #endif /* WL_OCE */
+#ifdef ANQP_RANDOM_SA
+	wiphy_ext_feature_set(wdev->wiphy, NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA);
+#endif /* ANQP_RANDOM_SA */
 	return err;
 }
 
