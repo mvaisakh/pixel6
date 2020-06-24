@@ -35,6 +35,8 @@ typedef __u32 edgetpu_map_flag_t;
 /* The TPU address must be accessible to the TPU CPU */
 #define EDGETPU_MAP_CPU_ACCESSIBLE	(0u << 3)
 #define EDGETPU_MAP_CPU_NONACCESSIBLE	(1u << 3)
+/* Skip CPU sync on unmap */
+#define EDGETPU_MAP_SKIP_CPU_SYNC	(1u << 4)
 
 struct edgetpu_map_ioctl {
 	__u64 host_address;
@@ -62,7 +64,11 @@ struct edgetpu_map_ioctl {
 	 *             Note: this flag may be ignored if the TPU chip does not
 	 *             have the capability to internally map memory outside the
 	 *             CPU-addressable range.
-	 *   [31:4]  - RESERVED
+	 *   [4:4]   - Skip cache invalidation on unmap.
+	 *               0 = Don't skip CPU sync. Default DMA API behavior.
+	 *               1 = Skip CPU sync.
+	 *             Note: This bit is ignored on the map call.
+	 *   [31:5]  - RESERVED
 	 */
 	edgetpu_map_flag_t flags;
 	/*
@@ -82,17 +88,16 @@ struct edgetpu_map_ioctl {
 #define EDGETPU_MAP_BUFFER \
 	_IOWR(EDGETPU_IOCTL_BASE, 0, struct edgetpu_map_ioctl)
 
-/* Unmap host buffer from TPU by TPU VA -- compat with old numbering. */
-#define EDGETPU_UNMAP_BUFFER_COMPAT \
-	_IOWR(EDGETPU_IOCTL_BASE, 1, __u64)
-
 /*
  * Un-map host buffer from TPU previously mapped by EDGETPU_MAP_BUFFER.
  *
- * Only fields @device_address and @die_index in the third argument will be
- * used, other fields will be fetched from the kernel's internal records. It is
- * recommended to use the argument that was passed in EDGETPU_MAP_BUFFER to
- * un-map the buffer.
+ * Only fields @device_address, @die_index, and @flags (see Note) in the third
+ * argument will be used, other fields will be fetched from the kernel's
+ * internal records. It is recommended to use the argument that was passed in
+ * EDGETPU_MAP_BUFFER to un-map the buffer.
+ *
+ * Note: Only the SKIP_CPU_SYNC flag is considered, other bits in @flags are
+ * fetched from the kernel's record.
  */
 #define EDGETPU_UNMAP_BUFFER \
 	_IOR(EDGETPU_IOCTL_BASE, 4, struct edgetpu_map_ioctl)
@@ -158,6 +163,8 @@ struct edgetpu_device_buffer_ioctl {
 };
 
 /*
+ * Deprecated, use EDGETPU_ALLOCATE_DEVICE_BUFFER.
+ *
  * Return a dma-buf FD on success.
  *
  * EINVAL: If @size is zero.
@@ -247,15 +254,14 @@ struct edgetpu_map_dmabuf_ioctl {
 	/*
 	 * Flags indicating mapping attributes. See edgetpu_map_ioctl.flags for
 	 * details.
+	 *
+	 * Note: the SKIP_CPU_SYNC flag is ignored, the behavior of
+	 * synchronization on unmap is controlled by the dma-buf exporter.
 	 */
 	edgetpu_map_flag_t flags;
 	/*
 	 * Index of die in a device group. See edgetpu_map_ioctl.die_index for
 	 * details.
-	 *
-	 * Note: if dmabuf_fd is an FD returned by
-	 * EDGETPU_ALLOCATE_DEVICE_BUFFER, this field will be ignored in both
-	 * map and unmap.
 	 */
 	__u32 die_index;
 };
@@ -297,4 +303,5 @@ struct edgetpu_map_dmabuf_ioctl {
  */
 #define EDGETPU_ALLOCATE_DEVICE_BUFFER \
 	_IOR(EDGETPU_IOCTL_BASE, 19, __u64)
+
 #endif /* __EDGETPU_H__ */

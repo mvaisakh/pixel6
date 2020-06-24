@@ -11,6 +11,15 @@
 
 #include "edgetpu-internal.h"
 
+enum edgetpu_firmware_flags {
+	/* Image is default firmware for the chip */
+	FW_DEFAULT = 0x1,
+	/* Image is a second-stage bootloader */
+	FW_BL1 = 0x2,
+	/* Image resides in on-device memory */
+	FW_ONDEV = 0x4,
+};
+
 struct edgetpu_firmware_private;
 
 struct edgetpu_firmware {
@@ -40,6 +49,9 @@ struct edgetpu_firmware_buffer {
 	/* fields set by prepare_run() handler */
 	void __iomem *dram_kva;	/* kernel VA of device DRAM image or zero */
 	phys_addr_t dram_tpa;	/* tpu phys addr of device DRAM image or zero */
+
+	/* fields modifiable by handlers */
+	enum edgetpu_firmware_flags flags;
 
 	/*
 	 * fields set by edgetpu_firmware, don't modify the following fields in
@@ -108,14 +120,18 @@ struct edgetpu_firmware_handlers {
  * specific one- or two-stage bootloader processing.
  *
  * @name: the name passed into underlying request_firmware API
+ * @flags: edgetpu_firmware_flags for the image
  */
-int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name);
+int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
+			      enum edgetpu_firmware_flags flags);
 
 /*
  * Load and run firmware.  Called by edgetpu_chip_firmware_run().
  * @name: the name passed into underlying request_firmware API
+ * @flags: edgetpu_firmware_flags for the image
  */
-int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name);
+int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
+			 enum edgetpu_firmware_flags flags);
 
 /*
  * Private data set and used by handlers. It is expected to

@@ -21,6 +21,10 @@
 
 #define EDGETPU_MBOX_BASE ABROLHOS_CSR_MBOX2_CONTEXT_ENABLE
 
+/* CSR storing mailbox response queue doorbell status */
+#define HOST_NONSECURE_INT_SRC_STATUS_REG 0x000f0000
+#define HOST_NONSECURE_INT_SRC_CLEAR_REG 0x000f0008
+
 static inline u32 edgetpu_mailbox_get_context_csr_base(u32 index)
 {
 	return ABROLHOS_CSR_MBOX2_CONTEXT_ENABLE +

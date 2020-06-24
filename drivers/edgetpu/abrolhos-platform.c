@@ -418,7 +418,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	}
 
 	ret = edgetpu_chip_firmware_run(&edgetpu_pdev->edgetpu_dev,
-					EDGETPU_DEFAULT_FIRMWARE_NAME);
+					EDGETPU_DEFAULT_FIRMWARE_NAME,
+					FW_DEFAULT);
 	if (ret)
 		etdev_dbg(&edgetpu_pdev->edgetpu_dev,
 			  "run default firmware %s failed: %d\n",

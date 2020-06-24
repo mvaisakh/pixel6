@@ -139,7 +139,8 @@ void abrolhos_edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
 	edgetpu_firmware_destroy(etdev);
 }
 
-int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name)
+int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
+			      enum edgetpu_firmware_flags flags)
 {
-	return edgetpu_firmware_run(etdev, name);
+	return edgetpu_firmware_run(etdev, name, flags);
 }

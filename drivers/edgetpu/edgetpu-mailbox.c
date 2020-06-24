@@ -682,14 +682,11 @@ irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr)
 		mailbox = mgr->mailboxes[i];
 		if (!mailbox)
 			continue;
-		/*
-		 * TODO(b/137433841):
-		 * There are CSRs that can get status of at most 32 doorbells in
-		 * one read.
-		 */
 		if (!EDGETPU_MAILBOX_RESP_QUEUE_READ(mailbox, doorbell_status))
 			continue;
 		EDGETPU_MAILBOX_RESP_QUEUE_WRITE(mailbox, doorbell_clear, 1);
+		etdev_dbg(mgr->etdev, "mbox %u resp doorbell irq tail=%u\n",
+			  i, EDGETPU_MAILBOX_RESP_QUEUE_READ(mailbox, tail));
 		if (mailbox->handle_irq)
 			mailbox->handle_irq(mailbox);
 	}

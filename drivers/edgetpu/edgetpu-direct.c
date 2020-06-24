@@ -17,7 +17,6 @@
 #include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
-#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
@@ -41,10 +40,6 @@
 
 #define DRIVER_VERSION "1.0"
 
-/* Claim miscdev minor numbers starting at 150 */
-#define EDGETPU_MISCDEV_MINOR_BASE	150
-static atomic_t misc_minor = ATOMIC_INIT(EDGETPU_MISCDEV_MINOR_BASE - 1);
-
 static struct class *edgetpu_class;
 static dev_t edgetpu_basedev;
 static atomic_t char_minor = ATOMIC_INIT(-1);
@@ -59,15 +54,9 @@ static const struct file_operations edgetpu_fops;
  */
 static int edgetpu_open(struct inode *inode, struct file *file)
 {
-	struct edgetpu_dev *etdev;
+	struct edgetpu_dev *etdev =
+		container_of(inode->i_cdev, struct edgetpu_dev, cdev);
 	struct edgetpu_client *client;
-
-	if (MAJOR(inode->i_rdev) == MAJOR(edgetpu_basedev))
-		etdev = container_of(inode->i_cdev, struct edgetpu_dev,
-				     cdev);
-	else
-		etdev = container_of(file->private_data,
-				     struct edgetpu_dev, miscdev);
 
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
@@ -219,7 +208,8 @@ static int etdirect_map_buffer(struct edgetpu_device_group *group,
 
 	if (copy_to_user(argp, &ibuf, sizeof(ibuf))) {
 		edgetpu_device_group_unmap(group, ibuf.die_index,
-					   ibuf.device_address);
+					   ibuf.device_address,
+					   EDGETPU_MAP_SKIP_CPU_SYNC);
 		return -EFAULT;
 	}
 
@@ -237,7 +227,7 @@ static int etdirect_unmap_buffer(struct edgetpu_device_group *group,
 		return -EFAULT;
 
 	return edgetpu_device_group_unmap(group, ibuf.die_index,
-					  ibuf.device_address);
+					  ibuf.device_address, ibuf.flags);
 }
 
 static int
@@ -378,10 +368,6 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_UNMAP_BUFFER:
 		ret = etdirect_unmap_buffer(client->group, argp);
-		break;
-	case EDGETPU_UNMAP_BUFFER_COMPAT:
-		ret = edgetpu_device_group_unmap(client->group, ALL_DIES,
-						 (tpu_addr_t)argp);
 		break;
 	case EDGETPU_SET_EVENTFD:
 		ret = etdirect_set_eventfd(client, argp);
@@ -681,28 +667,12 @@ int edgetpu_dev_add(struct edgetpu_dev *etdev)
 		return ret;
 	}
 
-	// TODO(b/156441506): remove miscdevice support
-	etdev->miscdev.name = etdev->dev_name;
-	etdev->miscdev.parent = etdev->dev;
-	etdev->miscdev.fops = &edgetpu_fops;
-	do {
-		etdev->miscdev.minor = atomic_add_return(1, &misc_minor);
-		ret = misc_register(&etdev->miscdev);
-	} while (ret == -EBUSY);
-
-	if (ret)
-		dev_warn(etdev->dev,
-			"%s: failed to register miscdevice: %d\n",
-			 etdev->dev_name, ret);
-
 	etdirect_setup_debugfs(etdev);
 	return 0;
 }
 
 void edgetpu_dev_remove(struct edgetpu_dev *etdev)
 {
-	// TODO(b/156441506): remove miscdevice support
-	misc_deregister(&etdev->miscdev);
 	device_destroy(edgetpu_class, etdev->devno);
 	cdev_del(&etdev->cdev);
 	debugfs_remove_recursive(etdev->d_entry);

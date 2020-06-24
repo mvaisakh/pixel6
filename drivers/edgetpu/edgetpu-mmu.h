@@ -8,6 +8,7 @@
 #define __EDGETPU_MMU_H__
 
 #include <linux/dma-direction.h>
+#include <linux/dma-mapping.h>
 
 #include "edgetpu-internal.h"
 #include "edgetpu.h"
@@ -55,6 +56,11 @@ static inline u32 map_to_mmu_flags(edgetpu_map_flag_t flags)
 	return ret;
 }
 
+static inline unsigned long map_to_dma_attr(edgetpu_map_flag_t flags)
+{
+	return (flags & EDGETPU_MAP_SKIP_CPU_SYNC) ? DMA_ATTR_SKIP_CPU_SYNC : 0;
+}
+
 int edgetpu_mmu_attach(struct edgetpu_dev *dev, void *mmu_info);
 void edgetpu_mmu_detach(struct edgetpu_dev *dev);
 /**
@@ -86,10 +92,13 @@ void edgetpu_mmu_unmap(struct edgetpu_dev *dev, struct edgetpu_mapping *map,
 int edgetpu_mmu_map_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
 			     struct sg_table *sgt, enum dma_data_direction dir,
 			     enum edgetpu_context_id context_id);
-void edgetpu_mmu_unmap_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
-				struct sg_table *sgt,
-				enum dma_data_direction dir,
-				enum edgetpu_context_id context_id);
+void edgetpu_mmu_unmap_iova_sgt_attrs(struct edgetpu_dev *etdev,
+				      tpu_addr_t iova, struct sg_table *sgt,
+				      enum dma_data_direction dir,
+				      enum edgetpu_context_id context_id,
+				      unsigned long attrs);
+#define edgetpu_mmu_unmap_iova_sgt(e, i, s, d, c)                              \
+	edgetpu_mmu_unmap_iova_sgt_attrs(e, i, s, d, c, 0)
 
 /**
  * Allocates an IOVA in the internal MMU.

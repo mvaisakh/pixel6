@@ -252,9 +252,10 @@ int edgetpu_mmu_map(struct edgetpu_dev *etdev, struct edgetpu_mapping *map,
 		if (!iommu_map_sg(params.domain, iova, map->sgt.sgl,
 				  map->sgt.orig_nents, params.prot)) {
 			/* Undo the mapping in the default domain */
-			dma_unmap_sg(etdev->dev, map->sgt.sgl,
-				     map->sgt.orig_nents,
-				     edgetpu_host_dma_dir(map->dir));
+			dma_unmap_sg_attrs(etdev->dev, map->sgt.sgl,
+					   map->sgt.orig_nents,
+					   edgetpu_host_dma_dir(map->dir),
+					   DMA_ATTR_SKIP_CPU_SYNC);
 			return -ENOMEM;
 		}
 	}
@@ -282,8 +283,8 @@ void edgetpu_mmu_unmap(struct edgetpu_dev *etdev, struct edgetpu_mapping *map,
 		iommu_unmap(params.domain, map->device_address, params.size);
 
 	/* Undo the mapping in the default domain */
-	dma_unmap_sg(etdev->dev, map->sgt.sgl, map->sgt.orig_nents,
-		     edgetpu_host_dma_dir(map->dir));
+	dma_unmap_sg_attrs(etdev->dev, map->sgt.sgl, map->sgt.orig_nents,
+			   edgetpu_host_dma_dir(map->dir), map->dma_attrs);
 }
 
 int edgetpu_mmu_map_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
@@ -311,10 +312,11 @@ error:
 	return ret;
 }
 
-void edgetpu_mmu_unmap_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
-				struct sg_table *sgt,
-				enum dma_data_direction dir,
-				enum edgetpu_context_id context_id)
+void edgetpu_mmu_unmap_iova_sgt_attrs(struct edgetpu_dev *etdev,
+				      tpu_addr_t iova, struct sg_table *sgt,
+				      enum dma_data_direction dir,
+				      enum edgetpu_context_id context_id,
+				      unsigned long attrs)
 {
 	size_t size = 0;
 	struct scatterlist *sg;

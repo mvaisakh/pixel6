@@ -14,7 +14,6 @@
 #include <linux/firmware.h>
 #include <linux/io.h>
 #include <linux/irqreturn.h>
-#include <linux/miscdevice.h>
 #include <linux/mm_types.h>
 #include <linux/mutex.h>
 #include <linux/refcount.h>
@@ -23,17 +22,21 @@
 
 #include "edgetpu.h"
 
-#define etdev_err(etdev, fmt, ...)				\
-	dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
-#define etdev_warn(etdev, fmt, ...)				\
+#define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
+#define etdev_warn(etdev, fmt, ...)                                            \
 	dev_warn((etdev)->etcdev, fmt, ##__VA_ARGS__)
-#define etdev_info(etdev, fmt, ...)				\
+#define etdev_info(etdev, fmt, ...)                                            \
 	dev_info((etdev)->etcdev, fmt, ##__VA_ARGS__)
-#define etdev_dbg(etdev, fmt, ...)				\
-	dev_dbg((etdev)->etcdev, fmt, ##__VA_ARGS__)
-#define etdev_err_ratelimited(etdev, fmt, ...)			\
+#define etdev_dbg(etdev, fmt, ...) dev_dbg((etdev)->etcdev, fmt, ##__VA_ARGS__)
+#define etdev_err_ratelimited(etdev, fmt, ...)                                 \
 	dev_err_ratelimited((etdev)->etcdev, fmt, ##__VA_ARGS__)
-#define etdev_warn_once(etdev, fmt, ...)			\
+#define etdev_warn_ratelimited(etdev, fmt, ...)                                \
+	dev_warn_ratelimited((etdev)->etcdev, fmt, ##__VA_ARGS__)
+#define etdev_info_ratelimited(etdev, fmt, ...)                                \
+	dev_info_ratelimited((etdev)->etcdev, fmt, ##__VA_ARGS__)
+#define etdev_dbg_ratelimited(etdev, fmt, ...)                                 \
+	dev_dbg_ratelimited((etdev)->etcdev, fmt, ##__VA_ARGS__)
+#define etdev_warn_once(etdev, fmt, ...)                                       \
 	dev_warn_once((etdev)->etcdev, fmt, ##__VA_ARGS__)
 
 /* The number of TPU tiles in an edgetpu chip */
@@ -125,8 +128,6 @@ struct edgetpu_dev {
 	struct cdev cdev;	   /* cdev char device structure */
 	dev_t devno;		   /* char device dev_t */
 	char dev_name[EDGETPU_DEVICE_NAME_MAX];
-	/* TODO(b/156441506): remove miscdevice */
-	struct miscdevice miscdev; /* misc device info */
 	struct {
 		struct mutex lock;
 		uint count;	   /* number times device currently opened */

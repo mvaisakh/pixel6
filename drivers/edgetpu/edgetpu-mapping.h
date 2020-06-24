@@ -35,6 +35,8 @@ struct edgetpu_mapping {
 	u32 die_index; /* this mapping is mapped on the @die_index-th die */
 	tpu_addr_t device_address;
 	edgetpu_map_flag_t flags; /* the flag passed by the runtime */
+	/* DMA attributes to be performed for dma_(un)map calls. */
+	unsigned long dma_attrs;
 	struct sg_table sgt;
 	enum dma_data_direction dir;
 	/* Private data set by whom created this mapping. */

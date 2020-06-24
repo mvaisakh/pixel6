@@ -188,8 +188,8 @@ static void copy_with_wrap(struct edgetpu_telemetry_header *header, void *dest,
 }
 
 /* Log messages from the R52 to dmesg */
-static void log_to_dmesg(struct edgetpu_dev *etdev,
-			 struct edgetpu_telemetry *log)
+static void edgetpu_fw_log(struct edgetpu_dev *etdev,
+			   struct edgetpu_telemetry *log)
 {
 	struct edgetpu_telemetry_header *header = log->header;
 	struct edgetpu_log_entry_header entry;
@@ -219,17 +219,17 @@ static void log_to_dmesg(struct edgetpu_dev *etdev,
 		switch (entry.code) {
 		case 2:
 		case 1:
-			etdev_dbg(etdev, "%s", buffer);
+			etdev_dbg_ratelimited(etdev, "%s", buffer);
 			break;
 		case -1:
-			etdev_warn(etdev, "%s", buffer);
+			etdev_warn_ratelimited(etdev, "%s", buffer);
 			break;
 		case -2:
-			etdev_err(etdev, "%s", buffer);
+			etdev_err_ratelimited(etdev, "%s", buffer);
 			break;
 		case 0:
 		default:
-			etdev_info(etdev, "%s", buffer);
+			etdev_info_ratelimited(etdev, "%s", buffer);
 			break;
 		}
 	}
@@ -237,8 +237,8 @@ static void log_to_dmesg(struct edgetpu_dev *etdev,
 }
 
 /* Show trace events from the R52 in dmesg */
-static void trace_to_dmesg(struct edgetpu_dev *etdev,
-			   struct edgetpu_telemetry *trace)
+static void edgetpu_fw_trace(struct edgetpu_dev *etdev,
+			     struct edgetpu_telemetry *trace)
 {
 	struct edgetpu_telemetry_header *header = trace->header;
 #ifndef DEBUG
@@ -268,10 +268,10 @@ static void trace_to_dmesg(struct edgetpu_dev *etdev,
 		}
 		copy_with_wrap(header, buffer, entry.length, queue_size, start);
 		buffer[entry.length] = 0;
-		etdev_dbg(etdev,
-			  "trace: %s: tid=%llu, start=%lld, end=%lld\n", buffer,
-			  entry.thread_id, entry.start_timestamp,
-			  entry.end_timestamp);
+		etdev_dbg_ratelimited(
+			etdev, "trace: %s: tid=%llu, start=%lld, end=%lld\n",
+			buffer, entry.thread_id, entry.start_timestamp,
+			entry.end_timestamp);
 	}
 	kfree(buffer);
 #endif /* DEBUG */
@@ -406,8 +406,9 @@ void edgetpu_telemetry_irq_handler(struct edgetpu_dev *etdev)
 {
 	if (!etdev->telemetry)
 		return;
-	telemetry_irq_handler(etdev, &etdev->telemetry->log, log_to_dmesg);
-	telemetry_irq_handler(etdev, &etdev->telemetry->trace, trace_to_dmesg);
+	telemetry_irq_handler(etdev, &etdev->telemetry->log, edgetpu_fw_log);
+	telemetry_irq_handler(etdev, &etdev->telemetry->trace,
+			      edgetpu_fw_trace);
 }
 
 void edgetpu_telemetry_mappings_show(struct edgetpu_dev *etdev,

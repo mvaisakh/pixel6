@@ -174,23 +174,21 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		goto release_mbox_mgr;
 	}
 
-	edgetpu_chip_init(etdev);
 	ret = edgetpu_device_dram_init(etdev);
 	if (ret) {
 		etdev_err(etdev,
 			  "failed to init on-device DRAM management: %d\n",
 			  ret);
-		goto exit_chip;
+		goto release_mbox_mgr;
 	}
 
 	ret = edgetpu_telemetry_init(etdev);
 	if (ret)
 		etdev_err(etdev, "failed to init telemetry: %d\n", ret);
 
+	edgetpu_chip_init(etdev);
 	return 0;
 
-exit_chip:
-	edgetpu_chip_exit(etdev);
 release_mbox_mgr:
 	edgetpu_mmu_detach(etdev);
 	/* this also releases the resources of KCI */

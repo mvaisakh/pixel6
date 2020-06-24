@@ -1,9 +1,3 @@
-/*
- * Auto-generated with command:
- * blaze run //platforms/darwinn/driver/config:csr_offsets_for_kernel \
- * -- -chip=abrolhos -out_path=<path-to-linux>/drivers/misc/edgetpu
- */
-
 enum edgetpu_csrs {
 	EDGETPU_REG_TILECONF1_DEEPSLEEP = 0x42028,
 	EDGETPU_REG_TILECONF1_ERROR_TILE = 0x42520,

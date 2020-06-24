@@ -281,6 +281,8 @@ void edgetpu_group_notify(struct edgetpu_device_group *group, uint event_id)
 	if (event_id >= EDGETPU_EVENT_COUNT)
 		return;
 
+	etdev_dbg(group->etdev, "%s: group %u id=%u\n", __func__,
+		  group->workload_id, event_id);
 	read_lock(&group->events.lock);
 	if (group->events.eventfds[event_id])
 		eventfd_signal(group->events.eventfds[event_id], 1);
@@ -605,9 +607,10 @@ rollback:
 	while (i > 1) {
 		i--;
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_mmu_unmap_iova_sgt(etdev, map->device_address,
-					   &hmap->sg_tables[i], map->dir,
-					   context_id);
+		edgetpu_mmu_unmap_iova_sgt_attrs(etdev, map->device_address,
+						 &hmap->sg_tables[i], map->dir,
+						 context_id,
+						 DMA_ATTR_SKIP_CPU_SYNC);
 	}
 	return ret;
 }
@@ -628,9 +631,9 @@ edgetpu_device_group_unmap_iova_sgt(struct edgetpu_device_group *group,
 
 	for (i = 1; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_mmu_unmap_iova_sgt(etdev, map->device_address,
-					   &hmap->sg_tables[i], map->dir,
-					   context_id);
+		edgetpu_mmu_unmap_iova_sgt_attrs(etdev, map->device_address,
+						 &hmap->sg_tables[i], map->dir,
+						 context_id, map->dma_attrs);
 	}
 }
 
@@ -715,10 +718,9 @@ static void edgetpu_host_map_show(struct edgetpu_mapping *map,
  *
  * Returns -errno if failed on pinning @size bytes.
  */
-static struct page **pin_user_pages(struct edgetpu_device_group *group,
-				    u64 host_addr, u64 size,
-				    enum dma_data_direction dir,
-				    uint *pnum_pages)
+static struct page **edgetpu_pin_user_pages(
+	struct edgetpu_device_group *group, u64 host_addr, u64 size,
+	enum dma_data_direction dir, uint *pnum_pages)
 {
 	uint num_pages;
 	ulong offset;
@@ -788,7 +790,7 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 	int i;
 	int ret;
 
-	pages = pin_user_pages(group, host_addr, size, dir, &num_pages);
+	pages = edgetpu_pin_user_pages(group, host_addr, size, dir, &num_pages);
 	if (IS_ERR(pages))
 		return (void *)pages;
 
@@ -804,6 +806,7 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 	hmap->map.release = edgetpu_unmap_node;
 	hmap->map.show = edgetpu_host_map_show;
 	hmap->map.flags = flags;
+	hmap->map.dma_attrs = 0;
 
 	if (IS_MIRRORED(flags)) {
 		hmap->sg_tables = kcalloc(group->n_clients,
@@ -1001,7 +1004,8 @@ error_unlock_group:
 }
 
 int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
-			       u32 die_index, tpu_addr_t tpu_addr)
+			       u32 die_index, tpu_addr_t tpu_addr,
+			       edgetpu_map_flag_t flags)
 {
 	struct edgetpu_mapping *map;
 	int ret = 0;
@@ -1028,6 +1032,7 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	}
 
 	edgetpu_mapping_unlink(&group->host_mappings, map);
+	map->dma_attrs = map_to_dma_attr(flags);
 	edgetpu_unmap_node(map);
 	edgetpu_mapping_unlock(&group->host_mappings);
 unlock_group:

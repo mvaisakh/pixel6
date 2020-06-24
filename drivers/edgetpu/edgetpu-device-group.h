@@ -220,7 +220,8 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 
 /* Unmap a userspace buffer from a device group. */
 int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
-			       u32 die_index, tpu_addr_t tpu_addr);
+			       u32 die_index, tpu_addr_t tpu_addr,
+			       edgetpu_map_flag_t flags);
 
 /* Sync the buffer previously mapped by edgetpu_device_group_map. */
 int edgetpu_device_group_sync_buffer(struct edgetpu_device_group *group,
