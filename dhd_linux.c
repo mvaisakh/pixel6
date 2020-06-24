@@ -713,6 +713,7 @@ static int dhd_init_static_strs_array(osl_t *osh, dhd_event_log_t *temp, char *s
 #endif /* SHOW_LOGTRACE */
 
 #define DHD_MEMDUMP_TYPE_STR_LEN 32
+#define DHD_MEMDUMP_TYPE_LONGSTR_LEN 180
 #define DHD_MEMDUMP_PATH_STR_LEN 128
 
 #ifdef DHD_TX_PROFILE
@@ -8564,6 +8565,193 @@ fail:
 
 	set_fs(fs);
 
+	return err;
+}
+
+#define PC_FOUND_BIT 0x01
+#define LR_FOUND_BIT 0x02
+#define ALL_ADDR_VAL (PC_FOUND_BIT | LR_FOUND_BIT)
+#define READ_NUM_BYTES 1000
+#define DHD_FUNC_STR_LEN 80
+static int
+dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
+		uint32 lr, char *lr_fn)
+{
+	struct file *filep = NULL;
+	mm_segment_t fs;
+	char *raw_fmts = NULL, *raw_fmts_loc = NULL, *cptr = NULL;
+	uint32 read_size = READ_NUM_BYTES;
+	int err = BCME_ERROR;
+	uint32 addr = 0, addr1 = 0, addr2 = 0;
+	char type = '?', type1 = '?', type2 = '?';
+	char func[DHD_FUNC_STR_LEN] = "\0";
+	char func1[DHD_FUNC_STR_LEN] = "\0";
+	char func2[DHD_FUNC_STR_LEN] = "\0";
+	uint8 count = 0;
+	int num, len = 0, offset;
+
+	DHD_TRACE(("%s: fname %s pc 0x%x lr 0x%x \n",
+		__FUNCTION__, fname, pc, lr));
+	if (fname == NULL) {
+		DHD_ERROR(("%s: ERROR fname is NULL \n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	/* Allocate 1 byte more than read_size to terminate it with NULL */
+	raw_fmts = MALLOCZ(osh, read_size + 1);
+	if (raw_fmts == NULL) {
+		DHD_ERROR(("%s: Failed to allocate raw_fmts memory \n",
+			__FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	filep = filp_open(fname, O_RDONLY, 0);
+	if (IS_ERR(filep)) {
+		DHD_ERROR(("%s: Failed to open %s \n",  __FUNCTION__, fname));
+		goto fail;
+	}
+
+	if (pc_fn == NULL) {
+		count |= PC_FOUND_BIT;
+	}
+	if (lr_fn == NULL) {
+		count |= LR_FOUND_BIT;
+	}
+	while (count != ALL_ADDR_VAL)
+	{
+		err = dhd_os_read_file(filep, raw_fmts, read_size);
+		if (err < 0) {
+			DHD_ERROR(("%s: map file read failed err:%d \n",
+				__FUNCTION__, err));
+			goto fail;
+		}
+
+		/* End raw_fmts with NULL as strstr expects NULL terminated
+		* strings
+		*/
+		raw_fmts[read_size] = '\0';
+		raw_fmts_loc = raw_fmts;
+		offset = 0;
+
+		while ((count != ALL_ADDR_VAL) && (offset < read_size))
+		{
+			cptr = bcmstrtok(&raw_fmts_loc, "\n", 0);
+			if (cptr == NULL) {
+				DHD_TRACE(("%s: cptr is NULL, offset %d"
+					" raw_fmts_loc %s \n",
+					__FUNCTION__, offset, raw_fmts_loc));
+				break;
+			}
+			DHD_TRACE(("%s: %s \n", __FUNCTION__, cptr));
+			if ((type2 == 'A') ||
+				(type2 == 'T') ||
+				(type2 == 'W')) {
+				addr1 = addr2;
+				type1 = type2;
+				(void)memcpy_s(func1, DHD_FUNC_STR_LEN,
+					func2, DHD_FUNC_STR_LEN);
+				DHD_TRACE(("%s: %x %c %s \n",
+					__FUNCTION__, addr1, type1, func1));
+			}
+			len = strlen(cptr);
+			num = sscanf(cptr, "%x %c %79s", &addr, &type, func);
+			DHD_TRACE(("%s: num %d addr %x type %c func %s \n",
+				__FUNCTION__, num, addr, type, func));
+			if (num == 3) {
+				addr2 = addr;
+				type2 = type;
+				(void)memcpy_s(func2, DHD_FUNC_STR_LEN,
+					func, DHD_FUNC_STR_LEN);
+			}
+
+			if (!(count & PC_FOUND_BIT) &&
+				(pc >= addr1 && pc < addr2)) {
+				if ((cptr = strchr(func1, '$')) != NULL) {
+					(void)strncpy(func, cptr + 1,
+						DHD_FUNC_STR_LEN - 1);
+				} else {
+					(void)memcpy_s(func, DHD_FUNC_STR_LEN,
+						func1, DHD_FUNC_STR_LEN);
+				}
+				if ((cptr = strstr(func, "__bcmromfn"))
+					!= NULL) {
+					*cptr = 0;
+				}
+				if (pc > addr1) {
+					sprintf(pc_fn, "%.68s+0x%x",
+						func, pc - addr1);
+				} else {
+					(void)memcpy_s(pc_fn, DHD_FUNC_STR_LEN,
+						func, DHD_FUNC_STR_LEN);
+				}
+				count |= PC_FOUND_BIT;
+				DHD_INFO(("%s: found addr1 %x pc %x"
+					" addr2 %x \n",
+					__FUNCTION__, addr1, pc, addr2));
+			}
+			if (!(count & LR_FOUND_BIT) &&
+				(lr >= addr1 && lr < addr2)) {
+				if ((cptr = strchr(func1, '$')) != NULL) {
+					(void)strncpy(func, cptr + 1,
+						DHD_FUNC_STR_LEN - 1);
+				} else {
+					(void)memcpy_s(func, DHD_FUNC_STR_LEN,
+						func1, DHD_FUNC_STR_LEN);
+				}
+				if ((cptr = strstr(func, "__bcmromfn"))
+					!= NULL) {
+					*cptr = 0;
+				}
+				if (lr > addr1) {
+					sprintf(lr_fn, "%.68s+0x%x",
+						func, lr - addr1);
+				} else {
+					(void)memcpy_s(lr_fn, DHD_FUNC_STR_LEN,
+						func, DHD_FUNC_STR_LEN);
+				}
+				count |= LR_FOUND_BIT;
+				DHD_INFO(("%s: found addr1 %x lr %x"
+					" addr2 %x \n",
+					__FUNCTION__, addr1, lr, addr2));
+			}
+			offset += (len + 1);
+		}
+
+		if (err < (int)read_size) {
+			/*
+			* since we reset file pos back to earlier pos by
+			* bytes of one line we won't reach EOF.
+			* The reason for this is if string is spreaded across
+			* bytes, the read function should not miss it.
+			* So if ret value is less than read_size, reached EOF
+			* don't read further
+			*/
+			break;
+		}
+		memset(raw_fmts, 0, read_size);
+		/*
+		* go back to bytes of one line so that we won't miss
+		* the string and addr even if it comes as splited in next read.
+		*/
+		dhd_os_seek_file(filep, -(len + 1));
+		DHD_TRACE(("%s: seek %d \n", __FUNCTION__, -(len + 1)));
+	}
+
+fail:
+	if (!IS_ERR(filep))
+		filp_close(filep, NULL);
+
+	set_fs(fs);
+
+	if (!(count & PC_FOUND_BIT)) {
+		sprintf(pc_fn, "0x%08x", pc);
+	}
+	if (!(count & LR_FOUND_BIT)) {
+		sprintf(lr_fn, "0x%08x", lr);
+	}
 	return err;
 }
 
@@ -18427,7 +18615,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	int ret = 0;
 	dhd_dump_t *dump = NULL;
 #ifdef DHD_COREDUMP
-	char memdump_type[DHD_MEMDUMP_TYPE_STR_LEN];
+	char memdump_type[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
+	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
+	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
 	trap_t *tr;
 #endif /* DHD_COREDUMP */
 
@@ -18491,14 +18681,16 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 
 #ifdef DHD_COREDUMP
-	memset(memdump_type, 0, DHD_MEMDUMP_TYPE_STR_LEN);
-	dhd_convert_memdump_type_to_str(dhdp->memdump_type, memdump_type, DHD_MEMDUMP_TYPE_STR_LEN,
-			dhdp->debug_dump_subcmd);
+	memset(memdump_type, 0, DHD_MEMDUMP_TYPE_LONGSTR_LEN);
+	dhd_convert_memdump_type_to_str(dhdp->memdump_type, memdump_type,
+		DHD_MEMDUMP_TYPE_LONGSTR_LEN, dhdp->debug_dump_subcmd);
 	if (dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP &&
 		dhdp->dongle_trap_occured == TRUE) {
 		tr = &dhdp->last_trap_info;
-		sprintf(&memdump_type[strlen(memdump_type)], "_%08x_%08x",
-				ltoh32(tr->epc), ltoh32(tr->r14));
+		dhd_lookup_map(dhdp->osh, map_file_path,
+			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
+		sprintf(&memdump_type[strlen(memdump_type)], "_%.79s_%.79s",
+				pc_fn, lr_fn);
 	}
 	DHD_ERROR(("%s: dump reason: %s\n", __FUNCTION__, memdump_type));
 	if (wifi_platform_set_coredump(dhd->adapter, dump->buf, dump->bufsize, memdump_type)) {
