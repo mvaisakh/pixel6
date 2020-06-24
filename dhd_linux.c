@@ -18618,6 +18618,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char memdump_type[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
 	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
 	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
+	char *map_path = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 	trap_t *tr;
 #endif /* DHD_COREDUMP */
 
@@ -18686,8 +18687,13 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		DHD_MEMDUMP_TYPE_LONGSTR_LEN, dhdp->debug_dump_subcmd);
 	if (dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP &&
 		dhdp->dongle_trap_occured == TRUE) {
+#ifdef AUTO_CHIP_DETECTION
+		if (dhd_bus_chip_id(dhdp) == 0x4389) {
+			map_path = VENDOR_PATH CONFIG_BCMDHD_4389_MAP_PATH;
+		}
+#endif /* AUTO_CHIP_DETECTION  */
 		tr = &dhdp->last_trap_info;
-		dhd_lookup_map(dhdp->osh, map_file_path,
+		dhd_lookup_map(dhdp->osh, map_path,
 			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
 		sprintf(&memdump_type[strlen(memdump_type)], "_%.79s_%.79s",
 				pc_fn, lr_fn);
