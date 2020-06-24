@@ -131,6 +131,10 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 			sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_CLK_UPDATE);
 		break;
+	case IOCTL_TO_ENUM(LWIS_ECHO):
+		strlcpy(type_name, STRINGIFY(LWIS_ECHO), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_ECHO);
+		break;
 	default:
 		strlcpy(type_name, "UNDEFINED", sizeof(type_name));
 		exp_size = 0;
@@ -607,6 +611,37 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
 	return ret;
+}
+
+static int ioctl_echo(struct lwis_device *lwis_dev,
+		      struct lwis_echo __user *msg)
+{
+	struct lwis_echo echo_msg;
+	char *buffer;
+	int ret = 0;
+
+	ret = copy_from_user((void *)&echo_msg, (void __user *)msg,
+			     sizeof(echo_msg));
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
+			sizeof(echo_msg));
+		return -EINVAL;
+	}
+
+	if (echo_msg.size == 0) {
+		return 0;
+	}
+
+	buffer = kzalloc(echo_msg.size + 1, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev,
+			"Failed to allocate buffer for echo message\n");
+		return -ENOMEM;
+	}
+	memcpy(buffer, echo_msg.msg, echo_msg.size);
+	buffer[echo_msg.size] = '\0';
+	dev_info(lwis_dev->dev, "LWIS_ECHO: %s\n", buffer);
+	return 0;
 }
 
 static int ioctl_event_control_get(struct lwis_client *lwis_client,
@@ -1331,6 +1366,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_DEVICE_DISABLE:
 		ret = ioctl_device_disable(lwis_client);
+		break;
+	case LWIS_ECHO:
+		ret = ioctl_echo(lwis_dev, (struct lwis_echo *)param);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
 		ret = ioctl_event_control_get(

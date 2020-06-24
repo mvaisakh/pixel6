@@ -160,6 +160,11 @@ struct lwis_io_entries {
 	struct lwis_io_entry *io_entries;
 };
 
+struct lwis_echo {
+	size_t size;
+	char *msg;
+};
+
 /* The first 4096 event IDs are reserved for generic events shared by all
  * devices.
  *
@@ -286,6 +291,7 @@ struct lwis_dpm_clk_settings {
 #define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, int)
 #define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, int64_t)
 #define LWIS_REG_IO _IOWR(LWIS_IOC_TYPE, 11, struct lwis_io_entries)
+#define LWIS_ECHO _IOWR(LWIS_IOC_TYPE, 12, struct lwis_echo)
 
 #define LWIS_EVENT_CONTROL_GET                                                 \
 	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
