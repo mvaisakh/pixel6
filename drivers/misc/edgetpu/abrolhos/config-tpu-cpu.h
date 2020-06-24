@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Chip-dependent configuration for TPU CPU.
+ *
+ * Copyright (C) 2019 Google, Inc.
+ */
+
+#ifndef __ABROLHOS_CONFIG_TPU_CPU_H__
+#define __ABROLHOS_CONFIG_TPU_CPU_H__
+
+/* TODO(137684940): Modify the CSR generator tool to output the values. */
+#define EDGETPU_REG_RESET_CONTROL			0x90010
+#define EDGETPU_REG_INSTRUCTION_REMAP_CONTROL		0x90050
+#define EDGETPU_REG_INSTRUCTION_REMAP_BASE		0x90058
+#define EDGETPU_REG_INSTRUCTION_REMAP_LIMIT		0x90060
+#define EDGETPU_REG_INSTRUCTION_REMAP_NEW_BASE		0x90068
+#define EDGETPU_REG_INSTRUCTION_REMAP_SECURITY		0x90070
+#define EDGETPU_REG_SECURITY				0x90048
+
+
+#endif /* __ABROLHOS_CONFIG_TPU_CPU_H__ */
