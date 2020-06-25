@@ -21,6 +21,7 @@
 #include <linux/types.h>
 
 #include "edgetpu.h"
+#include "edgetpu-thermal.h"
 
 #define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
 #define etdev_warn(etdev, fmt, ...)                                            \
@@ -143,6 +144,7 @@ struct edgetpu_dev {
 	struct edgetpu_kci *kci;
 	struct edgetpu_firmware *firmware; /* firmware management */
 	struct edgetpu_telemetry_ctx *telemetry;
+	struct edgetpu_thermal *thermal;
 	int mcp_id;		/* multichip pkg id, or -1 for none */
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */

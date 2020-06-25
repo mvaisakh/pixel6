@@ -32,18 +32,9 @@
 static int power_state = TPU_ACTIVE_NOM;
 module_param(power_state, int, 0660);
 
-#define CLK_CON_DIV_CLKCMU_TPU_TPUCTL		0x1e0818f0
-#define CLK_CON_DIV_CLKCMU_TPU_BUS		0x1e0818e8
+#define TPU_INIT_FREQ		0
 
 static struct dentry *edgetpu_pwr_debugfs_dir;
-
-#if IS_ENABLED(CONFIG_ACPM_DVFS)
-
-#define TPU_DOMAIN		14
-#define TPU_INIT_FREQ		0
-extern int exynos_acpm_set_rate(unsigned int id, unsigned long rate);
-extern int exynos_acpm_set_init_freq(unsigned int dfs_id, unsigned long freq);
-extern unsigned long exynos_acpm_get_rate(unsigned int id);
 
 static int edgetpu_pwr_state_init(struct device *dev)
 {
@@ -56,7 +47,7 @@ static int edgetpu_pwr_state_init(struct device *dev)
 		return ret;
 	}
 
-	ret = exynos_acpm_set_init_freq(TPU_DOMAIN, TPU_INIT_FREQ);
+	ret = exynos_acpm_set_init_freq(TPU_ACPM_DOMAIN, TPU_INIT_FREQ);
 	if (ret) {
 		dev_err(dev, "error initializing tpu state: %d\n", ret);
 		return ret;
@@ -77,7 +68,7 @@ static int edgetpu_pwr_state_set(void *data, u64 val)
 	int curr_state;
 	struct device *dev = (struct device *)data;
 
-	curr_state = exynos_acpm_get_rate(TPU_DOMAIN);
+	curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
 
 	if (curr_state == TPU_OFF && val > TPU_OFF) {
 		ret = pm_runtime_get_sync(dev);
@@ -87,7 +78,7 @@ static int edgetpu_pwr_state_set(void *data, u64 val)
 		}
 	}
 
-	ret = exynos_acpm_set_rate(TPU_DOMAIN, (unsigned long)val);
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, (unsigned long)val);
 	if (ret) {
 		dev_err(dev, "error setting tpu state: %d\n", ret);
 		return ret;
@@ -108,89 +99,226 @@ static int edgetpu_pwr_state_get(void *data, u64 *val)
 {
 	struct device *dev = (struct device *)data;
 
-	*val = exynos_acpm_get_rate(TPU_DOMAIN);
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
 	dev_info(dev, "current tpu state: %d\n", *val);
 
 	return 0;
 }
 
-#else /* !CONFIG_ACPM_DVFS */
-
-static int edgetpu_pwr_state_init(struct device *dev)
+int edgetpu_pwr_policy_set(void *data, u64 val)
 {
+	struct edgetpu_platform_dev *edgetpu_pdev =
+		(struct edgetpu_platform_dev *)data;
+	struct edgetpu_platform_pwr *platform_pwr =
+		&edgetpu_pdev->platform_pwr;
+	int ret;
+
+	mutex_lock(&platform_pwr->policy_lock);
+	ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, val);
+
+	if (ret) {
+		dev_err(edgetpu_pdev->edgetpu_dev.dev,
+				"unable to set policy %lld (ret %d)\n",
+				val, ret);
+		mutex_unlock(&platform_pwr->policy_lock);
+		return ret;
+	}
+
+	platform_pwr->curr_policy = val;
+	mutex_unlock(&platform_pwr->policy_lock);
 	return 0;
 }
 
-static int edgetpu_pwr_state_set(void *data, u64 val)
+static int edgetpu_pwr_policy_get(void *data, u64 *val)
 {
-	return -ENODEV;
+	struct edgetpu_platform_dev *edgetpu_pdev =
+		(struct edgetpu_platform_dev *)data;
+	struct edgetpu_platform_pwr *platform_pwr =
+		&edgetpu_pdev->platform_pwr;
+
+	mutex_lock(&platform_pwr->policy_lock);
+	*val = platform_pwr->curr_policy;
+	mutex_unlock(&platform_pwr->policy_lock);
+
+	return 0;
 }
 
-static int edgetpu_pwr_state_get(void *data, u64 *val)
-{
-	return -ENODEV;
-}
-
-#endif /* CONFIG_ACPM_DVFS */
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_pwr_policy, edgetpu_pwr_policy_get,
+		edgetpu_pwr_policy_set, "%llu\n");
 
 DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_pwr_state, edgetpu_pwr_state_get,
 		edgetpu_pwr_state_set, "%llu\n");
 
-static int edgetpu_divclk_tpuctl_get(void *data, u64 *val)
+static int edgetpu_core_rate_get(void *data, u64 *val)
 {
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CLK_CORE_DEBUG);
+	return 0;
+}
+
+static int edgetpu_core_rate_set(void *data, u64 val)
+{
+	int ret;
+	unsigned long dbg_rate_req;
+
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_CORE_DEBUG;
+	dbg_rate_req |= (val / 1000);
+
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_core_rate, edgetpu_core_rate_get,
+		edgetpu_core_rate_set, "%llu\n");
+
+static int edgetpu_ctl_rate_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CLK_CTL_DEBUG);
+	return 0;
+}
+
+static int edgetpu_ctl_rate_set(void *data, u64 val)
+{
+	int ret;
+	unsigned long dbg_rate_req;
+
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_CTL_DEBUG;
+	dbg_rate_req |= (val / 1000);
+
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_ctl_rate, edgetpu_ctl_rate_get,
+		edgetpu_ctl_rate_set, "%llu\n");
+
+static int edgetpu_axi_rate_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CLK_AXI_DEBUG);
+	return 0;
+}
+
+static int edgetpu_axi_rate_set(void *data, u64 val)
+{
+	int ret;
+	unsigned long dbg_rate_req;
+
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_AXI_DEBUG;
+	dbg_rate_req |= (val / 1000);
+
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_axi_rate, edgetpu_axi_rate_get,
+		edgetpu_axi_rate_set, "%llu\n");
+
+
+static int edgetpu_apb_rate_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CLK_APB_DEBUG);
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_apb_rate, edgetpu_apb_rate_get,
+		NULL, "%llu\n");
+
+static int edgetpu_uart_rate_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CLK_UART_DEBUG);
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_uart_rate, edgetpu_uart_rate_get,
+		NULL, "%llu\n");
+
+static int edgetpu_vdd_int_m_set(void *data, u64 val)
+{
+	int ret;
 	struct device *dev = (struct device *)data;
-	void __iomem *divclk_tpuctl = ioremap(CLK_CON_DIV_CLKCMU_TPU_TPUCTL, 4);
+	unsigned long dbg_rate_req;
 
-	*val = readl(divclk_tpuctl);
-	dev_info(dev, "divclk_tpuctl val: 0x%llx ,div ratio:%lld",
-			*val, (*val) & 0xf);
+	if (val > 1250000) {
+		dev_err(dev, "Preventing INT_M voltage > 1250000uV");
+		return -EINVAL;
+	}
 
-	iounmap(divclk_tpuctl);
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_VDD_INT_M_DEBUG;
+	dbg_rate_req |= val;
 
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+static int edgetpu_vdd_int_m_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_VDD_INT_M_DEBUG);
 	return 0;
 }
 
-static int edgetpu_divclk_tpuctl_set(void *data, u64 val)
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_vdd_int_m, edgetpu_vdd_int_m_get,
+		edgetpu_vdd_int_m_set, "%llu\n");
+
+static int edgetpu_vdd_tpu_set(void *data, u64 val)
 {
-	void __iomem *divclk_tpuctl = ioremap(CLK_CON_DIV_CLKCMU_TPU_TPUCTL, 4);
-
-	writel(val, divclk_tpuctl);
-
-	iounmap(divclk_tpuctl);
-
-	return 0;
-}
-
-DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_divclk_tpuctl, edgetpu_divclk_tpuctl_get,
-		edgetpu_divclk_tpuctl_set, "%llu\n");
-
-static int edgetpu_divclk_tpubus_get(void *data, u64 *val)
-{
+	int ret;
 	struct device *dev = (struct device *)data;
-	void __iomem *divclk_tpubus = ioremap(CLK_CON_DIV_CLKCMU_TPU_BUS, 4);
+	unsigned long dbg_rate_req;
 
-	*val = readl(divclk_tpubus);
-	dev_info(dev, "divclk_tpubus val: 0x%llx ,div ratio:%lld",
-			*val, (*val) & 0xf);
+	if (val > 1250000) {
+		dev_err(dev, "Preventing VDD_TPU voltage > 1250000uV");
+		return -EINVAL;
+	}
 
-	iounmap(divclk_tpubus);
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_VDD_TPU_DEBUG;
+	dbg_rate_req |= val;
 
-	return 0;
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
 }
 
-static int edgetpu_divclk_tpubus_set(void *data, u64 val)
+static int edgetpu_vdd_tpu_get(void *data, u64 *val)
 {
-	void __iomem *divclk_tpubus = ioremap(CLK_CON_DIV_CLKCMU_TPU_BUS, 4);
-
-	writel(val, divclk_tpubus);
-
-	iounmap(divclk_tpubus);
-
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_VDD_TPU_DEBUG);
 	return 0;
 }
 
-DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_divclk_tpubus, edgetpu_divclk_tpubus_get,
-		edgetpu_divclk_tpubus_set, "%llu\n");
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_vdd_tpu, edgetpu_vdd_tpu_get,
+		edgetpu_vdd_tpu_set, "%llu\n");
+
+static int edgetpu_vdd_tpu_m_set(void *data, u64 val)
+{
+	int ret;
+	struct device *dev = (struct device *)data;
+	unsigned long dbg_rate_req;
+
+	if (val > 1250000) {
+		dev_err(dev, "Preventing VDD_TPU voltage > 1250000uV");
+		return -EINVAL;
+	}
+
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_VDD_TPU_M_DEBUG;
+	dbg_rate_req |= val;
+
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+static int edgetpu_vdd_tpu_m_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_VDD_TPU_M_DEBUG);
+	return 0;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_vdd_tpu_m, edgetpu_vdd_tpu_m_get,
+		edgetpu_vdd_tpu_m_set, "%llu\n");
 
 static const struct of_device_id edgetpu_of_match[] = {
 	{ .compatible = "google,darwinn", },
@@ -378,6 +506,9 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	edgetpu_pdev->edgetpu_dev.mcp_id = -1;
 	edgetpu_pdev->edgetpu_dev.mcp_die_index = 0;
 
+	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
+	edgetpu_pdev->platform_pwr.curr_policy = TPU_POLICY_MAX;
+
 	ret = edgetpu_device_add(&edgetpu_pdev->edgetpu_dev, &regs);
 	if (!ret && edgetpu_pdev->irq >= 0)
 		ret = edgetpu_register_irq(&edgetpu_pdev->edgetpu_dev,
@@ -425,14 +556,31 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 			  "run default firmware %s failed: %d\n",
 			  EDGETPU_DEFAULT_FIRMWARE_NAME, ret);
 
+
+	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
+
 	edgetpu_pwr_debugfs_dir =
 		debugfs_create_dir("edgetpu_pwr_state", NULL);
 	debugfs_create_file("pwr_state", 0660, edgetpu_pwr_debugfs_dir,
 			dev, &fops_tpu_pwr_state);
-	debugfs_create_file("tpu_divclk_tpuctl", 0660, edgetpu_pwr_debugfs_dir,
-			dev, &fops_tpu_divclk_tpuctl);
-	debugfs_create_file("tpu_divclk_tpubus", 0660, edgetpu_pwr_debugfs_dir,
-			dev, &fops_tpu_divclk_tpubus);
+	debugfs_create_file("vdd_tpu", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_vdd_tpu);
+	debugfs_create_file("vdd_tpu_m", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_vdd_tpu_m);
+	debugfs_create_file("vdd_int_m", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_vdd_int_m);
+	debugfs_create_file("core_rate", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_core_rate);
+	debugfs_create_file("ctl_rate", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_ctl_rate);
+	debugfs_create_file("axi_rate", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_axi_rate);
+	debugfs_create_file("apb_rate", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_apb_rate);
+	debugfs_create_file("uart_rate", 0660, edgetpu_pwr_debugfs_dir,
+			dev, &fops_tpu_uart_rate);
+	debugfs_create_file("policy", 0660, edgetpu_pwr_debugfs_dir,
+			edgetpu_pdev, &fops_tpu_pwr_policy);
 
 	return 0;
 }
