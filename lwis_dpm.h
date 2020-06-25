@@ -14,6 +14,14 @@
 #include "lwis_commands.h"
 #include "lwis_device.h"
 
+enum clock_family {
+	CLOCK_FAMILY_INVALID = -1,
+	CLOCK_FAMILY_CAM,
+	CLOCK_FAMILY_INTCAM,
+	CLOCK_FAMILY_TNR,
+	CLOCK_FAMILY_MAX
+};
+
 /*
  *  lwis_dpm_update_clock: update clock setting to lwis device.
  */

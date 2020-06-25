@@ -10,10 +10,12 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-dpm: " fmt
 
+#include "lwis_dpm.h"
+
 #include <linux/clk.h>
 #include <linux/slab.h>
 
-#include "lwis_dpm.h"
+#include "lwis_platform.h"
 
 /*
  *  lwis_dpm_update_clock: update clock settings to lwis device.
@@ -30,6 +32,7 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 		ret = -EINVAL;
 		goto out;
 	}
+
 	for (i = 0; i < num_settings; ++i) {
 		clk_index = clk_settings[i].clk_index;
 		old_clk = clk_get_rate(lwis_dev->clocks->clk[clk_index].clk);
@@ -42,14 +45,23 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			ret = -EINVAL;
 			goto out;
 		}
-		ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
-				   clk_settings[i].frequency);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error updating clock %s freq: %u\n",
-				lwis_dev->clocks->clk[clk_index].name,
-				clk_settings[i].frequency);
-			goto out;
+
+		if (clk_index == 0 &&
+		    lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
+		    lwis_dev->clock_family < CLOCK_FAMILY_MAX) {
+			/* convert value to KHz */
+			lwis_platform_update_qos(
+				lwis_dev, clk_settings[i].frequency / 1000);
+		} else {
+			ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
+					   clk_settings[i].frequency);
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Error updating clock %s freq: %u\n",
+					lwis_dev->clocks->clk[clk_index].name,
+					clk_settings[i].frequency);
+				goto out;
+			}
 		}
 
 		dev_info(lwis_dev->dev,

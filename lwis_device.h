@@ -200,6 +200,11 @@ struct lwis_device {
 #endif
 	/* Structure to store info to help debugging device data */
 	struct lwis_device_debug_info debug_info;
+
+	/* clock family this device belongs to */
+	int clock_family;
+	/* last qos requested in khz */
+	uint32_t last_requested_clock;
 };
 
 /*

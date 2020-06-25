@@ -20,6 +20,7 @@
 #include <linux/slab.h>
 
 #include "lwis_clock.h"
+#include "lwis_dpm.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"
@@ -130,6 +131,7 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	struct device_node *dev_node;
 	const char *name;
 	u32 rate;
+	int clock_family;
 
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
@@ -158,6 +160,13 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 			goto error_parse_clk;
 		}
 	}
+
+	/* It is allowed to omit clock rates for some of the clocks */
+	ret = of_property_read_u32(dev_node, "clock-family", &clock_family);
+	lwis_dev->clock_family =
+		(ret == 0) ? clock_family : CLOCK_FAMILY_INVALID;
+
+	pr_info("%s: clock family %d", lwis_dev->name, lwis_dev->clock_family);
 
 	lwis_clock_print(lwis_dev->clocks);
 

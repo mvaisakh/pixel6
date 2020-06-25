@@ -26,6 +26,7 @@
 #include "lwis_commands.h"
 #include "lwis_debug.h"
 #include "lwis_device.h"
+#include "lwis_dpm.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
 #include "lwis_gpio.h"
@@ -768,6 +769,8 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 
 	/* Initialize enabled state */
 	lwis_dev->enabled = 0;
+	lwis_dev->clock_family = CLOCK_FAMILY_INVALID;
+	lwis_dev->last_requested_clock = 0;
 
 	/* Initialize client mutex */
 	mutex_init(&lwis_dev->client_lock);
