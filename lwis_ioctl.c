@@ -67,8 +67,7 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
-		strlcpy(type_name, STRINGIFY(LWIS_REG_IO),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_REG_IO), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DEVICE_ENABLE):
@@ -1265,8 +1264,7 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 	buf_size = sizeof(struct lwis_clk_setting) * k_msg.num_settings;
 	clk_settings = kzalloc(buf_size, GFP_KERNEL);
 	if (!clk_settings) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate clock settings\n");
+		dev_err(lwis_dev->dev, "Failed to allocate clock settings\n");
 		return -ENOMEM;
 	}
 	ret = copy_from_user(clk_settings, (void __user *)k_msg.settings,

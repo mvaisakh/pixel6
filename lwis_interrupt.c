@@ -108,8 +108,7 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq,
 	BUG_ON(!irq);
 
 	/* Iterate through the hash bucket for this event_id */
-	hash_for_each_possible(irq->event_infos, p, node, event_id)
-	{
+	hash_for_each_possible (irq->event_infos, p, node, event_id) {
 		/* If it's indeed the right one, return it */
 		if (p->event_id == event_id) {
 			return p;
@@ -127,16 +126,16 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	uint64_t source_value, reset_value = 0;
 
 	/* Read the mask register */
-	ret = lwis_device_single_register_read(
-		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_src_reg,
-		&source_value, irq->irq_reg_access_size);
+	ret = lwis_device_single_register_read(irq->lwis_dev, true,
+					       irq->irq_reg_bid,
+					       irq->irq_src_reg, &source_value,
+					       irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to read IRQ status register: %d\n", ret);
 		goto error;
 	}
 
-	list_for_each(p, &irq->enabled_event_infos)
-	{
+	list_for_each (p, &irq->enabled_event_infos) {
 		event = list_entry(p, struct lwis_single_event_info,
 				   node_enabled);
 
@@ -151,9 +150,10 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	}
 
 	/* Write the mask register */
-	ret = lwis_device_single_register_write(
-		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_reset_reg,
-		reset_value, irq->irq_reg_access_size);
+	ret = lwis_device_single_register_write(irq->lwis_dev, true,
+						irq->irq_reg_bid,
+						irq->irq_reset_reg, reset_value,
+						irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to write IRQ reset register: %d\n", ret);
 		goto error;
@@ -239,9 +239,10 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 	BUG_ON(!irq);
 
 	/* Read the mask register */
-	ret = lwis_device_single_register_read(
-		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_mask_reg,
-		&mask_value, irq->irq_reg_access_size);
+	ret = lwis_device_single_register_read(irq->lwis_dev, true,
+					       irq->irq_reg_bid,
+					       irq->irq_mask_reg, &mask_value,
+					       irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to read IRQ mask register: %d\n", ret);
 		return ret;
@@ -255,9 +256,10 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit,
 	}
 
 	/* Write the mask register */
-	ret = lwis_device_single_register_write(
-		irq->lwis_dev, true, irq->irq_reg_bid, irq->irq_mask_reg,
-		mask_value, irq->irq_reg_access_size);
+	ret = lwis_device_single_register_write(irq->lwis_dev, true,
+						irq->irq_reg_bid,
+						irq->irq_mask_reg, mask_value,
+						irq->irq_reg_access_size);
 	if (ret) {
 		pr_err("Failed to write IRQ mask register: %d\n", ret);
 		return ret;

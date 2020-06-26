@@ -219,7 +219,7 @@ static struct platform_driver lwis_driver = {
 			.of_match_table = lwis_id_match,
 		},
 };
-#else  /* CONFIG_OF not defined */
+#else /* CONFIG_OF not defined */
 static struct platform_device_id lwis_driver_id[] = {
 	{
 		.name = LWIS_DRIVER_NAME,

@@ -53,10 +53,10 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 		}
 
 		dev_info(lwis_dev->dev,
-			"Update %s freq from %u to %u, clock read back: %u\n",
-			lwis_dev->clocks->clk[clk_index].name, old_clk,
-			clk_settings[i].frequency,
-			clk_get_rate(lwis_dev->clocks->clk[clk_index].clk));
+			 "Update %s freq from %u to %u, clock read back: %u\n",
+			 lwis_dev->clocks->clk[clk_index].name, old_clk,
+			 clk_settings[i].frequency,
+			 clk_get_rate(lwis_dev->clocks->clk[clk_index].clk));
 	}
 out:
 	kfree(clk_settings);

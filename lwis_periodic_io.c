@@ -35,8 +35,7 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 
 	/* Go through all periodic io under the chosen periodic list */
 	mutex_lock(&client->periodic_io_lock);
-	list_for_each_safe(it_period, it_period_tmp, &periodic_io_list->list)
-	{
+	list_for_each_safe (it_period, it_period_tmp, &periodic_io_list->list) {
 		periodic_io = list_entry(it_period, struct lwis_periodic_io,
 					 timer_list_node);
 		if (periodic_io->active) {
@@ -75,8 +74,7 @@ static struct lwis_periodic_io_list *
 periodic_io_list_find(struct lwis_client *client, int64_t period_ns)
 {
 	struct lwis_periodic_io_list *list;
-	hash_for_each_possible(client->timer_list, list, node, period_ns)
-	{
+	hash_for_each_possible (client->timer_list, list, node, period_ns) {
 		if (list->period_ns == period_ns) {
 			return list;
 		}
@@ -317,18 +315,17 @@ static void periodic_io_work_func(struct work_struct *work)
 	INIT_LIST_HEAD(&pending_events);
 
 	mutex_lock(&client->periodic_io_lock);
-	list_for_each_safe(it_period, it_period_tmp,
-			   &client->periodic_io_process_queue)
-	{
+	list_for_each_safe (it_period, it_period_tmp,
+			    &client->periodic_io_process_queue) {
 		periodic_io_proxy =
 			list_entry(it_period, struct lwis_periodic_io_proxy,
 				   process_queue_node);
 		periodic_io = periodic_io_proxy->periodic_io;
 		// Error indicates the cancellation of the periodic io
 		if (periodic_io->resp->error_code || !periodic_io->active) {
-			error_code = periodic_io->resp->error_code
-					     ? periodic_io->resp->error_code
-					     : -ECANCELED;
+			error_code = periodic_io->resp->error_code ?
+						   periodic_io->resp->error_code :
+						   -ECANCELED;
 			list_del(&periodic_io_proxy->process_queue_node);
 			kfree(periodic_io_proxy);
 			push_periodic_io_error_event_locked(
@@ -502,13 +499,11 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 	struct lwis_periodic_io_list *it_periodic_io_list;
 
 	/* First, cancel all timers */
-	hash_for_each_safe(client->timer_list, i, tmp, it_periodic_io_list,
-			   node)
-	{
+	hash_for_each_safe (client->timer_list, i, tmp, it_periodic_io_list,
+			    node) {
 		mutex_lock(&client->periodic_io_lock);
-		list_for_each_safe(it_period, it_period_tmp,
-				   &it_periodic_io_list->list)
-		{
+		list_for_each_safe (it_period, it_period_tmp,
+				    &it_periodic_io_list->list) {
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io,
 					   timer_list_node);
@@ -526,12 +521,10 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 	mutex_lock(&client->periodic_io_lock);
 
 	/* Release the periodic io list of from all timers */
-	hash_for_each_safe(client->timer_list, i, tmp, it_periodic_io_list,
-			   node)
-	{
-		list_for_each_safe(it_period, it_period_tmp,
-				   &it_periodic_io_list->list)
-		{
+	hash_for_each_safe (client->timer_list, i, tmp, it_periodic_io_list,
+			    node) {
+		list_for_each_safe (it_period, it_period_tmp,
+				    &it_periodic_io_list->list) {
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io,
 					   timer_list_node);
@@ -560,9 +553,8 @@ int lwis_periodic_io_client_cleanup(struct lwis_client *client)
 	}
 
 	mutex_lock(&client->periodic_io_lock);
-	hash_for_each_safe(client->timer_list, i, tmp, it_periodic_io_list,
-			   node)
-	{
+	hash_for_each_safe (client->timer_list, i, tmp, it_periodic_io_list,
+			    node) {
 		hash_del(&it_periodic_io_list->node);
 	}
 	mutex_unlock(&client->periodic_io_lock);
@@ -579,10 +571,8 @@ static int mark_periodic_io_resp_error_locked(struct lwis_client *client,
 	struct lwis_periodic_io_list *it_list;
 	struct lwis_periodic_io *periodic_io;
 
-	hash_for_each_safe(client->timer_list, i, tmp, it_list, node)
-	{
-		list_for_each_safe(it_period, it_period_tmp, &it_list->list)
-		{
+	hash_for_each_safe (client->timer_list, i, tmp, it_list, node) {
+		list_for_each_safe (it_period, it_period_tmp, &it_list->list) {
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io,
 					   timer_list_node);

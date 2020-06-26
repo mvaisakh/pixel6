@@ -34,8 +34,7 @@ lwis_client_event_state_find_locked(struct lwis_client *lwis_client,
 	struct lwis_client_event_state *p;
 
 	/* Iterate through the hash bucket for this event_id */
-	hash_for_each_possible(lwis_client->event_states, p, node, event_id)
-	{
+	hash_for_each_possible (lwis_client->event_states, p, node, event_id) {
 		/* If it's indeed the right one, return it */
 		if (p->event_control.event_id == event_id) {
 			return p;
@@ -155,8 +154,7 @@ lwis_device_event_state_find_locked(struct lwis_device *lwis_dev,
 	struct lwis_device_event_state *p;
 
 	/* Iterate through the hash bucket for this event_id */
-	hash_for_each_possible(lwis_dev->event_states, p, node, event_id)
-	{
+	hash_for_each_possible (lwis_dev->event_states, p, node, event_id) {
 		/* If it's indeed the right one, return it */
 		if (p->event_id == event_id) {
 			return p;
@@ -399,8 +397,7 @@ int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 	/* Disable IRQs and lock the event lock */
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 	/* Iterate over the entire hash table */
-	hash_for_each_safe(lwis_client->event_states, i, n, state, node)
-	{
+	hash_for_each_safe (lwis_client->event_states, i, n, state, node) {
 		/* Delete the node from the hash table */
 		hash_del(&state->node);
 		/* Update the device state with zero flags */
@@ -422,7 +419,7 @@ int lwis_device_event_states_clear_locked(struct lwis_device *lwis_dev)
 	struct hlist_node *n;
 	int i;
 
-	hash_for_each_safe(lwis_dev->event_states, i, n, state, node) {
+	hash_for_each_safe (lwis_dev->event_states, i, n, state, node) {
 		hash_del(&state->node);
 		kfree(state);
 	}
@@ -482,8 +479,8 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev,
 
 	/* Reset sw event counter when it's going to disable */
 	if ((event_id & LWIS_TRANSACTION_EVENT_FLAG ||
-		event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG) &&
-		new_flags == 0)
+	     event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG) &&
+	    new_flags == 0)
 		state->event_counter = 0;
 
 	/* Check if our specialization cares about flags updates */
@@ -618,8 +615,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 	}
 
 	/* Notify clients */
-	list_for_each_safe(p, n, &lwis_dev->clients)
-	{
+	list_for_each_safe (p, n, &lwis_dev->clients) {
 		bool emit = false;
 		lwis_client = list_entry(p, struct lwis_client, node);
 
@@ -648,8 +644,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 			if (payload_size > 0) {
 				event->event_info.payload_buffer =
 					(void *)((uint8_t *)event +
-						 sizeof(struct
-							lwis_event_entry));
+						 sizeof(struct lwis_event_entry));
 				memcpy(event->event_info.payload_buffer,
 				       payload, payload_size);
 			} else {
@@ -744,8 +739,7 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev,
 	return return_val;
 }
 
-int lwis_device_event_subscribed(struct lwis_device *lwis_dev,
-				 int64_t event_id)
+int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -803,7 +797,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 	device_event_state = lwis_device_event_state_find(lwis_dev, event_id);
 	if (IS_ERR_OR_NULL(device_event_state)) {
 		pr_err("Device external event state not found %llx\n",
-			event_id);
+		       event_id);
 		return;
 	}
 	/* Lock and disable to prevent event_states from changing */
@@ -815,9 +809,8 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
-
 	/* Notify clients */
-	list_for_each_safe(p, n, &lwis_dev->clients) {
+	list_for_each_safe (p, n, &lwis_dev->clients) {
 		emit = false;
 		lwis_client = list_entry(p, struct lwis_client, node);
 
@@ -837,7 +830,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 
 		if (emit) {
 			event = kzalloc(sizeof(struct lwis_event_entry),
-				GFP_ATOMIC);
+					GFP_ATOMIC);
 			event->event_info.event_id = event_id;
 			event->event_info.event_counter = event_counter;
 			event->event_info.timestamp_ns = timestamp;

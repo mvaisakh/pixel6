@@ -207,8 +207,8 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	}
 
 	/* Indicate if the pinctrl shared with other devices */
-	of_property_read_u32(dev_node,
-			     "shared-pinctrl", &lwis_dev->shared_pinctrl);
+	of_property_read_u32(dev_node, "shared-pinctrl",
+			     &lwis_dev->shared_pinctrl);
 
 	/* The pinctrl is valid, release it as we do not need to hold on to
 	   the pins yet */
@@ -266,8 +266,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	}
 	/* Get event infos */
 	i = 0;
-	of_for_each_phandle(&it, ret, dev_node, "interrupt-event-infos", 0, 0)
-	{
+	of_for_each_phandle (&it, ret, dev_node, "interrupt-event-infos", 0,
+			     0) {
 		const char *irq_reg_space = NULL;
 		bool irq_mask_reg_toggle;
 		u64 irq_src_reg;
@@ -656,7 +656,7 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 	ret = lwis_ioreg_list_alloc(ioreg_dev, blocks);
 	if (ret) {
 		dev_err(ioreg_dev->base_dev.dev,
-		       "Failed to allocate ioreg list\n");
+			"Failed to allocate ioreg list\n");
 		return ret;
 	}
 
@@ -665,7 +665,7 @@ int lwis_ioreg_device_parse_dt(struct lwis_ioreg_device *ioreg_dev)
 		ret = lwis_ioreg_get(ioreg_dev, i, (char *)name);
 		if (ret) {
 			dev_err(ioreg_dev->base_dev.dev,
-			       "Cannot set ioreg info for %s\n", name);
+				"Cannot set ioreg info for %s\n", name);
 			goto error_ioreg;
 		}
 	}

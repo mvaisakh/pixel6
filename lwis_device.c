@@ -165,8 +165,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 
 	/* Take this lwis_client off the list of active clients */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_entry_safe(p, n, &lwis_dev->clients, node)
-	{
+	list_for_each_entry_safe (p, n, &lwis_dev->clients, node) {
 		if (lwis_client == p)
 			list_del(&lwis_client->node);
 	}
@@ -282,8 +281,7 @@ static void lwis_assign_top_to_other(struct lwis_device *top_dev)
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
-	{
+	list_for_each_entry (lwis_dev, &core.lwis_dev_list, dev_list) {
 		lwis_dev->top_dev = top_dev;
 	}
 	mutex_unlock(&core.lock);
@@ -405,9 +403,8 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			struct lwis_device *lwis_dev_it;
 			/* Look up if pinctrl it's already enabled */
 			mutex_lock(&core.lock);
-			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list)
-			{
+			list_for_each_entry (lwis_dev_it, &core.lwis_dev_list,
+					     dev_list) {
 				if ((lwis_dev->id != lwis_dev_it->id) &&
 				    (lwis_dev_it->shared_pinctrl ==
 				     lwis_dev->shared_pinctrl) &&
@@ -606,9 +603,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			struct lwis_device *lwis_dev_it;
 			/* Look up if pinctrl still used by other device */
 			mutex_lock(&core.lock);
-			list_for_each_entry(lwis_dev_it, &core.lwis_dev_list,
-					    dev_list)
-			{
+			list_for_each_entry (lwis_dev_it, &core.lwis_dev_list,
+					     dev_list) {
 				if ((lwis_dev->id != lwis_dev_it->id) &&
 				    (lwis_dev_it->shared_pinctrl ==
 				     lwis_dev->shared_pinctrl) &&
@@ -721,8 +717,7 @@ struct lwis_device *lwis_find_top_dev()
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
-	{
+	list_for_each_entry (lwis_dev, &core.lwis_dev_list, dev_list) {
 		if (lwis_dev->type == DEVICE_TYPE_TOP) {
 			mutex_unlock(&core.lock);
 			return lwis_dev;
@@ -740,8 +735,7 @@ struct lwis_device *lwis_find_dev_by_id(int dev_id)
 	struct lwis_device *lwis_dev;
 
 	mutex_lock(&core.lock);
-	list_for_each_entry(lwis_dev, &core.lwis_dev_list, dev_list)
-	{
+	list_for_each_entry (lwis_dev, &core.lwis_dev_list, dev_list) {
 		if (lwis_dev->id == dev_id) {
 			mutex_unlock(&core.lock);
 			return lwis_dev;
@@ -789,7 +783,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	spin_lock_init(&lwis_dev->lock);
 
 	if (lwis_dev->type == DEVICE_TYPE_TOP) {
-
 		lwis_dev->top_dev = lwis_dev;
 		/* Assign top device to the devices probed before */
 		lwis_assign_top_to_other(lwis_dev);
@@ -807,9 +800,10 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	}
 
 	/* Upon success initialization, create device for this instance */
-	lwis_dev->dev = device_create(
-		core.dev_class, NULL, MKDEV(core.device_major, lwis_dev->id),
-		lwis_dev, LWIS_DEVICE_NAME "-%s", lwis_dev->name);
+	lwis_dev->dev =
+		device_create(core.dev_class, NULL,
+			      MKDEV(core.device_major, lwis_dev->id), lwis_dev,
+			      LWIS_DEVICE_NAME "-%s", lwis_dev->name);
 	if (IS_ERR(lwis_dev->dev)) {
 		pr_err("Failed to create device\n");
 		ret = PTR_ERR(lwis_dev->dev);
@@ -979,8 +973,8 @@ static void __exit lwis_driver_exit(void)
 
 	pr_info("%s Clean up LWIS devices.\n", __func__);
 	cdev_del(core.chr_dev);
-	list_for_each_entry_safe(lwis_dev, temp, &core.lwis_dev_list, dev_list)
-	{
+	list_for_each_entry_safe (lwis_dev, temp, &core.lwis_dev_list,
+				  dev_list) {
 		pr_info("Destroy device %s id %d", lwis_dev->name,
 			lwis_dev->id);
 		lwis_device_debugfs_cleanup(lwis_dev);
@@ -992,9 +986,8 @@ static void __exit lwis_driver_exit(void)
 			i2c_unregister_device(i2c_dev->client);
 		}
 		/* Relase each client registered with dev */
-		list_for_each_entry_safe(client, client_temp,
-					 &lwis_dev->clients, node)
-		{
+		list_for_each_entry_safe (client, client_temp,
+					  &lwis_dev->clients, node) {
 			if (lwis_release_client(client))
 				pr_info("Failed to release client.");
 		}

@@ -199,4 +199,3 @@ void lwis_phy_print(struct lwis_phy_list *list)
 		pr_info("%s: PHY: %s\n", __func__, list->phy[i].name);
 	}
 }
-

@@ -97,9 +97,8 @@ static void subscribe_work_func(struct work_struct *work)
 	list_del(&trigger_event->node);
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 
-	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
-			       trigger_event->trigger_event_id)
-	{
+	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node,
+				trigger_event->trigger_event_id) {
 		if (p->event_id == trigger_event->trigger_event_id) {
 			/* Notify subscriber an event is happening */
 			lwis_device_external_event_emit(
@@ -141,9 +140,8 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev,
 	struct lwis_event_subscribe_info *p;
 
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
-	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
-			       trigger_event_id)
-	{
+	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node,
+				trigger_event_id) {
 		if (p->event_id == trigger_event_id &&
 		    p->receiver_dev->id == receiver_device_id) {
 			/* Notify trigger device someone unsubscribe a event */
@@ -180,9 +178,8 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
-	hash_for_each_possible(lwis_top_dev->event_subscriber, p, node,
-			       trigger_event_id)
-	{
+	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node,
+				trigger_event_id) {
 		/* event already registered for this device */
 		if (p->event_id == trigger_event_id &&
 		    p->receiver_dev->id == receiver_device_id)
@@ -239,9 +236,8 @@ static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev)
 
 	/* Clean up subscription table */
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
-	hash_for_each_safe(lwis_top_dev->event_subscriber, i, tmp,
-			   subscribe_info, node)
-	{
+	hash_for_each_safe (lwis_top_dev->event_subscriber, i, tmp,
+			    subscribe_info, node) {
 		hash_del(&subscribe_info->node);
 		kfree(subscribe_info);
 	}
@@ -249,9 +245,8 @@ static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev)
 
 	/* Clean up emitted event list */
 	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
-	list_for_each_entry_safe(pending_event, n,
-				 &lwis_top_dev->emitted_event_list, node)
-	{
+	list_for_each_entry_safe (pending_event, n,
+				  &lwis_top_dev->emitted_event_list, node) {
 		list_del(&pending_event->node);
 		kfree(pending_event);
 	}
@@ -410,7 +405,7 @@ static struct platform_driver lwis_driver = {
 	},
 };
 
-#else  /* CONFIG_OF not defined */
+#else /* CONFIG_OF not defined */
 static struct platform_device_id lwis_driver_id[] = {
 	{
 		.name = LWIS_DRIVER_NAME,

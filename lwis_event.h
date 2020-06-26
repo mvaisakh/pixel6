@@ -248,8 +248,7 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id,
  * Returns: 0 on success
  */
 int lwis_pending_events_emit(struct lwis_device *lwis_dev,
-			     struct list_head *pending_events,
-			     bool in_irq);
+			     struct list_head *pending_events, bool in_irq);
 
 /*
  * lwis_device_event_subscribed: Increase ref count on trigger device, when a

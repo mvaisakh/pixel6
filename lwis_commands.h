@@ -302,11 +302,11 @@ struct lwis_dpm_clk_settings {
 #define LWIS_TRANSACTION_REPLACE                                               \
 	_IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
 
-#define LWIS_PERIODIC_IO_SUBMIT                                            \
+#define LWIS_PERIODIC_IO_SUBMIT                                                \
 	_IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
 #define LWIS_PERIODIC_IO_CANCEL _IOWR(LWIS_IOC_TYPE, 41, int64_t)
 
-#define LWIS_DPM_CLK_UPDATE						       \
+#define LWIS_DPM_CLK_UPDATE                                                    \
 	_IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
 
 #ifdef __cplusplus

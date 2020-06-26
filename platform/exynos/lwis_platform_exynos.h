@@ -23,5 +23,4 @@ struct lwis_platform {
 	struct pm_qos_request pm_qos_tnr;
 };
 
-
 #endif /* LWIS_PLATFORM_H_ */

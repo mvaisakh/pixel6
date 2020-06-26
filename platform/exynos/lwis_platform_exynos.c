@@ -98,10 +98,9 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 				   hpg_qos);
 #if defined(CONFIG_SOC_GS101)
 	if (!pm_qos_request_active(&platform->pm_qos_tnr))
-		pm_qos_add_request(&platform->pm_qos_tnr,
-				   PM_QOS_TNR_THROUGHPUT, tnr_qos);
+		pm_qos_add_request(&platform->pm_qos_tnr, PM_QOS_TNR_THROUGHPUT,
+				   tnr_qos);
 #endif
-
 
 	return 0;
 }

@@ -37,16 +37,14 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 		goto exit;
 	}
 	strlcat(k_buf, "Pending Transactions:\n", k_buf_size);
-	hash_for_each(client->transaction_list, i, transaction_list, node)
-	{
+	hash_for_each (client->transaction_list, i, transaction_list, node) {
 		if (list_empty(&transaction_list->list)) {
 			strlcat(k_buf,
 				"No pending transaction for this event\n",
 				k_buf_size);
 			continue;
 		}
-		list_for_each(it_tran, &transaction_list->list)
-		{
+		list_for_each (it_tran, &transaction_list->list) {
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   event_list_node);
@@ -113,8 +111,7 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 		goto exit;
 	}
 	strlcat(k_buf, "Enabled Device Events:\n", sizeof(k_buf));
-	hash_for_each(lwis_dev->event_states, i, state, node)
-	{
+	hash_for_each (lwis_dev->event_states, i, state, node) {
 		if (state->enable_counter > 0) {
 			snprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", idx++,
@@ -153,8 +150,7 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
 		snprintf(k_buf, sizeof(k_buf), "No clients opened\n");
 		goto exit;
 	}
-	list_for_each_entry(client, &lwis_dev->clients, node)
-	{
+	list_for_each_entry (client, &lwis_dev->clients, node) {
 		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
 		strlcat(k_buf, tmp_buf, sizeof(k_buf));
 		list_transactions(client, k_buf, sizeof(k_buf));

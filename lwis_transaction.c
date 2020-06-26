@@ -25,8 +25,8 @@ static struct lwis_transaction_event_list *
 event_list_find(struct lwis_client *client, int64_t event_id)
 {
 	struct lwis_transaction_event_list *list;
-	hash_for_each_possible(client->transaction_list, list, node, event_id)
-	{
+	hash_for_each_possible (client->transaction_list, list, node,
+				event_id) {
 		if (list->event_id == event_id) {
 			return list;
 		}
@@ -187,9 +187,9 @@ static int process_io_entries(struct lwis_client *client,
 event_push:
 	if (pending_events) {
 		lwis_pending_event_push(pending_events,
-					resp->error_code
-						? info->emit_error_event_id
-						: info->emit_success_event_id,
+					resp->error_code ?
+						      info->emit_error_event_id :
+						      info->emit_success_event_id,
 					(void *)resp, resp_size);
 	} else {
 		/* No pending events indicates it's cleanup io_entries. */
@@ -248,9 +248,8 @@ static void transaction_work_func(struct work_struct *work)
 	INIT_LIST_HEAD(&pending_events);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
-	list_for_each_safe(it_tran, it_tran_tmp,
-			   &client->transaction_process_queue)
-	{
+	list_for_each_safe (it_tran, it_tran_tmp,
+			    &client->transaction_process_queue) {
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 process_queue_node);
 		if (transaction->resp->error_code) {
@@ -298,9 +297,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	/* This shouldn't happen after flush_workqueue, but check anyway. */
 	if (!list_empty(&client->transaction_process_queue)) {
 		pr_warn("Still transaction entries in process queue\n");
-		list_for_each_safe(it_tran, it_tran_tmp,
-				   &client->transaction_process_queue)
-		{
+		list_for_each_safe (it_tran, it_tran_tmp,
+				    &client->transaction_process_queue) {
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   process_queue_node);
@@ -331,13 +329,12 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
-	hash_for_each_safe(client->transaction_list, i, tmp, it_evt_list, node)
-	{
+	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list,
+			    node) {
 		if (it_evt_list->event_id == LWIS_EVENT_ID_CLIENT_CLEANUP) {
 			continue;
 		}
-		list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
-		{
+		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   event_list_node);
@@ -355,8 +352,7 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		return 0;
 	}
 
-	list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
-	{
+	list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
 		if (transaction->resp->error_code ||
@@ -584,8 +580,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	}
 
 	/* Go through all transactions under the chosen event list. */
-	list_for_each_safe(it_tran, it_tran_tmp, &event_list->list)
-	{
+	list_for_each_safe (it_tran, it_tran_tmp, &event_list->list) {
 		transaction = list_entry(it_tran, struct lwis_transaction,
 					 event_list_node);
 		if (transaction->resp->error_code) {
@@ -621,10 +616,9 @@ static int cancel_waiting_transaction_locked(struct lwis_client *client,
 	struct lwis_transaction_event_list *it_evt_list;
 	struct lwis_transaction *transaction;
 
-	hash_for_each_safe(client->transaction_list, i, tmp, it_evt_list, node)
-	{
-		list_for_each_safe(it_tran, it_tran_tmp, &it_evt_list->list)
-		{
+	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list,
+			    node) {
+		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   event_list_node);
