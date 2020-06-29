@@ -10457,11 +10457,11 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 			case RSN_AKM_FILS_SHA384:
 				wpa_auth |= WPA2_AUTH_FILS_SHA384;
 				break;
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
 			case RSN_AKM_SAE_PSK:
 				wpa_auth |= WPA3_AUTH_SAE_PSK;
 				break;
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE */
 #endif /* MFP */
 			default:
 				WL_ERR(("No Key Mgmt Info\n"));
@@ -14010,6 +14010,16 @@ wl_notify_connect_status_ap(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		}
 	}
 
+#ifdef WL_CLIENT_SAE
+	if (event == WLC_E_AUTH) {
+		if (!len) {
+			WL_ERR(("AP SAE: event %s(%d) has no payload. status %d reason %d len %d\n",
+				bcmevent_get_name(event), event, ntoh32(e->status), reason, len));
+			return 0;
+		}
+	}
+#endif /* WL_CLIENT_SAE */
+
 	if (event == WLC_E_DISASSOC_IND || event == WLC_E_DEAUTH_IND || event == WLC_E_DEAUTH) {
 		WL_DBG(("event %s(%d) status %d reason %d\n",
 		bcmevent_get_name(event), event, ntoh32(e->status), reason));
@@ -14152,6 +14162,76 @@ exit:
 		wl_wps_session_update(ndev, WPS_STATE_LINKDOWN, e->addr.octet);
 #endif /* WL_WPS_SYNC */
 	}
+#ifdef WL_CLIENT_SAE
+	else if (event == WLC_E_AUTH) {
+		bcm_struct_cfgdev *cfgdev = ndev_to_cfgdev(ndev);
+		u8 bsscfgidx = e->bsscfgidx;
+		u8 *mgmt_frame = NULL;
+		u8 *body = NULL;
+		u32 body_len = 0;
+		s32 chan;
+		chanspec_t chanspec;
+		s32 freq;
+		struct ether_addr da;
+		struct ether_addr bssid;
+
+		if (wl_get_mode_by_netdev(cfg, ndev) == WL_INVALID) {
+			return WL_INVALID;
+		}
+
+		body = (u8 *)MALLOCZ(cfg->osh, len);
+		if (body == NULL) {
+			WL_ERR(("wl_notify_connect_status: Failed to allocate body\n"));
+			return WL_INVALID;
+		}
+		(void)memcpy_s(body, len, data, len);
+
+		err = wldev_iovar_getbuf_bsscfg(ndev, "cur_etheraddr",
+			NULL, 0, cfg->ioctl_buf, WLC_IOCTL_SMLEN, bsscfgidx, &cfg->ioctl_buf_sync);
+		if (unlikely(err)) {
+			MFREE(cfg->osh, body, len);
+			WL_ERR(("%s: Could not get cur_etheraddr %d\n", __FUNCTION__, err));
+			return err;
+		}
+		(void)memcpy_s(da.octet, ETHER_ADDR_LEN, cfg->ioctl_buf, ETHER_ADDR_LEN);
+
+		bzero(&bssid, sizeof(bssid));
+		err = wldev_ioctl_get(ndev, WLC_GET_BSSID, &bssid, ETHER_ADDR_LEN);
+		if (unlikely(err)) {
+			MFREE(cfg->osh, body, len);
+			WL_ERR(("%s: Could not get bssid %d\n", __FUNCTION__, err));
+			return err;
+		}
+
+		err = wldev_iovar_getint(ndev, "chanspec", &chan);
+		if (unlikely(err)) {
+			MFREE(cfg->osh, body, len);
+			WL_ERR(("%s: Could not get chanspec %d\n", __FUNCTION__, err));
+			return err;
+		}
+		chanspec = wl_chspec_driver_to_host(chan);
+
+		freq = wl_channel_to_frequency(wf_chspec_ctlchan(chanspec), CHSPEC_BAND(chanspec));
+
+		body_len = len;
+		err = wl_frame_get_mgmt(cfg, FC_AUTH, &da, &e->addr, &bssid,
+			&mgmt_frame, &len, body);
+		if (!err) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+			cfg80211_rx_mgmt(cfgdev, freq, 0, mgmt_frame, len, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
+			cfg80211_rx_mgmt(ndev, freq, 0, mgmt_frame, len, GFP_ATOMIC);
+#else
+			cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
+#endif
+			MFREE(cfg->osh, mgmt_frame, len);
+		}
+
+		if (body) {
+			MFREE(cfg->osh, body, body_len);
+		}
+	}
+#endif /* WL_CLIENT_SAE */
 #endif /* LINUX_VERSION < VERSION(3,2,0) && !WL_CFG80211_STA_EVENT && !WL_COMPAT_WIRELESS */
 	return err;
 }
