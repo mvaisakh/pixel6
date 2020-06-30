@@ -13905,6 +13905,9 @@ wl_get_auth_assoc_status(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		case WLC_E_ASSOC:
 		case WLC_E_AUTH:
 		case WLC_E_AUTH_IND:
+			/* Update latest bssid */
+			wl_update_prof(cfg, ndev, NULL,
+				(const void *)&e->addr,	WL_PROF_LATEST_BSSID);
 			sec->auth_assoc_res_status = reason;
 #ifdef WL_SAE
 			if ((event == WLC_E_AUTH || event == WLC_E_AUTH_IND) &&
