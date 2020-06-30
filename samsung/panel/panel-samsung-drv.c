@@ -274,6 +274,8 @@ int exynos_panel_get_modes(struct drm_panel *panel)
 		return -ENOMEM;
 	}
 
+	mode->clock = mode->vtotal * mode->htotal * mode->vrefresh / 1000;
+
 	drm_mode_set_name(mode);
 
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;

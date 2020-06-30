@@ -155,7 +155,6 @@ static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
 };
 
 static const struct drm_display_mode s6e3hc2_wqhd_mode = {
-	.clock = 56125,	/* 898Mbps / 2 = 449Mhz / 8 = 56.125Mhz */
 	.hdisplay = 1440,
 	.hsync_start = 1440 + 2,
 	.hsync_end = 1440 + 2 + 2,
@@ -184,7 +183,6 @@ static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
 };
 
 static const struct drm_display_mode s6e3hc2_fhd_mode = {
-	.clock = 34375,	/* 550Mbps / 2 = 275Mhz / 8 = 34.375Mhz */
 	.hdisplay = 1080,
 	.hsync_start = 1080 + 32, // add hfp
 	.hsync_end = 1080 + 32 + 12, // add hsa

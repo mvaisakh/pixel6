@@ -80,7 +80,6 @@ static const struct exynos_display_mode emul_exynos_mode = {
 };
 
 static const struct drm_display_mode emul_mode = {
-	.clock = 34375,
 	.hdisplay = 1080,
 	.hsync_start = 1080 + 32,
 	.hsync_end = 1080 + 32 + 12,
