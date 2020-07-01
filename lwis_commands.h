@@ -162,7 +162,8 @@ struct lwis_io_entries {
 
 struct lwis_echo {
 	size_t size;
-	char *msg;
+	const char *msg;
+	bool kernel_log;
 };
 
 /* The first 4096 event IDs are reserved for generic events shared by all

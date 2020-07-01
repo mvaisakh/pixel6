@@ -673,7 +673,10 @@ static int ioctl_echo(struct lwis_device *lwis_dev,
 	}
 	memcpy(buffer, echo_msg.msg, echo_msg.size);
 	buffer[echo_msg.size] = '\0';
-	dev_info(lwis_dev->dev, "LWIS_ECHO: %s\n", buffer);
+
+	if (echo_msg.kernel_log) {
+		dev_info(lwis_dev->dev, "LWIS_ECHO: %s\n", buffer);
+	}
 	return 0;
 }
 
