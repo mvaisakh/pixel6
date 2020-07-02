@@ -2502,12 +2502,11 @@ static ssize_t rtx_status_show(struct device *dev,
 	if (charger->pdata->switch_gpio < 0)
 		charger->rtx_state = RTX_NOTSUPPORTED;
 
-	ret = charger->chip_get_sys_mode(charger, &reg);
-	if (ret == 0) {
-		if (reg == P9412_SYS_OP_MODE_TX_MODE)
+	if (p9221_is_online(charger)) {
+		charger->rtx_state = RTX_DISABLED;
+		ret = charger->chip_get_sys_mode(charger, &reg);
+		if ((ret == 0) && (reg == P9412_SYS_OP_MODE_TX_MODE))
 			charger->rtx_state = RTX_ACTIVE;
-		else
-			charger->rtx_state = RTX_DISABLED;
 	} else {
 		/* FIXME: b/147213330
 		 * if otg enabled, rtx disabled.
