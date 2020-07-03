@@ -12372,6 +12372,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(mask, WLC_E_ADDTS_IND);
 	setbit(mask, WLC_E_DELTS_IND);
 #endif /* BCMCCX */
+	setbit(mask, WLC_E_COUNTRY_CODE_CHANGED);
 #ifdef WLTDLS
 	setbit(mask, WLC_E_TDLS_PEER_EVENT);
 #endif /* WLTDLS */

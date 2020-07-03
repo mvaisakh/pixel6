@@ -1004,6 +1004,9 @@ wl_update_apchan_bwcap(struct bcm_cfg80211 *cfg, struct net_device *ndev, chansp
 static void
 wl_restore_ap_bw(struct bcm_cfg80211 *cfg);
 #endif /* SUPPORT_AP_BWCTRL */
+static s32
+wl_notify_country_code_change(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
+	const wl_event_msg_t *e, void *data);
 
 #if ((LINUX_VERSION_CODE >= KERNEL_VERSION (3, 5, 0)) && (LINUX_VERSION_CODE <= (3, 7, \
 	0)))
@@ -17588,6 +17591,7 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 #ifdef WL_CLIENT_SAE
 	cfg->evt_handler[WLC_E_JOIN_START] = wl_notify_start_auth;
 #endif /* WL_CLIENT_SAE */
+	cfg->evt_handler[WLC_E_COUNTRY_CODE_CHANGED] = wl_notify_country_code_change;
 }
 
 #ifdef WL_CLIENT_SAE
@@ -26567,3 +26571,45 @@ int wl_cfg80211_alert(struct net_device *dev)
 	return 0;
 }
 #endif
+
+static void
+wl_check_brcm_specifc_country_code(char *country_code)
+{
+	/* If a country code is Brcm specific change the domain to world domain */
+	if (!strcmp("AA", country_code) ||	/* AA */
+		!strcmp("ZZ", country_code) ||	/* ZZ */
+		country_code[0] == 'X' ||		/* XA - XZ */
+		(country_code[0] == 'Q' &&		/* QM - QZ */
+		(country_code[1] >= 'M' && country_code[1] <= 'Z'))) {
+			country_code[0] = '0';
+			country_code[1] = '0';
+	}
+}
+
+static s32
+wl_notify_country_code_change(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
+	const wl_event_msg_t *e, void *data)
+{
+	s32 err = BCME_OK;
+	char country_str_lookup[WLC_CNTRY_BUF_SZ] = { 0 };
+	struct wiphy *wiphy = bcmcfg_to_wiphy(cfg);
+
+	err = wl_update_wiphybands(cfg, true);
+	if (err != BCME_OK) {
+		WL_ERR(("%s: update wiphy bands failed\n", __FUNCTION__));
+		return err;
+	}
+
+	strcpy(country_str_lookup, data);
+	wl_check_brcm_specifc_country_code(country_str_lookup);
+
+	WL_DBG(("Updating new country %s\n", country_str_lookup));
+
+	if (!IS_REGDOM_SELF_MANAGED(wiphy)) {
+		err = regulatory_hint(wiphy, country_str_lookup);
+		if (err) {
+			WL_ERR(("%s: update country change to upper layers failed\n", __FUNCTION__));
+		}
+	}
+	return err;
+}

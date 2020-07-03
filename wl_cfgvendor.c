@@ -407,12 +407,23 @@ wl_cfgvendor_set_country(struct wiphy *wiphy,
 				return err;
 		}
 	}
-	/* country code is unique for dongle..hence using primary interface. */
-	err = wl_cfg80211_set_country_code(primary_ndev, country_code, true, true, -1);
-	if (err < 0) {
-		WL_ERR(("Set country failed ret:%d\n", err));
-	}
 
+	if((country_code[0] == '0') && (country_code[1] == '0')) {
+		err = wldev_iovar_setint(wdev_to_ndev(wdev), "autocountry", TRUE);
+		if (err) {
+			WL_ERR(("Failed to enable auto country ret %d\n", err));
+		}
+	} else {
+		err = wldev_iovar_setint(wdev_to_ndev(wdev), "autocountry", FALSE);
+		if (err) {
+			WL_ERR(("Failed to disable auto country ret %d\n", err));
+		}
+		/* country code is unique for dongle..hence using primary interface. */
+		err = wl_cfg80211_set_country_code(primary_ndev, country_code, true, true, -1);
+		if (err < 0) {
+				WL_ERR(("Set country failed ret:%d\n", err));
+		}
+	}
 	return err;
 }
 
