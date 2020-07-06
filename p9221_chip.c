@@ -493,9 +493,38 @@ static int p9221_set_cc_send_size(struct p9221_charger_data *chgr,
 				len);
 }
 
+static int p9382_set_cc_send_size(struct p9221_charger_data *chgr,
+				  size_t len)
+{
+	int ret;
+
+	/* set packet type to 0x100 */
+	ret = chgr->reg_write_8(chgr, P9382A_COM_PACKET_TYPE_ADDR,
+				BIDI_COM_PACKET_TYPE);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"Failed to write packet type %d\n", ret);
+		return ret;
+	}
+
+	return chgr->reg_write_16(chgr, P9382A_COM_CHAN_SEND_SIZE_REG,
+				 len);
+}
+
 static int p9412_set_cc_send_size(struct p9221_charger_data *chgr,
 				  size_t len)
 {
+	int ret;
+
+	/* set packet type to 0x100 */
+	ret = chgr->reg_write_8(chgr, P9382A_COM_PACKET_TYPE_ADDR,
+				BIDI_COM_PACKET_TYPE);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"Failed to write packet type %d\n", ret);
+		return ret;
+	}
+
 	return chgr->reg_write_16(chgr, P9412_COM_CHAN_SEND_SIZE_REG,
 				 len);
 }
@@ -813,7 +842,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_data_buf = p9382_get_data_buf;
 		chgr->chip_set_data_buf = p9382_set_data_buf;
 		chgr->chip_get_cc_recv_size = p9221_get_cc_recv_size;
-		chgr->chip_set_cc_send_size = p9221_set_cc_send_size;
+		chgr->chip_set_cc_send_size = p9382_set_cc_send_size;
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;

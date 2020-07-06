@@ -368,7 +368,7 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 				 stat);
 			/* write packet type to 0x100 */
 			ret = p9221_reg_write_8(charger,
-						PROPRIETARY_PACKET_TYPE_ADDR,
+						P9382A_COM_PACKET_TYPE_ADDR,
 						PROPRIETARY_PACKET_TYPE);
 
 			memset(charger->tx_buf, 0, P9221R5_DATA_SEND_BUF_SIZE);
@@ -3067,7 +3067,7 @@ static void p9382_txid_work(struct work_struct *work)
 
 	/* write packet type to 0x100 */
 	ret = p9221_reg_write_8(charger,
-				PROPRIETARY_PACKET_TYPE_ADDR,
+				P9382A_COM_PACKET_TYPE_ADDR,
 				PROPRIETARY_PACKET_TYPE);
 
 	memset(charger->tx_buf, 0, charger->tx_buf_size);
