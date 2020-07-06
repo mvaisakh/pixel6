@@ -552,12 +552,6 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge)
 		return ret;
 	}
 
-	ret = drm_panel_attach(&ctx->panel, connector);
-	if (ret) {
-		dev_err(ctx->dev, "unable to attach drm panel\n");
-		return ret;
-	}
-
 	drm_connector_helper_add(connector, &exynos_connector_helper_funcs);
 
 	exynos_drm_connector_create_luminance_properties(connector);
@@ -573,6 +567,12 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge)
 				"panel");
 	if (ret)
 		dev_warn(ctx->dev, "unable to link panel sysfs (%d)\n", ret);
+
+	ret = drm_panel_attach(&ctx->panel, connector);
+	if (ret) {
+		dev_err(ctx->dev, "unable to attach drm panel\n");
+		return ret;
+	}
 
 	mipi_dsi_debugfs_add(dsi, ctx->panel.debugfs_entry);
 
