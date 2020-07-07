@@ -16,7 +16,7 @@
 
 #include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
-#include "abrolhos-pwr.h"
+#include "abrolhos-pm.h"
 #include "edgetpu-config.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mmu.h"
@@ -227,7 +227,8 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 	int err;
 
 	thermal->dev = dev;
-	thermal->cooling_root = debugfs_create_dir("edgetpu_cooling", NULL);
+	thermal->cooling_root =
+		debugfs_create_dir("cooling", edgetpu_dev_debugfs_dir());
 
 	err = tpu_thermal_cooling_register(thermal,
 				       EDGETPU_COOLING_NAME);

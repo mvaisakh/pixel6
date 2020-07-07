@@ -153,11 +153,15 @@ enum mailbox_queue_type {
 	MAILBOX_RESP_QUEUE
 };
 
-/* create / release the mailbox manager */
+/*
+ * Allocates the mailbox manager.
+ *
+ * Allocations are device-managed so no release function is needed to free the
+ * manager.
+ */
 struct edgetpu_mailbox_manager *edgetpu_mailbox_create_mgr(
 		struct edgetpu_dev *etdev,
 		const struct edgetpu_mailbox_manager_desc *desc);
-void edgetpu_mailbox_release_mgr(struct edgetpu_mailbox_manager *mgr);
 
 /* interrupt handler */
 irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr);
@@ -165,6 +169,8 @@ irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr);
 /* removes the mailbox previously requested from a mailbox manager */
 int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr,
 			   struct edgetpu_mailbox *mailbox);
+/* removes all the mailboxes previously requested */
+void edgetpu_mailbox_remove_all(struct edgetpu_mailbox_manager *mgr);
 
 /* configure mailbox */
 
@@ -176,6 +182,12 @@ void edgetpu_mailbox_set_priority(struct edgetpu_mailbox *mailbox,
 
 /* Reset mailbox queues, clear out any commands/responses left from before. */
 void edgetpu_mailbox_reset(struct edgetpu_mailbox *mailbox);
+
+/*
+ * Clears any stale doorbell requests and enables the doorbell interrupts
+ * at the mailbox level
+ */
+void edgetpu_mailbox_init_doorbells(struct edgetpu_mailbox *mailbox);
 
 /* utility functions for KCI */
 
@@ -195,6 +207,14 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 			     struct edgetpu_device_group *group,
 			     const struct edgetpu_mailbox_attr *attr);
 void edgetpu_mailbox_remove_vii(struct edgetpu_vii *vii);
+
+
+/*
+ * Reset VII mailboxes CSRs to valid values, needed after the device is power
+ * gated.
+ */
+void edgetpu_mailbox_reset_vii(struct edgetpu_mailbox_manager *mgr);
+
 
 /* For VII and P2P mailboxes to allocate/free queue memory */
 

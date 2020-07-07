@@ -275,21 +275,19 @@ struct edgetpu_map_dmabuf_ioctl {
  * EINVAL: If @size is zero.
  * EINVAL: If @die_index exceeds the number of clients in the group.
  * EINVAL: If the target device group is disbanded.
- * ENOTTY: If DMA_SHARED_BUFFER is not enabled.
  */
 #define EDGETPU_MAP_DMABUF \
 	_IOWR(EDGETPU_IOCTL_BASE, 17, struct edgetpu_map_dmabuf_ioctl)
 /*
  * Un-map address previously mapped by EDGETPU_MAP_DEVICE_BUFFER.
  *
- * Only fields @dmabuf_fd, @die_index, and @device_address in the third argument
- * will be used, other fields such as @size and @offset will be fetched from the
+ * Only fields @die_index and @device_address in the third argument will be
+ * used, other fields such as @size and @offset will be fetched from the
  * kernel's internal records. If the buffer was requested as
  * EDGETPU_MAP_MIRRORED, @die_index is ignored as well.
  *
  * EINVAL: If @device_address is not found.
  * EINVAL: If the target device group is disbanded.
- * ENOTTY: If DMA_SHARED_BUFFER is not enabled.
  */
 #define EDGETPU_UNMAP_DMABUF \
 	_IOR(EDGETPU_IOCTL_BASE, 18, struct edgetpu_map_dmabuf_ioctl)
@@ -300,8 +298,42 @@ struct edgetpu_map_dmabuf_ioctl {
  *
  * EINVAL: If @size is zero.
  * ENODEV: If the on-device DRAM is not supported or failed on initialization.
+ * ENOTTY: If config EDGETPU_DEVICE_DRAM is disabled.
  */
 #define EDGETPU_ALLOCATE_DEVICE_BUFFER \
 	_IOR(EDGETPU_IOCTL_BASE, 19, __u64)
+
+/*
+ * struct edgetpu_create_sync_fence_data
+ * @seqno:		the seqno to initialize the fence with
+ * @timeline_name:	the name of the timeline the fence belongs to
+ * @fence:		returns the fd of the new sync_file with the new fence
+ */
+#define EDGETPU_SYNC_TIMELINE_NAME_LEN	128
+struct edgetpu_create_sync_fence_data {
+	__u32 seqno;
+	char  timeline_name[EDGETPU_SYNC_TIMELINE_NAME_LEN];
+	__s32 fence;
+};
+
+/*
+ * Create a DMA sync fence, return the sync_file fd for the new fence.
+ */
+#define EDGETPU_CREATE_SYNC_FENCE \
+	_IOWR(EDGETPU_IOCTL_BASE, 20, struct edgetpu_create_sync_fence_data)
+
+/*
+ * struct edgetpu_signal_sync_fence_data
+ * @fence:		fd of the sync_file for the fence
+ * @error:		error status errno value or zero for success
+ */
+struct edgetpu_signal_sync_fence_data {
+	__s32 fence;
+	__s32 error;
+};
+
+/* Signal a DMA sync fence with optional error status. */
+#define EDGETPU_SIGNAL_SYNC_FENCE \
+	_IOR(EDGETPU_IOCTL_BASE, 21, struct edgetpu_signal_sync_fence_data)
 
 #endif /* __EDGETPU_H__ */

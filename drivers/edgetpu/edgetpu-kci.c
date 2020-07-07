@@ -60,15 +60,13 @@ static void *edgetpu_kci_alloc_queue(struct edgetpu_dev *etdev,
 		edgetpu_mmu_tpu_map(etdev, *dma_addr, size, DMA_BIDIRECTIONAL,
 				    EDGETPU_CONTEXT_KCI, flags);
 	if (!*tpu_addr) {
-		dev_err(etdev->dev, "%s: failed to map KCI queue to TPU\n",
-			etdev->dev_name);
+		etdev_err(etdev, "failed to map KCI queue to TPU");
 		return ERR_PTR(-EINVAL);
 	}
 	ret = edgetpu_mailbox_set_queue(mailbox, type, (u64)*tpu_addr,
 					queue_size);
 	if (ret) {
-		dev_err(etdev->dev, "%s: failed to set mailbox queue: %d\n",
-			etdev->dev_name, ret);
+		etdev_err(etdev, "failed to set mailbox queue: %d", ret);
 		edgetpu_mmu_tpu_unmap(etdev, *tpu_addr, size,
 				      EDGETPU_CONTEXT_KCI);
 		return ERR_PTR(ret);
@@ -222,7 +220,7 @@ static void edgetpu_kci_consume_responses_work(struct work_struct *work)
 	wake_up(&kci->resp_doorbell_waitq);
 	if (IS_ERR(responses)) {
 		etdev_err(mailbox->etdev,
-			  "KCI failed on fetching responses: %ld\n",
+			  "KCI failed on fetching responses: %ld",
 			  PTR_ERR(responses));
 		return;
 	}
@@ -266,9 +264,8 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	}
 	kci->cmd_queue = addr;
 	mutex_init(&kci->cmd_queue_lock);
-	dev_dbg(mgr->etdev->dev, "%s: cmdq kva=%pK iova=0x%llx dma=%pad\n",
-		__func__, addr, kci->cmd_queue_tpu_addr,
-		&kci->cmd_queue_dma_addr);
+	etdev_dbg(mgr->etdev, "%s: cmdq kva=%pK iova=0x%llx dma=%pad", __func__,
+		  addr, kci->cmd_queue_tpu_addr, &kci->cmd_queue_dma_addr);
 
 	addr = edgetpu_kci_alloc_queue(mgr->etdev, mailbox, MAILBOX_RESP_QUEUE,
 				       &kci->resp_queue_tpu_addr,
@@ -279,9 +276,8 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	}
 	kci->resp_queue = addr;
 	mutex_init(&kci->resp_queue_lock);
-	dev_dbg(mgr->etdev->dev, "%s: rspq kva=%pK iova=0x%llx dma=%pad\n",
-		__func__, addr, kci->resp_queue_tpu_addr,
-		&kci->resp_queue_dma_addr);
+	etdev_dbg(mgr->etdev, "%s: rspq kva=%pK iova=0x%llx dma=%pad", __func__,
+		  addr, kci->resp_queue_tpu_addr, &kci->resp_queue_dma_addr);
 
 	mailbox->handle_irq = edgetpu_kci_handle_irq;
 	mailbox->internal.kci = kci;
@@ -312,6 +308,7 @@ int edgetpu_kci_reinit(struct edgetpu_kci *kci)
 					kci->resp_queue_tpu_addr, QUEUE_SIZE);
 	if (ret)
 		return ret;
+	edgetpu_mailbox_init_doorbells(mailbox);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
 
 	return 0;
@@ -455,8 +452,7 @@ int edgetpu_kci_push_cmd(struct edgetpu_kci *kci,
 out:
 	mutex_unlock(&kci->cmd_queue_lock);
 	if (ret)
-		dev_dbg(kci->mailbox->etdev->dev, "%s: ret=%d\n", __func__,
-			ret);
+		etdev_dbg(kci->mailbox->etdev, "%s: ret=%d", __func__, ret);
 
 	return ret;
 }
@@ -475,14 +471,14 @@ int edgetpu_kci_push_cmd_wait_timeout(struct edgetpu_kci *kci,
 				 resp.status != KCI_STATUS_WAITING_RESPONSE,
 				 msecs_to_jiffies(timeout));
 	if (!ret) {
-		dev_dbg(kci->mailbox->etdev->dev, "%s: event wait timeout\n",
-			__func__);
+		etdev_dbg(kci->mailbox->etdev, "%s: event wait timeout",
+			  __func__);
 		edgetpu_kci_del_wait_resp(kci, &resp);
 		return -ETIMEDOUT;
 	}
 	if (resp.status != KCI_STATUS_OK) {
-		dev_dbg(kci->mailbox->etdev->dev, "%s: resp status=%u\n",
-			__func__, resp.status);
+		etdev_dbg(kci->mailbox->etdev, "%s: resp status=%u", __func__,
+			  resp.status);
 		return -ENOMSG;
 	}
 
@@ -569,21 +565,21 @@ int edgetpu_kci_join_group(struct edgetpu_kci *kci, struct edgetpu_dev *etdev,
 	tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size, DMA_TO_DEVICE,
 				       EDGETPU_CONTEXT_KCI, flags);
 	if (!tpu_addr) {
-		dev_err(etdev->dev, "%s: failed to map group detail to TPU\n",
-			__func__);
+		etdev_err(etdev, "%s: failed to map group detail to TPU",
+			  __func__);
 		dma_free_coherent(etdev->dev, size, detail, dma_addr);
 		return -EINVAL;
 	}
 
 	cmd.dma.address = tpu_addr;
-	dev_dbg(etdev->dev, "%s: map kva=%pK iova=0x%llx dma=%pad\n",
-		__func__, detail, tpu_addr, &dma_addr);
+	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__,
+		  detail, tpu_addr, &dma_addr);
 
 	ret = edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
 	edgetpu_mmu_tpu_unmap(etdev, tpu_addr, size, EDGETPU_CONTEXT_KCI);
 	dma_free_coherent(etdev->dev, size, detail, dma_addr);
-	dev_dbg(etdev->dev, "%s: unmap kva=%pK iova=0x%llx dma=%pad\n",
-		__func__, detail, tpu_addr, &dma_addr);
+	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__,
+		  detail, tpu_addr, &dma_addr);
 
 	return ret;
 }
@@ -620,4 +616,15 @@ void edgetpu_kci_mappings_show(struct edgetpu_dev *etdev, struct seq_file *s)
 		   / PAGE_SIZE, &kci->resp_queue_dma_addr);
 	edgetpu_telemetry_mappings_show(etdev, s);
 	edgetpu_firmware_mappings_show(etdev, s);
+}
+
+int edgetpu_kci_shutdown(struct edgetpu_kci *kci)
+{
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_SHUTDOWN,
+	};
+
+	if (!kci)
+		return -ENODEV;
+	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
 }

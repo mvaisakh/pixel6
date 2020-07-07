@@ -28,9 +28,10 @@
 
 #include "edgetpu-config.h"
 #include "edgetpu-device-group.h"
+#include "edgetpu-dmabuf.h"
 #include "edgetpu-dram.h"
+#include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
-#include "edgetpu-map-dmabuf.h"
 #include "edgetpu-mapping.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu.h"
@@ -57,6 +58,7 @@ static int edgetpu_open(struct inode *inode, struct file *file)
 	struct edgetpu_dev *etdev =
 		container_of(inode->i_cdev, struct edgetpu_dev, cdev);
 	struct edgetpu_client *client;
+	int res;
 
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
@@ -65,6 +67,16 @@ static int edgetpu_open(struct inode *inode, struct file *file)
 		mutex_unlock(&etdev->open.lock);
 		return -EBUSY;
 	}
+	if (etdev->pm && !etdev->open.count) {
+		res = edgetpu_pm_get(etdev->pm);
+		if (res) {
+			dev_err(etdev->dev,
+				"Failed to request device power up (%d)", res);
+			mutex_unlock(&etdev->open.lock);
+			return -ENODEV;
+		}
+	}
+
 	client = edgetpu_client_add(etdev);
 	if (IS_ERR(client)) {
 		mutex_unlock(&etdev->open.lock);
@@ -90,6 +102,8 @@ static int etdirect_release(struct inode *inode, struct file *file)
 	mutex_lock(&etdev->open.lock);
 	if (etdev->open.count)
 		--etdev->open.count;
+	if (!etdev->open.count)
+		edgetpu_pm_put(etdev->pm);
 	mutex_unlock(&etdev->open.lock);
 	return 0;
 }
@@ -332,7 +346,9 @@ static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 	/* Valid for any @client */
 	if (cmd == EDGETPU_SET_PERDIE_EVENTFD ||
 	    cmd == EDGETPU_UNSET_PERDIE_EVENT ||
-	    cmd == EDGETPU_ALLOCATE_DEVICE_BUFFER)
+	    cmd == EDGETPU_ALLOCATE_DEVICE_BUFFER ||
+	    cmd == EDGETPU_CREATE_SYNC_FENCE ||
+	    cmd == EDGETPU_SIGNAL_SYNC_FENCE)
 		return true;
 
 	if (!client->group)
@@ -406,6 +422,12 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_UNMAP_DMABUF:
 		ret = etdirect_unmap_dmabuf(client->group, argp);
+		break;
+	case EDGETPU_CREATE_SYNC_FENCE:
+		ret = edgetpu_sync_fence_create(argp);
+		break;
+	case EDGETPU_SIGNAL_SYNC_FENCE:
+		ret = edgetpu_sync_fence_signal(argp);
 		break;
 	default:
 		return -ENOTTY; /* unknown command */
@@ -619,7 +641,7 @@ static const struct file_operations mappings_ops = {
 	.release = single_release,
 };
 
-static void etdirect_setup_debugfs(struct edgetpu_dev *etdev)
+static void edgetpu_dev_setup_debugfs(struct edgetpu_dev *etdev)
 {
 	etdev->d_entry =
 		debugfs_create_dir(etdev->dev_name, edgetpu_debugfs_dir);
@@ -667,7 +689,7 @@ int edgetpu_dev_add(struct edgetpu_dev *etdev)
 		return ret;
 	}
 
-	etdirect_setup_debugfs(etdev);
+	edgetpu_dev_setup_debugfs(etdev);
 	return 0;
 }
 
@@ -676,6 +698,27 @@ void edgetpu_dev_remove(struct edgetpu_dev *etdev)
 	device_destroy(edgetpu_class, etdev->devno);
 	cdev_del(&etdev->cdev);
 	debugfs_remove_recursive(etdev->d_entry);
+}
+
+static int syncfences_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, edgetpu_sync_fence_debugfs_show,
+			   inode->i_private);
+}
+
+static const struct file_operations syncfences_ops = {
+	.open = syncfences_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.owner = THIS_MODULE,
+	.release = single_release,
+};
+
+static void edgetpu_debugfs_global_setup(void)
+{
+	edgetpu_debugfs_dir = debugfs_create_dir("edgetpu", NULL);
+	debugfs_create_file("syncfences", 0660, edgetpu_debugfs_dir, NULL,
+			    &syncfences_ops);
 }
 
 int __init edgetpu_dev_init(void)
@@ -698,15 +741,20 @@ int __init edgetpu_dev_init(void)
 		return ret;
 	}
 	pr_debug(DRIVER_NAME " registered major=%d\n", MAJOR(edgetpu_basedev));
-	edgetpu_debugfs_dir = debugfs_create_dir("edgetpu", NULL);
+	edgetpu_debugfs_global_setup();
 	return 0;
 }
 
 void __exit edgetpu_dev_exit(void)
 {
-	debugfs_remove(edgetpu_debugfs_dir);
+	debugfs_remove_recursive(edgetpu_debugfs_dir);
 	unregister_chrdev_region(edgetpu_basedev, EDGETPU_DEV_MAX);
 	class_destroy(edgetpu_class);
+}
+
+struct dentry *edgetpu_dev_debugfs_dir(void)
+{
+	return edgetpu_debugfs_dir;
 }
 
 MODULE_DESCRIPTION("Google EdgeTPU file operations");

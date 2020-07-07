@@ -20,6 +20,15 @@ enum edgetpu_firmware_flags {
 	FW_ONDEV = 0x4,
 };
 
+enum edgetpu_firmware_status {
+	/* No firmware loaded yet, or last firmware failed to run */
+	FW_INVALID = 0,
+	/* Load in progress */
+	FW_LOADING = 1,
+	/* Current firmware is valid and can be restarted */
+	FW_VALID = 2,
+};
+
 struct edgetpu_firmware_private;
 
 struct edgetpu_firmware {
@@ -146,5 +155,37 @@ int edgetpu_firmware_create(struct edgetpu_dev *etdev,
 void edgetpu_firmware_destroy(struct edgetpu_dev *etdev);
 void edgetpu_firmware_mappings_show(struct edgetpu_dev *etdev,
 				    struct seq_file *s);
+
+/*
+ * These two functions grab and release the internal firmware lock
+ * and must be used before calling the helper functions suffixed with _locked
+ * below
+ */
+
+int edgetpu_firmware_lock(struct edgetpu_dev *etdev);
+void edgetpu_firmware_unlock(struct edgetpu_dev *etdev);
+
+
+/*
+ * Returns the state of the firmware image currently loaded for this device
+ */
+enum edgetpu_firmware_status
+edgetpu_firmware_status_locked(struct edgetpu_dev *etdev);
+
+/*
+ * Restarts the last firmware image loaded
+ * Intended for power managed devices to re-run the firmware without a full
+ * reload from the file system
+ */
+int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev);
+
+/*
+ * Loads and runs the specified firmware assuming the required locks have been
+ * acquired
+ */
+
+int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
+				const char *name,
+				enum edgetpu_firmware_flags flags);
 
 #endif /* __EDGETPU_FIRMWARE_H__ */

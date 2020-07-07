@@ -21,6 +21,7 @@
 #include <linux/types.h>
 
 #include "edgetpu.h"
+#include "edgetpu-pm.h"
 #include "edgetpu-thermal.h"
 
 #define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
@@ -145,6 +146,7 @@ struct edgetpu_dev {
 	struct edgetpu_firmware *firmware; /* firmware management */
 	struct edgetpu_telemetry_ctx *telemetry;
 	struct edgetpu_thermal *thermal;
+	struct edgetpu_pm *pm;  /* Power management interface */
 	int mcp_id;		/* multichip pkg id, or -1 for none */
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */
@@ -226,6 +228,8 @@ int __init edgetpu_dev_init(void);
 void __exit edgetpu_dev_exit(void);
 int edgetpu_dev_add(struct edgetpu_dev *etdev);
 void edgetpu_dev_remove(struct edgetpu_dev *dev);
+/* Get the top-level debugfs directory for the device class */
+struct dentry *edgetpu_dev_debugfs_dir(void);
 
 /* Core/Device -> Chip API */
 

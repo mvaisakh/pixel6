@@ -66,12 +66,7 @@ static struct edgetpu_mailbox *edgetpu_mailbox_create_locked(
 	mailbox->context_csr_base = mgr->get_context_csr_base(index);
 	mailbox->cmd_queue_csr_base = mgr->get_cmd_queue_csr_base(index);
 	mailbox->resp_queue_csr_base = mgr->get_resp_queue_csr_base(index);
-	/* Clear any stale doorbells requested */
-	EDGETPU_MAILBOX_RESP_QUEUE_WRITE(mailbox, doorbell_clear, 1);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, cmd_queue_doorbell_clear, 1);
-	/* Enable the command and response doorbell interrupts */
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, cmd_queue_doorbell_enable, 1);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, resp_queue_doorbell_enable, 1);
+	edgetpu_mailbox_init_doorbells(mailbox);
 
 	return mailbox;
 }
@@ -627,11 +622,8 @@ struct edgetpu_mailbox_manager *edgetpu_mailbox_create_mgr(
 	return mgr;
 }
 
-/*
- * Releases the mailbox manager. All requested mailboxes will be disabled and
- * freed.
- */
-void edgetpu_mailbox_release_mgr(struct edgetpu_mailbox_manager *mgr)
+/* All requested mailboxes will be disabled and freed. */
+void edgetpu_mailbox_remove_all(struct edgetpu_mailbox_manager *mgr)
 {
 	uint i;
 	struct edgetpu_mailbox *kci_mailbox = NULL;
@@ -693,4 +685,33 @@ irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr)
 	read_unlock(&mgr->mailboxes_lock);
 
 	return IRQ_HANDLED;
+}
+
+void edgetpu_mailbox_init_doorbells(struct edgetpu_mailbox *mailbox)
+{
+	/* Clear any stale doorbells requested */
+	EDGETPU_MAILBOX_RESP_QUEUE_WRITE(mailbox, doorbell_clear, 1);
+	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, cmd_queue_doorbell_clear, 1);
+	/* Enable the command and response doorbell interrupts */
+	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, cmd_queue_doorbell_enable, 1);
+	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, resp_queue_doorbell_enable, 1);
+}
+
+void edgetpu_mailbox_reset_vii(struct edgetpu_mailbox_manager *mgr)
+{
+	uint i;
+	unsigned long flags;
+
+	write_lock_irqsave(&mgr->mailboxes_lock, flags);
+	for (i = mgr->vii_index_from; i < mgr->vii_index_to; i++) {
+		struct edgetpu_mailbox mbox = {
+			.etdev = mgr->etdev,
+			.context_csr_base = mgr->get_context_csr_base(i),
+		};
+
+		edgetpu_mailbox_reset(&mbox);
+		edgetpu_mailbox_disable(&mbox);
+		edgetpu_mailbox_init_doorbells(&mbox);
+	}
+	write_unlock_irqrestore(&mgr->mailboxes_lock, flags);
 }

@@ -90,6 +90,7 @@ enum edgetpu_kci_code {
 	KCI_CODE_LEAVE_GROUP = 4,
 	KCI_CODE_MAP_TRACE_BUFFER = 5,
 	KCI_CODE_FIRMWARE_FLAVOR = 6,
+	KCI_CODE_SHUTDOWN = 7,
 };
 
 /*
@@ -255,5 +256,8 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci);
 
 /* debugfs mappings dump */
 void edgetpu_kci_mappings_show(struct edgetpu_dev *etdev, struct seq_file *s);
+
+/* Send shutdown request to firmware */
+int edgetpu_kci_shutdown(struct edgetpu_kci *kci);
 
 #endif /* __EDGETPU_KCI_H__ */

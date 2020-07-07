@@ -3,7 +3,9 @@ menu "EdgeTPU devices"
 config EDGETPU_FRAMEWORK
 	tristate "EdgeTPU framework"
 	depends on X86_64 || ARM64
+	select DMA_SHARED_BUFFER
 	select IOMMU_API
+	select SYNC_FILE
 	help
 	  This framework supports darwinn-2.0 devices.
 

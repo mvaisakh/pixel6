@@ -65,8 +65,8 @@ static int edgetpu_kci_join_group_worker(struct kci_worker_param *param)
 	uint i = param->idx;
 	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
 
-	etdev_dbg(etdev, "%s: join group %u %u/%u\n", __func__,
-		  group->workload_id, i, group->n_clients);
+	etdev_dbg(etdev, "%s: join group %u %u/%u", __func__,
+		  group->workload_id, i + 1, group->n_clients);
 	return edgetpu_kci_join_group(etdev->kci, etdev, group->n_clients, i);
 }
 
@@ -76,7 +76,7 @@ static void edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 	uint i = param->idx;
 	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
 
-	etdev_dbg(etdev, "%s: leave group %u\n", __func__, group->workload_id);
+	etdev_dbg(etdev, "%s: leave group %u", __func__, group->workload_id);
 	edgetpu_kci_leave_group(etdev->kci);
 }
 
@@ -108,15 +108,15 @@ static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 			(edgetpu_async_job_t)edgetpu_kci_leave_group_worker);
 		if (err) {
 			etdev_err(group->etdev,
-				  "%s: failed to create async job: %d\n",
+				  "%s: failed to create async job: %d",
 				  __func__, err);
 			goto out_free;
 		}
 	}
 	err = edgetpu_async_wait(ctx);
 	if (err)
-		etdev_err(group->etdev,
-			  "%s: failed to execute jobs: %d\n", __func__, err);
+		etdev_err(group->etdev, "%s: failed to execute jobs: %d",
+			  __func__, err);
 out_free:
 	edgetpu_async_free_ctx(ctx);
 	kfree(params);
@@ -281,7 +281,7 @@ void edgetpu_group_notify(struct edgetpu_device_group *group, uint event_id)
 	if (event_id >= EDGETPU_EVENT_COUNT)
 		return;
 
-	etdev_dbg(group->etdev, "%s: group %u id=%u\n", __func__,
+	etdev_dbg(group->etdev, "%s: group %u id=%u", __func__,
 		  group->workload_id, event_id);
 	read_lock(&group->events.lock);
 	if (group->events.eventfds[event_id])
@@ -389,16 +389,14 @@ struct edgetpu_device_group *edgetpu_device_group_alloc(
 	/* adds @client as the first entry */
 	ret = edgetpu_device_group_add(group, client);
 	if (ret) {
-		etdev_dbg(group->etdev,
-			  "%s: group %u add failed ret=%d\n",
+		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
 			  __func__, group->workload_id, ret);
 		goto error_put_group;
 	}
 
 	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
 	if (ret) {
-		etdev_dbg(group->etdev,
-			  "%s: group %u init vii failed ret=%d\n",
+		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
 			  __func__, group->workload_id, ret);
 		edgetpu_device_group_leave(client);
 		goto error_put_group;
@@ -454,8 +452,8 @@ int edgetpu_device_group_add(struct edgetpu_device_group *group,
 	client->idx = group->n_clients;
 	group->n_clients++;
 	client->group = edgetpu_device_group_get(group);
-	etdev_dbg(client->etdev, "%s: added group %u\n",
-		  __func__, group->workload_id);
+	etdev_dbg(client->etdev, "%s: added group %u", __func__,
+		  group->workload_id);
 
 out:
 	mutex_unlock(&group->lock);
@@ -653,7 +651,7 @@ static void edgetpu_unmap_node(struct edgetpu_mapping *map)
 	struct sg_page_iter sg_iter;
 	uint i;
 
-	etdev_dbg(group->etdev, "%s: %u: die=%d, iova=0x%llx\n", __func__,
+	etdev_dbg(group->etdev, "%s: %u: die=%d, iova=0x%llx", __func__,
 		  group->workload_id, map->die_index, map->device_address);
 
 	if (map->device_address) {
@@ -734,8 +732,8 @@ static struct page **edgetpu_pin_user_pages(
 	if (offset)
 		num_pages++;
 
-	etdev_dbg(etdev, "%s: hostaddr=0x%llx pages=%u dir=%x\n",
-		  __func__, host_addr, num_pages, dir);
+	etdev_dbg(etdev, "%s: hostaddr=0x%llx pages=%u dir=%x", __func__,
+		  host_addr, num_pages, dir);
 	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL);
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
@@ -745,7 +743,7 @@ static struct page **edgetpu_pin_user_pages(
 	 */
 	ret = get_user_pages_fast(host_addr & PAGE_MASK, num_pages, 1, pages);
 	if (ret < 0) {
-		etdev_dbg(etdev, "get user pages failed %u:%pK-%u: %d\n",
+		etdev_dbg(etdev, "get user pages failed %u:%pK-%u: %d",
 			  group->workload_id, (void *)host_addr, num_pages,
 			  ret);
 		num_pages = 0;
@@ -753,7 +751,7 @@ static struct page **edgetpu_pin_user_pages(
 	}
 	if (ret < num_pages) {
 		etdev_dbg(etdev,
-			  "get user pages partial %u:%pK npages=%u pinned=%d\n",
+			  "get user pages partial %u:%pK npages=%u pinned=%d",
 			  group->workload_id, (void *)host_addr, num_pages,
 			  ret);
 		num_pages = ret;
@@ -830,7 +828,7 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 						size, GFP_KERNEL);
 		if (ret) {
 			etdev_dbg(etdev,
-				  "%s: sg_alloc_table_from_pages failed %u:%pK-%u: %d\n",
+				  "%s: sg_alloc_table_from_pages failed %u:%pK-%u: %d",
 				  __func__, group->workload_id,
 				  (void *)host_addr, num_pages, ret);
 			goto error_free_sgt;
@@ -968,7 +966,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 		ret = edgetpu_device_group_map_iova_sgt(group, hmap);
 		if (ret) {
 			etdev_dbg(etdev,
-				  "group add translation failed %u:0x%llx\n",
+				  "group add translation failed %u:0x%llx",
 				  group->workload_id, map->device_address);
 			goto error_release_map;
 		}
@@ -982,7 +980,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 
 	ret = edgetpu_mapping_add(&group->host_mappings, map);
 	if (ret) {
-		etdev_dbg(etdev, "duplicate mapping %u:0x%llx\n",
+		etdev_dbg(etdev, "duplicate mapping %u:0x%llx",
 			  group->workload_id, map->device_address);
 		goto error_release_map;
 	}
@@ -1025,7 +1023,7 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	if (!map) {
 		edgetpu_mapping_unlock(&group->host_mappings);
 		etdev_dbg(group->etdev,
-			  "%s: mapping not found for workload %u: 0x%llx\n",
+			  "%s: mapping not found for workload %u: 0x%llx",
 			  __func__, group->workload_id, tpu_addr);
 		ret = -EINVAL;
 		goto unlock_group;
@@ -1149,7 +1147,7 @@ int edgetpu_mmap_csr(struct edgetpu_device_group *group,
 	ret = io_remap_pfn_range(vma, vma->vm_start, phys_base >> PAGE_SHIFT,
 				 map_size, vma->vm_page_prot);
 	if (ret)
-		etdev_dbg(etdev, "Error remapping PFN range: %d\n", ret);
+		etdev_dbg(etdev, "Error remapping PFN range: %d", ret);
 
 out:
 	mutex_unlock(&group->lock);

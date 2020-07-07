@@ -18,6 +18,7 @@
 #include "edgetpu-firmware-util.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
+#include "edgetpu-pm.h"
 #include "edgetpu-shared-fw.h"
 #include "edgetpu-telemetry.h"
 
@@ -47,6 +48,7 @@ struct edgetpu_firmware_private {
 
 	struct mutex fw_desc_lock;
 	struct edgetpu_firmware_desc fw_desc;
+	enum edgetpu_firmware_status status;
 };
 
 void edgetpu_firmware_set_data(struct edgetpu_firmware *et_fw, void *data)
@@ -237,13 +239,15 @@ static int edgetpu_firmware_ack(struct edgetpu_dev *etdev)
 	return err;
 }
 
-static int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
-				       const char *name,
-				       enum edgetpu_firmware_flags flags)
+int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
+				const char *name,
+				enum edgetpu_firmware_flags flags)
 {
 	const struct edgetpu_firmware_handlers *handlers = et_fw->p->handlers;
 	struct edgetpu_firmware_desc new_fw_desc;
 	int ret;
+
+	et_fw->p->status = FW_LOADING;
 
 	memset(&new_fw_desc, 0, sizeof(new_fw_desc));
 	ret = edgetpu_firmware_load_locked(et_fw, &new_fw_desc, name, flags);
@@ -268,6 +272,10 @@ static int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	/* Give the firmware some time to initialize */
 	msleep(100);
 	ret = edgetpu_firmware_ack(et_fw->etdev);
+	if (ret)
+		et_fw->p->status = FW_INVALID;
+	else
+		et_fw->p->status = FW_VALID;
 	/* Hermosa second-stage bootloader doesn't implement log/trace */
 	if (!ret && !(flags & FW_BL1))
 		edgetpu_telemetry_kci(et_fw->etdev);
@@ -287,21 +295,101 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 
 	if (!et_fw)
 		return -ENODEV;
-
-	edgetpu_set_open_enabled(etdev, false);
-	if (etdev->open.count) {
-		etdev_err(etdev,
-			  "failed to run firmware because device is in use");
-		edgetpu_set_open_enabled(etdev, true);
-		return -EBUSY;
+	ret = edgetpu_firmware_lock(etdev);
+	if (ret) {
+		etdev_err(etdev, "%s: lock failed (%d)\n", __func__, ret);
+		return ret;
 	}
+	/*
+	 * Prevent platform-specific code from trying to run the previous
+	 * firmware
+	 */
+	et_fw->p->status = FW_LOADING;
+	etdev_dbg(et_fw->etdev, "Requesting power up for firmware run\n");
+	ret = edgetpu_pm_get(etdev->pm);
+	if (!ret)
+		ret = edgetpu_firmware_run_locked(et_fw, name, flags);
+	etdev->firmware = et_fw;
+	edgetpu_pm_put(etdev->pm);
+	edgetpu_firmware_unlock(etdev);
+	return ret;
+}
+
+int edgetpu_firmware_lock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
 
 	mutex_lock(&et_fw->p->fw_desc_lock);
-	ret = edgetpu_firmware_run_locked(et_fw, name, flags);
-	mutex_unlock(&et_fw->p->fw_desc_lock);
+	if (!et_fw) {
+		etdev_err(
+			etdev,
+			"Cannot lock firmware when no loader is available\n");
+		mutex_unlock(&et_fw->p->fw_desc_lock);
+		return -EINVAL;
+	}
+	mutex_lock(&etdev->open.lock);
+	if (etdev->open.count) {
+		etdev_err(
+			etdev,
+			"Failed to lock firmware because device is in use");
+		mutex_unlock(&etdev->open.lock);
+		mutex_unlock(&et_fw->p->fw_desc_lock);
+		return -EBUSY;
+	}
+	etdev->open.enabled = false;
+	mutex_unlock(&etdev->open.lock);
+	return 0;
+}
 
-	edgetpu_set_open_enabled(etdev, true);
-	return ret;
+void edgetpu_firmware_unlock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	mutex_lock(&etdev->open.lock);
+	if (!et_fw) {
+		etdev_err(
+			etdev,
+			"Cannot unlock firmware when no loader is available\n");
+		mutex_unlock(&etdev->open.lock);
+		return;
+	}
+	etdev->open.enabled = true;
+	mutex_unlock(&etdev->open.lock);
+	mutex_unlock(&et_fw->p->fw_desc_lock);
+}
+
+enum edgetpu_firmware_status
+edgetpu_firmware_status_locked(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw)
+		return FW_INVALID;
+	return et_fw->p->status;
+}
+
+int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+	const struct edgetpu_firmware_handlers *handlers = et_fw->p->handlers;
+	int ret;
+
+	et_fw->p->status = FW_LOADING;
+	if (handlers && handlers->prepare_run) {
+		ret = handlers->prepare_run(et_fw, &et_fw->p->fw_desc.buf);
+		if (ret)
+			return ret;
+	}
+	/* Give the firmware some time to initialize */
+	msleep(100);
+	ret = edgetpu_firmware_ack(et_fw->etdev);
+	if (ret)
+		et_fw->p->status = FW_INVALID;
+	else
+		et_fw->p->status = FW_VALID;
+	if (!ret)
+		edgetpu_telemetry_kci(et_fw->etdev);
+	return 0;
 }
 
 static ssize_t load_firmware_show(

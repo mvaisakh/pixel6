@@ -158,20 +158,20 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	etdev->kci = devm_kzalloc(etdev->dev, sizeof(*etdev->kci), GFP_KERNEL);
 	if (!etdev->kci) {
 		ret = -ENOMEM;
-		goto release_mbox_mgr;
+		goto detach_mmu;
 	}
 
 	etdev->telemetry =
 		devm_kzalloc(etdev->dev, sizeof(*etdev->telemetry), GFP_KERNEL);
 	if (!etdev->telemetry) {
 		ret = -ENOMEM;
-		goto release_mbox_mgr;
+		goto detach_mmu;
 	}
 
 	ret = edgetpu_kci_init(etdev->mailbox_manager, etdev->kci);
 	if (ret) {
 		etdev_err(etdev, "edgetpu_kci_init returns %d\n", ret);
-		goto release_mbox_mgr;
+		goto detach_mmu;
 	}
 
 	ret = edgetpu_device_dram_init(etdev);
@@ -179,7 +179,7 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		etdev_err(etdev,
 			  "failed to init on-device DRAM management: %d\n",
 			  ret);
-		goto release_mbox_mgr;
+		goto remove_kci;
 	}
 
 	ret = edgetpu_telemetry_init(etdev);
@@ -189,10 +189,11 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	edgetpu_chip_init(etdev);
 	return 0;
 
-release_mbox_mgr:
+remove_kci:
+	/* releases the resources of KCI */
+	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
+detach_mmu:
 	edgetpu_mmu_detach(etdev);
-	/* this also releases the resources of KCI */
-	edgetpu_mailbox_release_mgr(etdev->mailbox_manager);
 remove_dev:
 	edgetpu_dev_remove(etdev);
 	return ret;
@@ -200,11 +201,11 @@ remove_dev:
 
 void edgetpu_device_remove(struct edgetpu_dev *etdev)
 {
-	edgetpu_telemetry_exit(etdev);
 	edgetpu_chip_exit(etdev);
-	edgetpu_dev_remove(etdev);
-	edgetpu_mailbox_release_mgr(etdev->mailbox_manager);
+	edgetpu_telemetry_exit(etdev);
+	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_mmu_detach(etdev);
+	edgetpu_dev_remove(etdev);
 }
 
 struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
