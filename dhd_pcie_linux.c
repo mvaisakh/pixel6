@@ -2800,7 +2800,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 					/* Reschedule tasklet to process Rx frames */
 					DHD_ERROR(("%s: Schedule DPC to process pending"
 						" Rx packets\n", __FUNCTION__));
-					dhd_sched_dpc(bus->dhd);
+					dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, 0);
 				}
 				/* enabling host irq deferred from system suspend */
 				if (dhdpcie_irq_disabled(bus)) {

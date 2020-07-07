@@ -181,11 +181,6 @@ typedef struct dhd_pkttag_fr {
 	uint8   pkt_udr;
 	uint8   pad;
 #endif /* DHD_SBN */
-#ifdef DHD_LB_TXC
-	int     dataoff;
-	dmaaddr_t physaddr;
-	uint32 pa_len;
-#endif /* DHD_LB_TXC */
 } dhd_pkttag_fr_t;
 
 #define DHD_PKTTAG_SET_IFID(tag, idx)       ((tag)->ifid = (uint16)(idx))

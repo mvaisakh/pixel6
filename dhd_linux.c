@@ -173,12 +173,11 @@ int mq_select_disable = FALSE;
 #endif /* !PCIE_FULL_DONGLE */
 #endif /* DHD_LB */
 
-#if defined(DHD_LB_RXP) || defined(DHD_LB_RXC) || defined(DHD_LB_TXC) || \
-	defined(DHD_LB_STATS)
+#if defined(DHD_LB_RXP) || defined(DHD_LB_TXP) || defined(DHD_LB_STATS)
 #if !defined(DHD_LB)
 #error "DHD loadbalance derivatives are supported only if DHD_LB is defined"
 #endif /* !DHD_LB */
-#endif /* DHD_LB_RXP || DHD_LB_RXC || DHD_LB_TXC || DHD_LB_STATS */
+#endif /* DHD_LB_RXP || DHD_LB_TXP || DHD_LB_STATS */
 
 #ifdef DHD_4WAYM4_FAIL_DISCONNECT
 static void dhd_m4_state_handler(struct work_struct * work);
@@ -638,13 +637,11 @@ module_param(instance_base, int, 0644);
  * The consumer must consume the packets at equal are better rate than the producer.
  * i.e if dhd_napi_poll() does not process at the same rate as the producer(dhd_dpc),
  * rx_process_queue depth increases, which can even consume the entire system memory.
- * During UDP receive use case at 2Gbps, it was observed that the packets queued
- * in rx_process_queue alone  was taking 1.8GB when the budget is 64.
+ * Such situation will be tacken care by rx flow control.
  *
- * Hence the budget must at least be D2HRING_RXCMPLT_MAX_ITEM. Also provide 50%
- * more buffer to dhd_napi_weight, so that above explained scenario will never hit.
+ * Device drivers are strongly advised to not use bigger value than NAPI_POLL_WEIGHT
  */
-static int dhd_napi_weight = (D2HRING_RXCMPLT_MAX_ITEM + (D2HRING_RXCMPLT_MAX_ITEM / 2));
+static int dhd_napi_weight = NAPI_POLL_WEIGHT;
 module_param(dhd_napi_weight, int, 0644);
 #endif /* DHD_LB_RXP && PCIE_FULL_DONGLE */
 
@@ -3550,7 +3547,7 @@ BCMFASTPATH(dhd_select_queue)(struct net_device *net, struct sk_buff *skb)
 }
 #endif /* DHD_MQ */
 
-int
+netdev_tx_t
 BCMFASTPATH(dhd_start_xmit)(struct sk_buff *skb, struct net_device *net)
 {
 	int ret;
@@ -3873,7 +3870,7 @@ void dhd_start_xmit_wq_adapter(struct work_struct *ptr)
 			   "error: dhd_start_xmit():%d\n", ret);
 }
 
-int
+netdev_tx_t
 BCMFASTPATH(dhd_start_xmit_wrapper)(struct sk_buff *skb, struct net_device *net)
 {
 	struct dhd_rx_tx_work *start_xmit_work;
@@ -4021,6 +4018,34 @@ dhd_mcast_reverse_translation(struct ether_header *eh)
 	return BCME_ERROR;
 }
 #endif /* MCAST_REGEN */
+
+void
+dhd_dpc_tasklet_dispatcher_work(struct work_struct * work)
+{
+	struct delayed_work *dw = to_delayed_work(work);
+	struct dhd_info *dhd;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	dhd = container_of(dw, struct dhd_info, dhd_dpc_dispatcher_work);
+	GCC_DIAGNOSTIC_POP();
+
+	DHD_INFO(("%s:\n", __FUNCTION__));
+
+	tasklet_schedule(&dhd->tasklet);
+}
+
+void
+dhd_schedule_delayed_dpc_on_dpc_cpu(dhd_pub_t *dhdp, ulong delay)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dhdp->info;
+	int dpc_cpu = atomic_read(&dhd->dpc_cpu);
+	DHD_INFO(("%s:\n", __FUNCTION__));
+
+	/* scheduler will take care of scheduling to appropriate cpu if dpc_cpu is not online */
+	schedule_delayed_work_on(dpc_cpu, &dhd->dhd_dpc_dispatcher_work, delay);
+
+	return;
+}
 
 #ifdef SHOW_LOGTRACE
 static void
@@ -5700,6 +5725,7 @@ dhd_dpc_kill(dhd_pub_t *dhdp)
 		DHD_ERROR(("%s: tasklet disabled\n", __FUNCTION__));
 	}
 
+	cancel_delayed_work_sync(&dhd->dhd_dpc_dispatcher_work);
 #ifdef DHD_LB
 #ifdef DHD_LB_RXP
 	cancel_work_sync(&dhd->rx_napi_dispatcher_work);
@@ -5708,16 +5734,6 @@ dhd_dpc_kill(dhd_pub_t *dhdp)
 #ifdef DHD_LB_TXP
 	cancel_work_sync(&dhd->tx_dispatcher_work);
 	skb_queue_purge(&dhd->tx_pend_queue);
-#endif /* DHD_LB_TXP */
-
-	/* Kill the Load Balancing Tasklets */
-#if defined(DHD_LB_TXC)
-	tasklet_kill(&dhd->tx_compl_tasklet);
-#endif /* DHD_LB_TXC */
-#if defined(DHD_LB_RXC)
-	tasklet_kill(&dhd->rx_compl_tasklet);
-#endif /* DHD_LB_RXC */
-#if defined(DHD_LB_TXP)
 	tasklet_kill(&dhd->tx_tasklet);
 #endif /* DHD_LB_TXP */
 #endif /* DHD_LB */
@@ -5747,9 +5763,13 @@ dhd_dpc_tasklet_kill(dhd_pub_t *dhdp)
 static void
 dhd_dpc(ulong data)
 {
-	dhd_info_t *dhd;
+	dhd_info_t *dhd = (dhd_info_t *)data;
 
-	dhd = (dhd_info_t *)data;
+	int curr_cpu = get_cpu();
+	put_cpu();
+
+	/* Store current cpu as dpc_cpu */
+	atomic_set(&dhd->dpc_cpu, curr_cpu);
 
 	/* this (tasklet) can be scheduled in dhd_sched_dpc[dhd_linux.c]
 	 * down below , wake lock is set,
@@ -5766,6 +5786,10 @@ dhd_dpc(ulong data)
 	} else {
 		dhd_bus_stop(dhd->pub.bus, TRUE);
 	}
+
+	/* Store as prev_dpc_cpu, which will be used in Rx load balancing for deciding candidacy */
+	atomic_set(&dhd->prev_dpc_cpu, curr_cpu);
+
 }
 
 void
@@ -7509,10 +7533,10 @@ dhd_open(struct net_device *net)
 		}
 #endif /* TOE */
 
+#ifdef DHD_LB
 #ifdef ENABLE_DHD_GRO
 		dhd->iflist[ifidx]->net->features |= NETIF_F_GRO;
 #endif /* ENABLE_DHD_GRO */
-		netdev_update_features(net);
 
 #if defined(DHD_LB_RXP)
 		__skb_queue_head_init(&dhd->rx_pend_queue);
@@ -7521,8 +7545,9 @@ dhd_open(struct net_device *net)
 			memset(&dhd->rx_napi_struct, 0, sizeof(struct napi_struct));
 			netif_napi_add(dhd->rx_napi_netdev, &dhd->rx_napi_struct,
 				dhd_napi_poll, dhd_napi_weight);
-			DHD_INFO(("%s napi<%p> enabled ifp->net<%p,%s>\n",
-				__FUNCTION__, &dhd->rx_napi_struct, net, net->name));
+			DHD_INFO(("%s napi<%p> enabled ifp->net<%p,%s> dhd_napi_weight: %d\n",
+				__FUNCTION__, &dhd->rx_napi_struct, net,
+				net->name, dhd_napi_weight));
 			napi_enable(&dhd->rx_napi_struct);
 			DHD_INFO(("%s load balance init rx_napi_struct\n", __FUNCTION__));
 			skb_queue_head_init(&dhd->rx_napi_queue);
@@ -7534,7 +7559,9 @@ dhd_open(struct net_device *net)
 		/* Use the variant that uses locks */
 		skb_queue_head_init(&dhd->tx_pend_queue);
 #endif /* DHD_LB_TXP */
-
+		dhd->dhd_lb_candidacy_override = FALSE;
+#endif /* DHD_LB */
+		netdev_update_features(net);
 #ifdef DHD_PM_OVERRIDE
 		g_pm_override = FALSE;
 #endif /* DHD_PM_OVERRIDE */
@@ -9334,6 +9361,8 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	register_page_corrupt_cb(dhd_page_corrupt_cb, &dhd->pub);
 #endif /* DHD_DEBUG_PAGEALLOC */
 
+	INIT_DELAYED_WORK(&dhd->dhd_dpc_dispatcher_work, dhd_dpc_tasklet_dispatcher_work);
+
 #if defined(DHD_LB)
 
 	dhd_lb_set_default_cpus(dhd);
@@ -9374,19 +9403,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #endif /* DHD_LB_RXP */
 
 	/* Initialize the Load Balancing Tasklets and Napi object */
-#if defined(DHD_LB_TXC)
-	tasklet_init(&dhd->tx_compl_tasklet,
-		dhd_lb_tx_compl_handler, (ulong)(&dhd->pub));
-	INIT_WORK(&dhd->tx_compl_dispatcher_work, dhd_tx_compl_dispatcher_fn);
-	DHD_INFO(("%s load balance init tx_compl_tasklet\n", __FUNCTION__));
-#endif /* DHD_LB_TXC */
-#if defined(DHD_LB_RXC)
-	tasklet_init(&dhd->rx_compl_tasklet,
-		dhd_lb_rx_compl_handler, (ulong)(&dhd->pub));
-	INIT_WORK(&dhd->rx_compl_dispatcher_work, dhd_rx_compl_dispatcher_fn);
-	DHD_INFO(("%s load balance init rx_compl_tasklet\n", __FUNCTION__));
-#endif /* DHD_LB_RXC */
-
 #if defined(DHD_LB_RXP)
 	__skb_queue_head_init(&dhd->rx_pend_queue);
 	skb_queue_head_init(&dhd->rx_napi_queue);
@@ -9394,6 +9410,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	/* Initialize the work that dispatches NAPI job to a given core */
 	INIT_WORK(&dhd->rx_napi_dispatcher_work, dhd_rx_napi_dispatcher_work);
 	DHD_INFO(("%s load balance init rx_napi_queue\n", __FUNCTION__));
+	/* Initialize the work that dispatches DPC tasklet to a given core */
 #endif /* DHD_LB_RXP */
 
 #if defined(DHD_LB_TXP)
@@ -13820,6 +13837,7 @@ void dhd_detach(dhd_pub_t *dhdp)
 	}
 #endif /* WL_NATOE */
 
+	cancel_delayed_work_sync(&dhd->dhd_dpc_dispatcher_work);
 #ifdef DHD_LB
 	if (dhd->dhd_state & DHD_ATTACH_STATE_LB_ATTACH_DONE) {
 		/* Clear the flag first to avoid calling the cpu notifier */
@@ -13835,13 +13853,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 		tasklet_kill(&dhd->tx_tasklet);
 		__skb_queue_purge(&dhd->tx_pend_queue);
 #endif /* DHD_LB_TXP */
-#ifdef DHD_LB_TXC
-		cancel_work_sync(&dhd->tx_compl_dispatcher_work);
-		tasklet_kill(&dhd->tx_compl_tasklet);
-#endif /* DHD_LB_TXC */
-#ifdef DHD_LB_RXC
-		tasklet_kill(&dhd->rx_compl_tasklet);
-#endif /* DHD_LB_RXC */
 
 		/* Unregister from CPU Hotplug framework */
 		dhd_unregister_cpuhp_callback(dhd);

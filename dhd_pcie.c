@@ -9647,6 +9647,12 @@ BCMFASTPATH(dhd_bus_dpc)(struct dhd_bus *bus)
 	DHD_BUS_BUSY_SET_IN_DPC(bus->dhd);
 	DHD_GENERAL_UNLOCK(bus->dhd, flags);
 
+	/* Do not process dpc after receiving D3_ACK */
+	if (DHD_CHK_BUS_LPS_D3_ACKED(bus)) {
+		DHD_ERROR(("%s: D3 Ack Recieved, skip dpc\n", __FUNCTION__));
+		goto exit;
+	}
+
 	resched = dhdpcie_bus_process_mailbox_intr(bus, bus->intstatus);
 	if (!resched) {
 		bus->intstatus = 0;
@@ -9664,6 +9670,7 @@ BCMFASTPATH(dhd_bus_dpc)(struct dhd_bus *bus)
 
 	bus->dpc_sched = resched;
 
+exit:
 	DHD_GENERAL_LOCK(bus->dhd, flags);
 	DHD_BUS_BUSY_CLEAR_IN_DPC(bus->dhd);
 	dhd_os_busbusy_wake(bus->dhd);
@@ -10078,6 +10085,47 @@ exit:
 	}
 }
 
+#define DHD_SCHED_RETRY_DPC_DELAY_MS 100u
+
+static void
+dhd_bus_handle_intx_ahead_dma_indices(dhd_bus_t *bus)
+{
+	if (bus->d2h_intr_method == PCIE_MSI) {
+		DHD_INFO(("%s: not required for msi\n", __FUNCTION__));
+		return;
+	}
+
+	if (bus->dhd->dma_d2h_ring_upd_support == FALSE) {
+		DHD_INFO(("%s: not required for non-dma-indices\n", __FUNCTION__));
+		return;
+	}
+
+	if (dhd_query_bus_erros(bus->dhd)) {
+		return;
+	}
+
+#ifndef NDIS
+	/*
+	 * skip delayed dpc if tasklet is scheduled by non-ISR
+	 * From ISR context, we disable IRQ and enable IRQ back at the end of dpc,
+	 * hence if IRQ is not disabled we can consider it as scheduled from non-ISR context.
+	 */
+	if (dhdpcie_irq_disabled(bus) == FALSE) {
+		DHD_INFO(("%s: skip delayed dpc as tasklet is scheduled from non isr\n",
+			__FUNCTION__));
+		return;
+	}
+#endif /* NDIS */
+
+	if (DHD_CHK_BUS_LPS_D3_ACKED(bus)) {
+		DHD_INFO(("%s: skip delayed dpc as d3 ack is received\n", __FUNCTION__));
+		return;
+	}
+
+	dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, DHD_SCHED_RETRY_DPC_DELAY_MS);
+	return;
+}
+
 static bool
 dhdpcie_bus_process_mailbox_intr(dhd_bus_t *bus, uint32 intstatus)
 {
@@ -10098,13 +10146,6 @@ dhdpcie_bus_process_mailbox_intr(dhd_bus_t *bus, uint32 intstatus)
 		if (intstatus & (PCIE_MB_TOPCIE_FN0_0 | PCIE_MB_TOPCIE_FN0_1))
 			bus->api.handle_mb_data(bus);
 
-		/* Do no process any rings after recieving D3_ACK */
-		if (DHD_CHK_BUS_LPS_D3_ACKED(bus)) {
-			DHD_ERROR(("%s: D3 Ack Recieved. "
-				"Skip processing rest of ring buffers.\n", __FUNCTION__));
-			goto exit;
-		}
-
 		/* The fact that we are here implies that dhdpcie_bus_intstatus( )
 		* retuned a non-zer0 status after applying the current mask.
 		* No further check required, in fact bus->instatus can be eliminated.
@@ -10121,7 +10162,8 @@ dhdpcie_bus_process_mailbox_intr(dhd_bus_t *bus, uint32 intstatus)
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 	}
 
-exit:
+	dhd_bus_handle_intx_ahead_dma_indices(bus);
+
 	if (MULTIBP_ENAB(bus->sih)) {
 		dhd_bus_pcie_pwr_req_clear(bus);
 	}

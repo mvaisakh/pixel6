@@ -1182,6 +1182,12 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	bcm_bprintf(strbuf, "\nDHD Totoal memory_usage: %llubytes %lluKB \n",
 		total_dhd_mem, (total_dhd_mem / 1024));
 #endif /* DHD_MEM_STATS */
+#if defined(DHD_LB_STATS)
+	bcm_bprintf(strbuf, "\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu\n",
+		dhdp->lb_rxp_stop_thr_hitcnt, dhdp->lb_rxp_strt_thr_hitcnt);
+	bcm_bprintf(strbuf, "\nlb_rxp_napi_sched_cnt: %llu lb_rxp_napi_complete_cnt: %llu\n",
+		dhdp->lb_rxp_napi_sched_cnt, dhdp->lb_rxp_napi_complete_cnt);
+#endif /* DHD_LB_STATS */
 
 #if defined(DHD_MQ) && defined(DHD_MQ_STATS)
 	dhd_mqstats_dump(dhdp, strbuf);

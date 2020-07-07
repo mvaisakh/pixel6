@@ -183,6 +183,11 @@ typedef struct dhd_info {
 	timer_list_compat_t scan_timer;
 	bool scan_timer_active;
 #endif
+	struct delayed_work	dhd_dpc_dispatcher_work;
+
+	/* CPU on which the DHD DPC is running */
+	atomic_t	dpc_cpu;
+	atomic_t	prev_dpc_cpu;
 #if defined(DHD_LB)
 	/* CPU Load Balance dynamic CPU selection */
 
@@ -194,14 +199,6 @@ typedef struct dhd_info {
 	cpumask_var_t cpumask_primary_new, cpumask_secondary_new; /* temp */
 
 	struct notifier_block cpu_notifier;
-
-	/* Tasklet to handle Tx Completion packet freeing */
-	struct tasklet_struct tx_compl_tasklet;
-	atomic_t                   tx_compl_cpu;
-
-	/* Tasklet to handle RxBuf Post during Rx completion */
-	struct tasklet_struct rx_compl_tasklet;
-	atomic_t                   rx_compl_cpu;
 
 	/* Napi struct for handling rx packet sendup. Packets are removed from
 	 * H2D RxCompl ring and placed into rx_pend_queue. rx_pend_queue is then
@@ -216,14 +213,17 @@ typedef struct dhd_info {
 	struct net_device    *rx_napi_netdev; /* netdev of primary interface */
 
 	struct work_struct    rx_napi_dispatcher_work;
-	struct work_struct	  tx_compl_dispatcher_work;
+	struct work_struct    tx_compl_dispatcher_work;
 	struct work_struct    tx_dispatcher_work;
-	struct work_struct	  rx_compl_dispatcher_work;
+	struct work_struct    rx_compl_dispatcher_work;
 
 	/* Number of times DPC Tasklet ran */
 	uint32	dhd_dpc_cnt;
 	/* Number of times NAPI processing got scheduled */
 	uint32	napi_sched_cnt;
+	/* NAPI latency stats */
+	uint64  *napi_latency;
+	uint64 napi_schedule_time;
 	/* Number of times NAPI processing ran on each available core */
 	uint32	*napi_percpu_run_cnt;
 	/* Number of times RX Completions got scheduled */
@@ -294,9 +294,6 @@ typedef struct dhd_info {
 	/* Tasklet context from which the DHD's TX processing happens */
 	struct tasklet_struct tx_tasklet;
 
-	/* CPU on which the DHD DPC is running */
-	atomic_t		dpc_cpu;
-
 	/*
 	 * Consumer Histogram - NAPI RX Packet processing
 	 * -----------------------------------------------
@@ -316,6 +313,8 @@ typedef struct dhd_info {
 	uint32 *napi_rx_hist[HIST_BIN_SIZE];
 	uint32 *txc_hist[HIST_BIN_SIZE];
 	uint32 *rxc_hist[HIST_BIN_SIZE];
+	struct kobject dhd_lb_kobj;
+	bool dhd_lb_candidacy_override;
 #endif /* DHD_LB */
 #if defined(DNGL_AXI_ERROR_LOGGING) && defined(DHD_USE_WQ_FOR_DNGL_AXI_ERROR)
 	struct work_struct	  axi_error_dispatcher_work;
@@ -392,6 +391,7 @@ extern void dhd_dbg_ring_proc_destroy(dhd_pub_t *dhdp);
 
 int __dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf);
 
+void dhd_dpc_tasklet_dispatcher_work(struct work_struct * work);
 #if defined(DHD_LB)
 #if defined(DHD_LB_TXP)
 int dhd_lb_sendpkt(dhd_info_t *dhd, struct net_device *net, int ifidx, void *skb);
@@ -424,16 +424,6 @@ int dhd_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcp
 
 int dhd_register_cpuhp_callback(dhd_info_t *dhd);
 int dhd_unregister_cpuhp_callback(dhd_info_t *dhd);
-
-#if defined(DHD_LB_TXC)
-void dhd_lb_tx_compl_dispatch(dhd_pub_t *dhdp);
-#endif /* DHD_LB_TXC */
-
-#if defined(DHD_LB_RXC)
-void dhd_lb_rx_compl_dispatch(dhd_pub_t *dhdp);
-void dhd_rx_compl_dispatcher_fn(struct work_struct * work);
-#endif /* DHD_LB_RXC */
-
 #endif /* DHD_LB */
 
 #if defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON)

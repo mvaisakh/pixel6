@@ -212,77 +212,6 @@ wklock_trace_onoff(struct dhd_info *dev, const char *buf, size_t count)
 }
 #endif /* DHD_TRACE_WAKE_LOCK */
 
-#if defined(DHD_LB_TXP)
-static ssize_t
-show_lbtxp(struct dhd_info *dev, char *buf)
-{
-	ssize_t ret = 0;
-	unsigned long onoff;
-	dhd_info_t *dhd = (dhd_info_t *)dev;
-
-	onoff = atomic_read(&dhd->lb_txp_active);
-	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
-		onoff);
-	return ret;
-}
-
-static ssize_t
-lbtxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
-{
-	unsigned long onoff;
-	dhd_info_t *dhd = (dhd_info_t *)dev;
-	int i;
-
-	onoff = bcm_strtoul(buf, NULL, 10);
-
-	sscanf(buf, "%lu", &onoff);
-	if (onoff != 0 && onoff != 1) {
-		return -EINVAL;
-	}
-	atomic_set(&dhd->lb_txp_active, onoff);
-
-	/* Since the scheme is changed clear the counters */
-	for (i = 0; i < NR_CPUS; i++) {
-		DHD_LB_STATS_CLR(dhd->txp_percpu_run_cnt[i]);
-		DHD_LB_STATS_CLR(dhd->tx_start_percpu_run_cnt[i]);
-	}
-
-	return count;
-}
-
-#endif /* DHD_LB_TXP */
-
-#if defined(DHD_LB_RXP)
-static ssize_t
-show_lbrxp(struct dhd_info *dev, char *buf)
-{
-	ssize_t ret = 0;
-	unsigned long onoff;
-	dhd_info_t *dhd = (dhd_info_t *)dev;
-
-	onoff = atomic_read(&dhd->lb_rxp_active);
-	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
-		onoff);
-	return ret;
-}
-
-static ssize_t
-lbrxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
-{
-	unsigned long onoff;
-	dhd_info_t *dhd = (dhd_info_t *)dev;
-
-	onoff = bcm_strtoul(buf, NULL, 10);
-
-	sscanf(buf, "%lu", &onoff);
-	if (onoff != 0 && onoff != 1) {
-		return -EINVAL;
-	}
-	atomic_set(&dhd->lb_rxp_active, onoff);
-
-	return count;
-}
-#endif /* DHD_LB_RXP */
 
 #ifdef DHD_LOG_DUMP
 extern int logdump_periodic_flush;
@@ -672,16 +601,6 @@ struct dhd_attr {
 static struct dhd_attr dhd_attr_wklock =
 	__ATTR(wklock_trace, 0660, show_wklock_trace, wklock_trace_onoff);
 #endif /* defined(DHD_TRACE_WAKE_LOCK */
-
-#if defined(DHD_LB_TXP)
-static struct dhd_attr dhd_attr_lbtxp =
-	__ATTR(lbtxp, 0660, show_lbtxp, lbtxp_onoff);
-#endif /* DHD_LB_TXP */
-
-#if defined(DHD_LB_RXP)
-static struct dhd_attr dhd_attr_lbrxp =
-	__ATTR(lbrxp, 0660, show_lbrxp, lbrxp_onoff);
-#endif /* DHD_LB_RXP */
 
 #ifdef DHD_LOG_DUMP
 static struct dhd_attr dhd_attr_logdump_periodic_flush =
@@ -1629,12 +1548,6 @@ static struct attribute *default_file_attrs[] = {
 #if defined(DHD_TRACE_WAKE_LOCK)
 	&dhd_attr_wklock.attr,
 #endif
-#if defined(DHD_LB_TXP)
-	&dhd_attr_lbtxp.attr,
-#endif /* DHD_LB_TXP */
-#if defined(DHD_LB_RXP)
-	&dhd_attr_lbrxp.attr,
-#endif /* DHD_LB_RXP */
 #ifdef DHD_LOG_DUMP
 	&dhd_attr_logdump_periodic_flush.attr,
 	&dhd_attr_logdump_ecntr.attr,
@@ -1716,6 +1629,466 @@ static struct kobj_type dhd_ktype = {
 	.default_attrs = default_file_attrs,
 };
 
+/*
+ * sysfs for dhd_lb
+ */
+#ifdef DHD_LB
+#if defined(DHD_LB_TXP)
+static ssize_t
+show_lbtxp(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+
+	onoff = atomic_read(&dhd->lb_txp_active);
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
+		onoff);
+	return ret;
+}
+
+static ssize_t
+lbtxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	int i;
+
+	onoff = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &onoff);
+	if (onoff != 0 && onoff != 1) {
+		return -EINVAL;
+	}
+	atomic_set(&dhd->lb_txp_active, onoff);
+
+	/* Since the scheme is changed clear the counters */
+	for (i = 0; i < NR_CPUS; i++) {
+		DHD_LB_STATS_CLR(dhd->txp_percpu_run_cnt[i]);
+		DHD_LB_STATS_CLR(dhd->tx_start_percpu_run_cnt[i]);
+	}
+
+	return count;
+}
+
+static struct dhd_attr dhd_attr_lbtxp =
+	__ATTR(lbtxp, 0660, show_lbtxp, lbtxp_onoff);
+#endif /* DHD_LB_TXP */
+
+#if defined(DHD_LB_RXP)
+static ssize_t
+show_lbrxp(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+
+	onoff = atomic_read(&dhd->lb_rxp_active);
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%lu \n",
+		onoff);
+	return ret;
+}
+
+static ssize_t
+lbrxp_onoff(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+
+	onoff = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &onoff);
+	if (onoff != 0 && onoff != 1) {
+		return -EINVAL;
+	}
+	atomic_set(&dhd->lb_rxp_active, onoff);
+
+	return count;
+}
+static struct dhd_attr dhd_attr_lbrxp =
+	__ATTR(lbrxp, 0660, show_lbrxp, lbrxp_onoff);
+
+static ssize_t
+get_lb_rxp_stop_thr(struct dhd_info *dev, char *buf)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+	ssize_t ret = 0;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	dhdp = &dhd->pub;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%u \n",
+		(dhdp->lb_rxp_stop_thr / D2HRING_RXCMPLT_MAX_ITEM));
+	return ret;
+}
+
+#define ONE_GB (1024 * 1024 * 1024)
+
+static ssize_t
+set_lb_rxp_stop_thr(struct dhd_info *dev, const char *buf, size_t count)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+	uint32 lb_rxp_stop_thr;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	dhdp = &dhd->pub;
+
+	lb_rxp_stop_thr = bcm_strtoul(buf, NULL, 10);
+	sscanf(buf, "%u", &lb_rxp_stop_thr);
+
+	/* disable lb_rxp flow ctrl */
+	if (lb_rxp_stop_thr == 0) {
+		dhdp->lb_rxp_stop_thr = 0;
+		dhdp->lb_rxp_strt_thr = 0;
+		atomic_set(&dhd->pub.lb_rxp_flow_ctrl, FALSE);
+		return count;
+	}
+	/* 1. by the time lb_rxp_stop_thr gets into picture,
+	 * DHD RX path should not consume more than 1GB
+	 * 2. lb_rxp_stop_thr should always be more than dhdp->lb_rxp_strt_thr
+	 */
+	if (((lb_rxp_stop_thr *
+		D2HRING_RXCMPLT_MAX_ITEM *
+		dhd_prot_get_rxbufpost_sz(dhdp)) > ONE_GB) ||
+		(lb_rxp_stop_thr <= (dhdp->lb_rxp_strt_thr / D2HRING_RXCMPLT_MAX_ITEM))) {
+		return -EINVAL;
+	}
+
+	dhdp->lb_rxp_stop_thr = (D2HRING_RXCMPLT_MAX_ITEM * lb_rxp_stop_thr);
+	return count;
+}
+
+static struct dhd_attr dhd_attr_lb_rxp_stop_thr =
+	__ATTR(lbrxp_stop_thr, 0660, get_lb_rxp_stop_thr, set_lb_rxp_stop_thr);
+
+static ssize_t
+get_lb_rxp_strt_thr(struct dhd_info *dev, char *buf)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+	ssize_t ret = 0;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	dhdp = &dhd->pub;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%u \n",
+		(dhdp->lb_rxp_strt_thr / D2HRING_RXCMPLT_MAX_ITEM));
+	return ret;
+}
+
+static ssize_t
+set_lb_rxp_strt_thr(struct dhd_info *dev, const char *buf, size_t count)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+	uint32 lb_rxp_strt_thr;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return -EINVAL;
+	}
+	dhdp = &dhd->pub;
+
+	lb_rxp_strt_thr = bcm_strtoul(buf, NULL, 10);
+	sscanf(buf, "%u", &lb_rxp_strt_thr);
+
+	/* disable lb_rxp flow ctrl */
+	if (lb_rxp_strt_thr == 0) {
+		dhdp->lb_rxp_strt_thr = 0;
+		dhdp->lb_rxp_stop_thr = 0;
+		atomic_set(&dhd->pub.lb_rxp_flow_ctrl, FALSE);
+		return count;
+	}
+	/* should be less than dhdp->lb_rxp_stop_thr */
+	if ((lb_rxp_strt_thr <= 0) ||
+		(lb_rxp_strt_thr >= (dhdp->lb_rxp_stop_thr / D2HRING_RXCMPLT_MAX_ITEM))) {
+		return -EINVAL;
+	}
+	dhdp->lb_rxp_strt_thr = (D2HRING_RXCMPLT_MAX_ITEM * lb_rxp_strt_thr);
+	return count;
+}
+static struct dhd_attr dhd_attr_lb_rxp_strt_thr =
+	__ATTR(lbrxp_strt_thr, 0660, get_lb_rxp_strt_thr, set_lb_rxp_strt_thr);
+
+#endif /* DHD_LB_RXP */
+
+static ssize_t
+show_candidacy_override(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1,
+			"%d\n", (int)dev->dhd_lb_candidacy_override);
+	return ret;
+}
+
+static ssize_t
+set_candidacy_override(struct dhd_info *dev, const char *buf, size_t count)
+{
+
+	int val = 0;
+	val = bcm_atoi(buf);
+
+	if (val > 0) {
+		dev->dhd_lb_candidacy_override = TRUE;
+	} else {
+		dev->dhd_lb_candidacy_override = FALSE;
+	}
+
+	DHD_ERROR(("set dhd_lb_candidacy_override %d\n", dev->dhd_lb_candidacy_override));
+	return count;
+}
+
+static struct dhd_attr dhd_candidacy_override =
+__ATTR(candidacy_override, 0660, show_candidacy_override, set_candidacy_override);
+
+static ssize_t
+show_primary_mask(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1,
+			"%02lx\n", *cpumask_bits(dev->cpumask_primary));
+	return ret;
+}
+
+static ssize_t
+set_primary_mask(struct dhd_info *dev, const char *buf, size_t count)
+{
+	int ret;
+
+	cpumask_var_t primary_mask;
+
+	if (!alloc_cpumask_var(&primary_mask, GFP_KERNEL)) {
+		DHD_ERROR(("Can't allocate cpumask vars\n"));
+		return count;
+	}
+
+	cpumask_clear(primary_mask);
+	ret = cpumask_parse(buf, primary_mask);
+	if (ret < 0) {
+		DHD_ERROR(("Setting cpumask failed ret = %d\n", ret));
+		return count;
+	}
+
+	cpumask_clear(dev->cpumask_primary);
+	cpumask_or(dev->cpumask_primary, dev->cpumask_primary, primary_mask);
+
+	DHD_ERROR(("set cpumask results cpumask_primary 0x%2lx\n",
+		*cpumask_bits(dev->cpumask_primary)));
+
+	dhd_select_cpu_candidacy(dev);
+	return count;
+}
+
+static struct dhd_attr dhd_primary_mask =
+__ATTR(primary_mask, 0660, show_primary_mask, set_primary_mask);
+
+static ssize_t
+show_secondary_mask(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1,
+			"%02lx\n", *cpumask_bits(dev->cpumask_secondary));
+	return ret;
+}
+
+static ssize_t
+set_secondary_mask(struct dhd_info *dev, const char *buf, size_t count)
+{
+	int ret;
+
+	cpumask_var_t secondary_mask;
+
+	if (!alloc_cpumask_var(&secondary_mask, GFP_KERNEL)) {
+		DHD_ERROR(("Can't allocate cpumask vars\n"));
+		return count;
+	}
+
+	cpumask_clear(secondary_mask);
+
+	ret = cpumask_parse(buf, secondary_mask);
+
+	if (ret < 0) {
+		DHD_ERROR(("Setting cpumask failed ret = %d\n", ret));
+		return count;
+	}
+
+	cpumask_clear(dev->cpumask_secondary);
+	cpumask_or(dev->cpumask_secondary, dev->cpumask_secondary, secondary_mask);
+
+	DHD_ERROR(("set cpumask results cpumask_secondary 0x%2lx\n",
+		*cpumask_bits(dev->cpumask_secondary)));
+
+	dhd_select_cpu_candidacy(dev);
+
+	return count;
+}
+
+static struct dhd_attr dhd_secondary_mask =
+__ATTR(secondary_mask, 0660, show_secondary_mask, set_secondary_mask);
+
+static ssize_t
+show_rx_cpu(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", atomic_read(&dev->rx_napi_cpu));
+	return ret;
+}
+
+static ssize_t
+set_rx_cpu(struct dhd_info *dev, const char *buf, size_t count)
+{
+	uint32 val;
+
+	if (!dev->dhd_lb_candidacy_override) {
+		DHD_ERROR(("dhd_lb_candidacy_override is required %d\n",
+			dev->dhd_lb_candidacy_override));
+		return count;
+	}
+
+	val = (uint32)bcm_atoi(buf);
+	if (val >= nr_cpu_ids)
+	{
+		DHD_ERROR(("%s : can't set the value out of number of cpus, val = %u\n",
+			__FUNCTION__, val));
+	}
+
+	atomic_set(&dev->rx_napi_cpu, val);
+	DHD_ERROR(("%s: rx_napi_cpu = %d\n", __FUNCTION__, atomic_read(&dev->rx_napi_cpu)));
+	return count;
+}
+
+static struct dhd_attr dhd_rx_cpu =
+__ATTR(rx_cpu, 0660, show_rx_cpu, set_rx_cpu);
+
+static ssize_t
+show_tx_cpu(struct dhd_info *dev, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%d\n", atomic_read(&dev->tx_cpu));
+	return ret;
+}
+
+static ssize_t
+set_tx_cpu(struct dhd_info *dev, const char *buf, size_t count)
+{
+	uint32 val;
+
+	if (!dev->dhd_lb_candidacy_override) {
+		DHD_ERROR(("dhd_lb_candidacy_override is required %d\n",
+			dev->dhd_lb_candidacy_override));
+		return count;
+	}
+
+	val = (uint32)bcm_atoi(buf);
+	if (val >= nr_cpu_ids)
+	{
+		DHD_ERROR(("%s : can't set the value out of number of cpus, val = %u\n",
+			__FUNCTION__, val));
+		return count;
+	}
+
+	atomic_set(&dev->tx_cpu, val);
+	DHD_ERROR(("%s: tx_cpu = %d\n", __FUNCTION__, atomic_read(&dev->tx_cpu)));
+	return count;
+}
+
+static struct dhd_attr dhd_tx_cpu =
+__ATTR(tx_cpu, 0660, show_tx_cpu, set_tx_cpu);
+
+static struct attribute *debug_lb_attrs[] = {
+#if defined(DHD_LB_TXP)
+	&dhd_attr_lbtxp.attr,
+#endif /* DHD_LB_TXP */
+#if defined(DHD_LB_RXP)
+	&dhd_attr_lbrxp.attr,
+	&dhd_attr_lb_rxp_stop_thr.attr,
+	&dhd_attr_lb_rxp_strt_thr.attr,
+#endif /* DHD_LB_RXP */
+	&dhd_candidacy_override.attr,
+	&dhd_primary_mask.attr,
+	&dhd_secondary_mask.attr,
+	&dhd_rx_cpu.attr,
+	&dhd_tx_cpu.attr,
+	NULL
+};
+
+#define to_dhd_lb(k) container_of(k, struct dhd_info, dhd_lb_kobj)
+
+/*
+ * wifi/lb kobject show function, the "attr" attribute specifices to which
+ * node under "sys/wifi/lb" the show function is called.
+ */
+static ssize_t dhd_lb_show(struct kobject *kobj, struct attribute *attr, char *buf)
+{
+	dhd_info_t *dhd;
+	struct dhd_attr *d_attr;
+	int ret;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	dhd = to_dhd_lb(kobj);
+	d_attr = to_attr(attr);
+	GCC_DIAGNOSTIC_POP();
+
+	if (d_attr->show)
+		ret = d_attr->show(dhd, buf);
+	else
+		ret = -EIO;
+
+	return ret;
+}
+
+/*
+ * wifi kobject show function, the "attr" attribute specifices to which
+ * node under "sys/wifi/lb" the store function is called.
+ */
+static ssize_t dhd_lb_store(struct kobject *kobj, struct attribute *attr,
+		const char *buf, size_t count)
+{
+	dhd_info_t *dhd;
+	struct dhd_attr *d_attr;
+	int ret;
+
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	dhd = to_dhd_lb(kobj);
+	d_attr = to_attr(attr);
+	GCC_DIAGNOSTIC_POP();
+
+	if (d_attr->store)
+		ret = d_attr->store(dhd, buf, count);
+	else
+		ret = -EIO;
+
+	return ret;
+
+}
+
+static struct sysfs_ops dhd_sysfs_lb_ops = {
+	.show = dhd_lb_show,
+	.store = dhd_lb_store,
+};
+
+static struct kobj_type dhd_lb_ktype = {
+	.sysfs_ops = &dhd_sysfs_lb_ops,
+	.default_attrs = debug_lb_attrs,
+};
+#endif /* DHD_LB */
+
 /* Create a kobject and attach to sysfs interface */
 int dhd_sysfs_init(dhd_info_t *dhd)
 {
@@ -1740,6 +2113,17 @@ int dhd_sysfs_init(dhd_info_t *dhd)
 	 */
 	kobject_uevent(&dhd->dhd_kobj, KOBJ_ADD);
 
+#ifdef DHD_LB
+	ret  = kobject_init_and_add(&dhd->dhd_lb_kobj,
+			&dhd_lb_ktype, &dhd->dhd_kobj, "lb");
+	if (ret) {
+		kobject_put(&dhd->dhd_lb_kobj);
+		DHD_ERROR(("%s(): Unable to allocate kobject \r\n", __FUNCTION__));
+	}
+
+	kobject_uevent(&dhd->dhd_lb_kobj, KOBJ_ADD);
+#endif /* DHD_LB */
+
 	return ret;
 }
 
@@ -1750,6 +2134,12 @@ void dhd_sysfs_exit(dhd_info_t *dhd)
 		DHD_ERROR(("%s(): dhd is NULL \r\n", __FUNCTION__));
 		return;
 	}
+
+#ifdef DHD_LB
+	if (&dhd->dhd_lb_kobj != NULL) {
+		kobject_put(&dhd->dhd_lb_kobj);
+	}
+#endif /* DHD_LB */
 
 	/* Releae the kobject */
 	kobject_put(&dhd->dhd_kobj);

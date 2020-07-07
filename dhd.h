@@ -1480,6 +1480,17 @@ typedef struct dhd_pub {
 	uint64 txpath_mem;
 	uint64 rxpath_mem;
 #endif /* DHD_MEM_STATS */
+#ifdef DHD_LB_RXP
+	atomic_t lb_rxp_flow_ctrl;
+	uint32 lb_rxp_stop_thr;
+	uint32 lb_rxp_strt_thr;
+#endif /* DHD_LB_RXP */
+#ifdef DHD_LB_STATS
+	uint64 lb_rxp_stop_thr_hitcnt;
+	uint64 lb_rxp_strt_thr_hitcnt;
+	uint64 lb_rxp_napi_sched_cnt;
+	uint64 lb_rxp_napi_complete_cnt;
+#endif /* DHD_LB_STATS */
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 	uint32 alert_reason;		/* reason codes for alert event */
 #endif
@@ -1583,7 +1594,7 @@ typedef struct {
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(dhd_workitem_context_t, dhd_get_dhd_workitem_context)
 #endif /* (BCMWDF)  */
 
-	#if defined(CONFIG_PM_SLEEP)
+#if defined(CONFIG_PM_SLEEP)
 
 	#define DHD_PM_RESUME_WAIT_INIT(a) DECLARE_WAIT_QUEUE_HEAD(a);
 	#define _DHD_PM_RESUME_WAIT(a, b) do {\
@@ -1614,7 +1625,7 @@ WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(dhd_workitem_context_t, dhd_get_dhd_workitem_
 		} \
 	} while (0)
 
-	#else
+#else
 
 	#define DHD_PM_RESUME_WAIT_INIT(a)
 	#define DHD_PM_RESUME_WAIT(a)
@@ -1631,7 +1642,7 @@ WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(dhd_workitem_context_t, dhd_get_dhd_workitem_
 		} \
 	} while (0)
 
-	#endif /* CONFIG_PM_SLEEP */
+#endif /* CONFIG_PM_SLEEP */
 
 #define DHD_IF_VIF	0x01	/* Virtual IF (Hidden from user) */
 
@@ -3143,10 +3154,6 @@ extern void dhd_lb_stats_rxc_percpu_cnt_incr(dhd_pub_t *dhdp);
 		DHD_LB_STATS_INCR(x[cpu]); \
 	}
 #define DHD_LB_STATS_UPDATE_NAPI_HISTO(dhdp, x)	dhd_lb_stats_update_napi_histo(dhdp, x)
-#define DHD_LB_STATS_UPDATE_TXC_HISTO(dhdp, x)	dhd_lb_stats_update_txc_histo(dhdp, x)
-#define DHD_LB_STATS_UPDATE_RXC_HISTO(dhdp, x)	dhd_lb_stats_update_rxc_histo(dhdp, x)
-#define DHD_LB_STATS_TXC_PERCPU_CNT_INCR(dhdp)	dhd_lb_stats_txc_percpu_cnt_incr(dhdp)
-#define DHD_LB_STATS_RXC_PERCPU_CNT_INCR(dhdp)	dhd_lb_stats_rxc_percpu_cnt_incr(dhdp)
 #else /* !DHD_LB_STATS */
 #define DHD_LB_STATS_INIT(dhdp)	 DHD_LB_STATS_NOOP
 #define DHD_LB_STATS_DEINIT(dhdp) DHD_LB_STATS_NOOP
@@ -3156,10 +3163,6 @@ extern void dhd_lb_stats_rxc_percpu_cnt_incr(dhd_pub_t *dhdp);
 #define DHD_LB_STATS_ADD(x, c)	 DHD_LB_STATS_NOOP
 #define DHD_LB_STATS_PERCPU_ARR_INCR(x)	 DHD_LB_STATS_NOOP
 #define DHD_LB_STATS_UPDATE_NAPI_HISTO(dhd, x) DHD_LB_STATS_NOOP
-#define DHD_LB_STATS_UPDATE_TXC_HISTO(dhd, x) DHD_LB_STATS_NOOP
-#define DHD_LB_STATS_UPDATE_RXC_HISTO(dhd, x) DHD_LB_STATS_NOOP
-#define DHD_LB_STATS_TXC_PERCPU_CNT_INCR(dhdp) DHD_LB_STATS_NOOP
-#define DHD_LB_STATS_RXC_PERCPU_CNT_INCR(dhdp) DHD_LB_STATS_NOOP
 #endif /* !DHD_LB_STATS */
 
 #ifdef DHD_SSSR_DUMP
@@ -3656,7 +3659,11 @@ extern void dhd_sdtc_etb_dump(dhd_pub_t *dhd);
 int dhd_tx_profile_attach(dhd_pub_t *dhdp);
 int dhd_tx_profile_detach(dhd_pub_t *dhdp);
 #endif /* defined (DHD_TX_PROFILE) */
-
+#if defined(DHD_LB_RXP)
+uint32 dhd_lb_rxp_process_qlen(dhd_pub_t *dhdp);
+#define LB_RXP_STOP_THR 5
+#define LB_RXP_STRT_THR 3
+#endif /* DHD_LB_RXP */
 #ifdef DHD_SUPPORT_HDM
 extern bool hdm_trigger_init;
 extern int dhd_module_init_hdm(void);
@@ -3664,6 +3671,8 @@ extern void dhd_hdm_wlan_sysfs_init(void);
 extern void dhd_hdm_wlan_sysfs_deinit(struct work_struct *);
 #define SYSFS_DEINIT_MS 10
 #endif /* DHD_SUPPORT_HDM */
+
+extern void dhd_schedule_delayed_dpc_on_dpc_cpu(dhd_pub_t *dhdp, ulong delay);
 
 #ifdef WL_CFGVENDOR_SEND_ALERT_EVENT
 typedef enum wifi_alert_reason_codes {

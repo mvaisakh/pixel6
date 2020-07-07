@@ -565,15 +565,6 @@ typedef struct dhd_prot {
 	/* Work Queues to be used by the producer and the consumer, and threshold
 	 * when the WRITE index must be synced to consumer's workq
 	 */
-#if defined(DHD_LB_TXC)
-	uint32 tx_compl_prod_sync ____cacheline_aligned;
-	bcm_workq_t tx_compl_prod, tx_compl_cons;
-#endif /* DHD_LB_TXC */
-#if defined(DHD_LB_RXC)
-	uint32 rx_compl_prod_sync ____cacheline_aligned;
-	bcm_workq_t rx_compl_prod, rx_compl_cons;
-#endif /* DHD_LB_RXC */
-
 	dhd_dma_buf_t	fw_trap_buf; /* firmware trap buffer */
 
 	uint32  host_ipc_version; /* Host sypported IPC rev */
@@ -3042,39 +3033,6 @@ dhd_prot_attach(dhd_pub_t *dhd)
 	}
 #endif /* DHD_MAP_PKTID_LOGGING */
 
-	   /* Initialize the work queues to be used by the Load Balancing logic */
-#if defined(DHD_LB_TXC)
-	{
-		void *buffer;
-		buffer = MALLOC(dhd->osh, sizeof(void*) * DHD_LB_WORKQ_SZ);
-		if (buffer == NULL) {
-			DHD_ERROR(("%s: failed to allocate RXC work buffer\n", __FUNCTION__));
-			goto fail;
-		}
-		bcm_workq_init(&prot->tx_compl_prod, &prot->tx_compl_cons,
-			buffer, DHD_LB_WORKQ_SZ);
-		prot->tx_compl_prod_sync = 0;
-		DHD_INFO(("%s: created tx_compl_workq <%p,%d>\n",
-			__FUNCTION__, buffer, DHD_LB_WORKQ_SZ));
-	   }
-#endif /* DHD_LB_TXC */
-
-#if defined(DHD_LB_RXC)
-	   {
-		void *buffer;
-		buffer = MALLOC(dhd->osh, sizeof(void*) * DHD_LB_WORKQ_SZ);
-		if (buffer == NULL) {
-			DHD_ERROR(("%s: failed to allocate RXC work buffer\n", __FUNCTION__));
-			goto fail;
-		}
-		bcm_workq_init(&prot->rx_compl_prod, &prot->rx_compl_cons,
-			buffer, DHD_LB_WORKQ_SZ);
-		prot->rx_compl_prod_sync = 0;
-		DHD_INFO(("%s: created rx_compl_workq <%p,%d>\n",
-			__FUNCTION__, buffer, DHD_LB_WORKQ_SZ));
-	   }
-#endif /* DHD_LB_RXC */
-
 	/* FW going to DMA extended trap data,
 	 * allocate buffer for the maximum extended trap data.
 	 */
@@ -3532,6 +3490,12 @@ dhd_prot_init(dhd_pub_t *dhd)
 		}
 #endif /* EWP_EDL */
 
+#ifdef DHD_LB_RXP
+	/* defualt rx flow ctrl thresholds. Can be changed at run time through sysfs */
+	dhd->lb_rxp_stop_thr = (D2HRING_RXCMPLT_MAX_ITEM * LB_RXP_STOP_THR);
+	dhd->lb_rxp_strt_thr = (D2HRING_RXCMPLT_MAX_ITEM * LB_RXP_STRT_THR);
+	atomic_set(&dhd->lb_rxp_flow_ctrl, FALSE);
+#endif /* DHD_LB_RXP */
 	return BCME_OK;
 } /* dhd_prot_init */
 
@@ -3600,17 +3564,6 @@ void dhd_prot_detach(dhd_pub_t *dhd)
 		DHD_PKTID_LOG_FINI(dhd, prot->pktid_dma_map);
 		DHD_PKTID_LOG_FINI(dhd, prot->pktid_dma_unmap);
 #endif /* DHD_MAP_PKTID_LOGGING */
-
-#if defined(DHD_LB_TXC)
-		if (prot->tx_compl_prod.buffer)
-			MFREE(dhd->osh, prot->tx_compl_prod.buffer,
-			      sizeof(void*) * DHD_LB_WORKQ_SZ);
-#endif /* DHD_LB_TXC */
-#if defined(DHD_LB_RXC)
-		if (prot->rx_compl_prod.buffer)
-			MFREE(dhd->osh, prot->rx_compl_prod.buffer,
-			      sizeof(void*) * DHD_LB_WORKQ_SZ);
-#endif /* DHD_LB_RXC */
 
 		DHD_OS_PREFREE(dhd, dhd->prot, sizeof(dhd_prot_t));
 
@@ -3731,23 +3684,9 @@ dhd_prot_reset(dhd_pub_t *dhd)
 #define DHD_LB_DISPATCH_RX_PROCESS(dhdp)	do { /* noop */ } while (0)
 #endif /* !DHD_LB_RXP */
 
-#if defined(DHD_LB_RXC)
-#define DHD_LB_DISPATCH_RX_COMPL(dhdp)	dhd_lb_dispatch_rx_compl(dhdp)
-#else /* !DHD_LB_RXC */
-#define DHD_LB_DISPATCH_RX_COMPL(dhdp)	do { /* noop */ } while (0)
-#endif /* !DHD_LB_RXC */
-
-#if defined(DHD_LB_TXC)
-#define DHD_LB_DISPATCH_TX_COMPL(dhdp)	dhd_lb_dispatch_tx_compl(dhdp)
-#else /* !DHD_LB_TXC */
-#define DHD_LB_DISPATCH_TX_COMPL(dhdp)	do { /* noop */ } while (0)
-#endif /* !DHD_LB_TXC */
-
 #if defined(DHD_LB)
 /* DHD load balancing: deferral of work to another online CPU */
-/* DHD_LB_TXC DHD_LB_RXC DHD_LB_RXP dispatchers, in dhd_linux.c */
-extern void dhd_lb_tx_compl_dispatch(dhd_pub_t *dhdp);
-extern void dhd_lb_rx_compl_dispatch(dhd_pub_t *dhdp);
+/* DHD_LB_RXP dispatchers, in dhd_linux.c */
 extern void dhd_lb_rx_napi_dispatch(dhd_pub_t *dhdp);
 extern void dhd_lb_rx_pkt_enqueue(dhd_pub_t *dhdp, void *pkt, int ifidx);
 extern unsigned long dhd_read_lb_rxp(dhd_pub_t *dhdp);
@@ -3763,108 +3702,6 @@ dhd_lb_dispatch_rx_process(dhd_pub_t *dhdp)
 	dhd_lb_rx_napi_dispatch(dhdp); /* dispatch rx_process_napi */
 }
 #endif /* DHD_LB_RXP */
-
-#if defined(DHD_LB_TXC)
-/**
- * dhd_lb_dispatch_tx_compl - load balance by dispatch Tx complition work
- * to other CPU cores
- */
-static INLINE void
-dhd_lb_dispatch_tx_compl(dhd_pub_t *dhdp, uint16 ring_idx)
-{
-	bcm_workq_prod_sync(&dhdp->prot->tx_compl_prod); /* flush WR index */
-	dhd_lb_tx_compl_dispatch(dhdp); /* dispatch tx_compl_tasklet */
-}
-
-/**
- * DHD load balanced tx completion tasklet handler, that will perform the
- * freeing of packets on the selected CPU. Packet pointers are delivered to
- * this tasklet via the tx complete workq.
- */
-void
-dhd_lb_tx_compl_handler(unsigned long data)
-{
-	int elem_ix;
-	void *pkt, **elem;
-	dmaaddr_t pa;
-	uint32 pa_len;
-	dhd_pub_t *dhd = (dhd_pub_t *)data;
-	dhd_prot_t *prot = dhd->prot;
-	bcm_workq_t *workq = &prot->tx_compl_cons;
-	uint32 count = 0;
-
-	int curr_cpu;
-	curr_cpu = get_cpu();
-	put_cpu();
-
-	DHD_LB_STATS_TXC_PERCPU_CNT_INCR(dhd);
-
-	while (1) {
-		elem_ix = bcm_ring_cons(WORKQ_RING(workq), DHD_LB_WORKQ_SZ);
-
-		if (elem_ix == BCM_RING_EMPTY) {
-			break;
-		}
-
-		elem = WORKQ_ELEMENT(void *, workq, elem_ix);
-		pkt = *elem;
-
-		DHD_INFO(("%s: tx_compl_cons pkt<%p>\n", __FUNCTION__, pkt));
-
-		OSL_PREFETCH(PKTTAG(pkt));
-		OSL_PREFETCH(pkt);
-
-		pa = DHD_PKTTAG_PA((dhd_pkttag_fr_t *)PKTTAG(pkt));
-		pa_len = DHD_PKTTAG_PA_LEN((dhd_pkttag_fr_t *)PKTTAG(pkt));
-
-		DMA_UNMAP(dhd->osh, pa, pa_len, DMA_RX, 0, 0);
-#if defined(BCMPCIE)
-		dhd_txcomplete(dhd, pkt, true);
-#ifdef DHD_4WAYM4_FAIL_DISCONNECT
-		dhd_eap_txcomplete(dhd, pkt, TRUE, txstatus->cmn_hdr.if_id);
-#endif /* DHD_4WAYM4_FAIL_DISCONNECT */
-#endif
-
-		PKTFREE(dhd->osh, pkt, TRUE);
-		count++;
-	}
-
-	/* smp_wmb(); */
-	bcm_workq_cons_sync(workq);
-	DHD_LB_STATS_UPDATE_TXC_HISTO(dhd, count);
-}
-#endif /* DHD_LB_TXC */
-
-#if defined(DHD_LB_RXC)
-
-/**
- * dhd_lb_dispatch_rx_compl - load balance by dispatch rx complition work
- * to other CPU cores
- */
-static INLINE void
-dhd_lb_dispatch_rx_compl(dhd_pub_t *dhdp)
-{
-	dhd_prot_t *prot = dhdp->prot;
-	/* Schedule the takslet only if we have to */
-	if (prot->rxbufpost <= (prot->max_rxbufpost - RXBUFPOST_THRESHOLD)) {
-		/* flush WR index */
-		bcm_workq_prod_sync(&dhdp->prot->rx_compl_prod);
-		dhd_lb_rx_compl_dispatch(dhdp); /* dispatch rx_compl_tasklet */
-	}
-}
-
-void
-dhd_lb_rx_compl_handler(unsigned long data)
-{
-	dhd_pub_t *dhd = (dhd_pub_t *)data;
-	bcm_workq_t *workq = &dhd->prot->rx_compl_cons;
-
-	DHD_LB_STATS_RXC_PERCPU_CNT_INCR(dhd);
-
-	dhd_msgbuf_rxbuf_post(dhd, TRUE); /* re-use pktids */
-	bcm_workq_cons_sync(workq);
-}
-#endif /* DHD_LB_RXC */
 #endif /* DHD_LB */
 
 void
@@ -4445,10 +4282,6 @@ BCMFASTPATH(dhd_msgbuf_rxbuf_post)(dhd_pub_t *dhd, bool use_rsv_pktid)
 
 		if (retcount > 0) {
 			prot->rxbufpost += (uint16)retcount;
-#ifdef DHD_LB_RXC
-			/* dhd_prot_rxbuf_post returns the number of buffers posted */
-			DHD_LB_STATS_UPDATE_RXC_HISTO(dhd, retcount);
-#endif /* DHD_LB_RXC */
 			/* how many more to post */
 			fillbufs = prot->max_rxbufpost - prot->rxbufpost;
 		} else {
@@ -4547,34 +4380,6 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		p = pktbuf[i];
 		pa = pktbuf_pa[i];
 
-#if defined(DHD_LB_RXC)
-		if (use_rsv_pktid == TRUE) {
-			bcm_workq_t *workq = &prot->rx_compl_cons;
-			int elem_ix = bcm_ring_cons(WORKQ_RING(workq), DHD_LB_WORKQ_SZ);
-
-			if (elem_ix == BCM_RING_EMPTY) {
-				DHD_INFO(("%s rx_compl_cons ring is empty\n", __FUNCTION__));
-				pktid = DHD_PKTID_INVALID;
-				goto alloc_pkt_id;
-			} else {
-				uint32 *elem = WORKQ_ELEMENT(uint32, workq, elem_ix);
-				pktid = *elem;
-			}
-
-			rxbuf_post->cmn_hdr.request_id = htol32(pktid);
-
-			/* Now populate the previous locker with valid information */
-			if (pktid != DHD_PKTID_INVALID) {
-				DHD_NATIVE_TO_PKTID_SAVE(dhd, dhd->prot->pktid_rx_map,
-					p, pktid, pa, pktlen[i], DMA_RX, NULL, NULL,
-					PKTTYPE_DATA_RX);
-			}
-		} else
-#endif /* ! DHD_LB_RXC */
-		{
-#if defined(DHD_LB_RXC)
-alloc_pkt_id:
-#endif /* DHD_LB_RXC */
 		pktid = DHD_NATIVE_TO_PKTID(dhd, dhd->prot->pktid_rx_map, p, pa,
 			pktlen[i], DMA_RX, NULL, ring->dma_buf.secdma, PKTTYPE_DATA_RX);
 #if defined(DHD_PCIE_PKTID)
@@ -4582,7 +4387,6 @@ alloc_pkt_id:
 			break;
 		}
 #endif /* DHD_PCIE_PKTID */
-		}
 
 		dhd->prot->tot_rxbufpost++;
 		/* Common msg header */
@@ -5508,6 +5312,36 @@ dhd_prot_rx_frame(dhd_pub_t *dhd, void *pkt, int ifidx, uint pkt_count)
 	dhd_bus_rx_frame(dhd->bus, pkt, ifidx, pkt_count);
 }
 
+#ifdef DHD_LB_RXP
+static int dhd_prot_lb_rxp_flow_ctrl(dhd_pub_t *dhd)
+{
+	if ((dhd->lb_rxp_stop_thr == 0) || (dhd->lb_rxp_strt_thr == 0)) {
+		/* when either of stop and start thresholds are zero flow ctrl is not enabled */
+		return FALSE;
+	}
+
+	if ((dhd_lb_rxp_process_qlen(dhd) >= dhd->lb_rxp_stop_thr) &&
+			(!atomic_read(&dhd->lb_rxp_flow_ctrl))) {
+		atomic_set(&dhd->lb_rxp_flow_ctrl, TRUE);
+#ifdef DHD_LB_STATS
+		dhd->lb_rxp_stop_thr_hitcnt++;
+#endif /* DHD_LB_STATS */
+		DHD_INFO(("lb_rxp_process_qlen %d lb_rxp_stop_thr %d\n",
+			dhd_lb_rxp_process_qlen(dhd), dhd->lb_rxp_stop_thr));
+	} else if ((dhd_lb_rxp_process_qlen(dhd) <= dhd->lb_rxp_strt_thr) &&
+			(atomic_read(&dhd->lb_rxp_flow_ctrl))) {
+		atomic_set(&dhd->lb_rxp_flow_ctrl, FALSE);
+#ifdef DHD_LB_STATS
+		dhd->lb_rxp_strt_thr_hitcnt++;
+#endif /* DHD_LB_STATS */
+		DHD_INFO(("lb_rxp_process_qlen %d lb_rxp_strt_thr %d\n",
+			dhd_lb_rxp_process_qlen(dhd), dhd->lb_rxp_strt_thr));
+	}
+
+	return atomic_read(&dhd->lb_rxp_flow_ctrl);
+}
+#endif /* DHD_LB_RXP */
+
 /** called when DHD needs to check for 'receive complete' messages from the dongle */
 bool
 BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringtype)
@@ -5532,6 +5366,15 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 	int i;
 	uint8 sync;
 
+#ifdef DHD_LB_RXP
+	/* must be the first check in this function */
+	if (dhd_prot_lb_rxp_flow_ctrl(dhd)) {
+		/* DHD is holding a lot of RX packets.
+		 * Just give chance for netwrok stack to consumes RX packets.
+		 */
+		return FALSE;
+	}
+#endif /* DHD_LB_RXP */
 #ifdef DHD_PCIE_RUNTIMEPM
 	/* Set rx_pending_due_to_rpm if device is not in resume state */
 	if (dhdpcie_runtime_bus_wake(dhd, FALSE, dhd_prot_process_msgbuf_rxcpl)) {
@@ -5738,7 +5581,6 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 	!(dhd_monitor_enabled(dhd, ifidx)) &&
 #endif /* WL_MONITOR */
 	TRUE) {
-		DHD_LB_DISPATCH_RX_COMPL(dhd);
 		DHD_LB_DISPATCH_RX_PROCESS(dhd);
 	}
 
@@ -5829,7 +5671,6 @@ BCMFASTPATH(dhd_prot_process_msgbuf_txcpl)(dhd_pub_t *dhd, uint bound, int ringt
 		}
 	}
 
-	DHD_LB_DISPATCH_TX_COMPL(dhd);
 	if (n) {
 		/* For IDMA and HWA case, doorbell is sent along with read index update.
 		 * For DMA indices case ring doorbell once n items are read to sync with dongle.
@@ -6377,52 +6218,6 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	flow_info->cum_tx_status_latency += tx_status_latency;
 	flow_info->num_tx_status++;
 #endif /* TX_STATUS_LATENCY_STATS */
-#if defined(DHD_LB_TXC)
-	{
-		int elem_ix;
-		void **elem;
-		bcm_workq_t *workq;
-
-		workq = &prot->tx_compl_prod;
-		/*
-		 * Produce the packet into the tx_compl workq for the tx compl tasklet
-		 * to consume.
-		 */
-		OSL_PREFETCH(PKTTAG(pkt));
-
-		/* fetch next available slot in workq */
-		elem_ix = bcm_ring_prod(WORKQ_RING(workq), DHD_LB_WORKQ_SZ);
-
-		/* FIXME FABIAN remove this from locker! */
-		DHD_PKTTAG_SET_PA((dhd_pkttag_fr_t *)PKTTAG(pkt), pa);
-		DHD_PKTTAG_SET_PA_LEN((dhd_pkttag_fr_t *)PKTTAG(pkt), len);
-
-		if (elem_ix == BCM_RING_FULL) {
-			DHD_ERROR(("tx_compl_prod BCM_RING_FULL\n"));
-			goto workq_ring_full;
-		}
-
-		elem = WORKQ_ELEMENT(void *, &prot->tx_compl_prod, elem_ix);
-		*elem = pkt;
-
-		smp_wmb();
-
-		/* Sync WR index to consumer if the SYNC threshold has been reached */
-		if (++prot->tx_compl_prod_sync >= DHD_LB_WORKQ_SYNC) {
-			bcm_workq_prod_sync(workq);
-			prot->tx_compl_prod_sync = 0;
-		}
-
-		DHD_TRACE(("%s: tx_compl_prod pkt<%p> sync<%d>\n",
-			__FUNCTION__, pkt, prot->tx_compl_prod_sync));
-
-		DHD_RING_UNLOCK(ring->ring_lock, flags);
-		return;
-	}
-
-workq_ring_full:
-
-#endif /* !DHD_LB_TXC */
 
 #ifdef DMAMAP_STATS
 	dhd->dma_stats.txdata--;
@@ -6994,36 +6789,6 @@ BCMFASTPATH(dhd_prot_return_rxbuf)(dhd_pub_t *dhd, uint32 pktid, uint32 rxcnt)
 /* XXX function name could be more descriptive, eg dhd_prot_post_rxbufs */
 {
 	dhd_prot_t *prot = dhd->prot;
-#if defined(DHD_LB_RXC)
-	int elem_ix;
-	uint32 *elem;
-	bcm_workq_t *workq;
-
-	workq = &prot->rx_compl_prod;
-
-	/* Produce the work item */
-	elem_ix = bcm_ring_prod(WORKQ_RING(workq), DHD_LB_WORKQ_SZ);
-	if (elem_ix == BCM_RING_FULL) {
-		DHD_ERROR(("%s LB RxCompl workQ is full\n", __FUNCTION__));
-		ASSERT(0);
-		return;
-	}
-
-	elem = WORKQ_ELEMENT(uint32, workq, elem_ix);
-	*elem = pktid;
-
-	smp_wmb();
-
-	/* Sync WR index to consumer if the SYNC threshold has been reached */
-	if (++prot->rx_compl_prod_sync >= DHD_LB_WORKQ_SYNC) {
-		bcm_workq_prod_sync(workq);
-		prot->rx_compl_prod_sync = 0;
-	}
-
-	DHD_TRACE(("%s: rx_compl_prod pktid<%u> sync<%d>\n",
-		__FUNCTION__, pktid, prot->rx_compl_prod_sync));
-
-#endif /* DHD_LB_RXC */
 
 	if (prot->rxbufpost >= rxcnt) {
 		prot->rxbufpost -= (uint16)rxcnt;
@@ -7035,10 +6800,9 @@ BCMFASTPATH(dhd_prot_return_rxbuf)(dhd_pub_t *dhd, uint32 pktid, uint32 rxcnt)
 		prot->rxbufpost = 0;
 	}
 
-#if !defined(DHD_LB_RXC)
 	if (prot->rxbufpost <= (prot->max_rxbufpost - RXBUFPOST_THRESHOLD))
 		dhd_msgbuf_rxbuf_post(dhd, FALSE); /* alloc pkt ids */
-#endif /* !DHD_LB_RXC */
+
 	return;
 }
 
@@ -10857,8 +10621,13 @@ dhd_prot_debug_info_print(dhd_pub_t *dhd)
 	DHD_ERROR(("pktid_txq_start_cnt: %d\n", prot->pktid_txq_start_cnt));
 	DHD_ERROR(("pktid_txq_stop_cnt: %d\n", prot->pktid_txq_stop_cnt));
 	DHD_ERROR(("pktid_depleted_cnt: %d\n", prot->pktid_depleted_cnt));
-
 	dhd_pcie_debug_info_dump(dhd);
+#ifdef DHD_LB_STATS
+	DHD_ERROR(("\nlb_rxp_stop_thr_hitcnt: %llu lb_rxp_strt_thr_hitcnt: %llu\n",
+		dhd->lb_rxp_stop_thr_hitcnt, dhd->lb_rxp_strt_thr_hitcnt));
+	DHD_ERROR(("\nlb_rxp_napi_sched_cnt: %llu lb_rxp_napi_complete_cnt: %llu\n",
+		dhd->lb_rxp_napi_sched_cnt, dhd->lb_rxp_napi_complete_cnt));
+#endif /* DHD_LB_STATS */
 	return 0;
 }
 
