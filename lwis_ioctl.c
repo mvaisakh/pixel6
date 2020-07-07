@@ -671,7 +671,14 @@ static int ioctl_echo(struct lwis_device *lwis_dev,
 			"Failed to allocate buffer for echo message\n");
 		return -ENOMEM;
 	}
-	memcpy(buffer, echo_msg.msg, echo_msg.size);
+	ret = copy_from_user(buffer, (void __user *)echo_msg.msg,
+			     echo_msg.size);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy %zu bytes echo message from user\n",
+			echo_msg.size);
+		return -EINVAL;
+	}
 	buffer[echo_msg.size] = '\0';
 
 	if (echo_msg.kernel_log) {
@@ -1453,6 +1460,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		break;
 	case LWIS_ECHO:
 		ret = ioctl_echo(lwis_dev, (struct lwis_echo *)param);
+		break;
 	case LWIS_DEVICE_RESET:
 		ret = ioctl_device_reset(lwis_client,
 					 (struct lwis_io_entries *)param);
