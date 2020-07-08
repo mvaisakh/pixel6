@@ -488,7 +488,10 @@ static int prepare_response(struct lwis_client *client,
 	resp_size = sizeof(struct lwis_transaction_response_header) +
 		    read_entries * sizeof(struct lwis_io_result) +
 		    read_buf_size;
-	transaction->resp = kzalloc(resp_size, GFP_KERNEL);
+	/* Revisit the use of GFP_ATOMIC here. Reason for this to be atomic is
+	 * because this function can be called by transaction_replace while
+	 * holding onto a spinlock. */
+	transaction->resp = kzalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
 		pr_err_ratelimited("Cannot allocate transaction response\n");
 		return -ENOMEM;
