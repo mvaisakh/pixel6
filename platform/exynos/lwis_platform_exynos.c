@@ -81,7 +81,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	}
 
 	/* Set hardcoded DVFS levels */
-
 	if (!pm_qos_request_active(&platform->pm_qos_mem))
 		pm_qos_add_request(&platform->pm_qos_mem, PM_QOS_BUS_THROUGHPUT,
 				   mif_qos);
@@ -92,7 +91,10 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		pm_qos_add_request(&platform->pm_qos_hpg, PM_QOS_CPU_ONLINE_MIN,
 				   hpg_qos);
 
-	lwis_platform_update_qos(lwis_dev, 680000);
+	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
+	    lwis_dev->clock_family < CLOCK_FAMILY_MAX) {
+		lwis_platform_update_qos(lwis_dev, 680000);
+	}
 
 	return 0;
 }
