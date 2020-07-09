@@ -111,8 +111,8 @@ void edgetpu_pm_shutdown(struct edgetpu_dev *etdev)
 	if (etpm->p->power_up_count) {
 		etdev_warn(etdev, "Leaving %d clients behind!\n",
 			   etpm->p->power_up_count);
-		if (etpm->p->handlers && etpm->p->handlers->power_down)
-			etpm->p->handlers->power_down(etpm);
 	}
+	if (etpm->p->handlers && etpm->p->handlers->power_down)
+		etpm->p->handlers->power_down(etpm);
 	edgetpu_firmware_unlock(etdev);
 }

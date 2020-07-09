@@ -731,33 +731,25 @@ static const struct dma_fence_ops edgetpu_dma_fence_ops = {
 };
 
 int edgetpu_sync_fence_create(
-	struct edgetpu_create_sync_fence_data __user *datap)
+	struct edgetpu_create_sync_fence_data *datap)
 {
-	int fd = get_unused_fd_flags(O_CLOEXEC);
+	int fd;
 	int ret;
 	struct edgetpu_dma_fence *etfence;
 	struct sync_file *sync_file;
-	struct edgetpu_create_sync_fence_data data;
 	unsigned long flags;
 
-	if (copy_from_user(&data, (void __user *)datap, sizeof(data))) {
-		ret = -EFAULT;
-		goto err_putfd;
-	}
-
 	etfence = kzalloc(sizeof(*etfence), GFP_KERNEL);
-	if (!etfence) {
-		ret = -ENOMEM;
-		goto err_putfd;
-	}
+	if (!etfence)
+		return -ENOMEM;
 
 	spin_lock_init(&etfence->lock);
-	memcpy(&etfence->timeline_name, &data.timeline_name,
+	memcpy(&etfence->timeline_name, &datap->timeline_name,
 	       EDGETPU_SYNC_TIMELINE_NAME_LEN - 1);
 
 	dma_fence_init(&etfence->fence, &edgetpu_dma_fence_ops,
 		       &etfence->lock, dma_fence_context_alloc(1),
-		       data.seqno);
+		       datap->seqno);
 
 	sync_file = sync_file_create(&etfence->fence);
 	dma_fence_put(&etfence->fence);
@@ -766,49 +758,35 @@ int edgetpu_sync_fence_create(
 		goto err_freefence;
 	}
 
-	data.fence = fd;
-	if (copy_to_user((void __user *)datap, &data, sizeof(data))) {
-		ret = -EFAULT;
-		goto err_putsyncfile;
-	}
-
+	fd = get_unused_fd_flags(O_CLOEXEC);
+	datap->fence = fd;
 	fd_install(fd, sync_file->file);
 	spin_lock_irqsave(&etfence_list_lock, flags);
 	list_add_tail(&etfence->etfence_list, &etfence_list_head);
 	spin_unlock_irqrestore(&etfence_list_lock, flags);
 	return 0;
 
-err_putsyncfile:
-	fput(sync_file->file);
-
 err_freefence:
 	kfree(etfence);
-
-err_putfd:
-	put_unused_fd(fd);
 	return ret;
 }
 
 int edgetpu_sync_fence_signal(
-	struct edgetpu_signal_sync_fence_data __user *datap)
+	struct edgetpu_signal_sync_fence_data *datap)
 {
-	struct edgetpu_signal_sync_fence_data data;
 	struct dma_fence *fence;
 	struct edgetpu_dma_fence *etfence;
 	int errno;
 	int ret;
 
-	if (copy_from_user(&data, (void __user *)datap, sizeof(data)))
-		return -EFAULT;
-
-	fence = sync_file_get_fence(data.fence);
+	fence = sync_file_get_fence(datap->fence);
 	if (!fence)
 		return -EINVAL;
 	etfence = to_etfence(fence);
 	if (!etfence)
 		return -EINVAL;
 
-	errno = data.error;
+	errno = datap->error;
 	if (errno > 0)
 		errno = -errno;
 

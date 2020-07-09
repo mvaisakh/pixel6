@@ -56,19 +56,6 @@ static int abrolhos_firmware_setup_buffer(
 		struct edgetpu_firmware *et_fw,
 		struct edgetpu_firmware_buffer *fw_buf)
 {
-	struct edgetpu_dev *etdev = et_fw->etdev;
-	struct device *dev = etdev->dev;
-	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-			etdev, struct edgetpu_platform_dev, edgetpu_dev);
-
-	fw_buf->dma_addr = dma_map_single(dev, edgetpu_pdev->fw_region_vaddr,
-					  edgetpu_pdev->fw_region_size,
-					  DMA_TO_DEVICE);
-	if (dma_mapping_error(dev, fw_buf->dma_addr)) {
-		dev_err(dev, "%s: dma map failed\n", __func__);
-		fw_buf->dma_addr = 0;
-		return -ENOMEM;
-	}
 	return 0;
 }
 
@@ -76,20 +63,12 @@ static void abrolhos_firmware_teardown_buffer(
 		struct edgetpu_firmware *et_fw,
 		struct edgetpu_firmware_buffer *fw_buf)
 {
-	struct device *dev = et_fw->etdev->dev;
-
-	if (fw_buf->dma_addr) {
-		dma_unmap_single(dev, fw_buf->dma_addr, fw_buf->alloc_size,
-				 DMA_TO_DEVICE);
-		fw_buf->dma_addr = 0;
-	}
 }
 
 static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 					 struct edgetpu_firmware_buffer *fw_buf)
 {
 	struct edgetpu_dev *etdev = et_fw->etdev;
-	struct device *dev = etdev->dev;
 
 	/* Clear Substream ID (aka SCID) for instruction remapped addresses */
 	u32 sec_reg = edgetpu_dev_read_32(
@@ -103,8 +82,6 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	sec_reg &= ~(0x0F << 10);
 	edgetpu_dev_write_32(etdev, EDGETPU_REG_SECURITY, sec_reg);
 
-	dma_sync_single_for_device(dev, fw_buf->dma_addr, fw_buf->alloc_size,
-				   DMA_TO_DEVICE);
 	r52_reset(etdev, 1);
 
 	/* Reset KCI mailbox before start f/w, don't process anything old. */

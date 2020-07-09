@@ -60,7 +60,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	}
 
 	etpdev->fw_region_vaddr =
-		memremap(r.start, resource_size(&r), MEMREMAP_WB);
+		memremap(r.start, resource_size(&r), MEMREMAP_WC);
 	if (!etpdev->fw_region_vaddr) {
 		dev_err(dev, "Firmware memory remap failed\n");
 		return -EINVAL;
@@ -222,13 +222,6 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = edgetpu_pm_get(edgetpu_pdev->edgetpu_dev.pm);
-	if (ret) {
-		dev_err(dev, "%s failed to do initial power-up: %d\n",
-			DRIVER_NAME, ret);
-		return ret;
-	}
-
 	dev_dbg(dev, "Creating thermal device\n");
 
 	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
@@ -236,7 +229,7 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	dev_dbg(dev, "Probe finished, powering down\n");
 
 	/* Turn the device off until a client request is received */
-	edgetpu_pm_put(edgetpu_pdev->edgetpu_dev.pm);
+	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
 
 	return 0;
 }

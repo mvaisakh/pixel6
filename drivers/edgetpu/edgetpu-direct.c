@@ -328,6 +328,32 @@ static int etdirect_unmap_dmabuf(struct edgetpu_device_group *group,
 	return edgetpu_unmap_dmabuf(group, ibuf.die_index, ibuf.device_address);
 }
 
+static int edgetpu_ioctl_sync_fence_create(
+	struct edgetpu_create_sync_fence_data __user *datap)
+{
+	struct edgetpu_create_sync_fence_data data;
+	int ret;
+
+	if (copy_from_user(&data, (void __user *)datap, sizeof(data)))
+		return -EFAULT;
+	ret = edgetpu_sync_fence_create(&data);
+	if (ret)
+		return ret;
+	if (copy_to_user((void __user *)datap, &data, sizeof(data)))
+		ret = -EFAULT;
+	return ret;
+}
+
+static int edgetpu_ioctl_sync_fence_signal(
+	struct edgetpu_signal_sync_fence_data __user *datap)
+{
+	struct edgetpu_signal_sync_fence_data data;
+
+	if (copy_from_user(&data, (void __user *)datap, sizeof(data)))
+		return -EFAULT;
+	return edgetpu_sync_fence_signal(&data);
+}
+
 static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 {
 	return file->f_mode & FMODE_WRITE;
@@ -424,10 +450,10 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 		ret = etdirect_unmap_dmabuf(client->group, argp);
 		break;
 	case EDGETPU_CREATE_SYNC_FENCE:
-		ret = edgetpu_sync_fence_create(argp);
+		ret = edgetpu_ioctl_sync_fence_create(argp);
 		break;
 	case EDGETPU_SIGNAL_SYNC_FENCE:
-		ret = edgetpu_sync_fence_signal(argp);
+		ret = edgetpu_ioctl_sync_fence_signal(argp);
 		break;
 	default:
 		return -ENOTTY; /* unknown command */

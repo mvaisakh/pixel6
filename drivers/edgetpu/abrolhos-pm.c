@@ -64,6 +64,8 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 
 	curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
 
+	dev_dbg(dev, "Power state %d -> %d\n", curr_state, val);
+
 	if (curr_state == TPU_OFF && val > TPU_OFF) {
 		ret = pm_runtime_get_sync(dev);
 		if (ret) {
