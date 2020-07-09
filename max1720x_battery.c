@@ -33,9 +33,9 @@
 #include <linux/device.h>
 #include <linux/fs.h> /* register_chrdev, unregister_chrdev */
 #include <linux/seq_file.h> /* seq_read, seq_lseek, single_release */
-#include <google/google_bms.h>
-#include <google/logbuffer.h>
-#include "google/max1720x_battery.h"
+#include "google_bms.h"
+#include "logbuffer.h"
+#include "max1720x_battery.h"
 
 #include <linux/debugfs.h>
 
@@ -53,9 +53,9 @@
 
 #define HISTORY_DEVICENAME "maxfg_history"
 
-#include "google/max1720x.h"
-#include "google/max1730x.h"
-#include "google/max_m5.h"
+#include "max1720x.h"
+#include "max1730x.h"
+#include "max_m5.h"
 
 enum max17xxx_register {
 	MAX17XXX_COMMAND	= MAX1720X_COMMAND,
@@ -3901,7 +3901,7 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 		return 0;
 	}
 
-	chip->secondary = i2c_new_secondary_device(chip->primary,
+	chip->secondary = i2c_new_ancillary_device(chip->primary,
 						   "nvram",
 						   secondary_address);
 	if (chip->secondary == NULL) {

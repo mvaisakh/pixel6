@@ -51,7 +51,7 @@ config GOOGLE_LOGBUFFER
 	  specific logs in an exclusive ring buffer and exposes it through
 	  debugfs.
 
-config GOOGLE_PMIC_VOTER_COMPAT
+config GOOGLE_VOTABLE
 	tristate "Voter compatibility shim"
 	help
 	  Say Y here to enable voter compatibility shim layer.

@@ -270,3 +270,4 @@ static struct i2c_driver max20339_i2c_driver = {
 module_i2c_driver(max20339_i2c_driver);
 
 MODULE_AUTHOR("Badhri Jagan Sridharan <badhri@google.com>");
+MODULE_LICENSE("GPL");

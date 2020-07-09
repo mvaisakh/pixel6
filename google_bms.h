@@ -337,10 +337,10 @@ void gbee_destroy_device(void);
  *
  */
 
-void *batt_hist_init_data(struct device *dev);
-int batt_hist_data_collect(void *h, int cycle_cnt, int idx,
-			   struct power_supply *fg_psy);
-void batt_hist_free_data(void *p);
+extern void *batt_hist_init_data(struct device *dev);
+extern int batt_hist_data_collect(void *h, int cycle_cnt, int idx,
+				  struct power_supply *fg_psy);
+extern void batt_hist_free_data(void *p);
 
 /*
  * Charger modes

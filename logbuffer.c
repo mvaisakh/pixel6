@@ -291,3 +291,4 @@ static void logbuffer_debugfs_exit(void)
 }
 early_initcall(logbuffer_debugfs_init);
 module_exit(logbuffer_debugfs_exit);
+MODULE_LICENSE("GPL");

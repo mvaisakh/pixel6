@@ -148,6 +148,7 @@ int gvotable_comparator_uint_max(void *l, void *r)
 	else
 		return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_uint_max);
 
 int gvotable_comparator_int(void *l, void *r)
 {
@@ -167,30 +168,35 @@ int gvotable_comparator_int_max(void *a, void *b)
 {
 	return -gvotable_comparator_int(a, b);
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_int_max);
 
 /* compares l and r as integers */
 int gvotable_comparator_int_min(void *a, void *b)
 {
 	return gvotable_comparator_int(a, b);
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_int_min);
 
 /* compares l and r as integers */
 int gvotable_comparator_uint_min(void *a, void *b)
 {
 	return -gvotable_comparator_uint_max(a, b);
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_uint_min);
 
 /* Always add new elements on head of the list */
 int gvotable_comparator_most_recent(void *a, void *b)
 {
 	return (-1);
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_most_recent);
 
 /* Always add new element on tail of the list */
 int gvotable_comparator_least_recent(void *a, void *b)
 {
 	return 1;
 }
+EXPORT_SYMBOL_GPL(gvotable_comparator_least_recent);
 
 /*
  * Here we use the cheapest choice, i.e. list head. bool elections return
@@ -212,16 +218,19 @@ int gvotable_v2s_int(char *str,  size_t len, const void *vote)
 {
 	return scnprintf(str, len, "%ld", (unsigned long)vote);
 }
+EXPORT_SYMBOL_GPL(gvotable_v2s_int);
 
 int gvotable_v2s_uint(char *str, size_t len, const void *vote)
 {
 	return scnprintf(str, len, "%lu", (unsigned long)vote);
 }
+EXPORT_SYMBOL_GPL(gvotable_v2s_uint);
 
 int gvotable_v2s_uint_hex(char *str, size_t len, const void *vote)
 {
 	return scnprintf(str, len, "0x%lx", (unsigned long)vote);
 }
+EXPORT_SYMBOL_GPL(gvotable_v2s_uint_hex);
 
 /* GVotable internal hashing function */
 static uint32_t gvotable_internal_hash(const char *str)
@@ -430,6 +439,7 @@ void gvotable_election_for_each(struct gvotable_election *el,
 			break;
 	}
 }
+EXPORT_SYMBOL_GPL(gvotable_election_for_each);
 
 
 #ifdef CONFIG_DEBUG_FS
@@ -522,6 +532,7 @@ done_exit:
 	mutex_unlock(&gvotable_lock);
 	return el;
 }
+EXPORT_SYMBOL_GPL(gvotable_create_election);
 
 struct gvotable_election *gvotable_create_int_election(const char *name,
 					int (*cmp_fn)(void *, void *),
@@ -545,6 +556,7 @@ struct gvotable_election *gvotable_create_int_election(const char *name,
 
 	return el;
 }
+EXPORT_SYMBOL_GPL(gvotable_create_int_election);
 
 /*
  * "bool" elections return 1 when there is at least one vote active and 0
@@ -569,6 +581,7 @@ struct gvotable_election *gvotable_create_bool_election(const char *name,
 	el->is_bool_type = true;
 	return el;
 }
+EXPORT_SYMBOL_GPL(gvotable_create_bool_election);
 
 /*
  * Destroying an election involves removing all ballots and removing the
@@ -620,6 +633,7 @@ int gvotable_destroy_election(struct gvotable_election *el)
 	kfree(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_destroy_election);
 
 
 /*
@@ -642,6 +656,7 @@ struct gvotable_election *gvotable_election_get_handle(const char *name)
 
 	return (slot) ? slot->el : NULL;
 }
+EXPORT_SYMBOL_GPL(gvotable_election_get_handle);
 
 /* Set name of an election (makes election available for lookup) */
 int gvotable_election_set_name(struct gvotable_election *el, const char *name)
@@ -673,12 +688,14 @@ int gvotable_election_set_name(struct gvotable_election *el, const char *name)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_election_set_name);
 
 void gvotable_set_vote2str(struct gvotable_election *el,
 			   gvotable_v2sfn_t vote2str)
 {
 	el->vote2str = vote2str;
 }
+EXPORT_SYMBOL_GPL(gvotable_set_vote2str);
 
 static void gvotable_run_callback(struct gvotable_election *el)
 {
@@ -715,6 +732,7 @@ int gvotable_set_default(struct gvotable_election *el, void *default_val)
 	gvotable_unlock_callback(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_set_default);
 
 int gvotable_get_default(struct gvotable_election *el, void **result)
 {
@@ -756,12 +774,14 @@ int gvotable_use_default(struct gvotable_election *el, bool default_is_enabled)
 	gvotable_unlock_callback(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_use_default);
 
 /* Retrieve data for an election */
 void* gvotable_get_data(struct gvotable_election *el)
 {
 	return el ? el->data: NULL;
 }
+EXPORT_SYMBOL_GPL(gvotable_get_data);
 
 /* NULL (0) is  a valid value when votes are integers */
 static int gvotable_get_current_result_unlocked(struct gvotable_election *el,
@@ -790,6 +810,7 @@ int gvotable_get_current_vote(struct gvotable_election *el, const void **vote)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_get_current_vote);
 
 int gvotable_get_current_int_vote(struct gvotable_election *el)
 {
@@ -799,6 +820,7 @@ int gvotable_get_current_int_vote(struct gvotable_election *el)
 	ret = gvotable_get_current_vote(el, &ptr);
 	return (ret) ? ret : (uintptr_t)ptr;
 }
+EXPORT_SYMBOL_GPL(gvotable_get_current_int_vote);
 
 /* copy the actual current vote */
 int gvotable_copy_current_result(struct gvotable_election *el, void *vote,
@@ -820,6 +842,7 @@ int gvotable_copy_current_result(struct gvotable_election *el, void *vote,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_copy_current_result);
 
 static int gvotable_get_current_reason_unlocked(struct gvotable_election *el,
 						char *reason, int max_len)
@@ -849,6 +872,7 @@ int gvotable_get_current_reason(struct gvotable_election *el, char *reason,
 	gvotable_unlock_result(el);
 	return len;
 }
+EXPORT_SYMBOL_GPL(gvotable_get_current_reason);
 
 /* Get vote associated with a specific reason */
 int gvotable_get_vote(struct gvotable_election *el, const char *reason,
@@ -870,6 +894,7 @@ int gvotable_get_vote(struct gvotable_election *el, const char *reason,
 	gvotable_unlock_result(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_get_vote);
 
 /* Determine the reason is enabled */
 int gvotable_is_enabled(struct gvotable_election *el, const char *reason,
@@ -891,6 +916,7 @@ int gvotable_is_enabled(struct gvotable_election *el, const char *reason,
 	gvotable_unlock_result(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_is_enabled);
 
 /* requires &el->re_lock */
 static int gvotable_update_ballot(struct ballot *ballot, void *vote,
@@ -1017,6 +1043,7 @@ int gvotable_election_set_result(struct gvotable_election *el,
 	gvotable_internal_update_result(el, result);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_election_set_result);
 
 int gvotable_cast_vote(struct gvotable_election *el, const char *reason,
 		       void *vote, bool enabled)
@@ -1068,6 +1095,7 @@ int gvotable_cast_vote(struct gvotable_election *el, const char *reason,
 	gvotable_unlock_callback(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_cast_vote);
 
 #ifdef CONFIG_DEBUG_FS
 

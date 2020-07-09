@@ -60,6 +60,7 @@ int get_client_vote(struct votable *votable, const char *client_str)
 {
 	return get_client_vote_locked(votable, client_str);
 }
+EXPORT_SYMBOL_GPL(get_client_vote);
 
 int get_effective_result_locked(struct votable *v)
 {
@@ -69,17 +70,20 @@ int get_effective_result_locked(struct votable *v)
 	ret = gvotable_get_current_vote(V2EL(v), &ptr);
 	return ret ? : (uintptr_t)ptr;
 }
+EXPORT_SYMBOL_GPL(get_effective_result_locked);
 
 int get_effective_result(struct votable *votable)
 {
 	return get_effective_result_locked(votable);
 }
+EXPORT_SYMBOL_GPL(get_effective_result);
 
 int vote(struct votable *v, const char *client_str, bool state, int val)
 {
 	return gvotable_cast_vote(V2EL(v), client_str, (void *)(long)val,
 				  state);
 }
+EXPORT_SYMBOL_GPL(vote);
 
 /* It needs to work for new and instances so we can mix the code
  */
@@ -87,6 +91,7 @@ struct votable *find_votable(const char *name)
 {
 	return (struct votable *)gvotable_election_get_handle(name);
 }
+EXPORT_SYMBOL_GPL(find_votable);
 
 static void pmic_voter_compat_cb(struct gvotable_election *el,
 				 const char *cb_reason, void *cb_result)
@@ -193,6 +198,7 @@ struct votable *create_votable(const char *name,
 
 	return (struct votable *)el;
 }
+EXPORT_SYMBOL_GPL(create_votable);
 
 void destroy_votable(struct votable *v)
 {
@@ -202,3 +208,4 @@ void destroy_votable(struct votable *v)
 	kfree(gvotable_get_data(V2EL(v)));
 	gvotable_destroy_election(V2EL(v));
 }
+EXPORT_SYMBOL_GPL(destroy_votable);

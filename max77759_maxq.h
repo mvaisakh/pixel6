@@ -23,16 +23,10 @@ static inline struct max77759_maxq *maxq_init(struct device *dev,
 					      struct regmap *regmap,
 					      bool poll)
 {
-	return -EINVAL;
+	return NULL;
 }
-static inline void maxq_remove(struct max77759_maxq *maxq)
-{
-	return -EINVAL;
-}
-static inline void maxq_irq(struct max77759_maxq *maxq)
-{
-	return -EINVAL;
-}
+static inline void maxq_remove(struct max77759_maxq *maxq) {}
+static inline void maxq_irq(struct max77759_maxq *maxq) {}
 /* Helpers */
 static inline int maxq_query_contaminant(struct max77759_maxq *maxq,
 					 u8 cc1_raw, u8 cc2_raw,
