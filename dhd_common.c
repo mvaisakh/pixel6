@@ -944,10 +944,10 @@ dhd_sssr_print_filepath(dhd_pub_t *dhd, char *path)
 void
 dhd_sdtc_etb_init(dhd_pub_t *dhd)
 {
-	bcm_iov_buf_t iov_req;
+	bcm_iov_buf_t *iov_req = NULL;
 	etb_addr_info_t *p_etb_addr_info = NULL;
-	bcm_iov_buf_t *iov_resp;
-	uint8 *buf;
+	bcm_iov_buf_t *iov_resp = NULL;
+	uint8 *buf = NULL;
 	int ret = 0;
 	uint16 iovlen = 0;
 	uint16 version = 0;
@@ -955,20 +955,24 @@ dhd_sdtc_etb_init(dhd_pub_t *dhd)
 	BCM_REFERENCE(p_etb_addr_info);
 	dhd->sdtc_etb_inited = FALSE;
 
+	iov_req = MALLOCZ(dhd->osh, WLC_IOCTL_SMLEN);
+	if (iov_req == NULL) {
+		DHD_ERROR(("%s: Failed to alloc buffer for iovar request\n", __FUNCTION__));
+		goto exit;
+	}
 	buf = MALLOCZ(dhd->osh, WLC_IOCTL_MAXLEN);
 	if (buf == NULL) {
 		DHD_ERROR(("%s: Failed to alloc buffer for iovar response\n", __FUNCTION__));
-		return;
+		goto exit;
 	}
 
 	/* fill header */
-	bzero(&iov_req, sizeof(iov_req));
-	iov_req.version = WL_SDTC_IOV_VERSION;
-	iov_req.id = WL_SDTC_CMD_ETB_INFO;
-	iov_req.len = sizeof(etb_addr_info_t);
-	iovlen = OFFSETOF(bcm_iov_buf_t, data) + iov_req.len;
+	iov_req->version = WL_SDTC_IOV_VERSION;
+	iov_req->id = WL_SDTC_CMD_ETB_INFO;
+	iov_req->len = sizeof(etb_addr_info_t);
+	iovlen = OFFSETOF(bcm_iov_buf_t, data) + iov_req->len;
 
-	ret = dhd_iovar(dhd, 0, "sdtc", (char *)&iov_req, iovlen,
+	ret = dhd_iovar(dhd, 0, "sdtc", (char *)iov_req, iovlen,
 		(char *)buf, WLC_IOCTL_MAXLEN, FALSE);
 	if (ret < 0) {
 		DHD_ERROR(("%s failed to get sdtc etb_info %d\n", __FUNCTION__, ret));
@@ -982,7 +986,7 @@ dhd_sdtc_etb_init(dhd_pub_t *dhd)
 		goto exit;
 	}
 	iov_resp = (bcm_iov_buf_t *)buf;
-	if (iov_resp->id == iov_req.id) {
+	if (iov_resp->id == iov_req->id) {
 		p_etb_addr_info = (etb_addr_info_t*)iov_resp->data;
 		dhd->etb_addr_info.version = p_etb_addr_info->version;
 		dhd->etb_addr_info.len = p_etb_addr_info->len;
@@ -993,7 +997,7 @@ dhd_sdtc_etb_init(dhd_pub_t *dhd)
 			dhd->etb_addr_info.etbinfo_addr));
 	} else {
 		DHD_ERROR(("%s Unknown CMD-ID (%d) as  response for request ID %d\n",
-			__FUNCTION__, iov_resp->id, iov_req.id));
+			__FUNCTION__, iov_resp->id, iov_req->id));
 		goto exit;
 	}
 
@@ -1008,7 +1012,12 @@ dhd_sdtc_etb_init(dhd_pub_t *dhd)
 	dhd->sdtc_etb_inited = TRUE;
 	DHD_ERROR(("%s sdtc_etb_inited: %d\n", __FUNCTION__, dhd->sdtc_etb_inited));
 exit:
-	MFREE(dhd->osh, buf, WLC_IOCTL_MAXLEN);
+	if (iov_req) {
+		MFREE(dhd->osh, iov_req, WLC_IOCTL_SMLEN);
+	}
+	if (buf) {
+		MFREE(dhd->osh, buf, WLC_IOCTL_MAXLEN);
+	}
 	return;
 }
 
