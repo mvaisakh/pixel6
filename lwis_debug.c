@@ -41,9 +41,10 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 	strlcat(k_buf, "Pending Transactions:\n", k_buf_size);
 	hash_for_each (client->transaction_list, i, transaction_list, node) {
 		if (list_empty(&transaction_list->list)) {
-			strlcat(k_buf,
-				"No pending transaction for this event\n",
-				k_buf_size);
+			snprintf(tmp_buf, sizeof(tmp_buf),
+				 "No pending transaction for event 0x%llx\n",
+				 transaction_list->event_id);
+			strlcat(k_buf, tmp_buf, k_buf_size);
 			continue;
 		}
 		list_for_each (it_tran, &transaction_list->list) {
