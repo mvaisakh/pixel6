@@ -611,14 +611,14 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
 		dev_err(lwis_dev->dev,
-			"Failed to wait for in-process periodic io to compelte\n");
+			"Failed to wait for in-process periodic io to complete\n");
 	}
 
-	/* Wait for all in-process transactions to complete. */
+	/* Flush all pending transactions */
 	ret = lwis_transaction_client_flush(lwis_client);
 	if (ret) {
 		dev_err(lwis_dev->dev,
-			"Failed to wait for in-process transaction to complete\n");
+			"Failed to flush pending transactions\n");
 	}
 
 	mutex_lock(&lwis_dev->client_lock);
@@ -708,11 +708,11 @@ static int ioctl_device_reset(struct lwis_client *lwis_client,
 			"Failed to wait for in-process periodic io to complete\n");
 	}
 
-	/* Wait for all in-process transactions to complete. */
+	/* Flush all pending transactions */
 	ret = lwis_transaction_client_flush(lwis_client);
 	if (ret) {
 		dev_err(lwis_dev->dev,
-			"Failed to wait for in-process transaction to complete\n");
+			"Failed to flush all pending transactions\n");
 	}
 
 	/* Perform reset routine defined by the io_entries */
