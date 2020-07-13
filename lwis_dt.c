@@ -26,6 +26,9 @@
 #include "lwis_ioreg.h"
 #include "lwis_regulator.h"
 
+/* Uncomment this to help debug device tree parsing. */
+// #define LWIS_DT_DEBUG
+
 static int parse_gpios(struct lwis_device *lwis_dev, char *name,
 		       bool *is_present)
 {
@@ -108,7 +111,9 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 		}
 	}
 
+#ifdef LWIS_DT_DEBUG
 	lwis_regulator_print(lwis_dev->regulators);
+#endif
 
 	return 0;
 
@@ -166,9 +171,10 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	lwis_dev->clock_family =
 		(ret == 0) ? clock_family : CLOCK_FAMILY_INVALID;
 
+#ifdef LWIS_DT_DEBUG
 	pr_info("%s: clock family %d", lwis_dev->name, lwis_dev->clock_family);
-
 	lwis_clock_print(lwis_dev->clocks);
+#endif
 
 	return 0;
 
@@ -441,7 +447,9 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		i++;
 	}
 
+#ifdef LWIS_DT_DEBUG
 	lwis_interrupt_print(lwis_dev->irqs);
+#endif
 
 	return 0;
 error_event_infos:
@@ -488,7 +496,9 @@ static int parse_phys(struct lwis_device *lwis_dev)
 		}
 	}
 
+#ifdef LWIS_DT_DEBUG
 	lwis_phy_print(lwis_dev->phys);
+#endif
 
 	return 0;
 
@@ -514,13 +524,17 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 
 	ret = of_property_read_u32(dev_node, "reg-addr-bitwidth",
 				   &addr_bitwidth);
+#ifdef LWIS_DT_DEBUG
 	pr_info("Addr bitwidth set to%s: %d\n", ret ? " default" : "",
 		addr_bitwidth);
+#endif
 
 	ret = of_property_read_u32(dev_node, "reg-value-bitwidth",
 				   &value_bitwidth);
+#ifdef LWIS_DT_DEBUG
 	pr_info("Value bitwidth set to%s: %d\n", ret ? " default" : "",
 		value_bitwidth);
+#endif
 
 	lwis_dev->native_addr_bitwidth = addr_bitwidth;
 	lwis_dev->native_value_bitwidth = value_bitwidth;
