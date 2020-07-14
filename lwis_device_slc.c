@@ -46,6 +46,15 @@ static struct lwis_event_subscribe_operations slc_subscribe_ops = {
 	.release = NULL,
 };
 
+static void lwis_slc_pt_resize_cb(void *data, int id, size_t size_allocated)
+{
+	struct lwis_device *lwis_dev = (struct lwis_device *)data;
+
+	dev_info(lwis_dev->dev,
+		 "lwis_slc received slc resize callback, id %d, size %zu", id,
+		 size_allocated);
+}
+
 static int lwis_slc_enable(struct lwis_device *lwis_dev)
 {
 #ifdef CONFIG_OF
@@ -61,7 +70,8 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 	}
 
 	/* Initialize SLC partitions and get a handle */
-	slc_dev->pt_hnd = pt_client_register(node, NULL, NULL);
+	slc_dev->pt_hnd =
+		pt_client_register(node, lwis_dev, lwis_slc_pt_resize_cb);
 	for (i = 0; i < NUM_PT; i++) {
 		slc_dev->pt[i].id = i;
 		slc_dev->pt[i].size_kb = pt_size_kb[i];
