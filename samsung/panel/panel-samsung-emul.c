@@ -79,21 +79,41 @@ static const struct exynos_display_mode emul_exynos_mode = {
 	},
 };
 
-static const struct drm_display_mode emul_mode = {
-	.hdisplay = 1080,
-	.hsync_start = 1080 + 32,
-	.hsync_end = 1080 + 32 + 12,
-	.htotal = 1080 + 32 + 12 + 16,
-	.vdisplay = 2340,
-	.vsync_start = 2340 + 12,
-	.vsync_end = 2340 + 12 + 4,
-	.vtotal = 2340 + 12 + 4 + 16,
-	.vrefresh = 60,
-	.flags = 0,
-	.width_mm = 80,
-	.height_mm = 120,
-	.private = (int *) &emul_exynos_mode,
-	.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+static const struct drm_display_mode emul_modes[] = {
+	{
+		/* 1440x3120 @ 60 */
+		.hdisplay = 1440,
+		.hsync_start = 1440 + 32,
+		.hsync_end = 1440 + 32 + 12,
+		.htotal = 1440 + 32 + 12 + 16,
+		.vdisplay = 3120,
+		.vsync_start = 3120 + 12,
+		.vsync_end = 3120 + 12 + 4,
+		.vtotal = 3120 + 12 + 4 + 16,
+		.vrefresh = 60,
+		.flags = 0,
+		.width_mm = 80,
+		.height_mm = 120,
+		.private = (int *)&emul_exynos_mode,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
+	{
+		/* 1440x3120 @ 120 */
+		.hdisplay = 1440,
+		.hsync_start = 1440 + 32,
+		.hsync_end = 1440 + 32 + 12,
+		.htotal = 1440 + 32 + 12 + 16,
+		.vdisplay = 3120,
+		.vsync_start = 3120 + 12,
+		.vsync_end = 3120 + 12 + 4,
+		.vtotal = 3120 + 12 + 4 + 16,
+		.vrefresh = 120,
+		.flags = 0,
+		.width_mm = 80,
+		.height_mm = 120,
+		.private = (int *)&emul_exynos_mode,
+		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+	},
 };
 
 static const struct drm_panel_funcs emul_drm_funcs = {
@@ -106,8 +126,8 @@ static const struct drm_panel_funcs emul_drm_funcs = {
 
 const struct exynos_panel_desc samsung_emul = {
 	.data_lane_cnt = 4,
-	.modes = &emul_mode,
-	.num_modes = 1,
+	.modes = emul_modes,
+	.num_modes = ARRAY_SIZE(emul_modes),
 	.panel_func = &emul_drm_funcs,
 };
 
