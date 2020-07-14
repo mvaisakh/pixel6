@@ -343,6 +343,11 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 				"Error enabling GPIO pins (%d)\n", ret);
 			goto error_gpio_set;
 		}
+
+		if (lwis_dev->enable_gpios_settle_time > 0) {
+			usleep_range(lwis_dev->enable_gpios_settle_time,
+				     lwis_dev->enable_gpios_settle_time);
+		}
 	}
 
 	if (lwis_dev->regulators) {

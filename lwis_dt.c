@@ -63,6 +63,20 @@ static int parse_gpios(struct lwis_device *lwis_dev, char *name,
 	return 0;
 }
 
+static int parse_settle_time(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+	struct device *dev;
+
+	dev = &lwis_dev->plat_dev->dev;
+	dev_node = dev->of_node;
+	lwis_dev->enable_gpios_settle_time = 0;
+
+	of_property_read_u32(dev_node, "enable-gpios-settle-time",
+			     &lwis_dev->enable_gpios_settle_time);
+	return 0;
+}
+
 static int parse_regulators(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -582,6 +596,12 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	ret = parse_gpios(lwis_dev, "reset", &lwis_dev->reset_gpios_present);
 	if (ret) {
 		pr_err("Error parsing reset-gpios\n");
+		return ret;
+	}
+
+	ret = parse_settle_time(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing settle-time\n");
 		return ret;
 	}
 
