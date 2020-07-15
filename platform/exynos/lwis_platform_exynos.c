@@ -93,7 +93,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < CLOCK_FAMILY_MAX) {
-		lwis_platform_update_qos(lwis_dev, 680000);
+		lwis_platform_update_qos(lwis_dev, 67000);
 	}
 
 	return 0;
