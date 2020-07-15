@@ -249,7 +249,7 @@ typedef enum {
 typedef struct {
     uint16 tag;
     uint16 len; /* length of value */
-    uint8 value[0];
+    uint8 value[DOT11_MAX_SSID_LEN];
 } tlv_log;
 
 typedef struct per_packet_status_entry {
