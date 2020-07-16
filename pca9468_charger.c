@@ -515,7 +515,7 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @debug_address: debug register address
  */
 struct pca9468_charger {
-	struct wakeup_source	monitor_wake_lock;
+	struct wakeup_source	*monitor_wake_lock;
 	struct mutex		lock;
 	struct device		*dev;
 	struct regmap		*regmap;
@@ -1626,7 +1626,7 @@ static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 
 done:
 error:
-	__pm_relax(&pca9468->monitor_wake_lock);
+	__pm_relax(pca9468->monitor_wake_lock);
 	pr_debug("%s: END, ret=%d\n", __func__, ret);
 	return ret;
 }
@@ -3870,7 +3870,7 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 		__func__, pca9468->ta_type);
 
 	/* wake lock */
-	__pm_stay_awake(&pca9468->monitor_wake_lock);
+	__pm_stay_awake(pca9468->monitor_wake_lock);
 
 	/* Preset charging configuration and TA condition */
 	ret = pca9468_preset_dcmode(pca9468);
@@ -5162,8 +5162,12 @@ static int pca9468_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	wakeup_source_init(&pca9468_chg->monitor_wake_lock,
-			   "pca9468-charger-monitor");
+	pca9468_chg->monitor_wake_lock =
+		wakeup_source_register(NULL, "pca9468-charger-monitor");
+	if (!pca9468_chg->monitor_wake_lock) {
+		pr_err("Failed to register wakeup source\n");
+		return -ENODEV;
+	}
 
 	/* initialize work */
 	INIT_DELAYED_WORK(&pca9468_chg->timer_work, pca9468_timer_work);
@@ -5241,7 +5245,7 @@ static int pca9468_probe(struct i2c_client *client,
 error:
 	destroy_workqueue(pca9468_chg->dc_wq);
 	mutex_destroy(&pca9468_chg->lock);
-	wakeup_source_trash(&pca9468_chg->monitor_wake_lock);
+	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
 	return ret;
 }
 
@@ -5260,7 +5264,7 @@ static int pca9468_remove(struct i2c_client *client)
 	/* Delete the work queue */
 	destroy_workqueue(pca9468_chg->dc_wq);
 
-	wakeup_source_trash(&pca9468_chg->monitor_wake_lock);
+	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
 #ifdef CONFIG_DC_STEP_CHARGING
 	pca9468_step_chg_deinit();
 #endif

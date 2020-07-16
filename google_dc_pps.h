@@ -45,7 +45,7 @@ enum pd_nr_pdo {
 };
 
 struct pd_pps_data {
-	struct wakeup_source pps_ws;
+	struct wakeup_source *pps_ws;
 	bool stay_awake;
 
 	int nr_src_cap;

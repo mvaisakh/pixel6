@@ -198,10 +198,10 @@ struct batt_drv {
 	struct delayed_work init_work;
 	struct delayed_work batt_work;
 
-	struct wakeup_source msc_ws;
-	struct wakeup_source batt_ws;
-	struct wakeup_source taper_ws;
-	struct wakeup_source poll_ws;
+	struct wakeup_source *msc_ws;
+	struct wakeup_source *batt_ws;
+	struct wakeup_source *taper_ws;
+	struct wakeup_source *poll_ws;
 	bool hold_taper_ws;
 
 	/* TODO: b/111407333, will likely need to adjust SOC% on wakeup */
@@ -1428,7 +1428,7 @@ static inline void batt_reset_chg_drv_state(struct batt_drv *batt_drv)
 	/* the wake assertion will be released on disconnect and on SW JEITA */
 	if (batt_drv->hold_taper_ws) {
 		batt_drv->hold_taper_ws = false;
-		__pm_relax(&batt_drv->taper_ws);
+		__pm_relax(batt_drv->taper_ws);
 	}
 
 	/* polling */
@@ -1796,7 +1796,7 @@ static int msc_logic_internal(struct batt_drv *batt_drv)
 					     &update_interval);
 
 		if (msc_pm_hold(msc_state) == 1 && !batt_drv->hold_taper_ws) {
-			__pm_stay_awake(&batt_drv->taper_ws);
+			__pm_stay_awake(batt_drv->taper_ws);
 			batt_drv->hold_taper_ws = true;
 		}
 
@@ -1853,7 +1853,7 @@ static int msc_logic_internal(struct batt_drv *batt_drv)
 
 	if (msc_pm_hold(msc_state) == 0 && batt_drv->hold_taper_ws) {
 		batt_drv->hold_taper_ws = false;
-		__pm_relax(&batt_drv->taper_ws);
+		__pm_relax(batt_drv->taper_ws);
 	}
 
 	/* need a new fv_uv only on a new voltage tier.  */
@@ -1912,7 +1912,7 @@ static int msc_logic(struct batt_drv *batt_drv)
 	if (!batt_drv->chg_profile.cccm_limits)
 		return -EINVAL;
 
-	__pm_stay_awake(&batt_drv->msc_ws);
+	__pm_stay_awake(batt_drv->msc_ws);
 
 	pr_info("MSC_DIN chg_state=%lx f=0x%x chg_s=%s chg_t=%s vchg=%d icl=%d\n",
 		(unsigned long)chg_state->v,
@@ -1966,7 +1966,7 @@ static int msc_logic(struct batt_drv *batt_drv)
 			pr_err("Cannot set the BATT_CE_CTRL.\n");
 
 		/* released in battery_work() */
-		__pm_stay_awake(&batt_drv->poll_ws);
+		__pm_stay_awake(batt_drv->poll_ws);
 		batt_drv->batt_fast_update_cnt = BATT_WORK_FAST_RETRY_CNT;
 		mod_delayed_work(system_wq, &batt_drv->batt_work,
 			BATT_WORK_FAST_RETRY_MS);
@@ -2080,7 +2080,7 @@ msc_logic_exit:
 			power_supply_changed(batt_drv->psy);
 	}
 
-	__pm_relax(&batt_drv->msc_ws);
+	__pm_relax(batt_drv->msc_ws);
 	return err;
 }
 
@@ -3049,7 +3049,7 @@ static void google_battery_work(struct work_struct *work)
 
 	pr_debug("battery work item\n");
 
-	__pm_stay_awake(&batt_drv->batt_ws);
+	__pm_stay_awake(batt_drv->batt_ws);
 
 	fg_status = GPSY_GET_INT_PROP(fg_psy, POWER_SUPPLY_PROP_STATUS, &ret);
 	if (ret < 0)
@@ -3141,7 +3141,7 @@ static void google_battery_work(struct work_struct *work)
 
 	/* acquired in msc_logic */
 	if (batt_drv->batt_fast_update_cnt == 0)
-		__pm_relax(&batt_drv->poll_ws);
+		__pm_relax(batt_drv->poll_ws);
 
 	if (batt_drv->res_state.estimate_requested)
 		batt_res_work(batt_drv);
@@ -3207,7 +3207,7 @@ reschedule:
 				      msecs_to_jiffies(update_interval));
 	}
 
-	__pm_relax(&batt_drv->batt_ws);
+	__pm_relax(batt_drv->batt_ws);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -3691,10 +3691,13 @@ static void google_battery_init_work(struct work_struct *work)
 		pr_err("cannot register power supply notifer, ret=%d\n",
 			ret);
 
-	wakeup_source_init(&batt_drv->batt_ws, gbatt_psy_desc.name);
-	wakeup_source_init(&batt_drv->taper_ws, "Taper");
-	wakeup_source_init(&batt_drv->poll_ws, "Poll");
-	wakeup_source_init(&batt_drv->msc_ws, "MSC");
+	batt_drv->batt_ws = wakeup_source_register(NULL, gbatt_psy_desc.name);
+	batt_drv->taper_ws = wakeup_source_register(NULL, "Taper");
+	batt_drv->poll_ws = wakeup_source_register(NULL, "Poll");
+	batt_drv->msc_ws = wakeup_source_register(NULL, "MSC");
+	if (!batt_drv->batt_ws || !batt_drv->taper_ws ||
+			!batt_drv->poll_ws || !batt_drv->msc_ws)
+		pr_err("failed to register wakeup sources\n");
 
 	mutex_lock(&batt_drv->cc_data.lock);
 	ret = batt_cycle_count_load(&batt_drv->cc_data);
@@ -3933,10 +3936,10 @@ static int google_battery_remove(struct platform_device *pdev)
 
 	gbms_free_chg_profile(&batt_drv->chg_profile);
 
-	wakeup_source_trash(&batt_drv->msc_ws);
-	wakeup_source_trash(&batt_drv->batt_ws);
-	wakeup_source_trash(&batt_drv->taper_ws);
-	wakeup_source_trash(&batt_drv->poll_ws);
+	wakeup_source_unregister(batt_drv->msc_ws);
+	wakeup_source_unregister(batt_drv->batt_ws);
+	wakeup_source_unregister(batt_drv->taper_ws);
+	wakeup_source_unregister(batt_drv->poll_ws);
 
 	if (batt_drv->tz_dev)
 		thermal_zone_of_sensor_unregister(batt_drv->device,

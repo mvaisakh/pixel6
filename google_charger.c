@@ -137,7 +137,7 @@ struct chg_drv {
 	struct delayed_work init_work;
 	struct delayed_work chg_work;
 	struct work_struct chg_psy_work;
-	struct wakeup_source chg_ws;
+	struct wakeup_source *chg_ws;
 	struct alarm chg_wakeup_alarm;
 	u32 tcpm_phandle;
 
@@ -211,7 +211,7 @@ google_chg_alarm_handler(struct alarm *alarm, ktime_t time)
 	struct chg_drv *chg_drv =
 	    container_of(alarm, struct chg_drv, chg_wakeup_alarm);
 
-	__pm_stay_awake(&chg_drv->chg_ws);
+	__pm_stay_awake(chg_drv->chg_ws);
 
 	schedule_delayed_work(&chg_drv->chg_work, 0);
 
@@ -879,7 +879,7 @@ static void chg_work(struct work_struct *work)
 	bool chg_done = false;
 	int success, rc = 0;
 
-	__pm_stay_awake(&chg_drv->chg_ws);
+	__pm_stay_awake(chg_drv->chg_ws);
 	pr_debug("battery charging work item\n");
 
 	if (!chg_drv->batt_present) {
@@ -1087,7 +1087,7 @@ exit_chg_work:
 
 exit_skip:
 	pr_debug("chg_work done\n");
-	__pm_relax(&chg_drv->chg_ws);
+	__pm_relax(chg_drv->chg_ws);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1706,7 +1706,7 @@ static int msc_update_charger_cb(struct votable *votable,
 	int update_interval, rc = -EINVAL, fv_uv = -1, cc_max = -1;
 	struct chg_drv *chg_drv = (struct chg_drv *)data;
 
-	__pm_stay_awake(&chg_drv->chg_ws);
+	__pm_stay_awake(chg_drv->chg_ws);
 
 	update_interval =
 		get_effective_result_locked(chg_drv->msc_interval_votable);
@@ -1759,7 +1759,7 @@ msc_reschedule:
 		fv_uv, cc_max, update_interval, rc);
 
 msc_done:
-	__pm_relax(&chg_drv->chg_ws);
+	__pm_relax(chg_drv->chg_ws);
 	return 0;
 }
 
@@ -2459,7 +2459,11 @@ static int google_charger_probe(struct platform_device *pdev)
 		   google_chg_alarm_handler);
 
 	/* votables and chg_work need a wakeup source */
-	wakeup_source_init(&chg_drv->chg_ws, "google-charger");
+	chg_drv->chg_ws = wakeup_source_register(NULL, "google-charger");
+	if (!chg_drv->chg_ws) {
+		pr_err("Failed to register wakeup source\n");
+		return -ENODEV;
+	}
 
 	/* create the votables before talking to google_battery */
 	ret = chg_create_votables(chg_drv);
@@ -2512,8 +2516,8 @@ static int google_charger_remove(struct platform_device *pdev)
 		if (chg_drv->tcpm_psy)
 			power_supply_put(chg_drv->tcpm_psy);
 
-		wakeup_source_trash(&chg_drv->chg_ws);
-		wakeup_source_trash(&chg_drv->pps_data.pps_ws);
+		wakeup_source_unregister(chg_drv->chg_ws);
+		wakeup_source_unregister(chg_drv->pps_data.pps_ws);
 
 		alarm_try_to_cancel(&chg_drv->chg_wakeup_alarm);
 

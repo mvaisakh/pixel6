@@ -86,7 +86,7 @@ void pps_init_state(struct pd_pps_data *pps_data)
 
 	/* not reference counted */
 	if (pps_data->stay_awake)
-		__pm_relax(&pps_data->pps_ws);
+		__pm_relax(pps_data->pps_ws);
 
 }
 EXPORT_SYMBOL_GPL(pps_init_state);
@@ -513,8 +513,13 @@ static int pps_init_node(struct pd_pps_data *pps_data,
 	 * Remove this wakeup source once we fix the Qualcomm PD phy issue.
 	 */
 	pps_data->stay_awake = of_property_read_bool(node, "google,pps-awake");
-	if (pps_data->stay_awake)
-		wakeup_source_init(&pps_data->pps_ws, "google-pps");
+	if (pps_data->stay_awake) {
+		pps_data->pps_ws = wakeup_source_register(NULL, "google-pps");
+		if (!pps_data->pps_ws) {
+			pr_err("Failed to register wakeup source\n");
+			return -ENODEV;
+		}
+	}
 
 	pps_data->log = debugfs_logbuffer_register("pps");
 	if (IS_ERR(pps_data->log))
@@ -570,7 +575,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 			}
 
 			if (pps->stay_awake)
-				__pm_stay_awake(&pps->pps_ws);
+				__pm_stay_awake(pps->pps_ws);
 
 			pps->last_update = get_boot_sec();
 			rc = pps_get_src_cap(pps, tcpm_psy);
@@ -631,7 +636,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 		case -EOPNOTSUPP:
 			pps->stage = PPS_NOTSUPP;
 			if (pps->stay_awake)
-				__pm_relax(&pps->pps_ws);
+				__pm_relax(pps->pps_ws);
 
 			pps_log(pps, "work: PPS not supported for this TA");
 			break;
@@ -701,7 +706,7 @@ static int pps_set_prop(struct pd_pps_data *pps,
 		pps->pd_online = TCPM_PSY_FIXED_ONLINE;
 		pps->keep_alive_cnt = 0;
 		if (pps->stay_awake)
-			__pm_relax(&pps->pps_ws);
+			__pm_relax(pps->pps_ws);
 	}
 
 	return ret;
