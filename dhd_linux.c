@@ -434,6 +434,9 @@ char clm_path[MOD_PARAM_PATHLEN];
 char ucode_path[MOD_PARAM_PATHLEN];
 #endif /* DHD_UCODE_DOWNLOAD */
 
+char chip_info[MOD_PARAM_INFOLEN];
+module_param_string(chip_info, chip_info, MOD_PARAM_INFOLEN, 0444);
+
 module_param_string(clm_path, clm_path, MOD_PARAM_PATHLEN, 0660);
 
 /* backup buffer for firmware and nvram path */
@@ -10701,6 +10704,7 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 		fw_version[FW_VER_STR_LEN-1] = '\0';
 #if defined(BCMSDIO) || defined(BCMPCIE)
 		dhd_set_version_info(dhd, buf);
+		dhd_set_chip_info(dhd);
 #endif /* BCMSDIO || BCMPCIE */
 	}
 
@@ -11551,6 +11555,7 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 		fw_version[FW_VER_STR_LEN-1] = '\0';
 #if defined(BCMSDIO) || defined(BCMPCIE)
 		dhd_set_version_info(dhd, buf);
+		dhd_set_chip_info(dhd);
 #endif /* BCMSDIO || BCMPCIE */
 	}
 
@@ -18121,6 +18126,21 @@ void dhd_set_version_info(dhd_pub_t *dhdp, char *fw)
 	i = snprintf(&info_string[i], sizeof(info_string) - i,
 		"\n  Chip: %x Rev %x Pkg %x", dhd_bus_chip_id(dhdp),
 		dhd_bus_chiprev_id(dhdp), dhd_bus_chippkg_id(dhdp));
+}
+
+void dhd_set_chip_info(dhd_pub_t *dhdp)
+{
+	if (!dhdp)
+		return;
+
+	memset(chip_info, 0, sizeof(chip_info));
+
+	if (dhd_bus_chip_id(dhdp) == BCM4389_CHIP_ID) {
+		strncpy(chip_info, "4389", 4);
+	} else if (dhd_bus_chip_id(dhdp) == BCM43752_CHIP_ID ||
+		dhd_bus_chip_id(dhdp) == BCM4362_CHIP_ID) {
+		strncpy(chip_info, "43752", 5);
+	}
 }
 #endif /* BCMSDIO || BCMPCIE */
 int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd)
