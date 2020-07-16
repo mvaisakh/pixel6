@@ -68,6 +68,7 @@ int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
 	for (i = 0; i < list->count; ++i) {
 		if (list->clk[i].clk == NULL) {
 			index = i;
+			break;
 		} else if (!strcmp(list->clk[i].name, name)) {
 			pr_info("Clock %s already allocated\n", name);
 			return i;
