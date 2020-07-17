@@ -25,12 +25,24 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 /* unmap the dma-buf backed buffer from a device group */
 int edgetpu_unmap_dmabuf(struct edgetpu_device_group *group, u32 die_index,
 			 tpu_addr_t tpu_addr);
+/*
+ * Maps a list of dma-buf FDs to a device group.
+ *
+ * @arg->device_address will be set as the mapped TPU VA on success.
+ *
+ * Returns zero on success or a negative errno on error.
+ */
+int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
+			    struct edgetpu_map_bulk_dmabuf_ioctl *arg);
+/* reverts edgetpu_map_bulk_dmabuf */
+int edgetpu_unmap_bulk_dmabuf(struct edgetpu_device_group *group,
+			      tpu_addr_t tpu_addr);
 /* Create a DMA sync fence via ioctl */
-int edgetpu_sync_fence_create(
-	struct edgetpu_create_sync_fence_data *datap);
+int edgetpu_sync_fence_create(struct edgetpu_create_sync_fence_data *datap);
 /* Signal a DMA sync fence, optionally specifying error status */
-int edgetpu_sync_fence_signal(
-	struct edgetpu_signal_sync_fence_data *datap);
+int edgetpu_sync_fence_signal(struct edgetpu_signal_sync_fence_data *datap);
+/* Return DMA sync fence status */
+int edgetpu_sync_fence_status(struct edgetpu_sync_fence_status *datap);
 /* Dump sync fence info from debugfs */
 int edgetpu_sync_fence_debugfs_show(struct seq_file *s, void *unused);
 

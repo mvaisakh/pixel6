@@ -302,7 +302,6 @@ static int etdirect_map_dmabuf(struct edgetpu_device_group *group,
 
 	trace_edgetpu_map_dmabuf_start(&ibuf);
 
-	/* dmabuf is exported by other drivers */
 	ret = edgetpu_map_dmabuf(group, &ibuf);
 	if (ret)
 		return ret;
@@ -354,6 +353,54 @@ static int edgetpu_ioctl_sync_fence_signal(
 	return edgetpu_sync_fence_signal(&data);
 }
 
+static int
+edgetpu_ioctl_map_bulk_dmabuf(struct edgetpu_device_group *group,
+			      struct edgetpu_map_bulk_dmabuf_ioctl __user *argp)
+{
+	struct edgetpu_map_bulk_dmabuf_ioctl ibuf;
+	int ret;
+
+	if (copy_from_user(&ibuf, argp, sizeof(ibuf)))
+		return -EFAULT;
+
+	ret = edgetpu_map_bulk_dmabuf(group, &ibuf);
+	if (ret)
+		return ret;
+
+	if (copy_to_user(argp, &ibuf, sizeof(ibuf))) {
+		edgetpu_unmap_bulk_dmabuf(group, ibuf.device_address);
+		return -EFAULT;
+	}
+	return 0;
+}
+
+static int edgetpu_ioctl_unmap_bulk_dmabuf(
+	struct edgetpu_device_group *group,
+	struct edgetpu_map_bulk_dmabuf_ioctl __user *argp)
+{
+	struct edgetpu_map_bulk_dmabuf_ioctl ibuf;
+
+	if (copy_from_user(&ibuf, argp, sizeof(ibuf)))
+		return -EFAULT;
+	return edgetpu_unmap_bulk_dmabuf(group, ibuf.device_address);
+}
+
+static int edgetpu_ioctl_sync_fence_status(
+	struct edgetpu_sync_fence_status __user *datap)
+{
+	struct edgetpu_sync_fence_status data;
+	int ret;
+
+	if (copy_from_user(&data, (void __user *)datap, sizeof(data)))
+		return -EFAULT;
+	ret = edgetpu_sync_fence_status(&data);
+	if (ret)
+		return ret;
+	if (copy_to_user((void __user *)datap, &data, sizeof(data)))
+		ret = -EFAULT;
+	return ret;
+}
+
 static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 {
 	return file->f_mode & FMODE_WRITE;
@@ -365,7 +412,6 @@ static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 {
 	/* @client must not belong to any group */
-	/* Except the default client will transfer old group to new */
 	if (cmd == EDGETPU_CREATE_GROUP || cmd == EDGETPU_JOIN_GROUP)
 		return !client->group;
 
@@ -374,7 +420,8 @@ static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 	    cmd == EDGETPU_UNSET_PERDIE_EVENT ||
 	    cmd == EDGETPU_ALLOCATE_DEVICE_BUFFER ||
 	    cmd == EDGETPU_CREATE_SYNC_FENCE ||
-	    cmd == EDGETPU_SIGNAL_SYNC_FENCE)
+	    cmd == EDGETPU_SIGNAL_SYNC_FENCE ||
+	    cmd == EDGETPU_SYNC_FENCE_STATUS)
 		return true;
 
 	if (!client->group)
@@ -454,6 +501,15 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_SIGNAL_SYNC_FENCE:
 		ret = edgetpu_ioctl_sync_fence_signal(argp);
+		break;
+	case EDGETPU_MAP_BULK_DMABUF:
+		ret = edgetpu_ioctl_map_bulk_dmabuf(client->group, argp);
+		break;
+	case EDGETPU_UNMAP_BULK_DMABUF:
+		ret = edgetpu_ioctl_unmap_bulk_dmabuf(client->group, argp);
+		break;
+	case EDGETPU_SYNC_FENCE_STATUS:
+		ret = edgetpu_ioctl_sync_fence_status(argp);
 		break;
 	default:
 		return -ENOTTY; /* unknown command */
@@ -786,3 +842,4 @@ struct dentry *edgetpu_dev_debugfs_dir(void)
 MODULE_DESCRIPTION("Google EdgeTPU file operations");
 MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPL v2");
+MODULE_INFO(gitinfo, GIT_REPO_TAG);

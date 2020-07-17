@@ -44,8 +44,9 @@ struct edgetpu_dma_descriptor {
 };
 
 struct edgetpu_command_element {
-	u64 seq;	/* set by edgetpu_kci_push_cmd() */
-	u64 code;
+	u64 seq;	 /* set by edgetpu_kci_push_cmd() */
+	u16 code;
+	u16 reserved[3]; /* explicit padding, does not affect alignment */
 	struct edgetpu_dma_descriptor dma;
 };
 

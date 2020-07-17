@@ -25,6 +25,7 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-mapping.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-usr.h"
 #include "edgetpu.h"
 
 #ifdef EDGETPU_HAS_P2P_MAILBOX
@@ -319,6 +320,7 @@ static bool edgetpu_clients_groupable(const struct edgetpu_client *client1,
 {
 	struct edgetpu_dev *etdev1 = client1->etdev, *etdev2 = client2->etdev;
 
+	/* TODO(b/159394046): perform more checks */
 	return etdev1->mcp_id == etdev2->mcp_id &&
 	       etdev1->mcp_die_index != etdev2->mcp_die_index;
 }
@@ -550,6 +552,7 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 	if (ret)
 		goto err_release_p2p;
 
+	edgetpu_usr_init_group(group);
 	ret = edgetpu_device_group_kci_finalized(group);
 	if (ret)
 		goto err_remove_remote_dram;
@@ -665,7 +668,7 @@ static void edgetpu_unmap_node(struct edgetpu_mapping *map)
 		edgetpu_mmu_unmap(etdev, map, context_id);
 	}
 
-	for_each_sg_page(map->sgt.sgl, &sg_iter, map->sgt.nents, 0) {
+	for_each_sg_page(map->sgt.sgl, &sg_iter, map->sgt.orig_nents, 0) {
 		struct page *page = sg_page_iter_page(&sg_iter);
 
 		if (map->dir == DMA_FROM_DEVICE ||

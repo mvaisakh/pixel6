@@ -179,9 +179,9 @@ static uint context_id_to_pasid(enum edgetpu_context_id context_id)
 }
 
 static int get_iommu_map_params(struct edgetpu_dev *etdev,
-				      struct edgetpu_mapping *map,
-				      enum edgetpu_context_id context_id,
-				      struct edgetpu_iommu_map_params *params)
+				struct edgetpu_mapping *map,
+				enum edgetpu_context_id context_id,
+				struct edgetpu_iommu_map_params *params)
 {
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	size_t size = 0;
@@ -208,8 +208,8 @@ static int get_iommu_map_params(struct edgetpu_dev *etdev,
 		return -ENODEV;
 	}
 
-	for_each_sg (map->sgt.sgl, sg, map->sgt.nents, i)
-		size += sg_dma_len(sg);
+	for_each_sg(map->sgt.sgl, sg, map->sgt.orig_nents, i)
+		size += sg->length;
 
 	params->prot = prot;
 	params->size = size;
@@ -297,7 +297,7 @@ int edgetpu_mmu_map_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
 	int i;
 	int ret;
 
-	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
 		ret = edgetpu_mmu_add_translation(etdev, iova, sg_phys(sg),
 						  sg->length, prot, context_id);
 		if (ret)
@@ -322,7 +322,7 @@ void edgetpu_mmu_unmap_iova_sgt_attrs(struct edgetpu_dev *etdev,
 	struct scatterlist *sg;
 	int i;
 
-	for_each_sg(sgt->sgl, sg, sgt->nents, i)
+	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i)
 		size += sg->length;
 	edgetpu_mmu_remove_translation(etdev, iova, size, context_id);
 }

@@ -8,23 +8,21 @@
 #define __EDGETPU_USR_H__
 
 #include "edgetpu-config.h"
-#include "edgetpu-internal.h"
-#include "edgetpu-mcp.h"
+#include "edgetpu-device-group.h"
 
 #ifdef EDGETPU_HAS_VN
 
 /*
- * Trains the USR links of all devices in @mcp.
+ * Trains the USR links of devices in @group.
  *
- * Caller holds @mcp->lock.
+ * Caller ensures edgetpu_device_group_nth_etdev available to @group and holds
+ * @group->lock.
  */
-void edgetpu_usr_init_mcp(struct edgetpu_mcp *mcp);
-
-void edgetpu_usr_init_single(struct edgetpu_dev *etdev);
+void edgetpu_usr_init_group(struct edgetpu_device_group *group);
 
 #else /* !EDGETPU_HAS_VN */
 
-static inline void edgetpu_usr_init_mcp(struct edgetpu_mcp *mcp)
+static inline void edgetpu_usr_init_group(struct edgetpu_device_group *group)
 {
 }
 

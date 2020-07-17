@@ -256,6 +256,7 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 
 	etdev_dbg(et_fw->etdev, "run fw %s flags=0x%x", name, flags);
 	if (handlers && handlers->prepare_run) {
+		/* Note this may recursively call us to run BL1 */
 		ret = handlers->prepare_run(et_fw, &new_fw_desc.buf);
 		if (ret)
 			goto out_unload_new_fw;

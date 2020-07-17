@@ -279,7 +279,7 @@ struct edgetpu_map_dmabuf_ioctl {
 #define EDGETPU_MAP_DMABUF \
 	_IOWR(EDGETPU_IOCTL_BASE, 17, struct edgetpu_map_dmabuf_ioctl)
 /*
- * Un-map address previously mapped by EDGETPU_MAP_DEVICE_BUFFER.
+ * Un-map address previously mapped by EDGETPU_MAP_DMABUF.
  *
  * Only fields @die_index and @device_address in the third argument will be
  * used, other fields such as @size and @offset will be fetched from the
@@ -308,6 +308,11 @@ struct edgetpu_map_dmabuf_ioctl {
  * @seqno:		the seqno to initialize the fence with
  * @timeline_name:	the name of the timeline the fence belongs to
  * @fence:		returns the fd of the new sync_file with the new fence
+ *
+ * Timeline names can be up to 128 characters (including trailing NUL byte)
+ * for edgetpu debugfs and kernel debug logs.  These names are truncated to
+ * 32 characters in the data returned by the standard SYNC_IOC_FILE_INFO
+ * ioctl.
  */
 #define EDGETPU_SYNC_TIMELINE_NAME_LEN	128
 struct edgetpu_create_sync_fence_data {
@@ -332,8 +337,85 @@ struct edgetpu_signal_sync_fence_data {
 	__s32 error;
 };
 
-/* Signal a DMA sync fence with optional error status. */
+/*
+ * Signal a DMA sync fence with optional error status.
+ * Can pass a sync_file fd created by any driver.
+ * Signals the first DMA sync fence in the sync file.
+ */
 #define EDGETPU_SIGNAL_SYNC_FENCE \
 	_IOR(EDGETPU_IOCTL_BASE, 21, struct edgetpu_signal_sync_fence_data)
+
+#define EDGETPU_IGNORE_FD (-1)
+#define EDGETPU_MAX_NUM_DEVICES_IN_GROUP 36
+struct edgetpu_map_bulk_dmabuf_ioctl {
+	__u64 size; /* Size to be mapped in bytes. */
+	__u64 device_address; /* returned TPU VA */
+	/*
+	 * Same format as edgetpu_map_dmabuf_ioctl.flags, except:
+	 *   - [2:2] Mirroredness is ignored.
+	 */
+	edgetpu_map_flag_t flags;
+	/*
+	 * The list of file descriptors backed by dma-buf.
+	 *
+	 * The first FD will be mapped to the first device in the target group
+	 * (i.e. the master die); the second FD will be mapped to the second
+	 * device and so on.
+	 * Only the first N FDs will be used, where N is the number of devices
+	 * in the group.
+	 *
+	 * Use EDGETPU_IGNORE_FD if it's not required to map on specific
+	 * device(s). For example, if one passes {fd0, EDGETPU_IGNORE_FD, fd2}
+	 * to this field for mapping a group with 3 devices, only the first
+	 * device and the third device has the mapping on @device_address.
+	 */
+	__s32 dmabuf_fds[EDGETPU_MAX_NUM_DEVICES_IN_GROUP];
+};
+
+/*
+ * Map a list of dma-buf FDs to devices in the group.
+ *
+ * On success, @device_address is set and the syscall returns zero.
+ *
+ * EINVAL: If @size is zero.
+ * EINVAL: If the target device group is not finalized.
+ * EINVAL: If any file descriptor is not backed by dma-buf.
+ * EINVAL: If @size exceeds the size of any buffer.
+ * EINVAL: If all file descriptors are EDGETPU_IGNORE_FD.
+ */
+#define EDGETPU_MAP_BULK_DMABUF \
+	_IOWR(EDGETPU_IOCTL_BASE, 22, struct edgetpu_map_bulk_dmabuf_ioctl)
+/*
+ * Un-map address previously mapped by EDGETPU_MAP_BULK_DMABUF.
+ *
+ * Only field @device_address in the third argument is used, other fields such
+ * as @size will be fetched from the kernel's internal records.
+ *
+ * EINVAL: If @device_address is not found.
+ * EINVAL: If the target device group is disbanded.
+ */
+#define EDGETPU_UNMAP_BULK_DMABUF \
+	_IOR(EDGETPU_IOCTL_BASE, 23, struct edgetpu_map_bulk_dmabuf_ioctl)
+
+/*
+ * struct edgetpu_sync_fence_status
+ * @fence:		fd of the sync_file for the fence
+ * @status:		returns:
+ *			   0 if active
+ *			   1 if signaled with no error
+ *			   negative errno value if signaled with error
+ */
+struct edgetpu_sync_fence_status {
+	__s32 fence;
+	__s32 status;
+};
+
+/*
+ * Retrieve DMA sync fence status.
+ * Can pass a sync_file fd created by any driver.
+ * Returns the status of the first DMA sync fence in the sync file.
+ */
+#define EDGETPU_SYNC_FENCE_STATUS \
+	_IOWR(EDGETPU_IOCTL_BASE, 24, struct edgetpu_sync_fence_status)
 
 #endif /* __EDGETPU_H__ */
