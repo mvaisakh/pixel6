@@ -124,6 +124,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	struct lwis_single_event_info *event;
 	struct list_head *p;
 	uint64_t source_value, reset_value = 0;
+	unsigned long flags;
 
 	/* Read the mask register */
 	ret = lwis_device_single_register_read(irq->lwis_dev, true,
@@ -135,6 +136,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 		goto error;
 	}
 
+	spin_lock_irqsave(&irq->lock, flags);
 	list_for_each (p, &irq->enabled_event_infos) {
 		event = list_entry(p, struct lwis_single_event_info,
 				   node_enabled);
@@ -148,6 +150,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 			reset_value |= (1ULL << event->int_reg_bit);
 		}
 	}
+	spin_unlock_irqrestore(&irq->lock, flags);
 
 	/* Write the mask register */
 	ret = lwis_device_single_register_write(irq->lwis_dev, true,

@@ -41,9 +41,11 @@ struct lwis_interrupt {
 	int irq_reg_access_size;
 	/* If mask_reg actually disable the interrupts. */
 	bool mask_toggled;
-	/* Hash table of event info*/
+	/* Hash table of event info */
+	/* GUARDED_BY(lock) */
 	DECLARE_HASHTABLE(event_infos, EVENT_INFO_HASH_BITS);
 	/* List of enabled events */
+	/* GUARDED_BY(lock) */
 	struct list_head enabled_event_infos;
 };
 
