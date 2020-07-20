@@ -1,9 +1,9 @@
 lwis-objs := lwis_device.o
+lwis-objs += lwis_device_dpm.o
 lwis-objs += lwis_device_i2c.o
 lwis-objs += lwis_device_ioreg.o
 lwis-objs += lwis_device_slc.o
 lwis-objs += lwis_device_top.o
-lwis-objs += lwis_dpm.o
 lwis-objs += lwis_clock.o
 lwis-objs += lwis_gpio.o
 lwis-objs += lwis_i2c.o

@@ -16,7 +16,7 @@
 #include <linux/pm_qos.h>
 #include <linux/slab.h>
 
-#include "lwis_dpm.h"
+#include "lwis_device_dpm.h"
 #include "lwis_platform.h"
 
 int lwis_platform_probe(struct lwis_device *lwis_dev)

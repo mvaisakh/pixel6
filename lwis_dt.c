@@ -20,7 +20,7 @@
 #include <linux/slab.h>
 
 #include "lwis_clock.h"
-#include "lwis_dpm.h"
+#include "lwis_device_dpm.h"
 #include "lwis_gpio.h"
 #include "lwis_i2c.h"
 #include "lwis_ioreg.h"

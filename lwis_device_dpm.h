@@ -8,8 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef LWIS_DPM_H_
-#define LWIS_DPM_H_
+#ifndef LWIS_DPM_DEVICE_H_
+#define LWIS_DPM_DEVICE_H_
 
 #include "lwis_commands.h"
 #include "lwis_device.h"
@@ -23,10 +23,21 @@ enum clock_family {
 };
 
 /*
+ *  struct lwis_dpm_device
+ *  The device majorly control/handle requests from dpm clients.
+ */
+struct lwis_dpm_device {
+	struct lwis_device base_dev;
+};
+
+/*
  *  lwis_dpm_update_clock: update clock setting to lwis device.
+ *  clk_settings needs to be freed on the end of this function.
  */
 int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			  struct lwis_clk_setting *clk_settings,
 			  size_t num_settings);
 
-#endif /* LWIS_DPM_H_ */
+int lwis_dpm_device_deinit(void);
+
+#endif /* LWIS_DPM_DEVICE_H_ */

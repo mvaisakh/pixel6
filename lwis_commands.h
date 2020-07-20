@@ -35,6 +35,7 @@ extern "C" {
  *        list the information of the other LWIS devices in the system.
  * i2c  : for controlling i2c devices
  * ioreg: for controlling mapped register I/O devices
+ * dpm  : for dynamic power manager requests update.
  */
 enum lwis_device_types {
 	DEVICE_TYPE_UNKNOWN = -1,
@@ -42,6 +43,7 @@ enum lwis_device_types {
 	DEVICE_TYPE_I2C,
 	DEVICE_TYPE_IOREG,
 	DEVICE_TYPE_SLC,
+	DEVICE_TYPE_DPM,
 	NUM_DEVICE_TYPES
 };
 
