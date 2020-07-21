@@ -3125,7 +3125,7 @@ static void p9382_rtx_work(struct work_struct *work)
 	ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
 			       &mode_reg);
 	if (ret == 0) {
-		if (charger->is_rtx_mode && !mode_reg) {
+		if (charger->is_rtx_mode && !(mode_reg & P9382A_MODE_TXMODE)) {
 			logbuffer_log(charger->rtx_log,
 				      "is_rtx_on: ben=%d, mode=%02x",
 				      charger->ben_state, mode_reg);

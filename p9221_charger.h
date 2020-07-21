@@ -57,7 +57,7 @@
 #define P9382A_DC_ICL_EPP_1000		1000000
 #define P9382A_NEG_POWER_10W		(10 / 0.5)
 #define P9382A_NEG_POWER_11W		(11 / 0.5)
-#define P9382_RTX_TIMEOUT_MS		(10 * 1000)
+#define P9382_RTX_TIMEOUT_MS		(2 * 1000)
 
 /*
  * P9221 common registers
