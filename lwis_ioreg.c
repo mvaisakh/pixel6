@@ -174,7 +174,7 @@ int lwis_ioreg_put_by_idx(struct lwis_ioreg_device *ioreg_dev, int index)
 
 int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name)
 {
-	int i, bidx;
+	int bidx;
 	struct lwis_ioreg_list *list;
 	struct device *dev;
 
@@ -190,7 +190,7 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name)
 		return -EINVAL;
 	}
 
-	devm_iounmap(dev, list->block[i].base);
+	devm_iounmap(dev, list->block[bidx].base);
 	return 0;
 }
 
