@@ -665,8 +665,6 @@ int lwis_transaction_cancel(struct lwis_client *client, int64_t id)
 	ret = cancel_waiting_transaction_locked(client, id);
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
-	if (ret)
-		ret = (id < client->transaction_counter) ? 0 : -ENOENT;
 	return ret;
 }
 
