@@ -135,9 +135,9 @@ dbg_ring_poll_worker(struct work_struct *work)
 
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
+		dhd_os_spin_unlock(ring->lock, flags);
 		DHD_ERROR(("%s failed to allocate read buf\n", __FUNCTION__));
-		sched = FALSE;
-		goto exit;
+		return;
 	}
 
 	rlen = dhd_dbg_pull_from_ring(dhdp, ringid, buf, buflen);
