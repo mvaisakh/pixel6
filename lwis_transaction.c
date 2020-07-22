@@ -528,6 +528,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 		}
 		list_add_tail(&transaction->event_list_node, &event_list->list);
 	}
+	info->submission_timestamp_ns = ktime_to_ns(ktime_get());
 	client->transaction_counter++;
 	return 0;
 }

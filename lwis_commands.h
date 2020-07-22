@@ -237,6 +237,7 @@ struct lwis_transaction_info {
 	// Only will be set if trigger_event_id is specified.
 	// Otherwise, the value is -1.
 	int64_t current_trigger_event_counter;
+	int64_t submission_timestamp_ns;
 };
 
 // Actual size of this struct depends on num_entries

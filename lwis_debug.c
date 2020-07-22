@@ -52,10 +52,11 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 					   event_list_node);
 			snprintf(
 				tmp_buf, sizeof(tmp_buf),
-				"ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n",
+				"ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx Submitted: %lld\n",
 				transaction->info.id,
 				transaction->info.trigger_event_id,
-				transaction->info.trigger_event_counter);
+				transaction->info.trigger_event_counter,
+				transaction->info.submission_timestamp_ns);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 			snprintf(tmp_buf, sizeof(tmp_buf),
 				 "  Emit Success: 0x%llx Error: %llx\n",
