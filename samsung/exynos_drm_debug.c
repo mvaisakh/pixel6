@@ -150,7 +150,6 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		log->data.crtc_info.mode_changed = crtc_state->mode_changed;
 		log->data.crtc_info.active_changed = crtc_state->active_changed;
 		break;
-	case DPU_EVT_BTS_ACQUIRE_BW:
 	case DPU_EVT_BTS_RELEASE_BW:
 	case DPU_EVT_BTS_UPDATE_BW:
 		dpu_event_save_freqs(&log->data.freqs);
@@ -350,7 +349,7 @@ const char *get_event_name(enum dpu_event_type type)
 		"WB_ENTER_HIBERNATION",		"WB_EXIT_HIBERNATION",
 		"PLANE_UPDATE",			"PLANE_DISABLE",
 		"REQ_CRTC_INFO_OLD",		"REQ_CRTC_INFO_NEW",
-		"FRAMESTART_TIMEOUT",		"BTS_ACQUIRE_BW",
+		"FRAMESTART_TIMEOUT",
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
 		"BTS_UPDATE_BW",
 	};
@@ -450,7 +449,6 @@ static void DPU_EVENT_SHOW(struct decon_device *decon, struct drm_printer *p)
 					log->data.crtc_info.mode_changed,
 					log->data.crtc_info.active_changed);
 			break;
-		case DPU_EVT_BTS_ACQUIRE_BW:
 		case DPU_EVT_BTS_RELEASE_BW:
 		case DPU_EVT_BTS_UPDATE_BW:
 			dpu_print_log_freqs(buf, len, &log->data.freqs);

@@ -603,48 +603,6 @@ void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 
-void dpu_bts_acquire_bw(struct decon_device *decon)
-{
-	u32 aclk_freq = 0;
-
-	DPU_DEBUG_BTS("%s +\n", __func__);
-
-	if (!decon->bts.enabled)
-		return;
-
-	if (decon->config.out_type & DECON_OUT_DSI) {
-		aclk_freq = dpu_bts_calc_disp_with_full_size(decon);
-		DPU_DEBUG_BTS("Initial calculated disp freq(%u)\n", aclk_freq);
-		/*
-		 * If current disp freq is higher than calculated freq,
-		 * it must not be set. if not, underrun can occur.
-		 */
-#if defined(CONFIG_SOC_GS101)
-		if (exynos_devfreq_get_domain_freq(DEVFREQ_DISP) < aclk_freq)
-			exynos_pm_qos_update_request(&decon->bts.disp_qos,
-					aclk_freq);
-
-		DPU_DEBUG_BTS("Get initial disp freq(%lu)\n",
-				exynos_devfreq_get_domain_freq(DEVFREQ_DISP));
-#else
-		if (cal_dfs_get_rate(ACPM_DVFS_DISP) < aclk_freq)
-			exynos_pm_qos_update_request(&decon->bts.disp_qos,
-					aclk_freq);
-
-		DPU_DEBUG_BTS("Get initial disp freq(%lu)\n",
-				cal_dfs_get_rate(ACPM_DVFS_DISP));
-#endif
-
-		decon->bts.prev_max_disp_freq = aclk_freq;
-
-		return;
-	}
-
-	DPU_EVENT_LOG(DPU_EVT_BTS_ACQUIRE_BW, decon->id, NULL);
-
-	DPU_DEBUG_BTS("%s -\n", __func__);
-}
-
 void dpu_bts_release_bw(struct decon_device *decon)
 {
 	struct bts_bw bw = { 0, };
@@ -736,7 +694,6 @@ struct dpu_bts_ops dpu_bts_control = {
 	.init		= dpu_bts_init,
 	.calc_bw	= dpu_bts_calc_bw,
 	.update_bw	= dpu_bts_update_bw,
-	.acquire_bw	= dpu_bts_acquire_bw,
 	.release_bw	= dpu_bts_release_bw,
 	.deinit		= dpu_bts_deinit,
 };

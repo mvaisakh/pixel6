@@ -66,7 +66,6 @@ struct decon_resources {
 
 struct dpu_bts_ops {
 	void (*init)(struct decon_device *decon);
-	void (*acquire_bw)(struct decon_device *decon);
 	void (*release_bw)(struct decon_device *decon);
 	void (*calc_bw)(struct decon_device *decon);
 	void (*update_bw)(struct decon_device *decon, bool shadow_updated);
@@ -204,7 +203,6 @@ enum dpu_event_type {
 
 	DPU_EVT_FRAMESTART_TIMEOUT,
 
-	DPU_EVT_BTS_ACQUIRE_BW,
 	DPU_EVT_BTS_RELEASE_BW,
 	DPU_EVT_BTS_CALC_BW,
 	DPU_EVT_BTS_UPDATE_BW,

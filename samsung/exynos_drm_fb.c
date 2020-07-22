@@ -372,10 +372,6 @@ static void exynos_atomic_bts_pre_update(struct drm_device *dev,
 		if (!new_crtc_state->active)
 			continue;
 
-		/* acquire initial bandwidth when there is a mode change */
-		if (drm_atomic_crtc_needs_modeset(new_crtc_state))
-			decon->bts.ops->acquire_bw(decon);
-
 		if (new_crtc_state->planes_changed) {
 			const size_t max_planes =
 				dev->mode_config.num_total_plane;
@@ -388,10 +384,11 @@ static void exynos_atomic_bts_pre_update(struct drm_device *dev,
 				win_config->state = DPU_WIN_STATE_DISABLED;
 			}
 
-			DPU_EVENT_LOG_ATOMIC_COMMIT(decon->id);
-			decon->bts.ops->calc_bw(decon);
-			decon->bts.ops->update_bw(decon, false);
 		}
+
+		DPU_EVENT_LOG_ATOMIC_COMMIT(decon->id);
+		decon->bts.ops->calc_bw(decon);
+		decon->bts.ops->update_bw(decon, false);
 	}
 }
 
