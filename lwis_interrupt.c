@@ -92,6 +92,8 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 	spin_lock_init(&list->irq[index].lock);
 	list->irq[index].irq = irq;
 	list->irq[index].name = name;
+	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
+		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
 
@@ -332,15 +334,11 @@ int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list)
 int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 				  irq_handler_t handler, void *dev)
 {
-	char irq_name[16];
-
 	BUG_ON(!list);
 
-	snprintf(irq_name, 16, "lwis-%s-%s", list->lwis_dev->name,
-		 list->irq[index].name);
-
 	return request_irq(list->irq[index].irq, handler,
-			   IRQF_GIC_MULTI_TARGET | IRQF_SHARED, irq_name, dev);
+			   IRQF_GIC_MULTI_TARGET | IRQF_SHARED,
+			   list->irq[index].full_name, dev);
 }
 
 int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,

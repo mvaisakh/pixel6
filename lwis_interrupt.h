@@ -17,10 +17,14 @@
 #include <linux/platform_device.h>
 
 #define EVENT_INFO_HASH_BITS 8
+#define IRQ_FULL_NAME_LENGTH 32
 
 struct lwis_interrupt {
 	int irq;
+	/* IRQ name */
 	char *name;
+	/* Full name consists of both device and irq name */
+	char full_name[IRQ_FULL_NAME_LENGTH];
 	/* Device that owns this interrupt */
 	struct lwis_device *lwis_dev;
 	/* Spinlock to lock acccess to this struct */
