@@ -188,7 +188,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 	return 0;
 }
 
-static int lwis_reg_read(struct lwis_device *lwis_dev,
+static int register_read(struct lwis_device *lwis_dev,
 			 struct lwis_io_entry *read_entry,
 			 struct lwis_io_entry *user_msg)
 {
@@ -246,7 +246,7 @@ reg_read_exit:
 	return ret;
 }
 
-static int lwis_reg_write(struct lwis_device *lwis_dev,
+static int register_write(struct lwis_device *lwis_dev,
 			  struct lwis_io_entry *write_entry)
 {
 	int ret = 0;
@@ -296,7 +296,7 @@ reg_write_exit:
 	return ret;
 }
 
-static int lwis_reg_modify(struct lwis_device *lwis_dev,
+static int register_modify(struct lwis_device *lwis_dev,
 			   struct lwis_io_entry *modify_entry)
 {
 	int ret = 0;
@@ -311,10 +311,10 @@ static int lwis_reg_modify(struct lwis_device *lwis_dev,
 	return ret;
 }
 
-static int lwis_copy_io_entries(struct lwis_device *lwis_dev,
-				struct lwis_io_entries *user_msg,
-				struct lwis_io_entries *k_msg,
-				struct lwis_io_entry **k_entries)
+static int copy_io_entries(struct lwis_device *lwis_dev,
+			   struct lwis_io_entries *user_msg,
+			   struct lwis_io_entries *k_msg,
+			   struct lwis_io_entry **k_entries)
 {
 	int ret = 0;
 	struct lwis_io_entry *io_entries;
@@ -354,10 +354,10 @@ static int lwis_copy_io_entries(struct lwis_device *lwis_dev,
 	return 0;
 }
 
-static int lwis_synchronous_process_io_entries(struct lwis_device *lwis_dev,
-					       int num_io_entries,
-					       struct lwis_io_entry *io_entries,
-					       struct lwis_io_entry *user_msg)
+static int synchronous_process_io_entries(struct lwis_device *lwis_dev,
+					  int num_io_entries,
+					  struct lwis_io_entry *io_entries,
+					  struct lwis_io_entry *user_msg)
 {
 	int ret = 0, i = 0;
 	uint64_t bias = 0;
@@ -366,16 +366,16 @@ static int lwis_synchronous_process_io_entries(struct lwis_device *lwis_dev,
 		lwis_entry_bias(&io_entries[i], bias);
 		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
-			ret = lwis_reg_modify(lwis_dev, &io_entries[i]);
+			ret = register_modify(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_READ:
 		case LWIS_IO_ENTRY_READ_BATCH:
-			ret = lwis_reg_read(lwis_dev, &io_entries[i],
+			ret = register_read(lwis_dev, &io_entries[i],
 					    user_msg + i);
 			break;
 		case LWIS_IO_ENTRY_WRITE:
 		case LWIS_IO_ENTRY_WRITE_BATCH:
-			ret = lwis_reg_write(lwis_dev, &io_entries[i]);
+			ret = register_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_BIAS:
 			bias = io_entries[i].set_bias.bias;
@@ -402,14 +402,14 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 	struct lwis_io_entries k_msg;
 	struct lwis_io_entry *k_entries = NULL;
 
-	ret = lwis_copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
+	ret = copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
 	if (ret) {
 		goto reg_io_exit;
 	}
 
 	/* Walk through and execute the entries */
-	ret = lwis_synchronous_process_io_entries(
-		lwis_dev, k_msg.num_io_entries, k_entries, k_msg.io_entries);
+	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries,
+					     k_entries, k_msg.io_entries);
 
 reg_io_exit:
 	if (k_entries) {
@@ -696,7 +696,7 @@ static int ioctl_device_reset(struct lwis_client *lwis_client,
 	struct lwis_io_entry *k_entries = NULL;
 	unsigned long flags;
 
-	ret = lwis_copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
+	ret = copy_io_entries(lwis_dev, user_msg, &k_msg, &k_entries);
 	if (ret) {
 		goto soft_reset_exit;
 	}
@@ -716,8 +716,8 @@ static int ioctl_device_reset(struct lwis_client *lwis_client,
 	}
 
 	/* Perform reset routine defined by the io_entries */
-	ret = lwis_synchronous_process_io_entries(
-		lwis_dev, k_msg.num_io_entries, k_entries, k_msg.io_entries);
+	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries,
+					     k_entries, k_msg.io_entries);
 
 	/* Clear event states and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
@@ -891,9 +891,9 @@ static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 	return ret;
 }
 
-static int lwis_transaction_prepare(struct lwis_client *client,
-				    struct lwis_transaction_info __user *msg,
-				    struct lwis_transaction **transaction)
+static int construct_transaction(struct lwis_client *client,
+				 struct lwis_transaction_info __user *msg,
+				 struct lwis_transaction **transaction)
 {
 	int i;
 	int ret;
@@ -989,7 +989,7 @@ error_free_transaction:
 	return ret;
 }
 
-static void lwis_transaction_clean(struct lwis_transaction *transaction)
+static void free_transaction(struct lwis_transaction *transaction)
 {
 	int i;
 
@@ -1010,7 +1010,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 	struct lwis_transaction *k_transaction = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	ret = lwis_transaction_prepare(client, msg, &k_transaction);
+	ret = construct_transaction(client, msg, &k_transaction);
 	if (ret)
 		return ret;
 
@@ -1023,7 +1023,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 				lwis_dev->dev,
 				"Failed to return info to userspace\n");
 		}
-		lwis_transaction_clean(k_transaction);
+		free_transaction(k_transaction);
 		return ret;
 	}
 
@@ -1046,7 +1046,7 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 	struct lwis_transaction *k_transaction;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	ret = lwis_transaction_prepare(client, msg, &k_transaction);
+	ret = construct_transaction(client, msg, &k_transaction);
 	if (ret) {
 		return ret;
 	}
@@ -1060,7 +1060,7 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 				lwis_dev->dev,
 				"Failed to return info to userspace\n");
 		}
-		lwis_transaction_clean(k_transaction);
+		free_transaction(k_transaction);
 		return ret;
 	}
 
@@ -1198,10 +1198,10 @@ static int ioctl_event_unsubscribe(struct lwis_client *client,
 	return ret;
 }
 
-static int lwis_io_entry_prepare(struct lwis_client *client,
-				 struct lwis_io_entry *user_entries,
-				 size_t num_io_entries,
-				 struct lwis_io_entry **io_entries)
+static int prepare_io_entry(struct lwis_client *client,
+			    struct lwis_io_entry *user_entries,
+			    size_t num_io_entries,
+			    struct lwis_io_entry **io_entries)
 {
 	int i, ret;
 	int last_buf_alloc_idx = 0;
@@ -1270,9 +1270,9 @@ error_free_entries:
 	return ret;
 }
 
-static int lwis_periodic_io_prepare(struct lwis_client *client,
-				    struct lwis_periodic_io_info __user *msg,
-				    struct lwis_periodic_io **periodic_io)
+static int prepare_periodic_io(struct lwis_client *client,
+			       struct lwis_periodic_io_info __user *msg,
+			       struct lwis_periodic_io **periodic_io)
 {
 	int ret;
 	struct lwis_periodic_io *k_periodic_io;
@@ -1295,9 +1295,9 @@ static int lwis_periodic_io_prepare(struct lwis_client *client,
 		goto error_free_periodic_io;
 	}
 
-	ret = lwis_io_entry_prepare(client, k_periodic_io->info.io_entries,
-				    k_periodic_io->info.num_io_entries,
-				    &k_periodic_io->info.io_entries);
+	ret = prepare_io_entry(client, k_periodic_io->info.io_entries,
+			       k_periodic_io->info.num_io_entries,
+			       &k_periodic_io->info.io_entries);
 	if (ret) {
 		dev_err(lwis_dev->dev,
 			"Failed to prepare lwis io entries for periodic io\n");
@@ -1318,7 +1318,7 @@ static int ioctl_periodic_io_submit(struct lwis_client *client,
 	struct lwis_periodic_io *k_periodic_io = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	ret = lwis_periodic_io_prepare(client, msg, &k_periodic_io);
+	ret = prepare_periodic_io(client, msg, &k_periodic_io);
 	if (ret)
 		return ret;
 
