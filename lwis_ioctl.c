@@ -1366,6 +1366,7 @@ static int ioctl_periodic_io_cancel(struct lwis_client *client,
 		dev_err_ratelimited(lwis_dev->dev,
 				    "Failed to clear periodic io id 0x%llx\n",
 				    id);
+		return ret;
 	}
 
 	return 0;
