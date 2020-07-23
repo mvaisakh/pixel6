@@ -40,14 +40,17 @@ int lwis_transaction_init(struct lwis_client *client);
 int lwis_transaction_client_flush(struct lwis_client *client);
 int lwis_transaction_client_cleanup(struct lwis_client *client);
 
-int lwis_transaction_submit(struct lwis_client *client,
-			    struct lwis_transaction *transaction);
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   int64_t event_counter,
 				   struct list_head *pending_events,
 				   bool in_irq);
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
-int lwis_transaction_replace(struct lwis_client *client,
-			     struct lwis_transaction *transaction);
+
+/* Expects lwis_client->transaction_lock to be acquired before calling
+ * the following functions. */
+int lwis_transaction_submit_locked(struct lwis_client *client,
+				   struct lwis_transaction *transaction);
+int lwis_transaction_replace_locked(struct lwis_client *client,
+				    struct lwis_transaction *transaction);
 
 #endif /* LWIS_TRANSACTION_H_ */
