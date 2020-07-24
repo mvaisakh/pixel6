@@ -7,6 +7,7 @@
 
 #include <linux/dma-mapping.h>
 
+#include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
 #include "edgetpu-config.h"
 #include "edgetpu-firmware.h"

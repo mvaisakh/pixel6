@@ -9,6 +9,8 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
+#include "edgetpu-firmware-util.h"
+
 char *edgetpu_fwutil_name_from_attr_buf(const char *buf)
 {
 	size_t len;
