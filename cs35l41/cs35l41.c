@@ -214,7 +214,7 @@ static int cs35l41_halo_booted_put(struct snd_kcontrol *kcontrol,
 		snd_soc_kcontrol_component(kcontrol);
 	struct cs35l41_private *cs35l41 =
 		snd_soc_component_get_drvdata(component);
-	dev_info(cs35l41->dev, "%s: old booted value: %d new boot value: %d\n",
+	dev_info(cs35l41->dev, "%s: old booted value: %d new boot value: %ld\n",
 				__func__, cs35l41->halo_booted,
 				ucontrol->value.integer.value[0]);
 	cs35l41->halo_booted = ucontrol->value.integer.value[0];

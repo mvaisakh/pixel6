@@ -1075,13 +1075,13 @@ static int wm_coeff_read_control(struct wm_coeff_ctl *ctl,
 				reg + read_len / REG_BYTESIZE,
 				scratch + read_len, toread_len);
 		if (ret) {
-			adsp_err(dsp, "Failed to read %zu bytes from %x: %d\n",
+			adsp_err(dsp, "Failed to read %d bytes from %x: %d\n",
 				 toread_len,
 				 reg + read_len / REG_BYTESIZE, ret);
 			kfree(scratch);
 			return ret;
 		}
-		adsp_dbg(dsp, "Read %zu bytes from %x\n", toread_len,
+		adsp_dbg(dsp, "Read %d bytes from %x\n", toread_len,
 			 reg + read_len / REG_BYTESIZE);
 		read_len += toread_len;
 	}
@@ -2913,7 +2913,7 @@ int wm_adsp2_preloader_put(struct snd_kcontrol *kcontrol,
 	struct wm_adsp *dsp = &dsps[mc->shift - 1];
 	char preload[32];
 	snprintf(preload, ARRAY_SIZE(preload), "%s Preload", dsp->name);
-	adsp_info(dsp, "%s: preload name: %s old value: %d new value: %d",
+	adsp_info(dsp, "%s: preload name: %s old value: %d new value: %ld",
 			__func__, preload, dsp->preloaded,
 			ucontrol->value.integer.value[0]);
 	dsp->preloaded = ucontrol->value.integer.value[0];
