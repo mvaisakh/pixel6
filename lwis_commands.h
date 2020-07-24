@@ -35,6 +35,7 @@ extern "C" {
  *        list the information of the other LWIS devices in the system.
  * i2c  : for controlling i2c devices
  * ioreg: for controlling mapped register I/O devices
+ * slc  : for configuring system level cache partitions
  * dpm  : for dynamic power manager requests update.
  */
 enum lwis_device_types {
