@@ -12,6 +12,7 @@
 
 #include "lwis_device_top.h"
 #include "lwis_event.h"
+#include "lwis_init.h"
 
 #include <linux/device.h>
 #include <linux/init.h>
@@ -271,7 +272,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%d) must be < %d\n", entry->rw.offset,
+				"Offset (%llu) must be < %d\n", entry->rw.offset,
 				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
@@ -281,7 +282,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		if (rw_batch->offset + rw_batch->size_in_bytes >
 		    SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Read range (%d) exceeds scratch memory (%d)\n",
+				"Read range (%llu) exceeds scratch memory (%d)\n",
 				rw_batch->offset + rw_batch->size_in_bytes,
 				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
@@ -293,7 +294,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%d) must be < %d\n", entry->rw.offset,
+				"Offset (%llu) must be < %d\n", entry->rw.offset,
 				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
@@ -303,7 +304,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 		if (rw_batch->offset + rw_batch->size_in_bytes >
 		    SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Write range (%d) exceeds scratch memory (%d)\n",
+				"Write range (%llu) exceeds scratch memory (%d)\n",
 				rw_batch->offset + rw_batch->size_in_bytes,
 				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
@@ -315,7 +316,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
 		if (entry->mod.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%d) must be < %d\n", entry->mod.offset,
+				"Offset (%llu) must be < %d\n", entry->mod.offset,
 				SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}

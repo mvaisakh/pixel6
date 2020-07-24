@@ -683,7 +683,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 						   event_counter,
 						   pending_events, in_irq)) {
 			pr_warn("Failed to process transactions: "
-				"Event ID: 0x%llx Counter: %d\n",
+				"Event ID: 0x%llx Counter: %lld\n",
 				event_id, event_counter);
 		}
 	}
@@ -867,7 +867,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev,
 						   event_counter,
 						   &pending_events, in_irq))
 			pr_warn("Failed to process transactions: "
-				"external event ID: 0x%llx counter: %d\n",
+				"external event ID: 0x%llx counter: %lld\n",
 				event_id, event_counter);
 	}
 

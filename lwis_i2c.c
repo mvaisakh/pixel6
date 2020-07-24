@@ -49,7 +49,7 @@ static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
 		wbuf[0] = (offset >> 8) & 0xFF;
 		wbuf[1] = offset & 0xFF;
 	} else {
-		pr_err("%s: Read with unsupported offset bits %d\n",
+		pr_err("%s: Read with unsupported offset bits %llu\n",
 		       client->name, offset);
 		return -EPERM;
 	}
@@ -95,7 +95,7 @@ static int perform_write_transfer(struct i2c_client *client,
 		buf[i++] = (offset >> 8) & 0xFF;
 		buf[i++] = offset & 0xFF;
 	} else {
-		pr_err("%s: Write with unsupported offset bits %d\n",
+		pr_err("%s: Write with unsupported offset bits %llu\n",
 		       client->name, offset);
 		return -EPERM;
 	}

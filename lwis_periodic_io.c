@@ -102,7 +102,7 @@ periodic_io_list_create_locked(struct lwis_client *client, int64_t period_ns)
 	 * into the client timer list */
 	INIT_LIST_HEAD(&periodic_io_list->list);
 	hash_add(client->timer_list, &periodic_io_list->node, period_ns);
-	pr_info("Created hrtimer with timeout time %dns", period_ns);
+	pr_info("Created hrtimer with timeout time %lldns", period_ns);
 
 	/* Initialize and start the hrtimer for this periodic io list */
 	hrtimer_init(&periodic_io_list->hr_timer, CLOCK_MONOTONIC,
@@ -296,7 +296,7 @@ event_push:
 		}
 	} else {
 		if (resp->error_code) {
-			pr_err("process_io_entries fails with error code %d, periodic io %d, io_entries[%d], entry_type %d",
+			pr_err("process_io_entries fails with error code %d, periodic io %lld, io_entries[%d], entry_type %d",
 			       resp->error_code, info->id, i, entry->type);
 		}
 	}

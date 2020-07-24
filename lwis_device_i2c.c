@@ -20,6 +20,7 @@
 #include <linux/slab.h>
 
 #include "lwis_i2c.h"
+#include "lwis_init.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"

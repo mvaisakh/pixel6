@@ -9,6 +9,7 @@
  */
 
 #include "lwis_device_slc.h"
+#include "lwis_init.h"
 
 #include <linux/anon_inodes.h>
 #include <linux/delay.h>
@@ -134,7 +135,7 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
 		}
 	}
 	dev_err(lwis_dev->dev,
-		"Failed to find valid partition, largest size supported is %dKB\n",
+		"Failed to find valid partition, largest size supported is %zuKB\n",
 		slc_dev->pt[NUM_PT - 1].size_kb);
 	return -EINVAL;
 }

@@ -40,7 +40,7 @@ iovmm_fault_handler(struct iommu_domain *domain, struct device *dev,
 		    unsigned long fault_addr, int fault_flag, void *token)
 {
 	struct lwis_device *lwis_dev = (struct lwis_device *)token;
-	pr_err("IOVMM Fault - Addr: %016llx Flag: %08x Device: %p\n",
+	pr_err("IOVMM Fault - Addr: %016lx Flag: %08x Device: %p\n",
 	       fault_addr, fault_flag, lwis_dev);
 	return -EINVAL;
 }

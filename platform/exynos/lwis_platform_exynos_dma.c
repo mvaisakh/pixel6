@@ -13,7 +13,9 @@
 #include <linux/exynos_iovmm.h>
 
 #include "lwis_commands.h"
+#include "lwis_init.h"
 #include "lwis_platform.h"
+#include "lwis_platform_dma.h"
 #include "lwis_platform_exynos.h"
 
 #define ION_SYSTEM_HEAP_NAME "ion_system_heap"
@@ -42,8 +44,8 @@ struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags)
 }
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
-					struct dma_buf_attachment *attachment,
-					off_t offset, size_t size,
+					       struct dma_buf_attachment *attachment,
+					       off_t offset, size_t size,
 					enum dma_data_direction direction,
 					int flags)
 {

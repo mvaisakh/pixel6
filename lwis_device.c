@@ -326,7 +326,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "enable");
 		if (IS_ERR_OR_NULL(gpios)) {
 			dev_err(lwis_dev->dev,
-				"Failed to obtain enable gpio list (%d)\n",
+				"Failed to obtain enable gpio list (%ld)\n",
 				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
 			goto error_gpio_get;
@@ -366,7 +366,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
 		if (IS_ERR_OR_NULL(gpios)) {
 			dev_err(lwis_dev->dev,
-				"Failed to obtain reset gpio list (%d)\n",
+				"Failed to obtain reset gpio list (%ld)\n",
 				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
 			goto error_reset_gpio_get;
@@ -456,7 +456,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					"Shared gpios requested by another device\n");
 			} else {
 				dev_err(lwis_dev->dev,
-					"Failed to obtain shared gpio list (%d)\n",
+					"Failed to obtain shared gpio list (%ld)\n",
 					PTR_ERR(gpios));
 				ret = PTR_ERR(gpios);
 				goto error_shared_gpio_get;

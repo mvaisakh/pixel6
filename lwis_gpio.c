@@ -21,7 +21,7 @@ void lwis_gpio_list_print(char *name, struct gpio_descs *gpios)
 	int i;
 
 	if (IS_ERR_OR_NULL(gpios)) {
-		pr_info("name: %s error: %d\n", name, PTR_ERR(gpios));
+		pr_info("name: %s error: %ld\n", name, PTR_ERR(gpios));
 	} else {
 		pr_info("name: %s, count: %d\n", name, gpios->ndescs);
 		for (i = 0; i < gpios->ndescs; i++) {

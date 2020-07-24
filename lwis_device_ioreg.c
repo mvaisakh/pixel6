@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#include "lwis_init.h"
 #include "lwis_interrupt.h"
 #include "lwis_ioreg.h"
 

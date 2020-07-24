@@ -212,8 +212,8 @@ event_push:
 	} else {
 		/* No pending events indicates it's cleanup io_entries. */
 		if (resp->error_code) {
-			pr_err("Device %s clean-up fails with error code %d, transaction %d, io_entries[%d], entry_type %d",
-			       lwis_dev->name, transaction->info.id, i,
+			pr_err("Device %s clean-up fails with error code %d, transaction %llu, io_entries[%d], entry_type %d",
+			       lwis_dev->name, resp->error_code, transaction->info.id, i,
 			       entry->type);
 		}
 	}

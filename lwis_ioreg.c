@@ -53,7 +53,7 @@ static int validate_offset(struct lwis_ioreg *block, uint64_t offset,
 	if (offset + size_in_bytes > block->size) {
 		pr_err("Accessing invalid address! Block size is %d.\n",
 		       block->size);
-		pr_err("Offset %llu, size_in_bytes %u, will be out of bound.\n",
+		pr_err("Offset %llu, size_in_bytes %zu, will be out of bound.\n",
 		       offset, size_in_bytes);
 		return -EFAULT;
 	}
@@ -202,7 +202,7 @@ static int ioreg_read_batch_internal(void __iomem *base, uint64_t offset,
 	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
-		pr_err("Read buf size (%d) not divisible by %d (bitwidth = %d)\n",
+		pr_err("Read buf size (%zu) not divisible by %d (bitwidth = %d)\n",
 		       size_in_bytes, value_bits / 8, value_bits);
 		return -EINVAL;
 	}
@@ -246,7 +246,7 @@ static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset,
 	uint8_t *addr = (uint8_t *)base + offset;
 
 	if (size_in_bytes & (value_bits / 8) - 1) {
-		pr_err("Write buf size (%d) not divisible by %d (bitwidth = %d)\n",
+		pr_err("Write buf size (%zu) not divisible by %d (bitwidth = %d)\n",
 		       size_in_bytes, value_bits / 8, value_bits);
 		return -EINVAL;
 	}
@@ -371,7 +371,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
 		if (ret) {
 			pr_err("Invalid ioreg batch read at:\n");
-			pr_err("Offset: 0x%x, Base: %p\n",
+			pr_err("Offset: 0x%llx, Base: %pK\n",
 			       entry->rw_batch.offset, block->base);
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
@@ -398,7 +398,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev,
 			entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
 		if (ret) {
 			pr_err("Invalid ioreg batch write at:\n");
-			pr_err("Offset: 0x%x, Base: %p\n",
+			pr_err("Offset: 0x%08llx, Base: %pK\n",
 			       entry->rw_batch.offset, block->base);
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {

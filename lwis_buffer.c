@@ -46,7 +46,7 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		dma_buf = lwis_platform_dma_buffer_alloc(alloc_info->size,
 							 alloc_info->flags);
 		if (IS_ERR_OR_NULL(dma_buf)) {
-			pr_err("lwis_platform_dma_buffer_alloc failed (%d)\n",
+			pr_err("lwis_platform_dma_buffer_alloc failed (%ld)\n",
 			       PTR_ERR(dma_buf));
 			return -ENOMEM;
 		}

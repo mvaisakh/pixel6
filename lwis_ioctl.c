@@ -149,7 +149,7 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 	    exp_size != IOCTL_ARG_SIZE(ioctl_type)) {
 		dev_err_ratelimited(
 			lwis_dev->dev,
-			"Failed to process %s (errno: %d), expecting argument with length of %d, got length of %d. Mismatch kernel version?\n",
+			"Failed to process %s (errno: %d), expecting argument with length of %zu, got length of %d. Mismatch kernel version?\n",
 			type_name, errno, exp_size, IOCTL_ARG_SIZE(ioctl_type));
 	} else {
 		dev_err_ratelimited(lwis_dev->dev,
@@ -1162,7 +1162,7 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 		lwis_dev->top_dev, k_subscribe.trigger_event_id,
 		trigger_device->id, lwis_dev->id);
 	if (ret < 0)
-		dev_err(lwis_dev->dev, "Failed to subscribe event: 0x%x\n",
+		dev_err(lwis_dev->dev, "Failed to subscribe event: 0x%llx\n",
 			k_subscribe.trigger_event_id);
 
 	return ret;
@@ -1192,7 +1192,7 @@ static int ioctl_event_unsubscribe(struct lwis_client *client,
 	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(
 		lwis_dev->top_dev, event_id, lwis_dev->id);
 	if (ret < 0)
-		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%x\n",
+		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n",
 			event_id);
 
 	return ret;

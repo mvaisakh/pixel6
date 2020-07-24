@@ -108,8 +108,8 @@ static void list_allocated_buffers(struct lwis_client *client, char *k_buf,
 
 	strlcat(k_buf, "Allocated buffers:\n", k_buf_size);
 	hash_for_each (client->allocated_buffers, i, buffer, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "[%2d] FD: %d Size: %d\n",
-			 idx++, buffer->fd, buffer->size);
+		scnprintf(tmp_buf, sizeof(tmp_buf), "[%2d] FD: %d Size: %zu\n",
+			  idx++, buffer->fd, buffer->size);
 		strlcat(k_buf, tmp_buf, k_buf_size);
 	}
 }
@@ -130,7 +130,7 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
 	hash_for_each (client->enrolled_buffers, i, buffer, node) {
 		snprintf(tmp_buf, sizeof(tmp_buf),
-			 "[%2d] FD: %d Mode: %s%s Addr: 0x%8x\n", idx++,
+			 "[%2d] FD: %d Mode: %s%s Addr: 0x%08llx\n", idx++,
 			 buffer->info.fd, buffer->info.dma_read ? "r" : "",
 			 buffer->info.dma_write ? "w" : "",
 			 buffer->info.dma_vaddr);
@@ -323,7 +323,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 	dbg_dir = debugfs_create_dir(lwis_dev->name, dbg_root);
 	if (IS_ERR_OR_NULL(dbg_dir)) {
 		dev_err(lwis_dev->dev,
-			"Failed to create DebugFS directory - %d",
+			"Failed to create DebugFS directory - %ld",
 			PTR_ERR(dbg_dir));
 		return PTR_ERR(dbg_dir);
 	}
@@ -332,7 +332,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 						lwis_dev, &dev_info_fops);
 	if (IS_ERR_OR_NULL(dbg_dev_info_file)) {
 		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS dev_info - %d",
+			 "Failed to create DebugFS dev_info - %ld",
 			 PTR_ERR(dbg_dev_info_file));
 		dbg_dev_info_file = NULL;
 	}
@@ -341,7 +341,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 					     lwis_dev, &event_states_fops);
 	if (IS_ERR_OR_NULL(dbg_event_file)) {
 		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS event_state - %d",
+			 "Failed to create DebugFS event_state - %ld",
 			 PTR_ERR(dbg_event_file));
 		dbg_event_file = NULL;
 	}
@@ -351,7 +351,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 				    &transaction_info_fops);
 	if (IS_ERR_OR_NULL(dbg_transaction_file)) {
 		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS transaction_info - %d",
+			 "Failed to create DebugFS transaction_info - %ld",
 			 PTR_ERR(dbg_transaction_file));
 		dbg_transaction_file = NULL;
 	}
@@ -360,7 +360,7 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 					      lwis_dev, &buffer_info_fops);
 	if (IS_ERR_OR_NULL(dbg_buffer_file)) {
 		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS buffer_info - %d",
+			 "Failed to create DebugFS buffer_info - %ld",
 			 PTR_ERR(dbg_buffer_file));
 		dbg_buffer_file = NULL;
 	}
