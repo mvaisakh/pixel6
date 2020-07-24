@@ -971,34 +971,52 @@ static int __init lwis_base_device_init(void)
 
 	ret = lwis_register_base_device();
 	if (ret) {
-		pr_err("Failed to register LWIS base\n");
+		pr_err("Failed to register LWIS base (%d)\n", ret);
+		return ret;
 	}
 
 	ret = lwis_top_device_init();
 	if (ret) {
-		pr_err("Failed to lwis_top_device_init\n");
+		pr_err("Failed to lwis_top_device_init (%d)\n", ret);
+		goto top_failure;
 	}
 
 	ret = lwis_ioreg_device_init();
 	if (ret) {
-		pr_err("Failed to lwis_ioreg_device_init\n");
+		pr_err("Failed to lwis_ioreg_device_init (%d)\n", ret);
+		goto ioreg_failure;
 	}
 
 	ret = lwis_i2c_device_init();
 	if (ret) {
-		pr_err("Failed to lwis_i2c_device_init\n");
+		pr_err("Failed to lwis_i2c_device_init (%d)\n", ret);
+		goto i2c_failure;
 	}
 
 	ret = lwis_slc_device_init();
 	if (ret) {
-		pr_err("Failed to lwis_slc_device_init\n");
+		pr_err("Failed to lwis_slc_device_init (%d)\n", ret);
+		goto slc_failure;
 	}
 
 	ret = lwis_dpm_device_init();
 	if (ret) {
-		pr_err("Failed to lwis_dpm_device_init\n");
+		pr_err("Failed to lwis_dpm_device_init (%d)\n", ret);
+		goto dpm_failure;
 	}
 
+	return 0;
+
+dpm_failure:
+	lwis_slc_device_deinit();
+slc_failure:
+	lwis_i2c_device_deinit();
+i2c_failure:
+	lwis_ioreg_device_deinit();
+ioreg_failure:
+	lwis_top_device_deinit();
+top_failure:
+	lwis_unregister_base_device();
 	return ret;
 }
 
