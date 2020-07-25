@@ -17,7 +17,13 @@
 #include <linux/slab.h>
 
 #include "lwis_device_dpm.h"
+#include "lwis_debug.h"
 #include "lwis_platform.h"
+
+/* Uncomment to let kernel panic when IOMMU hits a page fault. */
+/* TODO: Add error handling to propagate SysMMU errors back to userspace,
+ * so we don't need to panic here. */
+#define ENABLE_PAGE_FAULT_PANIC
 
 int lwis_platform_probe(struct lwis_device *lwis_dev)
 {
@@ -40,9 +46,25 @@ iovmm_fault_handler(struct iommu_domain *domain, struct device *dev,
 		    unsigned long fault_addr, int fault_flag, void *token)
 {
 	struct lwis_device *lwis_dev = (struct lwis_device *)token;
-	pr_err("IOVMM Fault - Addr: %016lx Flag: %08x Device: %p\n",
-	       fault_addr, fault_flag, lwis_dev);
-	return -EINVAL;
+
+	pr_err("############ LWIS IOVMM PAGE FAULT ############\n");
+	pr_err("\n");
+	pr_err("Device: %s IOVMM Page Fault at Address: 0x%016lx Flag: 0x%08x\n",
+	       lwis_dev->name, fault_addr, fault_flag);
+	pr_err("\n");
+	lwis_debug_print_transaction_info(lwis_dev);
+	pr_err("\n");
+	lwis_debug_print_event_states_info(lwis_dev);
+	pr_err("\n");
+	lwis_debug_print_buffer_info(lwis_dev);
+	pr_err("\n");
+	pr_err("###############################################\n");
+
+#ifdef ENABLE_PAGE_FAULT_PANIC
+	return NOTIFY_BAD;
+#else
+	return NOTIFY_OK;
+#endif
 }
 
 int lwis_platform_device_enable(struct lwis_device *lwis_dev)
