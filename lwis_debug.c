@@ -20,7 +20,6 @@
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
-#ifdef CONFIG_DEBUG_FS
 static void list_transactions(struct lwis_client *client, char *k_buf,
 			      size_t k_buf_size)
 {
@@ -138,35 +137,24 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 	}
 }
 
-static ssize_t dev_info_read(struct file *fp, char __user *user_buf,
-			     size_t count, loff_t *position)
+static int generate_device_info(struct lwis_device *lwis_dev, char *buffer,
+				size_t buffer_size)
 {
-	/* Main buffer for all information. */
-	char k_buf[256] = {};
-	struct lwis_device *lwis_dev = fp->f_inode->i_private;
-
 	if (lwis_dev == NULL) {
 		pr_err("Unknown LWIS device pointer\n");
 		return -EINVAL;
 	}
-
-	snprintf(k_buf, sizeof(k_buf), "%s Device Name: %s ID: %d State: %s\n",
+	snprintf(buffer, buffer_size, "%s Device Name: %s ID: %d State: %s\n",
 		 lwis_device_type_to_string(lwis_dev->type), lwis_dev->name,
 		 lwis_dev->id, lwis_dev->enabled ? "Enabled" : "Disabled");
-
-	return simple_read_from_buffer(user_buf, count, position, k_buf,
-				       strlen(k_buf));
+	return 0;
 }
 
-static ssize_t event_states_read(struct file *fp, char __user *user_buf,
-				 size_t count, loff_t *position)
+static int generate_event_states_info(struct lwis_device *lwis_dev,
+				      char *buffer, size_t buffer_size)
 {
-	/* Main buffer for all information. */
-	char k_buf[2048] = {};
-	const size_t k_buf_size = sizeof(k_buf);
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[64] = {};
-	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 	int i;
 	int idx = 0;
 	unsigned long flags;
@@ -178,25 +166,28 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 		return -EINVAL;
 	}
 
+	snprintf(buffer, buffer_size, "=== LWIS EVENT STATES INFO: %s ===\n",
+		 lwis_dev->name);
+
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	if (hash_empty(lwis_dev->event_states)) {
-		strlcat(k_buf, "  No events being monitored\n", k_buf_size);
+		strlcat(buffer, "  No events being monitored\n", buffer_size);
 		goto exit;
 	}
-	strlcat(k_buf, "Enabled Device Events:\n", k_buf_size);
+	strlcat(buffer, "Enabled Device Events:\n", buffer_size);
 	hash_for_each (lwis_dev->event_states, i, state, node) {
 		if (state->enable_counter > 0) {
 			snprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", idx++,
 				 state->event_id, state->event_counter);
-			strlcat(k_buf, tmp_buf, k_buf_size);
+			strlcat(buffer, tmp_buf, buffer_size);
 			enabled_event_present = true;
 		}
 	}
 	if (!enabled_event_present) {
-		strlcat(k_buf, "No enabled events\n", k_buf_size);
+		strlcat(buffer, "No enabled events\n", buffer_size);
 	}
-	strlcat(k_buf, "Last Events:\n", k_buf_size);
+	strlcat(buffer, "Last Events:\n", buffer_size);
 	idx = lwis_dev->debug_info.cur_event_hist_idx;
 	for (i = 0; i < EVENT_DEBUG_HISTORY_SIZE; ++i) {
 		state = &lwis_dev->debug_info.event_hist[idx];
@@ -205,7 +196,7 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 			snprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", i,
 				 state->event_id, state->event_counter);
-			strlcat(k_buf, tmp_buf, k_buf_size);
+			strlcat(buffer, tmp_buf, buffer_size);
 		}
 		idx++;
 		if (idx >= EVENT_DEBUG_HISTORY_SIZE) {
@@ -215,75 +206,211 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 
 exit:
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-	return simple_read_from_buffer(user_buf, count, position, k_buf,
-				       strlen(k_buf));
+	return 0;
+}
+
+static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer,
+				     size_t buffer_size)
+{
+	/* Temporary buffer to be concatenated to the main buffer. */
+	char tmp_buf[64] = {};
+	struct lwis_client *client;
+	int idx = 0;
+
+	if (lwis_dev == NULL) {
+		pr_err("Unknown LWIS device pointer\n");
+		return -EINVAL;
+	}
+
+	snprintf(buffer, buffer_size, "=== LWIS TRANSACTION INFO: %s ===\n",
+		 lwis_dev->name);
+
+	if (list_empty(&lwis_dev->clients)) {
+		snprintf(buffer, buffer_size, "No clients opened\n");
+		return 0;
+	}
+	list_for_each_entry (client, &lwis_dev->clients, node) {
+		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
+		strlcat(buffer, tmp_buf, buffer_size);
+		list_transactions(client, buffer, buffer_size);
+		idx++;
+	}
+
+	return 0;
+}
+
+static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer,
+				size_t buffer_size)
+{
+	/* Temporary buffer to be concatenated to the main buffer. */
+	char tmp_buf[64] = {};
+	struct lwis_client *client;
+	int idx = 0;
+
+	if (lwis_dev == NULL) {
+		pr_err("Unknown LWIS device pointer\n");
+		return -EINVAL;
+	}
+
+	snprintf(buffer, buffer_size, "=== LWIS BUFFER INFO: %s ===\n",
+		 lwis_dev->name);
+
+	if (list_empty(&lwis_dev->clients)) {
+		snprintf(buffer, buffer_size, "No clients opened\n");
+		return 0;
+	}
+
+	list_for_each_entry (client, &lwis_dev->clients, node) {
+		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
+		strlcat(buffer, tmp_buf, buffer_size);
+		list_allocated_buffers(client, buffer, buffer_size);
+		list_enrolled_buffers(client, buffer, buffer_size);
+		idx++;
+	}
+
+	return 0;
+}
+
+int lwis_debug_print_device_info(struct lwis_device *lwis_dev)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[256] = {};
+	const size_t buffer_size = sizeof(buffer);
+
+	ret = generate_device_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate device info");
+		return ret;
+	}
+	pr_info("%s", buffer);
+	return 0;
+}
+
+int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
+
+	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate event states info");
+		return ret;
+	}
+	pr_info("%s", buffer);
+	return 0;
+}
+
+int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
+
+	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate transaction info");
+		return ret;
+	}
+	pr_info("%s", buffer);
+	return 0;
+}
+
+int lwis_debug_print_buffer_info(struct lwis_device *lwis_dev)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
+
+	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate buffer info");
+		return ret;
+	}
+	pr_info("%s", buffer);
+	return 0;
+}
+
+/* DebugFS specific functions */
+#ifdef CONFIG_DEBUG_FS
+
+static ssize_t dev_info_read(struct file *fp, char __user *user_buf,
+			     size_t count, loff_t *position)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[256] = {};
+	const size_t buffer_size = sizeof(buffer);
+	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+
+	ret = generate_device_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate device info");
+		return ret;
+	}
+
+	return simple_read_from_buffer(user_buf, count, position, buffer,
+				       strlen(buffer));
+}
+
+static ssize_t event_states_read(struct file *fp, char __user *user_buf,
+				 size_t count, loff_t *position)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
+	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+
+	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate event states info");
+		return ret;
+	}
+	return simple_read_from_buffer(user_buf, count, position, buffer,
+				       strlen(buffer));
 }
 
 static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
 				     size_t count, loff_t *position)
 {
-	/* Main buffer for all information. */
-	char k_buf[2048] = {};
-	/* Temporary buffer to be concatenated to the main buffer. */
-	char tmp_buf[64] = {};
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
-	struct lwis_client *client;
-	int idx = 0;
 
-	if (lwis_dev == NULL) {
-		pr_err("Unknown LWIS device pointer\n");
-		return -EINVAL;
+	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate transaction info\n");
+		return 0;
 	}
 
-	if (list_empty(&lwis_dev->clients)) {
-		snprintf(k_buf, sizeof(k_buf), "No clients opened\n");
-		goto exit;
-	}
-	list_for_each_entry (client, &lwis_dev->clients, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
-		strlcat(k_buf, tmp_buf, sizeof(k_buf));
-		list_transactions(client, k_buf, sizeof(k_buf));
-		idx++;
-	}
-
-exit:
-	return simple_read_from_buffer(user_buf, count, position, k_buf,
-				       strlen(k_buf));
+	return simple_read_from_buffer(user_buf, count, position, buffer,
+				       strlen(buffer));
 }
 
 static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
 				size_t count, loff_t *position)
 {
-	/* Main buffer for all information. */
-	char k_buf[2048] = {};
-	const size_t k_buf_size = sizeof(k_buf);
-	/* Temporary buffer to be concatenated to the main buffer. */
-	char tmp_buf[64] = {};
+	int ret = 0;
+	/* Buffer to store information */
+	char buffer[2048] = {};
+	const size_t buffer_size = sizeof(buffer);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
-	struct lwis_client *client;
-	int idx = 0;
 
-	if (lwis_dev == NULL) {
-		pr_err("Unknown LWIS device pointer\n");
-		return -EINVAL;
+	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to generate buffer info\n");
+		return 0;
 	}
 
-	if (list_empty(&lwis_dev->clients)) {
-		snprintf(k_buf, k_buf_size, "No clients opened\n");
-		goto exit;
-	}
-
-	list_for_each_entry (client, &lwis_dev->clients, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
-		strlcat(k_buf, tmp_buf, k_buf_size);
-		list_allocated_buffers(client, k_buf, k_buf_size);
-		list_enrolled_buffers(client, k_buf, k_buf_size);
-		idx++;
-	}
-
-exit:
-	return simple_read_from_buffer(user_buf, count, position, k_buf,
-				       strlen(k_buf));
+	return simple_read_from_buffer(user_buf, count, position, buffer,
+				       strlen(buffer));
 }
 
 static struct file_operations dev_info_fops = {
