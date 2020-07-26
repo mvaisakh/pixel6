@@ -59,6 +59,7 @@ static int s6e3hc2_disable(struct drm_panel *panel)
 
 	ctx = container_of(panel, struct exynos_panel, panel);
 	ctx->enabled = false;
+	ctx->hbm_mode = false;
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 	return 0;
 }
@@ -88,16 +89,26 @@ static int s6e3hc2_prepare(struct drm_panel *panel)
 	return 0;
 }
 
+#define S6E3HC2_WRCTRLD_DIMMING_BIT    0x08
+#define S6E3HC2_WRCTRLD_FRAME_RATE_BIT 0x10
+#define S6E3HC2_WRCTRLD_BCTRL_BIT      0x20
+#define S6E3HC2_WRCTRLD_HBM_BIT        0xC0
 static void s6e3hc2_set_mode(struct exynos_panel *ctx,
 			     const struct drm_display_mode *mode)
 {
-	u8 val;
+	u8 val = S6E3HC2_WRCTRLD_BCTRL_BIT;
 
-	val = 0x20;
 	if (mode->vrefresh == 90)
-		val |= 0x10;
+		val |= S6E3HC2_WRCTRLD_FRAME_RATE_BIT;
 
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, val); /* enable brightness control */
+	if (ctx->hbm_mode)
+		val |= S6E3HC2_WRCTRLD_HBM_BIT;
+
+	dev_dbg(ctx->dev,
+				 "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n", __func__, val,
+				 ctx->hbm_mode ? "on" : "off", mode->vrefresh);
+
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, val);
 
 	/* TODO: need to perform gamma updates */
 }
@@ -162,6 +173,14 @@ static int s6e3hc2_set_brightness(struct exynos_panel *exynos_panel, u16 br)
 
 	brightness = (br & 0xff) << 8 | br >> 8;
 	return exynos_dcs_set_brightness(exynos_panel, brightness);
+}
+
+static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
+				bool hbm_mode)
+{
+	exynos_panel->hbm_mode = hbm_mode;
+
+	s6e3hc2_set_mode(exynos_panel, exynos_panel->current_mode);
 }
 
 static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
@@ -266,6 +285,7 @@ static const struct drm_panel_funcs s6e3hc2_drm_funcs = {
 
 static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.set_brightness = s6e3hc2_set_brightness,
+	.set_hbm_mode = s6e3hc2_set_hbm_mode,
 };
 
 const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
