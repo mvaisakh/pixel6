@@ -77,7 +77,7 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 
 	/* Read until getting the expected value or timeout */
 	val = ~entry->poll.val;
-	start = ktime_to_ms(ktime_get());
+	start = ktime_to_ms(lwis_get_time());
 	while (val != entry->poll.val) {
 		ret = lwis_device_single_register_read(
 			lwis_dev, false, entry->poll.bid, entry->poll.offset,
@@ -90,7 +90,8 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 		    (entry->poll.val & entry->poll.mask)) {
 			return 0;
 		}
-		if (ktime_to_ms(ktime_get()) - start > entry->poll.timeout_ms) {
+		if (ktime_to_ms(lwis_get_time()) - start >
+		    entry->poll.timeout_ms) {
 			return -ETIMEDOUT;
 		}
 		/* Sleep for 1ms */
@@ -209,8 +210,8 @@ event_push:
 		/* No pending events indicates it's cleanup io_entries. */
 		if (resp->error_code) {
 			pr_err("Device %s clean-up fails with error code %d, transaction %llu, io_entries[%d], entry_type %d",
-			       lwis_dev->name, resp->error_code, transaction->info.id, i,
-			       entry->type);
+			       lwis_dev->name, resp->error_code,
+			       transaction->info.id, i, entry->type);
 		}
 	}
 	spin_lock_irqsave(&client->transaction_lock, flags);

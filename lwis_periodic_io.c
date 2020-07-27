@@ -17,6 +17,7 @@
 
 #include "lwis_event.h"
 #include "lwis_transaction.h"
+#include "lwis_util.h"
 
 static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 {
@@ -63,7 +64,7 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 		return HRTIMER_NORESTART;
 	}
 
-	current_time = ktime_get();
+	current_time = lwis_get_time();
 	interval = ktime_set(0, periodic_io_list->period_ns);
 	hrtimer_forward(timer, current_time, interval);
 
@@ -137,13 +138,6 @@ periodic_io_list_find_or_create_locked(struct lwis_client *client,
 	return list;
 }
 
-static int64_t get_timestamp()
-{
-	struct timespec time_spec;
-	get_monotonic_boottime(&time_spec);
-	return (int64_t)time_spec.tv_sec * 1000000000LL + time_spec.tv_nsec;
-}
-
 /* Calling this function requires holding the client's periodic_io_lock */
 static void
 push_periodic_io_error_event_locked(struct lwis_periodic_io *periodic_io,
@@ -208,7 +202,7 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->io_result.offset = entry->rw.offset;
 			io_result->io_result.num_value_bytes =
 				reg_value_bytewidth;
-			io_result->timestamp_ns = get_timestamp();
+			io_result->timestamp_ns = ktime_to_ns(lwis_get_time());
 			ret = lwis_dev->vops.register_io(
 				lwis_dev, entry, /*non_blocking=*/false,
 				lwis_dev->native_value_bitwidth);
@@ -227,7 +221,7 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->io_result.num_value_bytes =
 				entry->rw_batch.size_in_bytes;
 			entry->rw_batch.buf = io_result->io_result.values;
-			io_result->timestamp_ns = get_timestamp();
+			io_result->timestamp_ns = ktime_to_ns(lwis_get_time());
 			ret = lwis_dev->vops.register_io(
 				lwis_dev, entry, /*non_blocking=*/false,
 				lwis_dev->native_value_bitwidth);

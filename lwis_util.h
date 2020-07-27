@@ -12,6 +12,7 @@
 #define LWIS_UTIL_H_
 
 #include <linux/kernel.h>
+#include <linux/ktime.h>
 
 #include "lwis_commands.h"
 
@@ -55,6 +56,22 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev,
 				     uint64_t offset, uint64_t *value,
 				     int access_size);
 
+/*
+ * lwis_device_type_to_string: Converts the LWIS device type into a human-
+ * readable string. Useful for debug logging.
+ */
 const char *lwis_device_type_to_string(enum lwis_device_types type);
+
+/*
+ * lwis_get_time: Returns time since boot, this uses CLOCK_BOOTTIME which
+ * does not stop during system suspend.
+ *
+ * This wrapper is created to encourage consistent usage of clock source
+ * throughout LWIS implementations.
+ */
+static inline ktime_t lwis_get_time()
+{
+	return ktime_get_boottime();
+}
 
 #endif // LWIS_UTIL_H_

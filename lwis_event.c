@@ -16,6 +16,7 @@
 #include "lwis_device.h"
 #include "lwis_event.h"
 #include "lwis_transaction.h"
+#include "lwis_util.h"
 
 /*
  * lwis_client_event_state_find_locked: Looks through the provided client's
@@ -617,7 +618,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	/* Latch timestamp */
-	timestamp = ktime_to_ns(ktime_get());
+	timestamp = ktime_to_ns(lwis_get_time());
 
 	/* Emit event to subscriber via top device */
 	spin_lock_irqsave(&lwis_dev->lock, flags);

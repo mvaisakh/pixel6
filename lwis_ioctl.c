@@ -28,6 +28,7 @@
 #include "lwis_platform.h"
 #include "lwis_regulator.h"
 #include "lwis_transaction.h"
+#include "lwis_util.h"
 
 #define IOCTL_TO_ENUM(x) _IOC_NR(x)
 #define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
@@ -880,7 +881,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 {
 	int ret = 0;
-	int64_t timestamp = ktime_to_ns(ktime_get());
+	int64_t timestamp = ktime_to_ns(lwis_get_time());
 
 	ret = copy_to_user((void __user *)msg, &timestamp, sizeof(timestamp));
 	if (ret) {
