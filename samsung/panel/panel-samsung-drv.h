@@ -38,6 +38,7 @@
 struct exynos_panel;
 struct exynos_panel_funcs {
 	int (*set_brightness)(struct exynos_panel *exynos_panel, u16 br);
+	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, bool hbm_mode);
 };
 
 struct exynos_panel_desc {
@@ -74,6 +75,7 @@ struct exynos_panel {
 	struct backlight_device *bl;
 	bool enabled;
 	bool initialized;
+	bool hbm_mode;
 
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];
