@@ -360,11 +360,11 @@ const char *get_event_name(enum dpu_event_type type)
 	return events[type];
 }
 
-static void DPU_EVENT_SHOW(struct decon_device *decon, struct drm_printer *p)
+static void DPU_EVENT_SHOW(const struct decon_device *decon, struct drm_printer *p)
 {
-	int idx = atomic_read(&decon->d.event_log_idx) % dpu_event_log_max;
+	int idx = atomic_read(&decon->d.event_log_idx);
 	struct dpu_log *log;
-	int latest = idx;
+	int latest = idx % dpu_event_log_max;
 	struct timeval tv;
 	ktime_t prev_ktime;
 	const char *str_comp;
@@ -381,8 +381,12 @@ static void DPU_EVENT_SHOW(struct decon_device *decon, struct drm_printer *p)
 	/* Seek a oldest from current index */
 	if (dpu_event_print_max > dpu_event_log_max)
 		dpu_event_print_max = dpu_event_log_max;
-	idx = (idx + dpu_event_log_max - dpu_event_print_max) %
-						dpu_event_log_max;
+
+	if (idx < dpu_event_print_max)
+		idx = 0;
+	else
+		idx = (idx - dpu_event_print_max) % dpu_event_log_max;
+
 	prev_ktime = ktime_set(0, 0);
 	do {
 		if (++idx >= dpu_event_log_max)
