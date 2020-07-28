@@ -92,7 +92,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 				   hpg_qos);
 
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
-	    lwis_dev->clock_family < CLOCK_FAMILY_MAX) {
+	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
 		lwis_platform_update_qos(lwis_dev, 67000);
 	}
 

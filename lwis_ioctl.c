@@ -140,6 +140,11 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		strlcpy(type_name, STRINGIFY(LWIS_ECHO), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_ECHO);
 		break;
+	case IOCTL_TO_ENUM(LWIS_DPM_QOS_UPDATE):
+		strlcpy(type_name, STRINGIFY(LWIS_DPM_QOS_UPDATE),
+			sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_QOS_UPDATE);
+		break;
 	default:
 		strlcpy(type_name, "UNDEFINED", sizeof(type_name));
 		exp_size = 0;
@@ -1425,6 +1430,56 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 				     k_msg.num_settings);
 }
 
+static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
+				struct lwis_dpm_qos_requirements __user *msg)
+{
+	struct lwis_dpm_qos_requirements k_msg;
+	struct lwis_qos_setting *k_qos_settings;
+	int ret, i;
+	size_t buf_size;
+
+	if (lwis_dev->type != DEVICE_TYPE_DPM) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n",
+			lwis_dev->type);
+		return -EINVAL;
+	}
+
+	ret = copy_from_user((void *)&k_msg, (void __user *)msg,
+			     sizeof(struct lwis_dpm_qos_requirements));
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy ioctl message from user\n");
+		return ret;
+	}
+
+	// Copy qos settings from user buffer.
+	buf_size = sizeof(struct lwis_qos_setting) * k_msg.num_settings;
+	k_qos_settings = kzalloc(buf_size, GFP_KERNEL);
+	if (!k_qos_settings) {
+		dev_err(lwis_dev->dev, "Failed to allocate qos settings\n");
+		return -ENOMEM;
+	}
+	ret = copy_from_user(k_qos_settings, (void __user *)k_msg.qos_settings,
+			     buf_size);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Failed to copy clk settings from user\n");
+		goto out;
+	}
+
+	for (i = 0; i < k_msg.num_settings; i++) {
+		ret = lwis_dpm_update_qos(lwis_dev, &k_qos_settings[i]);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to apply qos setting, ret: %d\n", ret);
+			goto out;
+		}
+	}
+out:
+	kfree(k_qos_settings);
+	return ret;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		       unsigned long param)
 {
@@ -1442,7 +1497,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	    type != LWIS_DEVICE_RESET && type != LWIS_EVENT_CONTROL_GET &&
 	    type != LWIS_TIME_QUERY && type != LWIS_EVENT_DEQUEUE &&
 	    type != LWIS_BUFFER_ENROLL && type != LWIS_BUFFER_DISENROLL &&
-	    type != LWIS_BUFFER_FREE) {
+	    type != LWIS_BUFFER_FREE && type != LWIS_DPM_QOS_UPDATE) {
 		ret = -EBADFD;
 		dev_err_ratelimited(lwis_dev->dev,
 				    "Unsupported IOCTL on disabled device.\n");
@@ -1527,6 +1582,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	case LWIS_DPM_CLK_UPDATE:
 		ret = ioctl_dpm_clk_update(
 			lwis_dev, (struct lwis_dpm_clk_settings *)param);
+		break;
+	case LWIS_DPM_QOS_UPDATE:
+		ret = ioctl_dpm_qos_update(
+			lwis_dev, (struct lwis_dpm_qos_requirements *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

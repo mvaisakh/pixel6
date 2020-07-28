@@ -48,6 +48,17 @@ enum lwis_device_types {
 	NUM_DEVICE_TYPES
 };
 
+// Qos clock family.
+enum lwis_clock_family {
+	CLOCK_FAMILY_INVALID = -1,
+	CLOCK_FAMILY_CAM,
+	CLOCK_FAMILY_INTCAM,
+	CLOCK_FAMILY_TNR,
+	CLOCK_FAMILY_MIF,
+	CLOCK_FAMILY_INT,
+	NUM_CLOCK_FAMILY
+};
+
 /* Device tree strings have a maximum length of 31, according to specs.
    Adding 1 byte for the null character. */
 #define LWIS_MAX_NAME_STRING_LEN 32
@@ -281,6 +292,22 @@ struct lwis_dpm_clk_settings {
 	size_t num_settings;
 };
 
+struct lwis_qos_setting {
+	// Frequency in hz.
+	int64_t frequency_hz;
+	// Device id for this vote.
+	int32_t device_id;
+	// Target clock family.
+	enum lwis_clock_family clock_family;
+};
+
+struct lwis_dpm_qos_requirements {
+	// qos entities from user.
+	struct lwis_qos_setting *qos_settings;
+	// number of qos_settings.
+	size_t num_settings;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -320,6 +347,8 @@ struct lwis_dpm_clk_settings {
 
 #define LWIS_DPM_CLK_UPDATE                                                    \
 	_IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
+#define LWIS_DPM_QOS_UPDATE                                                    \
+	_IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
 
 #ifdef __cplusplus
 } /* extern "C" */

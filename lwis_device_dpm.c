@@ -15,6 +15,7 @@
 #include <linux/clk.h>
 #include <linux/slab.h>
 
+#include "lwis_commands.h"
 #include "lwis_init.h"
 #include "lwis_platform.h"
 
@@ -36,7 +37,49 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 };
 
 /*
- *  lwis_dpm_update_clock: update clock settings to lwis device.
+ *  lwis_dpm_update_qos: update qos requirement for lwis device.
+ */
+int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
+			struct lwis_qos_setting *qos_setting)
+{
+	int ret = 0;
+	struct lwis_device *target_dev;
+
+	switch (qos_setting->clock_family) {
+	case CLOCK_FAMILY_MIF:
+	case CLOCK_FAMILY_INT:
+		dev_info(lwis_dev->dev,
+			 "Currently not support bandwidth update\n");
+		break;
+	case CLOCK_FAMILY_TNR:
+	case CLOCK_FAMILY_CAM:
+	case CLOCK_FAMILY_INTCAM:
+		target_dev = lwis_find_dev_by_id(qos_setting->device_id);
+		if (!target_dev) {
+			dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
+				qos_setting->device_id);
+			ret = -ENOENT;
+			goto out;
+		}
+		/* convert value to KHz */
+		ret = lwis_platform_update_qos(
+				target_dev, qos_setting->frequency_hz / 1000);
+		if (ret)
+			dev_err(lwis_dev->dev,
+				"Failed to apply qos requirement for %s\n",
+				target_dev->name);
+		break;
+	default:
+		dev_err(lwis_dev->dev, "Invalid clock family %d\n",
+			qos_setting->clock_family);
+		ret = -EINVAL;
+	}
+out:
+	return ret;
+}
+
+/*
+ *  lwis_dpm_update_clock: update specific clock settings to lwis device.
  */
 int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			  struct lwis_clk_setting *clk_settings,
@@ -46,7 +89,8 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 	uint32_t old_clk;
 
 	if (!lwis_dev->clocks) {
-		dev_err(lwis_dev->dev, "%s has no clocks\n", lwis_dev->name);
+		dev_err(lwis_dev->dev, "%s has no clocks\n",
+			lwis_dev->name);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -58,15 +102,20 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			continue;
 
 		if (clk_index >= lwis_dev->clocks->count) {
-			dev_err(lwis_dev->dev, "%s clk index %d is invalid\n",
+			dev_err(lwis_dev->dev,
+				"%s clk index %d is invalid\n",
 				lwis_dev->name, clk_index);
 			ret = -EINVAL;
 			goto out;
 		}
 
+		/* TODO(161326479): temporary support legacy interface to update
+		 * qos clock, remove this when user drivers change to new
+		 * interface.
+		 */
 		if (clk_index == 0 &&
 		    lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
-		    lwis_dev->clock_family < CLOCK_FAMILY_MAX) {
+		    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
 			/* convert value to KHz */
 			lwis_platform_update_qos(
 				lwis_dev, clk_settings[i].frequency / 1000);
