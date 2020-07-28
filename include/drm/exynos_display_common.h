@@ -17,6 +17,7 @@
 
 #define EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL	(1 << 0)
 #define EXYNOS_DISPLAY_MODE_FLAG_TUI		(1 << 1)
+#define EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS	(1 << 2)
 
 struct exynos_display_dsc {
 	bool enabled;
@@ -44,4 +45,9 @@ static inline const struct exynos_display_mode *drm_mode_to_exynos(
 	return NULL;
 }
 
+static inline bool
+exynos_drm_mode_is_seamless(const struct drm_display_mode *mode)
+{
+	return (mode->private_flags & EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS) != 0;
+}
 #endif
