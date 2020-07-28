@@ -37,8 +37,42 @@
 
 struct exynos_panel;
 struct exynos_panel_funcs {
+	/**
+	 * @set_brightness:
+	 *
+	 * This callback is used to implement driver specific logic for brightness
+	 * configuration. Otherwise defaults to sending brightness commands through
+	 * dcs command update
+	 */
 	int (*set_brightness)(struct exynos_panel *exynos_panel, u16 br);
+
+	/**
+	 * @set_hbm_mode:
+	 *
+	 * This callback is used to implement panel specific logic for high brightness
+	 * mode enablement. If this is not defined, it means that panel does not
+	 * support HBM
+	 */
 	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, bool hbm_mode);
+
+	/**
+	 * @is_mode_seamless:
+	 *
+	 * This callback is used to check if a switch to a particular mode can be done
+	 * seamlessly without full mode set given the current hardware configuration
+	 */
+	bool (*is_mode_seamless)(const struct exynos_panel *exynos_panel,
+				 const struct drm_display_mode *mode);
+
+	/**
+	 * @mode_set:
+	 *
+	 * This callback is used to perform driver specific logic for mode_set.
+	 * This could be called while display is on or off, should check internal
+	 * state to perform appropriate mode set configuration depending on this state.
+	 */
+	void (*mode_set)(struct exynos_panel *exynos_panel,
+			 const struct drm_display_mode *mode);
 };
 
 struct exynos_panel_desc {

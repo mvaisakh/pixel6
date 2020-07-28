@@ -727,6 +727,27 @@ static void exynos_panel_post_disable(struct drm_bridge *bridge)
 	drm_panel_unprepare(&ctx->panel);
 }
 
+/*
+ * Check whether transition to new mode can be done seamlessly without having
+ * to turn display off before mode change. This is currently only possible if
+ * only clocks/refresh rate is changing
+ */
+static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
+					  const struct drm_display_mode *mode)
+{
+	const struct exynos_panel_funcs *funcs;
+
+	/* no need to go through seamless mode set if panel is disabled */
+	if (!ctx->enabled)
+		return false;
+
+	funcs = ctx->desc->exynos_panel_func;
+	if (!funcs || !funcs->is_mode_seamless)
+		return false;
+
+	return funcs->is_mode_seamless(ctx, mode);
+}
+
 static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
 				    const struct drm_display_mode *mode,
 				    struct drm_display_mode *adjusted_mode)
@@ -746,6 +767,9 @@ static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
 				adjusted_mode->private_flags &=
 					~EXYNOS_DISPLAY_MODE_FLAG_TUI;
 
+			if (exynos_panel_is_mode_seamless(ctx, m))
+				adjusted_mode->private_flags |= EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS;
+
 			return true;
 		}
 	}
@@ -763,16 +787,15 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	const struct drm_display_mode *pmode;
 	const struct exynos_display_mode *mode_priv;
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	int i;
 
 	for (i = 0; i < ctx->desc->num_modes; i++) {
 		pmode = &ctx->desc->modes[i];
 
 		if (drm_mode_equal(pmode, adjusted_mode) &&
-		    (pmode->private == adjusted_mode->private)) {
-			ctx->current_mode = pmode;
+		    (pmode->private == adjusted_mode->private))
 			break;
-		}
 	}
 
 	if (WARN_ON(i == ctx->desc->num_modes))
@@ -783,6 +806,10 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 
 	mode_priv = drm_mode_to_exynos(adjusted_mode);
 	dsi->mode_flags = mode_priv->mode_flags;
+
+	if (funcs && funcs->mode_set)
+		funcs->mode_set(ctx, pmode);
+	ctx->current_mode = pmode;
 }
 
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
