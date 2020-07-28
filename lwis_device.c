@@ -933,6 +933,29 @@ error_chrdev_alloc:
 	return ret;
 }
 
+static void lwis_unregister_base_device(void)
+{
+	mutex_lock(&core.lock);
+
+#ifdef CONFIG_DEBUGFS
+	debugfs_remove(core.dbg_root);
+	core.dbg_root = NULL;
+#endif
+
+	cdev_del(core.chr_dev);
+	core.chr_dev = NULL;
+
+	class_destroy(core.dev_class);
+	core.dev_class = NULL;
+
+	unregister_chrdev_region(core.lwis_devt, LWIS_MAX_DEVICES);
+
+	kfree(core.idr);
+	core.idr = NULL;
+
+	mutex_unlock(&core.lock);
+}
+
 /*
  *  lwis_base_device_init: Called during subsys_initcall routines.
  */
@@ -989,7 +1012,6 @@ static void __exit lwis_driver_exit(void)
 	struct lwis_i2c_device *i2c_dev;
 
 	pr_info("%s Clean up LWIS devices.\n", __func__);
-	cdev_del(core.chr_dev);
 	list_for_each_entry_safe (lwis_dev, temp, &core.lwis_dev_list,
 				  dev_list) {
 		pr_info("Destroy device %s id %d", lwis_dev->name,
@@ -1038,19 +1060,15 @@ static void __exit lwis_driver_exit(void)
 		kfree(lwis_dev);
 	}
 
-	/* Unregister core lwis device */
-	unregister_chrdev_region(core.lwis_devt, LWIS_MAX_DEVICES);
-	class_destroy(core.dev_class);
-	core.dev_class = NULL;
-	kfree(core.idr);
-	core.idr = NULL;
-
 	/* Deinit device classes */
-	lwis_top_device_deinit();
+	lwis_dpm_device_deinit();
+	lwis_slc_device_deinit();
 	lwis_i2c_device_deinit();
 	lwis_ioreg_device_deinit();
-	lwis_slc_device_deinit();
-	lwis_dpm_device_deinit();
+	lwis_top_device_deinit();
+
+	/* Unregister base lwis device */
+	lwis_unregister_base_device();
 }
 
 subsys_initcall(lwis_base_device_init);
