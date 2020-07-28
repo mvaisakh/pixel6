@@ -474,7 +474,7 @@ void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 			hibernation_crtc_mask |= drm_crtc_mask(crtc);
 		}
 
-		if (old_crtc_state->active && !new_crtc_state->active) {
+		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
 			/*
 			 * If hw related to crtc is processing, it also should
 			 * be delayed. If not, the hw does not shut down
