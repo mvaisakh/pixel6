@@ -255,6 +255,8 @@ struct lwis_client {
 	struct lwis_client_debug_info debug_info;
 	/* Each device has a linked list of clients */
 	struct list_head node;
+	/* Mark if the client called device enable */
+	bool is_enabled;
 };
 
 /*

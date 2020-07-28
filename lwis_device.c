@@ -125,6 +125,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Storing the client handle in fp private_data for easy access */
 	fp->private_data = lwis_client;
 
+	lwis_client->is_enabled = false;
 	return 0;
 }
 
@@ -164,6 +165,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 	unsigned long flags;
 	int rc = 0;
+	bool is_client_enabled = lwis_client->is_enabled;
 
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
@@ -179,7 +181,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 
 	mutex_lock(&lwis_dev->client_lock);
 	/* Release power if client closed without power down called */
-	if (lwis_dev->enabled > 0) {
+	if (is_client_enabled && lwis_dev->enabled > 0) {
 		lwis_dev->enabled--;
 		if (lwis_dev->enabled == 0) {
 			dev_info(lwis_dev->dev, "No more client, power down\n");

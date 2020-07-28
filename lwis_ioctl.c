@@ -575,13 +575,18 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 	return 0;
 }
 
-static int ioctl_device_enable(struct lwis_device *lwis_dev)
+static int ioctl_device_enable(struct lwis_client *lwis_client)
 {
 	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
+	if (lwis_client->is_enabled) {
+		return ret;
+	}
 	mutex_lock(&lwis_dev->client_lock);
 	if (lwis_dev->enabled > 0 && lwis_dev->enabled < INT_MAX) {
 		lwis_dev->enabled++;
+		lwis_client->is_enabled = true;
 		mutex_unlock(&lwis_dev->client_lock);
 		return 0;
 	} else if (lwis_dev->enabled == INT_MAX) {
@@ -597,6 +602,7 @@ static int ioctl_device_enable(struct lwis_device *lwis_dev)
 	}
 
 	lwis_dev->enabled++;
+	lwis_client->is_enabled = true;
 	dev_info(lwis_dev->dev, "Device enabled\n");
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
@@ -605,9 +611,12 @@ error_locked:
 
 static int ioctl_device_disable(struct lwis_client *lwis_client)
 {
-	int ret;
+	int ret = 0;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
+	if (!lwis_client->is_enabled) {
+		return ret;
+	}
 	/* Flush all periodic io to complete */
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
@@ -625,6 +634,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	mutex_lock(&lwis_dev->client_lock);
 	if (lwis_dev->enabled > 1) {
 		lwis_dev->enabled--;
+		lwis_client->is_enabled = false;
 		mutex_unlock(&lwis_dev->client_lock);
 		return 0;
 	} else if (lwis_dev->enabled <= 0) {
@@ -641,6 +651,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	}
 
 	lwis_dev->enabled--;
+	lwis_client->is_enabled = false;
 	dev_info(lwis_dev->dev, "Device disabled\n");
 error_locked:
 	mutex_unlock(&lwis_dev->client_lock);
@@ -1461,7 +1472,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		ret = ioctl_reg_io(lwis_dev, (struct lwis_io_entries *)param);
 		break;
 	case LWIS_DEVICE_ENABLE:
-		ret = ioctl_device_enable(lwis_dev);
+		ret = ioctl_device_enable(lwis_client);
 		break;
 	case LWIS_DEVICE_DISABLE:
 		ret = ioctl_device_disable(lwis_client);
