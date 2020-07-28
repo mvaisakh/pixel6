@@ -278,6 +278,12 @@ err:
 	return ret;
 }
 
+static void exynos_panel_mode_set_name(struct drm_display_mode *mode)
+{
+	scnprintf(mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%d",
+		  mode->hdisplay, mode->vdisplay, drm_mode_vrefresh(mode));
+}
+
 int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector)
 {
 	struct exynos_panel *ctx =
@@ -294,21 +300,20 @@ int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connec
 		if (!mode)
 			return -ENOMEM;
 
-		drm_mode_set_name(mode);
+		if (!mode->name[0])
+			exynos_panel_mode_set_name(mode);
 
 		mode->type |= DRM_MODE_TYPE_DRIVER;
 		drm_mode_probed_add(connector, mode);
 
-		dev_dbg(ctx->dev, "added display mode: %s@%u\n", mode->name,
-			 drm_mode_vrefresh(mode));
+		dev_dbg(ctx->dev, "added display mode: %s\n", mode->name);
 
 		if (!preferred_mode || (mode->type & DRM_MODE_TYPE_PREFERRED))
 			preferred_mode = mode;
 	}
 
 	if (preferred_mode) {
-		dev_dbg(ctx->dev, "preferred display mode: %s@%u\n",
-			 preferred_mode->name, drm_mode_vrefresh(preferred_mode));
+		dev_dbg(ctx->dev, "preferred display mode: %s\n", preferred_mode->name);
 		preferred_mode->type |= DRM_MODE_TYPE_PREFERRED;
 		connector->display_info.width_mm = preferred_mode->width_mm;
 		connector->display_info.height_mm = preferred_mode->height_mm;
