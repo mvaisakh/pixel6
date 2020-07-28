@@ -350,6 +350,8 @@ static int dsim_set_clock_mode(struct dsim_device *dsim,
 
 	dsim->config.cmd_underrun_cnt[0] = p->cmd_underrun_cnt;
 
+	dsim->current_pll_param = p;
+
 	return 0;
 }
 
@@ -474,11 +476,12 @@ getnode_fail:
 	return NULL;
 }
 
-static void dsim_adjust_video_timing(struct dsim_device *dsim,
-				     const struct drm_display_mode *mode)
+static void dsim_update_config_for_mode(struct dsim_reg_config *config,
+					const struct drm_display_mode *mode)
 {
+	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
+	struct dpu_panel_timing *p_timing = &config->p_timing;
 	struct videomode vm;
-	struct dpu_panel_timing *p_timing = &dsim->config.p_timing;
 
 	drm_display_mode_to_videomode(mode, &vm);
 
@@ -493,50 +496,45 @@ static void dsim_adjust_video_timing(struct dsim_device *dsim,
 	p_timing->hsa = vm.hsync_len;
 	p_timing->vrefresh = drm_mode_vrefresh(mode);
 
-	dsim_set_clock_mode(dsim, mode);
-}
+	/* TODO: This hard coded information will be defined in device tree */
+	config->mres_mode = 0;
 
-static void dsim_update_config_for_mode(struct dsim_device *dsim,
-					const struct drm_display_mode *mode)
-{
-	const struct exynos_display_mode *mode_priv =
-					drm_mode_to_exynos(mode);
-
-	if (!mode_priv || !dsim->dsi_device)
+	if (!mode_priv)
 		return;
 
-	dsim->config.mode = (mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO) ?
+	config->mode = (mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO) ?
 				DSIM_VIDEO_MODE : DSIM_COMMAND_MODE;
 
-	dsim->config.data_lane_cnt = dsim->dsi_device->lanes;
-	/* TODO: This hard coded information will be defined in device tree */
-	dsim->config.mres_mode = 0;
-
-	dsim->config.dsc.enabled = mode_priv->dsc.enabled;
-	if (dsim->config.dsc.enabled) {
-		dsim->config.dsc.dsc_count = mode_priv->dsc.dsc_count;
-		dsim->config.dsc.slice_count = mode_priv->dsc.slice_count;
-		dsim->config.dsc.slice_height = mode_priv->dsc.slice_height;
-		dsim->config.dsc.slice_width = DIV_ROUND_UP(
-				dsim->config.p_timing.hactive,
-				dsim->config.dsc.slice_count);
+	config->dsc.enabled = mode_priv->dsc.enabled;
+	if (config->dsc.enabled) {
+		config->dsc.dsc_count = mode_priv->dsc.dsc_count;
+		config->dsc.slice_count = mode_priv->dsc.slice_count;
+		config->dsc.slice_height = mode_priv->dsc.slice_height;
+		config->dsc.slice_width = DIV_ROUND_UP(
+				config->p_timing.hactive,
+				config->dsc.slice_count);
 	}
+}
 
-	dsim_info(dsim, "dsim mode %s dsc is %s [%d %d %d %d]\n",
+static void dsim_set_display_mode(struct dsim_device *dsim,
+				  const struct drm_display_mode *mode)
+{
+	if (!dsim->dsi_device)
+		return;
+
+	dsim->config.data_lane_cnt = dsim->dsi_device->lanes;
+
+	dsim_update_config_for_mode(&dsim->config, mode);
+
+	dsim_set_clock_mode(dsim, mode);
+
+	dsim_debug(dsim, "dsim mode %s dsc is %s [%d %d %d %d]\n",
 			dsim->config.mode == DSIM_VIDEO_MODE ? "video" : "cmd",
 			dsim->config.dsc.enabled ? "enabled" : "disabled",
 			dsim->config.dsc.dsc_count,
 			dsim->config.dsc.slice_count,
 			dsim->config.dsc.slice_width,
 			dsim->config.dsc.slice_height);
-}
-
-static void dsim_set_display_mode(struct dsim_device *dsim,
-				  const struct drm_display_mode *mode)
-{
-	dsim_adjust_video_timing(dsim, mode);
-
-	dsim_update_config_for_mode(dsim, mode);
 }
 
 static void dsim_mode_set(struct drm_encoder *encoder,
@@ -559,11 +557,40 @@ static enum drm_mode_status dsim_mode_valid(struct drm_encoder *encoder,
 	return MODE_OK;
 }
 
+/*
+ * Check whether mode change can happean seamlessly from dsim perspective.
+ * Seamless mode switch from dsim perspective can only happen if there's no
+ * need to change dsim configuration.
+ */
+static bool dsim_mode_is_seamless(const struct dsim_device *dsim,
+				  const struct drm_display_mode *mode)
+{
+	struct dsim_reg_config new_config = dsim->config;
+
+	if (dsim->current_pll_param != dsim_get_clock_mode(dsim, mode)) {
+		dsim_debug(dsim, "clock mode change not allowed seamlessly\n");
+		return false;
+	}
+
+	dsim_update_config_for_mode(&new_config, mode);
+	if (dsim->config.mode != new_config.mode) {
+		dsim_debug(dsim, "op mode change not allowed seamlessly\n");
+		return false;
+	}
+
+	if (memcmp(&dsim->config.dsc, &new_config.dsc, sizeof(new_config.dsc))) {
+		dsim_debug(dsim, "dsc change not allowed seamlessly\n");
+		return false;
+	}
+
+	return true;
+}
+
 static int dsim_atomic_check(struct drm_encoder *encoder,
 			     struct drm_crtc_state *crtc_state,
 			     struct drm_connector_state *state)
 {
-	const struct drm_display_mode *mode;
+	struct drm_display_mode *mode;
 	const struct dsim_device *dsim = encoder_to_dsim(encoder);
 	const struct exynos_display_mode *mode_priv;
 
@@ -571,9 +598,15 @@ static int dsim_atomic_check(struct drm_encoder *encoder,
 		mode = &crtc_state->adjusted_mode;
 		mode_priv = drm_mode_to_exynos(mode);
 		if (!mode_priv) {
-			dsim_warn(dsim, "%s: mode %s is not supported",
+			dsim_warn(dsim, "%s: mode %s is not supported\n",
 				  __func__, mode->name);
 			return -EINVAL;
+		}
+
+		if (exynos_drm_mode_is_seamless(mode) && !dsim_mode_is_seamless(dsim, mode)) {
+			dsim_warn(dsim, "%s: seamless mode switch not supported for %s\n",
+				  __func__, mode->name);
+			mode->private_flags &= ~EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS;
 		}
 	}
 

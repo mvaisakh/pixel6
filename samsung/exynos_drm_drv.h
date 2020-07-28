@@ -236,6 +236,7 @@ struct exynos_drm_crtc_state {
 	struct exynos_dqe_state dqe;
 	struct drm_property_blob *cgc_lut;
 	enum exynos_drm_writeback_type wb_type;
+	u8 seamless_mode_changed : 1;
 };
 
 static inline struct exynos_drm_crtc_state *

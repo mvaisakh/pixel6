@@ -316,6 +316,8 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
+	copy->seamless_mode_changed = false;
+
 	return &copy->base;
 }
 

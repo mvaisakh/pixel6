@@ -151,6 +151,7 @@ struct dpu_bts {
 
 	struct dpu_bts_win_config win_config[MAX_WIN_PER_DECON];
 	struct dpu_bts_win_config wb_config;
+	atomic_t delayed_update;
 };
 
 /**

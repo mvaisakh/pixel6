@@ -75,6 +75,8 @@ struct dsim_device {
 	struct dsim_reg_config config;
 	struct dsim_clks clk_param;
 
+	const struct dsim_pll_param *current_pll_param;
+
 	int idle_ip_index;
 };
 
