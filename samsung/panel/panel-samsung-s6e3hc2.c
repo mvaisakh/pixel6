@@ -11,6 +11,7 @@
 
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <video/mipi_display.h>
 
 #include "panel-samsung-drv.h"
 
@@ -94,8 +95,9 @@ static int s6e3hc2_prepare(struct drm_panel *panel)
 #define S6E3HC2_WRCTRLD_FRAME_RATE_BIT 0x10
 #define S6E3HC2_WRCTRLD_BCTRL_BIT      0x20
 #define S6E3HC2_WRCTRLD_HBM_BIT        0xC0
-static void s6e3hc2_set_mode(struct exynos_panel *ctx,
-			     const struct drm_display_mode *mode)
+
+static void s6e3hc2_write_display_mode(struct exynos_panel *ctx,
+				       const struct drm_display_mode *mode)
 {
 	u8 val = S6E3HC2_WRCTRLD_BCTRL_BIT;
 
@@ -105,11 +107,10 @@ static void s6e3hc2_set_mode(struct exynos_panel *ctx,
 	if (ctx->hbm_mode)
 		val |= S6E3HC2_WRCTRLD_HBM_BIT;
 
-	dev_dbg(ctx->dev,
-				 "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n", __func__, val,
-				 ctx->hbm_mode ? "on" : "off", drm_mode_vrefresh(mode));
+	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n",
+		__func__, val, ctx->hbm_mode ? "on" : "off", drm_mode_vrefresh(mode));
 
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, val);
+	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 
 	/* TODO: need to perform gamma updates */
 }
@@ -153,7 +154,7 @@ static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
 			0xF2, 0x03, 0x00, 0xFF, 0x02, 0x0A, 0x0A, 0x0A, 0x0A,
 			0x0F, 0x23);
 
-	s6e3hc2_set_mode(ctx, mode);
+	s6e3hc2_write_display_mode(ctx, mode);
 
 	return 0;
 }
@@ -221,7 +222,23 @@ static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
 {
 	exynos_panel->hbm_mode = hbm_mode;
 
-	s6e3hc2_set_mode(exynos_panel, exynos_panel->current_mode);
+	s6e3hc2_write_display_mode(exynos_panel, exynos_panel->current_mode);
+}
+
+static void s6e3hc2_mode_set(struct exynos_panel *ctx,
+			     const struct drm_display_mode *mode)
+{
+	if (!ctx->enabled)
+		return;
+
+	s6e3hc2_write_display_mode(ctx, mode);
+}
+
+static bool s6e3hc2_is_mode_seamless(const struct exynos_panel *ctx,
+				     const struct drm_display_mode *mode)
+{
+	/* seamless mode switch is possible if only changing refresh rate */
+	return drm_mode_equal_no_clocks(ctx->current_mode, mode);
 }
 
 static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
@@ -340,6 +357,8 @@ static const struct drm_panel_funcs s6e3hc2_fhd_drm_funcs = {
 static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.set_brightness = s6e3hc2_set_brightness,
 	.set_hbm_mode = s6e3hc2_set_hbm_mode,
+	.is_mode_seamless = s6e3hc2_is_mode_seamless,
+	.mode_set = s6e3hc2_mode_set,
 };
 
 const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
