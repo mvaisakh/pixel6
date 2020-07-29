@@ -469,7 +469,7 @@ int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 	if (!bridge || bridge->dev)
 		return 0;
 
-	drm_bridge_attach(encoder, bridge, NULL);
+	drm_bridge_attach(encoder, bridge, encoder->bridge);
 	dev_info(ctx->dev, "attach bridge %p to encoder %p\n", bridge, encoder);
 
 	return 0;
