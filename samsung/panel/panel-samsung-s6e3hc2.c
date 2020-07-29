@@ -185,6 +185,7 @@ static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
 
 static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
 	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+	.vblank_usec = 120,
 	.bpc = 8,
 	.dsc = {
 		.enabled = true,
@@ -231,6 +232,7 @@ static const struct drm_display_mode s6e3hc2_wqhd_modes[] = {
 
 static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
 	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+	.vblank_usec = 120,
 	.bpc = 8,
 	.dsc = {
 		.enabled = true,
