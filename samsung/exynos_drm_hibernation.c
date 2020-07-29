@@ -27,6 +27,10 @@
 #include <exynos_drm_decon.h>
 #include <exynos_drm_writeback.h>
 
+#define HIBERNATION_ENTRY_DEFAULT_FPS		60
+#define HIBERNATION_ENTRY_MIN_TIME_MS		50
+#define HIBERNATION_ENTRY_MIN_ENTRY_CNT		1
+
 #define CAMERA_OPERATION_MASK	0xF
 static bool is_camera_operating(struct exynos_hibernation *hiber)
 {
@@ -39,7 +43,14 @@ static bool is_camera_operating(struct exynos_hibernation *hiber)
 
 static void exynos_hibernation_trig_reset(struct exynos_hibernation *hiber)
 {
-	atomic_set(&hiber->trig_cnt, hiber->entry_cnt);
+	const struct decon_device *decon = hiber->decon;
+	const int fps = decon->bts.fps ? : HIBERNATION_ENTRY_DEFAULT_FPS;
+	int entry_cnt = DIV_ROUND_UP(fps * HIBERNATION_ENTRY_MIN_TIME_MS, MSEC_PER_SEC);
+
+	if (entry_cnt < HIBERNATION_ENTRY_MIN_ENTRY_CNT)
+		entry_cnt = HIBERNATION_ENTRY_MIN_ENTRY_CNT;
+
+	atomic_set(&hiber->trig_cnt, entry_cnt);
 }
 
 static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
@@ -112,6 +123,8 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 
 	mutex_lock(&hiber->lock);
 
+	exynos_hibernation_trig_reset(hiber);
+
 	if (decon->state != DECON_STATE_HIBERNATION)
 		goto ret;
 
@@ -130,8 +143,6 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 		writeback_exit_hibernation(hiber->wb);
 		hiber->wb = NULL;
 	}
-
-	exynos_hibernation_trig_reset(hiber);
 
 	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_OUT, decon->id, NULL);
 
@@ -176,7 +187,6 @@ static void exynos_hibernation_handler(struct kthread_work *work)
 	if (!funcs->check(hibernation))
 		return;
 
-	exynos_hibernation_trig_reset(hibernation);
 	funcs->enter(hibernation);
 }
 
@@ -217,7 +227,6 @@ exynos_hibernation_register(struct decon_device *decon)
 
 	mutex_init(&hibernation->lock);
 
-	hibernation->entry_cnt = EXYNOS_HIBERNATION_ENTRY_CNT;
 	exynos_hibernation_trig_reset(hibernation);
 
 	atomic_set(&hibernation->block_cnt, 0);

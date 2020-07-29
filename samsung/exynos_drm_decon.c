@@ -941,13 +941,13 @@ static irqreturn_t decon_te_irq_handler(int irq, void *dev_id)
 
 	DPU_EVENT_LOG(DPU_EVT_TE_INTERRUPT, decon->id, NULL);
 
-	if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
-		drm_crtc_handle_vblank(&decon->crtc->base);
-
 	hibernation = decon->hibernation;
 
 	if (hibernation && !is_hibernaton_blocked(hibernation))
 		kthread_queue_work(&hibernation->worker, &hibernation->work);
+
+	if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
+		drm_crtc_handle_vblank(&decon->crtc->base);
 
 end:
 	return IRQ_HANDLED;

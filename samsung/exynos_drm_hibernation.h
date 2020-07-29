@@ -21,8 +21,6 @@
 #include <linux/kthread.h>
 #include <linux/io.h>
 
-#define EXYNOS_HIBERNATION_ENTRY_CNT	3
-
 struct decon_device;
 struct dsim_device;
 struct exynos_hibernation;
@@ -37,7 +35,6 @@ struct exynos_hibernation_funcs {
 struct exynos_hibernation {
 	atomic_t trig_cnt;
 	atomic_t block_cnt;
-	int entry_cnt;
 	/* register to check whether camera is operating or not */
 	void __iomem *cam_op_reg;
 	struct mutex lock;
