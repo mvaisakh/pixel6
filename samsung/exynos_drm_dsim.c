@@ -289,15 +289,27 @@ dsim_get_clock_mode(const struct dsim_device *dsim,
 {
 	int i;
 	const struct dsim_pll_params *pll_params = dsim->pll_params;
+	const size_t mlen = strnlen(mode->name, DRM_DISPLAY_MODE_LEN);
+	const struct dsim_pll_param *ret = NULL;
+	size_t plen;
 
 	for (i = 0; i < pll_params->num_modes; i++) {
 		const struct dsim_pll_param *p = pll_params->params[i];
 
-		if (!strcmp(mode->name, p->name))
-			return p;
+		plen = strnlen(p->name, DRM_DISPLAY_MODE_LEN);
+
+		if (!strncmp(mode->name, p->name, plen)) {
+			ret = p;
+			/*
+			 * if it's not exact match, continue looking for exact
+			 * match, use this as a fallback
+			 */
+			if (plen == mlen)
+				break;
+		}
 	}
 
-	return NULL;
+	return ret;
 }
 
 static int dsim_set_clock_mode(struct dsim_device *dsim,
