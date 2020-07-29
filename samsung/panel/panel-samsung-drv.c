@@ -9,6 +9,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/debugfs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/of_platform.h>
@@ -553,6 +554,75 @@ static int exynos_drm_connector_create_hdr_formats_property(
 	return 0;
 }
 
+#ifdef CONFIG_DEBUG_FS
+static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
+			      size_t count, loff_t *f_pos)
+{
+	struct seq_file *m = file->private_data;
+	struct exynos_panel *ctx = m->private;
+	const struct exynos_panel_funcs *exynos_panel_func;
+	int ret;
+	bool hbm_en;
+
+	if (!ctx->enabled) {
+		dev_err(ctx->dev, "panel is not enabled\n");
+		return -EPERM;
+	}
+
+	exynos_panel_func = ctx->desc->exynos_panel_func;
+	if (!exynos_panel_func || !exynos_panel_func->set_hbm_mode) {
+		dev_err(ctx->dev, "hbm is not support\n");
+		return -EPERM;
+	}
+
+	ret = kstrtobool_from_user(user_buf, count, &hbm_en);
+	if (ret) {
+		dev_err(ctx->dev, "invalid hbm_mode value\n");
+		return ret;
+	}
+
+	exynos_panel_func->set_hbm_mode(ctx, hbm_en);
+
+	return count;
+}
+
+static int hbm_mode_show(struct seq_file *m, void *data)
+{
+	struct exynos_panel *ctx = m->private;
+
+	seq_printf(m, "%d\n", ctx->hbm_mode);
+
+	return 0;
+}
+
+static int hbm_mode_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hbm_mode_show, inode->i_private);
+}
+
+static const struct file_operations hbm_mode_fops = {
+	.owner          = THIS_MODULE,
+	.open           = hbm_mode_open,
+	.write          = hbm_mode_write,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	if (!debugfs_create_file("hbm_mode", 0600, parent, ctx, &hbm_mode_fops))
+		return -ENOMEM;
+
+	return 0;
+}
+#else
+static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	return 0;
+}
+#endif
+
 static int exynos_panel_bridge_attach(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
@@ -591,6 +661,8 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge)
 	}
 
 	mipi_dsi_debugfs_add(dsi, ctx->panel.debugfs_entry);
+
+	hbm_mode_debugfs_add(ctx, ctx->panel.debugfs_entry);
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
