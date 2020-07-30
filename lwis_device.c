@@ -103,6 +103,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 
 	/* The event queue itself is a linked list */
 	INIT_LIST_HEAD(&lwis_client->event_queue);
+	INIT_LIST_HEAD(&lwis_client->error_event_queue);
 
 	/* Initialize the wait queue for the event queue */
 	init_waitqueue_head(&lwis_client->event_wait_queue);
@@ -267,8 +268,10 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	/* Add our wait queue to the poll table */
 	poll_wait(fp, &lwis_client->event_wait_queue, wait);
 
-	/* Check if we have anything in the event list */
-	if (lwis_client_event_peek_front(lwis_client, NULL) == 0) {
+	/* Check if we have anything in the event lists */
+	if (lwis_client_error_event_peek_front(lwis_client, NULL) == 0) {
+		mask |= POLLERR;
+	} else if (lwis_client_event_peek_front(lwis_client, NULL) == 0) {
 		mask |= POLLIN;
 	}
 

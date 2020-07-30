@@ -141,6 +141,44 @@ int lwis_client_event_peek_front(struct lwis_client *lwis_client, struct lwis_ev
 void lwis_client_event_queue_clear(struct lwis_client *lwis_client);
 
 /*
+ * lwis_client_event_pop_front: Removes an event from the client event queue
+ * that is ready to be copied to userspace.
+ *
+ * if event is not NULL, the caller takes ownership of *event and must free it
+ * if event is NULL, this function will free the popped event object
+ *
+ * Locks: lwis_client->event_lock
+ *
+ * Alloc: No
+ * Returns: 0 on success, -ENOENT if queue empty
+ */
+int lwis_client_error_event_pop_front(struct lwis_client *lwis_client,
+				      struct lwis_event_entry **event);
+
+/*
+ * lwis_client_event_peek_front: Get the front element of the queue without
+ * removing it
+ *
+ * Locks: lwis_client->event_lock
+ *
+ * Alloc: No
+ * Returns: 0 on success, -ENOENT if queue empty
+ */
+int lwis_client_error_event_peek_front(struct lwis_client *lwis_client,
+				       struct lwis_event_entry **event);
+
+/*
+ * lwis_client_error_event_queue_clear: Clear all entries inside the event
+ * queue.
+ *
+ * Locks: lwis_client->event_lock
+ *
+ * Alloc: No
+ * Returns: void
+ */
+void lwis_client_error_event_queue_clear(struct lwis_client *lwis_client);
+
+/*
  * lwis_client_event_states_clear: Frees all items in lwisclient->event_states
  * and clears the hash table. Used for client shutdown only.
  *
@@ -206,6 +244,19 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
  */
 void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
 				     int64_t event_counter, int64_t timestamp, bool in_irq);
+
+/*
+ * lwis_device_error_event_emit: Emits an error event for all clients.
+ * The difference to lwis_device_event_emit is that this directly sends the
+ * error event to userspace without needing client to enable this event,
+ * because all error events should be propagated to userspace such that
+ * userspace can do the proper error handling.
+ *
+ * Also, no transactions will be triggered by error events.
+ */
+void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
+				  int64_t event_id, void *payload,
+				  size_t payload_size);
 
 /*
  * lwis_device_event_state_find_or_create: Looks through the provided device's
