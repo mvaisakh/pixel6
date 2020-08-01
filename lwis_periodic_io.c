@@ -247,11 +247,11 @@ static int process_io_entries(struct lwis_client *client,
 	}
 	periodic_io->batch_count++;
 	resp->batch_size = periodic_io->batch_count;
+
+event_push:
 	resp_size = sizeof(struct lwis_periodic_io_response_header) +
 		    periodic_io->batch_count *
 			    (resp->results_size_bytes / info->batch_size);
-
-event_push:
 	/* Always remove the process_queue_node from the client
 	 * periodic_io_process_queue */
 	if (list_node) {
@@ -318,8 +318,8 @@ static void periodic_io_work_func(struct work_struct *work)
 		// Error indicates the cancellation of the periodic io
 		if (periodic_io->resp->error_code || !periodic_io->active) {
 			error_code = periodic_io->resp->error_code ?
-						   periodic_io->resp->error_code :
-						   -ECANCELED;
+					     periodic_io->resp->error_code :
+					     -ECANCELED;
 			list_del(&periodic_io_proxy->process_queue_node);
 			kfree(periodic_io_proxy);
 			push_periodic_io_error_event_locked(
