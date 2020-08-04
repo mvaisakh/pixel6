@@ -22,9 +22,7 @@
 #include "lwis_platform.h"
 
 /* Uncomment to let kernel panic when IOMMU hits a page fault. */
-/* TODO: Add error handling to propagate IOMMU errors back to userspace,
- * so we don't need to panic here. */
-#define ENABLE_PAGE_FAULT_PANIC
+/* #define ENABLE_PAGE_FAULT_PANIC */
 
 int lwis_platform_probe(struct lwis_device *lwis_dev)
 {
@@ -58,7 +56,7 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-static int __attribute__((unused)) lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
+static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 {
 	struct lwis_device *lwis_dev = (struct lwis_device *)param;
 	struct lwis_mem_page_fault_event_payload event_payload;
@@ -82,9 +80,9 @@ static int __attribute__((unused)) lwis_iommu_fault_handler(struct iommu_fault *
 				     &event_payload, sizeof(event_payload));
 
 #ifdef ENABLE_PAGE_FAULT_PANIC
-	return NOTIFY_BAD;
+	return -EFAULT;
 #else
-	return NOTIFY_OK;
+	return -EAGAIN;
 #endif /* ENABLE_PAGE_FAULT_PANIC */
 }
 
