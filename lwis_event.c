@@ -901,6 +901,13 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
 	struct list_head *p, *n;
 	int64_t timestamp;
 
+	if (event_id < LWIS_EVENT_ID_START_OF_ERROR_RANGE ||
+	    event_id >= LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
+		pr_err("Event ID %lld is not in the error event range\n",
+		       event_id);
+		return;
+	}
+
 	/* Latch timestamp */
 	timestamp = ktime_to_ns(lwis_get_time());
 
