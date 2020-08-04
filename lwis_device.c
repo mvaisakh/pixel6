@@ -243,7 +243,7 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	lwis_client = fp->private_data;
 	if (!lwis_client) {
 		pr_err("Cannot find client instance\n");
-		mask |= POLLERR;
+		return POLLERR;
 	}
 
 	mutex_lock(&lwis_client->lock);
