@@ -863,8 +863,8 @@ ifneq ($(filter -DDHD_EVENT_LOG_FILTER, $(DHDCFLAGS)),)
 DHDOFILES += dhd_event_log_filter.o
 endif
 
-bcmdhd-objs := $(DHDOFILES)
-obj-$(DRIVER_TYPE)   += bcmdhd.o
+bcmdhd43752-objs := $(DHDOFILES)
+obj-$(DRIVER_TYPE)   += bcmdhd43752.o
 ccflags-y := $(KBUILD_CFLAGS)
 ccflags-y += $(EXTRA_CFLAGS)
 
