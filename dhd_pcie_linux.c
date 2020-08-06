@@ -203,8 +203,8 @@ dhdpcie_access_cap(struct pci_dev *pdev, int cap, uint offset, bool is_ext, bool
 	uint32 writeval);
 
 static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
-	{ vendor: 0x14e4,
-	device: PCI_ANY_ID,
+	{ vendor: VENDOR_BROADCOM,
+	device: BCM43752_D11AX_ID,
 	subvendor: PCI_ANY_ID,
 	subdevice: PCI_ANY_ID,
 	class: PCI_CLASS_NETWORK_OTHER << 8,
