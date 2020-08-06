@@ -75,6 +75,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 
 	const uint32_t int_qos = 465000;
 	const uint32_t mif_qos = 2093000;
+	const uint32_t core_clock_qos = 67000;
 	const uint32_t hpg_qos = 1;
 
 	BUG_ON(!lwis_dev);
@@ -103,19 +104,29 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	}
 
 	/* Set hardcoded DVFS levels */
-	if (!pm_qos_request_active(&platform->pm_qos_mem))
-		pm_qos_add_request(&platform->pm_qos_mem, PM_QOS_BUS_THROUGHPUT,
-				   mif_qos);
-	if (!pm_qos_request_active(&platform->pm_qos_int))
-		pm_qos_add_request(&platform->pm_qos_int,
-				   PM_QOS_DEVICE_THROUGHPUT, int_qos);
 	if (!pm_qos_request_active(&platform->pm_qos_hpg))
 		pm_qos_add_request(&platform->pm_qos_hpg, PM_QOS_CPU_ONLINE_MIN,
 				   hpg_qos);
 
+	ret = lwis_platform_update_qos(lwis_dev, mif_qos, CLOCK_FAMILY_MIF);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to enable MIF clock\n");
+		return ret;
+	}
+	ret = lwis_platform_update_qos(lwis_dev, int_qos, CLOCK_FAMILY_INT);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to enable INT clock\n");
+		return ret;
+	}
+
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
-		lwis_platform_update_qos(lwis_dev, 67000);
+		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos,
+					       lwis_dev->clock_family);
+		if (ret < 0) {
+			dev_err(lwis_dev->dev, "Failed to enable core clock\n");
+			return ret;
+		}
 	}
 
 	return 0;
@@ -147,57 +158,59 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	return ret;
 }
 
-int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value)
+int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
+			     enum lwis_clock_family clock_family)
 {
 	struct lwis_platform *platform;
+	struct pm_qos_request *qos_req;
+	int qos_class;
+
 	BUG_ON(!lwis_dev);
 	platform = lwis_dev->platform;
 	if (!platform) {
 		return -ENODEV;
 	}
 
-	if (lwis_dev->last_requested_clock == value || value == 0) {
-		return 0;
-	}
+	if (value == 0)
+		value = PM_QOS_DEFAULT_VALUE;
 
-	switch (lwis_dev->clock_family) {
+	switch (clock_family) {
 	case CLOCK_FAMILY_INTCAM:
-		if (!pm_qos_request_active(&platform->pm_qos_int_cam)) {
-			pm_qos_add_request(&platform->pm_qos_int_cam,
-					   PM_QOS_INTCAM_THROUGHPUT, value);
-		} else {
-			pm_qos_update_request(&platform->pm_qos_int_cam, value);
-		}
+		qos_req = &platform->pm_qos_int_cam;
+		qos_class = PM_QOS_INTCAM_THROUGHPUT;
 		break;
 	case CLOCK_FAMILY_CAM:
-		if (!pm_qos_request_active(&platform->pm_qos_cam)) {
-			pm_qos_add_request(&platform->pm_qos_cam,
-					   PM_QOS_CAM_THROUGHPUT, value);
-		} else {
-			pm_qos_update_request(&platform->pm_qos_cam, value);
-		}
+		qos_req = &platform->pm_qos_cam;
+		qos_class = PM_QOS_CAM_THROUGHPUT;
 		break;
 	case CLOCK_FAMILY_TNR:
 #if defined(CONFIG_SOC_GS101)
-		if (!pm_qos_request_active(&platform->pm_qos_tnr)) {
-			pm_qos_add_request(&platform->pm_qos_tnr,
-					   PM_QOS_TNR_THROUGHPUT, value);
-		} else {
-			pm_qos_update_request(&platform->pm_qos_tnr, value);
-		}
+		qos_req = &platform->pm_qos_tnr;
+		qos_class = PM_QOS_TNR_THROUGHPUT;
 #endif
+		break;
+	case CLOCK_FAMILY_MIF:
+		qos_req = &platform->pm_qos_mem;
+		qos_class = PM_QOS_BUS_THROUGHPUT;
+		break;
+	case CLOCK_FAMILY_INT:
+		qos_req = &platform->pm_qos_int;
+		qos_class = PM_QOS_DEVICE_THROUGHPUT;
 		break;
 	default:
 		dev_err(lwis_dev->dev, "%s clk family %d is invalid\n",
 			lwis_dev->name, lwis_dev->clock_family);
 		return -EINVAL;
-		break;
 	}
 
+	if (!pm_qos_request_active(qos_req))
+		pm_qos_add_request(qos_req, qos_class, value);
+	else
+		pm_qos_update_request(qos_req, value);
+
 	dev_info(lwis_dev->dev,
-		 "Updating clock for clock_family %d, freq from %u to %u\n",
-		 lwis_dev->clock_family, lwis_dev->last_requested_clock, value);
-	lwis_dev->last_requested_clock = value;
+		 "Updating clock for clock_family %d, freq to %u\n",
+		 clock_family, value);
 
 	return 0;
 }
@@ -223,20 +236,17 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		if (pm_qos_request_active(&platform->pm_qos_int_cam)) {
 			pm_qos_remove_request(&platform->pm_qos_int_cam);
 		}
-		lwis_dev->last_requested_clock = 0;
 		break;
 	case CLOCK_FAMILY_CAM:
 		if (pm_qos_request_active(&platform->pm_qos_cam)) {
 			pm_qos_remove_request(&platform->pm_qos_cam);
 		}
-		lwis_dev->last_requested_clock = 0;
 		break;
 	case CLOCK_FAMILY_TNR:
 #if defined(CONFIG_SOC_GS101)
 		if (pm_qos_request_active(&platform->pm_qos_tnr)) {
 			pm_qos_remove_request(&platform->pm_qos_tnr);
 		}
-		lwis_dev->last_requested_clock = 0;
 #endif
 		break;
 	default:

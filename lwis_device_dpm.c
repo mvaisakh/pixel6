@@ -43,17 +43,18 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 			struct lwis_qos_setting *qos_setting)
 {
 	int ret = 0;
-	struct lwis_device *target_dev;
+	struct lwis_device *target_dev = NULL;
 
 	switch (qos_setting->clock_family) {
 	case CLOCK_FAMILY_MIF:
 	case CLOCK_FAMILY_INT:
-		dev_info(lwis_dev->dev,
-			 "Currently not support bandwidth update\n");
+		/* Use dpm device to update bandwidth requirement */
+		target_dev = lwis_dev;
 		break;
 	case CLOCK_FAMILY_TNR:
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
+		/* Update core clock for particular device */
 		target_dev = lwis_find_dev_by_id(qos_setting->device_id);
 		if (!target_dev) {
 			dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
@@ -61,19 +62,21 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 			ret = -ENOENT;
 			goto out;
 		}
-		/* convert value to KHz */
-		ret = lwis_platform_update_qos(
-				target_dev, qos_setting->frequency_hz / 1000);
-		if (ret)
-			dev_err(lwis_dev->dev,
-				"Failed to apply qos requirement for %s\n",
-				target_dev->name);
 		break;
 	default:
 		dev_err(lwis_dev->dev, "Invalid clock family %d\n",
 			qos_setting->clock_family);
 		ret = -EINVAL;
+		goto out;
 	}
+	/* convert value to KHz */
+	ret = lwis_platform_update_qos(
+		target_dev, qos_setting->frequency_hz / 1000,
+		qos_setting->clock_family);
+	if (ret)
+		dev_err(lwis_dev->dev,
+			"Failed to apply core clock requirement for %s\n",
+			target_dev->name);
 out:
 	return ret;
 }
@@ -108,27 +111,14 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			ret = -EINVAL;
 			goto out;
 		}
-
-		/* TODO(161326479): temporary support legacy interface to update
-		 * qos clock, remove this when user drivers change to new
-		 * interface.
-		 */
-		if (clk_index == 0 &&
-		    lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
-		    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
-			/* convert value to KHz */
-			lwis_platform_update_qos(
-				lwis_dev, clk_settings[i].frequency / 1000);
-		} else {
-			ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
+		ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
 					   clk_settings[i].frequency);
-			if (ret) {
-				dev_err(lwis_dev->dev,
-					"Error updating clock %s freq: %u\n",
-					lwis_dev->clocks->clk[clk_index].name,
-					clk_settings[i].frequency);
-				goto out;
-			}
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Error updating clock %s freq: %u\n",
+				lwis_dev->clocks->clk[clk_index].name,
+				clk_settings[i].frequency);
+			goto out;
 		}
 
 		dev_info(lwis_dev->dev,

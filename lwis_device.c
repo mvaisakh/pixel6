@@ -778,7 +778,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev,
 	/* Initialize enabled state */
 	lwis_dev->enabled = 0;
 	lwis_dev->clock_family = CLOCK_FAMILY_INVALID;
-	lwis_dev->last_requested_clock = 0;
 
 	/* Initialize client mutex */
 	mutex_init(&lwis_dev->client_lock);

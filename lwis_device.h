@@ -205,8 +205,6 @@ struct lwis_device {
 
 	/* clock family this device belongs to */
 	int clock_family;
-	/* last qos requested in khz */
-	uint32_t last_requested_clock;
 };
 
 /*
