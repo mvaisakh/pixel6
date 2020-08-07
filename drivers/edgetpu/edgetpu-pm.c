@@ -6,6 +6,7 @@
  */
 
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"

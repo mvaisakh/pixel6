@@ -63,10 +63,6 @@ static int edgetpu_open(struct inode *inode, struct file *file)
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
 	mutex_lock(&etdev->open.lock);
-	if (!etdev->open.enabled) {
-		mutex_unlock(&etdev->open.lock);
-		return -EBUSY;
-	}
 	if (etdev->pm && !etdev->open.count) {
 		res = edgetpu_pm_get(etdev->pm);
 		if (res) {
@@ -707,7 +703,6 @@ static int mappings_show(struct seq_file *s, void *data)
 	mutex_unlock(&etdev->groups_lock);
 	edgetpu_kci_mappings_show(etdev, s);
 	return 0;
-
 }
 
 static int mappings_open(struct inode *inode, struct file *file)
@@ -729,9 +724,9 @@ static void edgetpu_dev_setup_debugfs(struct edgetpu_dev *etdev)
 		debugfs_create_dir(etdev->dev_name, edgetpu_debugfs_dir);
 	if (!etdev->d_entry)
 		return;
-	debugfs_create_file("mappings", 0660, etdev->d_entry,
+	debugfs_create_file("mappings", 0440, etdev->d_entry,
 			    etdev, &mappings_ops);
-	debugfs_create_file("statusregs", 0660, etdev->d_entry, etdev,
+	debugfs_create_file("statusregs", 0440, etdev->d_entry, etdev,
 			    &statusregs_ops);
 }
 
@@ -799,7 +794,7 @@ static const struct file_operations syncfences_ops = {
 static void edgetpu_debugfs_global_setup(void)
 {
 	edgetpu_debugfs_dir = debugfs_create_dir("edgetpu", NULL);
-	debugfs_create_file("syncfences", 0660, edgetpu_debugfs_dir, NULL,
+	debugfs_create_file("syncfences", 0440, edgetpu_debugfs_dir, NULL,
 			    &syncfences_ops);
 }
 

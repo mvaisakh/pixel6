@@ -11,13 +11,6 @@
 
 #include "edgetpu-async.h"
 
-struct edgetpu_async_entry {
-	struct list_head list;
-	edgetpu_async_job_t job;
-	void *data;
-	void *ret;
-};
-
 static void edgetpu_async_wrapper(void *data, async_cookie_t cookie)
 {
 	struct edgetpu_async_entry *entry = data;
@@ -80,12 +73,12 @@ int edgetpu_async_wait(struct edgetpu_async_ctx *ctx)
 		ret = -ENOMEM;
 		goto out_unlock;
 	}
-	list_for_each_entry(entry, &ctx->jobs, list)
+	for_each_async_job(ctx, entry)
 		async_schedule_domain(edgetpu_async_wrapper, entry,
 				      &ctx->async_domain);
 	async_synchronize_full_domain(&ctx->async_domain);
 	i = 0;
-	list_for_each_entry(entry, &ctx->jobs, list)
+	for_each_async_job(ctx, entry)
 		ctx->ret[i++] = entry->ret;
 
 out_unlock:

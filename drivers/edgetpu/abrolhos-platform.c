@@ -23,12 +23,27 @@
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-telemetry.h"
 
 static const struct of_device_id edgetpu_of_match[] = {
 	{ .compatible = "google,darwinn", },
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, edgetpu_of_match);
+
+static void abrolhos_get_telemetry_mem(struct edgetpu_platform_dev *etpdev,
+				       enum edgetpu_telemetry_type type,
+				       struct edgetpu_coherent_mem *mem)
+{
+	int offset = type == EDGETPU_TELEMETRY_TRACE ?
+				   EDGETPU_TELEMETRY_BUFFER_SIZE :
+				   0;
+	mem->vaddr = etpdev->shared_mem_vaddr + offset;
+	mem->dma_addr = EDGETPU_REMAPPED_DATA_ADDR + offset;
+	mem->tpu_addr = EDGETPU_REMAPPED_DATA_ADDR + offset;
+	mem->host_addr = 0;
+	mem->size = EDGETPU_TELEMETRY_BUFFER_SIZE;
+}
 
 /* Setup the firmware region carveout. */
 static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
@@ -39,6 +54,8 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	struct device_node *np;
 	int err;
 	u32 csr_phys, csr_iova, csr_size;
+	size_t region_map_size =
+		EDGETPU_FW_SIZE_MAX + EDGETPU_REMAPPED_DATA_SIZE;
 
 	np = of_parse_phandle(dev->of_node, "memory-region", 0);
 	if (!np) {
@@ -54,23 +71,28 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 		return err;
 	}
 
-	if (resource_size(&r) > EDGETPU_FW_SIZE_MAX) {
-		dev_err(dev, "Firmware image region too large\n");
+	if (resource_size(&r) < region_map_size) {
+		dev_err(dev,
+			"Memory region for firmware too small (%zu bytes needed, got %llu)\n",
+			region_map_size, resource_size(&r));
 		return -ENOSPC;
 	}
 
 	etpdev->fw_region_vaddr =
-		memremap(r.start, resource_size(&r), MEMREMAP_WC);
+		memremap(r.start, region_map_size, MEMREMAP_WC);
 	if (!etpdev->fw_region_vaddr) {
 		dev_err(dev, "Firmware memory remap failed\n");
 		return -EINVAL;
 	}
 
-	etpdev->fw_region_size = resource_size(&r);
+	etpdev->shared_mem_vaddr =
+		etpdev->fw_region_vaddr + EDGETPU_REMAPPED_DATA_OFFSET;
+
+	etpdev->fw_region_size = EDGETPU_FW_SIZE_MAX;
 
 	/* Add an IOMMU translation to the physical address of the region. */
 	err = edgetpu_mmu_add_translation(etdev, FW_IOVA, r.start,
-					  EDGETPU_FW_SIZE_MAX,
+					  region_map_size,
 					  IOMMU_READ | IOMMU_WRITE |
 					  IOMMU_PRIV, EDGETPU_CONTEXT_KCI);
 	if (err) {
@@ -115,7 +137,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 out_unmap:
 	memunmap(etpdev->fw_region_vaddr);
 	etpdev->fw_region_vaddr = NULL;
-	edgetpu_mmu_remove_translation(etdev, FW_IOVA, EDGETPU_FW_SIZE_MAX,
+	edgetpu_mmu_remove_translation(etdev, FW_IOVA, region_map_size,
 				       EDGETPU_CONTEXT_KCI);
 	return err;
 }
@@ -127,7 +149,8 @@ static void edgetpu_platform_cleanup_fw_region(
 		return;
 
 	edgetpu_mmu_remove_translation(&etpdev->edgetpu_dev, FW_IOVA,
-				       EDGETPU_FW_SIZE_MAX,
+				       EDGETPU_FW_SIZE_MAX +
+					       EDGETPU_REMAPPED_DATA_SIZE,
 				       EDGETPU_CONTEXT_KCI);
 	if (etpdev->csr_iova) {
 		edgetpu_mmu_remove_translation(&etpdev->edgetpu_dev,
@@ -156,6 +179,7 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	struct resource *r;
 	struct edgetpu_mapped_resource regs;
 	int ret;
+	struct edgetpu_coherent_mem log_mem, trace_mem;
 
 	edgetpu_pdev =
 		devm_kzalloc(dev, sizeof(*edgetpu_pdev), GFP_KERNEL);
@@ -201,7 +225,7 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "%s edgetpu setup failed: %d\n", DRIVER_NAME,
 			ret);
-		return ret;
+		goto out;
 	}
 
 	dev_info(dev, "%s edgetpu initialized\n",
@@ -211,27 +235,44 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "%s setup fw regions failed: %d\n", DRIVER_NAME,
 			ret);
-		return ret;
+		goto out;
 	}
+
+	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
+				   &log_mem);
+	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
+				   &trace_mem);
+
+	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev, &log_mem,
+				     &trace_mem);
+	if (ret)
+		goto out_cleanup_fw;
 
 	ret = abrolhos_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
 	if (ret) {
 		dev_err(dev,
 			"%s initialize firmware downloader failed: %d\n",
 			DRIVER_NAME, ret);
-		return ret;
+		goto out_tel_exit;
 	}
 
 	dev_dbg(dev, "Creating thermal device\n");
-
 	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
 
+out:
 	dev_dbg(dev, "Probe finished, powering down\n");
-
 	/* Turn the device off until a client request is received */
 	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
 
-	return 0;
+	return ret;
+out_tel_exit:
+	edgetpu_telemetry_exit(&edgetpu_pdev->edgetpu_dev);
+out_cleanup_fw:
+	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
+	dev_dbg(dev, "Probe finished with error %d, powering down\n", ret);
+	/* Turn the device off until a client request is received */
+	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
+	return ret;
 }
 
 static int edgetpu_platform_remove(struct platform_device *pdev)
@@ -243,6 +284,7 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	abrolhos_edgetpu_firmware_destroy(etdev);
 	if (edgetpu_pdev->irq >= 0)
 		edgetpu_unregister_irq(etdev, edgetpu_pdev->irq);
+	edgetpu_telemetry_exit(etdev);
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
 	edgetpu_device_remove(etdev);
 	abrolhos_pm_destroy(etdev);

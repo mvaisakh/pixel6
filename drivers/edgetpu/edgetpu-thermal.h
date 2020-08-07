@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Edge TPU thermal driver header
+ * Edge TPU thermal driver header.
  *
  * Copyright (C) 2020 Google, Inc.
  */
@@ -10,21 +10,8 @@
 
 #include <linux/debugfs.h>
 #include <linux/device.h>
-#include <linux/gfp.h>
 #include <linux/mutex.h>
-#include <linux/pm_runtime.h>
-#include <linux/printk.h>
-#include <linux/slab.h>
 #include <linux/thermal.h>
-
-#define find_state_pwr(i, cmp_left, cmp_right, list, out_left, out_right) \
-do { \
-		if (cmp_left == cmp_right) { \
-			out_left = out_right; \
-			return 0; \
-		} \
-		i++; \
-} while (i < ARRAY_SIZE(list))
 
 #define EDGETPU_COOLING_NAME "tpu_cooling"
 
@@ -42,7 +29,11 @@ struct edgetpu_state_pwr {
 	u32 power;
 };
 
-
+/*
+ * Creates a managed edgetpu_thermal object.
+ *
+ * Returns -errno on error.
+ */
 struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev);
 
 #endif /* __EDGETPU_THERMAL_H__ */

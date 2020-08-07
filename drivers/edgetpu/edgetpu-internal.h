@@ -61,8 +61,6 @@ enum edgetpu_context_id {
 	/* contexts 8 and above not yet allocated */
 };
 
-/* Firmware size is limited to 2MB */
-#define EDGETPU_FW_SIZE_MAX	0x200000
 /* TPU address where the firmware is expected to be located (after remap) */
 #define FW_IOVA		0x80000000ll
 
@@ -133,12 +131,12 @@ struct edgetpu_dev {
 	struct {
 		struct mutex lock;
 		uint count;	   /* number times device currently opened */
-		bool enabled;	   /* can be opened from the runtime */
 	} open;
 	struct edgetpu_mapped_resource regs; /* ioremapped CSRs */
 	struct dentry *d_entry;    /* debugfs dir for this device */
-	struct mutex groups_lock;  /* protects groups */
+	struct mutex groups_lock;  /* protects groups and lockout */
 	struct edgetpu_device_group *groups[EDGETPU_NGROUPS];
+	bool group_join_lockout;   /* disable group join while reinit */
 	void *mmu_cookie;	   /* mmu driver private data */
 	void *dram_cookie;	   /* on-device DRAM private data */
 	struct edgetpu_mailbox_manager *mailbox_manager;
@@ -254,17 +252,13 @@ void edgetpu_client_remove(struct edgetpu_client *client);
 /* mmap() device/queue memory */
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma);
 
-/*
- * Enable or disable @etdev being requested (opened) by the runtime.
- *
- * Opened clients are not affected by this function.
- */
-void edgetpu_set_open_enabled(struct edgetpu_dev *etdev, bool enabled);
-
 /* Increase reference count of @client. */
 struct edgetpu_client *edgetpu_client_get(struct edgetpu_client *client);
 
 /* Decrease reference count and free @client if count reaches zero */
 void edgetpu_client_put(struct edgetpu_client *client);
+
+/* Mark die that fails probe to allow bypassing */
+void edgetpu_mark_probe_fail(struct edgetpu_dev *etdev);
 
 #endif /* __EDGETPU_INTERNAL_H__ */

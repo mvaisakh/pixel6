@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Edge TPU thermal driver.
+ * Edge TPU thermal driver for Abrolhos.
  *
  * Copyright (C) 2020 Google, Inc.
  */
@@ -8,9 +8,9 @@
 #include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/gfp.h>
+#include <linux/kernel.h>
 #include <linux/mutex.h>
 #include <linux/pm_runtime.h>
-#include <linux/printk.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
 
@@ -22,7 +22,7 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-thermal.h"
 
-const static unsigned long state_mapping[] = {
+static const unsigned long state_mapping[] = {
 	TPU_ACTIVE_OD,
 	TPU_ACTIVE_NOM,
 	TPU_ACTIVE_UD,
@@ -40,7 +40,7 @@ const static unsigned long state_mapping[] = {
  * Sequence need to be kept to make power increasing
  * to make sure we always return the highest state.
  */
-const static struct edgetpu_state_pwr state_pwr_map[] = {
+static const struct edgetpu_state_pwr state_pwr_map[] = {
 	{ TPU_ACTIVE_OD, 198 },
 	{ TPU_ACTIVE_NOM, 165 },
 	{ TPU_ACTIVE_UD, 131 },
@@ -53,6 +53,15 @@ const static struct edgetpu_state_pwr state_pwr_map[] = {
 	{ TPU_DEEP_SLEEP_CLOCKS_OFF, 6 },
 	{ TPU_OFF, 0 },
 };
+
+#define find_state_pwr(i, cmp_left, cmp_right, list, out_left, out_right)      \
+	do {                                                                   \
+		if (cmp_left == cmp_right) {                                   \
+			out_left = out_right;                                  \
+			return 0;                                              \
+		}                                                              \
+		i++;                                                           \
+	} while (i < ARRAY_SIZE(list))
 
 static int edgetpu_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
@@ -74,8 +83,8 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	unsigned long pwr_state;
 
 	if (state_original >= ARRAY_SIZE(state_mapping)) {
-		dev_err(dev, "%s: invalid cooling state %lu\n",
-			__func__, state_original);
+		dev_err(dev, "%s: invalid cooling state %lu\n", __func__,
+			state_original);
 		WARN_ON(1);
 		return -EINVAL;
 	}
@@ -103,8 +112,8 @@ static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 	int i = 0;
 
 	state_original = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
-	find_state_pwr(i, state_original, state_mapping[i],
-		state_mapping, *state, i);
+	find_state_pwr(i, state_original, state_mapping[i], state_mapping,
+		       *state, i);
 	dev_err(cooling->dev, "Unknown get state req for: %lu\n",
 		state_original);
 	*state = 0;
@@ -117,8 +126,8 @@ static int edgetpu_state2power_internal(unsigned long state, u32 *power,
 {
 	int i = 0;
 
-	find_state_pwr(i, state, state_pwr_map[i].state,
-		state_pwr_map, *power, state_pwr_map[i].power);
+	find_state_pwr(i, state, state_pwr_map[i].state, state_pwr_map, *power,
+		       state_pwr_map[i].power);
 	dev_err(dev, "Unknown state req for: %lu\n", state);
 	*power = 0;
 	WARN_ON(1);
@@ -129,39 +138,35 @@ static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
 				       struct thermal_zone_device *tz,
 				       u32 *power)
 {
-	int err = 0;
 	unsigned long state_original;
 	struct edgetpu_thermal *cooling = cdev->devdata;
 
 	state_original = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
-	err = edgetpu_state2power_internal(state_original, power,
-					   cooling->dev);
-	return err;
+	return edgetpu_state2power_internal(state_original, power,
+					    cooling->dev);
 }
 
 static int edgetpu_state2power(struct thermal_cooling_device *cdev,
 			       struct thermal_zone_device *tz,
 			       unsigned long state, u32 *power)
 {
-	int err = 0;
 	struct edgetpu_thermal *cooling = cdev->devdata;
 
 	if (state >= ARRAY_SIZE(state_mapping)) {
-		dev_err(cooling->dev, "%s: invalid state: %lu\n",
-		__func__, state);
+		dev_err(cooling->dev, "%s: invalid state: %lu\n", __func__,
+			state);
 		return -EINVAL;
 	}
 
-	err = edgetpu_state2power_internal(state_mapping[state], power,
-					   cooling->dev);
-	return err;
+	return edgetpu_state2power_internal(state_mapping[state], power,
+					    cooling->dev);
 }
 
 static int edgetpu_power2state(struct thermal_cooling_device *cdev,
 			       struct thermal_zone_device *tz, u32 power,
 			       unsigned long *state)
 {
-	int i = 0;
+	int i;
 	struct edgetpu_thermal *cooling = cdev->devdata;
 
 	for (i = 0; i < ARRAY_SIZE(state_pwr_map); i++) {
@@ -171,8 +176,7 @@ static int edgetpu_power2state(struct thermal_cooling_device *cdev,
 		}
 	}
 
-	dev_err(cooling->dev, "No power2state mapping found: %d\n",
-		power);
+	dev_err(cooling->dev, "No power2state mapping found: %d\n", power);
 	WARN_ON(1);
 	return -EINVAL;
 }
@@ -207,18 +211,14 @@ static void devm_tpu_thermal_release(struct device *dev, void *res)
 static int
 tpu_thermal_cooling_register(struct edgetpu_thermal *thermal, char *type)
 {
-	int err;
-
 	thermal->op_data = NULL;
 
 	mutex_init(&thermal->lock);
 	thermal->pwr_state = TPU_OFF;
 	thermal->cdev = thermal_of_cooling_device_register(
 		NULL, type, thermal, &edgetpu_cooling_ops);
-	if (IS_ERR(thermal->cdev)) {
-		err = PTR_ERR(thermal->cdev);
-		return err;
-	}
+	if (IS_ERR(thermal->cdev))
+		return PTR_ERR(thermal->cdev);
 	return 0;
 }
 
@@ -230,8 +230,7 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 	thermal->cooling_root =
 		debugfs_create_dir("cooling", edgetpu_dev_debugfs_dir());
 
-	err = tpu_thermal_cooling_register(thermal,
-				       EDGETPU_COOLING_NAME);
+	err = tpu_thermal_cooling_register(thermal, EDGETPU_COOLING_NAME);
 	if (err) {
 		dev_err(dev, "failed to initialize external cooling\n");
 		tpu_thermal_exit(thermal);
@@ -246,8 +245,8 @@ struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev)
 	struct edgetpu_thermal *thermal;
 	int err;
 
-	thermal = devres_alloc(devm_tpu_thermal_release,
-			       sizeof(struct edgetpu_thermal), GFP_KERNEL);
+	thermal = devres_alloc(devm_tpu_thermal_release, sizeof(*thermal),
+			       GFP_KERNEL);
 	if (!thermal)
 		return ERR_PTR(-ENOMEM);
 

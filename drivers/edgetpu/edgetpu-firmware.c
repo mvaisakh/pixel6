@@ -14,6 +14,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 
+#include "edgetpu-device-group.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-firmware-util.h"
 #include "edgetpu-internal.h"
@@ -324,21 +325,19 @@ int edgetpu_firmware_lock(struct edgetpu_dev *etdev)
 	if (!et_fw) {
 		etdev_err(
 			etdev,
-			"Cannot lock firmware when no loader is available\n");
+			"Cannot load firmware when no loader is available\n");
 		mutex_unlock(&et_fw->p->fw_desc_lock);
 		return -EINVAL;
 	}
-	mutex_lock(&etdev->open.lock);
-	if (etdev->open.count) {
+
+	/* Disallow group join while loading, fail if already joined */
+	if (!edgetpu_set_group_join_lockout(etdev, true)) {
 		etdev_err(
 			etdev,
-			"Failed to lock firmware because device is in use");
-		mutex_unlock(&etdev->open.lock);
+			"Cannot load firmware because device is in use");
 		mutex_unlock(&et_fw->p->fw_desc_lock);
 		return -EBUSY;
 	}
-	etdev->open.enabled = false;
-	mutex_unlock(&etdev->open.lock);
 	return 0;
 }
 
@@ -346,16 +345,12 @@ void edgetpu_firmware_unlock(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 
-	mutex_lock(&etdev->open.lock);
 	if (!et_fw) {
-		etdev_err(
-			etdev,
-			"Cannot unlock firmware when no loader is available\n");
-		mutex_unlock(&etdev->open.lock);
+		etdev_dbg(etdev,
+			  "Unlock firmware when no loader available\n");
 		return;
 	}
-	etdev->open.enabled = true;
-	mutex_unlock(&etdev->open.lock);
+	edgetpu_set_group_join_lockout(etdev, false);
 	mutex_unlock(&et_fw->p->fw_desc_lock);
 }
 

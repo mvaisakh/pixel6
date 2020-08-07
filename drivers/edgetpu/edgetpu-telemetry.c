@@ -35,7 +35,8 @@ select_telemetry(struct edgetpu_telemetry_ctx *ctx,
 }
 
 static int telemetry_init(struct edgetpu_dev *etdev,
-			  struct edgetpu_telemetry *tel, const char *name)
+			  struct edgetpu_telemetry *tel, const char *name,
+			  struct edgetpu_coherent_mem *mem)
 {
 	const size_t size = EDGETPU_TELEMETRY_BUFFER_SIZE;
 	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
@@ -43,26 +44,36 @@ static int telemetry_init(struct edgetpu_dev *etdev,
 	dma_addr_t dma_addr;
 	tpu_addr_t tpu_addr;
 
-	vaddr = dmam_alloc_coherent(etdev->dev, size, &dma_addr, GFP_KERNEL);
-	if (!vaddr)
-		return -ENOMEM;
+	if (mem) {
+		tel->coherent_mem = *mem;
+		vaddr = mem->vaddr;
+		tel->caller_mem = true;
+	} else {
+		vaddr = dmam_alloc_coherent(etdev->dev, size, &dma_addr,
+					    GFP_KERNEL);
+		if (!vaddr)
+			return -ENOMEM;
 #ifdef CONFIG_X86
-	set_memory_uc((unsigned long)vaddr, size >> PAGE_SHIFT);
+		set_memory_uc((unsigned long)vaddr, size >> PAGE_SHIFT);
 #endif
-	tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size, DMA_BIDIRECTIONAL,
-				       EDGETPU_CONTEXT_KCI, flags);
-	if (!tpu_addr) {
-		dev_err(etdev->dev, "%s: failed to map buffer for '%s'\n",
-			etdev->dev_name, name);
-		return -ENOSPC;
+		tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size,
+					       DMA_BIDIRECTIONAL,
+					       EDGETPU_CONTEXT_KCI, flags);
+		if (!tpu_addr) {
+			dev_err(etdev->dev,
+				"%s: failed to map buffer for '%s'\n",
+				etdev->dev_name, name);
+			return -ENOSPC;
+		}
+		tel->coherent_mem.vaddr = vaddr;
+		tel->coherent_mem.dma_addr = dma_addr;
+		tel->coherent_mem.tpu_addr = tpu_addr;
+		tel->coherent_mem.size = size;
+		tel->caller_mem = false;
 	}
 
 	rwlock_init(&tel->ctx_mem_lock);
 	tel->name = name;
-	tel->coherent_mem.vaddr = vaddr;
-	tel->coherent_mem.dma_addr = dma_addr;
-	tel->coherent_mem.tpu_addr = tpu_addr;
-	tel->coherent_mem.size = size;
 
 	tel->header = (struct edgetpu_telemetry_header *)vaddr;
 	tel->header->head = 0;
@@ -90,14 +101,14 @@ static void telemetry_exit(struct edgetpu_dev *etdev,
 	tel->state = EDGETPU_TELEMETRY_INVALID;
 	spin_unlock_irqrestore(&tel->state_lock, flags);
 
-	if (tel->coherent_mem.tpu_addr) {
+	if (tel->coherent_mem.tpu_addr && !tel->caller_mem) {
 		edgetpu_mmu_tpu_unmap(etdev, tel->coherent_mem.tpu_addr,
 				      tel->coherent_mem.size,
 				      EDGETPU_CONTEXT_KCI);
 		tel->coherent_mem.tpu_addr = 0;
 #ifdef CONFIG_X86
-	set_memory_wb((unsigned long)tel->coherent_mem.vaddr,
-		      tel->coherent_mem.size >> PAGE_SHIFT);
+		set_memory_wb((unsigned long)tel->coherent_mem.vaddr,
+			      tel->coherent_mem.size >> PAGE_SHIFT);
 #endif
 	}
 	if (tel->ctx)
@@ -339,18 +350,21 @@ static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 	return ret;
 }
 
-int edgetpu_telemetry_init(struct edgetpu_dev *etdev)
+int edgetpu_telemetry_init(struct edgetpu_dev *etdev,
+			   struct edgetpu_coherent_mem *log_mem,
+			   struct edgetpu_coherent_mem *trace_mem)
 {
 	int ret;
 
 	if (!etdev->telemetry)
 		return -ENODEV;
-	ret = telemetry_init(etdev, &etdev->telemetry->log, "telemetry_log");
+	ret = telemetry_init(etdev, &etdev->telemetry->log, "telemetry_log",
+			     log_mem);
 	if (ret)
 		return ret;
 #if IS_ENABLED(CONFIG_EDGETPU_TELEMETRY_TRACE)
-	ret = telemetry_init(etdev, &etdev->telemetry->trace,
-			     "telemetry_trace");
+	ret = telemetry_init(etdev, &etdev->telemetry->trace, "telemetry_trace",
+			     trace_mem);
 	if (ret) {
 		telemetry_exit(etdev, &etdev->telemetry->log);
 		return ret;

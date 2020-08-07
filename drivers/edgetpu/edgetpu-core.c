@@ -94,13 +94,6 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 	return -EINVAL;
 }
 
-void edgetpu_set_open_enabled(struct edgetpu_dev *etdev, bool enabled)
-{
-	mutex_lock(&etdev->open.lock);
-	etdev->open.enabled = enabled;
-	mutex_unlock(&etdev->open.lock);
-}
-
 static struct edgetpu_mailbox_manager_desc mailbox_manager_desc = {
 	.num_mailbox = EDGETPU_NUM_MAILBOXES,
 	.num_vii_mailbox = EDGETPU_NUM_VII_MAILBOXES,
@@ -134,8 +127,8 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	}
 
 	mutex_init(&etdev->open.lock);
-	etdev->open.enabled = true;
 	mutex_init(&etdev->groups_lock);
+	etdev->group_join_lockout = false;
 
 	ret = edgetpu_dev_add(etdev);
 	if (ret) {
@@ -182,10 +175,6 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		goto remove_kci;
 	}
 
-	ret = edgetpu_telemetry_init(etdev);
-	if (ret)
-		etdev_err(etdev, "failed to init telemetry: %d\n", ret);
-
 	edgetpu_chip_init(etdev);
 	return 0;
 
@@ -195,6 +184,7 @@ remove_kci:
 detach_mmu:
 	edgetpu_mmu_detach(etdev);
 remove_dev:
+	edgetpu_mark_probe_fail(etdev);
 	edgetpu_dev_remove(etdev);
 	return ret;
 }
@@ -202,7 +192,6 @@ remove_dev:
 void edgetpu_device_remove(struct edgetpu_dev *etdev)
 {
 	edgetpu_chip_exit(etdev);
-	edgetpu_telemetry_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_mmu_detach(etdev);
 	edgetpu_dev_remove(etdev);

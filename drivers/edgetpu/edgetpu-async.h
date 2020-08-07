@@ -33,6 +33,22 @@ struct edgetpu_async_ctx {
 };
 
 /*
+ * Structure to record a job.
+ *
+ * edgetpu_async_add_job() allocates this entry and append it to
+ * edgetpu_async_ctx.jobs.
+ *
+ * If edgetpu_async_wait() is successfully executed, @ret is set as the return
+ * value of @job.
+ */
+struct edgetpu_async_entry {
+	struct list_head list;
+	edgetpu_async_job_t job;
+	void *data;
+	void *ret;
+};
+
+/*
  * Helper to loop through the return values. Use this if and only if
  * edgetpu_async_wait(ctx) is executed successfully.
  *
@@ -45,6 +61,15 @@ struct edgetpu_async_ctx {
 	     ++i < (ctx)->n_jobs ?                                             \
 		     (val = (typeof(val))(size_t)((ctx)->ret[i])) :            \
 		     0)
+
+/*
+ * Helper to loop through the jobs currently added, with the same order of
+ * registration.
+ *
+ * Caller holds ctx->lock to prevent racing with edgetpu_async_* functions.
+ */
+#define for_each_async_job(ctx, entry)                                         \
+	list_for_each_entry(entry, &ctx->jobs, list)
 
 /*
  * Allocates and initializes a context for further use.

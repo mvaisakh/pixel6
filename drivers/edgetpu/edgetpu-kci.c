@@ -336,14 +336,13 @@ void edgetpu_kci_release(struct edgetpu_dev *etdev, struct edgetpu_kci *kci)
 			      EDGETPU_CONTEXT_KCI);
 
 	/*
-	 * Non-empty @kci->wait_list means someone
-	 * (edgetpu_kci_push_cmd_wait_timeout) is waiting for a response.
+	 * Non-empty @kci->wait_list means someone (edgetpu_kci_send_cmd) is
+	 * waiting for a response.
 	 *
 	 * Since this function is only called when removing a device,
-	 * it should be impossible to reach here with
-	 * edgetpu_kci_push_cmd_wait_timeout() is still waiting (rmmod should
-	 * fail), add a simple check here so we can easier to figure it out when
-	 * this happens.
+	 * it should be impossible to reach here with edgetpu_kci_send_cmd() is
+	 * still waiting (rmmod should fail), add a simple check here so we can
+	 * more easily figure it out when this happens.
 	 */
 	if (!list_empty(&kci->wait_list))
 		etdev_warn(etdev, "KCI commands still pending");
@@ -457,32 +456,46 @@ out:
 	return ret;
 }
 
-int edgetpu_kci_push_cmd_wait_timeout(struct edgetpu_kci *kci,
-				      struct edgetpu_command_element *cmd,
-				      long timeout)
+/*
+ * Pushes an element to cmd queue and waits for the response.
+ * Returns -ETIMEDOUT if no response is received within KCI_TIMEOUT msecs.
+ *
+ * Returns the code of response, or a negative errno on error.
+ * @resp is updated with the response, as to retrieve returned retval field.
+ */
+static int edgetpu_kci_send_cmd_return_resp(
+	struct edgetpu_kci *kci, struct edgetpu_command_element *cmd,
+	struct edgetpu_kci_response_element *resp)
 {
 	int ret;
-	struct edgetpu_kci_response_element resp;
 
-	ret = edgetpu_kci_push_cmd(kci, cmd, &resp);
+	ret = edgetpu_kci_push_cmd(kci, cmd, resp);
 	if (ret)
 		return ret;
 	ret = wait_event_timeout(kci->wait_list_waitq,
-				 resp.status != KCI_STATUS_WAITING_RESPONSE,
-				 msecs_to_jiffies(timeout));
+				 resp->status != KCI_STATUS_WAITING_RESPONSE,
+				 msecs_to_jiffies(KCI_TIMEOUT));
 	if (!ret) {
 		etdev_dbg(kci->mailbox->etdev, "%s: event wait timeout",
 			  __func__);
-		edgetpu_kci_del_wait_resp(kci, &resp);
+		edgetpu_kci_del_wait_resp(kci, resp);
 		return -ETIMEDOUT;
 	}
-	if (resp.status != KCI_STATUS_OK) {
+	if (resp->status != KCI_STATUS_OK) {
 		etdev_dbg(kci->mailbox->etdev, "%s: resp status=%u", __func__,
-			  resp.status);
+			  resp->status);
 		return -ENOMSG;
 	}
 
-	return resp.code;
+	return resp->code;
+}
+
+int edgetpu_kci_send_cmd(struct edgetpu_kci *kci,
+			 struct edgetpu_command_element *cmd)
+{
+	struct edgetpu_kci_response_element resp;
+
+	return edgetpu_kci_send_cmd_return_resp(kci, cmd, &resp);
 }
 
 int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
@@ -497,7 +510,7 @@ int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 		},
 	};
 
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
 int edgetpu_kci_ack(struct edgetpu_kci *kci)
@@ -506,7 +519,7 @@ int edgetpu_kci_ack(struct edgetpu_kci *kci)
 		.code = KCI_CODE_ACK,
 	};
 
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
 int edgetpu_kci_map_log_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
@@ -520,7 +533,7 @@ int edgetpu_kci_map_log_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 		},
 	};
 
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
 int edgetpu_kci_map_trace_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
@@ -534,7 +547,7 @@ int edgetpu_kci_map_trace_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 		},
 	};
 
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
 int edgetpu_kci_join_group(struct edgetpu_kci *kci, struct edgetpu_dev *etdev,
@@ -575,7 +588,7 @@ int edgetpu_kci_join_group(struct edgetpu_kci *kci, struct edgetpu_dev *etdev,
 	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__,
 		  detail, tpu_addr, &dma_addr);
 
-	ret = edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	ret = edgetpu_kci_send_cmd(kci, &cmd);
 	edgetpu_mmu_tpu_unmap(etdev, tpu_addr, size, EDGETPU_CONTEXT_KCI);
 	dma_free_coherent(etdev->dev, size, detail, dma_addr);
 	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__,
@@ -592,7 +605,7 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
 
 	if (!kci)
 		return -ENODEV;
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
 /* debugfs mappings dump */
@@ -626,5 +639,5 @@ int edgetpu_kci_shutdown(struct edgetpu_kci *kci)
 
 	if (!kci)
 		return -ENODEV;
-	return edgetpu_kci_push_cmd_wait_timeout(kci, &cmd, KCI_TIMEOUT);
+	return edgetpu_kci_send_cmd(kci, &cmd);
 }

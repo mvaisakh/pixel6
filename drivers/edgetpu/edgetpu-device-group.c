@@ -24,6 +24,7 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-mapping.h"
+#include "edgetpu-mcp.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-usr.h"
 #include "edgetpu.h"
@@ -326,6 +327,50 @@ static bool edgetpu_clients_groupable(const struct edgetpu_client *client1,
 }
 
 /*
+ * Checks the die indexes are contiguous. Assumes edgetpu_clients_groupable()
+ * passed, i.e. all devices belong to the same MCP and have different die
+ * indexes.
+ *
+ * Caller holds @group->lock and ensures edgetpu_device_group_nth_etdev()
+ * is functional.
+ */
+static bool edgetpu_group_check_contiguity(struct edgetpu_device_group *group)
+{
+	struct edgetpu_mcp *mcp = edgetpu_mcp_of_etdev(group->etdev);
+	uint i, j;
+	uint fr, to;
+	uint mcp_n = 0;
+
+	if (mcp)
+		mcp_n = mcp->total_num;
+	fr = group->etdev->mcp_die_index;
+	for (i = 1; i < group->n_clients; i++, fr = to) {
+		to = edgetpu_device_group_nth_etdev(group, i)->mcp_die_index;
+		if (fr + 1 == to)
+			continue;
+		/* no bypassed dies' info */
+		if (!mcp)
+			return false;
+		mutex_lock(&mcp->lock);
+		/* check if all dies between (fr, to) are bypassed */
+		for (j = (fr + 1) % mcp_n; j != to; j = (j + 1) % mcp_n) {
+			if (IS_ERR_OR_NULL(mcp->etdevs[j]) ||
+			    !edgetpu_chip_bypassed(mcp->etdevs[j])) {
+				mutex_unlock(&mcp->lock);
+				etdev_dbg(
+					group->etdev,
+					"contiguity check failed: die %u is not probed or not bypassed",
+					j);
+				return false;
+			}
+		}
+		mutex_unlock(&mcp->lock);
+	}
+
+	return true;
+}
+
+/*
  * Finds an empty slot of @etdev->groups and assigns @group to it.
  *
  * Returns the non-negative index of etdev->groups on success.
@@ -337,6 +382,10 @@ static int edgetpu_dev_add_group(struct edgetpu_dev *etdev,
 	int i;
 
 	mutex_lock(&etdev->groups_lock);
+	if (etdev->group_join_lockout) {
+		mutex_unlock(&etdev->groups_lock);
+		return -EAGAIN;
+	}
 	for (i = 0; i < EDGETPU_NGROUPS; i++) {
 		if (!etdev->groups[i])
 			break;
@@ -542,6 +591,15 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 	if (ret)
 		goto err_unlock;
 
+	/*
+	 * Check the contiguity here but not in edgetpu_clients_groupable()
+	 * because clients may leave before the group being finalized.
+	 */
+	if (!edgetpu_group_check_contiguity(group)) {
+		ret = -EINVAL;
+		goto err_release_members;
+	}
+
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 	ret = edgetpu_p2p_mailbox_setup(group);
 	if (ret)
@@ -566,11 +624,46 @@ err_remove_remote_dram:
 err_release_p2p:
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 	edgetpu_p2p_mailbox_release(group);
-err_release_members:
 #endif
+err_release_members:
 	group_release_members(group);
 err_unlock:
 	mutex_unlock(&group->lock);
+	return ret;
+}
+
+static bool edgetpu_in_any_group_locked(struct edgetpu_dev *etdev)
+{
+	int i;
+
+	for (i = 0; i < EDGETPU_NGROUPS; i++) {
+		if (etdev->groups[i])
+			return true;
+	}
+
+	return false;
+}
+
+bool edgetpu_in_any_group(struct edgetpu_dev *etdev)
+{
+	bool ret;
+
+	mutex_lock(&etdev->groups_lock);
+	ret = edgetpu_in_any_group_locked(etdev);
+	mutex_unlock(&etdev->groups_lock);
+	return ret;
+}
+
+bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout)
+{
+	bool ret = true;
+
+	mutex_lock(&etdev->groups_lock);
+	if (lockout && edgetpu_in_any_group_locked(etdev))
+		ret = false;
+	else
+		etdev->group_join_lockout = lockout;
+	mutex_unlock(&etdev->groups_lock);
 	return ret;
 }
 

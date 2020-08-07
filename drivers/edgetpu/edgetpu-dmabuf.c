@@ -936,9 +936,16 @@ static void edgetpu_dma_fence_release(struct dma_fence *fence)
 	kfree(etfence);
 }
 
+static bool edgetpu_dma_fence_enable_signaling(struct dma_fence *fence)
+{
+	return true;
+}
+
 static const struct dma_fence_ops edgetpu_dma_fence_ops = {
 	.get_driver_name = edgetpu_dma_fence_get_driver_name,
 	.get_timeline_name = edgetpu_dma_fence_get_timeline_name,
+	.wait = dma_fence_default_wait,
+	.enable_signaling = edgetpu_dma_fence_enable_signaling,
 	.release = edgetpu_dma_fence_release,
 };
 
@@ -1025,6 +1032,7 @@ int edgetpu_sync_fence_status(struct edgetpu_sync_fence_status *datap)
 		return -EINVAL;
 
 	datap->status = dma_fence_get_status(fence);
+	dma_fence_put(fence);
 	return 0;
 }
 
@@ -1051,7 +1059,7 @@ int edgetpu_sync_fence_debugfs_show(struct seq_file *s, void *unused)
 		struct dma_fence *fence = &etfence->fence;
 
 		spin_lock_irq(&etfence->lock);
-		seq_printf(s, "%s-%s%llu-" SEQ_FMT " %s",
+		seq_printf(s, "%s-%s %llu-" SEQ_FMT " %s",
 			   edgetpu_dma_fence_get_driver_name(fence),
 			   etfence->timeline_name, fence->context, fence->seqno,
 			   sync_status_str(dma_fence_get_status_locked(fence)));

@@ -14,8 +14,6 @@
 #include "edgetpu-config.h"
 #include "edgetpu-internal.h"
 
-#ifdef EDGETPU_HAS_MCP
-
 struct edgetpu_mcp {
 	/* constant fields after initialization */
 
@@ -32,9 +30,16 @@ struct edgetpu_mcp {
 	 *
 	 * @etdevs[i] equals NULL means the etdev with mcp_die_index = i is not
 	 * added yet.
+	 *
+	 * @etdevs[i] equals -ENODEV if that device is added but marked as
+	 * failed by edgetpu_mcp_probe_fail().
+	 *
+	 * One should check with !IS_ERR_OR_NULL(etdevs[i]) before accessing.
 	 */
 	struct edgetpu_dev **etdevs;
 };
+
+#ifdef EDGETPU_HAS_MCP
 
 /*
  * Registers @etdev to the MCP manager.
@@ -47,12 +52,29 @@ struct edgetpu_mcp {
 int edgetpu_mcp_add_etdev(struct edgetpu_dev *etdev);
 
 /*
+ * Init @mcp if all the dies in the mcp have been probed.
+ *
+ * After trying to probe each etdev on PCI, the mcp list is fully populated
+ * with the corresponding etdevs. At this time the mcp list consists of
+ * successfully probed *etdev and -ENODEV for etdevs that failed probe.
+ * The mcp can then be initialized.
+ *
+ * Returns 0 on success, or -errno on error.
+ */
+int edgetpu_mcp_init_if_last(struct edgetpu_dev *etdev);
+
+/*
  * Reverts edgetpu_mcp_add_etdev().
  *
  * @etdev->mcp_id and @etdev->mcp_die_index must be the same when called
  * edgetpu_mcp_add_etdev().
  */
 void edgetpu_mcp_remove_etdev(struct edgetpu_dev *etdev);
+
+/*
+ * Marks etdev that failed to probe, set MCP entry to -ENODEV.
+ */
+void edgetpu_mcp_probe_fail(struct edgetpu_dev *etdev);
 
 /*
  * Invokes @callback with each (currently) registered MCP.
@@ -89,16 +111,22 @@ struct edgetpu_mcp *edgetpu_mcp_of_etdev(struct edgetpu_dev *etdev);
 int edgetpu_mcp_next_id(void);
 
 /* To allocate / release structures for MCP management */
-void __init edgetpu_mcp_init(void);
-void __exit edgetpu_mcp_exit(void);
+void edgetpu_mcp_init(void);
+void edgetpu_mcp_exit(void);
 
 #else /* !EDGETPU_HAS_MCP */
 
-static inline void __init edgetpu_mcp_init(void)
+static inline struct edgetpu_mcp *
+edgetpu_mcp_of_etdev(struct edgetpu_dev *etdev)
+{
+	return NULL;
+}
+
+static inline void edgetpu_mcp_init(void)
 {
 }
 
-static inline void __exit edgetpu_mcp_exit(void)
+static inline void edgetpu_mcp_exit(void)
 {
 }
 

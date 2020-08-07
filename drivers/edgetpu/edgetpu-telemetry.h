@@ -63,6 +63,12 @@ struct edgetpu_telemetry {
 
 	struct edgetpu_coherent_mem coherent_mem;
 	struct edgetpu_telemetry_header *header;
+	/*
+	 * If coherent_mem buffer is provided by the caller in
+	 * edgetpu_telemetry_init, the caller is responsible for
+	 * releasing/unmapping it.
+	 */
+	bool caller_mem;
 
 	struct eventfd_ctx *ctx; /* signal this to notify the runtime */
 	rwlock_t ctx_mem_lock; /* protects ctx and coherent_mem */
@@ -78,9 +84,14 @@ struct edgetpu_telemetry_ctx {
 /*
  * Allocates resources needed for @etdev->telemetry.
  *
+ * Optionally provide coherent_mem buffers for log and trace.
+ * If any of these are NULL, they will be allocated and freed by telemetry code.
+ *
  * Returns 0 on success, or a negative errno on error.
  */
-int edgetpu_telemetry_init(struct edgetpu_dev *etdev);
+int edgetpu_telemetry_init(struct edgetpu_dev *etdev,
+			   struct edgetpu_coherent_mem *log_mem,
+			   struct edgetpu_coherent_mem *trace_mem);
 
 /*
  * Disable the telemetry if enabled, release resources allocated in init().

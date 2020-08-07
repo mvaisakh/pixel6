@@ -80,6 +80,10 @@ bool edgetpu_chip_bypassed(struct edgetpu_dev *etdev)
 	return false;
 }
 
+void edgetpu_mark_probe_fail(struct edgetpu_dev *etdev)
+{
+}
+
 struct edgetpu_dumpregs_range edgetpu_chip_statusregs_ranges[] = {
 };
 int edgetpu_chip_statusregs_nranges =

@@ -268,4 +268,14 @@ void edgetpu_group_unset_eventfd(struct edgetpu_device_group *group,
 /* Notify group of event */
 void edgetpu_group_notify(struct edgetpu_device_group *group, uint event_id);
 
+/* Is device in any group (and may be actively processing requests) */
+bool edgetpu_in_any_group(struct edgetpu_dev *etdev);
+
+/*
+ * Enable or disable device group join lockout (as during f/w load).
+ * Returns false if attempting to lockout group join but device is already
+ * joined to a group.
+ */
+bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
+
 #endif /* __EDGETPU_DEVICE_GROUP_H__ */

@@ -204,13 +204,12 @@ int edgetpu_kci_push_cmd(struct edgetpu_kci *kci,
 
 /*
  * Pushes an element to cmd queue and waits for the response.
- * Returns -EBUSY if no response is received within the specified timeout (ms)
+ * Returns -ETIMEDOUT if no response is received within KCI_TIMEOUT.
  *
  * Returns the code of response, or a negative errno on error.
  */
-int edgetpu_kci_push_cmd_wait_timeout(struct edgetpu_kci *kci,
-			      struct edgetpu_command_element *cmd,
-			      long timeout);
+int edgetpu_kci_send_cmd(struct edgetpu_kci *kci,
+			 struct edgetpu_command_element *cmd);
 
 /*
  * Sends the "Unmap Buffer Sync" command and waits for remote response.

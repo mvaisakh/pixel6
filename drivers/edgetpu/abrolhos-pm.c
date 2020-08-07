@@ -417,6 +417,7 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 	if (ret)
 		return ret;
 
+	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
 	abrolhos_pwr_debugfs_dir =
 		debugfs_create_dir("power", edgetpu_dev_debugfs_dir());
 	debugfs_create_file("state", 0660, abrolhos_pwr_debugfs_dir,
@@ -433,9 +434,9 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 			dev, &fops_tpu_ctl_rate);
 	debugfs_create_file("axi_rate", 0660, abrolhos_pwr_debugfs_dir,
 			dev, &fops_tpu_axi_rate);
-	debugfs_create_file("apb_rate", 0660, abrolhos_pwr_debugfs_dir,
+	debugfs_create_file("apb_rate", 0440, abrolhos_pwr_debugfs_dir,
 			dev, &fops_tpu_apb_rate);
-	debugfs_create_file("uart_rate", 0660, abrolhos_pwr_debugfs_dir,
+	debugfs_create_file("uart_rate", 0440, abrolhos_pwr_debugfs_dir,
 			dev, &fops_tpu_uart_rate);
 	debugfs_create_file("policy", 0660, abrolhos_pwr_debugfs_dir,
 			edgetpu_pdev, &fops_tpu_pwr_policy);
