@@ -600,6 +600,10 @@ static int ioctl_device_enable(struct lwis_client *lwis_client)
 		goto error_locked;
 	}
 
+	/* Clear event queue to make sure there is no stale event from
+	 * previous session */
+	lwis_client_event_queue_clear(lwis_client);
+
 	ret = lwis_dev_power_up_locked(lwis_dev);
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to power up device\n");

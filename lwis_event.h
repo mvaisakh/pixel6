@@ -101,25 +101,35 @@ int lwis_client_event_control_get(struct lwis_client *lwisclient,
  * if event is not NULL, the caller takes ownership of *event and must free it
  * if event is NULL, this function will free the popped event object
  *
- * Locks: lwisclient->event_lock
+ * Locks: lwis_client->event_lock
  *
  * Alloc: No
  * Returns: 0 on success, -ENOENT if queue empty
  */
-int lwis_client_event_pop_front(struct lwis_client *lwisclient,
+int lwis_client_event_pop_front(struct lwis_client *lwis_client,
 				struct lwis_event_entry **event);
 
 /*
  * lwis_client_event_peek_front: Get the front element of the queue without
  * removing it
  *
- * Locks: lwisclient->event_lock
+ * Locks: lwis_client->event_lock
  *
  * Alloc: No
  * Returns: 0 on success, -ENOENT if queue empty
  */
-int lwis_client_event_peek_front(struct lwis_client *lwisclient,
+int lwis_client_event_peek_front(struct lwis_client *lwis_client,
 				 struct lwis_event_entry **event);
+
+/*
+ * lwis_client_event_queue_clear: Clear all entries inside the event queue.
+ *
+ * Locks: lwis_client->event_lock
+ *
+ * Alloc: No
+ * Returns: void
+ */
+void lwis_client_event_queue_clear(struct lwis_client *lwis_client);
 
 /*
  * lwis_client_event_states_clear: Frees all items in lwisclient->event_states

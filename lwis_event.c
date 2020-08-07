@@ -375,6 +375,21 @@ int lwis_client_event_peek_front(struct lwis_client *lwis_client,
 	return ret;
 }
 
+void lwis_client_event_queue_clear(struct lwis_client *lwis_client)
+{
+	struct list_head *it_event, *it_tmp;
+	struct lwis_event_entry *event;
+	unsigned long flags;
+
+	spin_lock_irqsave(&lwis_client->event_lock, flags);
+	list_for_each_safe (it_event, it_tmp, &lwis_client->event_queue) {
+		event = list_entry(it_event, struct lwis_event_entry, node);
+		list_del(&event->node);
+		kfree(event);
+	}
+	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+}
+
 /*
  * lwis_client_event_push_back: Inserts new event into the client event queue
  * to be later consumed by userspace. Takes ownership of *event (does not copy,
