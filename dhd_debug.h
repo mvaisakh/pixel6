@@ -293,9 +293,10 @@ typedef struct per_packet_status_entry {
 
 #define PACKED_STRUCT __attribute__ ((packed))
 
+#if defined(LINUX)
 typedef struct log_conn_event {
     uint16 event;
-    tlv_log *tlvs;
+    tlv_log tlvs[0];
 	/*
 	* separate parameter structure per event to be provided and optional data
 	* the event_data is expected to include an official android part, with some
@@ -304,6 +305,7 @@ typedef struct log_conn_event {
 	* understood by the developer only.
 	*/
 } PACKED_STRUCT log_conn_event_t;
+#endif /* defined(LINUX) */
 
 /*
  * Ring buffer name for power events ring. note that power event are extremely frequents
