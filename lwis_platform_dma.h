@@ -11,6 +11,8 @@
 #ifndef LWIS_PLATFORM_DMA_H_
 #define LWIS_PLATFORM_DMA_H_
 
+#include <linux/dma-buf.h>
+
 #include "lwis_device.h"
 
 /* Allocates a DMA buffer of size of PAGE_ALIGN(len) with allocation flags.

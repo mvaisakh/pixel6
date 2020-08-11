@@ -20,13 +20,10 @@ lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o
 lwis-objs += lwis_debug.o
 
-# Exynos specific files
-ifeq ($(CONFIG_SOC_EXYNOS9820), y)
-lwis-objs += platform/exynos/lwis_platform_exynos.o
-lwis-objs += platform/exynos/lwis_platform_exynos_dma.o
-else ifeq ($(CONFIG_SOC_GS101), y)
-lwis-objs += platform/exynos/lwis_platform_exynos.o
-lwis-objs += platform/exynos/lwis_platform_exynos_dma.o
+# GS101 specific files
+ifeq ($(CONFIG_SOC_GS101), y)
+lwis-objs += platform/gs101/lwis_platform_gs101.o
+lwis-objs += platform/gs101/lwis_platform_gs101_dma.o
 endif
 
 # Device tree specific file
