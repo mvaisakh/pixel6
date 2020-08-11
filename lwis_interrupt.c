@@ -336,8 +336,7 @@ int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 {
 	BUG_ON(!list);
 
-	return request_irq(list->irq[index].irq, handler,
-			   IRQF_GIC_MULTI_TARGET | IRQF_SHARED,
+	return request_irq(list->irq[index].irq, handler, IRQF_SHARED,
 			   list->irq[index].full_name, dev);
 }
 
