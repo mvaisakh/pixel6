@@ -92,7 +92,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 	lwis_client->lwis_dev = lwis_dev;
 	/* Initialize locks */
 	mutex_init(&lwis_client->lock);
-	mutex_init(&lwis_client->periodic_io_lock);
+	spin_lock_init(&lwis_client->periodic_io_lock);
 	spin_lock_init(&lwis_client->event_lock);
 
 	/* Empty hash table for client event states */

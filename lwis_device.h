@@ -243,8 +243,8 @@ struct lwis_client {
 	/* Workqueue variables for periodic io */
 	struct workqueue_struct *periodic_io_wq;
 	struct work_struct periodic_io_work;
-	/* Mutex used to synchronize access to periodic io data structs */
-	struct mutex periodic_io_lock;
+	/* Spinlock used to synchronize access to periodic io data structs */
+	spinlock_t periodic_io_lock;
 	/* Queue of all periodic_io pending processing */
 	struct list_head periodic_io_process_queue;
 	/* Periodic IO counter, which also provides periodic io ID */
