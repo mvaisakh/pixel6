@@ -118,6 +118,20 @@ enum edgetpu_kci_error {
 	KCI_ERROR_UNAUTHENTICATED = 16,
 };
 
+/* Firmware flavors returned via KCI from firmware image. */
+enum edgetpu_fw_flavor {
+	/* used by host when cannot determine the flavor */
+	FW_FLAVOR_UNKNOWN = 0,
+	/* second-stage bootloader */
+	FW_FLAVOR_BL1 = 1,
+	/* systest app image */
+	FW_FLAVOR_SYSTEST = 2,
+	/* default production app image from DarwiNN team */
+	FW_FLAVOR_PROD_DEFAULT = 3,
+	/* custom image produced by other teams */
+	FW_FLAVOR_CUSTOM = 4,
+};
+
 struct edgetpu_kci_wait_list {
 	struct list_head list;
 	/*
@@ -226,6 +240,16 @@ int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
  * Returns 0 if successful
  */
 int edgetpu_kci_ack(struct edgetpu_kci *kci);
+
+/*
+ * Sends a FIRMWARE_FLAVOR command and expects a response indicating what
+ * edgetpu_fw_flavor type is running.  Also serves as an initial handshake
+ * with firmware at load time.
+ *
+ * Returns >=0 edgetpu_fw_flavor when response received from firmware,
+ *         <0 on error communicating with firmware (typically -ETIMEDOUT).
+ */
+enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci);
 
 /*
  * Sends the "Map Log Buffer" command and waits for remote response.

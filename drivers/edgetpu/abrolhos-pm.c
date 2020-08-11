@@ -32,24 +32,24 @@ static struct dentry *abrolhos_pwr_debugfs_dir;
 static int abrolhos_pwr_state_init(struct device *dev)
 {
 	int ret;
+	int curr_state;
 
 	pm_runtime_enable(dev);
-	ret = pm_runtime_get_sync(dev);
-	if (ret) {
-		dev_err(dev, "pm_runtime_get_sync returned %d\n", ret);
-		return ret;
+	curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
+
+	if (curr_state > TPU_OFF) {
+		ret = pm_runtime_get_sync(dev);
+		if (ret) {
+			dev_err(dev, "pm_runtime_get_sync returned %d\n", ret);
+			return ret;
+		}
 	}
 
-	ret = exynos_acpm_set_init_freq(TPU_ACPM_DOMAIN, TPU_OFF);
+	ret = exynos_acpm_set_init_freq(TPU_ACPM_DOMAIN, curr_state);
 	if (ret) {
 		dev_err(dev, "error initializing tpu state: %d\n", ret);
-		return ret;
-	}
-
-	ret = pm_runtime_put_sync(dev);
-	if (ret) {
-		dev_err(dev, "%s: pm_runtime_put_sync returned %d\n", __func__,
-			ret);
+		if (curr_state > TPU_OFF)
+			pm_runtime_put_sync(dev);
 		return ret;
 	}
 
@@ -77,15 +77,19 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, (unsigned long)val);
 	if (ret) {
 		dev_err(dev, "error setting tpu state: %d\n", ret);
+		pm_runtime_put_sync(dev);
 		return ret;
 	}
 
 	if (curr_state != TPU_OFF && val == TPU_OFF) {
-		ret = pm_runtime_put_sync(dev);
-		if (ret) {
-			dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",
-				__func__, ret);
-			return ret;
+		curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
+		if (curr_state <= TPU_DEEP_SLEEP_CLOCKS_FAST) {
+			ret = pm_runtime_put_sync(dev);
+			if (ret) {
+				dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",
+					__func__, ret);
+				return ret;
+			}
 		}
 	}
 
@@ -155,7 +159,7 @@ static int edgetpu_core_rate_set(void *data, u64 val)
 	unsigned long dbg_rate_req;
 
 	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_CORE_DEBUG;
-	dbg_rate_req |= (val / 1000);
+	dbg_rate_req |= val;
 
 	return exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
 }
@@ -175,7 +179,7 @@ static int edgetpu_ctl_rate_set(void *data, u64 val)
 	unsigned long dbg_rate_req;
 
 	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_CTL_DEBUG;
-	dbg_rate_req |= (val / 1000);
+	dbg_rate_req |= 1000;
 
 	return exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
 }
@@ -195,7 +199,7 @@ static int edgetpu_axi_rate_set(void *data, u64 val)
 	unsigned long dbg_rate_req;
 
 	dbg_rate_req = TPU_DEBUG_REQ | TPU_CLK_AXI_DEBUG;
-	dbg_rate_req |= (val / 1000);
+	dbg_rate_req |= 1000;
 
 	return exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
 }
@@ -308,6 +312,28 @@ static int edgetpu_vdd_tpu_m_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_vdd_tpu_m, edgetpu_vdd_tpu_m_get,
 		edgetpu_vdd_tpu_m_set, "%llu\n");
 
+static int abrolhos_core_pwr_get(void *data, u64 *val)
+{
+	*val = exynos_acpm_get_rate(TPU_ACPM_DOMAIN,
+			TPU_DEBUG_REQ | TPU_CORE_PWR_DEBUG);
+	return 0;
+}
+
+static int abrolhos_core_pwr_set(void *data, u64 val)
+{
+	int ret;
+	unsigned long dbg_rate_req;
+
+	dbg_rate_req = TPU_DEBUG_REQ | TPU_CORE_PWR_DEBUG;
+	dbg_rate_req |= val;
+
+	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, dbg_rate_req);
+	return ret;
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tpu_core_pwr, abrolhos_core_pwr_get,
+		abrolhos_core_pwr_set, "%llu\n");
+
 static int abrolhos_get_initial_pwr_state(struct device *dev)
 {
 	switch (power_state) {
@@ -334,6 +360,8 @@ static int abrolhos_get_initial_pwr_state(struct device *dev)
 	}
 	return power_state;
 }
+
+static void abrolhos_power_down(struct edgetpu_pm *etpm);
 
 static int abrolhos_power_up(struct edgetpu_pm *etpm)
 {
@@ -368,6 +396,9 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	default:
 		break;
 	}
+
+	if (ret)
+		abrolhos_power_down(etpm);
 
 	return ret;
 }
@@ -440,6 +471,8 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 			dev, &fops_tpu_uart_rate);
 	debugfs_create_file("policy", 0660, abrolhos_pwr_debugfs_dir,
 			edgetpu_pdev, &fops_tpu_pwr_policy);
+	debugfs_create_file("core_pwr", 0660, abrolhos_pwr_debugfs_dir,
+			edgetpu_pdev, &fops_tpu_core_pwr);
 
 	return 0;
 }

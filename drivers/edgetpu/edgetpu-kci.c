@@ -608,6 +608,50 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
+enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci)
+{
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_FIRMWARE_FLAVOR,
+	};
+	struct edgetpu_kci_response_element resp;
+	enum edgetpu_fw_flavor flavor = FW_FLAVOR_UNKNOWN;
+	int kciret;
+
+	kciret = edgetpu_kci_send_cmd_return_resp(kci, &cmd, &resp);
+	if (kciret == KCI_ERROR_UNIMPLEMENTED) {
+		etdev_dbg(kci->mailbox->etdev,
+			  "old firmware does not report flavor\n");
+	} else if (kciret == KCI_ERROR_OK) {
+		switch (resp.retval) {
+		case FW_FLAVOR_BL1:
+		case FW_FLAVOR_SYSTEST:
+		case FW_FLAVOR_PROD_DEFAULT:
+		case FW_FLAVOR_CUSTOM:
+			flavor = resp.retval;
+			break;
+		/* TODO(b/163366965): remove when old bl1 no longer in use. */
+		case 0xb01ab01a:
+			etdev_dbg(kci->mailbox->etdev,
+				  "old bl1 loader detected\n");
+			flavor = FW_FLAVOR_BL1;
+			break;
+		default:
+			etdev_dbg(kci->mailbox->etdev,
+				  "unrecognized fw flavor 0x%x\n",
+				  resp.retval);
+		}
+	} else {
+		etdev_dbg(kci->mailbox->etdev,
+			  "firmware flavor query returns %d\n", kciret);
+		if (kciret < 0)
+			flavor = kciret;
+		else
+			flavor = -EIO;
+	}
+
+	return flavor;
+}
+
 /* debugfs mappings dump */
 void edgetpu_kci_mappings_show(struct edgetpu_dev *etdev, struct seq_file *s)
 {

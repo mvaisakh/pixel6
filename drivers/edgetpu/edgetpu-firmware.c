@@ -50,6 +50,7 @@ struct edgetpu_firmware_private {
 	struct mutex fw_desc_lock;
 	struct edgetpu_firmware_desc fw_desc;
 	enum edgetpu_firmware_status status;
+	enum edgetpu_fw_flavor fw_flavor;
 };
 
 void edgetpu_firmware_set_data(struct edgetpu_firmware *et_fw, void *data)
@@ -227,17 +228,57 @@ static void edgetpu_firmware_unload_locked(
 		handlers->free_buffer(et_fw, &fw_desc->buf);
 }
 
-static int edgetpu_firmware_ack(struct edgetpu_dev *etdev)
+static char *fw_flavor_str(enum edgetpu_fw_flavor fw_flavor)
 {
-	int err;
+	switch (fw_flavor) {
+	case FW_FLAVOR_BL1:
+		return "stage 2 bootloader";
+	case FW_FLAVOR_SYSTEST:
+		return "test";
+	case FW_FLAVOR_PROD_DEFAULT:
+		return "prod";
+	case FW_FLAVOR_CUSTOM:
+		return "custom";
+	default:
+	case FW_FLAVOR_UNKNOWN:
+		return "unknown";
+	}
 
-	etdev_dbg(etdev, "Sending KCI ACK");
-	err = edgetpu_kci_ack(etdev->kci);
-	if (err)
-		etdev_err(etdev, "KCI ACK failed :( - %d", err);
-	else
-		etdev_info(etdev, "KCI ACK Succeeded :)");
-	return err;
+	/* NOTREACHED */
+	return "?";
+}
+
+static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
+{
+	enum edgetpu_fw_flavor fw_flavor;
+	struct edgetpu_firmware_buffer *fw_buf;
+
+	/* Give the firmware some time to initialize */
+	msleep(100);
+	etdev_dbg(et_fw->etdev, "Detecting firmware flavor...");
+	fw_flavor = edgetpu_kci_fw_flavor(et_fw->etdev->kci);
+	if (fw_flavor < 0) {
+		etdev_err(et_fw->etdev, "firmware handshake failed: %d",
+			  fw_flavor);
+		et_fw->p->status = FW_INVALID;
+		et_fw->p->fw_flavor = FW_FLAVOR_UNKNOWN;
+		return fw_flavor;
+	}
+
+	if (fw_flavor != FW_FLAVOR_BL1) {
+		fw_buf = &et_fw->p->fw_desc.buf;
+		etdev_info(et_fw->etdev, "loaded %s firmware%s",
+			   fw_flavor_str(fw_flavor),
+			   fw_buf->flags & FW_ONDEV ? " on device" : "");
+	} else {
+		etdev_dbg(et_fw->etdev, "loaded stage 2 bootloader");
+		et_fw->p->status = FW_VALID;
+	}
+	et_fw->p->fw_flavor = fw_flavor;
+	/* Hermosa second-stage bootloader doesn't implement log/trace */
+	if (fw_flavor != FW_FLAVOR_BL1)
+		edgetpu_telemetry_kci(et_fw->etdev);
+	return 0;
 }
 
 int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
@@ -271,18 +312,7 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	edgetpu_firmware_unload_locked(et_fw, &et_fw->p->fw_desc);
 	et_fw->p->fw_desc = new_fw_desc;
 
-	/* Give the firmware some time to initialize */
-	msleep(100);
-	ret = edgetpu_firmware_ack(et_fw->etdev);
-	if (ret)
-		et_fw->p->status = FW_INVALID;
-	else
-		et_fw->p->status = FW_VALID;
-	/* Hermosa second-stage bootloader doesn't implement log/trace */
-	if (!ret && !(flags & FW_BL1))
-		edgetpu_telemetry_kci(et_fw->etdev);
-
-	return ret;
+	return edgetpu_firmware_handshake(et_fw);
 
 out_unload_new_fw:
 	edgetpu_firmware_unload_locked(et_fw, &new_fw_desc);
@@ -376,16 +406,7 @@ int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
 		if (ret)
 			return ret;
 	}
-	/* Give the firmware some time to initialize */
-	msleep(100);
-	ret = edgetpu_firmware_ack(et_fw->etdev);
-	if (ret)
-		et_fw->p->status = FW_INVALID;
-	else
-		et_fw->p->status = FW_VALID;
-	if (!ret)
-		edgetpu_telemetry_kci(et_fw->etdev);
-	return 0;
+	return edgetpu_firmware_handshake(et_fw);
 }
 
 static ssize_t load_firmware_show(

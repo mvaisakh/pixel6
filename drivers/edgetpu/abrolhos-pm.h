@@ -38,17 +38,17 @@ static inline int exynos_acpm_set_policy(unsigned int id, unsigned long policy)
 
 /*
  * TPU Power States:
- * 0:			Off
- * 1:			Deep Sleep Clocks Off
- * 2:			Deep Sleep Clocks Slow
- * 3:			Deep Sleep Clocks Fast
- * 4:			Sleep Clocks Off
- * 5:			Sleep Clocks Slow
- * 6:			Retention Clocks Slow
- * 500000000:	Super Underdrive @500MHz
- * 800000000:	Underdrive @800MHz
- * 1066000000:	Nominal @1066MHz
- * 1230000000:	Overdrive @1230MHz
+ * 0:		Off
+ * 1:		Deep Sleep Clocks Off
+ * 2:		Deep Sleep Clocks Slow
+ * 3:		Deep Sleep Clocks Fast
+ * 4:		Sleep Clocks Off
+ * 5:		Sleep Clocks Slow
+ * 6:		Retention Clocks Slow
+ * 500000:	Super Underdrive @500MHz
+ * 800000:	Underdrive @800MHz
+ * 1000000:	Nominal @1066MHz
+ * 1200000:	Overdrive @1230MHz
  */
 enum tpu_pwr_state {
 	TPU_OFF = 0,
@@ -58,38 +58,39 @@ enum tpu_pwr_state {
 	TPU_SLEEP_CLOCKS_OFF       = 4,
 	TPU_SLEEP_CLOCKS_SLOW      = 5,
 	TPU_RETENTION_CLOCKS_SLOW  = 6,
-	TPU_ACTIVE_SUD = 500000000,
-	TPU_ACTIVE_UD  = 800000000,
-	TPU_ACTIVE_NOM = 1066000000,
-	TPU_ACTIVE_OD  = 1230000000,
+	TPU_ACTIVE_SUD = 500000,
+	TPU_ACTIVE_UD  = 800000,
+	TPU_ACTIVE_NOM = 1066000,
+	TPU_ACTIVE_OD  = 1230000,
 };
 
 #define TPU_POLICY_MAX	TPU_ACTIVE_OD
 
 
-#define TPU_ACPM_DOMAIN			14
+#define TPU_ACPM_DOMAIN			7
 
 #define TPU_DEBUG_REQ			(1 << 31)
-#define TPU_VDD_TPU_DEBUG		(0 << 28)
-#define TPU_VDD_TPU_M_DEBUG		(1 << 28)
-#define TPU_VDD_INT_M_DEBUG		(2 << 28)
-#define TPU_CLK_CORE_DEBUG		(3 << 28)
-#define TPU_CLK_CTL_DEBUG		(4 << 28)
-#define TPU_CLK_AXI_DEBUG		(5 << 28)
-#define TPU_CLK_APB_DEBUG		(6 << 28)
-#define TPU_CLK_UART_DEBUG		(7 << 28)
-#define TPU_DEBUG_VALUE_MASK		((1 << 28) - 1)
+#define TPU_VDD_TPU_DEBUG		(0 << 27)
+#define TPU_VDD_TPU_M_DEBUG		(1 << 27)
+#define TPU_VDD_INT_M_DEBUG		(2 << 27)
+#define TPU_CLK_CORE_DEBUG		(3 << 27)
+#define TPU_CLK_CTL_DEBUG		(4 << 27)
+#define TPU_CLK_AXI_DEBUG		(5 << 27)
+#define TPU_CLK_APB_DEBUG		(6 << 27)
+#define TPU_CLK_UART_DEBUG		(7 << 27)
+#define TPU_CORE_PWR_DEBUG		(8 << 27)
+#define TPU_DEBUG_VALUE_MASK		((1 << 27) - 1)
 
-#define OSCCLK_RATE			24576000
-#define PLL_SHARED0_DIV0		1066000000
-#define PLL_SHARED1_DIV2		933000000
-#define PLL_SHARED2			800000000
-#define PLL_SHARED3			666000000
-#define PLL_SHARED0_DIV3		711000000
-#define PLL_SHARED1_DIV3		622000000
-#define PLL_SHARED0_DIV4		533000000
-#define PLL_SHARED2_DIV2		400000000
-#define PLL_SHARED3_DIV2		333000000
+#define OSCCLK_RATE			24576
+#define PLL_SHARED0_DIV0		1066000
+#define PLL_SHARED1_DIV2		933000
+#define PLL_SHARED2			800000
+#define PLL_SHARED3			666000
+#define PLL_SHARED0_DIV3		711000
+#define PLL_SHARED1_DIV3		622000
+#define PLL_SHARED0_DIV4		533000
+#define PLL_SHARED2_DIV2		400000
+#define PLL_SHARED3_DIV2		333000
 
 #define TPU_CMU_TOP_REG			0x1E080000
 #define MUX_CLKCMU_TPU_TPU		(TPU_CMU_TPU_REG + 0x10FC)
