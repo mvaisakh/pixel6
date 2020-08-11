@@ -17,7 +17,9 @@
 #include "lwis_device_slc.h"
 #include "lwis_platform_dma.h"
 
+#if ENABLE_PT
 #include "pt/pt.h"
+#endif
 
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		      struct lwis_alloc_buffer_info *alloc_info,
@@ -58,7 +60,9 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 			return alloc_info->dma_fd;
 		}
 
+#if ENABLE_PT
 		alloc_info->partition_id = PT_PTID_INVALID;
+#endif
 
 		/*
 		 * Increment refcount of the fd to 2. Both userspace's close(fd)
