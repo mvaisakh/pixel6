@@ -19,6 +19,7 @@
 #include <decon_cal.h>
 #include <dqe_cal.h>
 #include <regs-decon.h>
+#include <regs-dqe.h>
 #ifdef __linux__
 #include <exynos_drm_decon.h>
 #include <linux/of_address.h>
@@ -1632,7 +1633,7 @@ static void decon_reg_set_dither(u32 id, struct decon_config *config, bool en)
 			decon_reg_set_dqe_enable(0, true);
 			dqe_reg_init(config->image_width, config->image_height);
 		}
-		dqe_reg_set_disp_dither(en);
+		dqe_reg_set_disp_dither(DITHER_EN(1));
 		decon_reg_update_req_dqe(id);
 	}
 

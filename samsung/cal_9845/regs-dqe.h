@@ -515,7 +515,8 @@
 #define DITHER_TABLE_SEL_B		(0x1 << 7)
 #define DITHER_TABLE_SEL_G		(0x1 << 6)
 #define DITHER_TABLE_SEL_R		(0x1 << 5)
-#define DITHER_FRAME_OFFSET(_v)		((_v) << 3)
+#define DITHER_FRAME_OFFSET_SHIFT	3
+#define DITHER_FRAME_OFFSET(_v)		((_v) << DITHER_FRAME_OFFSET_SHIFT)
 #define DITHER_FRAME_OFFSET_MASK	(0x3 << 3)
 #define DITHER_FRAME_CON		(0x1 << 2)
 #define DITHER_MODE			(0x1 << 1)

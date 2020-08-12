@@ -140,12 +140,39 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
-void dqe_reg_set_cgc_dither(bool en)
+void dqe_reg_set_cgc_dither(u32 val)
 {
-	dqe_write_mask(DQE0_CGC_DITHER, DITHER_EN(en), DITHER_EN_MASK);
+	dqe_write(DQE0_CGC_DITHER, val);
 }
 
-void dqe_reg_set_disp_dither(bool en)
+void dqe_reg_set_disp_dither(u32 val)
 {
-	dqe_write_mask(DQE0_DISP_DITHER, DITHER_EN(en), DITHER_EN_MASK);
+	dqe_write(DQE0_DISP_DITHER, val);
+}
+
+void dqe_reg_print_dither(enum dqe_dither_type dither)
+{
+	u32 val;
+	const char * const dither_name[] = {
+		[CGC_DITHER] = "CGC",
+		[DISP_DITHER] = "DISP"
+	};
+
+	if (dither == CGC_DITHER)
+		val = dqe_read(DQE0_CGC_DITHER);
+	else if (dither == DISP_DITHER)
+		val = dqe_read(DQE0_DISP_DITHER);
+	else
+		return;
+
+	cal_log_info(0, "DQE: %s dither %s\n", dither_name[dither],
+		(val & DITHER_EN_MASK) ? "on" : "off");
+	cal_log_info(0, "%s mode, frame control %s, frame offset: %d\n",
+		(val & DITHER_MODE) ? "Shift" : "Dither",
+		(val & DITHER_FRAME_CON) ? "on" : "off",
+		(val & DITHER_FRAME_OFFSET_MASK) >> DITHER_FRAME_OFFSET_SHIFT);
+	cal_log_info(0, "Table red(%c) green(%c) blue(%c)\n",
+		(val & DITHER_TABLE_SEL_R) ? 'B' : 'A',
+		(val & DITHER_TABLE_SEL_G) ? 'B' : 'A',
+		(val & DITHER_TABLE_SEL_B) ? 'B' : 'A');
 }
