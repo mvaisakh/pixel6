@@ -32,11 +32,20 @@ struct exynos_dqe_state {
 	struct drm_color_lut *regamma_lut;
 };
 
+struct debug_override {
+	bool force_en;
+	bool verbose;
+	u32 val;
+};
+
 struct exynos_dqe {
 	void __iomem *regs;
 	bool initialized;
 	const struct exynos_dqe_funcs *funcs;
 	struct exynos_dqe_state state;
+
+	struct debug_override cgc_dither_override;
+	struct debug_override disp_dither_override;
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,

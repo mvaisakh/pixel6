@@ -508,14 +508,46 @@ static const struct file_operations dpu_event_fops = {
 	.release = seq_release,
 };
 
+static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
+			struct debug_override *d, struct dentry *parent)
+{
+	struct dentry *dent;
+
+	dent = debugfs_create_dir(name, parent);
+	if (!dent) {
+		pr_err("failed to create %s dir\n", name);
+		return NULL;
+	}
+	if (!debugfs_create_bool("force_enable", 0664, dent, &d->force_en)) {
+		pr_err("failed to create %s force_enable\n", name);
+		goto err;
+	}
+	if (!debugfs_create_bool("verbose", 0664, dent, &d->verbose)) {
+		pr_err("failed to create %s verbose\n", name);
+		goto err;
+	}
+	if (!debugfs_create_u32("val", 0664, dent, &d->val)) {
+		pr_err("failed to create %s val\n", name);
+		goto err;
+	}
+
+	return dent;
+
+err:
+	debugfs_remove_recursive(dent);
+	return NULL;
+}
+
 #define MAX_NAME_SIZE	32
 int dpu_init_debug(struct decon_device *decon)
 {
 	int i;
 	u32 event_cnt;
 	struct drm_crtc *crtc;
+	struct exynos_dqe *dqe = decon->dqe;
 	struct dentry *debug_event;
 	struct dentry *urgent_dent;
+	struct dentry *cgc_dither_dent, *disp_dither_dent;
 
 	decon->d.event_log = NULL;
 	event_cnt = dpu_event_log_max;
@@ -621,8 +653,23 @@ int dpu_init_debug(struct decon_device *decon)
 		goto err_urgent;
 	}
 
+	if (dqe) {
+		cgc_dither_dent = exynos_debugfs_add_dqe_override("cgc_dither",
+				&dqe->cgc_dither_override, crtc->debugfs_entry);
+		if (!cgc_dither_dent)
+			goto err_urgent;
+
+		disp_dither_dent = exynos_debugfs_add_dqe_override(
+				"disp_dither", &dqe->disp_dither_override,
+				crtc->debugfs_entry);
+		if (!disp_dither_dent)
+			goto err_cgc_dither;
+	}
+
 	return 0;
 
+err_cgc_dither:
+	debugfs_remove_recursive(cgc_dither_dent);
 err_urgent:
 	debugfs_remove_recursive(urgent_dent);
 err_debugfs:

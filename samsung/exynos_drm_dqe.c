@@ -25,6 +25,16 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		dqe->initialized = true;
 	}
 
+	if (dqe->cgc_dither_override.force_en)
+		dqe_reg_set_cgc_dither(dqe->cgc_dither_override.val);
+	if (dqe->cgc_dither_override.verbose)
+		dqe_reg_print_dither(CGC_DITHER);
+
+	if (dqe->disp_dither_override.force_en)
+		dqe_reg_set_disp_dither(dqe->disp_dither_override.val);
+	if (dqe->disp_dither_override.verbose)
+		dqe_reg_print_dither(DISP_DITHER);
+
 	if (dqe->state.degamma_lut != state->degamma_lut) {
 		dqe_reg_set_degamma_lut(state->degamma_lut);
 		dqe->state.degamma_lut = state->degamma_lut;
