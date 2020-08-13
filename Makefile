@@ -42,4 +42,4 @@ KBUILD_OPTIONS += CONFIG_GOOGLE_BMS=m \
 		  CONFIG_MAX20339=m
 
 modules modules_install clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) $(@)
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 $(KBUILD_OPTIONS) $(@)
