@@ -11,17 +11,15 @@
 #ifndef LWIS_PLATFORM_GS101_H_
 #define LWIS_PLATFORM_GS101_H_
 
-#include <linux/pm_qos.h>
+#include <soc/google/exynos_pm_qos.h>
 
 struct lwis_platform {
-	/* TODO(b/157514330): Refactor this to be dynamically controlled
-	 * from userspace */
-	struct pm_qos_request pm_qos_int_cam;
-	struct pm_qos_request pm_qos_int;
-	struct pm_qos_request pm_qos_cam;
-	struct pm_qos_request pm_qos_mem;
-	struct pm_qos_request pm_qos_hpg;
-	struct pm_qos_request pm_qos_tnr;
+	struct exynos_pm_qos_request pm_qos_int_cam;
+	struct exynos_pm_qos_request pm_qos_int;
+	struct exynos_pm_qos_request pm_qos_cam;
+	struct exynos_pm_qos_request pm_qos_mem;
+	struct exynos_pm_qos_request pm_qos_tnr;
+	/* struct exynos_pm_qos_request pm_qos_hpg; */
 };
 
 #endif /* LWIS_PLATFORM_GS101_H_ */

@@ -10,8 +10,6 @@
 
 /* IOVMM is deprecated on 5.4, need replacement for these code blocks */
 #define ENABLE_IOVMM 0
-/* PM QOS is not ported to 5.4 yet */
-#define ENABLE_QOS 0
 
 #include "lwis_platform_gs101.h"
 
@@ -20,11 +18,10 @@
 #endif
 #include <linux/iommu.h>
 #include <linux/of.h>
-#if ENABLE_QOS
-#include <linux/pm_qos.h>
-#endif
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 
+#include "lwis_commands.h"
 #include "lwis_device_dpm.h"
 #include "lwis_debug.h"
 #include "lwis_platform.h"
@@ -87,13 +84,10 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	int ret;
 	struct lwis_platform *platform;
 
-	/* TODO(b/157514330): Refactor */
-#if ENABLE_QOS
 	const uint32_t int_qos = 465000;
 	const uint32_t mif_qos = 2093000;
 	const uint32_t core_clock_qos = 67000;
-	const uint32_t hpg_qos = 1;
-#endif /* ENABLE_QOS */
+	/* const uint32_t hpg_qos = 1; */
 
 	if (!lwis_dev) {
 		return -ENODEV;
@@ -126,11 +120,17 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	}
 #endif /* ENABLE_IOVMM */
 
-#if ENABLE_QOS
+	/*
+	 * PM_QOS_CPU_ONLINE_MIN is not defined in 5.4 branch, will need to
+	 * revisit and see if a replacement is needed.
+	 */
+#if 0
 	/* Set hardcoded DVFS levels */
-	if (!pm_qos_request_active(&platform->pm_qos_hpg))
-		pm_qos_add_request(&platform->pm_qos_hpg, PM_QOS_CPU_ONLINE_MIN,
-				   hpg_qos);
+	if (!exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
+		exynos_pm_qos_add_request(&platform->pm_qos_hpg,
+					  PM_QOS_CPU_ONLINE_MIN, hpg_qos);
+	}
+#endif
 
 	ret = lwis_platform_update_qos(lwis_dev, mif_qos, CLOCK_FAMILY_MIF);
 	if (ret < 0) {
@@ -152,7 +152,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 			return ret;
 		}
 	}
-#endif /* ENABLE_QOS */
 
 	return 0;
 }
@@ -189,9 +188,8 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 			     enum lwis_clock_family clock_family)
 {
-#if ENABLE_QOS
 	struct lwis_platform *platform;
-	struct pm_qos_request *qos_req;
+	struct exynos_pm_qos_request *qos_req;
 	int qos_class;
 
 	if (!lwis_dev) {
@@ -203,8 +201,9 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 		return -ENODEV;
 	}
 
-	if (value == 0)
-		value = PM_QOS_DEFAULT_VALUE;
+	if (value == 0) {
+		value = EXYNOS_PM_QOS_DEFAULT_VALUE;
+	}
 
 	switch (clock_family) {
 	case CLOCK_FAMILY_INTCAM:
@@ -235,22 +234,21 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 		return -EINVAL;
 	}
 
-	if (!pm_qos_request_active(qos_req))
-		pm_qos_add_request(qos_req, qos_class, value);
-	else
-		pm_qos_update_request(qos_req, value);
+	if (!exynos_pm_qos_request_active(qos_req)) {
+		exynos_pm_qos_add_request(qos_req, qos_class, value);
+	} else {
+		exynos_pm_qos_update_request(qos_req, value);
+	}
 
 	dev_info(lwis_dev->dev,
 		 "Updating clock for clock_family %d, freq to %u\n",
 		 clock_family, value);
-#endif /* ENABLE_QOS */
 
 	return 0;
 }
 
 int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 {
-#if ENABLE_QOS
 	struct lwis_platform *platform;
 
 	if (!lwis_dev) {
@@ -262,34 +260,43 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		return -ENODEV;
 	}
 
-	if (pm_qos_request_active(&platform->pm_qos_int))
-		pm_qos_remove_request(&platform->pm_qos_int);
-	if (pm_qos_request_active(&platform->pm_qos_mem))
-		pm_qos_remove_request(&platform->pm_qos_mem);
-	if (pm_qos_request_active(&platform->pm_qos_hpg))
-		pm_qos_remove_request(&platform->pm_qos_hpg);
+	if (exynos_pm_qos_request_active(&platform->pm_qos_int)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_int);
+	}
+	if (exynos_pm_qos_request_active(&platform->pm_qos_mem)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_mem);
+	}
+
+	/*
+	 * pm_qos_hpg is not being used, see comments above regarding
+	 * PM_QOS_CPU_ONLINE_MIN
+	 */
+#if 0
+	if (exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_hpg);
+	}
+#endif
 
 	switch (lwis_dev->clock_family) {
 	case CLOCK_FAMILY_INTCAM:
-		if (pm_qos_request_active(&platform->pm_qos_int_cam)) {
-			pm_qos_remove_request(&platform->pm_qos_int_cam);
+		if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam)) {
+			exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
 		}
 		break;
 	case CLOCK_FAMILY_CAM:
-		if (pm_qos_request_active(&platform->pm_qos_cam)) {
-			pm_qos_remove_request(&platform->pm_qos_cam);
+		if (exynos_pm_qos_request_active(&platform->pm_qos_cam)) {
+			exynos_pm_qos_remove_request(&platform->pm_qos_cam);
 		}
 		break;
 	case CLOCK_FAMILY_TNR:
 #if defined(CONFIG_SOC_GS101)
-		if (pm_qos_request_active(&platform->pm_qos_tnr)) {
-			pm_qos_remove_request(&platform->pm_qos_tnr);
+		if (exynos_pm_qos_request_active(&platform->pm_qos_tnr)) {
+			exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
 		}
 #endif
 		break;
 	default:
 		break;
 	}
-#endif /* ENABLE_QOS */
 	return 0;
 }
