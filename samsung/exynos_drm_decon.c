@@ -163,6 +163,53 @@ static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
 	decon_debug(decon, "%s\n", __func__);
 }
 
+static int decon_get_crtc_out_type(const struct drm_crtc_state *crtc_state)
+{
+	const struct drm_crtc *crtc = crtc_state->crtc;
+	const struct drm_device *dev = crtc->dev;
+	const struct drm_encoder *encoder;
+	const struct dsim_device *dsim;
+	int out_type = 0;
+
+	drm_for_each_encoder_mask(encoder, dev, crtc_state->encoder_mask) {
+		switch (encoder->encoder_type) {
+		case DRM_MODE_ENCODER_VIRTUAL:
+			/* if anything else is connected operate in cwb mode */
+			if (!out_type)
+				out_type = DECON_OUT_WB;
+			break;
+		case DRM_MODE_ENCODER_DSI:
+			/* if wb is also connected, operate in dsi+cwb mode */
+			out_type &= ~DECON_OUT_WB;
+
+			if (out_type & ~DECON_OUT_DSI) {
+				pr_err("Unable to support DSI along with out_type: 0x%x\n",
+				       out_type);
+				return -EINVAL;
+			}
+
+			dsim = encoder_to_dsim(encoder);
+			if (dsim->id == 0) {
+				out_type |= DECON_OUT_DSI0;
+			} else if (dsim->id == 1) {
+				out_type |= DECON_OUT_DSI1;
+			} else {
+				pr_err("Invalid dsim id: %d\n", dsim->id);
+				return -EINVAL;
+			}
+			break;
+		default:
+			pr_err("Unsupported encoder type: %d\n", encoder->encoder_type);
+			return -ENOTSUPP;
+		}
+	}
+
+	if (!out_type)
+		return -EINVAL;
+
+	return out_type;
+}
+
 static bool has_writeback_job(struct drm_crtc_state *new_crtc_state)
 {
 	int i;
@@ -182,13 +229,22 @@ static bool has_writeback_job(struct drm_crtc_state *new_crtc_state)
 }
 
 static void decon_update_config(struct decon_config *config,
-				const struct drm_display_mode *mode,
+				const struct drm_crtc_state *crtc_state,
 				const struct exynos_display_mode *exynos_mode)
 {
+	const struct drm_display_mode *mode = &crtc_state->adjusted_mode;
 	bool is_vid_mode;
 
 	config->image_width = mode->hdisplay;
 	config->image_height = mode->vdisplay;
+
+	config->out_type = decon_get_crtc_out_type(crtc_state);
+	if (config->out_type == DECON_OUT_DSI)
+		config->mode.dsi_mode = DSI_MODE_DUAL_DSI;
+	else if (config->out_type & (DECON_OUT_DSI0 | DECON_OUT_DSI1))
+		config->mode.dsi_mode = DSI_MODE_SINGLE;
+	else
+		config->mode.dsi_mode = DSI_MODE_NONE;
 
 	if (!exynos_mode) {
 		pr_debug("%s: no private mode config\n", __func__);
@@ -215,12 +271,12 @@ static void decon_update_config(struct decon_config *config,
 }
 
 static bool decon_is_seamless_possible(const struct decon_device *decon,
-				       const struct drm_display_mode *mode,
+				       const struct drm_crtc_state *crtc_state,
 				       const struct exynos_display_mode *exynos_mode)
 {
 	struct decon_config new_config = decon->config;
 
-	decon_update_config(&new_config, mode, exynos_mode);
+	decon_update_config(&new_config, crtc_state, exynos_mode);
 
 	/* don't allow any changes in decon config */
 	return !memcmp(&new_config, &decon->config, sizeof(new_config));
@@ -258,7 +314,7 @@ static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 
 	if (exynos_conn_state->seamless_possible && !crtc_state->connectors_changed &&
 	    !crtc_state->active_changed && crtc_state->active) {
-		if (!decon_is_seamless_possible(decon, &crtc_state->adjusted_mode,
+		if (!decon_is_seamless_possible(decon, crtc_state,
 						&exynos_conn_state->exynos_mode)) {
 			decon_warn(decon, "seamless not possible for mode %s\n",
 				   crtc_state->adjusted_mode.name);
@@ -280,22 +336,31 @@ static int decon_atomic_check(struct exynos_drm_crtc *exynos_crtc,
 {
 	const struct decon_device *decon = exynos_crtc->ctx;
 	const bool is_wb = has_writeback_job(crtc_state);
-	const bool is_swb = decon->config.out_type == DECON_OUT_WB;
+	bool is_swb;
 	struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+	int out_type;
 	int ret = 0;
 
-	if (is_wb) {
-		exynos_crtc_state->wb_type =
-			is_swb ? EXYNOS_WB_SWB : EXYNOS_WB_CWB;
+	if (crtc_state->mode_changed) {
+		out_type = decon_get_crtc_out_type(crtc_state);
+
+		if (out_type < 0) {
+			decon_err(decon, "unsupported decon output (%d)\n", out_type);
+			return out_type;
+		}
+		ret = decon_check_modeset(exynos_crtc, crtc_state);
 	} else {
-		exynos_crtc_state->wb_type = EXYNOS_WB_NONE;
+		out_type = decon->config.out_type;
 	}
+
+	is_swb = out_type == DECON_OUT_WB;
+	if (is_wb)
+		exynos_crtc_state->wb_type = is_swb ? EXYNOS_WB_SWB : EXYNOS_WB_CWB;
+	else
+		exynos_crtc_state->wb_type = EXYNOS_WB_NONE;
 
 	if (is_swb)
 		crtc_state->no_vblank = true;
-
-	if (crtc_state->mode_changed)
-		ret = decon_check_modeset(exynos_crtc, crtc_state);
 
 	return ret;
 }
@@ -653,7 +718,7 @@ static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *ol
 		if (exynos_conn_state)
 			exynos_mode = &exynos_conn_state->exynos_mode;
 
-		decon_update_config(&decon->config, &crtc_state->adjusted_mode, exynos_mode);
+		decon_update_config(&decon->config, crtc_state, exynos_mode);
 	}
 
 	if (decon->state == DECON_STATE_ON) {
@@ -992,12 +1057,6 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		}
 	}
 
-	ret = of_property_read_u32(np, "out_type", &decon->config.out_type);
-	if (ret) {
-		decon_err(decon, "failed to parse output type(%d)\n", ret);
-		return ret;
-	}
-
 	if (decon->config.mode.trig_mode == DECON_HW_TRIG) {
 		ret = of_property_read_u32(np, "te_from",
 				&decon->config.te_from);
@@ -1081,13 +1140,6 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		}
 		decon_info(decon, "\n");
 	}
-
-	if (decon->config.out_type == DECON_OUT_DSI)
-		decon->config.mode.dsi_mode = DSI_MODE_DUAL_DSI;
-	else if (decon->config.out_type & (DECON_OUT_DSI0 | DECON_OUT_DSI1))
-		decon->config.mode.dsi_mode = DSI_MODE_SINGLE;
-	else
-		decon->config.mode.dsi_mode = DSI_MODE_NONE;
 
 	decon->dpp_cnt = of_count_phandle_with_args(np, "dpps", NULL);
 	for (i = 0; i < decon->dpp_cnt; ++i) {

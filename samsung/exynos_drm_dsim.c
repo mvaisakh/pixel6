@@ -79,11 +79,6 @@ pr_debug("%s[%d]: "fmt, dsim->dev->driver->name, dsim->id, ##__VA_ARGS__)
 
 //#define DSIM_BIST
 
-static inline struct dsim_device *encoder_to_dsim(struct drm_encoder *e)
-{
-	return container_of(e, struct dsim_device, encoder);
-}
-
 static const struct of_device_id dsim_of_match[] = {
 	{ .compatible = "samsung,exynos-dsim",
 	  .data = NULL },

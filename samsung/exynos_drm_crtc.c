@@ -566,7 +566,8 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	crtc = &exynos_crtc->base;
 
 	ret = drm_crtc_init_with_planes(drm_dev, crtc, plane, NULL,
-					&exynos_crtc_funcs, "exynos-crtc");
+					&exynos_crtc_funcs, "exynos-crtc-%d",
+					decon->id);
 	if (ret < 0)
 		goto err_crtc;
 
@@ -607,30 +608,15 @@ err_crtc:
 	return ERR_PTR(ret);
 }
 
-struct exynos_drm_crtc *exynos_drm_crtc_get_by_type(struct drm_device *drm_dev,
-				       enum exynos_drm_output_type out_type)
-{
-	struct drm_crtc *crtc;
-
-	drm_for_each_crtc(crtc, drm_dev)
-		if (to_exynos_crtc(crtc)->possible_type == out_type)
-			return to_exynos_crtc(crtc);
-
-	return ERR_PTR(-EPERM);
-}
-
-uint32_t exynos_drm_get_possible_crtcs(struct drm_encoder *encoder,
+uint32_t exynos_drm_get_possible_crtcs(const struct drm_encoder *encoder,
 		enum exynos_drm_output_type out_type)
 {
-	struct exynos_drm_crtc *find_crtc;
-	struct drm_crtc *crtc;
+	const struct drm_crtc *crtc;
 	uint32_t possible_crtcs = 0;
 
 	drm_for_each_crtc(crtc, encoder->dev) {
-		if (to_exynos_crtc(crtc)->possible_type & out_type) {
-			find_crtc = to_exynos_crtc(crtc);
-			possible_crtcs |= drm_crtc_mask(&find_crtc->base);
-		}
+		if (to_exynos_crtc(crtc)->possible_type & out_type)
+			possible_crtcs |= drm_crtc_mask(crtc);
 	}
 
 	return possible_crtcs;

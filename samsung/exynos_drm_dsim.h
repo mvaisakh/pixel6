@@ -100,7 +100,7 @@ struct dsim_device {
 
 extern struct dsim_device *dsim_drvdata[MAX_DSI_CNT];
 
-#define to_dsi(nm)	container_of(nm, struct dsim_device, nm)
+#define encoder_to_dsim(e) container_of(e, struct dsim_device, encoder)
 
 #define MIPI_WR_TIMEOUT				msecs_to_jiffies(50)
 #define MIPI_RD_TIMEOUT				msecs_to_jiffies(100)
