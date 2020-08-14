@@ -3237,7 +3237,6 @@ static enum power_supply_property gbatt_battery_props[] = {
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
-	POWER_SUPPLY_PROP_CHARGE_DONE,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE,	/* google */
@@ -3405,15 +3404,12 @@ static int gbatt_get_property(struct power_supply *psy,
 
 	/*
 	 * POWER_SUPPLY_PROP_CHARGE_DONE comes from the charger BUT battery
-	 * has also an idea about it. Now using a software state: charge is
-	 * DONE when we are in the discharge phase of the recharge logic.
-	 * NOTE: might change to keep DONE while rl_status != NONE
+	 * has also an idea about it.
+	 *	mutex_lock(&batt_drv->chg_lock);
+	 *	val->intval = batt_drv->chg_done;
+	 *	mutex_unlock(&batt_drv->chg_lock);
 	 */
-	case POWER_SUPPLY_PROP_CHARGE_DONE:
-		mutex_lock(&batt_drv->chg_lock);
-		val->intval = batt_drv->chg_done;
-		mutex_unlock(&batt_drv->chg_lock);
-		break;
+
 	/*
 	 * compat: POWER_SUPPLY_PROP_CHARGE_TYPE comes from the charger so
 	 * using the last value reported from the CHARGER. This (of course)

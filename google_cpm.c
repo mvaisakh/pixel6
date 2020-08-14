@@ -883,7 +883,6 @@ static enum power_supply_property gcpm_psy_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CHARGE_DISABLE,
-	POWER_SUPPLY_PROP_CHARGE_DONE,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	/* pixel battery management subsystem */
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,	/* cc_max */

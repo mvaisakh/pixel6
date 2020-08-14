@@ -348,6 +348,7 @@ static int max77729_get_status(struct max77729_chgr_data *data, int *status)
 			break;
 		case CHGR_DTLS_TOP_OFF_MODE:
 		case CHGR_DTLS_DONE_MODE:
+			/* same as POWER_SUPPLY_PROP_CHARGE_DONE */
 			*status = POWER_SUPPLY_STATUS_FULL;
 			break;
 		case CHGR_DTLS_TIMER_FAULT_MODE:
@@ -363,20 +364,6 @@ static int max77729_get_status(struct max77729_chgr_data *data, int *status)
 	}
 
 	return ret;
-}
-
-static int max77729_get_charge_done(struct max77729_chgr_data *data, int *done)
-{
-	int ret;
-	int status;
-
-	ret = max77729_get_status(data, &status);
-	if (ret < 0)
-		return ret;
-
-	*done = (status == CHGR_DTLS_TOP_OFF_MODE) ||
-		(status == CHGR_DTLS_DONE_MODE);
-	return 0;
 }
 
 /*
@@ -794,7 +781,6 @@ static enum power_supply_property max77729_psy_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CHARGE_DISABLE,
-	POWER_SUPPLY_PROP_CHARGE_DONE,
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
@@ -849,10 +835,6 @@ static int max77729_psy_get_property(struct power_supply *psy,
 		case POWER_SUPPLY_PROP_CHARGE_TYPE:
 			ret = max77729_get_charge_type(data, &pval->intval);
 			break;
-		case POWER_SUPPLY_PROP_CHARGE_DONE:
-			ret = max77729_get_charge_done(data, &pval->intval);
-			break;
-
 		case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED:
 			ret = max77729_get_current_limit(data, &pval->intval);
 			break;

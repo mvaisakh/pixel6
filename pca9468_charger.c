@@ -4689,12 +4689,6 @@ static int pca9468_is_present(struct pca9468_charger *pca9468)
 	return !!(sts & PCA9468_PRESENT_MASK);
 }
 
-static int pca9468_is_done(struct pca9468_charger *pca9468)
-{
-	/* Check the charging state */
-	return pca9468->charging_state == DC_STATE_CHARGING_DONE;
-}
-
 static int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
 				      union gbms_charger_state *chg_state)
 {
@@ -4729,15 +4723,10 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = pca9468->mains_online;
 		break;
-
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = pca9468_is_present(pca9468);
 		if (val->intval < 0)
 			val->intval = 0;
-		break;
-
-	case POWER_SUPPLY_PROP_CHARGE_DONE:
-		val->intval = pca9468_is_done(pca9468);
 		break;
 
 	case POWER_SUPPLY_PROP_CHARGE_DISABLE:
@@ -4868,7 +4857,6 @@ static enum power_supply_property pca9468_mains_properties[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_STATUS,
-	POWER_SUPPLY_PROP_CHARGE_DONE,
 };
 
 static int pca9468_mains_is_writeable(struct power_supply *psy,
