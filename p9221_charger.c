@@ -27,10 +27,10 @@
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/power_supply.h>
-#include <linux/pmic-voter.h>
 #include <linux/alarmtimer.h>
-#include "p9221_charger.h"
+#include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "logbuffer.h"
+#include "p9221_charger.h"
 
 #define P9221_TX_TIMEOUT_MS		(20 * 1000)
 #define P9221_DCIN_TIMEOUT_MS		(1 * 1000)

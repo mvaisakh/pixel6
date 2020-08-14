@@ -18,11 +18,11 @@
 #include <linux/ktime.h>
 #include <linux/math64.h>
 #include <linux/platform_device.h>
-#include <linux/pmic-voter.h>
 #include <linux/power_supply.h>
 #include <linux/printk.h>
 #include <linux/thermal.h>
 #include <linux/pm_wakeup.h>
+#include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "google_psy.h"
 
 #define USB_OVERHEAT_MITIGATION_VOTER	"USB_OVERHEAT_MITIGATION_VOTER"

@@ -13,9 +13,11 @@
  */
 #include <linux/kernel.h>
 #include <linux/list.h>
-#include <linux/pmic-voter.h>
 #include "linux/slab.h"
-
+/* TODO: make PMIC_VOTER_COMPAT a build configuration and use
+ * #include <linux/pmic-voter.h>
+ */
+#include "pmic-voter.h"
 #include "gvotable.h"
 
 #define V2EL(x) ((struct gvotable_election *)(v))

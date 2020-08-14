@@ -26,12 +26,12 @@
 #include <linux/power_supply.h>
 #include <linux/thermal.h>
 #include <linux/pm_wakeup.h>
-#include <linux/pmic-voter.h>
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
 #include <linux/alarmtimer.h>
+#include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "google_bms.h"
 #include "google_dc_pps.h"
 #include "google_psy.h"

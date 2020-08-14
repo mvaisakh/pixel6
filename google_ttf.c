@@ -20,7 +20,6 @@
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/pm_wakeup.h>
-#include <linux/pmic-voter.h>
 #include <linux/thermal.h>
 #include "google_bms.h"
 #include "google_psy.h"
