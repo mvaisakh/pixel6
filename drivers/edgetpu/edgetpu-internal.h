@@ -112,6 +112,7 @@ struct edgetpu_mapping;
 struct edgetpu_mailbox_manager;
 struct edgetpu_kci;
 struct edgetpu_telemetry_ctx;
+struct edgetpu_mempool;
 
 #define EDGETPU_DEVICE_NAME_MAX	64
 
@@ -145,6 +146,8 @@ struct edgetpu_dev {
 	struct edgetpu_telemetry_ctx *telemetry;
 	struct edgetpu_thermal *thermal;
 	struct edgetpu_pm *pm;  /* Power management interface */
+	/* Memory pool in instruction remap region */
+	struct edgetpu_mempool *iremap_pool;
 	int mcp_id;		/* multichip pkg id, or -1 for none */
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */

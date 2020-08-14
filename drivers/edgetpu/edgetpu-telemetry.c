@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
+#include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu.h"
@@ -335,13 +336,11 @@ static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 
 	if (!tel->inited)
 		return -ENODEV;
-	vma->vm_pgoff = 0;
 
 	write_lock(&tel->ctx_mem_lock);
 
-	ret = dma_mmap_coherent(etdev->dev, vma, tel->coherent_mem.vaddr,
-				tel->coherent_mem.dma_addr,
-				tel->coherent_mem.size);
+	ret = edgetpu_iremap_mmap(etdev, vma, &tel->coherent_mem);
+
 	if (!ret)
 		tel->coherent_mem.host_addr = vma->vm_start;
 

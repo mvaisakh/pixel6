@@ -22,6 +22,7 @@
 #include "edgetpu-device-group.h"
 #include "edgetpu-dram.h"
 #include "edgetpu-internal.h"
+#include "edgetpu-iremap-pool.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-mapping.h"
 #include "edgetpu-mcp.h"
@@ -1274,9 +1275,7 @@ int edgetpu_mmap_queue(struct edgetpu_device_group *group,
 		goto out;
 	}
 
-	vma->vm_pgoff = 0;
-	ret = dma_mmap_coherent(etdev->dev, vma, queue_mem->vaddr,
-				queue_mem->dma_addr, queue_mem->size);
+	ret = edgetpu_iremap_mmap(etdev, vma, queue_mem);
 	if (!ret)
 		queue_mem->host_addr = vma->vm_start;
 

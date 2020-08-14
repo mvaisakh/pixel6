@@ -22,6 +22,7 @@
 #include "edgetpu-config.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
+#include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 
@@ -30,6 +31,13 @@ static const struct of_device_id edgetpu_of_match[] = {
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, edgetpu_of_match);
+
+/*
+ * Log and trace buffers at the beginning of the remapped region,
+ * pool memory afterwards.
+ */
+
+#define EDGETPU_POOL_MEM_OFFSET (EDGETPU_TELEMETRY_BUFFER_SIZE * 2)
 
 static void abrolhos_get_telemetry_mem(struct edgetpu_platform_dev *etpdev,
 				       enum edgetpu_telemetry_type type,
@@ -87,6 +95,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 
 	etpdev->shared_mem_vaddr =
 		etpdev->fw_region_vaddr + EDGETPU_REMAPPED_DATA_OFFSET;
+	etpdev->shared_mem_paddr = r.start + EDGETPU_REMAPPED_DATA_OFFSET;
 
 	etpdev->fw_region_size = EDGETPU_FW_SIZE_MAX;
 
@@ -256,6 +265,27 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		goto out_tel_exit;
 	}
 
+	ret = edgetpu_iremap_pool_create(
+		&edgetpu_pdev->edgetpu_dev,
+		/* Base virtual address (kernel address space) */
+		edgetpu_pdev->shared_mem_vaddr + EDGETPU_POOL_MEM_OFFSET,
+		/* Base DMA address */
+		EDGETPU_REMAPPED_DATA_ADDR + EDGETPU_POOL_MEM_OFFSET,
+		/* Base TPU address */
+		EDGETPU_REMAPPED_DATA_ADDR + EDGETPU_POOL_MEM_OFFSET,
+		/* Base physical address */
+		edgetpu_pdev->shared_mem_paddr + EDGETPU_POOL_MEM_OFFSET,
+		/* Size */
+		EDGETPU_REMAPPED_DATA_SIZE - EDGETPU_POOL_MEM_OFFSET,
+		/* Granularity */
+		PAGE_SIZE);
+	if (ret) {
+		dev_err(dev,
+			"%s failed to initialize remapped memory pool: %d\n",
+			DRIVER_NAME, ret);
+		goto out_fw_destroy;
+	}
+
 	dev_dbg(dev, "Creating thermal device\n");
 	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
 
@@ -265,6 +295,8 @@ out:
 	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
 
 	return ret;
+out_fw_destroy:
+	abrolhos_edgetpu_firmware_destroy(&edgetpu_pdev->edgetpu_dev);
 out_tel_exit:
 	edgetpu_telemetry_exit(&edgetpu_pdev->edgetpu_dev);
 out_cleanup_fw:
@@ -285,6 +317,7 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	if (edgetpu_pdev->irq >= 0)
 		edgetpu_unregister_irq(etdev, edgetpu_pdev->irq);
 	edgetpu_telemetry_exit(etdev);
+	edgetpu_iremap_pool_destroy(etdev);
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
 	edgetpu_device_remove(etdev);
 	abrolhos_pm_destroy(etdev);

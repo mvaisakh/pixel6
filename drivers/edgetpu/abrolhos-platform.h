@@ -22,6 +22,7 @@ struct edgetpu_platform_dev {
 	void *fw_region_vaddr;
 	size_t fw_region_size;
 	void *shared_mem_vaddr;
+	phys_addr_t shared_mem_paddr;
 	size_t shared_mem_size;
 	dma_addr_t csr_iova;
 	size_t csr_size;

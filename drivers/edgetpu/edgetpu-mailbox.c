@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 
 #include "edgetpu-device-group.h"
+#include "edgetpu-iremap-pool.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-mmu.h"
@@ -509,7 +510,6 @@ int edgetpu_mailbox_alloc_queue(struct edgetpu_dev *etdev,
 				edgetpu_queue_mem *mem)
 {
 	u32 size = unit * queue_size;
-	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
 	int ret;
 
 	/* checks integer overflow */
@@ -524,39 +524,19 @@ int edgetpu_mailbox_alloc_queue(struct edgetpu_dev *etdev,
 	 * Check if allocating many VII + P2P mailbox queues in coherent memory
 	 * is a problem.
 	 */
-	mem->vaddr = dma_alloc_coherent(etdev->dev, size, &mem->dma_addr,
-					GFP_KERNEL);
-	if (!mem->vaddr)
-		return -ENOMEM;
-#ifdef CONFIG_X86
-	set_memory_uc((unsigned long)mem->vaddr, size >> PAGE_SHIFT);
-#endif
-	mem->tpu_addr =
-		edgetpu_mmu_tpu_map(etdev, mem->dma_addr, size,
-				    DMA_BIDIRECTIONAL,
-				    edgetpu_mailbox_context_id(mailbox), flags);
-	if (!mem->tpu_addr) {
-#ifdef CONFIG_X86
-		set_memory_wb((unsigned long)mem->vaddr, size >> PAGE_SHIFT);
-#endif
-		dma_free_coherent(etdev->dev, size, mem->vaddr, mem->dma_addr);
-		mem->vaddr = NULL;
-		return -EINVAL;
-	}
+
+	ret = edgetpu_iremap_alloc(etdev, size, mem,
+				   edgetpu_mailbox_context_id(mailbox));
+	if (ret)
+		return ret;
 
 	ret = edgetpu_mailbox_set_queue(mailbox, type, mem->tpu_addr,
 					queue_size);
 	if (ret) {
-		edgetpu_mmu_tpu_unmap(etdev, mem->tpu_addr, size, 0);
-#ifdef CONFIG_X86
-		set_memory_wb((unsigned long)mem->vaddr, size >> PAGE_SHIFT);
-#endif
-		dma_free_coherent(etdev->dev, size, mem->vaddr, mem->dma_addr);
-		mem->vaddr = NULL;
+		edgetpu_iremap_free(etdev, mem,
+				    edgetpu_mailbox_context_id(mailbox));
 		return ret;
 	}
-
-	mem->size = size;
 	return 0;
 }
 
@@ -573,13 +553,7 @@ void edgetpu_mailbox_free_queue(struct edgetpu_dev *etdev,
 	if (!mem->vaddr)
 		return;
 
-	edgetpu_mmu_tpu_unmap(etdev, mem->tpu_addr, mem->size,
-			      edgetpu_mailbox_context_id(mailbox));
-#ifdef CONFIG_X86
-	set_memory_wb((unsigned long)mem->vaddr, mem->size >> PAGE_SHIFT);
-#endif
-	dma_free_coherent(etdev->dev, mem->size, mem->vaddr, mem->dma_addr);
-	mem->vaddr = NULL;
+	edgetpu_iremap_free(etdev, mem, edgetpu_mailbox_context_id(mailbox));
 }
 
 /*

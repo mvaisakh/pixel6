@@ -272,8 +272,8 @@ static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 			   fw_buf->flags & FW_ONDEV ? " on device" : "");
 	} else {
 		etdev_dbg(et_fw->etdev, "loaded stage 2 bootloader");
-		et_fw->p->status = FW_VALID;
 	}
+	et_fw->p->status = FW_VALID;
 	et_fw->p->fw_flavor = fw_flavor;
 	/* Hermosa second-stage bootloader doesn't implement log/trace */
 	if (fw_flavor != FW_FLAVOR_BL1)
@@ -459,8 +459,25 @@ static ssize_t load_firmware_store(
 
 static DEVICE_ATTR_RW(load_firmware);
 
+static ssize_t firmware_type_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+	int ret;
+
+	if (!et_fw)
+		return -ENODEV;
+	ret = scnprintf(buf, PAGE_SIZE, "%s\n",
+			fw_flavor_str(et_fw->p->fw_flavor));
+	return ret;
+}
+static DEVICE_ATTR_RO(firmware_type);
+
 static struct attribute *dev_attrs[] = {
 	&dev_attr_load_firmware.attr,
+	&dev_attr_firmware_type.attr,
 	NULL,
 };
 

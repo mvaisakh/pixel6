@@ -4,6 +4,7 @@ config EDGETPU_FRAMEWORK
 	tristate "EdgeTPU framework"
 	depends on X86_64 || ARM64
 	select DMA_SHARED_BUFFER
+	select GENERIC_ALLOCATOR
 	select IOMMU_API
 	select SYNC_FILE
 	help
