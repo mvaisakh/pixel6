@@ -34,7 +34,11 @@
 #include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/skbuff.h>
+#if defined(CONFIG_WIFI_CONTROL_FUNC)
 #include <linux/wlan_plat.h>
+#else
+#include <dhd_linux.h>
+#endif
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <linux/of_gpio.h>
@@ -46,8 +50,8 @@
 #endif /* DHD_COREDUMP */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
-extern int dhd_init_wlan_mem(void);
-extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
+extern int dhd_init_wlan_mem_43752(void);
+extern void *dhd_wlan_mem_prealloc_43752(int section, unsigned long size);
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 
 #define WLAN_REG_ON_GPIO		491
@@ -72,7 +76,7 @@ extern void exynos_pcie_pm_suspend(int);
 #endif /* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_GS101 */
 
 #ifdef DHD_COREDUMP
-#define DEVICE_NAME "wlan"
+#define DEVICE_NAME "wlan_43752"
 
 static void sscd_release(struct device *dev);
 static struct sscd_platform_data sscd_pdata;
@@ -271,7 +275,7 @@ dhd_wifi_init_gpio(void)
 }
 
 int
-dhd_wlan_power(int onoff)
+dhd_wlan_power_43752(int onoff)
 {
 	DHD_INFO(("------------------------------------------------\n"));
 	DHD_INFO(("------------------------------------------------\n"));
@@ -310,7 +314,7 @@ dhd_wlan_power(int onoff)
 	}
 	return 0;
 }
-EXPORT_SYMBOL(dhd_wlan_power);
+EXPORT_SYMBOL(dhd_wlan_power_43752);
 
 static int
 dhd_wlan_reset(int onoff)
@@ -333,32 +337,32 @@ static int dhd_wlan_get_wake_irq(void)
 
 #if defined(CONFIG_BCMDHD_OOB_HOST_WAKE) && defined(CONFIG_BCMDHD_GET_OOB_STATE)
 int
-dhd_get_wlan_oob_gpio(void)
+dhd_get_wlan_oob_gpio_43752(void)
 {
         return gpio_is_valid(wlan_host_wake_up) ?
                 gpio_get_value(wlan_host_wake_up) : -1;
 }
-EXPORT_SYMBOL(dhd_get_wlan_oob_gpio);
+EXPORT_SYMBOL(dhd_get_wlan_oob_gpio_43752);
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE && CONFIG_BCMDHD_GET_OOB_STATE */
 
-struct resource dhd_wlan_resources = {
+struct resource dhd_wlan_resources_43752 = {
 	.name	= "bcmdhd_wlan_irq",
 	.start	= 0, /* Dummy */
 	.end	= 0, /* Dummy */
 	.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_SHAREABLE |
 	IORESOURCE_IRQ_HIGHEDGE,
 };
-EXPORT_SYMBOL(dhd_wlan_resources);
+EXPORT_SYMBOL(dhd_wlan_resources_43752);
 
-struct wifi_platform_data dhd_wlan_control = {
-	.set_power	= dhd_wlan_power,
+struct wifi_platform_data dhd_wlan_control_43752 = {
+	.set_power	= dhd_wlan_power_43752,
 	.set_reset	= dhd_wlan_reset,
 	.set_carddetect	= dhd_wlan_set_carddetect,
 #ifdef DHD_COREDUMP
 	.set_coredump = dhd_set_coredump,
 #endif /* DHD_COREDUMP */
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
-	.mem_prealloc	= dhd_wlan_mem_prealloc,
+	.mem_prealloc	= dhd_wlan_mem_prealloc_43752,
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */
 #ifdef GET_CUSTOM_MAC_ENABLE
 	.get_mac_addr = dhd_wlan_get_mac_addr,
@@ -367,7 +371,7 @@ struct wifi_platform_data dhd_wlan_control = {
 	.get_wake_irq	= dhd_wlan_get_wake_irq,
 #endif // endif
 };
-EXPORT_SYMBOL(dhd_wlan_control);
+EXPORT_SYMBOL(dhd_wlan_control_43752);
 
 int
 dhd_wlan_init(void)
@@ -375,6 +379,11 @@ dhd_wlan_init(void)
 	int ret;
 
 	DHD_INFO(("%s: START.......\n", __FUNCTION__));
+
+#ifdef DHD_COREDUMP
+	platform_device_register(&sscd_dev);
+#endif /* DHD_COREDUMP */
+
 	ret = dhd_wifi_init_gpio();
 	if (ret < 0) {
 		DHD_ERROR(("%s: failed to initiate GPIO, ret=%d\n",
@@ -382,12 +391,12 @@ dhd_wlan_init(void)
 		goto fail;
 	}
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE
-	dhd_wlan_resources.start = wlan_host_wake_irq;
-	dhd_wlan_resources.end = wlan_host_wake_irq;
+	dhd_wlan_resources_43752.start = wlan_host_wake_irq;
+	dhd_wlan_resources_43752.end = wlan_host_wake_irq;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
-	ret = dhd_init_wlan_mem();
+	ret = dhd_init_wlan_mem_43752();
 	if (ret < 0) {
 		DHD_ERROR(("%s: failed to alloc reserved memory,"
 					" ret=%d\n", __FUNCTION__, ret));
@@ -397,10 +406,6 @@ dhd_wlan_init(void)
 #ifdef GET_CUSTOM_MAC_ENABLE
 	dhd_wlan_init_mac_addr();
 #endif /* GET_CUSTOM_MAC_ENABLE */
-
-#ifdef DHD_COREDUMP
-	platform_device_register(&sscd_dev);
-#endif /* DHD_COREDUMP */
 
 fail:
 	DHD_ERROR(("%s: FINISH.......\n", __FUNCTION__));

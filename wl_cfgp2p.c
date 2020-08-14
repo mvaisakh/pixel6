@@ -67,7 +67,7 @@ static s32 wl_cfgp2p_cancel_listen(struct bcm_cfg80211 *cfg, struct net_device *
 	struct wireless_dev *wdev, bool notify);
 
 #if defined(WL_ENABLE_P2P_IF)
-static int wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev);
+static netdev_tx_t wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev);
 static int wl_cfgp2p_do_ioctl(struct net_device *net, struct ifreq *ifr, int cmd);
 static int wl_cfgp2p_if_open(struct net_device *net);
 static int wl_cfgp2p_if_stop(struct net_device *net);
@@ -81,7 +81,7 @@ static const struct net_device_ops wl_cfgp2p_if_ops = {
 #endif /* WL_ENABLE_P2P_IF */
 
 #if defined(WL_NEWCFG_PRIVCMD_SUPPORT)
-static int wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev);
+static netdev_tx_t wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev);
 static int wl_cfgp2p_do_ioctl(struct net_device *net, struct ifreq *ifr, int cmd);
 
 static int wl_cfgp2p_if_dummy(struct net_device *net)
@@ -2449,7 +2449,7 @@ wl_cfgp2p_unregister_ndev(struct bcm_cfg80211 *cfg)
 
 	return 0;
 }
-static int wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static netdev_tx_t wl_cfgp2p_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 
 	if (skb)

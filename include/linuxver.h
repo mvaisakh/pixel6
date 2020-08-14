@@ -87,6 +87,7 @@
 #include <linux/interrupt.h>
 #include <linux/kthread.h>
 #include <linux/netdevice.h>
+#include <linux/rtc.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 #include <linux/semaphore.h>
 #else
@@ -184,6 +185,9 @@ typedef irqreturn_t(*FN_ISR) (int irq, void *dev_id, struct pt_regs *ptregs);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
 #include <linux/sched/rt.h>
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0) */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#include <uapi/linux/sched/types.h>
+#endif /* LINUX_VERS >= 4.11.0 */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 #include <net/lib80211.h>
@@ -388,6 +392,18 @@ extern void timer_cb_compat(struct timer_list *tl);
 #define add_timer(t) add_timer(&((t)->timer))
 #define mod_timer(t, j) mod_timer(&((t)->timer), j)
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+#define rtc_time_to_tm(a, b) rtc_time64_to_tm(a, b)
+#else
+#define rtc_time_to_tm(a, b) rtc_time_to_tm(a, b)
+#endif /* LINUX_VER >= 3.19.0 */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
+#define time_to_tm(a, b, c) time64_to_tm(a, b, c)
+#else
+#define time_to_tm(a, b, c) time_to_tm(a, b, c)
+#endif /* LINUX_VER >= 4.20.0 */
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 3, 43))
 

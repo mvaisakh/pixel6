@@ -2136,9 +2136,7 @@ void dhd_sysfs_exit(dhd_info_t *dhd)
 	}
 
 #ifdef DHD_LB
-	if (&dhd->dhd_lb_kobj != NULL) {
-		kobject_put(&dhd->dhd_lb_kobj);
-	}
+	kobject_put(&dhd->dhd_lb_kobj);
 #endif /* DHD_LB */
 
 	/* Releae the kobject */

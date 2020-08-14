@@ -239,7 +239,7 @@ extern int dhdpcie_cto_cfg_init(struct dhd_bus *bus, bool enable);
 extern void dhdpcie_ssreset_dis_enum_rst(struct dhd_bus *bus);
 
 #ifdef DHD_FW_COREDUMP
-extern int dhd_dongle_mem_dump(void);
+extern int dhd_dongle_mem_dump_43752(void);
 #endif /* DHD_FW_COREDUMP */
 
 #ifdef IDLE_TX_FLOW_MGMT
@@ -275,7 +275,7 @@ extern void dhd_bus_dump_console_buffer(struct dhd_bus *bus);
 extern void dhd_bus_intr_count_dump(dhd_pub_t *dhdp);
 extern bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp);
 extern int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type);
-extern bool dhd_bus_check_driver_up(void);
+extern bool dhd_bus_check_driver_up_43752(void);
 extern int dhd_bus_get_cto(dhd_pub_t *dhdp);
 extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
@@ -284,7 +284,7 @@ extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 static INLINE void dhd_bus_intr_count_dump(dhd_pub_t *dhdp) { UNUSED_PARAMETER(dhdp); }
 static INLINE bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type) { return 0; }
-static INLINE bool dhd_bus_check_driver_up(void) { return FALSE; }
+static INLINE bool dhd_bus_check_driver_up_43752(void) { return FALSE; }
 extern INLINE void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val) { }
 extern INLINE int dhd_bus_get_linkdown(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_bus_get_cto(dhd_pub_t *dhdp) { return 0; }

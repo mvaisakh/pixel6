@@ -128,9 +128,6 @@ endif
 
 DHDCFLAGS += -DDEBUGABILITY
 
-# Notify the MAC changed to wpa_supplicant
-DHDCFLAGS += -DDHD_NOTIFY_MAC_CHANGED
-
 # Random ANQP source address
 DHDCFLAGS += -DANQP_RANDOM_SA
 
@@ -794,6 +791,12 @@ ifeq ($(DRIVER_TYPE),m)
   DHDCFLAGS += -DBCMDHD_MODULAR
 endif
 
+# Temporary fix : Kernel 5.4 does not define CONFIG_ARCH_EXYNOS,
+# so we add here first.
+ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
+  DHDCFLAGS += -DCONFIG_ARCH_EXYNOS
+endif
+
 EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
 EXTRA_CFLAGS += -DDHD_COMPILED=\"$(BCMDHD_ROOT)\"
 EXTRA_CFLAGS += -I$(BCMDHD_ROOT)/include/ -I$(BCMDHD_ROOT)/
@@ -835,9 +838,7 @@ endif
 
 ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_EXYNOS9820)),)
   DHDOFILES += dhd_custom_google.o
-endif
-
-ifneq ($(CONFIG_ARCH_HISI),)
+else ifneq ($(CONFIG_ARCH_HISI),)
   DHDOFILES += dhd_custom_hikey.o
 endif
 

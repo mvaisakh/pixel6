@@ -9579,7 +9579,7 @@ exit:
 }
 #endif /* WL_SAR_TX_POWER */
 
-static const struct wiphy_vendor_command wl_vendor_cmds [] = {
+static struct wiphy_vendor_command wl_vendor_cmds [] = {
 	{
 		{
 			.vendor_id = OUI_BRCM,
@@ -10323,6 +10323,20 @@ static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
 		{ OUI_BRCM, BRCM_VENDOR_EVENT_ACS}
 };
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+static void
+wl_cfgvendor_apply_cmd_policy(struct wiphy *wiphy)
+{
+	int i;
+	u32 n_cmds = wiphy->n_vendor_commands;
+
+	WL_INFORM(("Apply CMD_RAW_DATA policy\n"));
+	for (i = 0; i < n_cmds; i++) {
+		wl_vendor_cmds[i].policy = VENDOR_CMD_RAW_DATA;
+	}
+}
+#endif /* LINUX VER >= 5.3 */
+
 int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 {
 
@@ -10331,6 +10345,11 @@ int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 
 	wiphy->vendor_commands	= wl_vendor_cmds;
 	wiphy->n_vendor_commands = ARRAY_SIZE(wl_vendor_cmds);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+	wl_cfgvendor_apply_cmd_policy(wiphy);
+#endif /* LINUX VER >= 5.3 */
+
 	wiphy->vendor_events	= wl_vendor_events;
 	wiphy->n_vendor_events	= ARRAY_SIZE(wl_vendor_events);
 

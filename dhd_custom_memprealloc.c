@@ -149,7 +149,7 @@ static void *wlan_static_dhd_log_dump_buf_ex = NULL;
 static void *wlan_static_dhd_pktlog_dump_buf = NULL;
 
 void
-*dhd_wlan_mem_prealloc(int section, unsigned long size)
+*dhd_wlan_mem_prealloc_43752(int section, unsigned long size)
 {
 	if (section == PREALLOC_WLAN_SEC_NUM) {
 		return wlan_static_skb;
@@ -273,10 +273,10 @@ void
 
 	return wlan_mem_array[section].mem_ptr;
 }
-EXPORT_SYMBOL(dhd_wlan_mem_prealloc);
+EXPORT_SYMBOL(dhd_wlan_mem_prealloc_43752);
 
 int
-dhd_init_wlan_mem(void)
+dhd_init_wlan_mem_43752(void)
 {
 	int i;
 	int j;
@@ -472,10 +472,10 @@ err_skb_alloc:
 
 	return -ENOMEM;
 }
-EXPORT_SYMBOL(dhd_init_wlan_mem);
+EXPORT_SYMBOL(dhd_init_wlan_mem_43752);
 
 void
-dhd_exit_wlan_mem(void)
+dhd_exit_wlan_mem_43752(void)
 {
 	int i = 0;
 
@@ -548,5 +548,5 @@ dhd_exit_wlan_mem(void)
 
 	return;
 }
-EXPORT_SYMBOL(dhd_exit_wlan_mem);
+EXPORT_SYMBOL(dhd_exit_wlan_mem_43752);
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */

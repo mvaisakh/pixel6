@@ -66,16 +66,16 @@ static bool is_power_on = FALSE;
 #if !defined(CONFIG_DTS)
 #if defined(DHD_OF_SUPPORT)
 static bool dts_enabled = TRUE;
-extern struct resource dhd_wlan_resources;
-extern struct wifi_platform_data dhd_wlan_control;
+extern struct resource dhd_wlan_resources_43752;
+extern struct wifi_platform_data dhd_wlan_control_43752;
 #else
 static bool dts_enabled = FALSE;
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #endif
-struct resource dhd_wlan_resources = {0};
-struct wifi_platform_data dhd_wlan_control = {0};
+struct resource dhd_wlan_resources_43752 = {0};
+struct wifi_platform_data dhd_wlan_control_43752 = {0};
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -435,7 +435,11 @@ static struct platform_driver wifi_platform_dev_driver_legacy = {
 	}
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+static int wifi_platdev_match(struct device *dev, const void *data)
+#else
 static int wifi_platdev_match(struct device *dev, void *data)
+#endif /* LINUX_VER >= 5.3.0 */
 {
 	char *name = (char*)data;
 	const struct platform_device *pdev;
@@ -511,8 +515,8 @@ static int wifi_ctrlfunc_register_drv(void)
 #if !defined(CONFIG_DTS)
 	if (dts_enabled) {
 		struct resource *resource;
-		adapter->wifi_plat_data = (void *)&dhd_wlan_control;
-		resource = &dhd_wlan_resources;
+		adapter->wifi_plat_data = (void *)&dhd_wlan_control_43752;
+		resource = &dhd_wlan_resources_43752;
 		adapter->irq_num = resource->start;
 		adapter->intr_flags = resource->flags & IRQF_TRIGGER_MASK;
 #ifdef DHD_ISR_NO_SUSPEND

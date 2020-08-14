@@ -335,7 +335,7 @@ static int __dhd_apf_delete_filter(struct net_device *ndev, uint32 filter_id);
 #endif /* PKT_FILTER_SUPPORT && APF */
 
 #ifdef DHD_FW_COREDUMP
-static int dhd_mem_dump(void *dhd_info, void *event_info, u8 event);
+static void dhd_mem_dump(void *dhd_info, void *event_info, u8 event);
 #endif /* DHD_FW_COREDUMP */
 
 #ifdef DHD_LOG_DUMP
@@ -480,8 +480,6 @@ int logdump_prsrv_tailsize = DHD_LOG_DUMP_MAX_TAIL_FLUSH_SIZE;
 int host_edl_support = TRUE;
 module_param(host_edl_support, int, 0644);
 #endif
-
-static bool dhd_allow_stop = TRUE;
 
 /* deferred handlers */
 static void dhd_ifadd_event_handler(void *handle, void *event_info, u8 event);
@@ -1926,7 +1924,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 #ifdef PASS_ALL_MCAST_PKTS
 				allmulti = 0;
 				for (i = 0; i < DHD_MAX_IFS; i++) {
-					if (dhdinfo->iflist[i] && dhdinfo->iflist[i]->net)
+					if (dhdinfo->iflist[i] && dhdinfo->iflist[i]->net) {
 						ret = dhd_iovar(dhd, i, "allmulti",
 								(char *)&allmulti,
 								sizeof(allmulti),
@@ -1935,6 +1933,7 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 							DHD_ERROR(("%s allmulti failed %d\n",
 								__FUNCTION__, ret));
 						}
+					}
 				}
 #endif /* PASS_ALL_MCAST_PKTS */
 
@@ -2663,31 +2662,15 @@ _dhd_set_mac_address(dhd_info_t *dhd, int ifidx, uint8 *addr)
 {
 	int ret;
 
-#ifdef DHD_NOTIFY_MAC_CHANGED
-	DHD_ERROR(("%s: close dev for mac changing\n", __func__));
-	dhd_allow_stop = FALSE;
-	dev_close(dhd->iflist[ifidx]->net);
-#endif /* DHD_NOTIFY_MAC_CHANGED */
-
 	ret = dhd_iovar(&dhd->pub, ifidx, "cur_etheraddr", (char *)addr,
 			ETHER_ADDR_LEN, NULL, 0, TRUE);
 	if (ret < 0) {
 		DHD_ERROR(("%s: set cur_etheraddr failed\n", dhd_ifname(&dhd->pub, ifidx)));
-#ifdef DHD_NOTIFY_MAC_CHANGED
-		dhd_allow_stop = TRUE;
-		return ret;
-#endif /* DHD_NOTIFY_MAC_CHANGED */
 	} else {
 		memcpy(dhd->iflist[ifidx]->net->dev_addr, addr, ETHER_ADDR_LEN);
 		if (ifidx == 0)
 			memcpy(dhd->pub.mac.octet, addr, ETHER_ADDR_LEN);
 	}
-
-#ifdef DHD_NOTIFY_MAC_CHANGED
-	dev_open(dhd->iflist[ifidx]->net);
-	dhd_allow_stop = TRUE;
-	DHD_ERROR(("%s: notify mac changed done\n", __func__));
-#endif /* DHD_NOTIFY_MAC_CHANGED */
 
 	return ret;
 }
@@ -2985,18 +2968,10 @@ dhd_set_mac_addr_handler(void *handle, void *event_info, u8 event)
 	DHD_ERROR(("%s: MACID is overwritten\n", __FUNCTION__));
 	ifp->set_macaddress = FALSE;
 
-#ifdef DHD_NOTIFY_MAC_CHANGED
-	rtnl_lock();
-#endif /* DHD_NOTIFY_MAC_CHANGED */
-
 	if (_dhd_set_mac_address(dhd, ifp->idx, ifp->mac_addr) == 0)
 		DHD_INFO(("%s: MACID is overwritten\n",	__FUNCTION__));
 	else
 		DHD_ERROR(("%s: _dhd_set_mac_address() failed\n", __FUNCTION__));
-
-#ifdef DHD_NOTIFY_MAC_CHANGED
-	rtnl_unlock();
-#endif /* DHD_NOTIFY_MAC_CHANGED */
 
 done:
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
@@ -7050,7 +7025,7 @@ dhd_stop(struct net_device *net)
 
 #if defined(WL_STATIC_IF) && defined(WL_CFG80211)
 	/* If static if is operational, don't reset the chip */
-	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg) || !dhd_allow_stop) {
+	if (IS_CFG80211_STATIC_IF_ACTIVE(cfg)) {
 		DHD_ERROR(("static if operational. skip chip reset.\n"));
 		skip_reset = true;
 		wl_cfg80211_sta_ifdown(net);
@@ -7748,7 +7723,7 @@ dhd_static_if_stop(struct net_device *net)
 	DHD_INFO(("[%s][STATIC_IF] Enter \n", net->name));
 
 	cfg = wl_get_cfg(net);
-	if (!IS_CFG80211_STATIC_IF(cfg, net) || !dhd_allow_stop) {
+	if (!IS_CFG80211_STATIC_IF(cfg, net)) {
 		DHD_TRACE(("non-static interface (%s)..do nothing \n", net->name));
 		return BCME_OK;
 	}
@@ -16627,14 +16602,14 @@ static void dhd_hang_process(struct work_struct *work_data)
 
 #ifdef CONFIG_ARCH_EXYNOS
 extern dhd_pub_t *link_recovery;
-void dhd_host_recover_link(void)
+void dhd_host_recover_link_43752(void)
 {
 	DHD_ERROR(("****** %s ******\n", __FUNCTION__));
 	link_recovery->hang_reason = HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
 	dhd_bus_set_linkdown(link_recovery, TRUE);
 	dhd_os_send_hang_message(link_recovery);
 }
-EXPORT_SYMBOL(dhd_host_recover_link);
+EXPORT_SYMBOL(dhd_host_recover_link_43752);
 #endif /* CONFIG_ARCH_EXYNOS */
 
 #ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
@@ -18640,13 +18615,12 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #if defined(WL_CFGVENDOR_SEND_HANG_EVENT)
 char hang_reason_str[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
 #endif
-static int
+static void
 dhd_mem_dump(void *handle, void *event_info, u8 event)
 {
 	dhd_info_t *dhd = handle;
 	dhd_pub_t *dhdp = NULL;
 	unsigned long flags = 0;
-	int ret = 0;
 	dhd_dump_t *dump = NULL;
 #ifdef DHD_COREDUMP
 	char memdump_type[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
@@ -18660,20 +18634,19 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 
 	if (!dhd) {
 		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
-		return -ENODEV;
+		return;
 	}
 
 	dhdp = &dhd->pub;
 	if (!dhdp) {
 		DHD_ERROR(("%s: dhdp is NULL\n", __FUNCTION__));
-		return -ENODEV;
+		return;
 	}
 
 	DHD_GENERAL_LOCK(dhdp, flags);
 	if (DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhdp)) {
 		DHD_GENERAL_UNLOCK(dhdp, flags);
 		DHD_ERROR(("%s: bus is down! can't collect mem dump. \n", __FUNCTION__));
-		ret = -ENODEV;
 		goto exit;
 	}
 	DHD_GENERAL_UNLOCK(dhdp, flags);
@@ -18711,7 +18684,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	dump = (dhd_dump_t *)event_info;
 	if (!dump) {
 		DHD_ERROR(("%s: dump is NULL\n", __FUNCTION__));
-		ret = -EINVAL;
 		goto exit;
 	}
 
@@ -18858,7 +18830,7 @@ exit:
 	}
 	DHD_ERROR(("%s: EXIT \n", __FUNCTION__));
 
-	return ret;
+	return;
 }
 #endif /* DHD_FW_COREDUMP */
 

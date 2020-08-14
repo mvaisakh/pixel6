@@ -234,7 +234,7 @@ static const struct dev_pm_ops dhdpcie_pm_ops = {
 
 static struct pci_driver dhdpcie_driver = {
 	node:		{&dhdpcie_driver.node, &dhdpcie_driver.node},
-	name:		"pcieh",
+	name:		"pcieh_43752",
 	id_table:	dhdpcie_pci_devid,
 	probe:		dhdpcie_pci_probe,
 	remove:		dhdpcie_pci_remove,
@@ -2490,7 +2490,7 @@ dhdpcie_bus_request_irq(struct dhd_bus *bus)
 
 #ifdef BCMPCIE_OOB_HOST_WAKE
 #ifdef CONFIG_BCMDHD_GET_OOB_STATE
-extern int dhd_get_wlan_oob_gpio(void);
+extern int dhd_get_wlan_oob_gpio_43752(void);
 #endif /* CONFIG_BCMDHD_GET_OOB_STATE */
 
 int dhdpcie_get_oob_irq_level(void)
@@ -2498,7 +2498,7 @@ int dhdpcie_get_oob_irq_level(void)
 	int gpio_level;
 
 #ifdef CONFIG_BCMDHD_GET_OOB_STATE
-	gpio_level = dhd_get_wlan_oob_gpio();
+	gpio_level = dhd_get_wlan_oob_gpio_43752();
 #else
 	gpio_level = BCME_UNSUPPORTED;
 #endif /* CONFIG_BCMDHD_GET_OOB_STATE */
@@ -2955,7 +2955,7 @@ struct device * dhd_bus_to_dev(dhd_bus_t *bus)
 
 #ifdef DHD_FW_COREDUMP
 int
-dhd_dongle_mem_dump(void)
+dhd_dongle_mem_dump_43752(void)
 {
 	if (!g_dhd_bus) {
 		DHD_ERROR(("%s: Bus is NULL\n", __FUNCTION__));
@@ -2975,11 +2975,11 @@ dhd_dongle_mem_dump(void)
 	dhd_bus_mem_dump(g_dhd_bus->dhd);
 	return 0;
 }
-EXPORT_SYMBOL(dhd_dongle_mem_dump);
+EXPORT_SYMBOL(dhd_dongle_mem_dump_43752);
 #endif /* DHD_FW_COREDUMP */
 
 bool
-dhd_bus_check_driver_up(void)
+dhd_bus_check_driver_up_43752(void)
 {
 	dhd_bus_t *bus;
 	dhd_pub_t *dhdp;
@@ -2998,4 +2998,4 @@ dhd_bus_check_driver_up(void)
 
 	return isup;
 }
-EXPORT_SYMBOL(dhd_bus_check_driver_up);
+EXPORT_SYMBOL(dhd_bus_check_driver_up_43752);
