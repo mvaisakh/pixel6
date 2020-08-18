@@ -1526,9 +1526,11 @@ __dhd_dbg_map_tx_status_to_pkt_fate(uint16 status)
 		case WLFC_CTL_PKTFLAG_EXPIRED:
 			pkt_fate = TX_PKT_FATE_FW_DROP_EXPTIME;
 			break;
+#ifndef OEM_ANDROID
 		case WLFC_CTL_PKTFLAG_MKTFREE:
 			pkt_fate = TX_PKT_FATE_FW_PKT_FREE;
 			break;
+#endif /* !OEM_ANDROID */
 		default:
 			pkt_fate = TX_PKT_FATE_FW_DROP_OTHER;
 			break;
