@@ -26,7 +26,6 @@ struct exynos_drm_gem {
 	struct drm_gem_object base;
 	struct sg_table *sgt;
 	dma_addr_t dma_addr;
-	void *kaddr;
 	unsigned int flags;
 };
 

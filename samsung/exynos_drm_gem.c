@@ -76,11 +76,6 @@ static void exynos_drm_gem_unmap(struct exynos_drm_gem *exynos_gem_obj)
 	/* nothing to do for color map buffers */
 	if (exynos_gem_obj->flags & EXYNOS_DRM_GEM_FLAG_COLORMAP)
 		return;
-
-	if (exynos_gem_obj->kaddr) {
-		dma_buf_kunmap(attach->dmabuf, 0, exynos_gem_obj->kaddr);
-		pr_debug("unmapped kaddr: %pK\n");
-	}
 }
 
 void exynos_drm_gem_free_object(struct drm_gem_object *obj)
