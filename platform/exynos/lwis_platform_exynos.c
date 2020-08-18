@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/pm_qos.h>
 #include <linux/slab.h>
+#include <soc/samsung/bts.h>
 
 #include "lwis_device_dpm.h"
 #include "lwis_debug.h"
@@ -37,6 +38,19 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 
 	/* Enable runtime power management for the platform device */
 	pm_runtime_enable(&lwis_dev->plat_dev->dev);
+
+	lwis_dev->bts_index = BTS_UNSUPPORTED;
+	/* Only IOREG devices will access DMA resources */
+	if (lwis_dev->type != DEVICE_TYPE_IOREG) {
+		return 0;
+	}
+	/* Register to bts */
+	lwis_dev->bts_index = bts_get_bwindex(lwis_dev->name);
+	if (lwis_dev->bts_index < 0) {
+		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n",
+					lwis_dev->bts_index);
+		lwis_dev->bts_index = BTS_UNSUPPORTED;
+	}
 
 	return 0;
 }
@@ -71,10 +85,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 {
 	int ret;
 	struct lwis_platform *platform;
-	// TODO: Refactor
-
-	const uint32_t int_qos = 465000;
-	const uint32_t mif_qos = 2093000;
 	const uint32_t core_clock_qos = 67000;
 	const uint32_t hpg_qos = 1;
 
@@ -107,17 +117,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	if (!pm_qos_request_active(&platform->pm_qos_hpg))
 		pm_qos_add_request(&platform->pm_qos_hpg, PM_QOS_CPU_ONLINE_MIN,
 				   hpg_qos);
-
-	ret = lwis_platform_update_qos(lwis_dev, mif_qos, CLOCK_FAMILY_MIF);
-	if (ret < 0) {
-		dev_err(lwis_dev->dev, "Failed to enable MIF clock\n");
-		return ret;
-	}
-	ret = lwis_platform_update_qos(lwis_dev, int_qos, CLOCK_FAMILY_INT);
-	if (ret < 0) {
-		dev_err(lwis_dev->dev, "Failed to enable INT clock\n");
-		return ret;
-	}
 
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
@@ -250,4 +249,34 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		break;
 	}
 	return 0;
+}
+
+int lwis_platform_update_bts(struct lwis_device *lwis_dev,
+			     unsigned int bw_kb_peak, unsigned int bw_kb_read,
+			     unsigned int bw_kb_write)
+{
+	int ret = 0;
+	struct bts_bw bts_request;
+
+	if (lwis_dev->bts_index == BTS_UNSUPPORTED) {
+		dev_info(lwis_dev->dev, "%s doesn't support bts\n",
+			 lwis_dev->name);
+		return ret;
+	}
+
+	bts_request.peak = bw_kb_peak;
+	bts_request.read = bw_kb_read;
+	bts_request.write = bw_kb_write;
+	ret = bts_update_bw(lwis_dev->bts_index, bts_request);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev,
+			"Failed to update bandwidth to bts, ret: %d\n", ret);
+	} else {
+		dev_info(lwis_dev->dev,
+			"Updated bandwidth to bts, peak: %u, read: %u, write: %u\n",
+			bw_kb_peak, bw_kb_read, bw_kb_write);
+	}
+
+	return ret;
+
 }

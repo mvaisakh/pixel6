@@ -14,7 +14,6 @@
 #include <linux/pm_qos.h>
 
 struct lwis_platform {
-	// TODO: Refactor this to be dynamically controlled from userspace
 	struct pm_qos_request pm_qos_int_cam;
 	struct pm_qos_request pm_qos_int;
 	struct pm_qos_request pm_qos_cam;

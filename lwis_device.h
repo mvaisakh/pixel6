@@ -41,6 +41,7 @@
 #define BUFFER_HASH_BITS 8
 #define TRANSACTION_HASH_BITS 8
 #define PERIODIC_IO_HASH_BITS 8
+#define BTS_UNSUPPORTED -1
 
 /* Forward declaration for lwis_device. This is needed for the declaration for
    lwis_device_subclass_operations data struct. */
@@ -205,6 +206,8 @@ struct lwis_device {
 
 	/* clock family this device belongs to */
 	int clock_family;
+	/* index to bandwidth traffic shaper */
+	int bts_index;
 };
 
 /*

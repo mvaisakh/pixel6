@@ -43,41 +43,52 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 			struct lwis_qos_setting *qos_setting)
 {
 	int ret = 0;
-	struct lwis_device *target_dev = NULL;
+	struct lwis_device *target_dev =
+		lwis_find_dev_by_id(qos_setting->device_id);
+	if (!target_dev) {
+		dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
+			qos_setting->device_id);
+			return -ENOENT;
+	}
 
 	switch (qos_setting->clock_family) {
 	case CLOCK_FAMILY_MIF:
 	case CLOCK_FAMILY_INT:
-		/* Use dpm device to update bandwidth requirement */
-		target_dev = lwis_dev;
+		/* TODO(spethchang): Refactor UAPI for bts bandwidth update.
+		 * Currently use legacy API for bandwidth update. The user side
+		 * should set kbytes/second as total bandwidth to frequency_hz
+		 * and set clock family to CLOCK_FAMILY_MIF for bts bandwidth
+		 * update.
+		 */
+		ret = lwis_platform_update_bts(target_dev,
+					       qos_setting->frequency_hz / 8,
+					       qos_setting->frequency_hz / 2,
+					       qos_setting->frequency_hz / 2);
+		if (ret < 0) {
+			dev_err(lwis_dev->dev,
+				"Failed to update bandwidth to bts, ret: %d\n",
+				ret);
+		}
 		break;
 	case CLOCK_FAMILY_TNR:
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
-		/* Update core clock for particular device */
-		target_dev = lwis_find_dev_by_id(qos_setting->device_id);
-		if (!target_dev) {
-			dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
-				qos_setting->device_id);
-			ret = -ENOENT;
-			goto out;
+		/* convert value to KHz */
+		ret = lwis_platform_update_qos(
+			target_dev, qos_setting->frequency_hz / 1000,
+			qos_setting->clock_family);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to apply core clock requirement for %s, ret: %d\n",
+				target_dev->name, ret);
 		}
 		break;
 	default:
 		dev_err(lwis_dev->dev, "Invalid clock family %d\n",
 			qos_setting->clock_family);
 		ret = -EINVAL;
-		goto out;
 	}
-	/* convert value to KHz */
-	ret = lwis_platform_update_qos(
-		target_dev, qos_setting->frequency_hz / 1000,
-		qos_setting->clock_family);
-	if (ret)
-		dev_err(lwis_dev->dev,
-			"Failed to apply core clock requirement for %s\n",
-			target_dev->name);
-out:
+
 	return ret;
 }
 
@@ -151,8 +162,9 @@ static int __init lwis_dpm_device_probe(struct platform_device *plat_dev)
 
 	/* Call the base device probe function */
 	ret = lwis_base_probe((struct lwis_device *)dpm_dev, plat_dev);
-	if (ret)
+	if (ret) {
 		dev_err(dev, "Error in lwis base probe, ret: %d\n", ret);
+	}
 
 	return ret;
 }
