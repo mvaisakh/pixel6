@@ -24,12 +24,6 @@ static void r52_reset(struct edgetpu_dev *etdev, u64 val)
 	edgetpu_dev_write_64(etdev, EDGETPU_REG_RESET_CONTROL, val);
 }
 
-static void abrolhos_firmware_before_destroy(
-		struct edgetpu_firmware *et_fw)
-{
-	r52_reset(et_fw->etdev, 1);
-}
-
 static int abrolhos_firmware_alloc_buffer(
 		struct edgetpu_firmware *et_fw,
 		struct edgetpu_firmware_buffer *fw_buf)
@@ -99,7 +93,6 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 }
 
 static const struct edgetpu_firmware_handlers abrolhos_firmware_handlers = {
-	.before_destroy = abrolhos_firmware_before_destroy,
 	.alloc_buffer = abrolhos_firmware_alloc_buffer,
 	.free_buffer = abrolhos_firmware_free_buffer,
 	.setup_buffer = abrolhos_firmware_setup_buffer,

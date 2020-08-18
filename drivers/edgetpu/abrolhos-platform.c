@@ -312,14 +312,18 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	struct edgetpu_dev *etdev = platform_get_drvdata(pdev);
 	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
 			etdev, struct edgetpu_platform_dev, edgetpu_dev);
-	edgetpu_pm_shutdown(etdev);
+
 	abrolhos_edgetpu_firmware_destroy(etdev);
 	if (edgetpu_pdev->irq >= 0)
 		edgetpu_unregister_irq(etdev, edgetpu_pdev->irq);
+
+	edgetpu_pm_get(etdev->pm);
 	edgetpu_telemetry_exit(etdev);
 	edgetpu_iremap_pool_destroy(etdev);
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
 	edgetpu_device_remove(etdev);
+	edgetpu_pm_put(etdev->pm);
+	edgetpu_pm_shutdown(etdev);
 	abrolhos_pm_destroy(etdev);
 	return 0;
 }

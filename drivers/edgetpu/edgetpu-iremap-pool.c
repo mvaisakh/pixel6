@@ -6,6 +6,8 @@
  * Copyright (C) 2020 Google, Inc.
  */
 
+#include <linux/printk.h>
+
 #ifdef CONFIG_X86
 #include <asm/set_memory.h>
 #endif

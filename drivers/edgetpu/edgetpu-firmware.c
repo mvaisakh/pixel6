@@ -351,14 +351,13 @@ int edgetpu_firmware_lock(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 
-	mutex_lock(&et_fw->p->fw_desc_lock);
 	if (!et_fw) {
 		etdev_err(
 			etdev,
 			"Cannot load firmware when no loader is available\n");
-		mutex_unlock(&et_fw->p->fw_desc_lock);
 		return -EINVAL;
 	}
+	mutex_lock(&et_fw->p->fw_desc_lock);
 
 	/* Disallow group join while loading, fail if already joined */
 	if (!edgetpu_set_group_join_lockout(etdev, true)) {

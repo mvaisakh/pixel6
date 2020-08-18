@@ -19,9 +19,7 @@
 #include "edgetpu-pm.h"
 
 /* Default power state: the lowest power state that keeps firmware running */
-// static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
-// TODO: switch back to the correct power state once b/160361784 is fixed
-static int power_state = TPU_ACTIVE_NOM;
+static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
 
 module_param(power_state, int, 0660);
 
@@ -82,14 +80,11 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 	}
 
 	if (curr_state != TPU_OFF && val == TPU_OFF) {
-		curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
-		if (curr_state <= TPU_DEEP_SLEEP_CLOCKS_FAST) {
-			ret = pm_runtime_put_sync(dev);
-			if (ret) {
-				dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",
-					__func__, ret);
-				return ret;
-			}
+		ret = pm_runtime_put_sync(dev);
+		if (ret) {
+			dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",
+				__func__, ret);
+			return ret;
 		}
 	}
 
@@ -383,6 +378,9 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 		edgetpu_mailbox_reset_vii(etdev->mailbox_manager);
 	}
 
+	if (!etdev->firmware)
+		return 0;
+
 	switch (edgetpu_firmware_status_locked(etdev)) {
 	case FW_VALID:
 		ret = edgetpu_firmware_restart_locked(etdev);
@@ -409,6 +407,13 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
 			etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
 	int res;
+	int curr_state;
+
+	curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
+
+	/* We don't need to do anything if the block is already off */
+	if (curr_state == TPU_OFF)
+		return;
 
 	if (etpm->etdev->kci &&
 	    edgetpu_firmware_status_locked(etpm->etdev) == FW_VALID) {
