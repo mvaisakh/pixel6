@@ -126,15 +126,28 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	struct lwis_single_event_info *event;
 	struct list_head *p;
 	uint64_t source_value, reset_value = 0;
+	uint64_t mask_value;
 	unsigned long flags;
 
 	/* Read the mask register */
-	ret = lwis_device_single_register_read(irq->lwis_dev, true,
-					       irq->irq_reg_bid,
-					       irq->irq_src_reg, &source_value,
-					       irq->irq_reg_access_size);
+	ret = lwis_device_single_register_read(
+		irq->lwis_dev, /*non_blocking=*/true, irq->irq_reg_bid,
+		irq->irq_src_reg, &source_value, irq->irq_reg_access_size);
 	if (ret) {
-		pr_err("Failed to read IRQ status register: %d\n", ret);
+		dev_err(irq->lwis_dev->dev,
+			"%s: Failed to read IRQ status register: %d\n",
+			irq->name, ret);
+		goto error;
+	}
+
+	/* Write back to the reset register */
+	ret = lwis_device_single_register_write(
+		irq->lwis_dev, /*non_blocking=*/true, irq->irq_reg_bid,
+		irq->irq_reset_reg, source_value, irq->irq_reg_access_size);
+	if (ret) {
+		dev_err(irq->lwis_dev->dev,
+			"%s: Failed to write IRQ reset register: %d\n",
+			irq->name, ret);
 		goto error;
 	}
 
@@ -154,16 +167,33 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	}
 	spin_unlock_irqrestore(&irq->lock, flags);
 
-	/* Write the mask register */
-	ret = lwis_device_single_register_write(irq->lwis_dev, true,
-						irq->irq_reg_bid,
-						irq->irq_reset_reg, reset_value,
-						irq->irq_reg_access_size);
-	if (ret) {
-		pr_err("Failed to write IRQ reset register: %d\n", ret);
-		goto error;
-	}
+	/* Make sure the number of interrupts triggered matches the number of
+	 * events processed */
+	if (source_value != reset_value) {
+		lwis_device_single_register_read(irq->lwis_dev,
+						 /*non_blocking=*/true,
+						 irq->irq_reg_bid,
+						 irq->irq_mask_reg, &mask_value,
+						 irq->irq_reg_access_size);
 
+		if ((mask_value | source_value) != source_value) {
+			/*
+			 * TODO(b/165830995): Change this to
+			 * dev_warn_ratelimited when spurious interrupts are
+			 * fixed in the system.
+			 */
+			dev_dbg(irq->lwis_dev->dev,
+				"%s: Spurious interrupt? mask 0x%llx src 0x%llx reset 0x%llx\n",
+				irq->name, mask_value, source_value,
+				reset_value);
+		} else {
+			dev_warn_ratelimited(
+				irq->lwis_dev->dev,
+				"%s: Mismatched hw interrupt and LWIS event enable? mask 0x%llx src 0x%llx reset 0x%llx\n",
+				irq->name, mask_value, source_value,
+				reset_value);
+		}
+	}
 error:
 	return IRQ_HANDLED;
 }
