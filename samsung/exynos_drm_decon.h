@@ -103,7 +103,6 @@ struct bts_layer_position {
 };
 
 struct bts_dpp_info {
-	bool used;
 	u32 bpp;
 	u32 src_h;
 	u32 src_w;
@@ -143,15 +142,12 @@ struct dpu_bts {
 	/* each decon must know other decon's BW to get overall BW */
 	u32 ch_bw[3][MAX_DECON_CNT];
 	int bw_idx;
-	struct bts_decon_info bts_info;
 	struct dpu_bts_ops *ops;
 #if IS_ENABLED(CONFIG_EXYNOS_PM_QOS) || IS_ENABLED(CONFIG_EXYNOS_PM_QOS_MODULE)
 	struct exynos_pm_qos_request mif_qos;
 	struct exynos_pm_qos_request int_qos;
 	struct exynos_pm_qos_request disp_qos;
 #endif
-
-	u32 scen_updated;
 
 	struct dpu_bts_win_config win_config[MAX_WIN_PER_DECON];
 	struct dpu_bts_win_config wb_config;

@@ -496,7 +496,7 @@ void dpu_bts_calc_bw(struct decon_device *decon)
 {
 	struct dpu_bts_win_config *config;
 	struct bts_decon_info bts_info;
-	int idx, i;
+	int idx, i, wb_idx;
 	u32 read_bw = 0, write_bw;
 	u64 resol_clock;
 
@@ -527,24 +527,27 @@ void dpu_bts_calc_bw(struct decon_device *decon)
 		dpu_bts_convert_config_to_info(&bts_info.rdma[idx], &config[i]);
 		dpu_bts_calc_dpp_bw(&bts_info.rdma[idx], bts_info.vclk,
 							bts_info.lcd_w, idx);
-		decon->bts.bw[i].val = bts_info.rdma[i].bw;
 		read_bw += bts_info.rdma[idx].bw;
 	}
 
 	/* write bw calculation */
 	config = &decon->bts.wb_config;
+	wb_idx = config->dpp_ch;
 	if (config->state == DPU_WIN_STATE_BUFFER) {
 		dpu_bts_convert_config_to_info(&bts_info.odma, config);
 		dpu_bts_calc_dpp_bw(&bts_info.odma, bts_info.vclk,
-						bts_info.lcd_w, config->dpp_ch);
-		decon->bts.bw[i].val = bts_info.odma.bw;
+						bts_info.lcd_w, wb_idx);
 		write_bw = bts_info.odma.bw;
+	} else {
+		write_bw = 0;
 	}
+
+	for (i = 0; i < MAX_DPP_CNT; i++)
+		decon->bts.bw[i].val = i == wb_idx ? write_bw : bts_info.rdma[i].bw;
 
 	decon->bts.read_bw = read_bw;
 	decon->bts.write_bw = write_bw;
 	decon->bts.total_bw = read_bw + write_bw;
-	memcpy(&decon->bts.bts_info, &bts_info, sizeof(struct bts_decon_info));
 
 	DPU_DEBUG_BTS("\tDECON%d total bw = %d, read bw = %d, write bw = %d\n",
 			decon->id, decon->bts.total_bw, decon->bts.read_bw,
@@ -695,7 +698,6 @@ void dpu_bts_init(struct decon_device *decon)
 					PM_QOS_DEVICE_THROUGHPUT, 0);
 	exynos_pm_qos_add_request(&decon->bts.disp_qos,
 					PM_QOS_DISPLAY_THROUGHPUT, 0);
-	decon->bts.scen_updated = 0;
 
 	for (i = 0; i < MAX_WIN_PER_DECON; ++i) { /* dma type order */
 		decon->bts.bw[i].ch_num = decon->dpp[DPU_DMA2CH(i)]->port;
