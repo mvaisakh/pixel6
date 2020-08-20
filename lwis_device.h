@@ -208,6 +208,10 @@ struct lwis_device {
 	int clock_family;
 	/* index to bandwidth traffic shaper */
 	int bts_index;
+	/* BTS scenario name */
+	const char *bts_scenario_name;
+	/* BTS scenario index */
+	unsigned int bts_scenario;
 };
 
 /*

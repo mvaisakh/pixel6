@@ -640,6 +640,10 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	iommus = of_find_property(dev_node, "iommus", &iommus_len);
 	lwis_dev->has_iommu = iommus && iommus_len;
 
+	lwis_dev->bts_scenario_name = NULL;
+	of_property_read_string(dev_node, "bts-scenario",
+				&lwis_dev->bts_scenario_name);
+
 	dev_node->data = lwis_dev;
 
 	pr_info("Device tree entry [%s] - end\n", lwis_dev->name);

@@ -48,7 +48,7 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 	lwis_dev->bts_index = bts_get_bwindex(lwis_dev->name);
 	if (lwis_dev->bts_index < 0) {
 		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n",
-					lwis_dev->bts_index);
+			lwis_dev->bts_index);
 		lwis_dev->bts_index = BTS_UNSUPPORTED;
 	}
 
@@ -128,6 +128,16 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->bts_scenario_name) {
+		lwis_dev->bts_scenario =
+			bts_get_scenindex(lwis_dev->bts_scenario_name);
+		if (!lwis_dev->bts_scenario) {
+			dev_err(lwis_dev->dev,
+				"Failed to get default camera BTS scenario.\n");
+			return -EINVAL;
+		}
+		bts_add_scenario(lwis_dev->bts_scenario);
+	}
 	return 0;
 }
 
@@ -139,6 +149,10 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	platform = lwis_dev->platform;
 	if (!platform) {
 		return -ENODEV;
+	}
+
+	if (lwis_dev->bts_scenario_name) {
+		bts_del_scenario(lwis_dev->bts_scenario);
 	}
 
 	/* We can't remove fault handlers, so there's no call corresponding
@@ -272,11 +286,11 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev,
 		dev_err(lwis_dev->dev,
 			"Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
-		dev_info(lwis_dev->dev,
+		dev_info(
+			lwis_dev->dev,
 			"Updated bandwidth to bts, peak: %u, read: %u, write: %u\n",
 			bw_kb_peak, bw_kb_read, bw_kb_write);
 	}
 
 	return ret;
-
 }
