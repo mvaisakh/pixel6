@@ -69,13 +69,13 @@ static struct cal_regs_desc regs_decon[REGS_DECON_TYPE_MAX][REGS_DECON_ID_MAX];
 #define win_regs_desc(id)			\
 	(&regs_decon[REGS_DECON_WIN][id])
 #define win_read(id, offset)			\
-	cal_read(win_regs_desc(0), offset)
+	cal_read(win_regs_desc(id), offset)
 #define win_write(id, offset, val)		\
-	cal_write(win_regs_desc(0), offset, val)
+	cal_write(win_regs_desc(id), offset, val)
 #define win_read_mask(id, offset, mask)		\
-	cal_read_mask(win_regs_desc(0), offset, mask)
+	cal_read_mask(win_regs_desc(id), offset, mask)
 #define win_write_mask(id, offset, val, mask)	\
-	cal_write_mask(win_regs_desc(0), offset, val, mask)
+	cal_write_mask(win_regs_desc(id), offset, val, mask)
 
 #define wincon_regs_desc(id)				\
 	(&regs_decon[REGS_DECON_WINCON][id])
@@ -90,32 +90,32 @@ static struct cal_regs_desc regs_decon[REGS_DECON_TYPE_MAX][REGS_DECON_ID_MAX];
 
 #define sub_regs_desc(id)			\
 	(&regs_decon[REGS_DECON_SUB][id])
-#define dsimif_read(offset)			\
-	cal_read(sub_regs_desc(0), offset)
-#define dsimif_write(offset, val)		\
-	cal_write(sub_regs_desc(0), offset, val)
-#define dsimif_read_mask(offset, mask)		\
-	cal_read_mask(sub_regs_desc(0), offset, mask)
-#define dsimif_write_mask(offset, val, mask)	\
-	cal_write_mask(sub_regs_desc(0), offset, val, mask)
+#define dsimif_read(id, offset)			\
+	cal_read(sub_regs_desc(id), offset)
+#define dsimif_write(id, offset, val)		\
+	cal_write(sub_regs_desc(id), offset, val)
+#define dsimif_read_mask(id, offset, mask)		\
+	cal_read_mask(sub_regs_desc(id), offset, mask)
+#define dsimif_write_mask(id, offset, val, mask)	\
+	cal_write_mask(sub_regs_desc(id), offset, val, mask)
 
-#define dpif_read(offset)			\
-	cal_read(sub_regs_desc(0), offset)
-#define dpif_write(offset, val)			\
-	cal_write(sub_regs_desc(0), offset, val)
-#define dpif_read_mask(offset, mask)		\
-	cal_read_mask(sub_regs_desc(0), offset, mask)
-#define dpif_write_mask(offset, val, mask)	\
-	cal_write_mask(sub_regs_desc(0), offset, val, mask)
+#define dpif_read(id, offset)			\
+	cal_read(sub_regs_desc(id), offset)
+#define dpif_write(id, offset, val)			\
+	cal_write(sub_regs_desc(id), offset, val)
+#define dpif_read_mask(id, offset, mask)		\
+	cal_read_mask(sub_regs_desc(id), offset, mask)
+#define dpif_write_mask(id, offset, val, mask)	\
+	cal_write_mask(sub_regs_desc(id), offset, val, mask)
 
-#define dsc_read(offset)			\
-	cal_read(sub_regs_desc(0), offset)
-#define dsc_write(offset, val)			\
-	cal_write(sub_regs_desc(0), offset, val)
-#define dsc_read_mask(offset, mask)		\
-	cal_read_mask(sub_regs_desc(0), offset, mask)
-#define dsc_write_mask(offset, val, mask)	\
-	cal_write_mask(sub_regs_desc(0), offset, val, mask)
+#define dsc_read(id, offset)			\
+	cal_read(sub_regs_desc(id), offset)
+#define dsc_write(id, offset, val)			\
+	cal_write(sub_regs_desc(id), offset, val)
+#define dsc_read_mask(id, offset, mask)		\
+	cal_read_mask(sub_regs_desc(id), offset, mask)
+#define dsc_write_mask(id, offset, val, mask)	\
+	cal_write_mask(sub_regs_desc(id), offset, val, mask)
 
 void decon_regs_desc_init(void __iomem *regs, const char *name,
 		enum decon_regs_type type, unsigned int id)
@@ -281,6 +281,10 @@ static void decon_reg_set_outfifo_size_ctl1(u32 id, u32 width)
 {
 	u32 val;
 
+	/* only decon0 has outfifo_1 */
+	if (WARN_ON(id != 0))
+		return;
+
 	val = OUTFIFO_1_WIDTH_F(width);
 	decon_write(0, OF_SIZE_1, val);
 }
@@ -396,7 +400,7 @@ static void decon_reg_set_data_path(u32 id, struct decon_config *cfg)
 	switch (out_type) {
 	case DECON_OUT_DSI0:
 		val = OUTIF_DSI0;
-		dsimif_write(DSIMIF_SEL(0), SEL_DSIM(id == 1 ? 2 : 0));
+		dsimif_write(id, DSIMIF_SEL(0), SEL_DSIM(id == 1 ? 2 : 0));
 		break;
 	/*
 	 * OUTIF_DSIx in DECON determines that blended data is transferred
@@ -407,20 +411,20 @@ static void decon_reg_set_data_path(u32 id, struct decon_config *cfg)
 	 */
 	case DECON_OUT_DSI1:
 		val = OUTIF_DSI0;
-		dsimif_write(DSIMIF_SEL(1), SEL_DSIM(id == 1 ? 2 : 0));
+		dsimif_write(id, DSIMIF_SEL(1), SEL_DSIM(id == 1 ? 2 : 0));
 		break;
 	case DECON_OUT_DSI:
 		val = OUTIF_DSI0 | OUTIF_DSI1;
-		dsimif_write(DSIMIF_SEL(0), SEL_DSIM(0));
-		dsimif_write(DSIMIF_SEL(1), SEL_DSIM(1));
+		dsimif_write(id, DSIMIF_SEL(0), SEL_DSIM(0));
+		dsimif_write(id, DSIMIF_SEL(1), SEL_DSIM(1));
 		break;
 	case DECON_OUT_DP0:
 		val = OUTIF_DPIF;
-		dpif_write(DPIF_SEL(0), SEL_DP(id));
+		dpif_write(id, DPIF_SEL(0), SEL_DP(id));
 		break;
 	case DECON_OUT_DP1:
 		val = OUTIF_DPIF;
-		dpif_write(DPIF_SEL(1), SEL_DP(id));
+		dpif_write(id, DPIF_SEL(1), SEL_DP(id));
 		break;
 	case DECON_OUT_WB:
 		val = OUTIF_WB;
@@ -673,25 +677,25 @@ static void decon_reg_update_req_compress(u32 id)
 	decon_write_mask(id, SHD_REG_UP_REQ, ~0, SHD_REG_UP_REQ_CMP);
 }
 
-static void dsc_reg_swreset(u32 dsc_id)
+static void dsc_reg_swreset(u32 id, u32 dsc_id)
 {
-	dsc_write_mask(DSC_CONTROL1(dsc_id), 1, DSC_SW_RESET);
+	dsc_write_mask(id, DSC_CONTROL1(dsc_id), 1, DSC_SW_RESET);
 }
 
-static void dsc_reg_set_slice_mode_change(u32 dsc_id, u32 en)
+static void dsc_reg_set_slice_mode_change(u32 id, u32 dsc_id, u32 en)
 {
 	u32 val;
 
 	val = DSC_SLICE_MODE_CH_F(en);
-	dsc_write_mask(DSC_CONTROL1(dsc_id), val, DSC_SLICE_MODE_CH_MASK);
+	dsc_write_mask(id, DSC_CONTROL1(dsc_id), val, DSC_SLICE_MODE_CH_MASK);
 }
 
-static void dsc_reg_set_dual_slice(u32 dsc_id, u32 en)
+static void dsc_reg_set_dual_slice(u32 id, u32 dsc_id, u32 en)
 {
 	u32 val;
 
 	val = DSC_DUAL_SLICE_EN_F(en);
-	dsc_write_mask(DSC_CONTROL1(dsc_id), val, DSC_DUAL_SLICE_EN_MASK);
+	dsc_write_mask(id, DSC_CONTROL1(dsc_id), val, DSC_DUAL_SLICE_EN_MASK);
 }
 
 /*
@@ -703,22 +707,22 @@ static void dsc_reg_set_dual_slice(u32 dsc_id, u32 en)
  * - PPS04 ~ PPS35 except reserved
  * - PPS58 ~ PPS59
  */
-static void dsc_reg_set_pps_06_07_picture_height(u32 dsc_id, u32 height)
+static void dsc_reg_set_pps_06_07_picture_height(u32 id, u32 dsc_id, u32 height)
 {
 	u32 val, mask;
 
 	val = PPS06_07_PIC_HEIGHT(height);
 	mask = PPS06_07_PIC_HEIGHT_MASK;
-	dsc_write_mask(DSC_PPS04_07(dsc_id), val, mask);
+	dsc_write_mask(id, DSC_PPS04_07(dsc_id), val, mask);
 }
 
-static void dsc_reg_set_pps_58_59_rc_range_param0(u32 dsc_id, u32 rc_range)
+static void dsc_reg_set_pps_58_59_rc_range_param0(u32 id, u32 dsc_id, u32 rc_range)
 {
 	u32 val, mask;
 
 	val = PPS58_59_RC_RANGE_PARAM(rc_range);
 	mask = PPS58_59_RC_RANGE_PARAM_MASK;
-	dsc_write_mask(DSC_PPS56_59(dsc_id), val, mask);
+	dsc_write_mask(id, DSC_PPS56_59(dsc_id), val, mask);
 }
 
 /* full size default value */
@@ -799,7 +803,7 @@ static void dsc_get_partial_update_info(u32 id, u32 slice_cnt, u32 dsc_cnt,
 	}
 }
 
-static void dsc_reg_config_control(u32 dsc_id, u32 ds_en, u32 sm_ch,
+static void dsc_reg_config_control(u32 id, u32 dsc_id, u32 ds_en, u32 sm_ch,
 		u32 slice_width)
 {
 	u32 val;
@@ -809,13 +813,13 @@ static void dsc_reg_config_control(u32 dsc_id, u32 ds_en, u32 sm_ch,
 	val |= DSC_DUAL_SLICE_EN_F(ds_en);
 	val |= DSC_SLICE_MODE_CH_F(sm_ch);
 	val |= DSC_FLATNESS_DET_TH_F(0x2);
-	dsc_write(DSC_CONTROL1(dsc_id), val);
+	dsc_write(id, DSC_CONTROL1(dsc_id), val);
 
 	remainder = slice_width % 3 ? : 3;
 	grpcntline = (slice_width + 2) / 3;
 
 	val = DSC_REMAINDER_F(remainder) | DSC_GRPCNTLINE_F(grpcntline);
-	dsc_write(DSC_CONTROL3(dsc_id), val);
+	dsc_write(id, DSC_CONTROL3(dsc_id), val);
 }
 
 /*
@@ -980,7 +984,7 @@ static void dsc_calc_pps_info(struct decon_config *config, u32 dscc_en,
 	dsc_enc->width_per_enc = dsc_enc0_w;
 }
 
-static void dsc_reg_set_pps(u32 dsc_id, struct decon_dsc *dsc_enc)
+static void dsc_reg_set_pps(u32 id, u32 dsc_id, struct decon_dsc *dsc_enc)
 {
 	u32 val;
 	u32 initial_dec_delay;
@@ -988,15 +992,15 @@ static void dsc_reg_set_pps(u32 dsc_id, struct decon_dsc *dsc_enc)
 	val = PPS04_COMP_CFG(dsc_enc->comp_cfg);
 	val |= PPS05_BPP(dsc_enc->bit_per_pixel);
 	val |= PPS06_07_PIC_HEIGHT(dsc_enc->pic_height);
-	dsc_write(DSC_PPS04_07(dsc_id), val);
+	dsc_write(id, DSC_PPS04_07(dsc_id), val);
 
 	val = PPS08_09_PIC_WIDHT(dsc_enc->pic_width);
 	val |= PPS10_11_SLICE_HEIGHT(dsc_enc->slice_height);
-	dsc_write(DSC_PPS08_11(dsc_id), val);
+	dsc_write(id, DSC_PPS08_11(dsc_id), val);
 
 	val = PPS12_13_SLICE_WIDTH(dsc_enc->slice_width);
 	val |= PPS14_15_CHUNK_SIZE(dsc_enc->chunk_size);
-	dsc_write(DSC_PPS12_15(dsc_id), val);
+	dsc_write(id, DSC_PPS12_15(dsc_id), val);
 
 #ifndef VESA_SCR_V4
 	initial_dec_delay = 0x01B4;
@@ -1005,33 +1009,33 @@ static void dsc_reg_set_pps(u32 dsc_id, struct decon_dsc *dsc_enc)
 #endif
 	val = PPS18_19_INIT_DEC_DELAY(initial_dec_delay);
 	val |= PPS16_17_INIT_XMIT_DELAY(dsc_enc->initial_xmit_delay);
-	dsc_write(DSC_PPS16_19(dsc_id), val);
+	dsc_write(id, DSC_PPS16_19(dsc_id), val);
 
 	val = PPS21_INIT_SCALE_VALUE(dsc_enc->initial_scale_value);
 	val |= PPS22_23_SCALE_INC_INTERVAL(dsc_enc->scale_increment_interval);
-	dsc_write(DSC_PPS20_23(dsc_id), val);
+	dsc_write(id, DSC_PPS20_23(dsc_id), val);
 
 	val = PPS24_25_SCALE_DEC_INTERVAL(dsc_enc->scale_decrement_interval);
 	val |= PPS27_FL_BPG_OFFSET(dsc_enc->first_line_bpg_offset);
-	dsc_write(DSC_PPS24_27(dsc_id), val);
+	dsc_write(id, DSC_PPS24_27(dsc_id), val);
 
 	val = PPS28_29_NFL_BPG_OFFSET(dsc_enc->nfl_bpg_offset);
 	val |= PPS30_31_SLICE_BPG_OFFSET(dsc_enc->slice_bpg_offset);
-	dsc_write(DSC_PPS28_31(dsc_id), val);
+	dsc_write(id, DSC_PPS28_31(dsc_id), val);
 
 	val = PPS32_33_INIT_OFFSET(dsc_enc->initial_offset);
 	val |= PPS34_35_FINAL_OFFSET(dsc_enc->final_offset);
-	dsc_write(DSC_PPS32_35(dsc_id), val);
+	dsc_write(id, DSC_PPS32_35(dsc_id), val);
 
 	/* min_qp0 = 0 , max_qp0 = 4 , bpg_off0 = 2 */
-	dsc_reg_set_pps_58_59_rc_range_param0(dsc_id,
+	dsc_reg_set_pps_58_59_rc_range_param0(id, dsc_id,
 		dsc_enc->rc_range_parameters);
 
 #ifndef VESA_SCR_V4
 	/* PPS79 ~ PPS87 : 3HF4 is different with VESA SCR v4 */
-	dsc_write(DSC_PPS76_79(dsc_id), 0x1AB62AF6);
-	dsc_write(DSC_PPS80_83(dsc_id), 0x2B342B74);
-	dsc_write(DSC_PPS84_87(dsc_id), 0x3B746BF4);
+	dsc_write(id, DSC_PPS76_79(dsc_id), 0x1AB62AF6);
+	dsc_write(id, DSC_PPS80_83(dsc_id), 0x2B342B74);
+	dsc_write(id, DSC_PPS84_87(dsc_id), 0x3B746BF4);
 #endif
 }
 
@@ -1173,7 +1177,7 @@ static u32 dsc_cmp_pps_enc_dec(u32 id, struct decon_dsc *p_enc,
 	return diff_cnt;
 }
 
-static void dsc_reg_set_partial_update(u32 dsc_id, u32 dual_slice_en,
+static void dsc_reg_set_partial_update(u32 id, u32 dsc_id, u32 dual_slice_en,
 	u32 slice_mode_ch, u32 pic_h)
 {
 	/*
@@ -1183,9 +1187,9 @@ static void dsc_reg_set_partial_update(u32 dsc_id, u32 dual_slice_en,
 	 * - picture_height
 	 * - picture_width (don't care @KC) : decided by DSI (-> dual: /2)
 	 */
-	dsc_reg_set_dual_slice(dsc_id, dual_slice_en);
-	dsc_reg_set_slice_mode_change(dsc_id, slice_mode_ch);
-	dsc_reg_set_pps_06_07_picture_height(dsc_id, pic_h);
+	dsc_reg_set_dual_slice(id, dsc_id, dual_slice_en);
+	dsc_reg_set_slice_mode_change(id, dsc_id, slice_mode_ch);
+	dsc_reg_set_pps_06_07_picture_height(id, dsc_id, pic_h);
 }
 
 /*
@@ -1240,18 +1244,18 @@ static void dsc_reg_set_encoder(u32 id, struct decon_config *config,
 	dsc_calc_pps_info(config, dscc_en, dsc_enc);
 
 	if (id == 1) {
-		dsc_reg_config_control(DECON_DSC_ENC1, ds_en, sm_ch,
+		dsc_reg_config_control(id, DECON_DSC_ENC1, ds_en, sm_ch,
 				dsc_enc->slice_width);
-		dsc_reg_set_pps(DECON_DSC_ENC1, dsc_enc);
+		dsc_reg_set_pps(id, DECON_DSC_ENC1, dsc_enc);
 	} else if (id == 2) {	/* only for DP */
-		dsc_reg_config_control(DECON_DSC_ENC2, ds_en, sm_ch,
+		dsc_reg_config_control(id, DECON_DSC_ENC2, ds_en, sm_ch,
 				dsc_enc->slice_width);
-		dsc_reg_set_pps(DECON_DSC_ENC2, dsc_enc);
+		dsc_reg_set_pps(id, DECON_DSC_ENC2, dsc_enc);
 	} else {
 		for (dsc_id = 0; dsc_id < config->dsc.dsc_count; dsc_id++) {
-			dsc_reg_config_control(dsc_id, ds_en, sm_ch,
+			dsc_reg_config_control(id, dsc_id, ds_en, sm_ch,
 					dsc_enc->slice_width);
-			dsc_reg_set_pps(dsc_id, dsc_enc);
+			dsc_reg_set_pps(id, dsc_id, dsc_enc);
 		}
 	}
 
@@ -1271,7 +1275,7 @@ static int dsc_reg_init(u32 id, struct decon_config *config, u32 overlap_w,
 	/* Basically, all SW-resets in DPU are not necessary */
 	if (swrst) {
 		for (dsc_id = 0; dsc_id < config->dsc.dsc_count; dsc_id++)
-			dsc_reg_swreset(dsc_id);
+			dsc_reg_swreset(id, dsc_id);
 	}
 
 	dsc_enc.overlap_w = overlap_w;
@@ -1988,10 +1992,10 @@ void decon_reg_set_partial_update(u32 id, struct decon_config *config,
 				config->dsc.dsc_count, in_slice,
 				dual_slice_en, slice_mode_ch);
 		/* To support dual-display : DECON1 have to set DSC1 */
-		dsc_reg_set_partial_update(id, dual_slice_en[0],
+		dsc_reg_set_partial_update(id, id, dual_slice_en[0],
 				slice_mode_ch[0], partial_h);
 		if (config->dsc.dsc_count == 2)
-			dsc_reg_set_partial_update(1, dual_slice_en[1],
+			dsc_reg_set_partial_update(id, 1, dual_slice_en[1],
 					slice_mode_ch[1], partial_h);
 
 		decon_reg_update_req_compress(id);
@@ -2121,15 +2125,15 @@ int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq)
 /* id: dsim_id */
 void decon_reg_set_start_crc(u32 id, u32 en)
 {
-	dsimif_write_mask(DSIMIF_CRC_CON(id), en ? ~0 : 0, CRC_START);
+	dsimif_write_mask(id, DSIMIF_CRC_CON(id), en ? ~0 : 0, CRC_START);
 }
 
 /* crc_data: [0]=R, [1]=G, [2]=B */
 void decon_reg_get_crc_data(u32 id, u32 crc_data[3])
 {
-	crc_data[0] = dsimif_read(DSIMIF_CRC_DATA_R(id));
-	crc_data[1] = dsimif_read(DSIMIF_CRC_DATA_G(id));
-	crc_data[2] = dsimif_read(DSIMIF_CRC_DATA_B(id));
+	crc_data[0] = dsimif_read(id, DSIMIF_CRC_DATA_R(id));
+	crc_data[1] = dsimif_read(id, DSIMIF_CRC_DATA_G(id));
+	crc_data[2] = dsimif_read(id, DSIMIF_CRC_DATA_B(id));
 }
 
 void __decon_dump(u32 id, struct decon_regs *regs, bool dsc_en)
