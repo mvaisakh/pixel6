@@ -113,19 +113,17 @@ static void s6e3hc2_set_mode(struct exynos_panel *ctx,
 	/* TODO: need to perform gamma updates */
 }
 
-static int s6e3hc2_enable(struct drm_panel *panel)
+static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
 {
-	struct exynos_panel *ctx;
 	const struct drm_display_mode *mode;
 
-	ctx = container_of(panel, struct exynos_panel, panel);
 	mode = ctx->current_mode;
 	if (!mode) {
-		pr_err("no current mode set\n");
+		dev_err(ctx->dev, "no current mode set\n");
 		return -EINVAL;
 	}
 
-	dev_dbg(ctx->dev, "%s +\n", __func__);
+	dev_dbg(ctx->dev, "%s\n", __func__);
 
 	exynos_panel_reset(ctx);
 
@@ -156,13 +154,55 @@ static int s6e3hc2_enable(struct drm_panel *panel)
 
 	s6e3hc2_set_mode(ctx, mode);
 
+	return 0;
+}
+
+static void s6e3hc2_common_post_enable(struct exynos_panel *ctx)
+{
+	dev_dbg(ctx->dev, "%s\n", __func__);
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x51, 0x01, 0x80); /* brightness level */
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
 
 	ctx->enabled = true;
+}
 
-	dev_dbg(ctx->dev, "%s -\n", __func__);
+static int s6e3hc2_wqhd_enable(struct drm_panel *panel)
+{
+	struct exynos_panel *ctx;
+	int ret;
+
+	ctx = container_of(panel, struct exynos_panel, panel);
+
+	ret = s6e3hc2_common_pre_enable(ctx);
+	if (ret)
+		return ret;
+
+	s6e3hc2_common_post_enable(ctx);
+
+	return 0;
+}
+
+static int s6e3hc2_fhd_enable(struct drm_panel *panel)
+{
+	struct exynos_panel *ctx;
+	int ret;
+
+	ctx = container_of(panel, struct exynos_panel, panel);
+
+	ret = s6e3hc2_common_pre_enable(ctx);
+	if (ret)
+		return ret;
+
+	/* TSP HSYNC Enable*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x07, 0xB9);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB9, 0x11, 0x03);
+
+	/*TOUT Enable*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xFF, 0x00, 0x01);
+
+	s6e3hc2_common_post_enable(ctx);
 
 	return 0;
 }
@@ -277,11 +317,19 @@ static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
 	},
 };
 
-static const struct drm_panel_funcs s6e3hc2_drm_funcs = {
+static const struct drm_panel_funcs s6e3hc2_wqhd_drm_funcs = {
 	.disable = s6e3hc2_disable,
 	.unprepare = s6e3hc2_unprepare,
 	.prepare = s6e3hc2_prepare,
-	.enable = s6e3hc2_enable,
+	.enable = s6e3hc2_wqhd_enable,
+	.get_modes = exynos_panel_get_modes,
+};
+
+static const struct drm_panel_funcs s6e3hc2_fhd_drm_funcs = {
+	.disable = s6e3hc2_disable,
+	.unprepare = s6e3hc2_unprepare,
+	.prepare = s6e3hc2_prepare,
+	.enable = s6e3hc2_fhd_enable,
 	.get_modes = exynos_panel_get_modes,
 };
 
@@ -303,7 +351,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.min_luminance = 5,
 	.modes = s6e3hc2_wqhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_wqhd_modes),
-	.panel_func = &s6e3hc2_drm_funcs,
+	.panel_func = &s6e3hc2_wqhd_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
 
@@ -320,7 +368,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.min_luminance = 5,
 	.modes = s6e3hc2_fhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_fhd_modes),
-	.panel_func = &s6e3hc2_drm_funcs,
+	.panel_func = &s6e3hc2_fhd_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
 
