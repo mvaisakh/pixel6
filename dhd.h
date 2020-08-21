@@ -45,9 +45,6 @@
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
-#if defined(CONFIG_HAS_WAKELOCK)
-#include <linux/wakelock.h>
-#endif /* defined CONFIG_HAS_WAKELOCK */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <linux/sched/types.h>
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) */
@@ -1757,43 +1754,43 @@ inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 	} while (0)
 #define DHD_OS_WAKE_LOCK_RX_TIMEOUT_ENABLE(pub, val) \
 	do { \
-		printf("call wake_lock_rx_timeout_enable[%d]: %s %d\n", \
+		printf("call dhd_wake_lock_rx_timeout_enable[%d]: %s %d\n", \
 			val, __FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_rx_timeout_enable(pub, val); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_CTRL_TIMEOUT_ENABLE(pub, val) \
 	do { \
-		printf("call wake_lock_ctrl_timeout_enable[%d]: %s %d\n", \
+		printf("call dhd_wake_lock_ctrl_timeout_enable[%d]: %s %d\n", \
 			val, __FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_ctrl_timeout_enable(pub, val); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_CTRL_TIMEOUT_CANCEL(pub) \
 	do { \
-		printf("call wake_lock_ctrl_timeout_cancel: %s %d\n", \
+		printf("call dhd_wake_lock_ctrl_timeout_cancel: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_ctrl_timeout_cancel(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_WAIVE(pub) \
 	do { \
-		printf("call wake_lock_waive: %s %d\n", \
+		printf("call dhd_wake_lock_waive: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_waive(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_RESTORE(pub) \
 	do { \
-		printf("call wake_lock_restore: %s %d\n", \
+		printf("call dhd_wake_lock_restore: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_restore(pub); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_INIT(dhd) \
 	do { \
-		printf("call wake_lock_init: %s %d\n", \
+		printf("call dhd_wake_lock_init: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_init(dhd); \
 	} while (0)
 #define DHD_OS_WAKE_LOCK_DESTROY(dhd) \
 	do { \
-		printf("call wake_lock_destroy: %s %d\n", \
+		printf("call dhd_wake_lock_destroy: %s %d\n", \
 			__FUNCTION__, __LINE__); \
 		dhd_os_wake_lock_destroy(dhd); \
 	} while (0)

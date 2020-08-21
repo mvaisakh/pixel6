@@ -90,7 +90,7 @@
 #define EXTENDED_PCIE_DEBUG_DUMP 1	/* Enable Extended pcie registers dump */
 
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
-#define MAX_WKLK_IDLE_CHECK	3	/* times wake_lock checked before deciding not to suspend */
+#define MAX_WKLK_IDLE_CHECK	3	/* times dhd_wake_lock checked before deciding not to suspend */
 
 #define	DHD_MAX_ITEMS_HPP_TXCPL_RING	512
 #define	DHD_MAX_ITEMS_HPP_RXCPL_RING	512
