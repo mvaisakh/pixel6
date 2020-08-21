@@ -73,6 +73,8 @@ MODULE_DEVICE_TABLE(of, decon_driver_dt_match);
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode);
 static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 				    struct drm_crtc_state *old_crtc_state);
+static int decon_request_te_irq(struct exynos_drm_crtc *exynos_crtc,
+				const struct exynos_drm_connector_state *exynos_conn_state);
 
 void decon_dump(struct decon_device *decon)
 {
@@ -228,12 +230,42 @@ static bool has_writeback_job(struct drm_crtc_state *new_crtc_state)
 	return false;
 }
 
+static void decon_update_dsi_config(struct decon_config *config,
+				    const struct drm_crtc_state *crtc_state,
+				    const struct exynos_drm_connector_state *exynos_conn_state)
+{
+	const struct exynos_display_mode *exynos_mode = &exynos_conn_state->exynos_mode;
+	bool is_vid_mode;
+
+	config->dsc.enabled = exynos_mode->dsc.enabled;
+	if (exynos_mode->dsc.enabled) {
+		config->dsc.dsc_count = exynos_mode->dsc.dsc_count;
+		config->dsc.slice_count = exynos_mode->dsc.slice_count;
+		config->dsc.slice_height = exynos_mode->dsc.slice_height;
+		config->dsc.slice_width = DIV_ROUND_UP(config->image_width,
+						       config->dsc.slice_count);
+	}
+
+	is_vid_mode = (exynos_mode->mode_flags & MIPI_DSI_MODE_VIDEO) != 0;
+
+	config->mode.op_mode = is_vid_mode ? DECON_VIDEO_MODE : DECON_COMMAND_MODE;
+
+	if (!is_vid_mode && !exynos_mode->sw_trigger) {
+		if (exynos_conn_state->te_from >= MAX_DECON_TE_FROM_DDI) {
+			pr_warn("TE from DDI is not valid (%d)\n", exynos_conn_state->te_from);
+		} else {
+			config->mode.trig_mode = DECON_HW_TRIG;
+			config->te_from = exynos_conn_state->te_from;
+			pr_debug("TE from DDI%d\n", config->te_from);
+		}
+	}
+}
+
 static void decon_update_config(struct decon_config *config,
 				const struct drm_crtc_state *crtc_state,
-				const struct exynos_display_mode *exynos_mode)
+				const struct exynos_drm_connector_state *exynos_conn_state)
 {
 	const struct drm_display_mode *mode = &crtc_state->adjusted_mode;
-	bool is_vid_mode;
 
 	config->image_width = mode->hdisplay;
 	config->image_height = mode->vdisplay;
@@ -246,38 +278,34 @@ static void decon_update_config(struct decon_config *config,
 	else
 		config->mode.dsi_mode = DSI_MODE_NONE;
 
-	if (!exynos_mode) {
+	/* defaults if not dsi, if video mode or if hw trigger is not configured properly */
+	config->mode.trig_mode = DECON_SW_TRIG;
+	config->te_from = MAX_DECON_TE_FROM_DDI;
+	config->dsc.enabled = false;
+	config->mode.op_mode = DECON_COMMAND_MODE;
+
+	if (!exynos_conn_state) {
 		pr_debug("%s: no private mode config\n", __func__);
 
-		/* valid defaults (ex. for writeback) */
-		config->dsc.enabled = false;
+		/* default bpc */
 		config->out_bpc = 8;
 		return;
 	}
 
-	config->dsc.enabled = exynos_mode->dsc.enabled;
-	if (exynos_mode->dsc.enabled) {
-		config->dsc.dsc_count = exynos_mode->dsc.dsc_count;
-		config->dsc.slice_count = exynos_mode->dsc.slice_count;
-		config->dsc.slice_height = exynos_mode->dsc.slice_height;
-		config->dsc.slice_width = DIV_ROUND_UP(config->image_width,
-						       config->dsc.slice_count);
-	}
+	if (config->mode.dsi_mode != DSI_MODE_NONE)
+		decon_update_dsi_config(config, crtc_state, exynos_conn_state);
 
-	is_vid_mode = (exynos_mode->mode_flags & MIPI_DSI_MODE_VIDEO) != 0;
-	config->mode.op_mode = is_vid_mode ? DECON_VIDEO_MODE : DECON_COMMAND_MODE;
-
-	config->out_bpc = exynos_mode->bpc;
-	config->vblank_usec = exynos_mode->vblank_usec;
+	config->out_bpc = exynos_conn_state->exynos_mode.bpc;
+	config->vblank_usec = exynos_conn_state->exynos_mode.vblank_usec;
 }
 
 static bool decon_is_seamless_possible(const struct decon_device *decon,
 				       const struct drm_crtc_state *crtc_state,
-				       const struct exynos_display_mode *exynos_mode)
+				       const struct exynos_drm_connector_state *exynos_conn_state)
 {
 	struct decon_config new_config = decon->config;
 
-	decon_update_config(&new_config, crtc_state, exynos_mode);
+	decon_update_config(&new_config, crtc_state, exynos_conn_state);
 
 	/* don't allow any changes in decon config */
 	return !memcmp(&new_config, &decon->config, sizeof(new_config));
@@ -295,14 +323,6 @@ static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 	if (!exynos_conn_state)
 		return 0;
 
-	if (!(exynos_conn_state->exynos_mode.mode_flags & MIPI_DSI_MODE_VIDEO)) {
-		if (!decon->irq_te || !decon->res.pinctrl) {
-			decon_err(decon, "TE error: irq_te %d, te_pinctrl %p\n",
-				  decon->irq_te, decon->res.pinctrl);
-			return -EINVAL;
-		}
-	}
-
 	/* only decon0 supports more than 1 dsc */
 	if (decon->id != 0) {
 		const struct exynos_display_mode *mode_priv = &exynos_conn_state->exynos_mode;
@@ -315,8 +335,7 @@ static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 
 	if (exynos_conn_state->seamless_possible && !crtc_state->connectors_changed &&
 	    !crtc_state->active_changed && crtc_state->active) {
-		if (!decon_is_seamless_possible(decon, crtc_state,
-						&exynos_conn_state->exynos_mode)) {
+		if (!decon_is_seamless_possible(decon, crtc_state, exynos_conn_state)) {
 			decon_warn(decon, "seamless not possible for mode %s\n",
 				   crtc_state->adjusted_mode.name);
 		} else {
@@ -628,23 +647,6 @@ static void decon_print_config_info(struct decon_device *decon)
 			decon->bts.fps);
 }
 
-static void decon_set_te_pinctrl(struct decon_device *decon, bool en)
-{
-	int ret;
-
-	if ((decon->config.mode.op_mode != DECON_COMMAND_MODE) ||
-			(decon->config.mode.trig_mode != DECON_HW_TRIG))
-		return;
-
-	if (!decon->res.pinctrl || !decon->res.te_on)
-		return;
-
-	ret = pinctrl_select_state(decon->res.pinctrl,
-			en ? decon->res.te_on : decon->res.te_off);
-	if (ret)
-		decon_err(decon, "failed to control decon TE(%d)\n", en);
-}
-
 static void decon_enable_irqs(struct decon_device *decon)
 {
 	decon_reg_set_interrupts(decon->id, 1);
@@ -787,21 +789,21 @@ static void _decon_stop(struct decon_device *decon, bool reset)
 	decon_reg_stop(decon->id, &decon->config, reset, decon->bts.fps);
 }
 
-static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *old_crtc_state)
+static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_state *old_crtc_state)
 {
-	const struct drm_crtc_state *crtc_state = crtc->base.state;
-	struct decon_device *decon = crtc->ctx;
+	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
+	struct decon_device *decon = exynos_crtc->ctx;
 
-	if (crtc_state->mode_changed) {
+	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
 		const struct drm_atomic_state *state = old_crtc_state->state;
 		const struct exynos_drm_connector_state *exynos_conn_state =
 			crtc_get_exynos_connector_state(state, crtc_state);
-		const struct exynos_display_mode *exynos_mode = NULL;
 
-		if (exynos_conn_state)
-			exynos_mode = &exynos_conn_state->exynos_mode;
+		decon_update_config(&decon->config, crtc_state, exynos_conn_state);
 
-		decon_update_config(&decon->config, crtc_state, exynos_mode);
+		if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
+		    (decon->config.mode.trig_mode == DECON_HW_TRIG))
+			decon_request_te_irq(exynos_crtc, exynos_conn_state);
 	}
 
 	if (decon->state == DECON_STATE_ON) {
@@ -811,12 +813,10 @@ static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *ol
 
 	decon_info(decon, "%s +\n", __func__);
 
-	if (is_tui(crtc_state)) {
+	if (is_tui(crtc_state))
 		decon_debug(decon, "tui_state : skip power enable\n");
-	} else {
+	else
 		pm_runtime_get_sync(decon->dev);
-		decon_set_te_pinctrl(decon, true);
-	}
 
 	if (decon->state == DECON_STATE_INIT)
 		_decon_stop(decon, true);
@@ -882,6 +882,7 @@ void decon_enter_hibernation(struct decon_device *decon)
 static void decon_disable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
+	struct drm_crtc_state *crtc_state = crtc->base.state;
 
 	if (decon->state == DECON_STATE_OFF)
 		return;
@@ -890,12 +891,17 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 
 	_decon_disable(decon);
 
-	if (is_tui(crtc->base.state)) {
-		decon_debug(decon, "tui_state : skip power disable\n");
-	} else {
-		decon_set_te_pinctrl(decon, false);
-		pm_runtime_put_sync(decon->dev);
+	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
+		if (decon->irq_te >= 0) {
+			devm_free_irq(decon->dev, decon->irq_te, decon);
+			decon->irq_te = -1;
+		}
 	}
+
+	if (is_tui(crtc->base.state))
+		decon_debug(decon, "tui_state : skip power disable\n");
+	else
+		pm_runtime_put_sync(decon->dev);
 
 	decon->state = DECON_STATE_OFF;
 
@@ -1055,19 +1061,6 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		return ret;
 	}
 
-	ret = of_property_read_u32(np, "op_mode", &decon->config.mode.op_mode);
-	if (ret) {
-		decon_err(decon, "failed to parse operation mode(%d)\n", ret);
-		return ret;
-	}
-
-	ret = of_property_read_u32(np, "trig_mode",
-			&decon->config.mode.trig_mode);
-	if (ret) {
-		decon_err(decon, "failed to parse trigger mode(%d)\n", ret);
-		return ret;
-	}
-
 	ret = of_property_read_u32(np, "rd_en", &decon->config.urgent.rd_en);
 	if (ret)
 		decon_warn(decon, "failed to parse urgent rd_en(%d)\n", ret);
@@ -1125,24 +1118,6 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 			decon_err(decon, "failed to parse dta_lo_thres(%d)\n",
 					ret);
 		}
-	}
-
-	if (decon->config.mode.trig_mode == DECON_HW_TRIG) {
-		ret = of_property_read_u32(np, "te_from",
-				&decon->config.te_from);
-		if (ret) {
-			decon_err(decon, "failed to get TE from DDI\n");
-			return ret;
-		}
-		if (decon->config.te_from >= MAX_DECON_TE_FROM_DDI) {
-			decon_err(decon, "TE from DDI is wrong(%d)\n",
-					decon->config.te_from);
-			return ret;
-		}
-		decon_info(decon, "TE from DDI%d\n", decon->config.te_from);
-	} else {
-		decon->config.te_from = MAX_DECON_TE_FROM_DDI;
-		decon_info(decon, "TE from NONE\n");
 	}
 
 	if (of_property_read_u32(np, "ppc", (u32 *)&decon->bts.ppc))
@@ -1300,13 +1275,39 @@ end:
 	return IRQ_HANDLED;
 }
 
+static int decon_request_te_irq(struct exynos_drm_crtc *exynos_crtc,
+				const struct exynos_drm_connector_state *exynos_conn_state)
+{
+	struct decon_device *decon = exynos_crtc->ctx;
+	char name[32];
+	int ret, irq;
+
+	if (WARN_ON(!exynos_conn_state))
+		return -EINVAL;
+
+	WARN(decon->irq_te >= 0, "unbalanced te irq\n");
+	scnprintf(name, sizeof(name), "decon%d_te", decon->id);
+
+	irq = gpio_to_irq(exynos_conn_state->te_gpio);
+
+	decon_info(decon, "TE irq number(%d)\n", irq);
+	irq_set_status_flags(irq, IRQ_DISABLE_UNLAZY);
+	ret = devm_request_irq(decon->dev, irq, decon_te_irq_handler, IRQF_TRIGGER_RISING, name,
+			       decon);
+	if (!ret) {
+		disable_irq(irq);
+		decon->irq_te = irq;
+	}
+
+	return ret;
+}
+
 static int decon_register_irqs(struct decon_device *decon)
 {
 	struct device *dev = decon->dev;
 	struct device_node *np = dev->of_node;
 	struct platform_device *pdev;
 	int ret = 0;
-	int gpio;
 
 	pdev = container_of(dev, struct platform_device, dev);
 
@@ -1340,62 +1341,8 @@ static int decon_register_irqs(struct decon_device *decon)
 	}
 	disable_irq(decon->irq_ext);
 
-	/*
-	 * Get IRQ resource and register IRQ handler. Only enabled in command
-	 * mode.
-	 */
-	if (of_get_property(dev->of_node, "gpios", NULL) != NULL) {
-		gpio = of_get_gpio(dev->of_node, 0);
-		if (gpio < 0) {
-			decon_err(decon, "failed to get TE gpio\n");
-			return -ENODEV;
-		}
-	} else {
-		decon_debug(decon, "failed to find TE gpio node\n");
-		return 0;
-	}
+	decon->irq_te = -1;
 
-	decon->irq_te = gpio_to_irq(gpio);
-
-	decon_info(decon, "TE irq number(%d)\n", decon->irq_te);
-	irq_set_status_flags(decon->irq_te, IRQ_DISABLE_UNLAZY);
-	ret = devm_request_irq(dev, decon->irq_te, decon_te_irq_handler,
-			IRQF_TRIGGER_RISING, pdev->name, decon);
-	disable_irq(decon->irq_te);
-
-	return ret;
-}
-
-static int decon_get_pinctrl(struct decon_device *decon)
-{
-	int ret = 0;
-
-	decon->res.pinctrl = devm_pinctrl_get(decon->dev);
-	if (IS_ERR(decon->res.pinctrl)) {
-		decon_debug(decon, "failed to get pinctrl\n");
-		ret = PTR_ERR(decon->res.pinctrl);
-		decon->res.pinctrl = NULL;
-		/* optional in video mode */
-		return 0;
-	}
-
-	decon->res.te_on = pinctrl_lookup_state(decon->res.pinctrl, "hw_te_on");
-	if (IS_ERR(decon->res.te_on)) {
-		decon_err(decon, "failed to get hw_te_on pin state\n");
-		ret = PTR_ERR(decon->res.te_on);
-		decon->res.te_on = NULL;
-		goto err;
-	}
-	decon->res.te_off = pinctrl_lookup_state(decon->res.pinctrl,
-			"hw_te_off");
-	if (IS_ERR(decon->res.te_off)) {
-		decon_err(decon, "failed to get hw_te_off pin state\n");
-		ret = PTR_ERR(decon->res.te_off);
-		decon->res.te_off = NULL;
-		goto err;
-	}
-
-err:
 	return ret;
 }
 
@@ -1429,10 +1376,6 @@ static int decon_init_resources(struct decon_device *decon)
 		goto err;
 
 	ret = decon_register_irqs(decon);
-	if (ret)
-		goto err;
-
-	ret = decon_get_pinctrl(decon);
 	if (ret)
 		goto err;
 

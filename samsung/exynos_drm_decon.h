@@ -58,9 +58,6 @@ enum dpu_win_state {
 };
 
 struct decon_resources {
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *te_on;
-	struct pinctrl_state *te_off;
 	struct clk *aclk;
 	struct clk *aclk_disp;
 };
@@ -344,7 +341,7 @@ struct decon_device {
 	u32				irq_fs;	/* frame start irq number*/
 	u32				irq_fd;	/* frame done irq number*/
 	u32				irq_ext;/* extra irq number*/
-	u32				irq_te;
+	int				irq_te;
 
 	spinlock_t			slock;
 
@@ -384,22 +381,29 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long action,
 		void *data);
 #endif
 
+static inline struct drm_encoder *
+crtc_find_first_encoder_by_type(const struct drm_crtc_state *crtc_state, u32 encoder_type)
+{
+	const struct drm_crtc *crtc = crtc_state->crtc;
+	const struct drm_device *dev = crtc->dev;
+	struct drm_encoder *encoder;
+
+	drm_for_each_encoder_mask(encoder, dev, crtc_state->encoder_mask)
+		if (encoder->crtc == crtc && encoder->encoder_type == encoder_type)
+			return encoder;
+
+	return NULL;
+}
+
 static inline struct drm_encoder*
 decon_get_encoder(const struct decon_device *decon, u32 encoder_type)
 {
 	const struct drm_crtc *crtc = &decon->crtc->base;
-	const struct drm_device *dev = crtc->dev;
-	struct drm_encoder *encoder;
 
 	if (!crtc->state)
 		return NULL;
 
-	drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask)
-		if (encoder->crtc == crtc &&
-				encoder->encoder_type == encoder_type)
-			return encoder;
-
-	return NULL;
+	return crtc_find_first_encoder_by_type(crtc->state, encoder_type);
 }
 
 static inline struct dsim_device*

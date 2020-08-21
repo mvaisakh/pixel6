@@ -66,6 +66,12 @@ struct dsim_device {
 	struct mipi_dsi_device *dsi_device;
 
 	enum exynos_drm_output_type output_type;
+	int te_from;
+	int te_gpio;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *te_on;
+	struct pinctrl_state *te_off;
+	bool hw_trigger;
 
 	struct dsim_resources res;
 	struct clk **clks;
