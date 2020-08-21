@@ -242,7 +242,16 @@ static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 		if (!decon->irq_te || !decon->res.pinctrl) {
 			decon_err(decon, "TE error: irq_te %d, te_pinctrl %p\n",
 				  decon->irq_te, decon->res.pinctrl);
+			return -EINVAL;
+		}
+	}
 
+	/* only decon0 supports more than 1 dsc */
+	if (decon->id != 0) {
+		const struct exynos_display_mode *mode_priv = &exynos_conn_state->exynos_mode;
+
+		if (mode_priv->dsc.enabled && (mode_priv->dsc.dsc_count > 1)) {
+			decon_err(decon, "cannot support %d dsc\n", mode_priv->dsc.dsc_count);
 			return -EINVAL;
 		}
 	}
