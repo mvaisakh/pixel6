@@ -114,6 +114,21 @@ save_transaction_to_history(struct lwis_client *client,
 	}
 }
 
+static void free_transaction(struct lwis_transaction *transaction)
+{
+	int i = 0;
+
+	kfree(transaction->resp);
+	for (i = 0; i < transaction->info.num_io_entries; ++i) {
+		if (transaction->info.io_entries[i].type ==
+		    LWIS_IO_ENTRY_WRITE_BATCH) {
+			kfree(transaction->info.io_entries[i].rw_batch.buf);
+		}
+	}
+	kfree(transaction->info.io_entries);
+	kfree(transaction);
+}
+
 static int process_transaction(struct lwis_client *client,
 			       struct lwis_transaction *transaction,
 			       struct list_head *pending_events, bool in_irq)
@@ -213,14 +228,7 @@ event_push:
 		}
 	}
 	save_transaction_to_history(client, info);
-	kfree(resp);
-	for (i = 0; i < info->num_io_entries; ++i) {
-		if (info->io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(info->io_entries[i].rw_batch.buf);
-		}
-	}
-	kfree(info->io_entries);
-	kfree(transaction);
+	free_transaction(transaction);
 	return ret;
 }
 
@@ -240,9 +248,7 @@ static void cancel_transaction(struct lwis_transaction *transaction,
 					info->emit_error_event_id, &resp,
 					sizeof(resp));
 	}
-	kfree(transaction->resp);
-	kfree(info->io_entries);
-	kfree(transaction);
+	free_transaction(transaction);
 }
 
 static void transaction_work_func(struct work_struct *work)
