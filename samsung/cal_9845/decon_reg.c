@@ -1629,11 +1629,14 @@ static void decon_reg_set_dither(u32 id, struct decon_config *config, bool en)
 		cal_log_warn(id, "decon(%d) is invalid to set dither\n", id);
 		return;
 	} else if (id == 0) {
+		/* TODO (b/163600343): Decouple enabling DQE and dither */
 		if (en) {
 			decon_reg_set_dqe_enable(0, true);
 			dqe_reg_init(config->image_width, config->image_height);
+			dqe_reg_set_disp_dither(DITHER_EN(1));
+		} else {
+			dqe_reg_set_disp_dither(DITHER_EN(0));
 		}
-		dqe_reg_set_disp_dither(DITHER_EN(1));
 		decon_reg_update_req_dqe(id);
 	}
 
