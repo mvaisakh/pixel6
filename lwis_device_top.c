@@ -399,6 +399,7 @@ static const struct of_device_id lwis_id_match[] = {
 // MODULE_DEVICE_TABLE(of, lwis_id_match);
 
 static struct platform_driver lwis_driver = {
+	.probe = lwis_top_device_probe,
 	.driver = {
 		.name = LWIS_DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -416,7 +417,8 @@ static struct platform_device_id lwis_driver_id[] = {
 };
 MODULE_DEVICE_TABLE(platform, lwis_driver_id);
 
-static struct platform_driver lwis_driver = { .id_table = lwis_driver_id,
+static struct platform_driver lwis_driver = { .probe = lwis_top_device_probe,
+					      .id_table = lwis_driver_id,
 					      .driver = {
 						      .name = LWIS_DRIVER_NAME,
 						      .owner = THIS_MODULE,
@@ -433,9 +435,9 @@ int __init lwis_top_device_init(void)
 
 	pr_info("Top device initialization\n");
 
-	ret = platform_driver_probe(&lwis_driver, lwis_top_device_probe);
+	ret = platform_driver_register(&lwis_driver);
 	if (ret) {
-		pr_err("platform_driver_probe failed - %d", ret);
+		pr_err("platform_driver_register failed: %d\n", ret);
 	}
 
 	return ret;
