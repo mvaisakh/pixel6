@@ -14,6 +14,7 @@
 #include <linux/dma-buf.h>
 
 #include "lwis_device.h"
+#include "lwis_buffer.h"
 
 /* Allocates a DMA buffer of size of PAGE_ALIGN(len) with allocation flags.
  * This returns dma_buf structure or an ERR_PTR on error.
@@ -26,9 +27,8 @@ struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags);
  * on error.
  */
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
-					struct dma_buf_attachment *attachment,
+					struct lwis_enrolled_buffer *lwis_buffer,
 					off_t offset, size_t size,
-					enum dma_data_direction direction,
 					int flags);
 
 /*

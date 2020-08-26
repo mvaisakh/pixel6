@@ -8,14 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-/* IOVMM is deprecated on 5.4, need replacement for these code blocks */
-#define ENABLE_IOVMM 0
-
 #include "lwis_platform_gs101.h"
 
-#if ENABLE_IOVMM
-#include <linux/exynos_iovmm.h>
-#endif
 #include <linux/iommu.h>
 #include <linux/of.h>
 #include <linux/pm_runtime.h>
@@ -51,17 +45,15 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-#if ENABLE_IOVMM
 static int __attribute__((unused))
-iovmm_fault_handler(struct iommu_domain *domain, struct device *dev,
-		    unsigned long fault_addr, int fault_flag, void *token)
+lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 {
-	struct lwis_device *lwis_dev = (struct lwis_device *)token;
+	struct lwis_device *lwis_dev = (struct lwis_device *)param;
 
-	pr_err("############ LWIS IOVMM PAGE FAULT ############\n");
+	pr_err("############ LWIS IOMMU PAGE FAULT ############\n");
 	pr_err("\n");
-	pr_err("Device: %s IOVMM Page Fault at Address: 0x%pK Flag: 0x%08x\n",
-	       lwis_dev->name, fault_addr, fault_flag);
+	pr_err("Device: %s IOMMU Page Fault at Address: %llu Flag: 0x%08x\n",
+		lwis_dev->name, fault->event.addr, fault->event.flags);
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
@@ -77,7 +69,6 @@ iovmm_fault_handler(struct iommu_domain *domain, struct device *dev,
 	return NOTIFY_OK;
 #endif /* ENABLE_PAGE_FAULT_PANIC */
 }
-#endif /* ENABLE_IOVMM */
 
 int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 {
@@ -105,20 +96,18 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-#if ENABLE_IOVMM
 	if (lwis_dev->has_iommu) {
-		/* Activate IOMMU/SYSMMU for the platform device */
-		ret = iovmm_activate(&lwis_dev->plat_dev->dev);
+		/* Activate IOMMU for the platform device */
+		ret = iommu_register_device_fault_handler(
+			&lwis_dev->plat_dev->dev,
+			lwis_iommu_fault_handler,
+			lwis_dev);
 		if (ret < 0) {
-			pr_err("Failed to enable IOMMU for the device: %d\n",
+			pr_err("Failed to register fault handler for the device: %d\n",
 			       ret);
 			return ret;
 		}
-		/* Set SYSMMU fault handler */
-		iovmm_set_fault_handler(&lwis_dev->plat_dev->dev,
-					iovmm_fault_handler, lwis_dev);
 	}
-#endif /* ENABLE_IOVMM */
 
 	/*
 	 * PM_QOS_CPU_ONLINE_MIN is not defined in 5.4 branch, will need to
@@ -170,16 +159,14 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	}
 
 	/* We can't remove fault handlers, so there's no call corresponding
-	 * to the iovmm_set_fault_handler above */
+	 * to the iommu_register_device_fault_handler above */
 
 	lwis_platform_remove_qos(lwis_dev);
 
-#if ENABLE_IOVMM
 	if (lwis_dev->has_iommu) {
-		/* Deactivate IOMMU/SYSMMU */
-		iovmm_deactivate(&lwis_dev->plat_dev->dev);
+		/* Deactivate IOMMU */
+		iommu_unregister_device_fault_handler(&lwis_dev->plat_dev->dev);
 	}
-#endif /* ENABLE_IOVMM */
 
 	/* Disable platform device */
 	return pm_runtime_put_sync(&lwis_dev->plat_dev->dev);

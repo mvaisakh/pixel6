@@ -8,72 +8,47 @@
  * published by the Free Software Foundation.
  */
 
-#define ENABLE_IOVMM 0
-
 #include <linux/slab.h>
 
-#if ENABLE_IOVMM
-#include <linux/ion_exynos.h>
-#include <linux/exynos_iovmm.h>
-#endif
-
+#include <linux/iommu.h>
+#include <linux/ion.h>
+#include <linux/dma-buf.h>
 #include "lwis_commands.h"
 #include "lwis_init.h"
 #include "lwis_platform.h"
 #include "lwis_platform_dma.h"
 
-#define ION_SYSTEM_HEAP_NAME "ion_system_heap"
-#define ION_SYSTEM_CONTIG_HEAP_NAME "ion_system_contig_heap"
-
-/*
- * ION allocation flags, imported from "/drivers/staging/android/uapi/ion.h".
- */
-#define ION_FLAG_CACHED 1
-#define ION_FLAG_NOZEROED 8
-
 struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags)
 {
-#if ENABLE_IOVMM
 	unsigned int ion_flags = 0;
+	unsigned int heapmask;
 
-	/*
-	 * "system_contig_heap" does not seemed to be used in the exynos driver,
-	 * that's why system heap is used by default.
-	 */
-	const char *ion_heap_name = ION_SYSTEM_HEAP_NAME;
+	heapmask = ION_HEAP_SYSTEM;
 
 	if (flags & LWIS_DMA_BUFFER_CACHED) {
 		ion_flags |= ION_FLAG_CACHED;
 	}
-	if (flags & LWIS_DMA_BUFFER_UNINITIALIZED) {
-		ion_flags |= ION_FLAG_NOZEROED;
-	}
 
-	return ion_alloc_dmabuf(ion_heap_name, len, ion_flags);
-#else
-	return NULL;
-#endif
+	return ion_alloc(len, heapmask, ion_flags);
 }
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
-					struct dma_buf_attachment *attachment,
+					struct lwis_enrolled_buffer *lwis_buffer,
 					off_t offset, size_t size,
-					enum dma_data_direction direction,
 					int flags)
 {
-#if ENABLE_IOVMM
-	return ion_iovmm_map(attachment, offset, size, direction, flags);
-#else
-	return 0;
-#endif
+
+	return sg_dma_address(lwis_buffer->sg_table->sgl);
 }
 
+/*
+ * We don't ever do dma_buf_vmap before. Instead, use the upstream dma-buf
+ * interface to map ION buffers, so we don't need to do dma_buf_vunmap.
+ * Keep this function by defult return 0
+ */
 int lwis_platform_dma_buffer_unmap(struct lwis_device *lwis_dev,
 				   struct dma_buf_attachment *attachment,
 				   dma_addr_t address)
 {
-#if ENABLE_IOVMM
-	ion_iovmm_unmap(attachment, address);
-#endif
 	return 0;
 }
