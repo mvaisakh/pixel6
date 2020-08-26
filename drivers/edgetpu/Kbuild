@@ -21,4 +21,4 @@ CFLAGS_abrolhos-firmware.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-platform.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-pm.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-thermal.o := -DCONFIG_ABROLHOS=1
-
+CFLAGS_abrolhos-iommu.o := -DCONFIG_ABROLHOS=1

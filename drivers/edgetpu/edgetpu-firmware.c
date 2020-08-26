@@ -572,6 +572,7 @@ void edgetpu_firmware_mappings_show(struct edgetpu_dev *etdev,
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 	struct edgetpu_firmware_buffer *fw_buf;
 	phys_addr_t fw_iova_target;
+	unsigned long iova;
 
 	if (!et_fw)
 		return;
@@ -579,7 +580,8 @@ void edgetpu_firmware_mappings_show(struct edgetpu_dev *etdev,
 	if (!fw_buf->vaddr)
 		return;
 	fw_iova_target = fw_buf->dram_tpa ? fw_buf->dram_tpa : fw_buf->dma_addr;
-	seq_printf(s, "  0x%llx %lu fw - %pad %s\n",
-		   FW_IOVA, fw_buf->alloc_size / PAGE_SIZE, &fw_iova_target,
+	iova = edgetpu_chip_firmware_iova(etdev);
+	seq_printf(s, "  0x%lx %lu fw - %pad %s\n", iova,
+		   fw_buf->alloc_size / PAGE_SIZE, &fw_iova_target,
 		   fw_buf->flags & FW_ONDEV ? "dev" : "");
 }

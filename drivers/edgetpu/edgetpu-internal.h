@@ -61,9 +61,6 @@ enum edgetpu_context_id {
 	/* contexts 8 and above not yet allocated */
 };
 
-/* TPU address where the firmware is expected to be located (after remap) */
-#define FW_IOVA		0x80000000ll
-
 typedef u64 tpu_addr_t;
 
 struct edgetpu_coherent_mem {

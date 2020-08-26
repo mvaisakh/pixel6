@@ -115,3 +115,12 @@ int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
 {
 	return edgetpu_firmware_run(etdev, name, flags);
 }
+
+unsigned long edgetpu_chip_firmware_iova(struct edgetpu_dev *etdev)
+{
+	/*
+	 * TODO(b/129761817): Fetch the correct address, it won't be a constant
+	 * value after GSA gets involved.
+	 */
+	return FW_IOVA;
+}

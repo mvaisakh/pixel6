@@ -54,11 +54,21 @@ static int edgetpu_iommu_fault_handler(struct iommu_domain *domain,
 	return 0;
 }
 
+static void edgetpu_init_etdomain(struct edgetpu_dev *etdev,
+				  struct edgetpu_iommu_domain *etdomain,
+				  struct iommu_domain *domain,
+				  unsigned int pasid)
+{
+	etdomain->iommu_domain = domain;
+	etdomain->pasid = pasid;
+	iommu_set_fault_handler(domain, edgetpu_iommu_fault_handler, etdomain);
+}
+
 /* mmu_info is unused and NULL for IOMMU version, let IOMMU API supply info */
 int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
 	struct edgetpu_iommu *etiommu;
-	struct edgetpu_iommu_domain *etdomain;
+	struct iommu_domain *domain;
 	int i;
 
 	etiommu = kzalloc(sizeof(*etiommu), GFP_KERNEL);
@@ -80,17 +90,13 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	 * it as one of the user context domains.
 	 */
 	i = 0;
-	etdomain = &etiommu->domain[0];
-	etdomain->iommu_domain = iommu_get_domain_for_dev(etdev->dev);
-	etiommu->context_0_default = etdomain->iommu_domain;
-	if (!etiommu->context_0_default) {
+	domain = iommu_get_domain_for_dev(etdev->dev);
+	if (!domain) {
 		dev_warn(etdev->dev,
 			 "device group has no default iommu domain\n");
 	} else {
-		etdomain->pasid = 0;
-		iommu_set_fault_handler(etdomain->iommu_domain,
-					edgetpu_iommu_fault_handler, etdomain);
-
+		etiommu->context_0_default = true;
+		edgetpu_init_etdomain(etdev, &etiommu->domain[0], domain, 0);
 		i++;
 	}
 
@@ -99,7 +105,6 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 		return i ? 0 : -EINVAL;
 
 	for (; i < NCONTEXTS; i++) {
-		struct iommu_domain *domain;
 		unsigned int pasid;
 
 		domain = iommu_domain_alloc(etdev->dev->bus);
@@ -123,11 +128,8 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 			iommu_aux_detach_device(domain, etdev->dev);
 			iommu_domain_free(domain);
 		} else {
-			etdomain = &etiommu->domain[pasid];
-			etdomain->iommu_domain = domain;
-			etdomain->pasid = pasid;
-			iommu_set_fault_handler(
-				domain, edgetpu_iommu_fault_handler, etdomain);
+			edgetpu_init_etdomain(etdev, &etiommu->domain[pasid],
+					      domain, pasid);
 		}
 	}
 	return 0;

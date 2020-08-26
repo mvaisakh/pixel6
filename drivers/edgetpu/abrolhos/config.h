@@ -20,6 +20,13 @@
 #define EDGETPU_HAS_REMAPPED_DATA
 
 /*
+ * The TPU VA where the firmware is located.
+ *
+ * The address is chosen to not overlap with any memory region specified in the
+ * firmware's linker file.
+ */
+#define FW_IOVA 0x16000000u
+/*
  * Size of the area in remapped DRAM reserved for firmware code and internal
  * data. This must match the firmware's linker file.
  */

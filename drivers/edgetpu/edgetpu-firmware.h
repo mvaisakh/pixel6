@@ -133,6 +133,12 @@ struct edgetpu_firmware_handlers {
  */
 int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
 			      enum edgetpu_firmware_flags flags);
+/*
+ * Returns the chip-specific IOVA where the firmware is mapped.
+ *
+ * Debug purpose only.
+ */
+unsigned long edgetpu_chip_firmware_iova(struct edgetpu_dev *etdev);
 
 /*
  * Load and run firmware.  Called by edgetpu_chip_firmware_run().
