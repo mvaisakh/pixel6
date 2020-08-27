@@ -601,7 +601,6 @@ static enum power_supply_property max77759_wcin_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
-	POWER_SUPPLY_PROP_REAL_TYPE,
 	POWER_SUPPLY_PROP_DC_RESET,
 };
 
@@ -688,10 +687,6 @@ static int max77759_wcin_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		rc = max77759_wcin_voltage_max(chgr, val);
-		break;
-	/* TODO: this is a local extension, not used from the p9221 driver */
-	case POWER_SUPPLY_PROP_REAL_TYPE:
-		val->intval = POWER_SUPPLY_TYPE_WIRELESS;
 		break;
 	case POWER_SUPPLY_PROP_DC_RESET:
 		/* TBD */
