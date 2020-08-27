@@ -656,8 +656,6 @@ struct p9221_prop_reg_map_entry p9221_prop_reg_map[] = {
 	{POWER_SUPPLY_PROP_TEMP,	P9221R5_DIE_TEMP_ADC_REG,	1, 0},
 	{POWER_SUPPLY_PROP_CAPACITY,	0,				1, 1},
 	{POWER_SUPPLY_PROP_ONLINE,	0,				1, 1},
-	{POWER_SUPPLY_PROP_OPERATING_FREQ,
-					P9221R5_OP_FREQ_REG,		1, 0},
 };
 
 static struct p9221_prop_reg_map_entry *p9221_get_map_entry(
@@ -1100,18 +1098,20 @@ static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger)
 		  "%08x", tx_id);
 	return charger->tx_id_str;
 }
-static const char *p9382_get_ptmc_id_str(struct p9221_charger_data *charger)
+
+static int p9382_get_ptmc_id_str(char *buffer, int len,
+				 struct p9221_charger_data *charger)
 {
 	int ret;
 	uint16_t ptmc_id;
 
 	if (!charger->ben_state || (charger->chip_id < P9382A_CHIP_ID))
-		return NULL;
+		return -ENODEV;
 
 	pm_runtime_get_sync(charger->dev);
 	if (!charger->resume_complete) {
 		pm_runtime_put_sync(charger->dev);
-		return NULL;
+		return -EAGAIN;
 	}
 	pm_runtime_put_sync(charger->dev);
 
@@ -1119,13 +1119,10 @@ static const char *p9382_get_ptmc_id_str(struct p9221_charger_data *charger)
 	if (ret) {
 		dev_err(&charger->client->dev,
 			"Failed to read device prmc %d\n", ret);
-		return NULL;
+		return ret;
 	}
 
-	scnprintf(charger->ptmc_id_str,
-		  sizeof(charger->ptmc_id_str), "%04x", ptmc_id);
-
-	return charger->ptmc_id_str;
+	return scnprintf(buffer, len, "%04x", ptmc_id);
 }
 
 /*
@@ -1171,11 +1168,6 @@ static int p9221_get_property(struct power_supply *psy,
 		if (val->strval == NULL)
 			return -ENODATA;
 		break;
-	case POWER_SUPPLY_PROP_PTMC_ID:
-		val->strval = p9382_get_ptmc_id_str(charger);
-		if (val->strval == NULL)
-			return -ENODATA;
-		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		if (charger->last_capacity > 0)
 			val->intval = charger->last_capacity;
@@ -1195,12 +1187,14 @@ static int p9221_get_property(struct power_supply *psy,
 		/* success */
 		ret = 0;
 		break;
+#ifdef CONFIG_QC_COMPAT
 	case POWER_SUPPLY_PROP_AICL_DELAY:
 		val->intval = charger->aicl_delay_ms;
 		break;
 	case POWER_SUPPLY_PROP_AICL_ICL:
 		val->intval = charger->aicl_icl_ua;
 		break;
+#endif
 	default:
 		ret = p9221_get_property_reg(charger, prop, val);
 		break;
@@ -2590,6 +2584,44 @@ static ssize_t aicl_icl_ua_store(struct device *dev,
 
 static DEVICE_ATTR_RW(aicl_icl_ua);
 
+
+static ssize_t operating_freq_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	u32 data;
+	int ret;
+
+	/* TODO: sleep/resume? */
+
+	if (!p9221_is_online(charger))
+		return -ENODEV;
+
+	ret = p9221_reg_read_cooked(charger, P9221R5_OP_FREQ_REG, &data);
+	if (ret)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", data);
+}
+
+static DEVICE_ATTR_RO(operating_freq);
+
+
+static ssize_t ptmc_id_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	return p9382_get_ptmc_id_str(buf, PAGE_SIZE, charger);
+}
+
+static DEVICE_ATTR_RO(ptmc_id);
+
+
 /* ------------------------------------------------------------------------ */
 static ssize_t rx_lvl_show(struct device *dev,
 			   struct device_attribute *attr,
@@ -3070,6 +3102,8 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_alignment.attr,
 	&dev_attr_aicl_delay_ms.attr,
 	&dev_attr_aicl_icl_ua.attr,
+	&dev_attr_operating_freq.attr,
+	&dev_attr_ptmc_id.attr,
 	NULL
 };
 
@@ -3906,12 +3940,12 @@ static enum power_supply_property p9221_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_TEMP,
+#ifdef CONFIG_QC_COMPAT
 	POWER_SUPPLY_PROP_AICL_DELAY,
 	POWER_SUPPLY_PROP_AICL_ICL,
+#endif
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
-	POWER_SUPPLY_PROP_PTMC_ID,
 	POWER_SUPPLY_PROP_CAPACITY,
-	POWER_SUPPLY_PROP_OPERATING_FREQ,
 };
 
 static const struct power_supply_desc p9221_psy_desc = {
