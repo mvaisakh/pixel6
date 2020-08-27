@@ -242,6 +242,7 @@ static int update_usb_status(struct overheat_info *ovh_info)
 		ovh_info->accessory_connected;
 	bool curr_state;
 	int *check_status = &ovh_info->check_status;
+	int mode;
 
 	/* Port is too hot to safely check the connected status. */
 	if (ovh_info->overheat_mitigation &&
@@ -279,11 +280,17 @@ static int update_usb_status(struct overheat_info *ovh_info)
 		return ret;
 	ovh_info->usb_connected = ret;
 
-	ret = GPSY_GET_PROP(ovh_info->usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE);
+#ifdef CONFIG_USB_ONLINE_IS_TYPEC_MODE
+	ret = GPSY_GET_INT_PROP(ovh_info->usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE, &mode);
+#else
+	ret = GPSY_GET_INT_PROP(ovh_info->usb_psy, POWER_SUPPLY_PROP_ONLINE, &mode);
+#endif
+	pr_debug("%s: TYPEC mode=%d ret=%d\n", __func__, mode, ret);
 	if (ret < 0)
 		return ret;
-	ovh_info->accessory_connected = (ret == POWER_SUPPLY_TYPEC_SINK) ||
-			(ret == POWER_SUPPLY_TYPEC_SINK_POWERED_CABLE);
+
+	ovh_info->accessory_connected = (mode == POWER_SUPPLY_TYPEC_SINK) ||
+			(mode == POWER_SUPPLY_TYPEC_SINK_POWERED_CABLE);
 
 	curr_state = ovh_info->usb_connected || ovh_info->accessory_connected;
 	if (curr_state && !prev_state) {
