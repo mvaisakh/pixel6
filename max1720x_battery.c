@@ -766,8 +766,6 @@ static enum power_supply_property max1720x_battery_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_OCV,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
-	POWER_SUPPLY_PROP_DELTA_CC_SUM,
-	POWER_SUPPLY_PROP_DELTA_VFSOC_SUM,
 	POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE,
 	POWER_SUPPLY_PROP_RES_FILTER_COUNT,
 	POWER_SUPPLY_PROP_RESISTANCE_AVG,	/* 24 */
@@ -1699,12 +1697,6 @@ static int max1720x_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		val->strval = chip->serial_number;
-		break;
-	case POWER_SUPPLY_PROP_DELTA_CC_SUM:
-		val->intval = chip->cap_estimate.delta_cc_sum;
-		break;
-	case POWER_SUPPLY_PROP_DELTA_VFSOC_SUM:
-		val->intval = chip->cap_estimate.delta_vfsoc_sum;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE:
 		val->intval = batt_ce_full_estimate(&chip->cap_estimate);
@@ -2800,6 +2792,17 @@ static ssize_t max1720x_set_custom_model(struct file *filp,
 BATTERY_DEBUG_ATTRIBUTE(debug_m5_custom_model_fops, max1720x_show_custom_model,
 			max1720x_set_custom_model);
 
+
+/*
+ * TODO: add the building blocks of google capacity
+ *
+ * case POWER_SUPPLY_PROP_DELTA_CC_SUM:
+ *	val->intval = chip->cap_estimate.delta_cc_sum;
+ *	break;
+ * case POWER_SUPPLY_PROP_DELTA_VFSOC_SUM:
+ * 	val->intval = chip->cap_estimate.delta_vfsoc_sum;
+ *	break;
+ */
 
 static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 {
