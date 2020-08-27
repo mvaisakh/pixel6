@@ -70,7 +70,6 @@ struct gbms_chg_profile {
 	S(USB_BRICKID),	\
 	S(USB_HVDCP),	\
 	S(USB_HVDCP3),	\
-	S(USB_FLOAT),	\
 	S(WLC),		\
 	S(WLC_EPP),	\
 	S(WLC_SPP),	\

@@ -335,6 +335,7 @@ static inline void chg_reset_state(struct chg_drv *chg_drv)
 			chg_state.v);
 }
 
+/* definitions from FOREACH_CHG_EV_ADAPTER() in google_bms.h */
 static int info_usb_ad_type(int usb_type, int usbc_type)
 {
 	switch (usb_type) {
@@ -348,8 +349,7 @@ static int info_usb_ad_type(int usb_type, int usbc_type)
 		return (usbc_type == POWER_SUPPLY_USB_TYPE_PD_PPS) ?
 			CHG_EV_ADAPTER_TYPE_USB_PD_PPS :
 			CHG_EV_ADAPTER_TYPE_USB_PD;
-	case POWER_SUPPLY_TYPE_USB_FLOAT:
-		return CHG_EV_ADAPTER_TYPE_USB_FLOAT;
+	/* TODO: handle POWER_SUPPLY_TYPE_USB_FLOAT if available*/
 	default:
 		return CHG_EV_ADAPTER_TYPE_USB;
 	}
