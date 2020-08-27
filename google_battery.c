@@ -3225,7 +3225,6 @@ reschedule:
  * POWER_SUPPLY_PROP_CURRENT_AVG,
  * POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
  * POWER_SUPPLY_PROP_RESISTANCE_ID,	use BRID tag
- * POWER_SUPPLY_PROP_SOH,
  * POWER_SUPPLY_PROP_VOLTAGE_AVG,
  * POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
  * POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
@@ -3439,10 +3438,6 @@ static int gbatt_get_property(struct power_supply *psy,
 		err = power_supply_get_property(batt_drv->fg_psy, psp, val);
 		if (err == 0)
 			batt_drv->soh = val->intval;
-		break;
-	/* define this better */
-	case POWER_SUPPLY_PROP_SOH:
-		val->intval = batt_drv->soh;
 		break;
 
 	case POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE:
