@@ -1017,6 +1017,7 @@ static int p9221_prop_is_writeable(struct power_supply *psy,
 	int writeable = 0;
 
 	switch (prop) {
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CAPACITY:
 	case POWER_SUPPLY_PROP_ONLINE:
