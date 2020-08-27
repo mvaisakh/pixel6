@@ -26,7 +26,6 @@
 #include <linux/of_gpio.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <linux/power_supply.h>
 #include <linux/alarmtimer.h>
 #include <misc/logbuffer.h>
 #include "gbms_power_supply.h"
@@ -68,6 +67,13 @@
 #define RTX_BEN_DISABLED	0
 #define RTX_BEN_ON		1
 #define RTX_BEN_ENABLED		2
+
+enum wlc_align_codes {
+	WLC_ALIGN_CHECKING = 0,
+	WLC_ALIGN_MOVE,
+	WLC_ALIGN_CENTERED,
+	WLC_ALIGN_ERROR,
+};
 
 static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
 static void p9221_icl_ramp_start(struct p9221_charger_data *charger);
@@ -785,7 +791,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 
 	/* Reset alignment value when charger goes offline */
 	cancel_delayed_work(&charger->align_work);
-	charger->align = POWER_SUPPLY_ALIGN_ERROR;
+	charger->align = WLC_ALIGN_ERROR;
 	charger->align_count = 0;
 	charger->alignment = -1;
 	charger->alignment_capable = ALIGN_MFG_FAILED;
@@ -825,9 +831,9 @@ static void p9221_vrect_timer_handler(struct timer_list *t)
 	struct p9221_charger_data *charger = from_timer(charger,
 							t, vrect_timer);
 
-	if (charger->align == POWER_SUPPLY_ALIGN_CHECKING) {
+	if (charger->align == WLC_ALIGN_CHECKING) {
 		schedule_work(&charger->uevent_work);
-		charger->align = POWER_SUPPLY_ALIGN_MOVE;
+		charger->align = WLC_ALIGN_MOVE;
 		logbuffer_log(charger->log, "align: state: %s",
 			      align_status_str[charger->align]);
 	}
@@ -848,7 +854,7 @@ static void p9221_align_timer_handler(struct timer_list *t)
 							t, align_timer);
 
 	schedule_work(&charger->uevent_work);
-	charger->align = POWER_SUPPLY_ALIGN_ERROR;
+	charger->align = WLC_ALIGN_ERROR;
 	logbuffer_log(charger->log, "align: timeout no IRQ");
 }
 
@@ -1594,7 +1600,7 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 	cancel_delayed_work(&charger->dcin_pon_work);
 
 	charger->alignment_capable = ALIGN_MFG_CHECKING;
-	charger->align = POWER_SUPPLY_ALIGN_CENTERED;
+	charger->align = WLC_ALIGN_CENTERED;
 	charger->alignment = -1;
 	logbuffer_log(charger->log, "align: state: %s",
 		      align_status_str[charger->align]);
@@ -2514,7 +2520,7 @@ static ssize_t p9221_show_alignment(struct device *dev,
 	if (charger->alignment == -1)
 		p9221_init_align(charger);
 
-	if ((charger->align != POWER_SUPPLY_ALIGN_CENTERED) ||
+	if ((charger->align != WLC_ALIGN_CENTERED) ||
 	    (charger->alignment == -1))
 		return scnprintf(buf, PAGE_SIZE, "%s\n",
 				 align_status_str[charger->align]);
@@ -3586,15 +3592,15 @@ static irqreturn_t p9221_irq_det_thread(int irq, void *irq_data)
 	if (p9221_is_online(charger))
 		return IRQ_HANDLED;
 
-	if (charger->align != POWER_SUPPLY_ALIGN_MOVE) {
-		if (charger->align != POWER_SUPPLY_ALIGN_CHECKING)
+	if (charger->align != WLC_ALIGN_MOVE) {
+		if (charger->align != WLC_ALIGN_CHECKING)
 			schedule_work(&charger->uevent_work);
-		charger->align = POWER_SUPPLY_ALIGN_CHECKING;
+		charger->align = WLC_ALIGN_CHECKING;
 		charger->align_count++;
 
 		if (charger->align_count > WLC_ALIGN_IRQ_THRESHOLD) {
 			schedule_work(&charger->uevent_work);
-			charger->align = POWER_SUPPLY_ALIGN_MOVE;
+			charger->align = WLC_ALIGN_MOVE;
 		}
 		logbuffer_log(charger->log, "align: state: %s",
 			      align_status_str[charger->align]);
@@ -4025,7 +4031,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->client = client;
 	charger->pdata = pdata;
 	charger->resume_complete = true;
-	charger->align = POWER_SUPPLY_ALIGN_ERROR;
+	charger->align = WLC_ALIGN_ERROR;
 	charger->align_count = 0;
 	charger->is_mfg_google = false;
 	mutex_init(&charger->io_lock);
