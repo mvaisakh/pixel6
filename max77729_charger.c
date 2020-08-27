@@ -21,9 +21,9 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-#include <linux/power_supply.h>
 #include <linux/regmap.h>
-#include "gvotable.h"
+#include <misc/gvotable.h>
+#include "gbms_power_supply.h"
 
 #ifdef CONFIG_DEBUG_FS
 # include <linux/debugfs.h>

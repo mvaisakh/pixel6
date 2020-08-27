@@ -32,7 +32,7 @@
 #include "google_bms.h"
 #include "google_psy.h"
 #include "qmath.h"
-#include "logbuffer.h"
+#include <misc/logbuffer.h>
 #include <crypto/hash.h>
 
 #include <linux/debugfs.h>
@@ -3858,7 +3858,7 @@ static int google_battery_probe(struct platform_device *pdev)
 			"Couldn't register as power supply, ret=%d\n", ret);
 	}
 
-	batt_drv->ssoc_log = debugfs_logbuffer_register("ssoc");
+	batt_drv->ssoc_log = logbuffer_register("ssoc");
 	if (IS_ERR(batt_drv->ssoc_log)) {
 		ret = PTR_ERR(batt_drv->ssoc_log);
 		dev_err(batt_drv->device,
@@ -3866,7 +3866,7 @@ static int google_battery_probe(struct platform_device *pdev)
 		batt_drv->ssoc_log = NULL;
 	}
 
-	batt_drv->ttf_log = debugfs_logbuffer_register("ttf");
+	batt_drv->ttf_log = logbuffer_register("ttf");
 	if (IS_ERR(batt_drv->ttf_log)) {
 		ret = PTR_ERR(batt_drv->ttf_log);
 		dev_err(batt_drv->device,
@@ -3920,9 +3920,9 @@ static int google_battery_remove(struct platform_device *pdev)
 		return 0;
 
 	if (batt_drv->ssoc_log)
-		debugfs_logbuffer_unregister(batt_drv->ssoc_log);
+		logbuffer_unregister(batt_drv->ssoc_log);
 	if (batt_drv->ttf_log)
-		debugfs_logbuffer_unregister(batt_drv->ttf_log);
+		logbuffer_unregister(batt_drv->ttf_log);
 	if (batt_drv->tz_dev)
 		thermal_zone_of_sensor_unregister(batt_drv->device,
 				batt_drv->tz_dev);

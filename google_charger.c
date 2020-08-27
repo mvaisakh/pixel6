@@ -35,7 +35,7 @@
 #include "google_bms.h"
 #include "google_dc_pps.h"
 #include "google_psy.h"
-#include "logbuffer.h"
+#include <misc/logbuffer.h>
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
@@ -2522,7 +2522,7 @@ static int google_charger_remove(struct platform_device *pdev)
 		alarm_try_to_cancel(&chg_drv->chg_wakeup_alarm);
 
 		if (chg_drv->pps_data.log)
-			debugfs_logbuffer_unregister(chg_drv->pps_data.log);
+			logbuffer_unregister(chg_drv->pps_data.log);
 	}
 
 	return 0;

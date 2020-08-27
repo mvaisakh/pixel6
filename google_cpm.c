@@ -29,11 +29,12 @@
 #include <linux/pm_wakeup.h>
 #include <linux/thermal.h>
 #include <linux/slab.h>
-#include "gvotable.h"
+#include <misc/gvotable.h>
+#include "gbms_power_supply.h"
 #include "google_bms.h"
 #include "google_dc_pps.h"
 #include "google_psy.h"
-#include "logbuffer.h"
+#include <misc/logbuffer.h>
 
 #include <linux/debugfs.h>
 

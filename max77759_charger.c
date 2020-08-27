@@ -26,10 +26,11 @@
 #include <linux/regmap.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <misc/gvotable.h>
+#include "gbms_power_supply.h"
 #include "google_bms.h"
 #include "max_m5.h"
 #include "max77759.h"
-#include "gvotable.h"
 
 /* CHG_DETAILS_01:CHG_DTLS */
 #define CHGR_DTLS_DEAD_BATTERY_MODE			0x00

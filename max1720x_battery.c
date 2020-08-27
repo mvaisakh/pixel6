@@ -35,7 +35,7 @@
 
 #include "gbms_power_supply.h"
 #include "google_bms.h"
-#include "logbuffer.h"
+#include <misc/logbuffer.h>
 #include "max1720x_battery.h"
 
 #include <linux/debugfs.h>
@@ -4070,7 +4070,7 @@ static int max1720x_probe(struct i2c_client *client,
 				ret);
 	}
 
-	chip->ce_log = debugfs_logbuffer_register("batt_ce");
+	chip->ce_log = logbuffer_register("batt_ce");
 	if (IS_ERR(chip->ce_log)) {
 		ret = PTR_ERR(chip->ce_log);
 		dev_err(dev, "failed to obtain logbuffer, ret=%d\n", ret);
@@ -4105,7 +4105,7 @@ static int max1720x_remove(struct i2c_client *client)
 	struct max1720x_chip *chip = i2c_get_clientdata(client);
 
 	if (chip->ce_log) {
-		debugfs_logbuffer_unregister(chip->ce_log);
+		logbuffer_unregister(chip->ce_log);
 		chip->ce_log = NULL;
 	}
 

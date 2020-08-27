@@ -17,7 +17,7 @@
 #include <linux/of_gpio.h>
 #include <linux/regmap.h>
 
-#include "logbuffer.h"
+#include <misc/logbuffer.h>
 #include "max77759_regs.h"
 
 #define PAYLOAD_REQUEST_LENGTH_BYTES		33
@@ -272,7 +272,7 @@ struct max77759_maxq *maxq_init(struct device *dev, struct regmap *regmap,
 	if (IS_ERR_OR_NULL(maxq))
 		return ERR_PTR(-ENOMEM);
 
-	maxq->log = debugfs_logbuffer_register("maxq");
+	maxq->log = logbuffer_register("maxq");
 	if (IS_ERR_OR_NULL(maxq->log)) {
 		dev_err(dev, "MAXQ logbuffer register failed\n");
 		return (struct max77759_maxq *)maxq->log;
@@ -294,7 +294,7 @@ EXPORT_SYMBOL_GPL(maxq_init);
 void maxq_remove(struct max77759_maxq *maxq)
 {
 	maxq->init_done = false;
-	debugfs_logbuffer_unregister(maxq->log);
+	logbuffer_unregister(maxq->log);
 }
 EXPORT_SYMBOL_GPL(maxq_remove);
 MODULE_AUTHOR("Badhri Jagan Sridharan <badhri@google.com>");

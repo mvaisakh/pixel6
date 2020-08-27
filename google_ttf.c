@@ -20,10 +20,10 @@
 #include <linux/platform_device.h>
 #include <linux/pm_wakeup.h>
 #include <linux/thermal.h>
+#include <misc/logbuffer.h>
 #include "google_bms.h"
 #include "google_psy.h"
 #include "qmath.h"
-#include "logbuffer.h"
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>

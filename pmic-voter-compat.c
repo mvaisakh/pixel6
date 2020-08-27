@@ -11,14 +11,13 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include "linux/slab.h"
-/* TODO: make PMIC_VOTER_COMPAT a build configuration and use
- * #include <linux/pmic-voter.h>
- */
+#include <misc/gvotable.h>
 #include "pmic-voter.h"
-#include "gvotable.h"
 
 #define V2EL(x) ((struct gvotable_election *)(v))
 
@@ -211,3 +210,8 @@ void destroy_votable(struct votable *v)
 	gvotable_destroy_election(V2EL(v));
 }
 EXPORT_SYMBOL_GPL(destroy_votable);
+
+MODULE_AUTHOR("Jim Wylder <jwylder@google.com>");
+MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
+MODULE_DESCRIPTION("QC PMIC Votable compatibility");
+MODULE_LICENSE("GPL");

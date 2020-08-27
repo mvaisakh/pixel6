@@ -22,10 +22,10 @@
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
 #include <linux/alarmtimer.h>
+#include <misc/logbuffer.h>
 #include "google_bms.h"
 #include "google_psy.h"
 #include "google_dc_pps.h"
-#include "logbuffer.h"
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
@@ -521,7 +521,7 @@ static int pps_init_node(struct pd_pps_data *pps_data,
 		}
 	}
 
-	pps_data->log = debugfs_logbuffer_register("pps");
+	pps_data->log = logbuffer_register("pps");
 	if (IS_ERR(pps_data->log))
 		pps_data->log = NULL;
 
