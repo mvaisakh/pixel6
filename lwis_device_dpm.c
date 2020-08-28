@@ -48,7 +48,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 	if (!target_dev) {
 		dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
 			qos_setting->device_id);
-			return -ENOENT;
+		return -ENOENT;
 	}
 
 	switch (qos_setting->clock_family) {
@@ -74,9 +74,9 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
 		/* convert value to KHz */
-		ret = lwis_platform_update_qos(
-			target_dev, qos_setting->frequency_hz / 1000,
-			qos_setting->clock_family);
+		ret = lwis_platform_update_qos(target_dev,
+					       qos_setting->frequency_hz / 1000,
+					       qos_setting->clock_family);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Failed to apply core clock requirement for %s, ret: %d\n",
@@ -103,8 +103,7 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 	uint32_t old_clk;
 
 	if (!lwis_dev->clocks) {
-		dev_err(lwis_dev->dev, "%s has no clocks\n",
-			lwis_dev->name);
+		dev_err(lwis_dev->dev, "%s has no clocks\n", lwis_dev->name);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -116,14 +115,13 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			continue;
 
 		if (clk_index >= lwis_dev->clocks->count) {
-			dev_err(lwis_dev->dev,
-				"%s clk index %d is invalid\n",
+			dev_err(lwis_dev->dev, "%s clk index %d is invalid\n",
 				lwis_dev->name, clk_index);
 			ret = -EINVAL;
 			goto out;
 		}
 		ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
-					   clk_settings[i].frequency);
+				   clk_settings[i].frequency);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error updating clock %s freq: %u\n",

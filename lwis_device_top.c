@@ -272,8 +272,8 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%llu) must be < %d\n", entry->rw.offset,
-				SCRATCH_MEMORY_SIZE);
+				"Offset (%llu) must be < %d\n",
+				entry->rw.offset, SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
@@ -294,8 +294,8 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%llu) must be < %d\n", entry->rw.offset,
-				SCRATCH_MEMORY_SIZE);
+				"Offset (%llu) must be < %d\n",
+				entry->rw.offset, SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
@@ -316,8 +316,8 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev,
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
 		if (entry->mod.offset >= SCRATCH_MEMORY_SIZE) {
 			dev_err(top_dev->base_dev.dev,
-				"Offset (%llu) must be < %d\n", entry->mod.offset,
-				SCRATCH_MEMORY_SIZE);
+				"Offset (%llu) must be < %d\n",
+				entry->mod.offset, SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		reg_value = top_dev->scratch_mem[entry->mod.offset];
