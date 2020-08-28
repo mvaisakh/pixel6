@@ -481,6 +481,7 @@ struct p9221_charger_data {
 	int (*chip_get_vout_max)(struct p9221_charger_data *chgr, u32 *mv);
 	int (*chip_set_vout_max)(struct p9221_charger_data *chgr, u32 mv);
 	int (*chip_get_vrect)(struct p9221_charger_data *chgr, u32 *mv);
+	int (*chip_get_sys_mode)(struct p9221_charger_data *chgr, u8 *mode);
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
 };

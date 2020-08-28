@@ -350,6 +350,33 @@ static int p9412_chip_set_vout_max(struct p9221_charger_data *chgr, u32 mv)
 	return ret;
 }
 
+/* system mode register */
+static int p9221_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
+{
+	int ret;
+	u8 val8;
+
+	ret = chgr->reg_read_8(chgr, P9221R5_SYSTEM_MODE_REG, &val8);
+	if (ret)
+		return ret;
+
+	/* map to p9412 values */
+	if (val8 & P9221R5_MODE_WPCMODE)
+		*mode = P9412_SYS_OP_MODE_WPC_BASIC;
+	else if (val8 & P9382A_MODE_TXMODE)
+		*mode = P9412_SYS_OP_MODE_TX_MODE;
+	else if (val8 & P9221R5_MODE_EXTENDED)
+		*mode = P9412_SYS_OP_MODE_WPC_EXTD;
+	else
+		*mode = P9412_SYS_OP_MODE_AC_MISSING;
+	return 0;
+}
+
+static int p9412_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
+{
+	return chgr->reg_read_8(chgr, P9221R5_SYSTEM_MODE_REG, mode);
+}
+
 /* These are more involved than just chip access */
 
 static int p9382_wait_for_mode(struct p9221_charger_data *chgr, int mode)
@@ -657,6 +684,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9412_get_align_x;
 		chgr->chip_get_align_y = p9412_get_align_y;
 		chgr->chip_send_ccreset = p9412_send_ccreset;
+		chgr->chip_get_sys_mode = p9412_chip_get_sys_mode;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->ocp_icl_lmt = P9382A_DC_ICL_EPP_1200;
@@ -682,6 +710,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		break;
 	default:
 		chgr->ocp_icl_lmt = 0;
@@ -707,6 +736,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		break;
 	}
 

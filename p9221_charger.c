@@ -209,9 +209,10 @@ static bool p9221_is_epp(struct p9221_charger_data *charger)
 
 	charger->is_mfg_google = charger->mfg == WLC_MFG_GOOGLE;
 
-	ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG, &reg);
+	ret = charger->chip_get_sys_mode(charger, &reg);
 	if (ret == 0)
-		return (reg & P9221R5_SYSTEM_MODE_EXTENDED_MASK) > 0;
+		return ((reg == P9412_SYS_OP_MODE_WPC_EXTD) ||
+			(reg == P9412_SYS_OP_MODE_PROPRIETARY));
 
 	dev_err(&charger->client->dev, "Could not read mode: %d\n",
 		ret);
@@ -1750,7 +1751,7 @@ static ssize_t p9221_show_status(struct device *dev,
 	count += p9221_add_buffer(buf, val16, count, ret,
 				  "int_enable  : ", "%04x\n");
 
-	ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG, &val8);
+	ret = charger->chip_get_sys_mode(charger, &val8);
 	count += p9221_add_buffer(buf, val8, count, ret,
 				  "mode        : ", "%02x\n");
 
@@ -2382,9 +2383,9 @@ static ssize_t rtx_status_show(struct device *dev,
 	if (charger->pdata->switch_gpio < 0)
 		charger->rtx_state = RTX_NOTSUPPORTED;
 
-	ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG, &reg);
+	ret = charger->chip_get_sys_mode(charger, &reg);
 	if (ret == 0) {
-		if (reg & P9382A_MODE_TXMODE)
+		if (reg == P9412_SYS_OP_MODE_TX_MODE)
 			charger->rtx_state = RTX_ACTIVE;
 		else
 			charger->rtx_state = RTX_DISABLED;
@@ -2977,8 +2978,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	bool attached = 0;
 
 	if (irq_src & P9221R5_STAT_MODECHANGED) {
-		ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
-				       &mode_reg);
+		ret = charger->chip_get_sys_mode(charger, &mode_reg);
 		if (ret) {
 			dev_err(&charger->client->dev,
 				"Failed to read P9221_SYSTEM_MODE_REG: %d\n",
@@ -3062,8 +3062,7 @@ static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
 		u8 mode_reg = 0;
 		int res;
 
-		res = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
-				       &mode_reg);
+		res = charger->chip_get_sys_mode(charger, &mode_reg);
 		if (res < 0) {
 			dev_err(&charger->client->dev,
 				"Failed to read P9221_SYSTEM_MODE_REG: %d\n",
@@ -3078,8 +3077,9 @@ static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
 
 		dev_info(&charger->client->dev,
 			 "P9221_SYSTEM_MODE_REG reg: %02x\n", mode_reg);
-		return !(mode_reg & (P9221R5_MODE_EXTENDED |
-				     P9221R5_MODE_WPCMODE));
+		return !(mode_reg == P9412_SYS_OP_MODE_WPC_EXTD ||
+			 mode_reg == P9412_SYS_OP_MODE_PROPRIETARY ||
+			 mode_reg == P9412_SYS_OP_MODE_WPC_BASIC);
 	}
 
 	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_VOUTCHANGED &&
