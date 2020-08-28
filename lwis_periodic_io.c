@@ -132,8 +132,8 @@ periodic_io_list_find_or_create_locked(struct lwis_client *client,
 	 * then restart the timer */
 	if (list->hr_timer_state == LWIS_HRTIMER_INACTIVE) {
 		list->hr_timer_state = LWIS_HRTIMER_ACTIVE;
-		// If this does not restart the hrtimer properly, consider
-		// repeating the steps when starting a new timer.
+		/* If this does not restart the hrtimer properly, consider
+		 * repeating the steps when starting a new timer. */
 		hrtimer_restart(&list->hr_timer);
 	}
 	return list;
@@ -148,17 +148,17 @@ push_periodic_io_error_event_locked(struct lwis_periodic_io *periodic_io,
 	struct lwis_periodic_io_info *info = &periodic_io->info;
 	struct lwis_periodic_io_response_header resp;
 
-	if (pending_events) {
-		resp.id = info->id;
-		resp.error_code = error_code;
-		resp.batch_size = 0;
-		resp.num_entries_per_period = 0;
-		resp.results_size_bytes = 0;
-
-		lwis_pending_event_push(pending_events,
-					info->emit_error_event_id, &resp,
-					sizeof(resp));
+	if (!pending_events) {
+		return;
 	}
+	resp.id = info->id;
+	resp.error_code = error_code;
+	resp.batch_size = 0;
+	resp.num_entries_per_period = 0;
+	resp.results_size_bytes = 0;
+
+	lwis_pending_event_push(pending_events, info->emit_error_event_id,
+				&resp, sizeof(resp));
 }
 
 static int process_io_entries(struct lwis_client *client,
@@ -264,37 +264,34 @@ event_push:
 	}
 	/* Only push when the periodic io is executed for batch_size times or
 	 * there is an error */
-	if (pending_events) {
-		if (resp->error_code) {
-			/* Adjust results_size_bytes to be consistent with
-			 * payload size. Push error event, which also copies
-			 * resp. */
-			resp->results_size_bytes =
-				resp_size -
-				sizeof(struct lwis_periodic_io_response_header);
-			lwis_pending_event_push(pending_events,
-						info->emit_error_event_id,
-						(void *)resp, resp_size);
-
-			// Flag the periodic io as inactive
-			spin_lock_irqsave(&client->periodic_io_lock, flags);
-			periodic_io->active = false;
-			spin_unlock_irqrestore(&client->periodic_io_lock,
-					       flags);
-		} else {
-			if (periodic_io->batch_count == info->batch_size) {
-				lwis_pending_event_push(
-					pending_events,
-					info->emit_success_event_id,
-					(void *)resp, resp_size);
-				periodic_io->batch_count = 0;
-			}
-			return 0;
-		}
-	} else {
+	if (!pending_events) {
 		if (resp->error_code) {
 			pr_err("process_io_entries fails with error code %d, periodic io %lld, io_entries[%d], entry_type %d",
 			       resp->error_code, info->id, i, entry->type);
+		}
+		return ret;
+	}
+
+	if (resp->error_code) {
+		/* Adjust results_size_bytes to be consistent with payload
+		 * size. Push error event, which also copies resp. */
+		resp->results_size_bytes =
+			resp_size -
+			sizeof(struct lwis_periodic_io_response_header);
+		lwis_pending_event_push(pending_events,
+					info->emit_error_event_id, (void *)resp,
+					resp_size);
+
+		/* Flag the periodic io as inactive */
+		spin_lock_irqsave(&client->periodic_io_lock, flags);
+		periodic_io->active = false;
+		spin_unlock_irqrestore(&client->periodic_io_lock, flags);
+	} else {
+		if (periodic_io->batch_count == info->batch_size) {
+			lwis_pending_event_push(pending_events,
+						info->emit_success_event_id,
+						(void *)resp, resp_size);
+			periodic_io->batch_count = 0;
 		}
 	}
 	return ret;
@@ -319,7 +316,7 @@ static void periodic_io_work_func(struct work_struct *work)
 			list_entry(it_period, struct lwis_periodic_io_proxy,
 				   process_queue_node);
 		periodic_io = periodic_io_proxy->periodic_io;
-		// Error indicates the cancellation of the periodic io
+		/* Error indicates the cancellation of the periodic io */
 		if (periodic_io->resp->error_code || !periodic_io->active) {
 			error_code = periodic_io->resp->error_code ?
 						   periodic_io->resp->error_code :
@@ -394,9 +391,9 @@ static int prepare_response(struct lwis_client *client,
 		}
 	}
 
-	// Periodic io response payload consists of one response header and
-	// batch_size of batches, each of which contains num_entries_per_period
-	// pairs of lwis_periodic_io_result and its read_buf.
+	/* Periodic io response payload consists of one response header and
+	 * batch_size of batches, each of which contains num_entries_per_period
+	 * pairs of lwis_periodic_io_result and its read_buf. */
 	resp_size = sizeof(struct lwis_periodic_io_response_header) +
 		    read_entries * sizeof(struct lwis_periodic_io_result) *
 			    info->batch_size +
@@ -512,7 +509,8 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 			periodic_io->active = false;
 		}
 		spin_unlock_irqrestore(&client->periodic_io_lock, flags);
-		// it_periodic_io_list->hr_timer_state = LWIS_HRTIMER_INACTIVE;
+		/* it_periodic_io_list->hr_timer_state =
+			LWIS_HRTIMER_INACTIVE; */
 		hrtimer_cancel(&it_periodic_io_list->hr_timer);
 	}
 
