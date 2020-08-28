@@ -7114,6 +7114,9 @@ dhd_stop(struct net_device *net)
 			skb_queue_purge(&dhd->rx_napi_queue);
 			napi_disable(&dhd->rx_napi_struct);
 			netif_napi_del(&dhd->rx_napi_struct);
+			DHD_GENERAL_LOCK(&dhd->pub, flags);
+			DHD_BUS_BUSY_CLEAR_IN_NAPI(&dhd->pub);
+			DHD_GENERAL_UNLOCK(&dhd->pub, flags);
 			dhd->rx_napi_netdev = NULL;
 		}
 #endif /* DHD_LB_RXP */
