@@ -627,28 +627,51 @@ static const struct drm_encoder_funcs dsim_encoder_funcs = {
 
 static int dsim_add_mipi_dsi_device(struct dsim_device *dsim)
 {
-	struct mipi_dsi_device_info info = { };
+	struct mipi_dsi_device_info info = {
+		.node = NULL,
+	};
 	struct device_node *node;
 	const char *name;
 
 	dsim_debug(dsim, "preferred panel is %s\n", panel_name);
 
 	for_each_available_child_of_node(dsim->dsi_host.dev->of_node, node) {
-		/* panel w/ reg node will be added in mipi_dsi_host_register */
-		if (of_find_property(node, "reg", NULL))
+		/*
+		 * panel w/ reg node will be added in mipi_dsi_host_register,
+		 * abort panel detection in that case
+		 */
+		if (of_find_property(node, "reg", NULL)) {
+			if (info.node)
+				of_node_put(info.node);
+
+			return -ENODEV;
+		}
+
+		/*
+		 * We already detected panel we want but keep iterating
+		 * in case there are devices with reg property
+		 */
+		if (info.node)
 			continue;
 
 		if (of_property_read_u32(node, "channel", &info.channel))
 			continue;
 
 		name = of_get_property(node, "label", NULL);
-		if (name && !strcmp(name, panel_name)) {
+		if (!name)
+			continue;
+
+		/* if panel name is not specified pick the first device found */
+		if (panel_name[0] == '\0' || !strncmp(name, panel_name, sizeof(panel_name))) {
 			strlcpy(info.type, name, sizeof(info.type));
 			info.node = of_node_get(node);
-			mipi_dsi_device_register_full(&dsim->dsi_host, &info);
-
-			return 0;
 		}
+	}
+
+	if (info.node) {
+		mipi_dsi_device_register_full(&dsim->dsi_host, &info);
+
+		return 0;
 	}
 
 	return -ENODEV;
