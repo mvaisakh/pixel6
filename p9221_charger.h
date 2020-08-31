@@ -319,7 +319,10 @@
 #define P9412_DATA_BUF_START			0x0800
 #define P9412_DATA_BUF_SIZE			0x0800 /* 2048 bytes */
 
-#define P9412_INVALID_REG			0xFFFF
+#define P9412_RN_MAX_POLL_ATTEMPTS		5
+#define P9412_RN_DELAY_MS			50
+#define P9412_RN_STATUS_DONE			BIT(1)
+#define P9412_RN_STATUS_ERROR			BIT(2)
 
 #define P9XXX_INVALID_REG			0xFFFF
 
@@ -484,6 +487,7 @@ struct p9221_charger_data {
 	int (*chip_get_sys_mode)(struct p9221_charger_data *chgr, u8 *mode);
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
+	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
@@ -511,5 +515,7 @@ enum p9382_rtx_err {
 #define P9221_HZ_TO_KHZ(khz) ((khz) / 1000)
 #define P9221_C_TO_MILLIC(c) ((c) * 1000)
 #define P9221_MILLIC_TO_C(mc) ((mc) / 1000)
+#define P9412_MW_TO_HW(mw) (((mw) * 2) / 1000) /* mw -> 0.5 W units */
+#define P9412_HW_TO_MW(hw) (((hw) / 2) * 1000) /* 0.5 W units -> mw */
 
 #endif /* __P9221_CHARGER_H__ */

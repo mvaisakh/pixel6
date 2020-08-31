@@ -1575,12 +1575,10 @@ static void p9221_notifier_work(struct work_struct *work)
 
 	if (charger->pdata->epp_rp_value != -1) {
 
-		ret = p9221_reg_write_8(charger,
-					P9221R5_EPP_REQ_NEGOTIATED_POWER_REG,
-					charger->pdata->epp_rp_value);
+		charger->chip_renegotiate_pwr(charger);
 		if (ret < 0)
 			dev_err(&charger->client->dev,
-				"cannot write to EPP_NEG_POWER=%d (%d)\n",
+				"cannot renegotiate power=%d (%d)\n",
 				 charger->pdata->epp_rp_value, ret);
 	}
 
