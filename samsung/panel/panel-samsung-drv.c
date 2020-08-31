@@ -1273,6 +1273,7 @@ static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi)
 {
+	static atomic_t panel_index = ATOMIC_INIT(-1);
 	struct device *dev = &dsi->dev;
 	struct exynos_panel *ctx;
 	int ret = 0;
@@ -1296,8 +1297,9 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	if (ret)
 		return ret;
 
-	snprintf(name, sizeof(name), "panel%d-backlight", dsi->channel);
-	ctx->bl = devm_backlight_device_register(ctx->dev, name, NULL,
+	scnprintf(name, sizeof(name), "panel%d-backlight", atomic_inc_return(&panel_index));
+
+	ctx->bl = devm_backlight_device_register(ctx->dev, name, dev,
 			ctx, &exynos_backlight_ops, NULL);
 	if (IS_ERR(ctx->bl)) {
 		dev_err(ctx->dev, "failed to register backlight device\n");
