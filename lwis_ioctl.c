@@ -918,7 +918,7 @@ static int construct_transaction(struct lwis_client *client,
 {
 	int i;
 	int ret;
-	int last_buf_alloc_idx = 0;
+	int last_buf_alloc_idx = -1;
 	size_t entry_size;
 	struct lwis_transaction *k_transaction;
 	struct lwis_transaction_info *user_transaction;
@@ -998,7 +998,7 @@ static int construct_transaction(struct lwis_client *client,
 	return 0;
 
 error_free_buf:
-	for (i = 0; i < last_buf_alloc_idx; ++i) {
+	for (i = 0; i <= last_buf_alloc_idx; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			kfree(k_entries[i].rw_batch.buf);
 		}

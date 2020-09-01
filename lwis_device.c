@@ -146,6 +146,9 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	/* Cancel all pending transactions for the client */
 	lwis_transaction_client_cleanup(lwis_client);
 
+	/* Clear the event queue */
+	lwis_client_event_queue_clear(lwis_client);
+
 	/* Disenroll and clear the table of allocated and enrolled buffers */
 	lwis_client_allocated_buffers_clear(lwis_client);
 	lwis_client_enrolled_buffers_clear(lwis_client);

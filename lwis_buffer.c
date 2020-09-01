@@ -295,6 +295,8 @@ int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
 			    node) {
 		if (lwis_client->lwis_dev->type != DEVICE_TYPE_SLC) {
 			lwis_buffer_free(lwis_client, buffer);
+		} else {
+			hash_del(&buffer->node);
 		}
 		kfree(buffer);
 	}
