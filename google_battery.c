@@ -2213,17 +2213,12 @@ static const struct file_operations name = {	\
 	.write	= fn_write,			\
 }
 
-static ssize_t batt_cycle_count_set_bins(struct file *filp,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t cycle_counts_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
 {
-	struct batt_drv *batt_drv = (struct batt_drv *)filp->private_data;
-	char buf[GBMS_CCBIN_CSTR_SIZE];
+	struct batt_drv *batt_drv = NULL;
 	int ret;
-
-	ret = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (!ret)
-		return -EFAULT;
 
 	mutex_lock(&batt_drv->cc_data.lock);
 
@@ -2242,8 +2237,21 @@ static ssize_t batt_cycle_count_set_bins(struct file *filp,
 	return ret;
 }
 
-BATTERY_DEBUG_ATTRIBUTE(cycle_count_bins_fops,
-				NULL, batt_cycle_count_set_bins);
+static ssize_t cycle_counts_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buff)
+{
+	struct batt_drv *batt_drv = NULL;
+	int len;
+
+	mutex_lock(&batt_drv->cc_data.lock);
+	len = gbms_cycle_count_cstr(buff, PAGE_SIZE, batt_drv->cc_data.count);
+	mutex_unlock(&batt_drv->cc_data.lock);
+
+	return len;
+}
+
+static const DEVICE_ATTR_RW(cycle_counts);
 
 
 static int cycle_count_bins_store(void *data, u64 val)
@@ -2765,6 +2773,7 @@ static ssize_t batt_ctl_ttf_stats(struct device *dev,
 static const DEVICE_ATTR(ttf_stats, 0664, batt_show_ttf_stats,
 					  batt_ctl_ttf_stats);
 
+
 static int batt_init_fs(struct batt_drv *batt_drv)
 {
 	struct dentry *de = NULL;
@@ -2799,18 +2808,21 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 		dev_err(&batt_drv->psy->dev,
 				"Failed to create ttf_details\n");
 
-	ret = device_create_file(&batt_drv->psy->dev,
-					&dev_attr_pairing_state);
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_pairing_state);
 	if (ret)
 		dev_err(&batt_drv->psy->dev,
 			"Failed to create pairing_state\n");
+
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_cycle_counts);
+	if (ret)
+		dev_err(&batt_drv->psy->dev,
+			"Failed to create pairing_state\n");
+
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
 		return 0;
 
-	debugfs_create_file("cycle_count_bins", 0400, de,
-				batt_drv, &cycle_count_bins_fops);
 	debugfs_create_file("cycle_count_sync", 0600, de,
 				batt_drv, &cycle_count_bins_sync_fops);
 	debugfs_create_file("ssoc_gdf", 0600, de,
@@ -3241,7 +3253,6 @@ static enum power_supply_property gbatt_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE,	/* google */
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
-	POWER_SUPPLY_PROP_CYCLE_COUNTS,
 	POWER_SUPPLY_PROP_DEAD_BATTERY,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_PRESENT,
@@ -3351,15 +3362,6 @@ static int gbatt_get_property(struct power_supply *psy,
 			err = batt_drv->cycle_count;
 		else
 			val->intval = batt_drv->cycle_count;
-		break;
-
-	case POWER_SUPPLY_PROP_CYCLE_COUNTS:
-		mutex_lock(&batt_drv->cc_data.lock);
-		(void)gbms_cycle_count_cstr(batt_drv->cc_data.cyc_ctr_cstr,
-				sizeof(batt_drv->cc_data.cyc_ctr_cstr),
-				batt_drv->cc_data.count);
-		val->strval = batt_drv->cc_data.cyc_ctr_cstr;
-		mutex_unlock(&batt_drv->cc_data.lock);
 		break;
 
 	case POWER_SUPPLY_PROP_CAPACITY:
@@ -3539,16 +3541,6 @@ static int gbatt_set_property(struct power_supply *psy,
 		if (batt_drv->psy)
 			power_supply_changed(batt_drv->psy);
 		break;
-	/* TODO: compat */
-	case POWER_SUPPLY_PROP_CYCLE_COUNTS:
-		ret = gbms_cycle_count_sscan(batt_drv->cc_data.count,
-					     val->strval);
-		if (ret == 0) {
-			ret = batt_cycle_count_store(&batt_drv->cc_data);
-			if (ret < 0)
-				pr_err("cannot store bin count ret=%d\n", ret);
-		}
-		break;
 
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		if (val->intval <= 0)
@@ -3580,7 +3572,6 @@ static int gbatt_property_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
 	case POWER_SUPPLY_PROP_CAPACITY:
 	case POWER_SUPPLY_PROP_ADAPTER_DETAILS:
-	case POWER_SUPPLY_PROP_CYCLE_COUNTS:
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		return 1;
 	default:

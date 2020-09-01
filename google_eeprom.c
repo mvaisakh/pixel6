@@ -16,7 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/pm_runtime.h>
 #include <linux/nvmem-consumer.h>
-#include "google_bms.h"
+#include "gbms_storage.h"
 
 #define BATT_TOTAL_HIST_LEN	928
 #define BATT_ONE_HIST_LEN	28

@@ -275,7 +275,6 @@ const char *gbms_chg_ev_adapter_s(int adapter);
 #define VOTABLE_MSC_FV		"MSC_FV"
 
 /* Binned cycle count */
-#define GBMS_CCBIN_BUCKET_COUNT	10
 #define GBMS_CCBIN_CSTR_SIZE	(GBMS_CCBIN_BUCKET_COUNT * 6 + 2)
 
 int gbms_cycle_count_sscan_bc(u16 *ccount, int bcnt, const char *buff);

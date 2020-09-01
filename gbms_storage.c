@@ -1097,7 +1097,6 @@ static struct gbee_data {
 struct delayed_work bee_work;
 static struct mutex bee_lock;
 
-
 /*
  * lookup for battery eeprom.
  * TODO: extend this to multiple NVM like providers

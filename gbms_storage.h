@@ -40,6 +40,9 @@
 /* Gauge Model State Restore */
 #define GBMS_GMSR_LEN	22
 
+
+#define GBMS_CCBIN_BUCKET_COUNT	10
+
 /*
  * Tags are u32 constants: hardcoding as hex since characters constants of more
  * than one byte such as 'BGCE' are frown upon.
