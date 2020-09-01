@@ -165,7 +165,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	return 0;
 }
 
-static int __init lwis_i2c_device_probe(struct platform_device *plat_dev)
+static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_i2c_device *i2c_dev;

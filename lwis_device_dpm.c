@@ -143,7 +143,7 @@ out:
 	return ret;
 }
 
-static int __init lwis_dpm_device_probe(struct platform_device *plat_dev)
+static int lwis_dpm_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_dpm_device *dpm_dev;

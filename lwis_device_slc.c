@@ -178,7 +178,7 @@ int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd)
 	return 0;
 }
 
-static int __init lwis_slc_device_probe(struct platform_device *plat_dev)
+static int lwis_slc_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_slc_device *slc_dev;

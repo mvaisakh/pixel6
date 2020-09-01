@@ -351,7 +351,7 @@ static int lwis_top_device_setup(struct lwis_top_device *top_dev)
 	return ret;
 }
 
-static int __init lwis_top_device_probe(struct platform_device *plat_dev)
+static int lwis_top_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_top_device *top_dev;
