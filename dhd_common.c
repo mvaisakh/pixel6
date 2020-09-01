@@ -8190,9 +8190,9 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	/* do not allow further writes to the ring
 	 * till we flush it
 	 */
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_SUSPEND;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	if (dhdp->concise_dbg_buf) {
 		/* re-use concise debug buffer temporarily
@@ -8227,13 +8227,13 @@ dhd_dump_debug_ring(dhd_pub_t *dhdp, void *ring_ptr, const void *user_buf,
 	} else {
 		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
 	}
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_ACTIVE;
 	/* Resetting both read and write pointer,
 	 * since all items are read.
 	 */
 	ring->rp = ring->wp = 0;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	return ret;
 }
@@ -8258,9 +8258,9 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 	/* do not allow further writes to the ring
 	 * till we flush it
 	 */
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_SUSPEND;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	if (dhdp->concise_dbg_buf) {
 		/* re-use concise debug buffer temporarily
@@ -8288,9 +8288,9 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 				ret = dhd_os_write_file_posn(file, file_posn, data, rlen);
 				if (ret < 0) {
 					DHD_ERROR(("%s: write file error !\n", __FUNCTION__));
-					flags = dhd_os_spin_lock(ring->lock);
+					DHD_DBG_RING_LOCK(ring->lock, flags);
 					ring->state = RING_ACTIVE;
-					dhd_os_spin_unlock(ring->lock, flags);
+					DHD_DBG_RING_UNLOCK(ring->lock, flags);
 					return BCME_ERROR;
 				}
 			}
@@ -8303,13 +8303,13 @@ dhd_log_dump_ring_to_file(dhd_pub_t *dhdp, void *ring_ptr, void *file,
 		DHD_ERROR(("%s: No concise buffer available !\n", __FUNCTION__));
 	}
 
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_ACTIVE;
 	/* Resetting both read and write pointer,
 	 * since all items are read.
 	 */
 	ring->rp = ring->wp = 0;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 	return BCME_OK;
 }
 

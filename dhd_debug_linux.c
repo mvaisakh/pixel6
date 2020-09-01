@@ -117,7 +117,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 	ringid = ring_info->ring_id;
 
 	ring = &dhdp->dbg->dbg_rings[ringid];
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 
 	dhd_dbg_get_ring_status(dhdp, ringid, &ring_status);
 
@@ -126,22 +126,25 @@ dbg_ring_poll_worker(struct work_struct *work)
 	} else if (ring->wp < ring->rp) {
 		buflen = ring->ring_size - ring->rp + ring->wp;
 	} else {
+		DHD_DBG_RING_UNLOCK(ring->lock, flags);
 		goto exit;
 	}
 
 	if (buflen > ring->ring_size) {
+		DHD_DBG_RING_UNLOCK(ring->lock, flags);
 		goto exit;
 	}
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	buf = MALLOCZ(dhdp->osh, buflen);
 	if (!buf) {
-		dhd_os_spin_unlock(ring->lock, flags);
 		DHD_ERROR(("%s failed to allocate read buf\n", __FUNCTION__));
 		return;
 	}
 
 	rlen = dhd_dbg_pull_from_ring(dhdp, ringid, buf, buflen);
 
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	if (!ring->sched_pull) {
 		ring->sched_pull = TRUE;
 	}
@@ -157,6 +160,7 @@ dbg_ring_poll_worker(struct work_struct *work)
 		rlen -= ENTRY_LENGTH(hdr);
 		hdr = (dhd_dbg_ring_entry_t *)((char *)hdr + ENTRY_LENGTH(hdr));
 	}
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 	MFREE(dhdp->osh, buf, buflen);
 
 exit:
@@ -167,8 +171,6 @@ exit:
 			schedule_delayed_work(d_work, ring_info->interval);
 		}
 	}
-	dhd_os_spin_unlock(ring->lock, flags);
-
 	return;
 }
 
@@ -375,7 +377,7 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 		msg_hdr.len = strlen(data);
 	}
 	ret = dhd_dbg_push_to_ring(dhdp, ring_id, &msg_hdr, event_data);
-	if (ret) {
+	if (ret && ret != BCME_BUSY) {
 		DHD_ERROR(("%s : failed to push data into the ring (%d) with ret(%d)\n",
 			__FUNCTION__, ring_id, ret));
 	}

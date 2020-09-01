@@ -21343,10 +21343,10 @@ dhd_log_dump_init(dhd_pub_t *dhd)
 				__FUNCTION__));
 		goto fail;
 	}
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_ACTIVE;
 	ring->threshold = 0;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	bufptr += LOG_DUMP_ECNTRS_MAX_BUFSIZE;
 #endif /* EWP_ECNTRS_LOGGING */
@@ -21366,10 +21366,10 @@ dhd_log_dump_init(dhd_pub_t *dhd)
 				__FUNCTION__));
 		goto fail;
 	}
-	flags = dhd_os_spin_lock(ring->lock);
+	DHD_DBG_RING_LOCK(ring->lock, flags);
 	ring->state = RING_ACTIVE;
 	ring->threshold = 0;
-	dhd_os_spin_unlock(ring->lock, flags);
+	DHD_DBG_RING_UNLOCK(ring->lock, flags);
 
 	bufptr += LOG_DUMP_RTT_MAX_BUFSIZE;
 #endif /* EWP_RTT_LOGGING */

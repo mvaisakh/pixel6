@@ -3014,10 +3014,10 @@ extern void dhd_os_general_spin_unlock(dhd_pub_t *pub, unsigned long flags);
 /* linux is defined for DHD EFI builds also,
 * since its cross-compiled for EFI from linux
 */
-#define DHD_DBG_RING_LOCK_INIT(osh)				dhd_os_dbgring_lock_init(osh)
-#define DHD_DBG_RING_LOCK_DEINIT(osh, lock)		dhd_os_dbgring_lock_deinit(osh, (lock))
-#define DHD_DBG_RING_LOCK(lock, flags)			(flags) = dhd_os_dbgring_lock(lock)
-#define DHD_DBG_RING_UNLOCK(lock, flags)		dhd_os_dbgring_unlock((lock), flags)
+#define DHD_DBG_RING_LOCK_INIT(osh)			osl_spin_lock_init(osh)
+#define DHD_DBG_RING_LOCK_DEINIT(osh, lock)		osl_spin_lock_deinit(osh, (lock))
+#define DHD_DBG_RING_LOCK(lock, flags)			(flags) = osl_spin_lock(lock)
+#define DHD_DBG_RING_UNLOCK(lock, flags)		osl_spin_unlock((lock), flags)
 
 #ifdef DHD_MEM_STATS
 /* memory stats lock/unlock */
