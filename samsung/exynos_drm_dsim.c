@@ -782,13 +782,23 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 		if (decon)
 			DPU_EVENT_LOG(DPU_EVT_DSIM_FRAMEDONE, decon->id, NULL);
 	}
-	if (int_src & DSIM_INTSRC_ERR_RX_ECC)
+
+	if (int_src & DSIM_INTSRC_RX_CRC) {
+		dsim_err(dsim, "RX CRC error was detected!\n");
+		if (decon)
+			DPU_EVENT_LOG(DPU_EVT_DSIM_CRC, decon->id, NULL);
+	}
+
+	if (int_src & DSIM_INTSRC_ERR_RX_ECC) {
 		dsim_err(dsim, "RX ECC Multibit error was detected!\n");
+		if (decon)
+			DPU_EVENT_LOG(DPU_EVT_DSIM_ECC, decon->id, NULL);
+	}
 
 	if (int_src & DSIM_INTSRC_UNDER_RUN) {
 		dsim_underrun_info(dsim);
 		if (decon)
-			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, dsim);
+			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
 	}
 
 	if (int_src & DSIM_INTSRC_VT_STATUS) {

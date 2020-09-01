@@ -208,6 +208,9 @@ enum dpu_event_type {
 	DPU_EVT_BTS_CALC_BW,
 	DPU_EVT_BTS_UPDATE_BW,
 
+	DPU_EVT_DSIM_CRC,
+	DPU_EVT_DSIM_ECC,
+
 	DPU_EVT_MAX, /* End of EVENT */
 };
 
@@ -262,14 +265,9 @@ struct dpu_log_freqs {
 	unsigned long disp_freq;
 };
 
-struct dpu_log_bts {
+struct dpu_log_bts_event {
 	struct dpu_log_freqs freqs;
-	unsigned int calc_disp;
-};
-
-struct dpu_log_underrun {
-	struct dpu_log_freqs freqs;
-	unsigned int underrun_cnt;
+	unsigned int value;
 };
 
 struct dpu_log {
@@ -285,8 +283,8 @@ struct dpu_log {
 		struct dpu_log_win win;
 		struct dpu_log_crtc_info crtc_info;
 		struct dpu_log_freqs freqs;
-		struct dpu_log_bts bts;
-		struct dpu_log_underrun underrun;
+		struct dpu_log_bts_event bts_event;
+		unsigned int value;
 	} data;
 };
 
@@ -301,6 +299,10 @@ struct decon_debug {
 	u32 event_log_cnt;
 	/* count of underrun interrupt */
 	u32 underrun_cnt;
+	/* count of crc interrupt */
+	u32 crc_cnt;
+	/* count of ecc interrupt */
+	u32 ecc_cnt;
 	/* array index of log buffer in event log */
 	atomic_t event_log_idx;
 	/* lock for saving log to event log buffer */

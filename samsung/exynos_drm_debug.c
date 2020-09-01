@@ -80,6 +80,7 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	struct drm_crtc_state *crtc_state;
 	unsigned long flags;
 	int idx;
+	bool skip_excessive = true;
 
 	if (index < 0) {
 		DRM_ERROR("%s: decon id is not valid(%d)\n", __func__, index);
@@ -91,19 +92,28 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		return;
 
 	switch (type) {
+	case DPU_EVT_TE_INTERRUPT:
+		break;
 	case DPU_EVT_DSIM_UNDERRUN:
 		decon->d.underrun_cnt++;
-	case DPU_EVT_TE_INTERRUPT:
-		/*
-		 * If the same event occurs DPU_EVENT_KEEP_CNT times
-		 * continuously, it will be skipped.
-		 */
-		if (dpu_event_ignore(type, decon))
-			return;
+		break;
+	case DPU_EVT_DSIM_CRC:
+		decon->d.crc_cnt++;
+		break;
+	case DPU_EVT_DSIM_ECC:
+		decon->d.ecc_cnt++;
 		break;
 	default:
+		skip_excessive = false;
 		break;
 	}
+
+	/*
+	 * If the same event occurs DPU_EVENT_KEEP_CNT times
+	 * continuously, it will be skipped.
+	 */
+	if (skip_excessive && dpu_event_ignore(type, decon))
+		return;
 
 	spin_lock_irqsave(&decon->d.event_lock, flags);
 	idx = atomic_inc_return(&decon->d.event_log_idx) % dpu_event_log_max;
@@ -156,12 +166,18 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		dpu_event_save_freqs(&log->data.freqs);
 		break;
 	case DPU_EVT_BTS_CALC_BW:
-		dpu_event_save_freqs(&log->data.bts.freqs);
-		log->data.bts.calc_disp = decon->bts.max_disp_freq;
+		dpu_event_save_freqs(&log->data.bts_event.freqs);
+		log->data.bts_event.value = decon->bts.max_disp_freq;
 		break;
 	case DPU_EVT_DSIM_UNDERRUN:
-		dpu_event_save_freqs(&log->data.underrun.freqs);
-		log->data.underrun.underrun_cnt = decon->d.underrun_cnt;
+		dpu_event_save_freqs(&log->data.bts_event.freqs);
+		log->data.bts_event.value = decon->d.underrun_cnt;
+		break;
+	case DPU_EVT_DSIM_CRC:
+		log->data.value = decon->d.crc_cnt;
+		break;
+	case DPU_EVT_DSIM_ECC:
+		log->data.value = decon->d.ecc_cnt;
 		break;
 	default:
 		break;
@@ -352,7 +368,8 @@ static const char *get_event_name(enum dpu_event_type type)
 		"REQ_CRTC_INFO_OLD",		"REQ_CRTC_INFO_NEW",
 		"FRAMESTART_TIMEOUT",
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
-		"BTS_UPDATE_BW",
+		"BTS_UPDATE_BW",		"DSIM_CRC",
+		"DSIM_ECC",
 	};
 
 	if (type >= DPU_EVT_MAX)
@@ -459,18 +476,24 @@ static void DPU_EVENT_SHOW(const struct decon_device *decon, struct drm_printer 
 			dpu_print_log_freqs(buf, len, &log->data.freqs);
 			break;
 		case DPU_EVT_BTS_CALC_BW:
-			len += dpu_print_log_freqs(buf, len,
-					&log->data.bts.freqs);
 			scnprintf(buf + len, sizeof(buf) - len,
-					" calculated disp(%u)",
-					log->data.bts.calc_disp);
+					"\tcalculated disp(%u)",
+					log->data.bts_event.value);
 			break;
 		case DPU_EVT_DSIM_UNDERRUN:
-			len += dpu_print_log_freqs(buf, len,
-					&log->data.underrun.freqs);
 			scnprintf(buf + len, sizeof(buf) - len,
-					" underrun count(%d)",
-					log->data.underrun.underrun_cnt);
+					"\tunderrun count(%u)",
+					log->data.bts_event.value);
+			break;
+		case DPU_EVT_DSIM_CRC:
+			scnprintf(buf + len, sizeof(buf) - len,
+					"\tcrc count(%u)",
+					log->data.value);
+			break;
+		case DPU_EVT_DSIM_ECC:
+			scnprintf(buf + len, sizeof(buf) - len,
+					"\tecc count(%u)",
+					log->data.value);
 			break;
 		default:
 			break;
@@ -572,6 +595,8 @@ int dpu_init_debug(struct decon_device *decon)
 	}
 
 	debugfs_create_u32("underrun_cnt", 0664, crtc->debugfs_entry, &decon->d.underrun_cnt);
+	debugfs_create_u32("crc_cnt", 0444, crtc->debugfs_entry, &decon->d.crc_cnt);
+	debugfs_create_u32("ecc_cnt", 0444, crtc->debugfs_entry, &decon->d.ecc_cnt);
 
 	urgent_dent = debugfs_create_dir("urgent", crtc->debugfs_entry);
 	if (!urgent_dent) {
