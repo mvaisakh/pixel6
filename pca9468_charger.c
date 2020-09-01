@@ -20,12 +20,12 @@
 #include <linux/of_irq.h>
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/power_supply.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
 #include <linux/rtc.h>
 #include <linux/debugfs.h>
+#include "gbms_power_supply.h"
 #include "pca9468_charger.h"
 
 #if defined (CONFIG_OF)

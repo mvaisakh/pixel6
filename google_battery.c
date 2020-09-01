@@ -24,10 +24,10 @@
 #include <linux/of.h>
 #include <linux/pm_runtime.h>
 #include <linux/platform_device.h>
-#include <linux/power_supply.h>
 #include <linux/pm_wakeup.h>
 #include <linux/thermal.h>
 #include <linux/slab.h>
+#include "gbms_power_supply.h"
 #include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "google_bms.h"
 #include "google_psy.h"

@@ -23,7 +23,6 @@
 #include <linux/pm_wakeup.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-#include <linux/power_supply.h>
 #include <linux/regmap.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>

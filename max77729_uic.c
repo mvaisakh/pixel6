@@ -26,7 +26,7 @@
 #include <linux/of_irq.h>
 #include <linux/regmap.h>
 #include <linux/workqueue.h>
-#include <linux/power_supply.h>
+#include "gbms_power_supply.h"
 #include "gbms_storage.h"
 
 #define MAX77729_UIC_HW_REV                  0x00

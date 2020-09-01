@@ -24,7 +24,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
-#include <linux/power_supply.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/time.h>
@@ -33,6 +32,8 @@
 #include <linux/device.h>
 #include <linux/fs.h> /* register_chrdev, unregister_chrdev */
 #include <linux/seq_file.h> /* seq_read, seq_lseek, single_release */
+
+#include "gbms_power_supply.h"
 #include "google_bms.h"
 #include "logbuffer.h"
 #include "max1720x_battery.h"

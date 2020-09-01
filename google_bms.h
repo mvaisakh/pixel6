@@ -19,7 +19,7 @@
 
 #include <linux/types.h>
 #include <linux/usb/pd.h>
-#include <linux/power_supply.h>
+#include "gbms_power_supply.h"
 #include "qmath.h"
 #include "gbms_storage.h"
 

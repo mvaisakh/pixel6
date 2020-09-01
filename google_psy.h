@@ -16,7 +16,7 @@
 #define __GOOGLE_PSY_H_
 
 #include <linux/printk.h>
-#include <linux/power_supply.h>
+#include "gbms_power_supply.h"
 
 static inline int gpsy_set_prop(struct power_supply *psy,
 				      enum power_supply_property psp,

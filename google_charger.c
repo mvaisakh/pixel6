@@ -23,7 +23,6 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/power_supply.h>
 #include <linux/thermal.h>
 #include <linux/pm_wakeup.h>
 #include <linux/slab.h>
@@ -31,6 +30,7 @@
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
 #include <linux/alarmtimer.h>
+#include "gbms_power_supply.h"
 #include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "google_bms.h"
 #include "google_dc_pps.h"
