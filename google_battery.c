@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2018 Google, Inc
+ * Copyright 2018 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -546,7 +547,8 @@ static int ssoc_get_capacity(const struct batt_ssoc_state *ssoc)
 
 /* ------------------------------------------------------------------------- */
 
-void dump_ssoc_state(struct batt_ssoc_state *ssoc_state, struct logbuffer *log)
+static void dump_ssoc_state(struct batt_ssoc_state *ssoc_state,
+			    struct logbuffer *log)
 {
 	char buff[UICURVE_BUF_SZ] = { 0 };
 
@@ -658,8 +660,8 @@ static int ssoc_work(struct batt_ssoc_state *ssoc_state,
  * "too long" after disconnect.
  */
 #define SSOC_DELTA 3
-void ssoc_change_curve(struct batt_ssoc_state *ssoc_state,
-		       enum ssoc_uic_type type)
+static void ssoc_change_curve(struct batt_ssoc_state *ssoc_state,
+			      enum ssoc_uic_type type)
 {
 	struct ssoc_uicurve *new_curve;
 	qnum_t gdf = ssoc_state->ssoc_gdf; /* actual battery level */
@@ -2441,8 +2443,8 @@ static ssize_t debug_set_fake_temp(struct file *filp,
 	return count;
 }
 
-BATTERY_DEBUG_ATTRIBUTE(debug_fake_temp_fops,
-				debug_get_fake_temp, debug_set_fake_temp);
+BATTERY_DEBUG_ATTRIBUTE(debug_fake_temp_fops, debug_get_fake_temp,
+			debug_set_fake_temp);
 
 
 static enum batt_paired_state
@@ -2823,22 +2825,24 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	if (IS_ERR_OR_NULL(de))
 		return 0;
 
-	debugfs_create_file("cycle_count_sync", 0600, de,
-				batt_drv, &cycle_count_bins_sync_fops);
-	debugfs_create_file("ssoc_gdf", 0600, de,
-				batt_drv, &debug_ssoc_gdf_fops);
-	debugfs_create_file("ssoc_uic", 0600, de,
-				batt_drv, &debug_ssoc_uic_fops);
-	debugfs_create_file("ssoc_rls", 0400, de,
-				batt_drv, &debug_ssoc_rls_fops);
-	debugfs_create_file("ssoc_uicurve", 0600, de,
-				batt_drv, &debug_ssoc_uicurve_cstr_fops);
-	debugfs_create_file("force_psy_update", 0400, de,
-				batt_drv, &debug_force_psy_update_fops);
-	debugfs_create_file("pairing_state", 0200, de,
-				batt_drv, &debug_pairing_fops);
-	debugfs_create_file("blf_state", 0400, de,
-				batt_drv, &debug_blf_state_fops);
+	debugfs_create_file("cycle_count_sync", 0600, de, batt_drv,
+			    &cycle_count_bins_sync_fops);
+	debugfs_create_file("ssoc_gdf", 0600, de, batt_drv,
+			    &debug_ssoc_gdf_fops);
+	debugfs_create_file("ssoc_uic", 0600, de, batt_drv,
+			    &debug_ssoc_uic_fops);
+	debugfs_create_file("ssoc_rls", 0400, de, batt_drv,
+			    &debug_ssoc_rls_fops);
+	debugfs_create_file("ssoc_uicurve", 0600, de, batt_drv,
+			    &debug_ssoc_uicurve_cstr_fops);
+	debugfs_create_file("force_psy_update", 0400, de, batt_drv,
+			    &debug_force_psy_update_fops);
+	debugfs_create_file("pairing_state", 0200, de, batt_drv,
+			    &debug_pairing_fops);
+	debugfs_create_file("blf_state", 0400, de, batt_drv,
+			    &debug_blf_state_fops);
+	debugfs_create_file("temp", 0400, de, batt_drv,
+			    &debug_fake_temp_fops);
 
 	return 0;
 }
@@ -2911,7 +2915,7 @@ static int gbatt_get_temp(struct batt_drv *batt_drv, int *temp)
 	return err;
 }
 
-void log_ttf_estimate(const char *label, int ssoc, struct batt_drv *batt_drv)
+static void log_ttf_estimate(const char *label, int ssoc, struct batt_drv *batt_drv)
 {
 	int cc, err;
 	time_t res = 0;
@@ -3016,6 +3020,25 @@ batt_check_pairing_state(struct batt_drv *batt_drv)
 	}
 
 	return BATT_PAIRING_PAIRED;
+}
+
+/*  TODO: handle history collection, use storage */
+static void *batt_hist_init_data(struct device *dev)
+{
+	return NULL;
+}
+
+/*  TODO: handle history collection, use storage */
+static int batt_hist_data_collect(void *h, int idx, int cycle_cnt,
+			   struct power_supply *fg_psy)
+{
+	return -ENODEV;
+}
+
+/* TODO: handle history collection, use storage */
+static void batt_hist_free_data(void *p)
+{
+
 }
 
 /* battery history data collection */

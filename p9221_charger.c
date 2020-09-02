@@ -423,8 +423,11 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 	if (charger->dc_icl_epp > charger->ocp_icl_lmt)
 		charger->dc_icl_epp = charger->ocp_icl_val;
 
-	ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true,
-			ocp_icl);
+	/* TODO: verify this */
+	ocp_icl = (charger->dc_icl_epp > 0) ?
+		   charger->dc_icl_epp : P9221_DC_ICL_EPP_UA;
+
+	ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true, ocp_icl);
 	if (ret)
 		dev_err(&charger->client->dev,
 			"Could not reset OCP DC_ICL voter %d\n", ret);
@@ -1500,7 +1503,7 @@ out:
 }
 
 /* P9221_NOTIFIER_DELAY_MS from VRECTON */
-bool p9221_notifier_check_det(struct p9221_charger_data *charger)
+static bool p9221_notifier_check_det(struct p9221_charger_data *charger)
 {
 	bool relax = true;
 
@@ -2543,7 +2546,7 @@ static DEVICE_ATTR(rtx_boost, 0644, p9382_show_rtx_boost, p9382_set_rtx_boost);
 
 static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 {
-	int ret, tx_icl = -1;
+	int ret = 0, tx_icl = -1;
 
 	if (enable == 0) {
 		logbuffer_log(charger->rtx_log, "disable rtx");
@@ -2568,6 +2571,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			logbuffer_log(charger->rtx_log, "rtx be disabled\n");
 			goto exit;
 		}
+
 		/* Check if WLC online */
 		if (charger->online) {
 			dev_err(&charger->client->dev,

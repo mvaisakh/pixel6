@@ -1,7 +1,7 @@
 menuconfig GOOGLE_BMS
-	bool "Google, Inc. Charging and Fuel Gauge support"
+	bool "Google, LLC. Charging and Fuel Gauge support"
 	help
-	  Say Y here to enable Google, Inc. support for Battery and Charging.
+	  Say Y here to enable Google, LLC. support for Battery and Charging.
 
 if GOOGLE_BMS
 

@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2020 Google, Inc
+ * Copyright 2020 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -494,6 +495,9 @@ static int max77759_chgin_get_ilim_max_ua(struct max77759_chgr_data *data,
 		icl = 0;
 	else if (value > 3)
 		icl = 100 + (value - 3) * 25;
+	else
+		icl = 100;
+
 	*ilim_ua = icl * 1000;
 
 	if (data->chgin_input_suspend)
@@ -1426,7 +1430,7 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 					data);
 	if (IS_ERR_OR_NULL(data->mode_votable)) {
 		ret = PTR_ERR(data->mode_votable);
-		dev_err(data->dev, "no mode votable (%d)\n");
+		dev_err(data->dev, "no mode votable (%d)\n", ret);
 		return ret;
 	}
 

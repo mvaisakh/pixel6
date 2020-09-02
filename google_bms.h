@@ -323,13 +323,6 @@ int ttf_stats_sscan(struct batt_ttf_stats *stats,
 struct batt_ttf_stats *ttf_stats_dup(struct batt_ttf_stats *dst,
 				     const struct batt_ttf_stats *src);
 
-/* Google battery EEPROM API */
-
-struct nvmem_device;
-
-int gbee_register_device(const char *name, struct nvmem_device *nvram);
-void gbee_destroy_device(void);
-
 /*
  * Battery history
  *

@@ -1,7 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * P9221 Wireless Charger Driver
  *
- * Copyright (C) 2017 Google, Inc.
+ * Copyright (C) 2017 Google, LLC.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

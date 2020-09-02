@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2018 Google, Inc
+ * Copyright 2018 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2064,9 +2065,8 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	return 0;
 }
 
-int chg_tdev_init(struct chg_thermal_device *tdev,
-		  const char *name,
-		  struct chg_drv *chg_drv)
+static int chg_tdev_init(struct chg_thermal_device *tdev, const char *name,
+			 struct chg_drv *chg_drv)
 {
 	int rc, byte_len;
 
@@ -2110,7 +2110,7 @@ static const struct thermal_cooling_device_ops chg_dc_icl_tcd_ops = {
 };
 
 /* ls /sys/devices/virtual/thermal/cdev-by-name/ */
-int chg_thermal_device_init(struct chg_drv *chg_drv)
+static int chg_thermal_device_init(struct chg_drv *chg_drv)
 {
 	int rc;
 	struct device_node *cooling_node = NULL;

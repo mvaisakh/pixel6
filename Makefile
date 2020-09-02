@@ -18,6 +18,9 @@ obj-$(CONFIG_PCA9468)	+= pca9468_charger.o
 obj-$(CONFIG_MAX20339)		+= max20339.o
 obj-$(CONFIG_PMIC_VOTER_COMPAT)	+= pmic-voter-compat.o
 
+CFLAGS_max77759_charger.o += -Wno-unused-function
+CFLAGS_max77729_charger.o += -Wno-unused-function
+
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 

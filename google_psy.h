@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2018 Google, Inc
+ * Copyright 2018 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,14 +28,17 @@ static inline int gpsy_set_prop(struct power_supply *psy,
 
 	if (!psy)
 		return -EINVAL;
-	pr_debug("set %s for '%s' to %ld\n", prop_name, psy->desc->name,
-		val.int64val);
+
+	pr_debug("set %s for '%s' to %d\n", prop_name, psy->desc->name,
+		 val.intval);
+
 	ret = power_supply_set_property(psy, psp, &val);
 	if (ret < 0) {
 		pr_err("failed to set %s for '%s', ret=%d\n",
 		       prop_name, psy->desc->name, ret);
 		return ret;
 	}
+
 	return 0;
 }
 

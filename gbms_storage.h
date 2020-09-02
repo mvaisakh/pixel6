@@ -154,4 +154,13 @@ struct gbms_storage_device *gbms_storage_create_device(const char *name,
 						       gbms_tag_t tag);
 void gbms_storage_cleanup_device(struct gbms_storage_device *gdev);
 
+
+/* Google battery EEPROM API */
+
+struct nvmem_device;
+
+int gbee_register_device(const char *name, struct nvmem_device *nvram);
+void gbee_destroy_device(void);
+
+
 #endif /* __GBMS_STORAGE_H__ */

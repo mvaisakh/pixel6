@@ -1,21 +1,17 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2018 Google, Inc
+ * Support For Battery EEPROM
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * Copyright 2018 Google, LLC
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": %s " fmt, __func__
 
 #include <linux/kernel.h>
 #include <linux/pm_runtime.h>
 #include <linux/nvmem-consumer.h>
+#include <linux/module.h>
 #include "gbms_storage.h"
 
 #define BATT_TOTAL_HIST_LEN	928
@@ -256,8 +252,14 @@ int gbee_register_device(const char *name, struct nvmem_device *nvram)
 {
 	return gbms_storage_register(&gbee_storage_dsc, name, nvram);
 }
+EXPORT_SYMBOL_GPL(gbee_register_device);
 
 void gbee_destroy_device(void)
 {
 
 }
+EXPORT_SYMBOL_GPL(gbee_destroy_device);
+
+MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
+MODULE_DESCRIPTION("Google EPROM");
+MODULE_LICENSE("GPL");

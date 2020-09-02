@@ -213,8 +213,8 @@ static bool max17x0x_reglog_init(struct max1720x_chip *chip)
 /* TODO: split between NV and Volatile? */
 
 
-const struct max17x0x_reg *max17x0x_find_by_index(struct max17x0x_regtags *tags,
-						  int index)
+static const struct max17x0x_reg *
+max17x0x_find_by_index(struct max17x0x_regtags *tags, int index)
 {
 	if (index < 0 || !tags || index >= tags->max)
 		return NULL;
@@ -222,8 +222,8 @@ const struct max17x0x_reg *max17x0x_find_by_index(struct max17x0x_regtags *tags,
 	return &tags->map[index];
 }
 
-const struct max17x0x_reg *max17x0x_find_by_tag(struct max17x0x_regmap *map,
-						enum max17x0x_reg_tags tag)
+static const struct max17x0x_reg *
+max17x0x_find_by_tag(struct max17x0x_regmap *map, enum max17x0x_reg_tags tag)
 {
 	return max17x0x_find_by_index(&map->regtags, tag);
 }
@@ -2659,11 +2659,11 @@ static int debug_batt_id_set(void *data, u64 val)
 
 	mutex_unlock(&chip->model_lock);
 
-	dev_info(chip->dev, "Force model for batt_id=%d (%d)\n", val, ret);
+	dev_info(chip->dev, "Force model for batt_id=%ull (%d)\n", val, ret);
 	return 0;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, NULL, debug_batt_id_set, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, NULL, debug_batt_id_set, "%ull\n");
 
 
 #define BATTERY_DEBUG_ATTRIBUTE(name, fn_read, fn_write) \
@@ -3868,7 +3868,7 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 		chip->regmap.regmap = devm_regmap_init_i2c(chip->primary,
 						&max1730x_regmap_cfg);
 		if (IS_ERR(chip->regmap.regmap)) {
-			dev_err(chip->dev, "Failed to re-initialize regmap (%d)\n",
+			dev_err(chip->dev, "Failed to re-initialize regmap (%ld)\n",
 				IS_ERR_VALUE(chip->regmap.regmap));
 			return -EINVAL;
 		}
@@ -3884,7 +3884,7 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 
 		ret = max_m5_regmap_init(&chip->regmap, chip->primary);
 		if (ret < 0) {
-			dev_err(chip->dev, "Failed to re-initialize regmap (%d)\n",
+			dev_err(chip->dev, "Failed to re-initialize regmap (%ld)\n",
 				IS_ERR_VALUE(chip->regmap.regmap));
 			return -EINVAL;
 		}
@@ -3896,7 +3896,7 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 		chip->regmap.regmap = devm_regmap_init_i2c(chip->primary,
 							&max1720x_regmap_cfg);
 		if (IS_ERR(chip->regmap.regmap)) {
-			dev_err(chip->dev, "Failed to initialize primary regmap (%d)\n",
+			dev_err(chip->dev, "Failed to initialize primary regmap (%ld)\n",
 				IS_ERR_VALUE(chip->regmap.regmap));
 			return -EINVAL;
 		}

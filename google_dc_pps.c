@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2020 Google, Inc
+ * Copyright 2020 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,7 +92,7 @@ void pps_init_state(struct pd_pps_data *pps_data)
 }
 EXPORT_SYMBOL_GPL(pps_init_state);
 
-struct tcpm_port *chg_get_tcpm_port(struct power_supply *tcpm_psy)
+static struct tcpm_port *chg_get_tcpm_port(struct power_supply *tcpm_psy)
 {
 	return tcpm_psy ? power_supply_get_drvdata(tcpm_psy) : NULL;
 }

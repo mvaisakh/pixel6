@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google, Inc
+ * Copyright 2018 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,12 +14,7 @@
 
 #include <linux/kernel.h>
 #include <linux/printk.h>
-#include <linux/module.h>
 #include <linux/of.h>
-#include <linux/pm_runtime.h>
-#include <linux/platform_device.h>
-#include <linux/pm_wakeup.h>
-#include <linux/thermal.h>
 #include <misc/logbuffer.h>
 #include "google_bms.h"
 #include "google_psy.h"
@@ -214,9 +209,8 @@ static int ttf_pwr_ratio(const struct batt_ttf_stats *stats,
 
 /* SOC estimates ---------------------------------------------------------  */
 
-int ttf_elap(time_t *estimate, int i,
-	     const struct batt_ttf_stats *stats,
-	     const struct gbms_charging_event *ce_data)
+static int ttf_elap(time_t *estimate, int i, const struct batt_ttf_stats *stats,
+		    const struct gbms_charging_event *ce_data)
 {
 	int ratio;
 	time_t elap;
@@ -678,8 +672,9 @@ struct batt_ttf_stats *ttf_stats_dup(struct batt_ttf_stats *dst,
 	return dst;
 }
 
-void ttf_init_ref_table(struct batt_ttf_stats *stats,
-			struct ttf_adapter_stats *as, int capacity_ma)
+static void ttf_init_ref_table(struct batt_ttf_stats *stats,
+			       struct ttf_adapter_stats *as,
+			       int capacity_ma)
 {
 	int i, table_i = 0;
 	const int cc = (capacity_ma * 100) / GBMS_SOC_STATS_LEN;

@@ -1,9 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * MAX77759 MAXQ interface.
+ *
+ * Copyright 2020 Google, LLC
+ *
  */
 
 #ifdef CONFIG_MAXQ_MAX77759
+
 struct max77759_maxq;
 extern struct max77759_maxq *maxq_init(struct device *dev,
 				       struct regmap *regmap,

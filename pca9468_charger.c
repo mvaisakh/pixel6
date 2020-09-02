@@ -2261,7 +2261,7 @@ static int pca9468_adjust_ta_current(struct pca9468_charger *pca9468)
 		/* Recover IIN_CC to the original value(iin_cfg) */
 		pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
-		pr_debug("%s: New IIN, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: New IIN, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
 			 __func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc,
 			 pca9468->chg_mode);
@@ -3590,7 +3590,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		/* Set RX voltage to MIN[RX voltage, RX_MAX_VOL*chg_mode] */
 		pca9468->ta_vol = min(pca9468->ta_vol, pca9468->ta_max_vol);
 
-		pr_debug("%s: Preset DC, rx_max_vol=%u, rx_max_cur=%u, rx_max_pwr=%u, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: Preset DC, rx_max_vol=%u, rx_max_cur=%u, rx_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
 			 __func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc,
 			 pca9468->chg_mode);
@@ -3683,7 +3683,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		/* Recover IIN_CC to the original value(iin_cfg) */
 		pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
-		pr_debug("%s: Preset DC, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: Preset DC, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
 			__func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			pca9468->ta_max_pwr, pca9468->iin_cc,
 			pca9468->chg_mode);
@@ -5226,7 +5226,7 @@ static int pca9468_probe(struct i2c_client *client,
 	}
 #endif
 
-	pr_info("pca9468: probe_done\n", __func__);
+	pr_info("pca9468: probe_done\n");
 	pr_debug("%s: =========END=========\n", __func__);
 	return 0;
 

@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2019 Google, Inc
+ * Copyright 2019 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -286,7 +287,7 @@ static inline int max77729_reg_update(struct max77729_chgr_data *data,
 	return ret;
 }
 
-bool max77729_chg_is_reg(struct device *dev, unsigned int reg)
+static bool max77729_chg_is_reg(struct device *dev, unsigned int reg)
 {
 	return (reg >= 0xB0) && (reg <= 0xC3);
 }
@@ -372,7 +373,7 @@ static int max77729_get_status(struct max77729_chgr_data *data, int *status)
  * changes to the votables implementation since the current vote will be
  * created based on the actual votes instead of being one of the vote.
  */
-int max77729_mode_comparator(void *l, void *r)
+static int max77729_mode_comparator(void *l, void *r)
 {
 	const int a = *((int *) &l);
 	const int b = *((int *) &r);
@@ -944,7 +945,7 @@ static int max77729_dbg_reset_charger_state(void *d, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(max77729_debug_reset_charger_state_fops,
-			NULL, max77729_dbg_reset_charger_state, "%u\n");
+			NULL, max77729_dbg_reset_charger_state, "%ull\n");
 
 static int dbg_init_fs(struct max77729_chgr_data *data)
 {

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2019 Google, Inc
+ * Copyright 2019 Google, LLC
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -201,9 +201,8 @@ static int gbms_storage_find_slot(const char *name)
 	return index;
 }
 
-int gbms_storage_register_internal(struct gbms_storage_desc *desc,
-				   const char *name,
-				   void *ptr)
+static int gbms_storage_register_internal(struct gbms_storage_desc *desc,
+					  const char *name, void *ptr)
 {
 	int index;
 	unsigned long flags;
@@ -586,7 +585,7 @@ static int gbms_storage_show_cache(struct seq_file *m, void *data)
 			   slot->name, tag2cstr(tname, ce->tag));
 
 		if (ce->count != 0)
-			seq_printf(m, "[%d:%d]", ce->addr, ce->count);
+			seq_printf(m, "[%lu:%lu]", ce->addr, ce->count);
 		seq_printf(m, "\n");
 	}
 
@@ -628,7 +627,7 @@ static void gbms_show_storage_provider(struct seq_file *m,
 			if (ret < 0)
 				continue;
 
-			seq_printf(m, "[%d,%d] ", addr, count);
+			seq_printf(m, "[%lu,%lu] ", addr, count);
 		}
 	}
 }
@@ -1150,7 +1149,7 @@ static void gbee_probe_work(struct work_struct *work)
 	pr_info("gbee@ %s OK\n", beed->bee_name);
 }
 
-void gbee_destroy(struct gbee_data *beed)
+static void gbee_destroy(struct gbee_data *beed)
 {
 	gbms_storage_offline(beed->bee_name, true);
 	nvmem_device_put(beed->bee_nvram);
