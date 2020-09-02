@@ -163,6 +163,7 @@ struct chg_drv {
 	struct votable	*dc_suspend_votable;
 	struct votable	*dc_icl_votable;
 
+	bool init_done;
 	bool batt_present;
 	bool dead_battery;
 	int batt_profile_fcc_ua;	/* max/default fcc */
@@ -880,6 +881,12 @@ static void chg_work(struct work_struct *work)
 	int success, rc = 0;
 
 	__pm_stay_awake(chg_drv->chg_ws);
+
+	if (!chg_drv->init_done) {
+		pr_debug("battery charging work item, init pending\n");
+		goto exit_skip;
+	}
+
 	pr_debug("battery charging work item\n");
 
 	if (!chg_drv->batt_present) {
@@ -2125,7 +2132,7 @@ int chg_thermal_device_init(struct chg_drv *chg_drv)
 						FCC_CDEV_NAME,
 						fcc,
 						&chg_fcc_tcd_ops);
-		if (!fcc->tcd) {
+		if (IS_ERR(fcc->tcd)) {
 			pr_err("error registering fcc cooling device\n");
 			return -EINVAL;
 		}
@@ -2148,7 +2155,7 @@ int chg_thermal_device_init(struct chg_drv *chg_drv)
 						WLC_CDEV_NAME,
 						dc_icl,
 						&chg_dc_icl_tcd_ops);
-		if (!dc_icl->tcd)
+		if (IS_ERR(dc_icl->tcd))
 			goto error_exit;
 	}
 
@@ -2314,6 +2321,7 @@ static void google_charger_init_work(struct work_struct *work)
 	if (ret < 0)
 		pr_err("Cannot register power supply notifer, ret=%d\n", ret);
 
+	chg_drv->init_done = true;
 	pr_info("init_work done\n");
 
 	/* catch state changes that happened before registering the notifier */

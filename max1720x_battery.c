@@ -32,7 +32,6 @@
 #include <linux/device.h>
 #include <linux/fs.h> /* register_chrdev, unregister_chrdev */
 #include <linux/seq_file.h> /* seq_read, seq_lseek, single_release */
-
 #include "gbms_power_supply.h"
 #include "google_bms.h"
 #include <misc/logbuffer.h>
@@ -1073,10 +1072,19 @@ static void max1720x_restore_battery_qh_capacity(struct max1720x_chip *chip)
 	nvram_capacity = ~data;
 
 	ret = REGMAP_READ(&chip->regmap_nvram, MAX17XXX_QHQH, &data);
-	if (ret == 0)
-		nvram_qh = reg_to_twos_comp_int(data);
+	if (ret) {
+		max1720x_prime_battery_qh_capacity(chip,
+						   POWER_SUPPLY_STATUS_UNKNOWN);
+		return;
+	}
+	nvram_qh = reg_to_twos_comp_int(data);
 
 	ret = REGMAP_READ(&chip->regmap, MAX1720X_QH, &data);
+	if (ret) {
+		max1720x_prime_battery_qh_capacity(chip,
+						   POWER_SUPPLY_STATUS_UNKNOWN);
+		return;
+	}
 	current_qh = reg_to_twos_comp_int(data);
 
 	/* QH value accumulates as battery discharges */

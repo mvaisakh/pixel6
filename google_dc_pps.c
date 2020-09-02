@@ -102,11 +102,9 @@ int chg_update_capability(struct power_supply *tcpm_psy,
 				 u32 pps_cap)
 {
 	struct tcpm_port *port = chg_get_tcpm_port(tcpm_psy);
-#if 0 //TODO
 	const u32 pdo[] = {PDO_FIXED(5000, PD_SNK_MAX_MA, PDO_FIXED_FLAGS),
 			   PDO_FIXED(PD_SNK_MAX_MV, PD_SNK_MAX_MA_9V, 0),
 			   pps_cap};
-#endif
 
 	if (!port)
 		return -ENODEV;
@@ -114,11 +112,7 @@ int chg_update_capability(struct power_supply *tcpm_psy,
 	if (!nr_pdo || nr_pdo > PDO_MAX_SUPP)
 		return -EINVAL;
 
-#if 0 //TODO
 	return tcpm_update_sink_capabilities(port, pdo, nr_pdo, OP_SNK_MW);
-#else
-	return -ENODEV;
-#endif
 }
 
 /* false when not present or error (either way don't run) */
@@ -169,13 +163,9 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 	if (!pps || !port)
 		return -EINVAL;
 
-#if 0 //TODO
 	pps->nr_src_cap = tcpm_get_partner_src_caps(port, &pps->src_caps);
 
 	return pps->nr_src_cap;
-#else
-	return -EINVAL;
-#endif
 }
 EXPORT_SYMBOL_GPL(pps_get_src_cap);
 
@@ -840,9 +830,7 @@ int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
 		    struct power_supply *tcpm_psy)
 {
 	struct tcpm_port *port = chg_get_tcpm_port(tcpm_psy);
-#if 0 //TODO
 	const unsigned int max_mw = ta_max_vol * ta_max_cur;
-#endif
 
 	if (!port)
 		return -ENODEV;
@@ -850,12 +838,8 @@ int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
 		return -EINVAL;
 
 	/* max_mw was, now using the max OP_SNK_MW */
-#if 0 //TODO
 	return tcpm_update_sink_capabilities(port, pps_data->snk_pdo,
 					     ta_idx, max_mw);
-#else
-	return -ENODEV;
-#endif
 }
 EXPORT_SYMBOL_GPL(pps_request_pdo);
 

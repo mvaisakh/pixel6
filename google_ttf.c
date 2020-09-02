@@ -427,22 +427,18 @@ static int ttf_tier_sscan(struct batt_ttf_stats *stats,
 			  const char *buff,
 			  size_t size)
 {
-	int i, j, t, cnt, len = 0;
+	int j, len = 0;
 
 	memset(&stats->tier_stats, 0, sizeof(*stats));
 
-	cnt = sscanf(&buff[len], "%d:", &t);
-	if (t != i)
-		i = t - 1;
 	while (buff[len] != '[' && len < size)
 		len++;
 
 	for (j = 0; j < GBMS_STATS_TIER_COUNT; j++) {
-		cnt = sscanf(&buff[len], TTF_STATS_FMT,
-			&stats->tier_stats[j].soc_in,
-			&stats->tier_stats[j].cc_in,
-			&stats->tier_stats[j].cc_total,
-			&stats->tier_stats[j].avg_time);
+		sscanf(&buff[len], TTF_STATS_FMT, &stats->tier_stats[j].soc_in,
+		       &stats->tier_stats[j].cc_in,
+		       &stats->tier_stats[j].cc_total,
+		       &stats->tier_stats[j].avg_time);
 
 		len += sizeof(TTF_STATS_FMT) - 1;
 	}

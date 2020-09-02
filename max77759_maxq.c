@@ -275,7 +275,7 @@ struct max77759_maxq *maxq_init(struct device *dev, struct regmap *regmap,
 	maxq->log = logbuffer_register("maxq");
 	if (IS_ERR_OR_NULL(maxq->log)) {
 		dev_err(dev, "MAXQ logbuffer register failed\n");
-		return (struct max77759_maxq *)maxq->log;
+		maxq->log = NULL;
 	}
 	maxq->regmap = regmap;
 
