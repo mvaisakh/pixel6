@@ -516,6 +516,11 @@ static void p9221_align_timer_handler(struct timer_list *t)
 	logbuffer_log(charger->log, "align: timeout no IRQ");
 }
 
+#ifdef CONFIG_DC_RESET
+/*
+ * Offline disables ->qien_gpio: this worker re-enable it P9221_DCIN_TIMEOUT_MS
+ * ms later to make sure that the WLC IC goes through a full reset.
+ */
 static void p9221_dcin_pon_work(struct work_struct *work)
 {
 	int ret;
@@ -549,6 +554,16 @@ static void p9221_dcin_pon_work(struct work_struct *work)
 			msecs_to_jiffies(P9221_DCIN_TIMEOUT_MS));
 	}
 }
+#else
+static void p9221_dcin_pon_work(struct work_struct *work)
+{
+	struct p9221_charger_data *charger = container_of(work,
+		struct p9221_charger_data, dcin_pon_work.work);
+
+	gpio_set_value(charger->pdata->qien_gpio, 0);
+}
+#endif
+
 
 static void p9221_dcin_work(struct work_struct *work)
 {
@@ -2905,60 +2920,6 @@ send_eop:
 			"Failed to send EOP %d: %d\n", reason, ret);
 }
 
-static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
-				  u16 irq_src)
-{
-
-	/*
-	 * It is suspected that p9221 misses to set the interrupt status
-	 * register occasionally. Evaluate spurious interrupt case for
-	 * dc reset as well.
-	 */
-	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_MODECHANGED &&
-	    (irq_src & P9221R5_STAT_MODECHANGED || !irq_src)) {
-		u8 mode_reg = 0;
-		int res;
-
-		res = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
-				       &mode_reg);
-		if (res < 0) {
-			dev_err(&charger->client->dev,
-				"Failed to read P9221_SYSTEM_MODE_REG: %d\n",
-				res);
-			/*
-			 * p9221_reg_read_n returns ENODEV for ENOTCONN as well.
-			 * Signal dc_reset when register read fails with the
-			 * above reasons.
-			 */
-			return res == -ENODEV;
-		}
-
-		dev_info(&charger->client->dev,
-			 "P9221_SYSTEM_MODE_REG reg: %02x\n", mode_reg);
-		return !(mode_reg & (P9221R5_MODE_EXTENDED |
-				     P9221R5_MODE_WPCMODE));
-	}
-
-	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_VOUTCHANGED &&
-	    irq_src & P9221R5_STAT_VOUTCHANGED) {
-		u16 status_reg = 0;
-		int res;
-
-		res = p9221_reg_read_16(charger, P9221_STATUS_REG, &status_reg);
-		if (res < 0) {
-			dev_err(&charger->client->dev,
-				"Failed to read P9221_STATUS_REG: %d\n", res);
-			return res == -ENODEV ? true : false;
-		}
-
-		dev_info(&charger->client->dev,
-			 "P9221_STATUS_REG reg: %04x\n", status_reg);
-		return !(status_reg & P9221_STAT_VOUT);
-	}
-
-	return false;
-}
-
 static void p9382_txid_work(struct work_struct *work)
 {
 	struct p9221_charger_data *charger = container_of(work,
@@ -3080,30 +3041,107 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	}
 }
 
+
+#ifdef CONFIG_DC_RESET
+/*
+ * DC reset code uses a flag in the charger to initiate a hard reset of the
+ * WLC chip after a power loss. This is (was?) needed for p9221 to handle
+ * partial and/or rapid entry/exit from the field that could cause firmware
+ * to become erratic.
+ */
+static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
+				  u16 irq_src)
+{
+	/*
+	 * It is suspected that p9221 misses to set the interrupt status
+	 * register occasionally. Evaluate spurious interrupt case for
+	 * dc reset as well.
+	 */
+	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_MODECHANGED &&
+	    (irq_src & P9221R5_STAT_MODECHANGED || !irq_src)) {
+		u8 mode_reg = 0;
+		int res;
+
+		res = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
+				       &mode_reg);
+		if (res < 0) {
+			dev_err(&charger->client->dev,
+				"Failed to read P9221_SYSTEM_MODE_REG: %d\n",
+				res);
+			/*
+			 * p9221_reg_read_n returns ENODEV for ENOTCONN as well.
+			 * Signal dc_reset when register read fails with the
+			 * above reasons.
+			 */
+			return res == -ENODEV;
+		}
+
+		dev_info(&charger->client->dev,
+			 "P9221_SYSTEM_MODE_REG reg: %02x\n", mode_reg);
+		return !(mode_reg & (P9221R5_MODE_EXTENDED |
+				     P9221R5_MODE_WPCMODE));
+	}
+
+	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_VOUTCHANGED &&
+	    irq_src & P9221R5_STAT_VOUTCHANGED) {
+		u16 status_reg = 0;
+		int res;
+
+		res = p9221_reg_read_16(charger, P9221_STATUS_REG, &status_reg);
+		if (res < 0) {
+			dev_err(&charger->client->dev,
+				"Failed to read P9221_STATUS_REG: %d\n", res);
+			return res == -ENODEV ? true : false;
+		}
+
+		dev_info(&charger->client->dev,
+			 "P9221_STATUS_REG reg: %04x\n", status_reg);
+		return !(status_reg & P9221_STAT_VOUT);
+	}
+
+	return false;
+}
+
+static void p9221_check_dc_reset(struct p9221_charger_data *charger,
+				    u16 irq_src)
+{
+	union power_supply_propval val = {.intval = 1};
+	int res;
+
+	if (!p9221_dc_reset_needed(charger, irq_src))
+		return;
+
+	if (!charger->dc_psy)
+		charger->dc_psy = power_supply_get_by_name("dc");
+	if (charger->dc_psy) {
+		/* Signal DC_RESET when wireless removal is sensed. */
+		res = power_supply_set_property(charger->dc_psy,
+					POWER_SUPPLY_PROP_DC_RESET,
+					&val);
+	} else {
+		res = -ENODEV;
+	}
+
+	if (res < 0)
+		dev_err(&charger->client->dev,
+			"unable to set DC_RESET, ret=%d",
+			res);
+}
+#else
+static void p9221_check_dc_reset(struct p9221_charger_data *charger,
+				 u16 irq_src)
+{
+
+}
+#endif
+
+
 /* Handler for R5 and R7 chips */
 static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 {
 	int res;
 
-	if (p9221_dc_reset_needed(charger, irq_src)) {
-		union power_supply_propval val = {.intval = 1};
-
-		if (!charger->dc_psy)
-			charger->dc_psy = power_supply_get_by_name("dc");
-		if (charger->dc_psy) {
-			/* Signal DC_RESET when wireless removal is sensed. */
-			res = power_supply_set_property(charger->dc_psy,
-						POWER_SUPPLY_PROP_DC_RESET,
-						&val);
-		} else {
-			res = -ENODEV;
-		}
-
-		if (res < 0)
-			dev_err(&charger->client->dev,
-				"unable to set DC_RESET, ret=%d",
-				res);
-	}
+	p9221_check_dc_reset(charger, irq_src);
 
 	if (irq_src & P9221R5_STAT_LIMIT_MASK)
 		p9221_over_handle(charger, irq_src);
@@ -3112,7 +3150,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	if (irq_src & P9221R5_STAT_CCDATARCVD) {
 		size_t rxlen = 0;
 
-		charger->chip_get_cc_recv_size(charger, &rxlen);
+		res = charger->chip_get_cc_recv_size(charger, &rxlen);
 		if (res) {
 			dev_err(&charger->client->dev,
 				"Failed to read len: %d\n", res);

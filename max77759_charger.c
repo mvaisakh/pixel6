@@ -605,7 +605,6 @@ static enum power_supply_property max77759_wcin_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
-	POWER_SUPPLY_PROP_DC_RESET,
 };
 
 static int max77759_wcin_is_present(struct max77759_chgr_data *data)
@@ -692,10 +691,6 @@ static int max77759_wcin_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		rc = max77759_wcin_voltage_max(chgr, val);
 		break;
-	case POWER_SUPPLY_PROP_DC_RESET:
-		/* TBD */
-		val->intval = 0;
-		break;
 	default:
 		return -EINVAL;
 	}
@@ -716,9 +711,6 @@ static int max77759_wcin_set_prop(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		rc = max77759_wcin_set_ilim_max_ua(chgr, val->intval);
-		break;
-	case POWER_SUPPLY_PROP_DC_RESET:
-		/* TBD */
 		break;
 	default:
 		return -EINVAL;
