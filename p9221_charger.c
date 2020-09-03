@@ -5,7 +5,6 @@
  *
  */
 
-#include <dt-bindings/wc/p9221-wc.h>
 #include <linux/device.h>
 #include <linux/pm.h>
 #include <linux/gpio.h>
@@ -23,6 +22,7 @@
 #include "gbms_power_supply.h"
 #include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "p9221_charger.h"
+#include "p9221-dt-bindings.h"
 
 #define P9221R5_OVER_CHECK_NUM		3
 
