@@ -11,15 +11,12 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-buffer: " fmt
 
 #include <linux/slab.h>
+#include <soc/google/pt.h>
 
 #include "lwis_buffer.h"
 #include "lwis_device.h"
 #include "lwis_device_slc.h"
 #include "lwis_platform_dma.h"
-
-#if ENABLE_PT
-#include "pt/pt.h"
-#endif
 
 int lwis_buffer_alloc(struct lwis_client *lwis_client,
 		      struct lwis_alloc_buffer_info *alloc_info,

@@ -10,22 +10,17 @@
 #ifndef LWIS_DEVICE_SLC_H_
 #define LWIS_DEVICE_SLC_H_
 
-#define ENABLE_PT 0
 
 #include "lwis_device.h"
-#if ENABLE_PT
-#include "pt/pt.h"
-#endif
+#include <soc/google/pt.h>
 
 #define NUM_PT 5
 
 struct slc_partition {
 	int id;
 	size_t size_kb;
-#if ENABLE_PT
 	ptid_t partition_id;
 	struct pt_handle *partition_handle;
-#endif
 };
 
 /*
@@ -36,9 +31,7 @@ struct lwis_slc_device {
 	struct lwis_device base_dev;
 	int num_pt;
 	struct slc_partition pt[NUM_PT];
-#if ENABLE_PT
 	struct pt_handle *partition_handle;
-#endif
 };
 
 int lwis_slc_device_deinit(void);

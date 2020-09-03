@@ -20,10 +20,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-
-#if ENABLE_PT
-#include "pt/pt.h"
-#endif
+#include <soc/google/pt.h>
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -33,11 +30,9 @@
 
 #define SIZE_TO_KB(x) x / 1024
 
-#if ENABLE_PT
 static const struct file_operations pt_file_ops = {
 	.owner = THIS_MODULE,
 };
-#endif
 
 static int lwis_slc_enable(struct lwis_device *lwis_dev);
 static int lwis_slc_disable(struct lwis_device *lwis_dev);
@@ -62,11 +57,9 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 #ifdef CONFIG_OF
 	int num_pt = 0;
 	struct device_node *node = lwis_dev->plat_dev->dev.of_node;
-#if ENABLE_PT
 	int i = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048, 3072 };
-#endif
 
 	num_pt = of_property_count_strings(node, "pt_id");
 	if (num_pt != NUM_PT) {
@@ -74,7 +67,6 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 		return -EINVAL;
 	}
 
-#if ENABLE_PT
 	/* Initialize SLC partitions and get a handle */
 	slc_dev->partition_handle = pt_client_register(node, NULL, NULL);
 	for (i = 0; i < NUM_PT; i++) {
@@ -83,7 +75,6 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 		slc_dev->pt[i].partition_id = PT_PTID_INVALID;
 		slc_dev->pt[i].partition_handle = slc_dev->partition_handle;
 	}
-#endif
 	return 0;
 #else /* CONFIG_OF not defined */
 	return -ENOENT;
@@ -92,7 +83,6 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 
 static int lwis_slc_disable(struct lwis_device *lwis_dev)
 {
-#if ENABLE_PT
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	int i = 0;
 
@@ -107,14 +97,12 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 		}
 	}
 	pt_client_unregister(slc_dev->partition_handle);
-#endif
 	return 0;
 }
 
 int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
 			  struct lwis_alloc_buffer_info *alloc_info)
 {
-#if ENABLE_PT
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	int i = 0, fd_or_err = -1;
 
@@ -150,16 +138,10 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
 		"Failed to find valid partition, largest size supported is %zuKB\n",
 		slc_dev->pt[NUM_PT - 1].size_kb);
 	return -EINVAL;
-#else
-	alloc_info->dma_fd = 0;
-	alloc_info->partition_id = 0;
-	return 0;
-#endif
 }
 
 int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd)
 {
-#if ENABLE_PT
 	struct file *fp;
 	struct slc_partition *slc_pt;
 
@@ -173,7 +155,6 @@ int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd)
 		slc_pt->partition_id = PT_PTID_INVALID;
 	}
 	fput(fp);
-#endif
 
 	return 0;
 }
