@@ -1321,7 +1321,6 @@ static void batt_res_store_data(struct batt_res *rstate,
 	int filter_estimate = 0;
 	int total_estimate = 0;
 	long new_estimate = 0;
-	union power_supply_propval val;
 
 	new_estimate = rstate->sample_accumulator / rstate->sample_count;
 	filter_estimate = rstate->resistance_avg * rstate->filter_count;
@@ -1334,18 +1333,13 @@ static void batt_res_store_data(struct batt_res *rstate,
 	total_estimate = filter_estimate + new_estimate;
 	rstate->resistance_avg = total_estimate / rstate->filter_count;
 
-	/* Save to NVRam*/
-	val.intval = rstate->resistance_avg;
-	ret = power_supply_set_property(fg_psy,
-					POWER_SUPPLY_PROP_RESISTANCE_AVG,
-					&val);
+	ret = gbms_storage_write(GBMS_TAG_RAVG, &rstate->resistance_avg,
+				 sizeof(rstate->resistance_avg));
 	if (ret < 0)
 		pr_err("failed to write resistance_avg\n");
 
-	val.intval = rstate->filter_count;
-	ret = power_supply_set_property(fg_psy,
-					POWER_SUPPLY_PROP_RES_FILTER_COUNT,
-					&val);
+	ret = gbms_storage_write(GBMS_TAG_RFCN, &rstate->filter_count,
+				 sizeof(rstate->filter_count));
 	if (ret < 0)
 		pr_err("failed to write resistenace filt_count\n");
 
@@ -1355,27 +1349,22 @@ static void batt_res_store_data(struct batt_res *rstate,
 static int batt_res_load_data(struct batt_res *rstate,
 			      struct power_supply *fg_psy)
 {
-	union power_supply_propval val;
 	int ret = 0;
 
-	ret = power_supply_get_property(fg_psy,
-					POWER_SUPPLY_PROP_RESISTANCE_AVG,
-					&val);
+	ret = gbms_storage_read(GBMS_TAG_RAVG, &rstate->resistance_avg,
+				sizeof(rstate->resistance_avg));
 	if (ret < 0) {
 		pr_err("failed to get resistance_avg(%d)\n", ret);
 		return ret;
 	}
-	rstate->resistance_avg = val.intval;
 
-	ret = power_supply_get_property(fg_psy,
-					POWER_SUPPLY_PROP_RES_FILTER_COUNT,
-					&val);
+	ret = gbms_storage_read(GBMS_TAG_RFCN, &rstate->filter_count,
+				sizeof(rstate->filter_count));
 	if (ret < 0) {
 		rstate->resistance_avg = 0;
 		pr_err("failed to get resistance filt_count(%d)\n", ret);
 		return ret;
 	}
-	rstate->filter_count = val.intval;
 
 	batt_res_dump_logs(rstate);
 	return 0;
@@ -1383,6 +1372,7 @@ static int batt_res_load_data(struct batt_res *rstate,
 
 static void batt_res_work(struct batt_drv *batt_drv)
 {
+	u32 data32;
 	int temp, ret, resistance;
 	struct batt_res *rstate = &batt_drv->res_state;
 	const int ssoc_threshold = rstate->ssoc_threshold;
@@ -1403,8 +1393,7 @@ static void batt_res_work(struct batt_drv *batt_drv)
 		return;
 	}
 
-	resistance = GPSY_GET_INT_PROP(batt_drv->fg_psy,
-				POWER_SUPPLY_PROP_RESISTANCE, &ret);
+	ret = gbms_storage_read(GBMS_TAG_BRES, &data32, sizeof(data32));
 	if (ret < 0)
 		return;
 
@@ -2219,7 +2208,8 @@ static ssize_t cycle_counts_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
 {
-	struct batt_drv *batt_drv = NULL;
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
 	int ret;
 
 	mutex_lock(&batt_drv->cc_data.lock);
@@ -2243,7 +2233,8 @@ static ssize_t cycle_counts_show(struct device *dev,
 				 struct device_attribute *attr,
 				 char *buff)
 {
-	struct batt_drv *batt_drv = NULL;
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
 	int len;
 
 	mutex_lock(&batt_drv->cc_data.lock);
@@ -2254,6 +2245,39 @@ static ssize_t cycle_counts_show(struct device *dev,
 }
 
 static const DEVICE_ATTR_RW(cycle_counts);
+
+/* Was POWER_SUPPLY_PROP_RESISTANCE_AVG */
+static ssize_t resistance_avg_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buff)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+	struct batt_res *res_state = &batt_drv->res_state;
+	int value = 0;
+
+	if (res_state->filter_count >= res_state->estimate_filter)
+		value = res_state->resistance_avg;
+
+	return scnprintf(buff, PAGE_SIZE, "%d\n", value);
+}
+
+static const DEVICE_ATTR_RO(resistance_avg);
+
+/* Was POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE */
+static ssize_t charge_full_estimate_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buff)
+{
+	u16 data;
+	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_GCFE, &data, sizeof(data));
+
+	return scnprintf(buff, PAGE_SIZE, "%d\n", ret < 0 ? ret : data * 1000);
+}
+
+static const DEVICE_ATTR_RO(charge_full_estimate);
 
 
 static int cycle_count_bins_store(void *data, u64 val)
@@ -2287,7 +2311,7 @@ static int cycle_count_bins_reload(void *data, u64 *val)
 
 DEFINE_SIMPLE_ATTRIBUTE(cycle_count_bins_sync_fops,
 				cycle_count_bins_reload,
-				cycle_count_bins_store, "%llu\n");
+				cycle_count_bins_store, "%d\n");
 
 
 static int debug_get_ssoc_gdf(void *data, u64 *val)
@@ -2359,9 +2383,8 @@ DEFINE_SIMPLE_ATTRIBUTE(debug_force_psy_update_fops,
 				NULL, debug_force_psy_update, "%u\n");
 
 
-static ssize_t debug_get_ssoc_uicurve(struct file *filp,
-					   char __user *buf,
-					   size_t count, loff_t *ppos)
+static ssize_t debug_get_ssoc_uicurve(struct file *filp, char __user *buf,
+				      size_t count, loff_t *ppos)
 {
 	struct batt_drv *batt_drv = (struct batt_drv *)filp->private_data;
 	char tmp[UICURVE_BUF_SZ] = { 0 };
@@ -2374,8 +2397,8 @@ static ssize_t debug_get_ssoc_uicurve(struct file *filp,
 }
 
 static ssize_t debug_set_ssoc_uicurve(struct file *filp,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+				      const char __user *user_buf,
+				      size_t count, loff_t *ppos)
 {
 	struct batt_drv *batt_drv = (struct batt_drv *)filp->private_data;
 	int ret, curve_type;
@@ -2820,6 +2843,16 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 		dev_err(&batt_drv->psy->dev,
 			"Failed to create pairing_state\n");
 
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_resistance_avg);
+	if (ret)
+		dev_err(&batt_drv->psy->dev,
+			"Failed to create resistance_avg\n");
+
+	ret = device_create_file(&batt_drv->psy->dev,
+				 &dev_attr_charge_full_estimate);
+	if (ret)
+		dev_err(&batt_drv->psy->dev,
+			"Failed to create chage_full_estimate\n");
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
@@ -2981,8 +3014,7 @@ batt_check_pairing_state(struct batt_drv *batt_drv)
 	if (batt_drv->dev_info_check[0] == 0) {
 		char data[len + GBMS_MINF_LEN];
 
-		ret = gbms_storage_read(GBMS_TAG_MINF, mfg_info,
-					GBMS_MINF_LEN);
+		ret = gbms_storage_read(GBMS_TAG_MINF, mfg_info, GBMS_MINF_LEN);
 		if (ret < 0) {
 			pr_err("read mfg info. fail, ret=%d\n", ret);
 			return BATT_PAIRING_READ_ERROR;
@@ -3259,7 +3291,6 @@ reschedule:
  * POWER_SUPPLY_PROP_CHARGE_TYPE,
  * POWER_SUPPLY_PROP_CURRENT_AVG,
  * POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
- * POWER_SUPPLY_PROP_RESISTANCE_ID,	use BRID tag
  * POWER_SUPPLY_PROP_VOLTAGE_AVG,
  * POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
  * POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
@@ -3273,14 +3304,11 @@ static enum power_supply_property gbatt_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-	POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE,	/* google */
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_DEAD_BATTERY,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_RESISTANCE,
-	POWER_SUPPLY_PROP_RESISTANCE_AVG,	/* google */
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_TEMP,
@@ -3465,19 +3493,6 @@ static int gbatt_get_property(struct power_supply *psy,
 			batt_drv->soh = val->intval;
 		break;
 
-	case POWER_SUPPLY_PROP_CHARGE_FULL_ESTIMATE:
-		if (!batt_drv->fg_psy)
-			return -EINVAL;
-		err = power_supply_get_property(batt_drv->fg_psy, psp, val);
-		break;
-	case POWER_SUPPLY_PROP_RESISTANCE_AVG:
-		if (batt_drv->res_state.filter_count <
-			batt_drv->res_state.estimate_filter)
-			val->intval = 0;
-		else
-			val->intval = batt_drv->res_state.resistance_avg;
-		break;
-
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW: {
 		time_t res;
 
@@ -3507,13 +3522,6 @@ static int gbatt_get_property(struct power_supply *psy,
 			val->intval = -val->intval;
 		break;
 
-	/*
-	 * TODO: "charger" will expose this but I'd rather use an API from
-	 * google_bms.h. Right now route it to fg_psy: just make sure that
-	 * fg_psy doesn't look it up in google_battery
-	 */
-	case POWER_SUPPLY_PROP_RESISTANCE_ID:
-		/* fall through */
 	default:
 		if (!batt_drv->fg_psy)
 			return -EINVAL;
