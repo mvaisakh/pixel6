@@ -25,8 +25,14 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 	struct dma_buf *dma_buf;
 	int ret = 0;
 
-	BUG_ON(!lwis_client);
-	BUG_ON(!alloc_info);
+	if (!lwis_client) {
+		pr_err("Alloc: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+	if (!alloc_info || !buffer) {
+		pr_err("Alloc: alloc_info and/or buffer is NULL\n");
+		return -EINVAL;
+	}
 
 	if (alloc_info->flags & LWIS_DMA_SYSTEM_CACHE_RESERVATION) {
 		if (lwis_client->lwis_dev->type == DEVICE_TYPE_SLC) {
@@ -78,6 +84,15 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 int lwis_buffer_free(struct lwis_client *lwis_client,
 		     struct lwis_allocated_buffer *buffer)
 {
+	if (!lwis_client) {
+		pr_err("Free: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+	if (!buffer) {
+		pr_err("Free: buffer is NULL\n");
+		return -EINVAL;
+	}
+
 	if (buffer->dma_buf == NULL) {
 		if (lwis_client->lwis_dev->type == DEVICE_TYPE_SLC) {
 			lwis_slc_buffer_free(lwis_client->lwis_dev, buffer->fd);
@@ -96,8 +111,15 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 		       struct lwis_enrolled_buffer *buffer)
 {
 	struct lwis_enrolled_buffer *old_buffer;
-	BUG_ON(!lwis_client);
-	BUG_ON(!buffer);
+
+	if (!lwis_client) {
+		pr_err("Enroll: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+	if (!buffer) {
+		pr_err("Enroll: buffer is NULL\n");
+		return -EINVAL;
+	}
 
 	buffer->dma_buf = dma_buf_get(buffer->info.fd);
 	if (IS_ERR_OR_NULL(buffer->dma_buf)) {
@@ -174,8 +196,14 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
 int lwis_buffer_disenroll(struct lwis_client *lwis_client,
 			  struct lwis_enrolled_buffer *buffer)
 {
-	BUG_ON(!lwis_client);
-	BUG_ON(!buffer);
+	if (!lwis_client) {
+		pr_err("Disenroll: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+	if (!buffer) {
+		pr_err("Disenroll: buffer is NULL\n");
+		return -EINVAL;
+	}
 
 	lwis_platform_dma_buffer_unmap(lwis_client->lwis_dev,
 				       buffer->dma_buf_attachment,
@@ -194,7 +222,11 @@ lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
 				 dma_addr_t dma_vaddr)
 {
 	struct lwis_enrolled_buffer *p;
-	BUG_ON(!lwis_client);
+
+	if (!lwis_client) {
+		pr_err("lwis_client_enrolled_buffer_find: LWIS client is NULL\n");
+		return NULL;
+	}
 
 	hash_for_each_possible (lwis_client->enrolled_buffers, p, node,
 				dma_vaddr) {
@@ -214,7 +246,11 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 	struct hlist_node *n;
 	int i;
 
-	BUG_ON(!lwis_client);
+	if (!lwis_client) {
+		pr_err("lwis_client_enrolled_buffers_clear: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+
 	/* Iterate over the entire hash table */
 	hash_for_each_safe (lwis_client->enrolled_buffers, i, n, buffer, node) {
 		/* Disenroll the buffer */
@@ -231,7 +267,10 @@ lwis_client_allocated_buffer_find(struct lwis_client *lwis_client, int fd)
 {
 	struct lwis_allocated_buffer *p;
 
-	BUG_ON(!lwis_client);
+	if (!lwis_client) {
+		pr_err("lwis_client_allocated_buffer_find: LWIS client is NULL\n");
+		return NULL;
+	}
 
 	hash_for_each_possible (lwis_client->allocated_buffers, p, node, fd) {
 		if (p->fd == fd) {
@@ -247,7 +286,10 @@ int lwis_client_allocated_buffers_clear(struct lwis_client *lwis_client)
 	struct hlist_node *n;
 	int i;
 
-	BUG_ON(!lwis_client);
+	if (!lwis_client) {
+		pr_err("lwis_client_allocated_buffers_clear: LWIS client is NULL\n");
+		return -ENODEV;
+	}
 
 	hash_for_each_safe (lwis_client->allocated_buffers, i, n, buffer,
 			    node) {
