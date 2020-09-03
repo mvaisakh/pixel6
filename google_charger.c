@@ -381,7 +381,7 @@ static int info_usb_state(union gbms_ce_adapter_details *ad,
 		voltage_now = GPSY_GET_PROP(usb_psy,
 					    POWER_SUPPLY_PROP_VOLTAGE_NOW);
 		current_now = GPSY_GET_PROP(usb_psy,
-					    POWER_SUPPLY_PROP_INPUT_CURRENT_NOW);
+					    POWER_SUPPLY_PROP_CURRENT_NOW);
 
 		if (usb_type < ARRAY_SIZE(psy_usb_type_str))
 			usb_type_str = psy_usb_type_str[usb_type];
