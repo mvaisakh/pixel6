@@ -329,11 +329,11 @@ static inline void chg_reset_state(struct chg_drv *chg_drv)
 	vote(chg_drv->msc_interval_votable, CHG_PPS_VOTER, false, 0);
 	/* when/if enabled */
 	GPSY_SET_PROP(chg_drv->chg_psy,
-			POWER_SUPPLY_PROP_TAPER_CONTROL,
-			POWER_SUPPLY_TAPER_CONTROL_OFF);
+			GBMS_PROP_TAPER_CONTROL,
+			GBMS_TAPER_CONTROL_OFF);
 	/* make sure the battery knows that it's disconnected */
 	GPSY_SET_INT64_PROP(chg_drv->bat_psy,
-			POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
+			GBMS_PROP_CHARGE_CHARGER_STATE,
 			chg_state.v);
 }
 
@@ -690,7 +690,7 @@ static int chg_work_batt_roundtrip(const union gbms_charger_state *chg_state,
 	int rc;
 
 	rc = GPSY_SET_INT64_PROP(bat_psy,
-				 POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
+				 GBMS_PROP_CHARGE_CHARGER_STATE,
 				 chg_state->v);
 	if (rc == -EAGAIN) {
 		return -EAGAIN;
@@ -1078,12 +1078,12 @@ exit_chg_work:
 	 * might overwrite the value when it starts a new cycle.
 	 * NOTE: chg_reset_state() must not set chg_drv->adapter_details.v
 	 * to zero. Fix the odd dependency when handling failure in setting
-	 * POWER_SUPPLY_PROP_ADAPTER_DETAILS.
+	 * GBMS_PROP_ADAPTER_DETAILS.
 	 */
 	if (rc == 0 && ad.v != chg_drv->adapter_details.v) {
 
 		rc = GPSY_SET_PROP(chg_drv->bat_psy,
-				   POWER_SUPPLY_PROP_ADAPTER_DETAILS,
+				   GBMS_PROP_ADAPTER_DETAILS,
 				   (int)ad.v);
 
 		/* TODO: handle failure rescheduling chg_work */
@@ -1325,7 +1325,7 @@ static int chg_get_chg_suspend(void *data, u64 *val)
 	if (!chg_drv->msc_fcc_votable)
 		return -EINVAL;
 
-	/* can also set POWER_SUPPLY_PROP_CHARGE_DISABLE to charger */
+	/* can also set GBMS_PROP_CHARGE_DISABLE to charger */
 	*val = get_client_vote(chg_drv->msc_fcc_votable, USER_VOTER) == 0;
 
 	return 0;
@@ -1339,7 +1339,7 @@ static int chg_set_chg_suspend(void *data, u64 val)
 	if (!chg_drv->msc_fcc_votable)
 		return -EINVAL;
 
-	/* can also set POWER_SUPPLY_PROP_CHARGE_DISABLE to charger */
+	/* can also set GBMS_PROP_CHARGE_DISABLE to charger */
 	rc = vote(chg_drv->msc_fcc_votable, USER_VOTER, val != 0, 0);
 	if (rc < 0) {
 		dev_err(chg_drv->device,
@@ -1361,7 +1361,7 @@ static int chg_get_update_interval(void *data, u64 *val)
 	if (!chg_drv->msc_interval_votable)
 		return -EINVAL;
 
-	/* can also set POWER_SUPPLY_PROP_CHARGE_DISABLE to charger */
+	/* can also set GBMS_PROP_CHARGE_DISABLE to charger */
 	*val = get_client_vote(chg_drv->msc_interval_votable, USER_VOTER) == 0;
 
 	return 0;
@@ -1377,7 +1377,7 @@ static int chg_set_update_interval(void *data, u64 val)
 	if (!chg_drv->msc_interval_votable)
 		return -EINVAL;
 
-	/* can also set POWER_SUPPLY_PROP_CHARGE_DISABLE to charger */
+	/* can also set GBMS_PROP_CHARGE_DISABLE to charger */
 	rc = vote(chg_drv->msc_interval_votable, USER_VOTER, val, 0);
 	if (rc < 0) {
 		dev_err(chg_drv->device,
@@ -1784,7 +1784,7 @@ static int msc_chg_disable_cb(struct votable *votable, void *data,
 		return 0;
 
 	rc = GPSY_SET_PROP(chg_drv->chg_psy,
-			POWER_SUPPLY_PROP_CHARGE_DISABLE, chg_disable);
+			GBMS_PROP_CHARGE_DISABLE, chg_disable);
 	if (rc < 0) {
 		dev_err(chg_drv->device, "Couldn't %s charging rc=%d\n",
 				chg_disable ? "disable" : "enable", rc);

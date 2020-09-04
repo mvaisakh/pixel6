@@ -405,14 +405,13 @@ static int gbms_gen_state(union gbms_charger_state *chg_state,
 int gbms_read_charger_state(union gbms_charger_state *chg_state,
 			    struct power_supply *chg_psy)
 {
-	union power_supply_propval val;
-	int ret = 0;
+	int64_t val;
+	int ret;
 
-	ret = power_supply_get_property(chg_psy,
-					POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
-					&val);
+	val = GPSY_GET_INT64_PROP(chg_psy, GBMS_PROP_CHARGE_CHARGER_STATE,
+				  &ret);
 	if (ret == 0) {
-		chg_state->v = val.int64val;
+		chg_state->v = val;
 	} else {
 		int ichg;
 
@@ -475,3 +474,22 @@ int gbms_cycle_count_sscan_bc(u16 *ccount, int bcnt, const char *buff)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(gbms_cycle_count_sscan_bc);
+
+/* ------------------------------------------------------------------------- */
+
+int gbms_get_property(struct power_supply *psy,
+			    enum gbms_property psp,
+			    union gbms_propval *val)
+{
+
+}
+EXPORT_SYMBOL_GPL(gbms_get_property);
+
+
+int gbms_set_property(struct power_supply *psy,
+			    enum gbms_property psp,
+			    const union gbms_propval *val)
+{
+
+}
+EXPORT_SYMBOL_GPL(gbms_set_property);

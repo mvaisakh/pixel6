@@ -21,12 +21,11 @@
 #include <linux/power_supply.h>
 
 enum {
-	POWER_SUPPLY_TAPER_CONTROL_OFF = 0,
-	POWER_SUPPLY_TAPER_CONTROL_MODE_STEPPER = 1,
-	POWER_SUPPLY_TAPER_CONTROL_MODE_IMMEDIATE = 2,
+	GBMS_TAPER_CONTROL_OFF = 0,
 };
 
 /* Indicates USB Type-C CC connection status */
+/* Deprecated */
 enum power_supply_typec_mode {
 	POWER_SUPPLY_TYPEC_NONE,
 
@@ -52,17 +51,102 @@ enum power_supply_typec_mode {
 	POWER_SUPPLY_TYPEC_RP_HIGH_HIGH,	/* Rp-3A/Rp-3A */
 };
 
+/* Deprecated */
 enum power_supply_typec_src_rp {
 	POWER_SUPPLY_TYPEC_SRC_RP_STD,
 	POWER_SUPPLY_TYPEC_SRC_RP_1P5A,
 	POWER_SUPPLY_TYPEC_SRC_RP_3A
 };
 
+/* Deprecated */
 enum power_supply_typec_power_role {
 	POWER_SUPPLY_TYPEC_PR_NONE,		/* CC lines in high-Z */
 	POWER_SUPPLY_TYPEC_PR_DUAL,
 	POWER_SUPPLY_TYPEC_PR_SINK,
 	POWER_SUPPLY_TYPEC_PR_SOURCE,
 };
+
+enum gbms_property {
+	/* I am not proud of this */
+	GBMS_PROP_LOCAL_EXTENSIONS = POWER_SUPPLY_PROP_SERIAL_NUMBER + 100,
+
+	GBMS_PROP_ADAPTER_DETAILS,	/* GBMS Adapter Details */
+	GBMS_PROP_BATT_CE_CTRL,		/* GBMS batt */
+	GBMS_PROP_CAPACITY_RAW,		/* GBMS ssoc */
+	GBMS_PROP_CHARGING_ENABLED,	/* GBMS cpm control */
+	GBMS_PROP_CHARGE_CHARGER_STATE,	/* GBMS charge, need int64 */
+	GBMS_PROP_CHARGE_DISABLE,	/* GBMS disconnect */
+	GBMS_PROP_DEAD_BATTERY,		/* GBMS boot */
+	GBMS_PROP_INPUT_CURRENT_LIMITED, /* can be device prop */
+	GBMS_PROP_TAPER_CONTROL,	/* GBMS DC, needs for last tier */
+};
+
+union gbms_propval {
+	union power_supply_propval prop;
+	int64_t int64val;
+};
+
+#define gbms_propval_int64val(psp) \
+	container_of(psp, union gbms_propval, prop)->int64val
+
+
+extern int gbms_get_property(struct power_supply *psy, enum gbms_property psp,
+			     union gbms_propval *val);
+extern int gbms_set_property(struct power_supply *psy, enum gbms_property psp,
+			     const union gbms_propval *val);
+
+
+static inline int gpsy_set_int64_prop(struct power_supply *psy,
+				      enum gbms_property psp,
+				      union gbms_propval val,
+				      const char *prop_name)
+{
+	int ret = 0;
+
+	if (!psy)
+		return -EINVAL;
+
+	pr_debug("set %s for '%s' to %lld\n", prop_name,
+		 psy->desc->name, val.int64val);
+
+	ret = power_supply_set_property(psy, psp, &val.prop);
+	if (ret < 0)
+		pr_err("failed to set %s for '%s', ret=%d\n",
+		       prop_name, psy->desc->name, ret);
+
+	return ret;
+}
+
+#define GPSY_SET_INT64_PROP(psy, psp, val) \
+	gpsy_set_int64_prop(psy, psp, (union gbms_propval) \
+			   { .int64val = (int64_t)(val) }, #psp)
+
+static inline int64_t gpsy_get_int64_prop(struct power_supply *psy,
+					  enum gbms_property psp,
+					  const char *prop_name,
+					  int *err)
+{
+	union gbms_propval val;
+
+	if (!psy) {
+		*err = -EINVAL;
+		return *err;
+	}
+
+	*err = power_supply_get_property(psy, psp, &val.prop);
+	if (*err < 0) {
+		pr_err("failed to get %s from '%s', ret=%d\n",
+		       prop_name, psy->desc->name, *err);
+		return *err;
+	}
+
+	pr_debug("get %s for '%s' => %lld\n", prop_name,
+		 psy->desc->name, val.int64val);
+
+	return val.int64val;
+}
+
+#define GPSY_GET_INT64_PROP(psy, psp, err) \
+	gpsy_get_int64_prop(psy, psp, #psp, err)
 
 #endif /* __GBMS_POWER_SUPPLY_H__ */

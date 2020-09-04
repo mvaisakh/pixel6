@@ -749,7 +749,6 @@ static enum power_supply_property max1720x_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_CAPACITY,		/* replace with _RAW */
-	POWER_SUPPLY_PROP_CAPACITY_RAW,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,	/* used from gbattery */
@@ -1594,7 +1593,7 @@ static int max1720x_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = max1720x_get_battery_health(chip);
 		break;
-	case POWER_SUPPLY_PROP_CAPACITY_RAW:
+	case GBMS_PROP_CAPACITY_RAW:
 		err = max1720x_get_capacity_raw(chip, &data);
 		if (err == 0)
 			val->intval = (int)data;
@@ -1756,7 +1755,7 @@ static int max1720x_set_property(struct power_supply *psy,
 	pm_runtime_put_sync(chip->dev);
 
 	switch (psp) {
-	case POWER_SUPPLY_PROP_BATT_CE_CTRL:
+	case GBMS_PROP_BATT_CE_CTRL:
 		mutex_lock(&ce->batt_ce_lock);
 		if (val->intval) {
 
@@ -1793,7 +1792,7 @@ static int max1720x_property_is_writeable(struct power_supply *psy,
 					  enum power_supply_property psp)
 {
 	switch (psp) {
-	case POWER_SUPPLY_PROP_BATT_CE_CTRL:
+	case GBMS_PROP_BATT_CE_CTRL:
 		return 1;
 	default:
 		break;

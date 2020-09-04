@@ -781,14 +781,11 @@ static int max77729_get_present(struct max77729_chgr_data *data, int *present)
 static enum power_supply_property max77729_psy_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_CHARGE_DISABLE,
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
-	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
-	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
 	POWER_SUPPLY_PROP_STATUS,
 };
 
@@ -822,10 +819,10 @@ static int max77729_psy_get_property(struct power_supply *psy,
 			ret = max77729_get_charge_voltage_max_uv(data,
 								 &pval->intval);
 			break;
-		case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		case GBMS_PROP_CHARGING_ENABLED:
 			ret = max77729_get_charge_enabled(data, &pval->intval);
 			break;
-		case POWER_SUPPLY_PROP_CHARGE_DISABLE:
+		case GBMS_PROP_CHARGE_DISABLE:
 			ret = max77729_get_charge_enabled(data, &enabled);
 			if (ret == 0)
 				pval->intval = !enabled;
@@ -836,7 +833,7 @@ static int max77729_psy_get_property(struct power_supply *psy,
 		case POWER_SUPPLY_PROP_CHARGE_TYPE:
 			ret = max77729_get_charge_type(data, &pval->intval);
 			break;
-		case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED:
+		case GBMS_PROP_INPUT_CURRENT_LIMITED:
 			ret = max77729_get_current_limit(data, &pval->intval);
 			break;
 		case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -845,11 +842,11 @@ static int max77729_psy_get_property(struct power_supply *psy,
 			break;
 
 		/* TODO: implement charger state, fix *_PROP_VOLTAGE_MAX */
-		case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
+		case GBMS_PROP_CHARGE_CHARGER_STATE:
 			ret = -EINVAL;
 			break;
 
-		case POWER_SUPPLY_PROP_TAPER_CONTROL:
+		case GBMS_PROP_TAPER_CONTROL:
 		default:
 			dev_err(data->dev, "property (%d) unsupported.\n", psp);
 			ret = -EINVAL;
@@ -883,15 +880,15 @@ static int max77729_psy_set_property(struct power_supply *psy,
 								 pval->intval);
 			pr_info("charge_voltage=%d (%d)\n", pval->intval, ret);
 			break;
-		case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		case GBMS_PROP_CHARGING_ENABLED:
 			ret = max77729_set_charge_enabled(data, pval->intval,
 							  "USER");
 			break;
-		case POWER_SUPPLY_PROP_CHARGE_DISABLE:  /* ext */
+		case GBMS_PROP_CHARGE_DISABLE:  /* ext */
 			ret = max77729_set_charge_enabled(data, !pval->intval,
 							  "USER");
 			break;
-		case POWER_SUPPLY_PROP_TAPER_CONTROL:
+		case GBMS_PROP_TAPER_CONTROL:
 			ret = 0;
 			break;
 		default:
@@ -913,8 +910,8 @@ static int max77729_psy_property_is_writable(struct power_supply *psy,
 		case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX:
 		case POWER_SUPPLY_PROP_CURRENT_MAX:	/* ILIM */
 		case POWER_SUPPLY_PROP_VOLTAGE_MAX:	/* same as CHARGE_* */
-		case POWER_SUPPLY_PROP_CHARGE_DISABLE:  /* ext */
-		case POWER_SUPPLY_PROP_TAPER_CONTROL:
+		case GBMS_PROP_CHARGE_DISABLE:  /* ext */
+		case GBMS_PROP_TAPER_CONTROL:
 			writeable = 1;
 			break;
 		default:

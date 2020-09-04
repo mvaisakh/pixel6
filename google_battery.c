@@ -633,11 +633,11 @@ static int ssoc_work(struct batt_ssoc_state *ssoc_state,
 	qnum_t soc_raw;
 
 	/*
-	 * TODO: POWER_SUPPLY_PROP_CAPACITY_RAW should return a qnum_t
+	 * TODO: GBMS_PROP_CAPACITY_RAW should return a qnum_t
 	 * TODO: add an array here configured in DT with the properties
 	 * to query and their weights, make soc_raw come from fusion.
 	 */
-	soc_q8_8 = GPSY_GET_PROP(fg_psy, POWER_SUPPLY_PROP_CAPACITY_RAW);
+	soc_q8_8 = GPSY_GET_PROP(fg_psy, GBMS_PROP_CAPACITY_RAW);
 	if (soc_q8_8 < 0)
 		return -EINVAL;
 
@@ -1040,7 +1040,7 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv,
 		int soc_in;
 
 		soc_in = GPSY_GET_PROP(batt_drv->fg_psy,
-				       POWER_SUPPLY_PROP_CAPACITY_RAW);
+				       GBMS_PROP_CAPACITY_RAW);
 		if (soc_in < 0) {
 			pr_info("MSC_STAT cannot read soc_in=%d\n", soc_in);
 			return;
@@ -1930,7 +1930,7 @@ static int msc_logic(struct batt_drv *batt_drv)
 
 		/* this will trigger another capacity learning. */
 		err = GPSY_SET_PROP(batt_drv->fg_psy,
-				    POWER_SUPPLY_PROP_BATT_CE_CTRL,
+				    GBMS_PROP_BATT_CE_CTRL,
 				    false);
 		if (err < 0)
 			pr_err("Cannot set the BATT_CE_CTRL.\n");
@@ -1951,7 +1951,7 @@ static int msc_logic(struct batt_drv *batt_drv)
 
 		batt_chg_stats_start(batt_drv);
 		err = GPSY_SET_PROP(batt_drv->fg_psy,
-				    POWER_SUPPLY_PROP_BATT_CE_CTRL,
+				    GBMS_PROP_BATT_CE_CTRL,
 				    true);
 		if (err < 0)
 			pr_err("Cannot set the BATT_CE_CTRL.\n");
@@ -3280,17 +3280,16 @@ reschedule:
 /* ------------------------------------------------------------------------- */
 
 /*
- * Keep the number of properies under UEVENT_NUM_ENVP (minus # of
- * standard uevent variables) i.e 26. Removed the following from
- * sysnodes
+ * Keep the number of properties under UEVENT_NUM_ENVP (minus # of
+ * standard uevent variables) i.e 26.
  *
- * POWER_SUPPLY_PROP_ADAPTER_DETAILS,	gbms
- * POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT, gbms
- * POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE, gbms
+ * Removed the following from sysnodes
+ * GBMS_PROP_ADAPTER_DETAILS			gbms
+ * POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT	gbms
+ * POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE	gbms
  *
  * POWER_SUPPLY_PROP_CHARGE_TYPE,
  * POWER_SUPPLY_PROP_CURRENT_AVG,
- * POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
  * POWER_SUPPLY_PROP_VOLTAGE_AVG,
  * POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
  * POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
@@ -3301,12 +3300,10 @@ static enum power_supply_property gbatt_battery_props[] = {
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
-	POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
-	POWER_SUPPLY_PROP_DEAD_BATTERY,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
@@ -3404,8 +3401,21 @@ static int gbatt_get_property(struct power_supply *psy,
 	pm_runtime_put_sync(batt_drv->device);
 
 	switch (psp) {
-	case POWER_SUPPLY_PROP_ADAPTER_DETAILS:
+	case GBMS_PROP_ADAPTER_DETAILS:
 		val->intval = batt_drv->ce_data.adapter_details.v;
+		break;
+
+	case GBMS_PROP_DEAD_BATTERY:
+		val->intval = batt_drv->dead_battery;
+		break;
+	/*
+	 * ng charging:
+	 * 1) write to GBMS_PROP_CHARGE_CHARGER_STATE,
+	 * 2) read POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT and
+	 *    POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE
+	 */
+	case GBMS_PROP_CHARGE_CHARGER_STATE:
+		val->intval = batt_drv->chg_state.v;
 		break;
 
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
@@ -3426,23 +3436,10 @@ static int gbatt_get_property(struct power_supply *psy,
 		}
 		break;
 
-	case POWER_SUPPLY_PROP_DEAD_BATTERY:
-		val->intval = batt_drv->dead_battery;
-		break;
-
 	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
 		val->intval = batt_drv->capacity_level;
 		break;
 
-	/*
-	 * ng charging:
-	 * 1) write to POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
-	 * 2) read POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT and
-	 *    POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE
-	 */
-	case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
-		val->intval = batt_drv->chg_state.v;
-		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
 		mutex_lock(&batt_drv->chg_lock);
 		val->intval = batt_drv->cc_max;
@@ -3471,13 +3468,6 @@ static int gbatt_get_property(struct power_supply *psy,
 		mutex_lock(&batt_drv->chg_lock);
 		val->intval = batt_drv->chg_state.f.chg_type;
 		mutex_unlock(&batt_drv->chg_lock);
-		break;
-
-	/* compat, for *_CURRENT_LIMITED could return this one:
-	 *	(batt_drv->chg_state.f.flags & GBMS_CS_FLAG_ILIM)
-	 */
-	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED:
-		val->intval = 0;
 		break;
 
 	case POWER_SUPPLY_PROP_STATUS:
@@ -3553,16 +3543,16 @@ static int gbatt_set_property(struct power_supply *psy,
 	pm_runtime_put_sync(batt_drv->device);
 
 	switch (psp) {
-	case POWER_SUPPLY_PROP_ADAPTER_DETAILS:
+	case GBMS_PROP_ADAPTER_DETAILS:
 		mutex_lock(&batt_drv->stats_lock);
 		batt_drv->ce_data.adapter_details.v = val->intval;
 		mutex_unlock(&batt_drv->stats_lock);
 	break;
 
 	/* NG Charging, where it all begins */
-	case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
+	case GBMS_PROP_CHARGE_CHARGER_STATE:
 		mutex_lock(&batt_drv->chg_lock);
-		batt_drv->chg_state.v = val->int64val;
+		batt_drv->chg_state.v = gbms_propval_int64val(val);
 		ret = msc_logic(batt_drv);
 		mutex_unlock(&batt_drv->chg_lock);
 		break;
@@ -3600,9 +3590,9 @@ static int gbatt_property_is_writeable(struct power_supply *psy,
 					  enum power_supply_property psp)
 {
 	switch (psp) {
-	case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
+	case GBMS_PROP_CHARGE_CHARGER_STATE:
 	case POWER_SUPPLY_PROP_CAPACITY:
-	case POWER_SUPPLY_PROP_ADAPTER_DETAILS:
+	case GBMS_PROP_ADAPTER_DETAILS:
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		return 1;
 	default:

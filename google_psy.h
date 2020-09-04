@@ -45,9 +45,6 @@ static inline int gpsy_set_prop(struct power_supply *psy,
 #define GPSY_SET_PROP(psy, psp, val) \
 	gpsy_set_prop(psy, psp, (union power_supply_propval) \
 		{ .intval = (val) }, #psp)
-#define GPSY_SET_INT64_PROP(psy, psp, val) \
-	gpsy_set_prop(psy, psp, (union power_supply_propval) \
-		{ .int64val = (int64_t)(val) }, #psp)
 
 static inline int gpsy_get_prop(struct power_supply *psy,
 			       enum power_supply_property psp,
@@ -66,37 +63,14 @@ static inline int gpsy_get_prop(struct power_supply *psy,
 		return ret;
 	}
 
-	pr_debug("get %s for '%s' => %d\n",
-		 prop_name, psy->desc->name, val.intval);
+	pr_debug("get %s for '%s' => %d\n", prop_name, psy->desc->name,
+		 val.intval);
 
 	return val.intval;
 }
 
-static inline int64_t gpsy_get_int64_prop(struct power_supply *psy,
-				      enum power_supply_property psp,
-				      const char *prop_name)
-{
-	union power_supply_propval val;
-	int ret = 0;
-
-	if (!psy)
-		return -EINVAL;
-	ret = power_supply_get_property(psy, psp, &val);
-	if (ret < 0) {
-		pr_err("failed to get %s from '%s', ret=%d\n",
-		       prop_name, psy->desc->name, ret);
-		return ret;
-	}
-
-	pr_debug("get %s for '%s' => %d\n",
-		 prop_name, psy->desc->name, val.intval);
-	return val.int64val;
-}
-
-
 #define GPSY_GET_PROP(psy, psp) gpsy_get_prop(psy, psp, #psp, 0)
 /* use GPSY_GET_INT_PROP() for properties that can be negative */
 #define GPSY_GET_INT_PROP(psy, psp, err) gpsy_get_prop(psy, psp, #psp, err)
-#define GPSY_GET_INT64_PROP(psy, psp) gpsy_get_int64_prop(psy, psp, #psp)
 
 #endif	/* __GOOGLE_PSY_H_ */

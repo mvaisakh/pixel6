@@ -700,7 +700,7 @@ static void gcpm_pps_dc_work(struct work_struct *work)
 			pps_ui = DC_ERROR_RETRY_MS;
 		} else {
 			ret = GPSY_SET_PROP(dc_psy,
-					    POWER_SUPPLY_PROP_CHARGING_ENABLED,
+					    GBMS_PROP_CHARGING_ENABLED,
 					    1);
 			if (ret == 0) {
 				ret = gcpm_chg_ping(gcpm, 0, 0);
@@ -773,7 +773,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	switch (psp) {
 
 		/* do not route to the active charger */
-		case POWER_SUPPLY_PROP_TAPER_CONTROL:
+		case GBMS_PROP_TAPER_CONTROL:
 			taper_control = (pval->intval != 0);
 			ta_check = taper_control != gcpm->taper_control;
 			gcpm->taper_control = taper_control;
@@ -847,8 +847,8 @@ static int gcpm_psy_get_property(struct power_supply *psy,
 	switch (psp) {
 
 		/* handle locally for now */
-		case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
-			pval->int64val = gcpm_get_charger_state(gcpm, chg_psy);
+		case GBMS_PROP_CHARGE_CHARGER_STATE:
+			gbms_propval_int64val(pval) = gcpm_get_charger_state(gcpm, chg_psy);
 			return 0;
 
 		/* route to the active charger */
@@ -867,8 +867,8 @@ static int gcpm_psy_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-	case POWER_SUPPLY_PROP_CHARGE_DISABLE:
-	case POWER_SUPPLY_PROP_TAPER_CONTROL:
+	case GBMS_PROP_CHARGE_DISABLE:
+	case GBMS_PROP_TAPER_CONTROL:
 		return 1;
 	default:
 		break;
@@ -883,16 +883,12 @@ static int gcpm_psy_is_writeable(struct power_supply *psy,
 static enum power_supply_property gcpm_psy_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_CHARGE_DISABLE,
-	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	/* pixel battery management subsystem */
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,	/* cc_max */
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,	/* fv_uv */
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
-	POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE,
 	POWER_SUPPLY_PROP_CURRENT_MAX,	/* input current limit */
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,	/* set float voltage, compat */
-	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
 	POWER_SUPPLY_PROP_STATUS,
 };
 

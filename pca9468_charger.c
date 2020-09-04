@@ -601,7 +601,7 @@ static int pca9468_get_swc_property(enum power_supply_property prop,
 
 
 	switch (prop) {
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case GBMS_PROP_CHARGING_ENABLED:
 		val->intval = 0;
 		break;
 	default:
@@ -3901,7 +3901,7 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 	}
 
 	/* Read switching charger status */
-	ret = pca9468_get_swc_property(POWER_SUPPLY_PROP_CHARGING_ENABLED,
+	ret = pca9468_get_swc_property(GBMS_PROP_CHARGING_ENABLED,
 				       &val);
 	if (ret < 0) {
 		/* Start Direct Charging again after 1sec */
@@ -4522,7 +4522,7 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		break;
 
 	/* TODO: locking is wrong */
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case GBMS_PROP_CHARGING_ENABLED:
 		if (val->intval == 0) {
 			/* Cancel delayed work */
 			cancel_delayed_work(&pca9468->timer_work);
@@ -4588,7 +4588,7 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		}
 		break;
 
-	case POWER_SUPPLY_PROP_CHARGE_DISABLE:
+	case GBMS_PROP_CHARGE_DISABLE:
 		break;
 
 	default:
@@ -4729,14 +4729,14 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 			val->intval = 0;
 		break;
 
-	case POWER_SUPPLY_PROP_CHARGE_DISABLE:
+	case GBMS_PROP_CHARGE_DISABLE:
 		ret = get_charging_enabled(pca9468);
 		if (ret < 0)
 			return ret;
 		val->intval = !ret;
 		break;
 
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case GBMS_PROP_CHARGING_ENABLED:
 		ret = get_charging_enabled(pca9468);
 		if (ret < 0)
 			return ret;
@@ -4790,10 +4790,10 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 		}
 		break;
 
-	case POWER_SUPPLY_PROP_CHARGE_CHARGER_STATE:
+	case GBMS_PROP_CHARGE_CHARGER_STATE:
 		ret = pca9468_get_chg_chgr_state(pca9468, &chg_state);
 		if (ret == 0)
-			val->int64val = chg_state.v;
+			gbms_propval_int64val(val) = chg_state.v;
 		break;
 
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
@@ -4847,9 +4847,7 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 static enum power_supply_property pca9468_mains_properties[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
-	POWER_SUPPLY_PROP_CHARGE_DISABLE,
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
-	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	/* same as POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT */
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
@@ -4868,7 +4866,7 @@ static int pca9468_mains_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-	case POWER_SUPPLY_PROP_CHARGE_DISABLE:
+	case GBMS_PROP_CHARGE_DISABLE:
 		return 1;
 	default:
 		break;
