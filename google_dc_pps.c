@@ -69,7 +69,7 @@ void pps_log(struct pd_pps_data *pps, const char *fmt, ...)
 	logbuffer_vlog(pps->log, fmt, args);
 	va_end(args);
 }
-EXPORT_SYMBOL_GPL(pps_log);
+// EXPORT_SYMBOL_GPL(pps_log);
 
 /* SW enable detect setting ->stage = PPS_NONE and calling pps_work() */
 void pps_init_state(struct pd_pps_data *pps_data)
@@ -90,7 +90,7 @@ void pps_init_state(struct pd_pps_data *pps_data)
 		__pm_relax(pps_data->pps_ws);
 
 }
-EXPORT_SYMBOL_GPL(pps_init_state);
+// EXPORT_SYMBOL_GPL(pps_init_state);
 
 static struct tcpm_port *chg_get_tcpm_port(struct power_supply *tcpm_psy)
 {
@@ -155,7 +155,7 @@ int pps_ping(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 
 	return rc;
 }
-EXPORT_SYMBOL_GPL(pps_ping);
+// EXPORT_SYMBOL_GPL(pps_ping);
 
 int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
@@ -168,7 +168,7 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 
 	return pps->nr_src_cap;
 }
-EXPORT_SYMBOL_GPL(pps_get_src_cap);
+// EXPORT_SYMBOL_GPL(pps_get_src_cap);
 
 /* assume that we are already online and in PPS stage */
 bool pps_prog_check_online(struct pd_pps_data *pps_data,
@@ -217,7 +217,7 @@ not_supp:
 	pps_data->stage = PPS_NOTSUPP;
 	return false;
 }
-EXPORT_SYMBOL_GPL(pps_prog_check_online);
+// EXPORT_SYMBOL_GPL(pps_prog_check_online);
 
 /* enable PPS prog mode (Internal), also start the negotiation */
 static int pps_prog_online(struct pd_pps_data *pps,
@@ -254,8 +254,7 @@ int pps_prog_offline(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(pps_prog_offline);
-
+// EXPORT_SYMBOL_GPL(pps_prog_offline);
 
 void pps_adjust_volt(struct pd_pps_data *pps, int mod)
 {
@@ -396,7 +395,7 @@ int pps_init_fs(struct pd_pps_data *pps_data, struct dentry *de)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pps_init_fs);
+// EXPORT_SYMBOL_GPL(pps_init_fs);
 
 /* ------------------------------------------------------------------------ */
 
@@ -528,7 +527,7 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev)
 {
 	return pps_init_node(pps_data, dev->of_node);
 }
-EXPORT_SYMBOL_GPL(pps_init);
+// EXPORT_SYMBOL_GPL(pps_init);
 
 /* ------------------------------------------------------------------------- */
 
@@ -642,7 +641,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 	pps->pd_online = pd_online;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pps_work);
+// EXPORT_SYMBOL_GPL(pps_work);
 
 int pps_keep_alive(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
@@ -662,7 +661,7 @@ int pps_keep_alive(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 	pps->last_update = get_boot_sec();
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pps_keep_alive);
+// EXPORT_SYMBOL_GPL(pps_keep_alive);
 
 int pps_check_adapter(struct pd_pps_data *pps,
 		      int pending_uv, int pending_ua,
@@ -798,13 +797,13 @@ int pps_update_adapter(struct pd_pps_data *pps,
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(pps_update_adapter);
+// EXPORT_SYMBOL_GPL(pps_update_adapter);
 
 struct power_supply *pps_get_tcpm_psy(struct device_node *node, size_t size)
 {
 	const char *propname = "google,tcpm-power-supply";
 	struct power_supply *tcpm_psy = NULL;
-	struct power_supply *psy[size];
+	struct power_supply *psy[2];
 	int i, ret;
 
 	ret = power_supply_get_by_phandle_array(node, propname, psy,
@@ -823,7 +822,7 @@ struct power_supply *pps_get_tcpm_psy(struct device_node *node, size_t size)
 
 	return tcpm_psy;
 }
-EXPORT_SYMBOL_GPL(pps_get_tcpm_psy);
+// EXPORT_SYMBOL_GPL(pps_get_tcpm_psy);
 
 /* TODO:  */
 int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
@@ -842,7 +841,7 @@ int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
 	return tcpm_update_sink_capabilities(port, pps_data->snk_pdo,
 					     ta_idx, max_mw);
 }
-EXPORT_SYMBOL_GPL(pps_request_pdo);
+// EXPORT_SYMBOL_GPL(pps_request_pdo);
 
 
 /* ------------------------------------------------------------------------- */
@@ -898,4 +897,4 @@ int pps_get_apdo_max_power(struct pd_pps_data *pps_data, unsigned int *ta_idx,
 		 __func__, *ta_max_vol, *ta_max_cur);
 	return -EINVAL;
 }
-EXPORT_SYMBOL_GPL(pps_get_apdo_max_power);
+// EXPORT_SYMBOL_GPL(pps_get_apdo_max_power);

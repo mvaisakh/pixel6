@@ -1024,7 +1024,7 @@ static void gcpm_init_work(struct work_struct *work)
 
 		schedule_delayed_work(&gcpm->init_work, jif);
 	} else {
-		pr_info("init_work done %d/%d pps=%d\n", found,
+		pr_info("google_cpm init_work done %d/%d pps=%d\n", found,
 			gcpm->chg_psy_count, !!gcpm->tcpm_psy);
 	}
 }

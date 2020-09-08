@@ -3798,7 +3798,7 @@ static void google_battery_init_work(struct work_struct *work)
 	/* debugfs */
 	(void)batt_init_fs(batt_drv);
 
-	pr_info("init_work done\n");
+	pr_info("google_battery init_work done\n");
 
 	batt_drv->init_complete = true;
 	batt_drv->resume_complete = true;
@@ -3829,15 +3829,15 @@ static int google_battery_probe(struct platform_device *pdev)
 
 	batt_drv->device = &pdev->dev;
 
-	ret = of_property_read_string(pdev->dev.of_node,
-				      "google,fg-psy-name", &fg_psy_name);
+	ret = of_property_read_string(pdev->dev.of_node, "google,fg-psy-name",
+				      &fg_psy_name);
 	if (ret != 0) {
 		pr_err("cannot read google,fg-psy-name, ret=%d\n", ret);
 		return -EINVAL;
 	}
 
-	batt_drv->fg_psy_name =
-	    devm_kstrdup(&pdev->dev, fg_psy_name, GFP_KERNEL);
+	batt_drv->fg_psy_name = devm_kstrdup(&pdev->dev, fg_psy_name,
+					     GFP_KERNEL);
 	if (!batt_drv->fg_psy_name)
 		return -ENOMEM;
 
@@ -4005,6 +4005,7 @@ static struct platform_driver google_battery_driver = {
 		   .name = "google,battery",
 		   .owner = THIS_MODULE,
 		   .of_match_table = google_charger_of_match,
+
 #ifdef SUPPORT_PM_SLEEP
 		   .pm = &gbatt_pm_ops,
 #endif
@@ -4014,7 +4015,10 @@ static struct platform_driver google_battery_driver = {
 	.remove = google_battery_remove,
 };
 
-static int __init google_battery_init(void)
+module_platform_driver(google_battery_driver);
+
+#if 0
+int google_battery_init(void)
 {
 	int ret;
 
@@ -4026,14 +4030,25 @@ static int __init google_battery_init(void)
 	return 0;
 }
 
-static void __init google_battery_exit(void)
+void google_battery_exit(void)
 {
 	platform_driver_unregister(&google_battery_driver);
-	pr_info("unregistered platform driver\n");
 }
 
-module_init(google_battery_init);
-module_exit(google_battery_exit);
+static int __init battery_init(void)
+{
+	return google_battery_init();
+}
+
+static void __init battery_exit(void)
+{
+	google_battery_exit();
+}
+
+module_init(battery_init);
+module_exit(battery_exit);
+#endif
+
 MODULE_DESCRIPTION("Google Battery Driver");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
 MODULE_LICENSE("GPL");

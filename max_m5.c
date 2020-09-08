@@ -832,22 +832,3 @@ int max_m5_regmap_init(struct max17x0x_regmap *regmap, struct i2c_client *clnt)
 	regmap->regmap = map;
 	return 0;
 }
-
-int batt_hist_data_collect(void *h, int idx, int cycle_cnt,
-			   struct power_supply *fg_psy)
-{
-	return -ENODEV;
-}
-EXPORT_SYMBOL_GPL(batt_hist_data_collect);
-
-void *batt_hist_init_data(struct device *dev)
-{
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(batt_hist_init_data);
-
-void batt_hist_free_data(void *p)
-{
-
-}
-EXPORT_SYMBOL_GPL(batt_hist_free_data);

@@ -2834,10 +2834,9 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 					chip->regmap_nvram.reglog,
 					&debug_reglog_writes_fops);
 
-	if (chip->gauge_type == MAX_M5_GAUGE_TYPE) {
+	if (chip->gauge_type == MAX_M5_GAUGE_TYPE)
 		debugfs_create_file("fg_model", 0440, de, chip,
 				    &debug_m5_custom_model_fops);
-	}
 
 	return 0;
 }
@@ -4096,7 +4095,6 @@ void *max1720x_get_model_data(struct i2c_client *client)
 	struct max1720x_chip *chip = i2c_get_clientdata(client);
 	return chip->model_data;
 }
-EXPORT_SYMBOL_GPL(max1720x_get_model_data);
 
 static int max1720x_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)

@@ -323,15 +323,24 @@ int ttf_stats_sscan(struct batt_ttf_stats *stats,
 struct batt_ttf_stats *ttf_stats_dup(struct batt_ttf_stats *dst,
 				     const struct batt_ttf_stats *src);
 
-/*
- * Battery history
- *
- */
 
-extern void *batt_hist_init_data(struct device *dev);
-extern int batt_hist_data_collect(void *h, int cycle_cnt, int idx,
-				  struct power_supply *fg_psy);
-extern void batt_hist_free_data(void *p);
+/* Google battery EEPROM API */
+
+struct nvmem_device;
+
+/* TODO: make this optional */
+
+#if 1
+int gbee_register_device(const char *name, struct nvmem_device *nvram);
+void gbee_destroy_device(void);
+#else
+static inline int gbee_register_device(const char *name,
+				       struct nvmem_device *nvram)
+{ return -ENODEV; }
+
+static inline void gbee_destroy_device(void) { }
+
+#endif
 
 /*
  * Charger modes

@@ -1256,21 +1256,20 @@ static int __init gbms_storage_init(void)
 		schedule_delayed_work(&bee_work, msecs_to_jiffies(0));
 
 	gbms_storage_init_done = true;
-	pr_info("init done\n");
+	pr_info("gbms_storage init done\n");
 
-#ifdef CONFIG_DEBUG_FS
 	rootdir = debugfs_create_dir("gbms_storage", NULL);
-	if (!IS_ERR_OR_NULL(rootdir)) {
-		debugfs_create_file("cache", S_IFREG | 0444, rootdir,
-				    NULL, &gbms_cache_status_ops);
-		debugfs_create_file("providers", S_IFREG | 0444, rootdir,
-				    NULL, &gbms_providers_status_ops);
-		debugfs_create_file("offline", S_IFREG | 0200, rootdir,
-				    NULL, &gbms_providers_offline_ops);
-		debugfs_create_file("export", S_IFREG | 0200, rootdir,
-				    NULL, &gbms_providers_export_ops);
-	}
-#endif
+	if (IS_ERR_OR_NULL(rootdir))
+		return 0;
+
+	debugfs_create_file("cache", S_IFREG | 0444, rootdir, NULL,
+			    &gbms_cache_status_ops);
+	debugfs_create_file("providers", S_IFREG | 0444, rootdir, NULL,
+			    &gbms_providers_status_ops);
+	debugfs_create_file("offline", S_IFREG | 0200, rootdir, NULL,
+			    &gbms_providers_offline_ops);
+	debugfs_create_file("export", S_IFREG | 0200, rootdir, NULL,
+			    &gbms_providers_export_ops);
 
 	return 0;
 }

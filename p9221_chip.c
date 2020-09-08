@@ -720,7 +720,3 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 
 	return 0;
 }
-
-EXPORT_SYMBOL_GPL(p9221_chip_init_funcs);
-MODULE_AUTHOR("Jim Wylder <jwylder@google.com>");
-MODULE_LICENSE("GPL");

@@ -840,11 +840,11 @@ static bool chg_update_dead_battery(const struct chg_drv *chg_drv)
 	const time_t uptime = get_boot_sec();
 
 	if (uptime < DEAD_BATTERY_DEADLINE_SEC)
-		dead = GPSY_GET_PROP(chg_drv->bat_psy,
-				     POWER_SUPPLY_PROP_DEAD_BATTERY);
+		dead = GPSY_GET_PROP(chg_drv->bat_psy, GBMS_PROP_DEAD_BATTERY);
+
+	/* TODO: upstream dead battery or make it into a votable */
 	if (dead == 0 && chg_drv->usb_psy) {
-		dead = GPSY_SET_PROP(chg_drv->usb_psy,
-				     POWER_SUPPLY_PROP_DEAD_BATTERY, 0);
+		dead = GPSY_SET_PROP(chg_drv->usb_psy, GBMS_PROP_DEAD_BATTERY, 0);
 		if (dead == 0)
 			pr_info("dead battery cleared uptime=%ld\n", uptime);
 	}
@@ -2322,7 +2322,7 @@ static void google_charger_init_work(struct work_struct *work)
 		pr_err("Cannot register power supply notifer, ret=%d\n", ret);
 
 	chg_drv->init_done = true;
-	pr_info("init_work done\n");
+	pr_info("google_charger init_work done\n");
 
 	/* catch state changes that happened before registering the notifier */
 	schedule_delayed_work(&chg_drv->chg_work,
@@ -2344,6 +2344,9 @@ retry_init_work:
 			      msecs_to_jiffies(CHG_DELAY_INIT_MS));
 }
 
+/*
+ * Requires a charger and a battery. WLC, USB and TCPM are optional.
+ */
 static int google_charger_probe(struct platform_device *pdev)
 {
 	const char *chg_psy_name, *bat_psy_name;
@@ -2565,11 +2568,12 @@ static const struct of_device_id match_table[] = {
 	{},
 };
 
-static struct platform_driver charger_driver = {
+static struct platform_driver google_charger_driver = {
 	.driver = {
 		   .name = "google,charger",
 		   .owner = THIS_MODULE,
 		   .of_match_table = match_table,
+		   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 #ifdef SUPPORT_PM_SLEEP
 		   .pm = &chg_pm_ops,
 #endif
@@ -2578,7 +2582,10 @@ static struct platform_driver charger_driver = {
 	.remove = google_charger_remove,
 };
 
-static int __init google_charger_init(void)
+module_platform_driver(google_charger_driver);
+
+#if 0
+int google_charger_init(void)
 {
 	int ret;
 
@@ -2590,14 +2597,26 @@ static int __init google_charger_init(void)
 	return 0;
 }
 
-static void __init google_charger_exit(void)
+void google_charger_exit(void)
 {
 	platform_driver_unregister(&charger_driver);
-	pr_info("unregistered platform driver\n");
 }
 
-module_init(google_charger_init);
-module_exit(google_charger_exit);
+static int __init charger_init(void)
+{
+	return google_charger_init();
+}
+
+static void __init charger_exit(void)
+{
+	google_charger_exit();
+}
+
+module_init(charger_init);
+module_exit(charger_exit);
+
+#endif
+
 MODULE_DESCRIPTION("Multi-step battery charger driver");
 MODULE_AUTHOR("Thierry Strudel <tstrudel@google.com>");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
