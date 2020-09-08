@@ -477,19 +477,70 @@ EXPORT_SYMBOL_GPL(gbms_cycle_count_sscan_bc);
 
 /* ------------------------------------------------------------------------- */
 
-int gbms_get_property(struct power_supply *psy,
-			    enum gbms_property psp,
-			    union gbms_propval *val)
-{
+#define gbms_desc_from_psy(psy) \
+	container_of(psy->desc, struct gbms_desc, psy_dsc)
 
+int gbms_set_property(struct power_supply *psy, enum gbms_property psp,
+		      const union gbms_propval *val)
+{
+	struct gbms_desc *dsc;
+	int ret;
+
+	if (!psy)
+		return -EINVAL;
+
+	dsc = gbms_desc_from_psy(psy);
+	if (dsc->set_property) {
+		const bool writable = (dsc->property_is_writeable) ?
+				      dsc->property_is_writeable(psy, psp) :
+				      false;
+		if (writable) {
+			ret = dsc->set_property(psy, psp, val);
+			if (ret == 0)
+				return 0;
+		}
+	}
+
+	if (!dsc->forward)
+		return -ENODEV;
+
+	pr_debug("set %d for '%s' to %d\n", psp, psy->desc->name,
+		 val->prop.intval);
+
+	ret = power_supply_set_property(psy, psp, &val->prop);
+	if (ret < 0) {
+		pr_err("failed to psp=%d for '%s', ret=%d\n",
+		       psp, psy->desc->name, ret);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(gbms_set_property);
+
+int gbms_get_property(struct power_supply *psy, enum gbms_property psp,
+		      union gbms_propval *val)
+{
+	struct gbms_desc *dsc;
+	int ret;
+
+	if (!psy)
+		return -EINVAL;
+
+	dsc = gbms_desc_from_psy(psy);
+	if (dsc->get_property) {
+		ret = dsc->get_property(psy, psp, val);
+		if (ret == 0)
+			return 0;
+	}
+
+	if (!dsc->forward)
+		return -ENODEV;
+
+	ret = power_supply_get_property(psy, psp, &val->prop);
+	if (ret < 0)
+		pr_err("failed to get psp=%d from '%s', ret=%d\n",
+		       psp, psy->desc->name, ret);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(gbms_get_property);
 
-
-int gbms_set_property(struct power_supply *psy,
-			    enum gbms_property psp,
-			    const union gbms_propval *val)
-{
-
-}
-EXPORT_SYMBOL_GPL(gbms_set_property);

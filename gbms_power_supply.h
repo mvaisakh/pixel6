@@ -89,13 +89,6 @@ union gbms_propval {
 #define gbms_propval_int64val(psp) \
 	container_of(psp, union gbms_propval, prop)->int64val
 
-
-extern int gbms_get_property(struct power_supply *psy, enum gbms_property psp,
-			     union gbms_propval *val);
-extern int gbms_set_property(struct power_supply *psy, enum gbms_property psp,
-			     const union gbms_propval *val);
-
-
 static inline int gpsy_set_int64_prop(struct power_supply *psy,
 				      enum gbms_property psp,
 				      union gbms_propval val,
@@ -109,7 +102,8 @@ static inline int gpsy_set_int64_prop(struct power_supply *psy,
 	pr_debug("set %s for '%s' to %lld\n", prop_name,
 		 psy->desc->name, val.int64val);
 
-	ret = power_supply_set_property(psy, psp, &val.prop);
+	ret = power_supply_set_property(psy, (enum power_supply_property)psp,
+				        &val.prop);
 	if (ret < 0)
 		pr_err("failed to set %s for '%s', ret=%d\n",
 		       prop_name, psy->desc->name, ret);
@@ -133,7 +127,8 @@ static inline int64_t gpsy_get_int64_prop(struct power_supply *psy,
 		return *err;
 	}
 
-	*err = power_supply_get_property(psy, psp, &val.prop);
+	*err = power_supply_get_property(psy, (enum power_supply_property)psp,
+					 &val.prop);
 	if (*err < 0) {
 		pr_err("failed to get %s from '%s', ret=%d\n",
 		       prop_name, psy->desc->name, *err);
@@ -148,5 +143,26 @@ static inline int64_t gpsy_get_int64_prop(struct power_supply *psy,
 
 #define GPSY_GET_INT64_PROP(psy, psp, err) \
 	gpsy_get_int64_prop(psy, psp, #psp, err)
+
+
+/* GBMS properties -------------------------------------------------------- */
+
+struct gbms_desc {
+	struct power_supply_desc psy_dsc;
+	bool forward;
+
+	/* bgms properties */
+	int (*get_property)(struct power_supply *psy, enum gbms_property psp,
+			    union gbms_propval *val);
+	int (*set_property)(struct power_supply *psy, enum gbms_property psp,
+			    const union gbms_propval *val);
+	int (*property_is_writeable)(struct power_supply *psy,
+				     enum gbms_property psp);
+};
+
+extern int gbms_set_property(struct power_supply *psy, enum gbms_property psp,
+			     const union gbms_propval *val);
+extern int gbms_get_property(struct power_supply *psy, enum gbms_property psp,
+			     union gbms_propval *val);
 
 #endif /* __GBMS_POWER_SUPPLY_H__ */
