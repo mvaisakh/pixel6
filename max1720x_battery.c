@@ -1917,7 +1917,8 @@ static irqreturn_t max1720x_fg_irq_thread_fn(int irq, void *obj)
 	bool storm = false;
 	int err = 0;
 
-	if (!chip || irq != chip->primary->irq) {
+
+	if (!chip || (irq != -1 && irq != chip->primary->irq)) {
 		WARN_ON_ONCE(1);
 		return IRQ_NONE;
 	}
@@ -2065,7 +2066,9 @@ static irqreturn_t max1720x_fg_irq_thread_fn(int irq, void *obj)
 	 * NOTE: can do this masking on gauge side (Config, 0x1D) and using a
 	 * workthread to re-enable.
 	 */
-	msleep(MAX1720X_TICLR_MS);
+	if (irq != -1)
+		msleep(MAX1720X_TICLR_MS);
+
 
 	return IRQ_HANDLED;
 }
@@ -3886,7 +3889,7 @@ static void max1720x_init_work(struct work_struct *work)
 	 * Handle any IRQ that might have been set before init
 	 * NOTE: will clear the POR bit and trigger model load if needed
 	 */
-	max1720x_fg_irq_thread_fn(chip->primary->irq, chip);
+	max1720x_fg_irq_thread_fn(-1, chip);
 
 	dev_info(chip->dev, "init_work done\n");
 	if (chip->gauge_type == -1)
