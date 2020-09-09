@@ -45,7 +45,7 @@
 struct max20339_ovp {
 	struct i2c_client *client;
 	struct regmap *regmap;
-#ifdef CONFIG_GPIOLIB
+#if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
 #endif
 };
@@ -110,7 +110,7 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 	return ret;
 }
 
-#ifdef CONFIG_GPIOLIB
+#if IS_ENABLED(CONFIG_GPIOLIB)
 static int max20339_gpio_get_direction(struct gpio_chip *chip,
 				       unsigned int offset)
 {
@@ -214,8 +214,8 @@ static int max20339_probe(struct i2c_client *client,
 
 	max20339_init_regs(ovp->regmap, &client->dev);
 
-#ifdef CONFIG_GPIOLIB
-	/* Setup GPIO cotroller */
+#if IS_ENABLED(CONFIG_GPIOLIB)
+	/* Setup GPIO controller */
 	ovp->gpio.owner = THIS_MODULE;
 	ovp->gpio.parent = &client->dev;
 	ovp->gpio.label = "max20339_gpio";

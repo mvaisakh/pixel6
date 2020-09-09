@@ -90,7 +90,7 @@ struct max77729_pmic_data {
 	struct regmap        *regmap;
 	uint8_t pmic_id;
 
-#ifdef CONFIG_GPIOLIB
+#if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip     gpio;
 #endif
 	struct max77759_maxq *maxq;
@@ -521,7 +521,7 @@ static int dbg_init_fs(struct max77729_pmic_data *data)
 	return 0;
 }
 
-#ifdef CONFIG_GPIOLIB
+#if IS_ENABLED(CONFIG_GPIOLIB)
 
 static int max77759_gpio_get_direction(struct gpio_chip *chip,
 				       unsigned int offset)
@@ -741,9 +741,9 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		}
 	}
 
-#ifdef CONFIG_GPIOLIB
+#if IS_ENABLED(CONFIG_GPIOLIB)
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
-		/* Setup GPIO cotroller */
+		/* Setup GPIO controller */
 		data->gpio.owner = THIS_MODULE;
 		data->gpio.parent = dev;
 		data->gpio.label = "max777x9_gpio";
