@@ -637,6 +637,11 @@ static int max77759_wcin_voltage_max(struct max77759_chgr_data *chg,
 			return -ENODEV;
 	}
 
+	if (!max77759_wcin_is_present(chg)) {
+		val->intval = 0;
+		return 0;
+	}
+
 	rc = power_supply_get_property(chg->wlc_psy,
 				       POWER_SUPPLY_PROP_VOLTAGE_MAX, val);
 	if (rc < 0) {
@@ -658,11 +663,15 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 			return -ENODEV;
 	}
 
+	if (!max77759_wcin_is_present(chg)) {
+		val->intval = 0;
+		return 0;
+	}
+
 	rc = power_supply_get_property(chg->wlc_psy,
 				       POWER_SUPPLY_PROP_VOLTAGE_NOW, val);
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't get VOLTAGE_NOW, rc=%d\n", rc);
-		return rc;
 	}
 
 	return rc;
