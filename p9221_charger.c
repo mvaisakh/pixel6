@@ -4012,24 +4012,13 @@ static struct i2c_driver p9221_charger_driver = {
 		.owner		= THIS_MODULE,
 		.of_match_table = p9221_charger_match_table,
 		.pm		= &p9221_pm_ops,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe		= p9221_charger_probe,
 	.remove		= p9221_charger_remove,
 	.id_table	= p9221_charger_id_table,
 };
-
-static int __init p9221_charger_init(void)
-{
-	return i2c_add_driver(&p9221_charger_driver);
-}
-
-static void __exit p9221_charger_exit(void)
-{
-	i2c_del_driver(&p9221_charger_driver);
-}
-
-module_init(p9221_charger_init);
-module_exit(p9221_charger_exit);
+module_i2c_driver(p9221_charger_driver);
 
 MODULE_DESCRIPTION("IDT P9221 Wireless Power Receiver Driver");
 MODULE_AUTHOR("Patrick Tjin <pattjin@google.com>");
