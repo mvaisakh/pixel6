@@ -22,7 +22,6 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 	pr_debug("%s +\n", __func__);
 
 	if (!dqe->initialized) {
-		decon_reg_set_dqe_enable(0, true);
 		dqe_reg_init(width, height);
 		dqe->initialized = true;
 	}

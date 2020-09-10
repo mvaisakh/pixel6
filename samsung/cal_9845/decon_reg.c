@@ -1625,13 +1625,26 @@ static void decon_reg_set_dither(u32 id, struct decon_config *config, bool en)
 {
 	u32 val;
 
-	if (id >= 3) {
-		cal_log_warn(id, "decon(%d) is invalid to set dither\n", id);
+	if (id >= MAX_DECON_CNT) {
+		cal_log_err(id, "decon(%d) is invalid to set dither\n", id);
 		return;
-	} else if (id == 0) {
+	}
+
+	/*
+	 * DECON0 uses display dither in DQE and DECON1/2 use just dither
+	 * which is placed between blender and DSC.
+	 *
+	 * In order for DECON0 to use display dither in DQE, both DQE_ON
+	 * and DITHER_ON must be set in the ENHANCE_PATH_F. The meaning of
+	 * DITHER_ON in DECON0 case indicates that the DQE output has been
+	 * dithered.
+	 *
+	 * However, the meaning of DITHER_ON in DECON1/2 is to just use dither
+	 * which is placed between blender and DSC.
+	 */
+	if (id == 0) {
 		/* TODO (b/163600343): Decouple enabling DQE and dither */
 		if (en) {
-			decon_reg_set_dqe_enable(0, true);
 			dqe_reg_init(config->image_width, config->image_height);
 			dqe_reg_set_disp_dither(DITHER_EN(1));
 		} else {

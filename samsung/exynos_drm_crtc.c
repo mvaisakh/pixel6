@@ -155,16 +155,6 @@ static void exynos_crtc_atomic_flush(struct drm_crtc *crtc,
 				     struct drm_crtc_state *old_crtc_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct exynos_drm_crtc_state *exynos_state;
-	struct decon_device *decon = exynos_crtc->ctx;
-	struct exynos_dqe *dqe = decon->dqe;
-
-	if (dqe) {
-		exynos_state = to_exynos_crtc_state(crtc->state);
-		exynos_dqe_update(dqe, &exynos_state->dqe,
-				decon->config.image_width,
-				decon->config.image_height);
-	}
 
 	if (exynos_crtc->ops->atomic_flush)
 		exynos_crtc->ops->atomic_flush(exynos_crtc, old_crtc_state);

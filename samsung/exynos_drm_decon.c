@@ -330,6 +330,7 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 					to_exynos_crtc_state(new_crtc_state);
 	struct exynos_drm_crtc_state *old_exynos_crtc_state =
 					to_exynos_crtc_state(old_crtc_state);
+	struct exynos_dqe *dqe = decon->dqe;
 
 	decon_debug(decon, "%s +\n", __func__);
 
@@ -352,6 +353,13 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 
 	decon->config.in_bpc = new_exynos_crtc_state->in_bpc;
 	decon_reg_set_bpc_and_dither(decon->id, &decon->config);
+	decon_debug(decon, "in/out bpc(%d/%d)\n",
+			decon->config.in_bpc, decon->config.out_bpc);
+
+	if (dqe)
+		exynos_dqe_update(dqe, &new_exynos_crtc_state->dqe,
+				decon->config.image_width,
+				decon->config.image_height);
 
 	decon_reg_all_win_shadow_update_req(decon->id);
 	reinit_completion(&decon->framestart_done);
