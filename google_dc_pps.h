@@ -17,7 +17,7 @@
 #define __GOOGLE_DC_PPS_H_
 
 #include <linux/usb/pd.h>
-#include <linux/pm_wakeup.h>
+#include <linux/device.h>
 #include <misc/logbuffer.h>
 
 #define PD_T_PPS_TIMEOUT		9000	/* Maximum of 10 seconds */

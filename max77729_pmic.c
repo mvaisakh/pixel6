@@ -26,9 +26,9 @@
 #include <linux/interrupt.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include "max_m5.h"
 #include "max77759.h"
 #include "max77759_maxq.h"
-#include "max_m5.h"
 
 enum max77729_pmic_register {
 	MAX77729_PMIC_ID         = 0x00,
@@ -372,8 +372,12 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 		ret = max_m5_reg_write(data->fg_i2c_client, MAX77759_FG_CONFIG,
 				       val);
 	}
-	if (ret < 0) {
-		pr_err("%s: cannot change FG config (%d)\n", __func__, ret);
+	if (ret == -ENODEV) {
+		*value = 25;
+		return 0;
+	} else if (ret < 0) {
+		pr_err("%s: cannot change FG config (%d)\n",
+			__func__, ret);
 		return -EIO;
 	}
 
@@ -410,7 +414,6 @@ restore_fg:
 
 	return ret;
 }
-
 
 /* THMIO_MUX=1 in CONTROL_FG (0x51) */
 int max77759_read_usb_temp(struct i2c_client *client, int *temp)

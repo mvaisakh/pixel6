@@ -1252,35 +1252,17 @@ static struct platform_driver google_cpm_driver = {
 		   .name = "google_cpm",
 		   .owner = THIS_MODULE,
 		   .of_match_table = google_cpm_of_match,
+		   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 #ifdef SUPPORT_PM_SLEEP
 		   /* .pm = &gcpm_pm_ops, */
 #endif
-		   /* .probe_type = PROBE_PREFER_ASYNCHRONOUS, */
 		   },
 	.probe = google_cpm_probe,
 	.remove = google_cpm_remove,
 };
 
-static int __init google_cpm_init(void)
-{
-	int ret;
+module_platform_driver(google_cpm_driver);
 
-	ret = platform_driver_register(&google_cpm_driver);
-	if (ret < 0) {
-		pr_err("device registration failed: %d\n", ret);
-		return ret;
-	}
-	return 0;
-}
-
-static void __init google_cpm_exit(void)
-{
-	platform_driver_unregister(&google_cpm_driver);
-	pr_info("unregistered platform driver\n");
-}
-
-module_init(google_cpm_init);
-module_exit(google_cpm_exit);
 MODULE_DESCRIPTION("Google Charging Policy Manager");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
 MODULE_LICENSE("GPL");

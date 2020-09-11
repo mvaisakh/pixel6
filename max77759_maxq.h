@@ -6,7 +6,7 @@
  *
  */
 
-#ifdef CONFIG_MAXQ_MAX77759
+#if IS_ENABLED(CONFIG_MAXQ_MAX77759)
 
 struct max77759_maxq;
 extern struct max77759_maxq *maxq_init(struct device *dev,

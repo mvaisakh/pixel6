@@ -21,7 +21,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
-#include <linux/pm_wakeup.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/regmap.h>
@@ -1001,11 +1000,7 @@ static int max77759_read_iic_from_fg(struct max77759_chgr_data *data, int *iic)
 	if (ret < 0)
 		return ret;
 
-	ret = max_m5_read_actual_input_current_ua(data->fg_i2c_client, iic);
-	if (ret < 0)
-		*iic = -1;
-
-	return ret;
+	return max_m5_read_actual_input_current_ua(data->fg_i2c_client, iic);
 }
 
 static int max77759_wd_tickle(struct max77759_chgr_data *data)
@@ -1169,7 +1164,7 @@ static int max77759_psy_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		rc = max77759_read_iic_from_fg(data, &pval->intval);
 		if (rc < 0)
-			dev_err(data->dev, "cannot read current rc=%d\n", rc);
+			pval->intval = -1;
 		break;
 	default:
 		dev_err(data->dev, "property (%d) unsupported.\n", psp);

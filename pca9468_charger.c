@@ -33,8 +33,6 @@
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
 
-#include <linux/pm_wakeup.h>
-
 /* Google integration */
 #include "google_bms.h"
 #include "google_dc_pps.h"

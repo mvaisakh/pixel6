@@ -15,10 +15,7 @@
 
 #include <linux/kernel.h>
 #include <linux/printk.h>
-#include <linux/module.h>
 #include <linux/of.h>
-#include <linux/platform_device.h>
-#include <linux/pm_wakeup.h>
 #include <linux/time.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>

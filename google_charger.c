@@ -2584,39 +2584,6 @@ static struct platform_driver google_charger_driver = {
 
 module_platform_driver(google_charger_driver);
 
-#if 0
-int google_charger_init(void)
-{
-	int ret;
-
-	ret = platform_driver_register(&charger_driver);
-	if (ret < 0) {
-		pr_err("device registration failed: %d\n", ret);
-		return ret;
-	}
-	return 0;
-}
-
-void google_charger_exit(void)
-{
-	platform_driver_unregister(&charger_driver);
-}
-
-static int __init charger_init(void)
-{
-	return google_charger_init();
-}
-
-static void __init charger_exit(void)
-{
-	google_charger_exit();
-}
-
-module_init(charger_init);
-module_exit(charger_exit);
-
-#endif
-
 MODULE_DESCRIPTION("Multi-step battery charger driver");
 MODULE_AUTHOR("Thierry Strudel <tstrudel@google.com>");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");

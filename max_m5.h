@@ -20,7 +20,6 @@
 
 #define MAX_M5_I2C_ADDR 0x6C
 
-/** ------------------------------------------------------------------------ */
 
 /* change to 1 or 0 to load FG model with default parameters on startup */
 #define MAX_M5_LOAD_MODEL_DISABLED	-1
@@ -108,6 +107,8 @@ struct max_m5_data {
 	struct model_state_save model_save;
 };
 
+/** ------------------------------------------------------------------------ */
+
 int max_m5_regmap_init(struct max17x0x_regmap *regmap,
 		       struct i2c_client *primary);
 
@@ -115,9 +116,7 @@ void *max_m5_init_data(struct device *dev, struct device_node *batt_node,
 		       struct max17x0x_regmap *regmap);
 void max_m5_free_data(void *data);
 
-/* load state from storage */
 int max_m5_load_state_data(struct max_m5_data *m5_data);
-/* save state to storage */
 int max_m5_save_state_data(struct max_m5_data *m5_data);
 
 /* read state from the gauge */
@@ -134,13 +133,45 @@ int max_m5_fg_model_sscan(struct max_m5_data *m5_data, const char *buf,
 			  int max);
 int max_m5_fg_model_cstr(char *buf, int max, const struct max_m5_data *m5_data);
 
-int max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic);
 
-int max_m5_reg_read(struct i2c_client *client, unsigned int reg,
+/*
+ *
+ */
+#if IS_ENABLED(CONFIG_MAX_M5)
+
+extern int max_m5_read_actual_input_current_ua(struct i2c_client *client,
+					       int *iic);
+
+extern int max_m5_reg_read(struct i2c_client *client, unsigned int reg,
 		    unsigned int *val);
-int max_m5_reg_write(struct i2c_client *client, unsigned int reg,
+extern int max_m5_reg_write(struct i2c_client *client, unsigned int reg,
 		     unsigned int val);
+#else
+static inline int
+max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic)
+{
+	return -ENODEV;
+}
 
+static inline int
+max_m5_reg_read(struct i2c_client *client, unsigned int reg, unsigned int *val)
+{
+	return -ENODEV;
+}
+
+static inline int max_m5_reg_write(struct i2c_client *client, unsigned int reg,
+				   unsigned int val)
+{
+	return -ENODEV;
+}
+
+
+#endif
+
+
+
+/* reach back into max1720x battery */
 void *max1720x_get_model_data(struct i2c_client *client);
+
 
 #endif

@@ -3996,49 +3996,16 @@ static struct platform_driver google_battery_driver = {
 		   .name = "google,battery",
 		   .owner = THIS_MODULE,
 		   .of_match_table = google_charger_of_match,
-
+		   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 #ifdef SUPPORT_PM_SLEEP
 		   .pm = &gbatt_pm_ops,
 #endif
-		   /* .probe_type = PROBE_PREFER_ASYNCHRONOUS, */
 		   },
 	.probe = google_battery_probe,
 	.remove = google_battery_remove,
 };
 
 module_platform_driver(google_battery_driver);
-
-#if 0
-int google_battery_init(void)
-{
-	int ret;
-
-	ret = platform_driver_register(&google_battery_driver);
-	if (ret < 0) {
-		pr_err("device registration failed: %d\n", ret);
-		return ret;
-	}
-	return 0;
-}
-
-void google_battery_exit(void)
-{
-	platform_driver_unregister(&google_battery_driver);
-}
-
-static int __init battery_init(void)
-{
-	return google_battery_init();
-}
-
-static void __init battery_exit(void)
-{
-	google_battery_exit();
-}
-
-module_init(battery_init);
-module_exit(battery_exit);
-#endif
 
 MODULE_DESCRIPTION("Google Battery Driver");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");

@@ -48,6 +48,21 @@ int max777x9_pmic_reg_write(struct i2c_client *client,
 int max777x9_pmic_reg_update(struct i2c_client *client,
 			     u8 reg, u8 mask, u8 value);
 
+#if IS_ENABLED(CONFIG_PMIC_MAX77729)
+extern int max77759_read_usb_temp(struct i2c_client *client, int *temp);
+extern int max77759_read_batt_id(struct i2c_client *client, unsigned int *id);
+#else
+static inline int max77759_read_usb_temp(struct i2c_client *client, int *temp)
+{
+	return -ENODEV;
+}
+static inline int max77759_read_batt_id(struct i2c_client *client,
+					unsigned int *id)
+{
+	return -ENODEV;
+}
+#endif
+
 /* mux configuration in MAX77759_PMIC_CONTROL_FG */
 #define THMIO_MUX_BATT_PACK	0
 #define THMIO_MUX_USB_TEMP	1

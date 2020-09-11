@@ -138,25 +138,42 @@ struct gbms_storage_desc {
 			  int idx, void *ptr);
 };
 
-int gbms_storage_register(struct gbms_storage_desc *desc, const char *name,
-			  void *ptr);
-int gbms_storage_offline(const char *name, bool flush);
+struct nvmem_device;
 
-int gbms_storage_read(gbms_tag_t tag, void *data, size_t count);
-int gbms_storage_write(gbms_tag_t tag, const void *data, size_t count);
+#if IS_ENABLED(CONFIG_GOOGLE_BEE)
 
-int gbms_storage_read_data(gbms_tag_t tag, void *data, size_t count, int idx);
-int gbms_storage_write_data(gbms_tag_t tag, const void *data, size_t count,
-			    int idx);
-int gbms_storage_flush(gbms_tag_t tag);
-int gbms_storage_flush_all(void);
+extern int gbee_register_device(const char *name, struct nvmem_device *nvram);
+extern void gbee_destroy_device(void);
 
-struct gbms_storage_device;
+#else
+static inline int gbee_register_device(const char *name,
+				       struct nvmem_device *nvram)
+{ return -ENODEV; }
+
+static inline void gbee_destroy_device(void) { }
+
+#endif
+
+extern int gbms_storage_register(struct gbms_storage_desc *desc,
+				 const char *name, void *ptr);
+extern int gbms_storage_offline(const char *name, bool flush);
+
+extern int gbms_storage_read(gbms_tag_t tag, void *data, size_t count);
+extern int gbms_storage_write(gbms_tag_t tag, const void *data, size_t count);
+
+extern int gbms_storage_read_data(gbms_tag_t tag, void *data, size_t count,
+				  int idx);
+extern int gbms_storage_write_data(gbms_tag_t tag, const void *data,
+				   size_t count, int idx);
+extern int gbms_storage_flush(gbms_tag_t tag);
+extern int gbms_storage_flush_all(void);
 
 /* standard device implementation that read data from an enumeration */
-struct gbms_storage_device *gbms_storage_create_device(const char *name,
-						       gbms_tag_t tag);
-void gbms_storage_cleanup_device(struct gbms_storage_device *gdev);
+
+struct gbms_storage_device;
+extern struct gbms_storage_device *
+gbms_storage_create_device(const char *name, gbms_tag_t tag);
+extern void gbms_storage_cleanup_device(struct gbms_storage_device *gdev);
 
 
 #endif /* __GBMS_STORAGE_H__ */

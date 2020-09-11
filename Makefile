@@ -2,6 +2,23 @@
 #
 # Makefile for Google Battery Management System
 #
+GBMS_MODULES =	GOOGLE_BMS \
+		GOOGLE_BATTERY \
+		GOOGLE_CHARGER \
+		GOOGLE_CPM \
+		GOOGLE_BEE \
+		USB_OVERHEAT_MITIGATION \
+		PMIC_MAX77729 \
+		UIC_MAX77729 \
+		CHARGER_MAX77729 \
+		CHARGER_MAX77759 \
+		MAXQ_MAX77759 \
+		CHARGER_P9221 \
+		MAX1720X_BATTERY \
+		MAX_M5 \
+		PCA9468 \
+		MAX20339
+
 
 obj-$(CONFIG_GOOGLE_BMS)	+= google-bms.o
 google-bms-objs += google_bms.o
@@ -35,11 +52,13 @@ google-cpm-objs += google_dc_pps.o
 obj-$(CONFIG_USB_OVERHEAT_MITIGATION)	+= overheat_mitigation.o
 
 # max7729f drivers for the single SSID
-obj-$(CONFIG_PMIC_MAX77729)	+= max77729_pmic.o
+obj-$(CONFIG_PMIC_MAX77729)	+= max77729-pmic.o
+max77729-pmic-objs += max77729_pmic.o
+max77729-pmic-objs += max77759_maxq.o
+
 obj-$(CONFIG_UIC_MAX77729)	+= max77729_uic.o
 obj-$(CONFIG_CHARGER_MAX77729)	+= max77729_charger.o
 # Muirwoods drivers for the single SSID (max77729_pmic is shared)
-obj-$(CONFIG_MAXQ_MAX77759)	+= max77759_maxq.o
 obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
 
 # Secondary charger, needs google_dc_pps
@@ -68,8 +87,7 @@ max77759-objs += max77729_uic.o
 max77759-objs += max77729_charger.o
 max77759-objs += max77759_maxq.o
 
-# TODO: enable max_m5 only when we have max77759 or max77729
-obj-$(CONFIG_BATTERY_MAX1720X)  += max1720x-battery.o
+obj-$(CONFIG_MAX1720X_BATTERY)  += max1720x-battery.o
 max1720x-battery-objs += max1720x_battery.o
 max1720x-battery-objs += max_m5.o
 
@@ -89,29 +107,22 @@ CFLAGS_google_charger.o += -Wno-enum-conversion
 CFLAGS_google_bms.o += -Wno-enum-conversion
 CFLAGS_google_cpm.o += $(WENUMS)
 
-
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 
-KBUILD_OPTIONS += CONFIG_GOOGLE_BMS=m \
-		  CONFIG_GOOGLE_BATTERY=m \
-		  CONFIG_GOOGLE_CHARGER=m \
-		  CONFIG_GOOGLE_CPM=m \
-		  CONFIG_USB_OVERHEAT_MITIGATION=m \
-		  CONFIG_PMIC_MAX77729=m \
-		  CONFIG_UIC_MAX77729=m \
-		  CONFIG_CHARGER_MAX77729=m \
-		  CONFIG_MAXQ_MAX77759=m \
-		  CONFIG_CHARGER_MAX77759=m \
-		  CONFIG_CHARGER_P9221=m \
-		  CONFIG_BATTERY_MAX1720X=m \
-		  CONFIG_PCA9468=m \
-		  CONFIG_MAX20339=m \
 
+KBUILD_OPTIONS += $(foreach m,$(GBMS_MODULES),CONFIG_$(m)=m )
 
-modules modules_install clean:
+modules:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 $(KBUILD_OPTIONS) \
+		EXTRA_CFLAGS="$(foreach m,$(GBMS_MODULES),-DCONFIG_$(m)_MODULE)" \
+		$(@)
+
+modules_install clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 $(KBUILD_OPTIONS) $(@)
 
+print-%:
+	@echo $* = $($*)
 
-gtags:
-	$()
+value-%:
+	@echo $($*)
