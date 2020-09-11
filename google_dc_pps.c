@@ -508,10 +508,6 @@ static int pps_init_node(struct pd_pps_data *pps_data,
 		}
 	}
 
-	pps_data->log = logbuffer_register("pps");
-	if (IS_ERR(pps_data->log))
-		pps_data->log = NULL;
-
 	pps_data->nr_snk_pdo = nr_snk_pdo;
 
 	return 0;
@@ -522,7 +518,18 @@ static int pps_init_node(struct pd_pps_data *pps_data,
  */
 int pps_init(struct pd_pps_data *pps_data, struct device *dev)
 {
-	return pps_init_node(pps_data, dev->of_node);
+	int ret;
+
+	ret = pps_init_node(pps_data, dev->of_node);
+	if (ret < 0)
+		return ret;
+
+	/* TODO(168287929): name should be const*/
+	pps_data->log = logbuffer_register((char*)dev_name(dev));
+	if (IS_ERR(pps_data->log))
+		pps_data->log = NULL;
+
+	return 0;
 }
 // EXPORT_SYMBOL_GPL(pps_init);
 
