@@ -490,6 +490,9 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @last_update_time: last update time after sleep
  * @pps_work: pps work for PPS periodic time
  * @pd: phandle for qualcomm PMI usbpd-phy
+ * @tcpm_psy_name: name of TCPM power supply
+ * @tcpm_phandle: lookup for tcpm power supply
+ * @pps_data: internal data for dc_pps
  * @mains_online: is AC/DC input connected
  * @charging_state: direct charging state
  * @ret_state: return direct charging state after DC_STATE_ADJUST_TAVOL is done
@@ -504,6 +507,8 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @prev_inc: Previous TA voltage or current increment factor
  * @req_new_iin: Request for new input current limit, true or false
  * @req_new_vfloat: Request for new vfloat, true or false
+ * @fv_uv: requested float voltage
+ * @cc_max: requested charge current max
  * @new_iin: New request input current limit, uA
  * @new_vfloat: New request vfloat, uV
  * @adc_comp_gain: adc gain for compensation
@@ -513,6 +518,7 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @pdata: pointer to platform data
  * @debug_root: debug entry
  * @debug_address: debug register address
+ * @debug_adc_channel: ADC channel to read
  */
 struct pca9468_charger {
 	struct wakeup_source	*monitor_wake_lock;
@@ -2261,7 +2267,7 @@ static int pca9468_adjust_ta_current(struct pca9468_charger *pca9468)
 		/* Recover IIN_CC to the original value(iin_cfg) */
 		pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
-		pr_debug("%s: New IIN, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: New IIN, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
 			 __func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc,
 			 pca9468->chg_mode);
@@ -2698,7 +2704,7 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 			/* Recover IIN_CC to the original (iin_cfg) */
 			pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
-			pr_debug("%s: New VFLOAT, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%u, iin_cc=%u, chg_mode=%u\n",
+			pr_debug("%s: New VFLOAT, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
 				 __func__, pca9468->ta_max_vol,
 				 pca9468->ta_max_cur, pca9468->ta_max_pwr,
 				 pca9468->iin_cc, pca9468->chg_mode);
@@ -3590,7 +3596,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		/* Set RX voltage to MIN[RX voltage, RX_MAX_VOL*chg_mode] */
 		pca9468->ta_vol = min(pca9468->ta_vol, pca9468->ta_max_vol);
 
-		pr_debug("%s: Preset DC, rx_max_vol=%u, rx_max_cur=%u, rx_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: Preset DC, rx_max_vol=%u, rx_max_cur=%u, rx_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
 			 __func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc,
 			 pca9468->chg_mode);
@@ -3683,7 +3689,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		/* Recover IIN_CC to the original value(iin_cfg) */
 		pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
-		pr_debug("%s: Preset DC, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%ul, iin_cc=%u, chg_mode=%u\n",
+		pr_debug("%s: Preset DC, ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
 			__func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			pca9468->ta_max_pwr, pca9468->iin_cc,
 			pca9468->chg_mode);
@@ -4083,7 +4089,7 @@ static void pca9468_timer_work(struct work_struct *work)
 		pca9468->timer_period = PCA9468_PDMSG_WAIT_T;
 		mutex_unlock(&pca9468->lock);
 
-		pr_debug("%s: charging_state=%u next_time_id => pca9468->timer_id=%d\n",
+		pr_debug("%s: charging_state=%u next_time_id => pca9468->timer_id=%d ret=%d\n",
 			__func__, pca9468->charging_state, pca9468->ta_type,
 			ret);
 

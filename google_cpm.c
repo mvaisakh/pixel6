@@ -338,7 +338,7 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 		return ret;
 	}
 
-	pr_info("PPS_DC: dc_ready ok fv_uv=%d cc_max=%d, out_ua=%d\n",
+	pr_info("PPS_DC: dc_ready ok state=%d fv_uv=%d cc_max=%d, out_ua=%d\n",
 		gcpm->dc_state, gcpm->fv_uv, gcpm->cc_max, gcpm->out_ua);
 
 	return 0;

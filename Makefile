@@ -76,9 +76,19 @@ max1720x-battery-objs += max_m5.o
 # OVP
 obj-$(CONFIG_MAX20339)	+= max20339.o
 
-# prevent warnings on gernated include files
-CFLAGS_max77759_charger.o += -Wno-unused-function
-CFLAGS_max77729_charger.o += -Wno-unused-function
+# prevent warnings
+WENUMS=-Wno-enum-conversion -Wno-switch
+
+CFLAGS_max77759_charger.o += -Wno-unused-function $(WENUMS)
+CFLAGS_max77729_charger.o += -Wno-unused-function $(WENUMS)
+CFLAGS_max1720x_battery.o += $(WENUMS)
+CFLAGS_pca9468_charger.o += $(WENUMS)
+CFLAGS_google_battery.o += $(WENUMS)
+CFLAGS_google_ttf.o += -Wno-format
+CFLAGS_google_charger.o += -Wno-enum-conversion
+CFLAGS_google_bms.o += -Wno-enum-conversion
+CFLAGS_google_cpm.o += $(WENUMS)
+
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)

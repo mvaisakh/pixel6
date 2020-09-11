@@ -1123,7 +1123,7 @@ static void gbee_probe_work(struct work_struct *work)
 			pr_err("gbee %s lookup failed, dummy=%d\n",
 				beed->bee_name, ret);
 		} else {
-			pr_debug("gbee %s retry lookup... (%d)\n",
+			pr_debug("gbee %s retry lookup... (%ld)\n",
 				 beed->bee_name, PTR_ERR(bee_nvram));
 			schedule_delayed_work(&bee_work,
 				msecs_to_jiffies(GBEE_POLL_INTERVAL_MS));

@@ -127,6 +127,12 @@ struct max77729_uic_data {
 	struct dentry *de;
 };
 
+/* silence warning */
+extern int max77729_disable_water_detection(struct i2c_client *client);
+extern int max77729_gpio_set(struct i2c_client *client, unsigned int gpio,
+		      bool dir_out, bool out_hi);
+
+
 static bool max77729_uic_is_reg(struct device *dev, unsigned int reg)
 {
 	int ret;
@@ -508,7 +514,7 @@ static int max77729_dbg_set_noautoibus(void *d, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(max77729_noautoibus_fops, NULL,
-			max77729_dbg_set_noautoibus, "%u\n");
+			max77729_dbg_set_noautoibus, "%llu\n");
 
 static int dbg_init_fs(struct max77729_uic_data *data)
 {

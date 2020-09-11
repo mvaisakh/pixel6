@@ -52,6 +52,12 @@ enum wlc_align_codes {
 static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
 static void p9221_icl_ramp_start(struct p9221_charger_data *charger);
 
+/*
+ * TODO(168282168): Was P9221R5_OVSET_REG, what happened to this?
+ * raw_data &= P9221R5_OVSET_MASK;
+ *		*val = p9221_ov_set_lut[raw_data];
+ * 		break;
+ */
 static const u32 p9221_ov_set_lut[] = {
 	17000000, 20000000, 15000000, 13000000,
 	11000000, 11000000, 11000000, 11000000};
@@ -1040,7 +1046,7 @@ static int p9221_notifier_cb(struct notifier_block *nb, unsigned long event,
 	if (event != PSY_EVENT_PROP_CHANGED)
 		goto out;
 
-	pr_debug("%s: psy_changed: from=%s evt=%d\n", __func__,
+	pr_debug("%s: psy_changed: from=%s evt=%lu\n", __func__,
 		psy->desc->name, event);
 
 	if (strcmp(psy->desc->name, "dc") == 0) {

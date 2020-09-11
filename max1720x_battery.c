@@ -1948,7 +1948,7 @@ static irqreturn_t max1720x_fg_irq_thread_fn(int irq, void *obj)
 				err = REGMAP_READ(&chip->regmap, MAX1720X_ALARM,
 						&fg_alarm);
 
-			dev_warn(chip->dev, "sts:%04x, alarm:%04x, cnt:%d err=%d\n",
+			dev_warn(chip->dev, "sts:%04x, alarm:%04x, cnt:%lu err=%d\n",
 				fg_status, fg_alarm, chip->icnt, err);
 		}
 
@@ -2651,11 +2651,11 @@ static int debug_batt_id_set(void *data, u64 val)
 
 	mutex_unlock(&chip->model_lock);
 
-	dev_info(chip->dev, "Force model for batt_id=%ull (%d)\n", val, ret);
+	dev_info(chip->dev, "Force model for batt_id=%llu (%d)\n", val, ret);
 	return 0;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, NULL, debug_batt_id_set, "%ull\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, NULL, debug_batt_id_set, "%llu\n");
 
 
 #define BATTERY_DEBUG_ATTRIBUTE(name, fn_read, fn_write) \
@@ -3099,7 +3099,7 @@ static void max1720x_model_work(struct work_struct *work)
 
 	if (cycle_count > chip->model_next_update) {
 
-		pr_debug("%s: cycle_count=%d next_update=%d\n", __func__,
+		pr_debug("%s: cycle_count=%d next_update=%ld\n", __func__,
 			 cycle_count, chip->model_next_update);
 
 		/* read new state from Fuel gauge, save to storage */
@@ -4028,8 +4028,8 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 			devm_regmap_init_i2c(chip->secondary,
 					     &max1730x_regmap_nvram_cfg);
 		if (IS_ERR(chip->regmap_nvram.regmap)) {
-			dev_err(chip->dev, "Failed to initialize nvram regmap (%d)\n",
-				IS_ERR_VALUE(chip->regmap_nvram.regmap));
+			dev_err(chip->dev, "Failed to initialize nvram regmap (%ld)\n",
+				PTR_ERR(chip->regmap_nvram.regmap));
 			return -EINVAL;
 		}
 
@@ -4040,8 +4040,8 @@ static int max17x0x_regmap_init(struct max1720x_chip *chip)
 			devm_regmap_init_i2c(chip->secondary,
 					     &max1720x_regmap_nvram_cfg);
 		if (IS_ERR(chip->regmap_nvram.regmap)) {
-			dev_err(chip->dev, "Failed to initialize nvram regmap (%d)\n",
-				IS_ERR_VALUE(chip->regmap_nvram.regmap));
+			dev_err(chip->dev, "Failed to initialize nvram regmap (%ld)\n",
+				PTR_ERR(chip->regmap_nvram.regmap));
 			return -EINVAL;
 		}
 

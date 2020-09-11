@@ -711,7 +711,7 @@ static int m5_init_custom_parameters(struct device *dev,
 		return -ENODATA;
 
 	if (cnt != sizeof(*cp) / 2) {
-		dev_err(dev, "fg-params: %s has %d elements, need %d\n",
+		dev_err(dev, "fg-params: %s has %d elements, need %ld\n",
 			propname, cnt, sizeof(*cp) / 2);
 		return -ERANGE;
 	}

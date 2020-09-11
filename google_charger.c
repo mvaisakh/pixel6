@@ -1381,7 +1381,7 @@ static int chg_set_update_interval(void *data, u64 val)
 	rc = vote(chg_drv->msc_interval_votable, USER_VOTER, val, 0);
 	if (rc < 0) {
 		dev_err(chg_drv->device,
-			"Couldn't vote %d to update_interval rc=%d\n",
+			"Couldn't vote %lld to update_interval rc=%d\n",
 			val, rc);
 		return rc;
 	}
@@ -1437,7 +1437,7 @@ static int chg_set_fv_uv(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(fv_uv_fops, chg_get_fv_uv,
-				     chg_set_fv_uv, "%d\n");
+				     chg_set_fv_uv, "%llu\n");
 
 static int chg_get_cc_max(void *data, u64 *val)
 {
@@ -1464,7 +1464,7 @@ static int chg_set_cc_max(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(cc_max_fops, chg_get_cc_max,
-				     chg_set_cc_max, "%d\n");
+				     chg_set_cc_max, "%llu\n");
 
 
 static int chg_get_interval(void *data, u64 *val)
@@ -1490,7 +1490,7 @@ static int chg_set_interval(void *data, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(chg_interval_fops,
 				chg_get_interval,
-				chg_set_interval, "%d\n");
+				chg_set_interval, "%llu\n");
 
 
 static int chg_reschedule_work(void *data, u64 val)
@@ -1502,7 +1502,7 @@ static int chg_reschedule_work(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(chg_reschedule_work_fops,
-					NULL, chg_reschedule_work, "%d\n");
+					NULL, chg_reschedule_work, "%llu\n");
 
 #endif
 
@@ -1524,7 +1524,7 @@ static int debug_set_pps_cc_tolerance(void *data, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(debug_pps_cc_tolerance_fops,
 					debug_get_pps_cc_tolerance,
-					debug_set_pps_cc_tolerance, "%u\n");
+					debug_set_pps_cc_tolerance, "%llu\n");
 
 
 
@@ -1985,7 +1985,7 @@ static int chg_set_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	tdev->current_level = lvl;
 
 	if (tdev->current_level == tdev->thermal_levels) {
-		pr_info("MSC_THERM_FCC lvl=%d charge disable\n", lvl);
+		pr_info("MSC_THERM_FCC lvl=%ld charge disable\n", lvl);
 		return vote(chg_drv->msc_chg_disable_votable,
 					THERMAL_DAEMON_VOTER, true, 0);
 	}
@@ -2033,7 +2033,7 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 				POWER_SUPPLY_PROP_ONLINE, &pval);
 		}
 
-		pr_info("MSC_THERM_DC lvl=%d dc disable\n", lvl);
+		pr_info("MSC_THERM_DC lvl=%ld dc disable\n", lvl);
 
 		return 0;
 	}
@@ -2055,7 +2055,7 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 			dc_icl);
 
 	if (ret < 0 || changed)
-		pr_info("MSC_THERM_DC lvl=%d dc_icl=%d (%d)\n",
+		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d (%d)\n",
 			lvl, dc_icl, ret);
 
 	/* make sure that fcc is reset to max when charging from WLC*/

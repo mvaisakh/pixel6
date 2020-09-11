@@ -18,6 +18,7 @@
 #include <linux/regmap.h>
 
 #include <misc/logbuffer.h>
+#include "max77759_maxq.h"
 #include "max77759_regs.h"
 
 #define PAYLOAD_REQUEST_LENGTH_BYTES		33
@@ -140,9 +141,9 @@ exit:
 	return ret;
 }
 
-int maxq_issue_opcode_command(struct max77759_maxq *maxq, u8 *request,
-			      u8 request_length, u8 *response,
-			      u8 response_length)
+static int maxq_issue_opcode_command(struct max77759_maxq *maxq, u8 *request,
+				     u8 request_length, u8 *response,
+				     u8 response_length)
 {
 	unsigned int current_request;
 	int ret = -ENODEV;

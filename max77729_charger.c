@@ -942,7 +942,7 @@ static int max77729_dbg_reset_charger_state(void *d, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(max77729_debug_reset_charger_state_fops,
-			NULL, max77729_dbg_reset_charger_state, "%ull\n");
+			NULL, max77729_dbg_reset_charger_state, "%llu\n");
 
 static int dbg_init_fs(struct max77729_chgr_data *data)
 {

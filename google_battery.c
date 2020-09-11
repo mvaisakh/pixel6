@@ -1246,7 +1246,7 @@ static int batt_chg_stats_cstr(char *buff, int size,
 			(verbose) ? ':' : ',');
 
 		len += scnprintf(&buff[len], size - len,
-			"%d.%d,%d,%d, %d,%d,%d, %d,%ld,%d, %d,%ld,%d, %d,%ld,%d",
+			"%d.%d,%d,%d, %d,%d,%d, %d,%lld,%d, %d,%lld,%d, %d,%lld,%d",
 				soc_in,
 				ce_data->tier_stats[i].soc_in & 0xff,
 				ce_data->tier_stats[i].cc_in,
@@ -1396,6 +1396,7 @@ static void batt_res_work(struct batt_drv *batt_drv)
 	ret = gbms_storage_read(GBMS_TAG_BRES, &data32, sizeof(data32));
 	if (ret < 0)
 		return;
+	resistance = data32;
 
 	if (ssoc_get_real(&batt_drv->ssoc_state) < ssoc_threshold) {
 		rstate->sample_accumulator += resistance / 100;
@@ -2311,7 +2312,7 @@ static int cycle_count_bins_reload(void *data, u64 *val)
 
 DEFINE_SIMPLE_ATTRIBUTE(cycle_count_bins_sync_fops,
 				cycle_count_bins_reload,
-				cycle_count_bins_store, "%d\n");
+				cycle_count_bins_store, "%llu\n");
 
 
 static int debug_get_ssoc_gdf(void *data, u64 *val)
@@ -2321,7 +2322,7 @@ static int debug_get_ssoc_gdf(void *data, u64 *val)
 	return 0;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(debug_ssoc_gdf_fops, debug_get_ssoc_gdf, NULL, "%u\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_ssoc_gdf_fops, debug_get_ssoc_gdf, NULL, "%llu\n");
 
 
 static int debug_get_ssoc_uic(void *data, u64 *val)
@@ -2331,7 +2332,7 @@ static int debug_get_ssoc_uic(void *data, u64 *val)
 	return 0;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(debug_ssoc_uic_fops, debug_get_ssoc_uic, NULL, "%u\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_ssoc_uic_fops, debug_get_ssoc_uic, NULL, "%llu\n");
 
 static int debug_get_ssoc_rls(void *data, u64 *val)
 {
@@ -2366,7 +2367,7 @@ static int debug_set_ssoc_rls(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(debug_ssoc_rls_fops,
-				debug_get_ssoc_rls, debug_set_ssoc_rls, "%u\n");
+				debug_get_ssoc_rls, debug_set_ssoc_rls, "%llu\n");
 
 static int debug_force_psy_update(void *data, u64 val)
 {
@@ -2380,7 +2381,7 @@ static int debug_force_psy_update(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(debug_force_psy_update_fops,
-				NULL, debug_force_psy_update, "%u\n");
+				NULL, debug_force_psy_update, "%llu\n");
 
 
 static ssize_t debug_get_ssoc_uicurve(struct file *filp, char __user *buf,
@@ -3044,7 +3045,7 @@ batt_check_pairing_state(struct batt_drv *batt_drv)
 
 	/* recycled battery */
 	} else if (strncmp(dev_info, dev_info_check, strlen(dev_info_check))) {
-		pr_warn("dev_sn=%*s\n", strlen(dev_sn), dev_sn);
+		pr_warn("dev_sn=%*s\n", (int)strlen(dev_sn), dev_sn);
 		pr_warn("dev_info=%*s\n", GBMS_DINF_LEN, dev_info);
 		pr_warn("Battery paired to a different device\n");
 
