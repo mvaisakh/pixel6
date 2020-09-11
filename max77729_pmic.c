@@ -744,6 +744,20 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		}
 	}
 
+	ret = dbg_init_fs(data);
+	if (ret < 0)
+		dev_err(dev, "Failed to initialize debug fs\n");
+
+	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
+		const int poll_en = of_property_read_bool(dev->of_node,
+							  "goog,maxq-poll");
+		data->maxq = maxq_init(dev, data->regmap, poll_en);
+		if (IS_ERR_OR_NULL(data->maxq)) {
+			dev_err(dev, "Maxq init failed!\n");
+			ret = PTR_ERR(data->maxq);
+		}
+	}
+
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
 		/* Setup GPIO controller */
@@ -769,20 +783,6 @@ static int max77729_pmic_probe(struct i2c_client *client,
 			dev_err(dev, "Failed to initialize gpio chip\n");
 	}
 #endif
-
-	ret = dbg_init_fs(data);
-	if (ret < 0)
-		dev_err(dev, "Failed to initialize debug fs\n");
-
-	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
-		const int poll_en = of_property_read_bool(dev->of_node,
-							  "goog,maxq-poll");
-		data->maxq = maxq_init(dev, data->regmap, poll_en);
-		if (IS_ERR_OR_NULL(data->maxq)) {
-			dev_err(dev, "Maxq init failed!\n");
-			ret = PTR_ERR(data->maxq);
-		}
-	}
 
 	dev_info(dev, "probe_done pmic_id = %x\n", pmic_id);
 	return ret;
