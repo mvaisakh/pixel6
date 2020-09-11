@@ -25,7 +25,6 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/thermal.h>
-#include <linux/pm_wakeup.h>
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <linux/usb/pd.h>
