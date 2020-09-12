@@ -43,6 +43,7 @@ struct exynos_dqe {
 	bool initialized;
 	const struct exynos_dqe_funcs *funcs;
 	struct exynos_dqe_state state;
+	struct decon_device *decon;
 
 	struct debug_override cgc_dither_override;
 	struct debug_override disp_dither_override;

@@ -13,12 +13,15 @@
 
 #include <dqe_cal.h>
 #include <decon_cal.h>
+#include <regs-dqe.h>
 
 #include "exynos_drm_decon.h"
 
 static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		struct exynos_dqe_state *state, u32 width, u32 height)
 {
+	const struct decon_device *decon;
+
 	pr_debug("%s +\n", __func__);
 
 	if (!dqe->initialized) {
@@ -31,8 +34,16 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 	if (dqe->cgc_dither_override.verbose)
 		dqe_reg_print_dither(CGC_DITHER);
 
-	if (dqe->disp_dither_override.force_en)
+	if (dqe->disp_dither_override.force_en) {
 		dqe_reg_set_disp_dither(dqe->disp_dither_override.val);
+	} else  {
+		decon = dqe->decon;
+		if (decon->config.in_bpc == 10 && decon->config.out_bpc == 8)
+			dqe_reg_set_disp_dither(DITHER_EN(1));
+		else
+			dqe_reg_set_disp_dither(DITHER_EN(0));
+	}
+
 	if (dqe->disp_dither_override.verbose)
 		dqe_reg_print_dither(DISP_DITHER);
 
@@ -107,6 +118,7 @@ struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)
 	dqe_regs_desc_init(dqe->regs, "dqe");
 	dqe->funcs = &dqe_funcs;
 	dqe->initialized = false;
+	dqe->decon = decon;
 
 	pr_info("display quality enhancer is supported\n");
 

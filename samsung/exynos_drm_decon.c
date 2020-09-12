@@ -352,7 +352,7 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	}
 
 	decon->config.in_bpc = new_exynos_crtc_state->in_bpc;
-	decon_reg_set_bpc_and_dither(decon->id, &decon->config);
+	decon_reg_set_bpc_and_dither_path(decon->id, &decon->config);
 	decon_debug(decon, "in/out bpc(%d/%d)\n",
 			decon->config.in_bpc, decon->config.out_bpc);
 

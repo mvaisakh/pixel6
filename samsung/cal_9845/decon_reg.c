@@ -1621,7 +1621,7 @@ void decon_reg_set_pll_wakeup(u32 id, u32 en)
 	decon_write_mask(id, PLL_SLEEP_CON, val, mask);
 }
 
-static void decon_reg_set_dither(u32 id, struct decon_config *config, bool en)
+static void decon_reg_set_dither_path(u32 id, bool en)
 {
 	u32 val;
 
@@ -1642,17 +1642,6 @@ static void decon_reg_set_dither(u32 id, struct decon_config *config, bool en)
 	 * However, the meaning of DITHER_ON in DECON1/2 is to just use dither
 	 * which is placed between blender and DSC.
 	 */
-	if (id == 0) {
-		/* TODO (b/163600343): Decouple enabling DQE and dither */
-		if (en) {
-			dqe_reg_init(config->image_width, config->image_height);
-			dqe_reg_set_disp_dither(DITHER_EN(1));
-		} else {
-			dqe_reg_set_disp_dither(DITHER_EN(0));
-		}
-		decon_reg_update_req_dqe(id);
-	}
-
 	val = en ? ENHANCE_PATH_F(ENHANCEPATH_DITHER_ON) : 0;
 	decon_write_mask(id, DATA_PATH_CON, val, ENHANCE_DITHER_ON);
 }
@@ -1827,7 +1816,7 @@ int decon_reg_stop(u32 id, struct decon_config *config, bool rst, u32 fps)
 	return ret;
 }
 
-void decon_reg_set_bpc_and_dither(u32 id, struct decon_config *config)
+void decon_reg_set_bpc_and_dither_path(u32 id, struct decon_config *config)
 {
 	/*
 	 * decon processes data in the bpc mode of DPP,
@@ -1842,9 +1831,9 @@ void decon_reg_set_bpc_and_dither(u32 id, struct decon_config *config)
 	 * to change 10bpc to 8bpc data.
 	 */
 	if (config->in_bpc == 10 && config->out_bpc == 8)
-		decon_reg_set_dither(id, config, true);
+		decon_reg_set_dither_path(id, true);
 	else
-		decon_reg_set_dither(id, config, false);
+		decon_reg_set_dither_path(id, false);
 }
 
 void decon_reg_win_enable_and_update(u32 id, u32 win_idx, u32 en)
