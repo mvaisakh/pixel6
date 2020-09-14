@@ -21,6 +21,7 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		struct exynos_dqe_state *state, u32 width, u32 height)
 {
 	const struct decon_device *decon;
+	struct dither_config dither_config;
 
 	pr_debug("%s +\n", __func__);
 
@@ -29,19 +30,33 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		dqe->initialized = true;
 	}
 
-	if (dqe->cgc_dither_override.force_en)
-		dqe_reg_set_cgc_dither(dqe->cgc_dither_override.val);
+	if (dqe->cgc_dither_override.force_en) {
+		dqe_reg_set_cgc_dither(&dqe->cgc_dither_override.val);
+		dqe->state.cgc_dither_config = &dqe->cgc_dither_override.val;
+	} else if (dqe->state.cgc_dither_config != state->cgc_dither_config) {
+		dqe_reg_set_cgc_dither(state->cgc_dither_config);
+		dqe->state.cgc_dither_config = state->cgc_dither_config;
+	}
+
 	if (dqe->cgc_dither_override.verbose)
 		dqe_reg_print_dither(CGC_DITHER);
 
 	if (dqe->disp_dither_override.force_en) {
-		dqe_reg_set_disp_dither(dqe->disp_dither_override.val);
-	} else  {
+		dqe_reg_set_disp_dither(&dqe->disp_dither_override.val);
+		dqe->state.disp_dither_config = &dqe->disp_dither_override.val;
+	} else if (!state->disp_dither_config) {
 		decon = dqe->decon;
+		memset(&dither_config, 0, sizeof(dither_config));
 		if (decon->config.in_bpc == 10 && decon->config.out_bpc == 8)
-			dqe_reg_set_disp_dither(DITHER_EN(1));
+			dither_config.en = DITHER_EN(1);
 		else
-			dqe_reg_set_disp_dither(DITHER_EN(0));
+			dither_config.en = DITHER_EN(0);
+
+		dqe_reg_set_disp_dither(&dither_config);
+		dqe->state.disp_dither_config = NULL;
+	} else if (dqe->state.disp_dither_config != state->disp_dither_config) {
+		dqe_reg_set_disp_dither(state->disp_dither_config);
+		dqe->state.disp_dither_config = state->disp_dither_config;
 	}
 
 	if (dqe->disp_dither_override.verbose)
@@ -90,6 +105,8 @@ void exynos_dqe_reset(struct exynos_dqe *dqe)
 	dqe->state.linear_matrix = NULL;
 	dqe->state.cgc_lut = NULL;
 	dqe->state.regamma_lut = NULL;
+	dqe->state.disp_dither_config = NULL;
+	dqe->state.cgc_dither_config = NULL;
 }
 
 struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)

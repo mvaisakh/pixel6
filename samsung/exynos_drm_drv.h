@@ -235,6 +235,8 @@ struct exynos_drm_crtc_state {
 	uint32_t in_bpc;
 	struct exynos_dqe_state dqe;
 	struct drm_property_blob *cgc_lut;
+	struct drm_property_blob *disp_dither;
+	struct drm_property_blob *cgc_dither;
 	enum exynos_drm_writeback_type wb_type;
 	u8 seamless_mode_changed : 1;
 };
@@ -262,6 +264,8 @@ struct exynos_drm_crtc {
 	struct {
 		struct drm_property *color_mode;
 		struct drm_property *cgc_lut;
+		struct drm_property *disp_dither;
+		struct drm_property *cgc_dither;
 	} props;
 };
 

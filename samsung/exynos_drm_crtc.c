@@ -79,21 +79,32 @@ static void exynos_crtc_update_lut(struct drm_crtc *crtc,
 	dqe_state = &exynos_state->dqe;
 
 	if (exynos_state->cgc_lut) {
-		cgc_lut = (struct cgc_lut *)exynos_state->cgc_lut->data;
+		cgc_lut = exynos_state->cgc_lut->data;
 		dqe_state->cgc_lut = cgc_lut;
 	} else {
 		dqe_state->cgc_lut = NULL;
 	}
 
+	if (exynos_state->disp_dither)
+		dqe_state->disp_dither_config = exynos_state->disp_dither->data;
+	else
+		dqe_state->disp_dither_config = NULL;
+
+	if (exynos_state->cgc_dither)
+		dqe_state->cgc_dither_config = exynos_state->cgc_dither->data;
+	else
+		dqe_state->cgc_dither_config = NULL;
+
+
 	if (state->degamma_lut) {
-		degamma_lut = (struct drm_color_lut *)state->degamma_lut->data;
+		degamma_lut = state->degamma_lut->data;
 		dqe_state->degamma_lut = degamma_lut;
 	} else {
 		dqe_state->degamma_lut = NULL;
 	}
 
 	if (state->gamma_lut) {
-		gamma_lut = (struct drm_color_lut *)state->gamma_lut->data;
+		gamma_lut = state->gamma_lut->data;
 		dqe_state->regamma_lut = gamma_lut;
 	} else {
 		dqe_state->regamma_lut = NULL;
@@ -266,6 +277,8 @@ static void exynos_drm_crtc_destroy_state(struct drm_crtc *crtc,
 
 	exynos_crtc_state = to_exynos_crtc_state(state);
 	drm_property_blob_put(exynos_crtc_state->cgc_lut);
+	drm_property_blob_put(exynos_crtc_state->disp_dither);
+	drm_property_blob_put(exynos_crtc_state->cgc_dither);
 	__drm_atomic_helper_crtc_destroy_state(state);
 	kfree(exynos_crtc_state);
 }
@@ -304,11 +317,49 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 	if (copy->cgc_lut)
 		drm_property_blob_get(copy->cgc_lut);
 
+	if (copy->disp_dither)
+		drm_property_blob_get(copy->disp_dither);
+
+	if (copy->cgc_dither)
+		drm_property_blob_get(copy->cgc_dither);
+
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
 	copy->seamless_mode_changed = false;
 
 	return &copy->base;
+}
+
+static int
+exynos_drm_replace_property_blob_from_id(struct drm_device *dev,
+					 struct drm_property_blob **blob,
+					 uint64_t blob_id,
+					 ssize_t expected_size,
+					 ssize_t expected_elem_size)
+{
+	struct drm_property_blob *new_blob = NULL;
+
+	if (blob_id != 0) {
+		new_blob = drm_property_lookup_blob(dev, blob_id);
+		if (new_blob == NULL)
+			return -EINVAL;
+
+		if (expected_size > 0 &&
+		    new_blob->length != expected_size) {
+			drm_property_blob_put(new_blob);
+			return -EINVAL;
+		}
+		if (expected_elem_size > 0 &&
+		    new_blob->length % expected_elem_size != 0) {
+			drm_property_blob_put(new_blob);
+			return -EINVAL;
+		}
+	}
+
+	drm_property_replace_blob(blob, new_blob);
+	drm_property_blob_put(new_blob);
+
+	return 0;
 }
 
 static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
@@ -318,26 +369,27 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct exynos_drm_crtc_state *exynos_crtc_state;
-	struct drm_property_blob *blob = NULL;
+	int ret;
 
 	exynos_crtc_state = to_exynos_crtc_state(state);
 
 	if (property == exynos_crtc->props.color_mode) {
 		exynos_crtc_state->color_mode = val;
 	} else if (property == exynos_crtc->props.cgc_lut) {
-		if (val != 0) {
-			blob = drm_property_lookup_blob(state->crtc->dev, val);
-			if (!blob)
-				return -EINVAL;
-
-			if (blob->length != sizeof(struct cgc_lut)) {
-				drm_property_blob_put(blob);
-				return -EINVAL;
-			}
-		}
-
-		drm_property_replace_blob(&exynos_crtc_state->cgc_lut, blob);
-		drm_property_blob_put(blob);
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->cgc_lut, val,
+				sizeof(struct cgc_lut), -1);
+		return ret;
+	} else if (property == exynos_crtc->props.disp_dither) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->disp_dither, val,
+				sizeof(struct dither_config), -1);
+		return ret;
+	} else if (property == exynos_crtc->props.cgc_dither) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->cgc_dither, val,
+				sizeof(struct dither_config), -1);
+		return ret;
 	} else {
 		return -EINVAL;
 	}
@@ -361,6 +413,12 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 	else if (property == exynos_crtc->props.cgc_lut)
 		*val = (exynos_crtc_state->cgc_lut) ?
 			exynos_crtc_state->cgc_lut->base.id : 0;
+	else if (property == exynos_crtc->props.disp_dither)
+		*val = (exynos_crtc_state->disp_dither) ?
+			exynos_crtc_state->disp_dither->base.id : 0;
+	else if (property == exynos_crtc->props.cgc_dither)
+		*val = (exynos_crtc_state->cgc_dither) ?
+			exynos_crtc_state->cgc_dither->base.id : 0;
 	else
 		return -EINVAL;
 
@@ -441,18 +499,17 @@ exynos_drm_crtc_create_color_mode_property(struct exynos_drm_crtc *exynos_crtc)
 	return 0;
 }
 
-static int
-exynos_drm_crtc_create_cgc_lut_property(struct exynos_drm_crtc *exynos_crtc)
+static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
+		struct drm_property **prop)
 {
-	struct drm_crtc *crtc = &exynos_crtc->base;
-	struct drm_property *prop;
+	struct drm_property *p;
 
-	prop = drm_property_create(crtc->dev, DRM_MODE_PROP_BLOB, "cgc_lut", 0);
-	if (!prop)
+	p = drm_property_create(crtc->dev, DRM_MODE_PROP_BLOB, name, 0);
+	if (!p)
 		return -ENOMEM;
 
-	drm_object_attach_property(&crtc->base, prop, 0);
-	exynos_crtc->props.cgc_lut = prop;
+	drm_object_attach_property(&crtc->base, p, 0);
+	*prop = p;
 
 	return 0;
 }
@@ -465,6 +522,7 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 {
 	struct exynos_drm_crtc *exynos_crtc;
 	struct drm_crtc *crtc;
+	const struct decon_device *decon = ctx;
 	int ret;
 
 	exynos_crtc = kzalloc(sizeof(*exynos_crtc), GFP_KERNEL);
@@ -488,12 +546,24 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	if (ret)
 		goto err_crtc;
 
-	ret = exynos_drm_crtc_create_cgc_lut_property(exynos_crtc);
-	if (ret)
-		goto err_crtc;
+	if (decon->dqe) {
+		ret = exynos_drm_crtc_create_blob(crtc, "cgc_lut",
+				&exynos_crtc->props.cgc_lut);
+		if (ret)
+			goto err_crtc;
+		ret = exynos_drm_crtc_create_blob(crtc, "disp_dither",
+				&exynos_crtc->props.disp_dither);
+		if (ret)
+			goto err_crtc;
 
-	drm_crtc_enable_color_mgmt(crtc, DEGAMMA_LUT_SIZE, false,
-			REGAMMA_LUT_SIZE);
+		ret = exynos_drm_crtc_create_blob(crtc, "cgc_dither",
+				&exynos_crtc->props.cgc_dither);
+		if (ret)
+			goto err_crtc;
+
+		drm_crtc_enable_color_mgmt(crtc, DEGAMMA_LUT_SIZE, false,
+				REGAMMA_LUT_SIZE);
+	}
 
 	return exynos_crtc;
 

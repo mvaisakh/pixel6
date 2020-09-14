@@ -30,12 +30,14 @@ struct exynos_dqe_state {
 	const struct linear_matrix *linear_matrix;
 	const struct cgc_lut *cgc_lut;
 	struct drm_color_lut *regamma_lut;
+	struct dither_config *disp_dither_config;
+	struct dither_config *cgc_dither_config;
 };
 
-struct debug_override {
+struct dither_debug_override {
 	bool force_en;
 	bool verbose;
-	u32 val;
+	struct dither_config val;
 };
 
 struct exynos_dqe {
@@ -45,8 +47,8 @@ struct exynos_dqe {
 	struct exynos_dqe_state state;
 	struct decon_device *decon;
 
-	struct debug_override cgc_dither_override;
-	struct debug_override disp_dither_override;
+	struct dither_debug_override cgc_dither_override;
+	struct dither_debug_override disp_dither_override;
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,

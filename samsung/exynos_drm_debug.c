@@ -535,7 +535,7 @@ static const struct file_operations dpu_event_fops = {
 };
 
 static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
-			struct debug_override *d, struct dentry *parent)
+			struct dither_debug_override *d, struct dentry *parent)
 {
 	struct dentry *dent;
 
@@ -546,7 +546,7 @@ static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
 	}
 	debugfs_create_bool("force_enable", 0664, dent, &d->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &d->verbose);
-	debugfs_create_u32("val", 0664, dent, &d->val);
+	debugfs_create_u32("val", 0664, dent, (u32 *)&d->val);
 
 	return dent;
 }

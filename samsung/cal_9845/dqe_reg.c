@@ -142,14 +142,18 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
-void dqe_reg_set_cgc_dither(u32 val)
+void dqe_reg_set_cgc_dither(struct dither_config *config)
 {
-	dqe_write(DQE0_CGC_DITHER, val);
+	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
+
+	dqe_write(DQE0_CGC_DITHER, value);
 }
 
-void dqe_reg_set_disp_dither(u32 val)
+void dqe_reg_set_disp_dither(struct dither_config *config)
 {
-	dqe_write(DQE0_DISP_DITHER, val);
+	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
+
+	dqe_write(DQE0_DISP_DITHER, value);
 }
 
 void dqe_reg_print_dither(enum dqe_dither_type dither)
