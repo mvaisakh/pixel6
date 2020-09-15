@@ -610,26 +610,26 @@ static void dpp_hdr_update(struct dpp_device *dpp,
 	if (dpp->hdr_state.eotf_lut != state->hdr_state.eotf_lut) {
 		hdr_reg_set_eotf_lut(dpp->id, state->hdr_state.eotf_lut);
 		dpp->hdr_state.eotf_lut = state->hdr_state.eotf_lut;
-		enable = true;
 	}
 
 	if (dpp->hdr_state.oetf_lut != state->hdr_state.oetf_lut) {
 		hdr_reg_set_oetf_lut(dpp->id, state->hdr_state.oetf_lut);
 		dpp->hdr_state.oetf_lut = state->hdr_state.oetf_lut;
-		enable = true;
 	}
 
 	if (dpp->hdr_state.gm != state->hdr_state.gm) {
 		hdr_reg_set_gm(dpp->id, state->hdr_state.gm);
 		dpp->hdr_state.gm = state->hdr_state.gm;
-		enable = true;
 	}
 
 	if (dpp->hdr_state.tm != state->hdr_state.tm) {
 		hdr_reg_set_tm(dpp->id, state->hdr_state.tm);
 		dpp->hdr_state.tm = state->hdr_state.tm;
-		enable = true;
 	}
+
+	if (dpp->hdr_state.eotf_lut || dpp->hdr_state.oetf_lut ||
+				dpp->hdr_state.gm || dpp->hdr_state.tm)
+		enable = true;
 
 	hdr_reg_set_hdr(dpp->id, enable);
 }
