@@ -26,6 +26,7 @@
 #define P9221_DC_ICL_BPP_RAMP_DEFAULT_UA	900000
 #define P9221_DC_ICL_BPP_RAMP_DELAY_DEFAULT_MS	(7 * 60 * 1000)  /* 7 mins */
 #define P9221_DC_ICL_EPP_UA			1100000
+#define P9221_DC_ICL_RTX_UA			600000
 #define P9221_EPP_THRESHOLD_UV			7000000
 #define P9221_MAX_VOUT_SET_MV_DEFAULT		9000
 #define P9221_VOUT_SET_MIN_MV			3500
@@ -53,10 +54,10 @@
 #define P9221_NEG_POWER_10W		(10 / 0.5)
 #define P9221_PTMC_EPP_TX_1912		0x32
 
-#define P9382A_DC_ICL_EPP_1200		1200000
 #define P9382A_DC_ICL_EPP_1000		1000000
 #define P9382A_NEG_POWER_10W		(10 / 0.5)
 #define P9382A_NEG_POWER_11W		(11 / 0.5)
+#define P9382_RTX_TIMEOUT_MS		(2 * 1000)
 
 /*
  * P9221 common registers
@@ -272,22 +273,42 @@
 /*
  * Interrupt/Status flags for P9382
  */
+#define P9382_STAT_HARD_OCP			BIT(1)
 #define P9382_STAT_TXCONFLICT			BIT(3)
 #define P9382_STAT_CSP				BIT(4)
+#define P9382_STAT_TXUVLO			BIT(6)
 #define P9382_STAT_RXCONNECTED			BIT(10)
-
+#define P9382_STAT_TXUNDERPOWER			BIT(12)
+#define P9382_STAT_TXFOD			BIT(13)
+#define P9382_STAT_RTX_MASK			(P9221R5_STAT_LIMIT_MASK | \
+						 P9221R5_STAT_MODECHANGED | \
+						 P9221R5_STAT_VOUTCHANGED | \
+						 P9382_STAT_TXCONFLICT | \
+						 P9382_STAT_CSP | \
+						 P9382_STAT_TXUVLO | \
+						 P9382_STAT_RXCONNECTED | \
+						 P9382_STAT_TXUNDERPOWER | \
+						 P9382_STAT_TXFOD)
 /*
- * Send PPP in Tx mode
+ * Send communication message
  */
-#define PROPRIETARY_PACKET_TYPE_ADDR		0x100
+#define P9382A_COM_PACKET_TYPE_ADDR		0x100
+#define P9382A_COM_CHAN_SEND_SIZE_REG		0x101
+#define BIDI_COM_PACKET_TYPE			0x98
 #define PROPRIETARY_PACKET_TYPE			0x80
 #define FAST_SERIAL_ID_HEADER			0x4F
 #define FAST_SERIAL_ID_SIZE			4
+#define ACCESSORY_TYPE_MASK			0x7
+#define CHARGE_STATUS_PACKET_HEADER		0x48
+#define CHARGE_STATUS_PACKET_SIZE		4
+#define PP_TYPE_POWER_CONTROL			0x08
+#define PP_SUBTYPE_SOC				0x10
 #define ACCESSORY_TYPE_PHONE			BIT(2)
 #define AICL_ENABLED				BIT(7)
 #define TX_ACCESSORY_TYPE			(ACCESSORY_TYPE_PHONE | \
 						 AICL_ENABLED)
 #define TXID_SEND_DELAY_MS			(1 * 1000)
+#define TXSOC_SEND_DELAY_MS			(5 * 1000)
 
 /*
  * P9412 unique registers
@@ -319,7 +340,10 @@
 #define P9412_DATA_BUF_START			0x0800
 #define P9412_DATA_BUF_SIZE			0x0800 /* 2048 bytes */
 
-#define P9412_INVALID_REG			0xFFFF
+#define P9412_RN_MAX_POLL_ATTEMPTS		5
+#define P9412_RN_DELAY_MS			50
+#define P9412_RN_STATUS_DONE			BIT(1)
+#define P9412_RN_STATUS_ERROR			BIT(2)
 
 #define P9XXX_INVALID_REG			0xFFFF
 
@@ -356,6 +380,11 @@ struct p9221_charger_platform_data {
 	u32				alignment_hysteresis;
 	u32				icl_ramp_delay_ms;
 	u16				chip_id;
+
+	u32				alignment_scalar_low_current;
+	u32				alignment_scalar_high_current;
+	u32				alignment_offset_low_current;
+	u32				alignment_offset_high_current;
 };
 
 struct p9221_charger_data {
@@ -377,6 +406,7 @@ struct p9221_charger_data {
 	struct delayed_work		tx_work;
 	struct delayed_work		icl_ramp_work;
 	struct delayed_work		txid_work;
+	struct delayed_work		rtx_work;
 	struct work_struct		uevent_work;
 	struct work_struct		rtx_disable_work;
 	struct alarm			icl_ramp_alarm;
@@ -388,6 +418,7 @@ struct p9221_charger_data {
 	u16				chip_id;
 	int				online;
 	bool				enabled;
+	bool				disable_irq;
 	u16				addr;
 	u8				count;
 	u8				cust_id;
@@ -405,6 +436,7 @@ struct p9221_charger_data {
 	u16				tx_len;
 	bool				tx_done;
 	bool				tx_busy;
+	bool				com_busy;
 	bool				check_np;
 	bool				check_dc;
 	bool				check_det;
@@ -436,6 +468,8 @@ struct p9221_charger_data {
 	int				rtx_state;
 	u32				rtx_csp;
 	int				rtx_err;
+	bool				chg_on_rtx;
+	bool				is_rtx_mode;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -449,10 +483,6 @@ struct p9221_charger_data {
 			   u8 val);
 	int (*reg_write_16)(struct p9221_charger_data *charger, u16 reg,
 			    u16 val);
-
-	/* chip_id dependent values */
-	int				ocp_icl_lmt;
-	int				ocp_icl_val;
 
 	int (*chip_set_data_buf)(struct p9221_charger_data *chgr,
 				 const u8 data[], size_t len);
@@ -481,8 +511,10 @@ struct p9221_charger_data {
 	int (*chip_get_vout_max)(struct p9221_charger_data *chgr, u32 *mv);
 	int (*chip_set_vout_max)(struct p9221_charger_data *chgr, u32 mv);
 	int (*chip_get_vrect)(struct p9221_charger_data *chgr, u32 *mv);
+	int (*chip_get_sys_mode)(struct p9221_charger_data *chgr, u8 *mode);
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
+	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
@@ -500,6 +532,7 @@ enum p9382_rtx_err {
 	RTX_BATT_LOW,
 	RTX_OVER_TEMP,
 	RTX_TX_CONFLICT,
+	RTX_HARD_OCP,
 };
 
 #define P9221_MA_TO_UA(ma)((ma) * 1000)
@@ -510,5 +543,7 @@ enum p9382_rtx_err {
 #define P9221_HZ_TO_KHZ(khz) ((khz) / 1000)
 #define P9221_C_TO_MILLIC(c) ((c) * 1000)
 #define P9221_MILLIC_TO_C(mc) ((mc) / 1000)
+#define P9412_MW_TO_HW(mw) (((mw) * 2) / 1000) /* mw -> 0.5 W units */
+#define P9412_HW_TO_MW(hw) (((hw) / 2) * 1000) /* 0.5 W units -> mw */
 
 #endif /* __P9221_CHARGER_H__ */
