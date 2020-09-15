@@ -46,6 +46,8 @@
 #define CHGR_DTLS_OFF_JEITA				0x0c
 #define CHGR_DTLS_OFF_TEMP				0x0d
 
+#define MAX77759_DEFAULT_MODE	GBMS_CHGR_MODE_ALL_OFF
+
 struct max77759_chgr_data {
 	struct device *dev;
 	struct power_supply *psy;
@@ -131,17 +133,6 @@ static inline int max77759_reg_update(struct max77759_chgr_data *data,
 	return ret;
 }
 
-struct max77759_foreach_callback_data {
-	struct gvotable_election *el;
-	const char *reason;
-	bool force_off;
-	bool chgin_off;
-	bool wcin_off;
-	bool cp_ena;
-	int mode;
-	u8 reg;
-};
-
 /* set WDTEN in CHG_CNFG_18 (0xCB), tWD = 80s */
 static int max77759_wdt_enable(struct max77759_chgr_data *data, bool enable)
 {
@@ -169,35 +160,75 @@ static int max77759_wdt_enable(struct max77759_chgr_data *data, bool enable)
 		0 : -EINVAL;
 }
 
+struct max77759_foreach_callback_data {
+	struct gvotable_election *el;
+	const char *reason;
+	bool force_off;
+	bool chgin_off;
+	bool wcin_off;
+	int cp_on;
+	int uno_on;
+	int chgr_on;
+	int boost_on;
+	int buck_on;
+	int otg_on;
+	int mode;
+	u8 reg;
+};
+
+/*
+ *
+ */
 static int max77759_foreach_callback(void *data, const char *reason,
 				     void *vote)
 {
 	struct max77759_foreach_callback_data *cb_data = data;
 	int mode = (int)vote; /* max77759_mode is an int election */
 
-	pr_info("cb_data(reg=0x%x mode=%d reason=%s) mode=%x reason=%s\n",
-		cb_data->reg, cb_data->mode, cb_data->reason,
-		mode, reason ? reason : "");
+	pr_debug("%s: cb_data(reg=0x%x mode=%d reason=%s) mode=%x reason=%s\n",
+		 __func__, cb_data->reg, cb_data->mode, cb_data->reason,
+		 mode, reason ? reason : "");
 
+	/* RAW modes map MW registers to a register value */
 	switch (mode) {
+	/* a single ALL OFF overrides everybody */
 	case GBMS_CHGR_MODE_ALL_OFF:
-		cb_data->force_off = true;
-	/* fall through */
-	case GBMS_CHGR_MODE_BUCK_ON:
-	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
-	case GBMS_CHGR_MODE_BOOST_UNO_ON:
-		if (cb_data->force_off || cb_data->cp_ena)
-			mode = GBMS_CHGR_MODE_ALL_OFF;
+		if (!cb_data->force_off)
+			cb_data->reason = reason;
+		cb_data->force_off += 1;
+		break;
 
-		cb_data->mode = mode;
-		cb_data->reason = reason;
-		cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg,
-						      cb_data->cp_ena);
-		cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg, mode);
+	/* inflow on but not charging */
+	case GBMS_CHGR_MODE_BUCK_ON:
+		if (!cb_data->buck_on)
+			cb_data->reason = reason;
+		cb_data->buck_on += 1;
+		break;
+
+	/*  inflow on, charging is on */
+	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
+		if (!cb_data->chgr_on || !cb_data->buck_on)
+			cb_data->reason = reason;
+		cb_data->chgr_on += 1;
+		cb_data->buck_on += 1;
+		break;
+
+	case GBMS_CHGR_MODE_BOOST_UNO_ON:
+		if (!cb_data->boost_on || !cb_data->uno_on)
+			cb_data->reason = reason;
+		cb_data->boost_on += 1;
+		cb_data->uno_on += 1;
+		break;
+
+	/* boost mode, source */
+	case GBMS_CHGR_MODE_OTG_BOOST_ON:
+		if (!cb_data->boost_on || !cb_data->otg_on)
+			cb_data->reason = reason;
+		cb_data->boost_on += 1;
+		cb_data->otg_on += 1;
 		break;
 
 	case GBMS_CHGR_MODE_BOOST_ON:
-	case GBMS_CHGR_MODE_OTG_BOOST_ON:
 	case GBMS_CHGR_MODE_BUCK_BOOST_UNO_ON:
 	case GBMS_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
 	case GBMS_CHGR_MODE_OTG_BUCK_BOOST_ON:
@@ -205,15 +236,15 @@ static int max77759_foreach_callback(void *data, const char *reason,
 		pr_err("mode=%x not implemented\n", mode);
 		break;
 
+	/* SYSTEM or COOKED modes can add complex transactions */
+
 	/* DC Charging: mode=0, set CP_EN. TODO: enable WDTEN */
 	case GBMS_CHGR_MODE_CHGR_DC:
-		cb_data->mode = GBMS_CHGR_MODE_ALL_OFF;
-		cb_data->reason = reason;
-		cb_data->cp_ena = true;
-		cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg,
-						     GBMS_CHGR_MODE_ALL_OFF);
-		cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, 1);
+		if (!cb_data->cp_on)
+			cb_data->reason = reason;
+		cb_data->cp_on += 1;
 		break;
+
 	default:
 		pr_err("mode=%x not supported\n", mode);
 		break;
@@ -228,38 +259,74 @@ static void max77759_mode_callback(struct gvotable_election *el,
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
 	struct max77759_foreach_callback_data cb_data = { 0 };
-	const char *final_reason = NULL;
 	int ret;
 	u8 reg;
 
+	/* reason and value are the last voted on */
+	pr_debug("%s: current reason=%s, value=0x%x\n", __func__,
+		 reason ? reason : "<>", (int)value);
+
 	mutex_lock(&data->io_lock);
 
+	/* no caching */
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
 	if (ret < 0) {
 		dev_err(data->dev, "cannot read CNFG_00 (%d)\n", ret);
 		goto unlock_done;
 	}
 
-	cb_data.mode = -1; /* invalid */
-	cb_data.reg = reg;
+	/* this is the last vote of the election,*/
+	cb_data.reason = reason;	/* from election */
+	cb_data.mode = -1;		/* requested */
+	cb_data.reg = reg;		/* actual register value */
 	cb_data.el = el;
 
+	/* now scan all the reasons */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
 
-	/* use gvotable_get_default() when available */
+	/* and parse the results to figure out mode */
 	if (cb_data.mode == -1)
+		cb_data.mode = (u8)value;
+
+	/* buck on is inflow */
+	if (cb_data.buck_on)
+		cb_data.mode = GBMS_CHGR_MODE_BUCK_ON;
+	/* chgr on must have buck on */
+	if (cb_data.chgr_on)
+		cb_data.mode = GBMS_CHGR_MODE_CHGR_BUCK_ON;
+	/* direct charging and off mode */
+	if (cb_data.cp_on || cb_data.force_off)
 		cb_data.mode = GBMS_CHGR_MODE_ALL_OFF;
 
-	if (cb_data.reason)
-		final_reason = cb_data.reason;
-	else
-		final_reason = "MODE_CB";
+	/* OTG case overrides the above */
+	if (cb_data.boost_on) {
+		if (cb_data.cp_on)
+			dev_warn(data->dev, "charge pump on with OTG\n");
+
+		if (cb_data.chgr_on)
+			dev_err(data->dev, "chgr_on with OTG\n");
+		if (cb_data.buck_on)
+			dev_err(data->dev, "buck_on with OTG\n");
+
+		if (cb_data.otg_on)
+			cb_data.mode = GBMS_CHGR_MODE_OTG_BOOST_ON;
+		else if (cb_data.otg_on)
+
+		cb_data.cp_on = 0;
+	}
+
+	/* more cases here... */
+
+	/* Fix the register now */
+	cb_data.reg = _chg_cnfg_00_cp_en_set(cb_data.reg, cb_data.cp_on);
+	cb_data.reg = _chg_cnfg_00_mode_set(cb_data.reg, cb_data.mode);
 
 	/* the election is an int election */
-	ret = gvotable_election_set_result(el, final_reason,
+	ret = gvotable_election_set_result(el, cb_data.reason,
 					   (void*)(uintptr_t)cb_data.mode);
 	if (ret < 0) {
-		dev_info(data->dev, "max77759_charger: cannot update result %d\n", ret);
+		dev_err(data->dev, "max77759_charger: cannot update result %d\n",
+			 ret);
 		goto unlock_done;
 	}
 
@@ -267,14 +334,25 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		 cb_data.mode, cb_data.reason ? cb_data.reason : "",
 		 reg, cb_data.reg);
 
+	if (cb_data.reg == reg)
+		goto unlock_done;
+
 	/* TODO: state machine that handle transition between states */
 
-	if (cb_data.reg != reg) {
-		ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00,
-					 cb_data.reg);
-		if (ret < 0)
-			dev_err(data->dev, "cannot set CNFG_00 (%d)\n", ret);
+	/* every transition start from mode 0 */
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00, 0);
+	if (ret < 0) {
+		dev_err(data->dev, "cannot reset mode (%d)\n", ret);
+		goto unlock_done;
 	}
+
+	/* TODO: state machine that handle transition between states */
+
+	/* change to final mode */
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00,
+				 cb_data.reg);
+	if (ret < 0)
+		dev_err(data->dev, "cannot set CNFG_00 (%d)\n", ret);
 
 	data->last_mode = cb_data.mode;
 
@@ -394,7 +472,7 @@ static int max77759_get_regulation_voltage_uv(struct max77759_chgr_data *data,
 static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 					       int current_ua)
 {
-	const int enabled = current_ua != 0;
+	const int disabled = current_ua == 0;
 	u8 value;
 	int ret;
 
@@ -416,7 +494,7 @@ static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 				   MAX77759_CHG_CNFG_02_CHGCC_MASK,
 				   value);
 	if (ret == 0)
-		ret = max77759_set_charge_enabled(data, enabled, "CC_MAX");
+		ret = max77759_set_charge_disable(data, disabled, "CC_MAX");
 
 	return ret;
 }
@@ -669,9 +747,8 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 
 	rc = power_supply_get_property(chg->wlc_psy,
 				       POWER_SUPPLY_PROP_VOLTAGE_NOW, val);
-	if (rc < 0) {
+	if (rc < 0)
 		dev_err(chg->dev, "Couldn't get VOLTAGE_NOW, rc=%d\n", rc);
-	}
 
 	return rc;
 }
@@ -1527,8 +1604,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	if (ret < 0)
 		return -EINVAL;
 
-	data->irq_gpio = of_get_named_gpio(dev->of_node, "max77759,irq-gpio",
-					   0);
+	data->irq_gpio = of_get_named_gpio(dev->of_node, "max77759,irq-gpio", 0);
 	if (data->irq_gpio < 0) {
 		dev_err(dev, "failed get irq_gpio\n");
 	} else {
