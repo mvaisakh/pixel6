@@ -500,7 +500,7 @@ static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 /* b/117985113 */
 static int chg_usb_online(struct power_supply *usb_psy)
 {
-	int usb_online, mode = POWER_SUPPLY_TYPEC_SOURCE_DEFAULT;
+	int usb_online = 1, mode;
 	int rc = -EINVAL;
 
 	if (!usb_psy)
@@ -509,28 +509,32 @@ static int chg_usb_online(struct power_supply *usb_psy)
 #ifdef CONFIG_USB_ONLINE_IS_TYPEC_MODE
 	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE, &rc);
 	pr_info("TYPEC mode=%d rc=%d\n", mode, rc);
-#else
-	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
-	if (mode)
-		mode = POWER_SUPPLY_TYPEC_SOURCE_DEFAULT;
-#endif
+
 	switch (mode) {
 	case POWER_SUPPLY_TYPEC_SOURCE_DEFAULT:
 	case POWER_SUPPLY_TYPEC_SOURCE_MEDIUM:
 	case POWER_SUPPLY_TYPEC_SOURCE_HIGH:
 	case POWER_SUPPLY_TYPEC_DAM_MEDIUM:
-		usb_online = 1;
 		break;
 	default:
 		usb_online = 0;
 		break;
 	}
+#else
+	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
+	pr_info("ONLINE mode=%d rc=%d\n", mode, rc);
 
+	if (!mode)
+		usb_online = 0;
+#endif
+
+	pr_info("%s: online=%d mode=%d rc=%d\n", __FILE__, usb_online, mode, rc);
 	if (rc < 0)
 		pr_info("online mode=%d rc=%d\n", usb_online, rc);
 
 	return usb_online;
 }
+
 /* returns 1 if charging should be disabled given the current battery capacity
  * given in percent, return 0 if charging should happen
  */
