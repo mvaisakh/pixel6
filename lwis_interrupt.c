@@ -176,7 +176,9 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 						 irq->irq_mask_reg, &mask_value,
 						 irq->irq_reg_access_size);
 
-		if ((mask_value | source_value) != source_value) {
+		/* This is to detect if there are extra bits set in the source
+		 * than what we have enabled for (i.e. mask register) */
+		if ((mask_value | source_value) != mask_value) {
 			/*
 			 * TODO(b/165830995): Change this to
 			 * dev_warn_ratelimited when spurious interrupts are
