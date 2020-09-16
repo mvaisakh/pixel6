@@ -33,7 +33,8 @@ static inline bool check_bitwidth(const int bitwidth, const int min,
 	return (bitwidth >= min) && (bitwidth <= max) && ((bitwidth % 8) == 0);
 }
 
-static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
+static int perform_read_transfer(struct lwis_i2c_device *lwis_i2c,
+				 struct i2c_client *client, struct i2c_msg *msg,
 				 uint64_t offset, int offset_bits,
 				 int value_bits, uint64_t *value)
 {
@@ -49,14 +50,15 @@ static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
 		wbuf[0] = (offset >> 8) & 0xFF;
 		wbuf[1] = offset & 0xFF;
 	} else {
-		pr_err("%s: Read with unsupported offset bits %llu\n",
-		       client->name, offset);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Read with unsupported offset bits %llu\n", offset);
 		return -EPERM;
 	}
 
 	ret = i2c_transfer(client->adapter, msg, num_msg);
 	if (ret != num_msg) {
-		pr_err("Read failed (%d): offset 0x%llx\n", ret, offset);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Read failed (%d): offset 0x%llx\n", ret, offset);
 		return ret;
 	}
 
@@ -68,17 +70,19 @@ static int perform_read_transfer(struct i2c_client *client, struct i2c_msg *msg,
 		*value = (rbuf[0] << 24) | (rbuf[1] << 16) | (rbuf[2] << 8) |
 			 rbuf[3];
 	} else {
-		pr_err("%s: Read with unsupported value bits %d\n",
-		       client->name, value_bits);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Read with unsupported value bits %d\n", value_bits);
 		return -EPERM;
 	}
 
-	// pr_info("Read: offset 0x%04llx val 0x%04llx\n", offset, *value);
+	dev_dbg(lwis_i2c->base_dev.dev, "Read: offset 0x%04llx val 0x%04llx\n",
+		offset, *value);
 
 	return ret;
 }
 
-static int perform_write_transfer(struct i2c_client *client,
+static int perform_write_transfer(struct lwis_i2c_device *lwis_i2c,
+				  struct i2c_client *client,
 				  struct i2c_msg *msg, uint64_t offset,
 				  int offset_bits, int value_bits,
 				  uint64_t value)
@@ -95,8 +99,8 @@ static int perform_write_transfer(struct i2c_client *client,
 		buf[i++] = (offset >> 8) & 0xFF;
 		buf[i++] = offset & 0xFF;
 	} else {
-		pr_err("%s: Write with unsupported offset bits %llu\n",
-		       client->name, offset);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Write with unsupported offset bits %llu\n", offset);
 		return -EPERM;
 	}
 
@@ -111,14 +115,15 @@ static int perform_write_transfer(struct i2c_client *client,
 		buf[i++] = (value >> 8) & 0xFF;
 		buf[i++] = value & 0xFF;
 	} else {
-		pr_err("%s: Write with unsupported value bits %d\n",
-		       client->name, value_bits);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Write with unsupported value bits %d\n", value_bits);
 		return -EPERM;
 	}
 
 	ret = i2c_transfer(client->adapter, msg, num_msg);
 	if (ret != num_msg) {
-		pr_err("Write failed (%d): offset 0x%llx\n", ret, offset);
+		dev_err(lwis_i2c->base_dev.dev,
+			"Write failed (%d): offset 0x%llx\n", ret, offset);
 	}
 
 	return ret;
@@ -136,13 +141,15 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str)
 
 	state = pinctrl_lookup_state(i2c->state_pinctrl, state_str);
 	if (IS_ERR(state)) {
-		pr_err("State %s not found (%ld)\n", state_str, PTR_ERR(state));
+		dev_err(i2c->base_dev.dev, "State %s not found (%ld)\n",
+			state_str, PTR_ERR(state));
 		return PTR_ERR(state);
 	}
 
 	ret = pinctrl_select_state(i2c->state_pinctrl, state);
 	if (ret) {
-		pr_err("Error selecting state %s (%d)\n", state_str, ret);
+		dev_err(i2c->base_dev.dev, "Error selecting state %s (%d)\n",
+			state_str, ret);
 		return ret;
 	}
 
@@ -173,10 +180,11 @@ int lwis_i2c_io_entry_rw(struct lwis_i2c_device *i2c,
 	}
 	if (entry->type == LWIS_IO_ENTRY_READ_BATCH ||
 	    entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
-		pr_err("Read/Write batch for i2c devices is not supported yet");
+		dev_err(i2c->base_dev.dev,
+			"Read/Write batch for i2c devices is not supported yet");
 		return -EINVAL;
 	}
-	pr_err("Invalid IO entry type: %d\n", entry->type);
+	dev_err(i2c->base_dev.dev, "Invalid IO entry type: %d\n", entry->type);
 	return -EINVAL;
 }
 
@@ -199,24 +207,28 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
 	client = i2c->client;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
-		pr_err("Invalid offset bitwidth %d\n", offset_bits);
+		dev_err(i2c->base_dev.dev, "Invalid offset bitwidth %d\n",
+			offset_bits);
 		return -EINVAL;
 	}
 
 	if (!check_bitwidth(value_bits, MIN_DATA_BITS, MAX_DATA_BITS)) {
-		pr_err("Invalid value bitwidth %d\n", value_bits);
+		dev_err(i2c->base_dev.dev, "Invalid value bitwidth %d\n",
+			value_bits);
 		return -EINVAL;
 	}
 
 	wbuf = kzalloc(offset_bits / 8, GFP_KERNEL);
 	if (!wbuf) {
-		pr_err("Failed to allocate memory for i2c write buffer\n");
+		dev_err(i2c->base_dev.dev,
+			"Failed to allocate memory for i2c write buffer\n");
 		return -ENOMEM;
 	}
 
 	rbuf = kzalloc(value_bits / 8, GFP_KERNEL);
 	if (!rbuf) {
-		pr_err("Failed to allocate memory for i2c read buffer\n");
+		dev_err(i2c->base_dev.dev,
+			"Failed to allocate memory for i2c read buffer\n");
 		ret = -ENOMEM;
 		goto error_rbuf_alloc;
 	}
@@ -232,7 +244,7 @@ int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *value)
 	msg[1].buf = rbuf;
 
 	mutex_lock(&i2c->base_dev.reg_rw_lock);
-	ret = perform_read_transfer(client, msg, offset, offset_bits,
+	ret = perform_read_transfer(i2c, client, msg, offset, offset_bits,
 				    value_bits, value);
 	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
@@ -262,18 +274,21 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t value)
 	client = i2c->client;
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
-		pr_err("Invalid offset bitwidth %d\n", offset_bits);
+		dev_err(i2c->base_dev.dev, "Invalid offset bitwidth %d\n",
+			offset_bits);
 		return -EINVAL;
 	}
 
 	if (!check_bitwidth(value_bits, MIN_DATA_BITS, MAX_DATA_BITS)) {
-		pr_err("Invalid value bitwidth %d\n", value_bits);
+		dev_err(i2c->base_dev.dev, "Invalid value bitwidth %d\n",
+			value_bits);
 		return -EINVAL;
 	}
 
 	buf = kzalloc(msg_bytes, GFP_KERNEL);
 	if (!buf) {
-		pr_err("Failed to allocate memory for i2c buffer\n");
+		dev_err(i2c->base_dev.dev,
+			"Failed to allocate memory for i2c buffer\n");
 		return -ENOMEM;
 	}
 
@@ -283,7 +298,7 @@ int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t value)
 	msg.len = msg_bytes;
 
 	mutex_lock(&i2c->base_dev.reg_rw_lock);
-	ret = perform_write_transfer(client, &msg, offset, offset_bits,
+	ret = perform_write_transfer(i2c, client, &msg, offset, offset_bits,
 				     value_bits, value);
 	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
