@@ -297,6 +297,21 @@ int lwis_transaction_init(struct lwis_client *client)
 	return 0;
 }
 
+int lwis_transaction_clear(struct lwis_client *client)
+{
+	int ret;
+
+	ret = lwis_transaction_client_flush(client);
+	if (ret) {
+		pr_err("Failed to wait for all in-process transactions to complete\n");
+		return ret;
+	}
+	if (client->transaction_wq) {
+		destroy_workqueue(client->transaction_wq);
+	}
+	return 0;
+}
+
 int lwis_transaction_client_flush(struct lwis_client *client)
 {
 	unsigned long flags;
@@ -325,11 +340,11 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	if (client->transaction_wq) {
-		flush_workqueue(client->transaction_wq);
+		drain_workqueue(client->transaction_wq);
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
-	/* This shouldn't happen after flush_workqueue, but check anyway. */
+	/* This shouldn't happen after drain_workqueue, but check anyway. */
 	if (!list_empty(&client->transaction_process_queue)) {
 		pr_warn("Still transaction entries in process queue\n");
 		list_for_each_safe (it_tran, it_tran_tmp,
@@ -347,20 +362,10 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 
 int lwis_transaction_client_cleanup(struct lwis_client *client)
 {
-	int ret;
 	unsigned long flags;
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
 	struct lwis_transaction_event_list *it_evt_list;
-
-	ret = lwis_transaction_client_flush(client);
-	if (ret) {
-		pr_err("Failed to wait for all in-process transactions to complete\n");
-		return ret;
-	}
-	if (client->transaction_wq) {
-		destroy_workqueue(client->transaction_wq);
-	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* Perform client defined clean-up routine. */

@@ -515,7 +515,7 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 
 	/* Wait until all workload in process queue are processed */
 	if (client->periodic_io_wq) {
-		flush_workqueue(client->periodic_io_wq);
+		drain_workqueue(client->periodic_io_wq);
 	}
 	spin_lock_irqsave(&client->periodic_io_lock, flags);
 

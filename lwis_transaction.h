@@ -37,6 +37,7 @@ void lwis_entry_bias(struct lwis_io_entry *entry, uint64_t bias);
 int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry);
 
 int lwis_transaction_init(struct lwis_client *client);
+int lwis_transaction_clear(struct lwis_client *client);
 int lwis_transaction_client_flush(struct lwis_client *client);
 int lwis_transaction_client_cleanup(struct lwis_client *client);
 

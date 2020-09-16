@@ -254,7 +254,7 @@ static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev)
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 
 	/* Clean up work queue */
-	flush_workqueue(lwis_top_dev->subscribe_wq);
+	drain_workqueue(lwis_top_dev->subscribe_wq);
 	destroy_workqueue(lwis_top_dev->subscribe_wq);
 }
 

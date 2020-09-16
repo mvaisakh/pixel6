@@ -143,7 +143,10 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	/* Clean up all periodic io state for the client */
 	lwis_periodic_io_client_cleanup(lwis_client);
 
-	/* Cancel all pending transactions for the client */
+	/* Cancel all pending transactions for the client and destory workqueue*/
+	lwis_transaction_clear(lwis_client);
+
+	/* Run cleanup transactions. */
 	lwis_transaction_client_cleanup(lwis_client);
 
 	/* Clear the event queue */

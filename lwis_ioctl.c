@@ -640,6 +640,9 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 			"Failed to flush pending transactions\n");
 	}
 
+	/* Run cleanup transactions. */
+	lwis_transaction_client_cleanup(lwis_client);
+
 	mutex_lock(&lwis_dev->client_lock);
 	if (lwis_dev->enabled > 1) {
 		lwis_dev->enabled--;
