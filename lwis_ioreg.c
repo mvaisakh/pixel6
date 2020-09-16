@@ -140,8 +140,8 @@ int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
 	block->name = name;
 	block->start = res->start;
 	block->size = resource_size(res);
-	block->base = devm_ioremap_nocache(&plat_dev->dev, res->start,
-					   resource_size(res));
+	block->base = devm_ioremap(&plat_dev->dev, res->start,
+				   resource_size(res));
 	if (!block->base) {
 		pr_err("Cannot map I/O register space\n");
 		return -EINVAL;

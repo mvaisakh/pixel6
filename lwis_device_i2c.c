@@ -128,7 +128,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 
 	info.addr = i2c_dev->address;
 
-	i2c_dev->client = i2c_new_device(i2c_dev->adapter, &info);
+	i2c_dev->client = i2c_new_client_device(i2c_dev->adapter, &info);
 
 	/* New device creation failed, possibly because client with the same
 	   address is defined, try to find the client instance in the adapter
