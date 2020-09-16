@@ -384,7 +384,7 @@ static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
 	return ret;
 }
 
-/* called from gcpm when switching to DC amd when CC_MAX changes */
+/* called from gcpm to turn on charging & from to DC_SUSPEND */
 static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
@@ -393,7 +393,7 @@ static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				  enabled);
 }
 
-/* called from google_charger on disconnect */
+/* called from google_charger on disconnect, when CC_MAX is 0 */
 static int max77759_set_charge_disable(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
@@ -635,17 +635,22 @@ static int max77759_wcin_get_ilim_max_ua(struct max77759_chgr_data *data,
 	return 0;
 }
 
-/* default is no suspend, any valid vote will suspend */
+/* default is no suspend, any valid vote will suspend  */
 static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 					      const char *reason, void *value)
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
-	int ret, result = (int)value;
+	int ret, suspend = (int)value >= 0;
 
-	ret = max77759_wcin_input_suspend(data, result > 0, "DC_SUSPEND");
+	ret = max77759_wcin_input_suspend(data, suspend, "DC_SUSPEND");
+	if (ret < 0)
+		return;
+
+	/* enable charging when DC_SUSPEND is not set */
+	ret = max77759_set_charge_enabled(data, !suspend, "DC_SUSPEND");
 
 	dev_info(data->dev, "DC_SUSPEND reason=%s, value=%d suspend=%d (%d)\n",
-		reason ? reason : "", result, result >= 0, ret);
+		reason ? reason : "", (int)value, suspend, ret);
 }
 
 static void max77759_dcicl_callback(struct gvotable_election *el,
@@ -797,6 +802,11 @@ static int max77759_wcin_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		rc = max77759_wcin_set_ilim_max_ua(chgr, val->intval);
 		break;
+	/* called from google_cpm when switching chargers */
+	case GBMS_PROP_CHARGING_ENABLED:
+		rc = max77759_set_charge_enabled(chgr, val->intval > 0,
+						 "DC_PSP_ENABLED");
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -809,6 +819,7 @@ static int max77759_wcin_prop_is_writeable(struct power_supply *psy,
 {
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
+	case GBMS_PROP_CHARGING_ENABLED:
 		return 1;
 	default:
 		break;
