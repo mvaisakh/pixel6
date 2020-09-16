@@ -36,16 +36,4 @@ int lwis_i2c_set_state(struct lwis_i2c_device *i2c, const char *state_str);
 int lwis_i2c_io_entry_rw(struct lwis_i2c_device *i2c,
 			 struct lwis_io_entry *entry);
 
-/*
- *  lwis_i2c_read: Single read from i2c bus.
- */
-int lwis_i2c_read(struct lwis_i2c_device *i2c, uint64_t offset,
-		  uint64_t *value);
-
-/*
- *  lwis_i2c_write: Single write to i2c bus.
- */
-int lwis_i2c_write(struct lwis_i2c_device *i2c, uint64_t offset,
-		   uint64_t value);
-
 #endif /* LWIS_I2C_H_ */
