@@ -376,21 +376,43 @@ static void decon_atomic_begin(struct exynos_drm_crtc *crtc)
 	decon_debug(decon, "%s -\n", __func__);
 }
 
+static int decon_get_win_id(const struct drm_crtc_state *crtc_state, int zpos)
+{
+	const struct drm_device *dev = crtc_state->crtc->dev;
+	const unsigned long plane_mask = crtc_state->plane_mask;
+	int bit, i = 0;
+
+	for_each_set_bit(bit, &plane_mask, dev->mode_config.num_total_plane) {
+		if (i == zpos)
+			return bit;
+		i++;
+	}
+
+	return -EINVAL;
+}
+
+static bool decon_is_win_used(const struct drm_crtc_state *crtc_state, int win_id)
+{
+	const unsigned int plane_mask = crtc_state->plane_mask;
+
+	if (win_id > crtc_state->crtc->dev->mode_config.num_total_plane)
+		return false;
+
+	return (BIT(win_id) & plane_mask) != 0;
+}
+
 static void decon_disable_win(struct decon_device *decon, int win_id)
 {
 	const struct drm_crtc *crtc = &decon->crtc->base;
-	const unsigned int num_planes = hweight32(crtc->state->plane_mask);
 
-	decon_debug(decon, "winid:%d/%d\n", win_id, num_planes);
+	decon_debug(decon, "disabling winid:%d\n", win_id);
 
 	/*
-	 * When disabling the plane, previously connected window(zpos) should be
-	 * disabled not newly requested zpos(window). Only disable window if it
-	 * was previously connected and it's not going to be used by any other
-	 * plane, by using normalized zpos as win_id we know that any win_id
-	 * beyond the number of planes will not be used.
+	 * When disabling the plane, previously connected window (win_id) should be
+	 * disabled, not the newly requested one. Only disable the old window if it
+	 * was previously connected and it's not going to be used by any other plane.
 	 */
-	if (win_id < MAX_PLANE && win_id >= num_planes)
+	if ((win_id < MAX_WIN_PER_DECON) && !decon_is_win_used(crtc->state, win_id))
 		decon_reg_set_win_enable(decon->id, win_id, 0);
 }
 
@@ -402,62 +424,80 @@ static void _dpp_disable(struct dpp_device *dpp)
 	}
 }
 
-static void decon_update_plane(struct exynos_drm_crtc *crtc,
-			       struct exynos_drm_plane *plane)
+static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
+			       struct exynos_drm_plane *exynos_plane)
 {
-	struct exynos_drm_plane_state *state =
-				to_exynos_plane_state(plane->base.state);
-	struct dpp_device *dpp = plane_to_dpp(plane);
-	struct decon_device *decon = crtc->ctx;
+	const struct drm_plane_state *plane_state = exynos_plane->base.state;
+	const struct exynos_drm_plane_state *exynos_plane_state =
+		to_exynos_plane_state(plane_state);
+	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
+	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
+	struct decon_device *decon = exynos_crtc->ctx;
 	struct decon_window_regs win_info;
 	unsigned int zpos;
+	int win_id;
 	bool is_colormap = false;
 	u16 hw_alpha;
 
 	decon_debug(decon, "%s +\n", __func__);
 
+	zpos = plane_state->normalized_zpos;
+
+	if (!dpp->is_win_connected || crtc_state->zpos_changed) {
+		win_id = decon_get_win_id(exynos_crtc->base.state, zpos);
+		decon_debug(decon, "new win_id=%d zpos=%d mask=0x%x\n",
+			    win_id, zpos, crtc_state->plane_mask);
+	} else {
+		win_id = dpp->win_id;
+		decon_debug(decon, "reuse existing win_id=%d zpos=%d mask=0x%x\n",
+			    win_id, zpos, crtc_state->plane_mask);
+	}
+
+	if (WARN(win_id < 0 || win_id > MAX_WIN_PER_DECON,
+		 "couldn't find win id (%d) for zpos=%d plane_mask=0x%x\n",
+		 win_id, zpos, crtc_state->plane_mask))
+		return;
+
 	memset(&win_info, 0, sizeof(struct decon_window_regs));
 
-	is_colormap = state->base.fb &&
-			exynos_drm_fb_is_colormap(state->base.fb);
+	is_colormap = plane_state->fb && exynos_drm_fb_is_colormap(plane_state->fb);
 	if (is_colormap)
-		win_info.colormap = state->colormap;
+		win_info.colormap = exynos_plane_state->colormap;
 
-	win_info.start_pos = win_start_pos(state->crtc.x, state->crtc.y);
-	win_info.end_pos = win_end_pos(state->crtc.x, state->crtc.y,
-			state->crtc.w, state->crtc.h);
+	win_info.start_pos = win_start_pos(exynos_plane_state->crtc.x, exynos_plane_state->crtc.y);
+	win_info.end_pos = win_end_pos(exynos_plane_state->crtc.x, exynos_plane_state->crtc.y,
+			exynos_plane_state->crtc.w, exynos_plane_state->crtc.h);
 	win_info.start_time = 0;
 
 	win_info.ch = dpp->id; /* DPP's id is DPP channel number */
 
-	hw_alpha = DIV_ROUND_CLOSEST(state->base.alpha * EXYNOS_PLANE_ALPHA_MAX,
+	hw_alpha = DIV_ROUND_CLOSEST(plane_state->alpha * EXYNOS_PLANE_ALPHA_MAX,
 			DRM_BLEND_ALPHA_OPAQUE);
 	win_info.plane_alpha = hw_alpha;
-	win_info.blend = state->base.pixel_blend_mode;
+	win_info.blend = plane_state->pixel_blend_mode;
 
-	zpos = state->base.normalized_zpos;
 	if (zpos == 0 && hw_alpha == EXYNOS_PLANE_ALPHA_MAX)
 		win_info.blend = DRM_MODE_BLEND_PIXEL_NONE;
 
 	/* disable previous window if zpos has changed */
-	if (dpp->win_id != zpos)
+	if (dpp->win_id != win_id)
 		decon_disable_win(decon, dpp->win_id);
 
-	decon_reg_set_window_control(decon->id, zpos, &win_info, is_colormap);
+	decon_reg_set_window_control(decon->id, win_id, &win_info, is_colormap);
 
 	dpp->decon_id = decon->id;
 	if (!is_colormap) {
-		dpp->update(dpp, state);
+		dpp->update(dpp, exynos_plane_state);
 		dpp->is_win_connected = true;
 	} else {
 		_dpp_disable(dpp);
 	}
 
-	dpp->win_id = zpos;
+	dpp->win_id = win_id;
 
 	DPU_EVENT_LOG(DPU_EVT_PLANE_UPDATE, decon->id, dpp);
 	decon_debug(decon, "plane idx[%d]: alpha(0x%x) hw alpha(0x%x)\n",
-			drm_plane_index(&plane->base), state->base.alpha,
+			drm_plane_index(&exynos_plane->base), plane_state->alpha,
 			hw_alpha);
 	decon_debug(decon, "blend_mode(%d) color(%s:0x%x)\n", win_info.blend,
 			is_colormap ? "enable" : "disable", win_info.colormap);
@@ -507,7 +547,11 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	if (new_crtc_state->plane_mask == 0) {
 		decon_debug(decon, "no planes, enable color map\n");
 
-		decon_set_color_map(decon, 0, decon->config.image_width,
+		/*
+		 * TODO: window id needs to be unique when using dual display, current hack is to
+		 * use decon id, but it could conflict if planes are assigned to other display
+		 */
+		decon_set_color_map(decon, decon->id, decon->config.image_width,
 				decon->config.image_height);
 	}
 
