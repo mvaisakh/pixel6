@@ -131,22 +131,28 @@ static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
 	if (exynos_crtc->ops->atomic_check)
 		exynos_crtc->ops->atomic_check(exynos_crtc, state);
 
-	max_bpc = 8; /* initial bpc value */
-	drm_atomic_crtc_state_for_each_plane(plane, state) {
-		const struct drm_format_info *info;
-		const struct dpu_fmt *fmt_info;
+	if (new_exynos_state->force_bpc == EXYNOS_BPC_MODE_UNSPECIFIED) {
+		max_bpc = 8; /* initial bpc value */
+		drm_atomic_crtc_state_for_each_plane(plane, state) {
+			const struct drm_format_info *info;
+			const struct dpu_fmt *fmt_info;
 
-		new_plane_state =
-			drm_atomic_get_new_plane_state(state->state, plane);
+			new_plane_state = drm_atomic_get_new_plane_state(
+					state->state, plane);
 
-		info = new_plane_state->fb->format;
-		fmt_info = dpu_find_fmt_info(info->format);
-		if (fmt_info->bpc == 10) {
-			max_bpc = 10;
-			break;
+			info = new_plane_state->fb->format;
+			fmt_info = dpu_find_fmt_info(info->format);
+			if (fmt_info->bpc == 10) {
+				max_bpc = 10;
+				break;
+			}
 		}
+		new_exynos_state->in_bpc = max_bpc;
+	} else {
+		new_exynos_state->in_bpc =
+			new_exynos_state->force_bpc == EXYNOS_BPC_MODE_10 ?
+			10 : 8;
 	}
-	new_exynos_state->in_bpc = max_bpc;
 
 	DRM_DEBUG("%s -\n", __func__);
 
@@ -375,6 +381,8 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 
 	if (property == exynos_crtc->props.color_mode) {
 		exynos_crtc_state->color_mode = val;
+	} else if (property == exynos_crtc->props.force_bpc) {
+		exynos_crtc_state->force_bpc = val;
 	} else if (property == exynos_crtc->props.cgc_lut) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_lut, val,
@@ -410,6 +418,8 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 
 	if (property == exynos_crtc->props.color_mode)
 		*val = exynos_crtc_state->color_mode;
+	else if (property == exynos_crtc->props.force_bpc)
+		*val = exynos_crtc_state->force_bpc;
 	else if (property == exynos_crtc->props.cgc_lut)
 		*val = (exynos_crtc_state->cgc_lut) ?
 			exynos_crtc_state->cgc_lut->base.id : 0;
@@ -499,6 +509,29 @@ exynos_drm_crtc_create_color_mode_property(struct exynos_drm_crtc *exynos_crtc)
 	return 0;
 }
 
+static int
+exynos_drm_crtc_create_force_bpc_property(struct exynos_drm_crtc *exynos_crtc)
+{
+	struct drm_crtc *crtc = &exynos_crtc->base;
+	struct drm_property *prop;
+	static const struct drm_prop_enum_list bpc_list[] = {
+		{ EXYNOS_BPC_MODE_UNSPECIFIED, "Unspecified" },
+		{ EXYNOS_BPC_MODE_8, "8bpc" },
+		{ EXYNOS_BPC_MODE_10, "10bpc" },
+	};
+
+	prop = drm_property_create_enum(crtc->dev, 0, "force_bpc", bpc_list,
+			ARRAY_SIZE(bpc_list));
+	if (!prop)
+		return -ENOMEM;
+
+	drm_object_attach_property(&crtc->base, prop,
+				EXYNOS_BPC_MODE_UNSPECIFIED);
+	exynos_crtc->props.force_bpc = prop;
+
+	return 0;
+}
+
 static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
 		struct drm_property **prop)
 {
@@ -543,6 +576,10 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	drm_crtc_helper_add(crtc, &exynos_crtc_helper_funcs);
 
 	ret = exynos_drm_crtc_create_color_mode_property(exynos_crtc);
+	if (ret)
+		goto err_crtc;
+
+	ret = exynos_drm_crtc_create_force_bpc_property(exynos_crtc);
 	if (ret)
 		goto err_crtc;
 

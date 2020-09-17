@@ -32,6 +32,11 @@
 #define HAL_COLOR_MODE_BT2100_PQ			11
 #define HAL_COLOR_MODE_BT2100_HLG			12
 
+/* supported bpc mode for crtc(DECON) */
+#define EXYNOS_BPC_MODE_UNSPECIFIED	0
+#define EXYNOS_BPC_MODE_8		1
+#define EXYNOS_BPC_MODE_10		2
+
 struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 					struct drm_plane *plane,
 					enum exynos_drm_output_type out_type,

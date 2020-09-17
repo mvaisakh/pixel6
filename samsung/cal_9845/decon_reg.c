@@ -593,6 +593,9 @@ static void decon_reg_set_bpc(u32 id, u32 bpc)
 	mask = GLOBAL_CON_TEN_BPC_MODE_MASK;
 
 	decon_write_mask(id, GLOBAL_CON, val, mask);
+
+	cal_log_debug(id, "%d bpc mode is set\n", decon_read_mask(id,
+			GLOBAL_CON, GLOBAL_CON_TEN_BPC_MODE_MASK) ? 10 : 8);
 }
 
 static void decon_reg_config_win_channel(u32 id, u32 win_idx, int ch)

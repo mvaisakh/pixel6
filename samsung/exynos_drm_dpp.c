@@ -30,6 +30,7 @@
 #include <regs-dpp.h>
 
 #include "exynos_drm_decon.h"
+#include "exynos_drm_crtc.h"
 #include "exynos_drm_dpp.h"
 #include "exynos_drm_dsim.h"
 #include "exynos_drm_fb.h"
@@ -649,7 +650,10 @@ static int dpp_update(struct dpp_device *dpp,
 	__dpp_enable(dpp);
 
 	dpp_convert_plane_state_to_config(config, state, mode);
+
 	config->in_bpc = exynos_crtc_state->in_bpc == 8 ? DPP_BPC_8 : DPP_BPC_10;
+	dpp_debug(dpp, "in/force bpc(%d/%d)\n", exynos_crtc_state->in_bpc,
+			exynos_crtc_state->force_bpc);
 
 	dpp_hdr_update(dpp, state);
 	set_protection(dpp, plane_state->fb->modifier);

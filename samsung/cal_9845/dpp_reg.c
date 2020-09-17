@@ -672,6 +672,8 @@ static void dpp_reg_set_bpc(u32 id, enum dpp_bpc bpc)
 {
 	dpp_write_mask(id, DPP_COM_IO_CON, DPP_BPC_MODE(bpc),
 			DPP_BPC_MODE_MASK);
+	cal_log_debug(id, "%d bpc mode is set\n", dpp_read_mask(id,
+			DPP_COM_IO_CON, DPP_BPC_MODE_MASK) ? 10 : 8);
 }
 
 /********** IDMA and ODMA combination CAL functions **********/
