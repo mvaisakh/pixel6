@@ -57,9 +57,7 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
 			return alloc_info->dma_fd;
 		}
 
-#if ENABLE_PT
 		alloc_info->partition_id = PT_PTID_INVALID;
-#endif
 
 		/*
 		 * Increment refcount of the fd to 2. Both userspace's close(fd)
