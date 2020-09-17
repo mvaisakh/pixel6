@@ -508,7 +508,6 @@ static int chg_usb_online(struct power_supply *usb_psy)
 
 #ifdef CONFIG_USB_ONLINE_IS_TYPEC_MODE
 	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE, &rc);
-	pr_info("TYPEC mode=%d rc=%d\n", mode, rc);
 
 	switch (mode) {
 	case POWER_SUPPLY_TYPEC_SOURCE_DEFAULT:
@@ -522,15 +521,17 @@ static int chg_usb_online(struct power_supply *usb_psy)
 	}
 #else
 	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
-	pr_info("ONLINE mode=%d rc=%d\n", mode, rc);
 
-	if (!mode)
-		usb_online = 0;
+	if (!mode) {
+		int usb_type = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_USB_TYPE, &rc);
+
+		if (usb_type == POWER_SUPPLY_USB_TYPE_UNKNOWN)
+			usb_online = 0;
+		else
+			/* for input suspend case */
+			usb_online = 1;
+	}
 #endif
-
-	pr_info("%s: online=%d mode=%d rc=%d\n", __FILE__, usb_online, mode, rc);
-	if (rc < 0)
-		pr_info("online mode=%d rc=%d\n", usb_online, rc);
 
 	return usb_online;
 }
