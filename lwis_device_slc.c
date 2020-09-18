@@ -58,8 +58,14 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 	int num_pt = 0;
 	struct device_node *node = lwis_dev->plat_dev->dev.of_node;
 	int i = 0;
+	int ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048, 3072 };
+
+	if (!lwis_dev) {
+		pr_err("LWIS device cannot be NULL\n");
+		return -ENODEV;
+	}
 
 	num_pt = of_property_count_strings(node, "pt_id");
 	if (num_pt != NUM_PT) {
@@ -69,6 +75,12 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 
 	/* Initialize SLC partitions and get a handle */
 	slc_dev->partition_handle = pt_client_register(node, NULL, NULL);
+	if (IS_ERR(slc_dev->partition_handle)) {
+		ret = PTR_ERR(slc_dev->partition_handle);
+		dev_err(lwis_dev->dev, "Failed to register PT client (%d)\n", ret);
+		slc_dev->partition_handle = NULL;
+		return ret;
+	}
 	for (i = 0; i < NUM_PT; i++) {
 		slc_dev->pt[i].id = i;
 		slc_dev->pt[i].size_kb = pt_size_kb[i];
@@ -85,6 +97,16 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 {
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	int i = 0;
+
+	if (!lwis_dev) {
+		pr_err("LWIS device cannot be NULL\n");
+		return -ENODEV;
+	}
+
+	if (!slc_dev->partition_handle) {
+		dev_err(slc_dev->base_dev.dev, "Partition handle is NULL\n");
+		return -ENODEV;
+	}
 
 	for (i = 0; i < NUM_PT; i++) {
 		if (slc_dev->pt[i].partition_id != PT_PTID_INVALID) {
@@ -105,6 +127,21 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
 {
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	int i = 0, fd_or_err = -1;
+
+	if (!lwis_dev) {
+		pr_err("LWIS device cannot be NULL\n");
+		return -ENODEV;
+	}
+
+	if (!alloc_info) {
+		dev_err(slc_dev->base_dev.dev, "Buffer alloc info is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!slc_dev->partition_handle) {
+		dev_err(slc_dev->base_dev.dev, "Partition handle is NULL\n");
+		return -ENODEV;
+	}
 
 	for (i = 0; i < NUM_PT; i++) {
 		if (slc_dev->pt[i].partition_id == PT_PTID_INVALID &&
@@ -145,12 +182,17 @@ int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd)
 	struct file *fp;
 	struct slc_partition *slc_pt;
 
+	if (!lwis_dev) {
+		pr_err("LWIS device cannot be NULL\n");
+		return -ENODEV;
+	}
+
 	fp = fget(fd);
 	if (fp == NULL) {
 		return -EBADF;
 	}
 	slc_pt = fp->private_data;
-	if (slc_pt->partition_id != PT_PTID_INVALID) {
+	if (slc_pt->partition_id != PT_PTID_INVALID && slc_pt->partition_handle) {
 		pt_client_disable(slc_pt->partition_handle, slc_pt->id);
 		slc_pt->partition_id = PT_PTID_INVALID;
 	}
