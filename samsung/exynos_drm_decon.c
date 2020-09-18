@@ -756,7 +756,15 @@ static const struct exynos_drm_crtc_ops decon_crtc_ops = {
 
 static int dpu_sysmmu_fault_handler(struct iommu_fault *fault, void *data)
 {
-	pr_info("%s +\n", __func__);
+	struct decon_device *decon = data;
+
+	if (!decon)
+		return 0;
+
+	decon_warn(decon, "%s +\n", __func__);
+
+	decon_dump_all(decon);
+
 	return 0;
 }
 
@@ -789,10 +797,9 @@ static int decon_bind(struct device *dev, struct device *master, void *data)
 
 	priv->iommu_client = dev;
 
-	iommu_register_device_fault_handler(dev, dpu_sysmmu_fault_handler,
-			NULL);
+	iommu_register_device_fault_handler(dev, dpu_sysmmu_fault_handler, decon);
 
-#if defined(CONFIG_EXYNOS_ITMON)
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	decon->itmon_nb.notifier_call = dpu_itmon_notifier;
 	itmon_notifier_chain_register(&decon->itmon_nb);
 #endif

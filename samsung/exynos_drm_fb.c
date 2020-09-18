@@ -483,9 +483,11 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 			ret = wait_event_interruptible_timeout(
 					decon->framedone_wait,
 					decon->busy == false, TIMEOUT);
-			if (ret == 0)
+			if (ret == 0) {
 				pr_err("decon%d framedone timeout\n",
 						decon->id);
+				decon_dump_all(decon);
+			}
 		}
 	}
 
@@ -523,6 +525,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 					decon->id, NULL);
 			pr_warn("decon%d framestart timeout\n",
 					decon->id);
+			decon_dump_all(decon);
 		}
 
 		mode = &decon->config.mode;
