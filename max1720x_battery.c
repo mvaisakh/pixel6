@@ -4089,10 +4089,12 @@ static int max1720x_init_irq(struct max1720x_chip *chip)
 	return ret;
 }
 
+/* possible race */
 void *max1720x_get_model_data(struct i2c_client *client)
 {
 	struct max1720x_chip *chip = i2c_get_clientdata(client);
-	return chip->model_data;
+
+	return chip ? chip->model_data : NULL;
 }
 
 static int max1720x_probe(struct i2c_client *client,
