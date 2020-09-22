@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
+#include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
@@ -118,14 +119,14 @@ static void free_transaction(struct lwis_transaction *transaction)
 {
 	int i = 0;
 
-	kfree(transaction->resp);
+	kvfree(transaction->resp);
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
 		if (transaction->info.io_entries[i].type ==
 		    LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(transaction->info.io_entries[i].rw_batch.buf);
+			kvfree(transaction->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	kfree(transaction->info.io_entries);
+	kvfree(transaction->info.io_entries);
 	kfree(transaction);
 }
 
@@ -496,7 +497,7 @@ static int prepare_response_locked(struct lwis_client *client,
 	/* Revisit the use of GFP_ATOMIC here. Reason for this to be atomic is
 	 * because this function can be called by transaction_replace while
 	 * holding onto a spinlock. */
-	transaction->resp = kzalloc(resp_size, GFP_ATOMIC);
+	transaction->resp = kvzalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
 		pr_err_ratelimited("Cannot allocate transaction response\n");
 		return -ENOMEM;

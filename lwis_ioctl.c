@@ -13,6 +13,7 @@
 #include "lwis_ioctl.h"
 
 #include <linux/kernel.h>
+#include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -950,7 +951,7 @@ static int construct_transaction(struct lwis_client *client,
 	user_entries = k_transaction->info.io_entries;
 	entry_size = k_transaction->info.num_io_entries *
 		     sizeof(struct lwis_io_entry);
-	k_entries = kzalloc(entry_size, GFP_KERNEL);
+	k_entries = kvzalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev,
 			"Failed to allocate transaction entries\n");
@@ -975,7 +976,7 @@ static int construct_transaction(struct lwis_client *client,
 	for (i = 0; i < k_transaction->info.num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes,
+			k_buf = kvzalloc(k_entries[i].rw_batch.size_in_bytes,
 					GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(
@@ -1003,11 +1004,11 @@ static int construct_transaction(struct lwis_client *client,
 error_free_buf:
 	for (i = 0; i <= last_buf_alloc_idx; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(k_entries[i].rw_batch.buf);
+			kvfree(k_entries[i].rw_batch.buf);
 		}
 	}
 error_free_entries:
-	kfree(k_entries);
+	kvfree(k_entries);
 error_free_transaction:
 	kfree(k_transaction);
 	return ret;
@@ -1020,10 +1021,10 @@ static void free_transaction(struct lwis_transaction *transaction)
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
 		if (transaction->info.io_entries[i].type ==
 		    LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(transaction->info.io_entries[i].rw_batch.buf);
+			kvfree(transaction->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	kfree(transaction->info.io_entries);
+	kvfree(transaction->info.io_entries);
 	kfree(transaction);
 }
 
