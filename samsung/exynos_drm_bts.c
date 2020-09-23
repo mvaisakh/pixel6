@@ -532,18 +532,25 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 
 	/* write bw calculation */
 	config = &decon->bts.wb_config;
-	wb_idx = config->dpp_ch;
 	if (config->state == DPU_WIN_STATE_BUFFER) {
+		wb_idx = config->dpp_ch;
 		dpu_bts_convert_config_to_info(&bts_info.odma, config);
 		dpu_bts_calc_dpp_bw(&bts_info.odma, bts_info.vclk,
 						bts_info.lcd_w, wb_idx);
 		write_bw = bts_info.odma.bw;
 	} else {
+		wb_idx = -1;
 		write_bw = 0;
 	}
 
-	for (i = 0; i < MAX_DPP_CNT; i++)
-		decon->bts.bw[i].val = i == wb_idx ? write_bw : bts_info.rdma[i].bw;
+	for (i = 0; i < MAX_DPP_CNT; i++) {
+		if (i < MAX_WIN_PER_DECON)
+			decon->bts.bw[i].val = bts_info.rdma[i].bw;
+		else if (i == wb_idx)
+			decon->bts.bw[i].val = bts_info.odma.bw;
+		else
+			decon->bts.bw[i].val = 0;
+	}
 
 	decon->bts.read_bw = read_bw;
 	decon->bts.write_bw = write_bw;
