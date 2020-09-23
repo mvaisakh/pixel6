@@ -26,6 +26,7 @@ struct lwis_i2c_device {
 	struct i2c_adapter *adapter;
 	struct i2c_client *client;
 	struct pinctrl *state_pinctrl;
+	bool pinctrl_default_state_only;
 };
 
 int lwis_i2c_device_deinit(void);

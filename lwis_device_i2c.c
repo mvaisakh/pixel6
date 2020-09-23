@@ -28,6 +28,7 @@
 
 #define LWIS_DRIVER_NAME "lwis-i2c"
 
+#define I2C_DEFAULT_STATE_STRING "default"
 #define I2C_ON_STRING "on_i2c"
 #define I2C_OFF_STRING "off_i2c"
 
@@ -113,6 +114,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	struct i2c_board_info info = {};
 	struct device *dev;
 	struct pinctrl *pinctrl;
+	struct pinctrl_state *state;
 
 #ifdef CONFIG_OF
 	/* Parse device tree for device configurations */
@@ -156,9 +158,30 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	pinctrl = devm_pinctrl_get(dev->parent->parent);
 	if (IS_ERR(pinctrl)) {
 		dev_err(i2c_dev->base_dev.dev,
-			"Cannot instantiate pinctrl instance (%d)\n",
-			(int)PTR_ERR(pinctrl));
+			"Cannot instantiate pinctrl instance (%lu)\n",
+			PTR_ERR(pinctrl));
 		return PTR_ERR(pinctrl);
+	}
+
+	/* Verify that on_i2c or off_i2c strings are present */
+	i2c_dev->pinctrl_default_state_only = false;
+	if (IS_ERR(pinctrl_lookup_state(pinctrl, I2C_OFF_STRING)) ||
+	    IS_ERR(pinctrl_lookup_state(pinctrl, I2C_ON_STRING))) {
+		state = pinctrl_lookup_state(pinctrl, I2C_DEFAULT_STATE_STRING);
+		/* Default option also missing, return error */
+		if (IS_ERR(state)) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Pinctrl states {%s, %s, %s} not found (%lu)\n",
+				I2C_OFF_STRING, I2C_ON_STRING,
+				I2C_DEFAULT_STATE_STRING, PTR_ERR(state));
+			return PTR_ERR(state);
+		}
+		/* on_i2c or off_i2c not found, fall back to default */
+		dev_warn(i2c_dev->base_dev.dev,
+			 "pinctrl state %s or %s not found, fall back to %s\n",
+			 I2C_OFF_STRING, I2C_ON_STRING,
+			 I2C_DEFAULT_STATE_STRING);
+		i2c_dev->pinctrl_default_state_only = true;
 	}
 	i2c_dev->state_pinctrl = pinctrl;
 
