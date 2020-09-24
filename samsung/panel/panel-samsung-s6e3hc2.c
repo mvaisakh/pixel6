@@ -60,6 +60,70 @@ static const unsigned char SEQ_PPS_FHD[] = {
 #define S6E3HC2_WRCTRLD_BCTRL_BIT      0x20
 #define S6E3HC2_WRCTRLD_HBM_BIT        0xC0
 
+static const u8 unlock_cmd_f0[] = { 0xF0, 0x5A, 0x5A };
+static const u8 lock_cmd_f0[]   = { 0xF0, 0xA5, 0xA5 };
+static const u8 swire_refresh_global[] = { 0xB0, 0x3F, 0xB5 };
+static const u8 swire_refresh_off[] = { 0xB5, 0x05 };
+static const u8 swire_refresh_on[] = { 0xB5, 0x85 };
+static const u8 aid_trans_global[] = { 0xB0, 0xA8, 0xB1 };
+static const u8 aid_trans_off[] = { 0xB1, 0x00 };
+static const u8 aid_trans_on[] = { 0xB1, 0x01 };
+static const u8 hlpm_ctrl_global[] = { 0xB0, 0x05, 0xBB };
+static const u8 hlpm_ctrl_50nit[] = { 0xBB, 0x00 };
+static const u8 hlpm_ctrl_10nit[] = { 0xBB, 0x80 };
+static const u8 hlpm_on_50nit[] = { 0x53, 0x02 };
+static const u8 hlpm_on_10nit[] = { 0x53, 0x03 };
+static const u8 gamma_aid_update[] = { 0xF7, 0x02 };
+static const u8 display_off[] = { 0x28 };
+static const u8 display_on[] = { 0x29 };
+
+static const struct exynos_dsi_cmd s6e3hc2_lp_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 17),
+	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(swire_refresh_global, 0),
+	EXYNOS_DSI_CMD(swire_refresh_off, 0),
+	EXYNOS_DSI_CMD(lock_cmd_f0, 0),
+};
+
+static const struct exynos_dsi_cmd_set s6e3hc2_lp_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3hc2_lp_cmds),
+	.cmds = s6e3hc2_lp_cmds
+};
+
+static const struct exynos_dsi_cmd s6e3hc2_lp_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 0)
+};
+
+static const struct exynos_dsi_cmd s6e3hc2_lp_low_cmds[] = {
+	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(hlpm_on_10nit, 17),
+	EXYNOS_DSI_CMD(aid_trans_global, 0),
+	EXYNOS_DSI_CMD(aid_trans_off, 0),
+	EXYNOS_DSI_CMD(hlpm_ctrl_global, 0),
+	EXYNOS_DSI_CMD(hlpm_ctrl_10nit, 0),
+	EXYNOS_DSI_CMD(gamma_aid_update, 0),
+	EXYNOS_DSI_CMD(lock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(display_on, 0)
+};
+
+static const struct exynos_dsi_cmd s6e3hc2_lp_high_cmds[] = {
+	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(hlpm_on_50nit, 17),
+	EXYNOS_DSI_CMD(aid_trans_global, 0),
+	EXYNOS_DSI_CMD(aid_trans_off, 0),
+	EXYNOS_DSI_CMD(hlpm_ctrl_global, 0),
+	EXYNOS_DSI_CMD(hlpm_ctrl_50nit, 0),
+	EXYNOS_DSI_CMD(gamma_aid_update, 0),
+	EXYNOS_DSI_CMD(lock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(display_on, 0)
+};
+
+static const struct exynos_binned_lp s6e3hc2_binned_lp[] = {
+	BINNED_LP_MODE("off",     0, s6e3hc2_lp_off_cmds),
+	BINNED_LP_MODE("low",    40, s6e3hc2_lp_low_cmds),
+	BINNED_LP_MODE("high", 1023, s6e3hc2_lp_high_cmds)
+};
+
 static void s6e3hc2_write_display_mode(struct exynos_panel *ctx,
 				       const struct drm_display_mode *mode)
 {
@@ -77,6 +141,27 @@ static void s6e3hc2_write_display_mode(struct exynos_panel *ctx,
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 
 	/* TODO: need to perform gamma updates */
+}
+
+static void s6e3hc2_set_nolp_mode(struct exynos_panel *ctx,
+				  const struct exynos_panel_mode *pmode)
+{
+	if (!ctx->enabled)
+		return;
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, display_off);
+	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+	EXYNOS_DCS_WRITE_TABLE(ctx, aid_trans_global);
+	EXYNOS_DCS_WRITE_TABLE(ctx, aid_trans_on);
+
+	s6e3hc2_write_display_mode(ctx, &pmode->mode);
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, swire_refresh_global);
+	EXYNOS_DCS_WRITE_TABLE_DELAY(ctx, 34, swire_refresh_on);
+	EXYNOS_DCS_WRITE_TABLE_DELAY(ctx, 17, lock_cmd_f0);
+	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
+
+	dev_info(ctx->dev, "exit LP mode\n");
 }
 
 static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
@@ -124,13 +209,19 @@ static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
 
 static void s6e3hc2_common_post_enable(struct exynos_panel *ctx)
 {
+	const struct exynos_panel_mode *pmode;
+
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x51, 0x01, 0x80); /* brightness level */
-
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
-
 	ctx->enabled = true;
+
+	pmode = ctx->current_mode;
+	if (pmode->exynos_mode.is_lp_mode)
+		exynos_panel_set_lp_mode(ctx, pmode);
+	else
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
+
+	backlight_update_status(ctx->bl);
 }
 
 static int s6e3hc2_wqhd_enable(struct drm_panel *panel)
@@ -316,6 +407,70 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 	},
 };
 
+static const struct exynos_panel_mode s6e3hc2_wqhd_lp_mode = {
+	.mode = {
+		/* 1440x3040 @ 30Hz */
+		.name = "1440x3040x30",
+		.clock = 133284,
+		.hdisplay = 1440,
+		.hsync_start = 1440 + 2,
+		.hsync_end = 1440 + 2 + 2,
+		.htotal = 1440 + 6 + 2 + 2,
+		.vdisplay = 3040,
+		.vsync_start = 3040 + 8,
+		.vsync_end = 3040 + 8 + 1,
+		.vtotal = 3040 + 8 + 1 + 15,
+		.flags = 0,
+		.type = DRM_MODE_TYPE_DRIVER,
+		.width_mm = 69,
+		.height_mm = 142,
+	},
+	.exynos_mode = {
+		.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+		.vblank_usec = 120,
+		.bpc = 8,
+		.dsc = {
+			.enabled = true,
+			.dsc_count = 2,
+			.slice_count = 2,
+			.slice_height = 40,
+		},
+		.is_lp_mode = true,
+	}
+};
+
+static const struct exynos_panel_mode s6e3hc2_fhd_lp_mode = {
+	.mode = {
+		/* 1080x2340 @ 30Hz */
+		.name = "1080x2340x30",
+		.clock = 82179,
+		.hdisplay = 1080,
+		.hsync_start = 1080 + 32, // add hfp
+		.hsync_end = 1080 + 32 + 12, // add hsa
+		.htotal = 1080 + 32 + 12 + 26, // add hbp
+		.vdisplay = 2340,
+		.vsync_start = 2340 + 12, // add vfp
+		.vsync_end = 2340 + 12 + 4, // add vsa
+		.vtotal = 2340 + 12 + 4 + 26, // add vbp
+		.flags = 0,
+		.type = DRM_MODE_TYPE_DRIVER,
+		.width_mm = 63,
+		.height_mm = 137,
+	},
+	.exynos_mode = {
+		.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+		.vblank_usec = 120,
+		.bpc = 8,
+		.dsc = {
+			.enabled = true,
+			.dsc_count = 2,
+			.slice_count = 2,
+			.slice_height = 65,
+		},
+		.is_lp_mode = true,
+	},
+};
+
 static const struct drm_panel_funcs s6e3hc2_wqhd_drm_funcs = {
 	.disable = exynos_panel_disable,
 	.unprepare = exynos_panel_unprepare,
@@ -334,6 +489,9 @@ static const struct drm_panel_funcs s6e3hc2_fhd_drm_funcs = {
 
 static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.set_brightness = exynos_panel_set_brightness,
+	.set_lp_mode = exynos_panel_set_lp_mode,
+	.set_nolp_mode = s6e3hc2_set_nolp_mode,
+	.set_binned_lp = exynos_panel_set_binned_lp,
 	.set_hbm_mode = s6e3hc2_set_hbm_mode,
 	.is_mode_seamless = s6e3hc2_is_mode_seamless,
 	.mode_set = s6e3hc2_mode_set,
@@ -352,6 +510,10 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.min_luminance = 5,
 	.modes = s6e3hc2_wqhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_wqhd_modes),
+	.lp_mode = &s6e3hc2_wqhd_lp_mode,
+	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
+	.binned_lp = s6e3hc2_binned_lp,
+	.num_binned_lp = ARRAY_SIZE(s6e3hc2_binned_lp),
 	.panel_func = &s6e3hc2_wqhd_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };
@@ -369,6 +531,10 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.min_luminance = 5,
 	.modes = s6e3hc2_fhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_fhd_modes),
+	.lp_mode = &s6e3hc2_fhd_lp_mode,
+	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
+	.binned_lp = s6e3hc2_binned_lp,
+	.num_binned_lp = ARRAY_SIZE(s6e3hc2_binned_lp),
 	.panel_func = &s6e3hc2_fhd_drm_funcs,
 	.exynos_panel_func = &s6e3hc2_exynos_funcs,
 };

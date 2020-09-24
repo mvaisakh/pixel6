@@ -269,7 +269,7 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 
 #define EXYNOS_DCS_WRITE_SEQ_DELAY(ctx, delay, seq...) do {		\
 	EXYNOS_DCS_WRITE_SEQ(ctx, seq);					\
-	msleep(delay);							\
+	usleep_range(delay * 1000, delay * 1000 + 10);			\
 } while (0)
 
 #define EXYNOS_DCS_WRITE_TABLE(ctx, table) do {				\
@@ -277,6 +277,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	ret = exynos_dcs_write(ctx, table, ARRAY_SIZE(table));		\
 	if (ret < 0)							\
 		dev_err(ctx->dev, "failed to write cmd(%d)\n", ret);	\
+} while (0)
+
+#define EXYNOS_DCS_WRITE_TABLE_DELAY(ctx, delay, table) do {		\
+	EXYNOS_DCS_WRITE_TABLE(ctx, table);				\
+	usleep_range(delay * 1000, delay * 1000 + 10);			\
 } while (0)
 
 #define EXYNOS_PPS_LONG_WRITE(ctx) do {					\
