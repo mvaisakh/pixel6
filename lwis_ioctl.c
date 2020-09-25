@@ -1123,9 +1123,9 @@ static int ioctl_transaction_cancel(struct lwis_client *client,
 
 	ret = lwis_transaction_cancel(client, id);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to clear transaction id 0x%llx\n",
-				    id);
+		dev_warn_ratelimited(lwis_dev->dev,
+				    "Failed to cancel transaction id 0x%llx (%d)\n",
+				    id, ret);
 		return ret;
 	}
 
