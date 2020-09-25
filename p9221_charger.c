@@ -998,7 +998,8 @@ static int p9221_get_property(struct power_supply *psy,
 		break;
 #endif
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		{
+		ret = p9221_ready_to_read(charger);
+		if (!ret) {
 			u32 ma;
 
 			ret = charger->chip_get_iout(charger, &ma);
@@ -1009,7 +1010,8 @@ static int p9221_get_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		{
+		ret = p9221_ready_to_read(charger);
+		if (!ret) {
 			u32 mv;
 
 			ret = charger->chip_get_vout(charger, &mv);
@@ -1020,7 +1022,8 @@ static int p9221_get_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
-		{
+		ret = p9221_ready_to_read(charger);
+		if (!ret) {
 			u32 mv;
 
 			ret = charger->chip_get_vout_max(charger, &mv);
@@ -3915,38 +3918,21 @@ static int p9382a_tx_icl_vote_callback(struct votable *votable, void *data,
 }
 
 /*
- *  If able to read the chip_id register, sets chip_id to value read
- *  otherwise sets value to default passed in.
+ *  If able to read the chip_id register then we know we are online
  *
  *  Returns true when online.
  */
-static bool p9221_get_chip_id(struct p9221_charger_data *charger,
-			      u16 *chip_id, u16 default_chip_id)
+static bool p9221_check_online(struct p9221_charger_data *charger)
 {
 	int ret;
+	u16 chip_id;
 
 	/* Test to see if the charger is online */
-	ret = p9221_reg_read_16(charger, P9221_CHIP_ID_REG, chip_id);
+	ret = p9221_reg_read_16(charger, P9221_CHIP_ID_REG, &chip_id);
 	if (ret == 0) {
-		dev_info(charger->dev, "Charger online id:%04x\n", *chip_id);
+		dev_info(charger->dev, "Charger online id:%04x\n", chip_id);
 		return true;
 	}
-
-	/* off, try to power on the WLC chip */
-	ret = p9382_rtx_enable(charger, true);
-	if (ret == 0) {
-		/* FIXME: b/146316852 */
-		ret = p9221_reg_read_16(charger, P9221_CHIP_ID_REG, chip_id);
-		p9382_rtx_enable(charger, false);
-
-		if (ret == 0) {
-			dev_info(charger->dev, "Charger rTX id:%04x\n",
-				 *chip_id);
-			return false;
-		}
-	}
-
-	*chip_id = default_chip_id;
 
 	return false;
 }
@@ -3958,7 +3944,6 @@ static int p9221_charger_probe(struct i2c_client *client,
 	struct p9221_charger_data *charger;
 	struct p9221_charger_platform_data *pdata = client->dev.platform_data;
 	struct power_supply_config psy_cfg = {};
-	u16 chip_id = 0;
 	bool online;
 	int ret;
 
@@ -3998,6 +3983,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->align = WLC_ALIGN_ERROR;
 	charger->align_count = 0;
 	charger->is_mfg_google = false;
+	charger->chip_id = charger->pdata->chip_id;
 	mutex_init(&charger->io_lock);
 	mutex_init(&charger->cmd_lock);
 	timer_setup(&charger->vrect_timer, p9221_vrect_timer_handler, 0);
@@ -4109,9 +4095,9 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	crc8_populate_msb(p9221_crc8_table, P9221_CRC8_POLYNOMIAL);
 
-	online = p9221_get_chip_id(charger, &chip_id, charger->pdata->chip_id);
-	charger->chip_id = chip_id;
-	dev_info(&client->dev, "online = %d CHIP_ID = 0x%x\n", online, chip_id);
+	online = p9221_check_online(charger);
+	dev_info(&client->dev, "online = %d CHIP_ID = 0x%x\n", online,
+		 charger->chip_id);
 
 	if (online) {
 		/* set charger->online=true, will ignore first VRECTON IRQ */
