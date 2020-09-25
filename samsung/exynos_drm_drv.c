@@ -58,6 +58,124 @@ static struct exynos_drm_priv_state *exynos_drm_get_priv_state(struct drm_atomic
 	return to_exynos_priv_state(priv_state);
 }
 
+static unsigned int find_set_bits_mask(unsigned int mask, size_t count)
+{
+	unsigned int out = 0;
+	int i;
+
+	for (i = count; i > 0; i--) {
+		int bit = ffs(mask) - 1;
+
+		if (bit < 0)
+			return 0;
+
+		mask &= ~BIT(bit);
+		out |= BIT(bit);
+	}
+
+	return out;
+}
+
+static unsigned int exynos_drm_crtc_get_win_cnt(struct drm_crtc_state *crtc_state)
+{
+	unsigned int num_planes;
+
+	if (!crtc_state->active)
+		return 0;
+
+	num_planes = hweight32(crtc_state->plane_mask);
+
+	/* at least one window is required for color map when active and there are no planes */
+	return num_planes ? : 1;
+}
+
+static int exynos_atomic_check_windows(struct drm_device *dev, struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	struct exynos_drm_priv_state *exynos_priv_state;
+	unsigned int freed_win_mask = 0;
+	unsigned int win_mask;
+	int i;
+
+	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
+		struct exynos_drm_crtc_state *old_exynos_crtc_state, *new_exynos_crtc_state;
+		unsigned int old_win_cnt, new_win_cnt;
+
+		old_exynos_crtc_state = to_exynos_crtc_state(old_crtc_state);
+		new_exynos_crtc_state = to_exynos_crtc_state(new_crtc_state);
+
+		if (!new_crtc_state->active_changed && !new_crtc_state->zpos_changed)
+			continue;
+
+		old_win_cnt = exynos_drm_crtc_get_win_cnt(old_crtc_state);
+		new_win_cnt = exynos_drm_crtc_get_win_cnt(new_crtc_state);
+
+		if (old_win_cnt == new_win_cnt)
+			continue;
+
+		pr_debug("%s: win cnt changed: %d -> %d\n", crtc->name, old_win_cnt, new_win_cnt);
+
+		if (old_win_cnt > new_win_cnt) {
+			const unsigned int curr_win_mask = new_exynos_crtc_state->reserved_win_mask;
+
+			if (new_win_cnt)
+				win_mask = find_set_bits_mask(curr_win_mask,
+							      old_win_cnt - new_win_cnt);
+			else /* freeing all windows */
+				win_mask = curr_win_mask;
+
+			WARN(!win_mask, "%s: invalid reserved mask (0x%x) for win_cnt (%d->%d)",
+			     crtc->name, curr_win_mask, old_win_cnt, new_win_cnt);
+
+			/*
+			 * we don't want to immediately put the windows back into available_win_mask
+			 * for next crtc to use since the windows will get freed only after commit
+			 * to hw is done for this commit
+			 */
+			freed_win_mask |= win_mask;
+			new_exynos_crtc_state->reserved_win_mask &= ~win_mask;
+		} else {
+			exynos_priv_state = exynos_drm_get_priv_state(state);
+			if (IS_ERR(exynos_priv_state))
+				return PTR_ERR(exynos_priv_state);
+
+			win_mask = find_set_bits_mask(exynos_priv_state->available_win_mask,
+						      new_win_cnt - old_win_cnt);
+			if (!win_mask) {
+				DRM_WARN("%s: No windows available for req win cnt=%d->%d (0x%x)\n",
+					 crtc->name, old_win_cnt, new_win_cnt,
+					 exynos_priv_state->available_win_mask);
+				return -ENOENT;
+			}
+			pr_debug("%s: current win_mask=0x%x new=0x%x avail=0x%x\n", crtc->name,
+				 new_exynos_crtc_state->reserved_win_mask, win_mask,
+				 exynos_priv_state->available_win_mask);
+
+			exynos_priv_state->available_win_mask &= ~win_mask;
+			new_exynos_crtc_state->reserved_win_mask |= win_mask;
+		}
+	}
+
+	if (freed_win_mask) {
+		exynos_priv_state = exynos_drm_get_priv_state(state);
+		if (IS_ERR(exynos_priv_state))
+			return PTR_ERR(exynos_priv_state);
+
+		pr_debug("%s: avail_win=0x%x freed_mask=0x%x\n", __func__,
+			 exynos_priv_state->available_win_mask, freed_win_mask);
+
+		/*
+		 * FIXME: these windows will be made available for next atomic commit as soon as
+		 * atomic state is swapped. This can lead to a (very rare) race condition if commit
+		 * to hw hasn't finished before an atomic commit comes in for a different crtc.
+		 */
+		exynos_priv_state->available_win_mask |= freed_win_mask;
+	}
+
+	return 0;
+}
+
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
@@ -74,6 +192,10 @@ int exynos_atomic_check(struct drm_device *dev,
 		return ret;
 
 	ret = drm_atomic_normalize_zpos(dev, state);
+	if (ret)
+		return ret;
+
+	ret = exynos_atomic_check_windows(dev, state);
 	if (ret)
 		return ret;
 
@@ -585,6 +707,8 @@ static int exynos_drm_bind(struct device *dev)
 		ret = -ENOMEM;
 		goto err_mode_config_cleanup;
 	}
+
+	priv_state->available_win_mask = BIT(MAX_WIN_PER_DECON) - 1;
 
 	drm_atomic_private_obj_init(drm, &private->obj, &priv_state->base,
 				    &exynos_priv_state_funcs);

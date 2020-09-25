@@ -436,9 +436,11 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 					const struct drm_crtc_state *state)
 {
 	const struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(state->crtc);
+	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(state);
 	const struct decon_device *decon = exynos_crtc->ctx;
 	const struct decon_config *cfg = &decon->config;
 
+	drm_printf(p, "\treserved_win_mask=0x%x\n", exynos_crtc_state->reserved_win_mask);
 	drm_printf(p, "\tDecon #%d (state:%d)\n", decon->id, decon->state);
 	drm_printf(p, "\t\ttype=0x%x\n", cfg->out_type);
 	drm_printf(p, "\t\tsize=%dx%d\n", cfg->image_width, cfg->image_height);

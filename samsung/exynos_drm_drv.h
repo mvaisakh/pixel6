@@ -243,6 +243,7 @@ struct exynos_drm_crtc_state {
 	struct drm_property_blob *cgc_dither;
 	enum exynos_drm_writeback_type wb_type;
 	u8 seamless_mode_changed : 1;
+	unsigned int reserved_win_mask;
 };
 
 static inline struct exynos_drm_crtc_state *
@@ -283,6 +284,8 @@ struct exynos_drm_priv_state {
 
 	struct drm_atomic_state *old_state;
 	struct kthread_work commit_work;
+
+	unsigned int available_win_mask;
 };
 
 static inline struct exynos_drm_priv_state *

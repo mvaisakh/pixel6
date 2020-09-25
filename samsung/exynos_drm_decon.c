@@ -379,11 +379,11 @@ static void decon_atomic_begin(struct exynos_drm_crtc *crtc)
 
 static int decon_get_win_id(const struct drm_crtc_state *crtc_state, int zpos)
 {
-	const struct drm_device *dev = crtc_state->crtc->dev;
-	const unsigned long plane_mask = crtc_state->plane_mask;
+	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+	const unsigned long win_mask = exynos_crtc_state->reserved_win_mask;
 	int bit, i = 0;
 
-	for_each_set_bit(bit, &plane_mask, dev->mode_config.num_total_plane) {
+	for_each_set_bit(bit, &win_mask, MAX_WIN_PER_DECON) {
 		if (i == zpos)
 			return bit;
 		i++;
@@ -394,12 +394,13 @@ static int decon_get_win_id(const struct drm_crtc_state *crtc_state, int zpos)
 
 static bool decon_is_win_used(const struct drm_crtc_state *crtc_state, int win_id)
 {
-	const unsigned int plane_mask = crtc_state->plane_mask;
+	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+	const unsigned long win_mask = exynos_crtc_state->reserved_win_mask;
 
-	if (win_id > crtc_state->crtc->dev->mode_config.num_total_plane)
+	if (win_id > MAX_WIN_PER_DECON)
 		return false;
 
-	return (BIT(win_id) & plane_mask) != 0;
+	return (BIT(win_id) & win_mask) != 0;
 }
 
 static void decon_disable_win(struct decon_device *decon, int win_id)
@@ -546,13 +547,20 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 
 	/* if there are no planes attached, enable colormap as fallback */
 	if (new_crtc_state->plane_mask == 0) {
-		decon_debug(decon, "no planes, enable color map\n");
+		const int win_id = decon_get_win_id(new_crtc_state, 0);
+
+		if (win_id < 0) {
+			decon_warn(decon, "unable to get free win_id=%d mask=0x%x\n",
+				   win_id, new_exynos_crtc_state->reserved_win_mask);
+			return;
+		}
+		decon_debug(decon, "no planes, enable color map win_id=%d\n", win_id);
 
 		/*
 		 * TODO: window id needs to be unique when using dual display, current hack is to
 		 * use decon id, but it could conflict if planes are assigned to other display
 		 */
-		decon_set_color_map(decon, decon->id, decon->config.image_width,
+		decon_set_color_map(decon, win_id, decon->config.image_width,
 				decon->config.image_height);
 	}
 
