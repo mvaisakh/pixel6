@@ -76,12 +76,14 @@ static void get_pressure_threshold(void *device_data);
 static void set_pressure_user_level(void *device_data);
 static void get_pressure_user_level(void *device_data);
 #endif
+#ifdef USE_STIM_PAD
 static void run_fs_cal_pre_press(void *device_data);
 static void run_fs_cal_get_data(void *device_data);
 static void run_fs_cal_post_press(void *device_data);
 static void enable_fs_cal_table(void *device_data);
-static void enable_coordinate_report(void *device_data);
 static void enable_gain_limit(void *device_data);
+#endif
+static void enable_coordinate_report(void *device_data);
 static void run_trx_short_test(void *device_data);
 static void set_tsp_test_result(void *device_data);
 static void get_tsp_test_result(void *device_data);
@@ -186,12 +188,14 @@ static struct sec_cmd sec_cmds[] = {
 	{SEC_CMD("set_pressure_user_level", set_pressure_user_level),},
 	{SEC_CMD("get_pressure_user_level", get_pressure_user_level),},
 #endif
+#ifdef USE_STIM_PAD
 	{SEC_CMD("run_fs_cal_pre_press", run_fs_cal_pre_press),},
 	{SEC_CMD("run_fs_cal_get_data", run_fs_cal_get_data),},
 	{SEC_CMD("run_fs_cal_post_press", run_fs_cal_post_press),},
 	{SEC_CMD("enable_fs_cal_table", enable_fs_cal_table),},
-	{SEC_CMD("enable_coordinate_report", enable_coordinate_report),},
 	{SEC_CMD("enable_gain_limit", enable_gain_limit),},
+#endif
+	{SEC_CMD("enable_coordinate_report", enable_coordinate_report),},
 	{SEC_CMD("run_trx_short_test", run_trx_short_test),},
 	{SEC_CMD("set_tsp_test_result", set_tsp_test_result),},
 	{SEC_CMD("get_tsp_test_result", get_tsp_test_result),},
@@ -1412,6 +1416,7 @@ static int sec_ts_cs_spec_over_check(struct sec_ts_data *ts, short *gap)
 	return specover_count;
 }
 
+#ifdef USE_STIM_PAD
 static int sec_ts_get_gain_table(struct sec_ts_data *ts)
 {
 	int i, j;
@@ -1613,6 +1618,7 @@ static int sec_ts_get_postcal_uniformity(struct sec_ts_data *ts, short *diff)
 
 	return specover_cnt;
 }
+#endif
 
 static void sec_ts_print_frame(struct sec_ts_data *ts, short *min, short *max)
 {
@@ -2102,6 +2108,7 @@ out_read_channel:
 	return ret;
 }
 
+#ifdef USE_STIM_PAD
 static int sec_ts_read_gain_table(struct sec_ts_data *ts)
 {
 	int readbytes = ts->tx_count * ts->rx_count;
@@ -2137,6 +2144,28 @@ ErrorRead:
 
 	return ret;
 }
+
+int sec_ts_check_fs_precal(struct sec_ts_data *ts)
+{
+	int i, j;
+	int fail_count = 0;
+	short temp;
+
+	for (i = 0; i < ts->rx_count; i++) {
+		for (j = 0; j < ts->tx_count; j++) {
+			temp = ts->pFrame[i * ts->tx_count + j];
+			if (cm_region[i][j] == REGION_NOTCH)
+				continue;
+			/* check whether fs_precal data is within range */
+			if ((temp > fs_precal_h[i][j]) ||
+				(temp < fs_precal_l[i][j]))
+				fail_count++;
+		}
+	}
+
+	return fail_count;
+}
+#endif
 
 int sec_ts_read_raw_data(struct sec_ts_data *ts,
 		struct sec_cmd_data *sec, struct sec_ts_test_mode *mode)
@@ -2304,27 +2333,6 @@ error_alloc_mem:
 	sec_ts_locked_release_all_finger(ts);
 
 	return ret;
-}
-
-int sec_ts_check_fs_precal(struct sec_ts_data *ts)
-{
-	int i, j;
-	int fail_count = 0;
-	short temp;
-
-	for (i = 0; i < ts->rx_count; i++) {
-		for (j = 0; j < ts->tx_count; j++) {
-			temp = ts->pFrame[i * ts->tx_count + j];
-			if (cm_region[i][j] == REGION_NOTCH)
-				continue;
-			/* check whether fs_precal data is within range */
-			if ((temp > fs_precal_h[i][j]) ||
-				(temp < fs_precal_l[i][j]))
-				fail_count++;
-		}
-	}
-
-	return fail_count;
 }
 
 static void get_fw_ver_bin(void *device_data)
@@ -4631,6 +4639,7 @@ err_exit:
 	return rc;
 }
 
+#ifdef USE_STIM_PAD
 static void run_fs_cal_pre_press(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
@@ -5058,53 +5067,6 @@ static void enable_fs_cal_table(void *device_data)
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
 }
 
-static void enable_coordinate_report(void *device_data)
-{
-	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
-	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
-	int ret = 0;
-	u8 tPara;
-
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, true);
-
-	sec_cmd_set_default_result(sec);
-
-	if (ts->power_status == SEC_TS_STATE_POWER_OFF) {
-		input_err(true, &ts->client->dev, "%s: Touch is stopped!\n",
-			  __func__);
-		sec_cmd_set_cmd_result(sec, "TSP turned off", 14);
-		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
-		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
-		return;
-	}
-
-	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
-		sec->cmd_state = SEC_CMD_STATUS_FAIL;
-		sec_cmd_set_cmd_result(sec, "NG", 2);
-		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
-		return;
-	}
-
-	tPara = sec->cmd_param[0];
-
-	input_info(true, &ts->client->dev, "%s: coordinate report %s\n",
-		   __func__, ((tPara == 0) ? "disable" : "enable"));
-
-	ret = ts->sec_ts_write(ts, SEC_TS_CMD_SET_TOUCH_ENGINE_MODE,
-				   &tPara, 1);
-	if (ret < 0) {
-		input_err(true, &ts->client->dev,
-			  "%s: cmd write failed\n", __func__);
-		sec->cmd_state = SEC_CMD_STATUS_FAIL;
-		sec_cmd_set_cmd_result(sec, "NG", 2);
-	} else {
-		sec->cmd_state = SEC_CMD_STATUS_OK;
-		sec_cmd_set_cmd_result(sec, "OK", 2);
-	}
-
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
-}
-
 static void enable_gain_limit(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
@@ -5139,6 +5101,54 @@ static void enable_gain_limit(void *device_data)
 
 	ret = ts->sec_ts_write(ts, SEC_TS_CMD_DISABLE_GAIN_LIMIT, &tPara,
 				   1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			  "%s: cmd write failed\n", __func__);
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		sec_cmd_set_cmd_result(sec, "NG", 2);
+	} else {
+		sec->cmd_state = SEC_CMD_STATUS_OK;
+		sec_cmd_set_cmd_result(sec, "OK", 2);
+	}
+
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
+}
+#endif
+
+static void enable_coordinate_report(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	int ret = 0;
+	u8 tPara;
+
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, true);
+
+	sec_cmd_set_default_result(sec);
+
+	if (ts->power_status == SEC_TS_STATE_POWER_OFF) {
+		input_err(true, &ts->client->dev, "%s: Touch is stopped!\n",
+			  __func__);
+		sec_cmd_set_cmd_result(sec, "TSP turned off", 14);
+		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
+		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
+		return;
+	}
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		sec_cmd_set_cmd_result(sec, "NG", 2);
+		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
+		return;
+	}
+
+	tPara = sec->cmd_param[0];
+
+	input_info(true, &ts->client->dev, "%s: coordinate report %s\n",
+		   __func__, ((tPara == 0) ? "disable" : "enable"));
+
+	ret = ts->sec_ts_write(ts, SEC_TS_CMD_SET_TOUCH_ENGINE_MODE,
+				   &tPara, 1);
 	if (ret < 0) {
 		input_err(true, &ts->client->dev,
 			  "%s: cmd write failed\n", __func__);
@@ -7851,7 +7861,9 @@ int sec_ts_run_rawdata_type(struct sec_ts_data *ts, struct sec_cmd_data *sec)
 		goto out;
 	}
 
+#ifdef USE_STIM_PAD
 	sec_ts_read_gain_table(ts);
+#endif
 
 	sec_ts_release_tmode(ts);
 out:
@@ -8030,7 +8042,9 @@ void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read)
 		goto out;
 	}
 
+#ifdef USE_STIM_PAD
 	sec_ts_read_gain_table(ts);
+#endif
 
 	sec_ts_release_tmode(ts);
 out:

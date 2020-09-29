@@ -76,6 +76,7 @@
 #undef USE_PRESSURE_SENSOR //TODO: check this
 #undef PAT_CONTROL //TODO: check this
 #undef USE_CHARGER_WORK    /* Workaround for b/142669861 */
+#undef USE_STIM_PAD
 
 #if defined(USE_RESET_DURING_POWER_ON) || defined(USE_POR_AFTER_I2C_RETRY) || \
     defined(USE_RESET_EXIT_LPM) || defined(USE_POR_AFTER_SPI_RETRY)
