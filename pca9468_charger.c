@@ -5069,10 +5069,8 @@ static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 		return -ENOENT;
 	}
 
-	ent = debugfs_create_x32("address", 0644, chip->debug_root,
-				 &chip->debug_address);
-	if (!ent)
-		dev_err(chip->dev, "Couldn't create address debug file\n");
+	debugfs_create_x32("address", 0644, chip->debug_root,
+			   &chip->debug_address);
 
 	ent = debugfs_create_file("data", 0644, chip->debug_root, chip,
 				  &register_debug_ops);
