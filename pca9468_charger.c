@@ -5303,7 +5303,8 @@ static int get_current_time(unsigned long *now_tm_sec)
 			CONFIG_RTC_HCTOSYS_DEVICE, rc);
 		goto close_time;
 	}
-	rtc_tm_to_time(&tm, now_tm_sec);
+
+	*now_tm_sec = rtc_tm_to_time64(&tm);
 
 close_time:
 	rtc_class_close(rtc);
