@@ -92,7 +92,7 @@ enum batt_rl_status {
 struct batt_ssoc_rl_state {
 	/* rate limiter state */
 	qnum_t rl_ssoc_target;
-	time_t rl_ssoc_last_update;
+	ktime_t rl_ssoc_last_update;
 
 	/* rate limiter flags */
 	bool rl_no_zero;
@@ -126,7 +126,7 @@ struct batt_ssoc_state {
 	/* output of rate limiter */
 	int rl_rate;
 	int rl_last_ssoc;
-	time_t rl_last_update;
+	ktime_t rl_last_update;
 
 	/* connected or disconnected */
 	int buck_enabled;
@@ -453,7 +453,7 @@ static void ssoc_uicurve_dup(struct ssoc_uicurve *dst,
 
 /* could also use the rate of change for this */
 static qnum_t ssoc_rl_max_delta(const struct batt_ssoc_rl_state *rls,
-				int bucken, time_t delta_time)
+				int bucken, ktime_t delta_time)
 {
 	int i;
 	const qnum_t max_delta = (rls->rl_delta_max_soc * delta_time) /
@@ -477,7 +477,7 @@ static qnum_t ssoc_rl_max_delta(const struct batt_ssoc_rl_state *rls,
 
 static qnum_t ssoc_apply_rl(struct batt_ssoc_state *ssoc)
 {
-	const time_t now = get_boot_sec();
+	const ktime_t now = get_boot_sec();
 	struct batt_ssoc_rl_state *rls = &ssoc->ssoc_rl_state;
 	qnum_t rl_val;
 
@@ -497,8 +497,8 @@ static qnum_t ssoc_apply_rl(struct batt_ssoc_state *ssoc)
 		rl_val = rls->rl_ssoc_target;
 	} else {
 		qnum_t step;
-		const time_t delta_time = now - rls->rl_ssoc_last_update;
-		const time_t max_delta = ssoc_rl_max_delta(rls,
+		const ktime_t delta_time = now - rls->rl_ssoc_last_update;
+		const ktime_t max_delta = ssoc_rl_max_delta(rls,
 							   ssoc->buck_enabled,
 							   delta_time);
 
@@ -874,10 +874,10 @@ static void batt_rl_update_status(struct batt_drv *batt_drv)
 
 /* ------------------------------------------------------------------------- */
 
-static int batt_ttf_estimate(time_t *res, const struct batt_drv *batt_drv)
+static int batt_ttf_estimate(ktime_t *res, const struct batt_drv *batt_drv)
 {
 	int rc;
-	time_t estimate = batt_drv->ttf_stats.ttf_fake;
+	ktime_t estimate = batt_drv->ttf_stats.ttf_fake;
 
 	if (batt_drv->ssoc_state.buck_enabled != 1)
 		return -EINVAL;
@@ -927,7 +927,7 @@ static void batt_chg_stats_start(struct batt_drv *batt_drv)
 {
 	union gbms_ce_adapter_details ad;
 	struct gbms_charging_event *ce_data = &batt_drv->ce_data;
-	const time_t now = get_boot_sec();
+	const ktime_t now = get_boot_sec();
 	int vin, cc_in;
 
 	mutex_lock(&batt_drv->stats_lock);
@@ -967,7 +967,7 @@ static bool batt_chg_stats_qual(const struct gbms_charging_event *ce_data)
 /* call holding stats_lock */
 static void batt_chg_stats_tier(struct gbms_ce_tier_stats *tier,
 				int msc_state,
-				time_t elap)
+				ktime_t elap)
 {
 	if (msc_state < 0 || msc_state >= MSC_STATES_COUNT)
 		return;
@@ -978,7 +978,7 @@ static void batt_chg_stats_tier(struct gbms_ce_tier_stats *tier,
 
 /* call holding stats_lock */
 static void batt_chg_stats_soc_update(struct gbms_charging_event *ce_data,
-				      qnum_t soc, time_t elap, int tier_index,
+				      qnum_t soc, ktime_t elap, int tier_index,
 				      int cc)
 {
 	int index;
@@ -1006,7 +1006,7 @@ static void batt_chg_stats_soc_update(struct gbms_charging_event *ce_data,
 /* call holding stats_lock */
 static void batt_chg_stats_update(struct batt_drv *batt_drv,
 				  int temp_idx, int tier_idx,
-				  int ibatt_ma, int temp, time_t elap)
+				  int ibatt_ma, int temp, ktime_t elap)
 {
 	int cc;
 	const int msc_state = batt_drv->msc_state;
@@ -1120,8 +1120,8 @@ static bool batt_chg_stats_close(struct batt_drv *batt_drv,
 	 * NOTE: vbatt_idx != -1 -> temp_idx != -1
 	 */
 	if (batt_drv->vbatt_idx != -1 && batt_drv->temp_idx != -1) {
-		const time_t now = get_boot_sec();
-		const time_t elap = now - batt_drv->ce_data.last_update;
+		const ktime_t now = get_boot_sec();
+		const ktime_t elap = now - batt_drv->ce_data.last_update;
 
 		batt_chg_stats_update(batt_drv,
 				      batt_drv->temp_idx, batt_drv->vbatt_idx,
@@ -1681,8 +1681,8 @@ static int msc_logic_internal(struct batt_drv *batt_drv)
 	int vbatt_idx = batt_drv->vbatt_idx, fv_uv = batt_drv->fv_uv, temp_idx;
 	int temp, ibatt, vbatt, ioerr;
 	int update_interval = MSC_DEFAULT_UPDATE_INTERVAL;
-	const time_t now = get_boot_sec();
-	time_t elap = now - batt_drv->ce_data.last_update;
+	const ktime_t now = get_boot_sec();
+	ktime_t elap = now - batt_drv->ce_data.last_update;
 
 	temp = GPSY_GET_INT_PROP(fg_psy, POWER_SUPPLY_PROP_TEMP, &ioerr);
 	if (ioerr < 0)
@@ -2951,7 +2951,7 @@ static int gbatt_get_temp(struct batt_drv *batt_drv, int *temp)
 static void log_ttf_estimate(const char *label, int ssoc, struct batt_drv *batt_drv)
 {
 	int cc, err;
-	time_t res = 0;
+	ktime_t res = 0;
 
 
 	err = batt_ttf_estimate(&res, batt_drv);
@@ -3484,7 +3484,7 @@ static int gbatt_get_property(struct power_supply *psy,
 		break;
 
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW: {
-		time_t res;
+		ktime_t res;
 
 		rc = batt_ttf_estimate(&res, batt_drv);
 		if (rc == 0) {

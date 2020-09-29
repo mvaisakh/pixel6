@@ -66,9 +66,9 @@ struct overheat_info {
 	int temp;
 	int plug_temp;
 	int max_temp;
-	time_t plug_time;
-	time_t trip_time;
-	time_t hysteresis_time;
+	ktime_t plug_time;
+	ktime_t trip_time;
+	ktime_t hysteresis_time;
 
 	int begin_temp;
 	int clear_temp;
@@ -108,7 +108,7 @@ static const struct attribute_group ovh_attr_group = {
 	.attrs = ovh_attr,
 };
 
-static inline time_t get_seconds_since_boot(void)
+static inline ktime_t get_seconds_since_boot(void)
 {
 	return div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC);
 }

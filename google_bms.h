@@ -129,7 +129,7 @@ struct ttf_tier_stat {
 	int16_t soc_in;
 	int	cc_in;
 	int	cc_total;
-	time_t	avg_time;
+	ktime_t	avg_time;
 };
 
 struct gbms_ce_tier_stats {
@@ -172,7 +172,7 @@ struct gbms_ce_tier_stats {
 struct ttf_soc_stats {
 	int ti[GBMS_SOC_STATS_LEN];		/* charge tier at each soc */
 	int cc[GBMS_SOC_STATS_LEN];		/* coulomb count at each soc */
-	time_t elap[GBMS_SOC_STATS_LEN];	/* time spent at soc */
+	ktime_t elap[GBMS_SOC_STATS_LEN];	/* time spent at soc */
 };
 
 /* reference data for soc estimation  */
@@ -188,7 +188,7 @@ struct ttf_adapter_stats {
  * maximum amout of current that can be pushed to the battery.
  */
 struct batt_ttf_stats {
-	time_t ttf_fake;
+	ktime_t ttf_fake;
 
 	struct ttf_soc_stats soc_ref;	/* gold: soc->elap,cc */
 	int ref_temp_idx;
@@ -210,8 +210,8 @@ struct gbms_charging_event {
 	struct ttf_soc_stats soc_stats;
 	int last_soc;
 
-	time_t first_update;
-	time_t last_update;
+	ktime_t first_update;
+	ktime_t last_update;
 	uint32_t chg_sts_qual_time;
 	uint32_t chg_sts_delta_soc;
 };
@@ -292,7 +292,7 @@ int gbms_cycle_count_cstr_bc(char *buff, size_t size,
 int ttf_soc_cstr(char *buff, int size, const struct ttf_soc_stats *soc_stats,
 		 int start, int end);
 
-int ttf_soc_estimate(time_t *res,
+int ttf_soc_estimate(ktime_t *res,
 		     const struct batt_ttf_stats *stats,
 		     const struct gbms_charging_event *ce_data,
 		     qnum_t soc, qnum_t last);
@@ -301,7 +301,7 @@ void ttf_soc_init(struct ttf_soc_stats *dst);
 
 int ttf_tier_cstr(char *buff, int size, struct ttf_tier_stat *t_stat);
 
-int ttf_tier_estimate(time_t *res,
+int ttf_tier_estimate(ktime_t *res,
 		      const struct batt_ttf_stats *ttf_stats,
 		      int temp_idx, int vbatt_idx,
 		      int capacity, int full_capacity);

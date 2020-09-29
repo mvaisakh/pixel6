@@ -209,11 +209,11 @@ static int ttf_pwr_ratio(const struct batt_ttf_stats *stats,
 
 /* SOC estimates ---------------------------------------------------------  */
 
-static int ttf_elap(time_t *estimate, int i, const struct batt_ttf_stats *stats,
+static int ttf_elap(ktime_t *estimate, int i, const struct batt_ttf_stats *stats,
 		    const struct gbms_charging_event *ce_data)
 {
 	int ratio;
-	time_t elap;
+	ktime_t elap;
 
 	if (i < 0 || i >= 100) {
 		*estimate = 0;
@@ -240,7 +240,7 @@ static int ttf_elap(time_t *estimate, int i, const struct batt_ttf_stats *stats,
  * NOTE: prediction is based stats and corrected with the ce_data
  * NOTE: usually called with soc > ce_data->last_soc
  */
-int ttf_soc_estimate(time_t *res,
+int ttf_soc_estimate(ktime_t *res,
 		     const struct batt_ttf_stats *stats,
 		     const struct gbms_charging_event *ce_data,
 		     qnum_t soc, qnum_t last)
@@ -249,7 +249,7 @@ int ttf_soc_estimate(time_t *res,
 	const int end = qnum_toint(last);
 	const int frac = qnum_fracdgt(soc);
 	int i = qnum_toint(soc);
-	time_t estimate = 0;
+	ktime_t estimate = 0;
 	int ret;
 
 	if (end > 100)
@@ -262,7 +262,7 @@ int ttf_soc_estimate(time_t *res,
 	/* add ttf_elap starting from i + 1 */
 	estimate = (estimate * (100 - frac)) / 100;
 	for (i += 1; i < end; i++) {
-		time_t elap;
+		ktime_t elap;
 
 		if (i >= ssoc_in && i < ce_data->last_soc) {
 			/* use real data if within charging event */
@@ -354,7 +354,7 @@ static void ttf_soc_update(struct batt_ttf_stats *stats,
 		/* average the weighted time at soc */
 		if (src->elap[i]) {
 			int ratio;
-			time_t elap;
+			ktime_t elap;
 
 			ratio = ttf_pwr_ratio(stats, ce_data, i);
 			if (ratio < 0)
@@ -395,11 +395,11 @@ void ttf_soc_init(struct ttf_soc_stats *dst)
 	(ts->cc_total != 0 && ts->avg_time != 0)
 
 /* TODO: adjust for adapter capability */
-static time_t ttf_tier_accumulate(const struct ttf_tier_stat *ts,
+static ktime_t ttf_tier_accumulate(const struct ttf_tier_stat *ts,
 				  int vbatt_idx,
 				  const struct batt_ttf_stats *stats)
 {
-	time_t estimate = 0;
+	ktime_t estimate = 0;
 
 	if (vbatt_idx >= GBMS_STATS_TIER_COUNT)
 		return 0;
@@ -525,11 +525,11 @@ static void ttf_tier_update(struct batt_ttf_stats *stats,
 }
 
 /* tier estimates only, */
-int ttf_tier_estimate(time_t *res, const struct batt_ttf_stats *stats,
+int ttf_tier_estimate(ktime_t *res, const struct batt_ttf_stats *stats,
 		      int temp_idx, int vbatt_idx,
 		      int capacity, int full_capacity)
 {
-	time_t estimate = 0;
+	ktime_t estimate = 0;
 	const struct ttf_tier_stat *ts;
 
 	/* tier estimates, only when in tier */

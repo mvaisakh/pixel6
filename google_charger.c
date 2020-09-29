@@ -841,7 +841,7 @@ static int chg_work_roundtrip(struct chg_drv *chg_drv,
 static bool chg_update_dead_battery(const struct chg_drv *chg_drv)
 {
 	int dead = 0;
-	const time_t uptime = get_boot_sec();
+	const ktime_t uptime = get_boot_sec();
 
 	if (uptime < DEAD_BATTERY_DEADLINE_SEC)
 		dead = GPSY_GET_PROP(chg_drv->bat_psy, GBMS_PROP_DEAD_BATTERY);

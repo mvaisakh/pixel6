@@ -57,7 +57,7 @@ struct pd_pps_data {
 	int pd_online;
 	enum pd_pps_stage stage;
 	unsigned int keep_alive_cnt;
-	time_t last_update;
+	ktime_t last_update;
 
 	/* from TA */
 	int min_uv;
