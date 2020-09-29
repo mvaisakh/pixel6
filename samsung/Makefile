@@ -1,27 +1,17 @@
-# SPDX-License-Identifier: GPL-2.0
-#
-# Makefile for the drm device driver.  This driver provides support for the
-# Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
+M ?= $(shell pwd)
 
-subdir-ccflags-y			:= -I$(srctree)/$(src)	\
-					   -I$(srctree)/$(src)/cal_common
-subdir-ccflags-$(CONFIG_SOC_EXYNOS9820)	+= -I$(srctree)/$(src)/cal_9820
-subdir-ccflags-$(CONFIG_SOC_GS101)	+= -I$(srctree)/$(src)/cal_9845
+KBASE_PATH_RELATIVE = $(M)
 
-exynos-drm-y := exynos_drm_drv.o exynos_drm_crtc.o exynos_drm_fb.o	\
-		exynos_drm_plane.o exynos_drm_format.o exynos_drm_debug.o \
-		exynos_drm_gem.o exynos_drm_hibernation.o	\
-		exynos_drm_dqe.o
+KBUILD_OPTIONS += CONFIG_DRM_SAMSUNG=m
+KBUILD_OPTIONS += CONFIG_DRM_SAMSUNG_DECON=y
+KBUILD_OPTIONS += CONFIG_DRM_SAMSUNG_DPP=y
+KBUILD_OPTIONS += CONFIG_DRM_SAMSUNG_DSI=y
+KBUILD_OPTIONS += CONFIG_DRM_SAMSUNG_WB=y
 
-exynos-drm-$(CONFIG_DRM_FBDEV_EMULATION) += exynos_drm_fbdev.o
-exynos-drm-$(CONFIG_DRM_SAMSUNG_DECON)	+= exynos_drm_decon.o
-exynos-drm-$(CONFIG_DRM_SAMSUNG_DPP)	+= exynos_drm_dpp.o
-exynos-drm-$(CONFIG_DRM_SAMSUNG_DSI)	+= exynos_drm_dsim.o
-exynos-drm-$(CONFIG_DRM_SAMSUNG_WB)	+= exynos_drm_writeback.o
+KBUILD_OPTIONS += CONFIG_DRM_PANEL_SAMSUNG_COMMON=m
+KBUILD_OPTIONS += CONFIG_DRM_PANEL_SAMSUNG_EMUL=m
+KBUILD_OPTIONS += CONFIG_DRM_PANEL_SAMSUNG_S6E3HC2=m
 
-exynos-drm-$(CONFIG_SOC_EXYNOS9820)	+= cal_9820/decon_reg.o cal_9820/dsim_reg.o cal_9820/dpp_reg.o
-exynos-drm-$(CONFIG_SOC_GS101)		+= cal_9845/decon_reg.o cal_9845/dsim_reg.o cal_9845/dpp_reg.o cal_9845/dqe_reg.o cal_9845/hdr_reg.o
+modules modules_install clean:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 $(KBUILD_OPTIONS) $(@)
 
-exynos-drm-$(CONFIG_EXYNOS_BTS)		+= exynos_drm_bts.o
-
-obj-$(CONFIG_DRM_SAMSUNG)		+= exynos-drm.o

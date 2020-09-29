@@ -13,9 +13,9 @@
 #ifndef __SAMSUNG_DPP_CAL_H__
 #define __SAMSUNG_DPP_CAL_H__
 
-#include <exynos_drm_format.h>
-#include <exynos_drm_plane.h>
 #include <drm/samsung_drm.h>
+
+#include "../exynos_drm_format.h"
 
 /* RDMA + ODMA */
 #define MAX_DPP_CNT		7

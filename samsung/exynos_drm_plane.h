@@ -14,7 +14,8 @@
 #define __EXYNOS_DRM_PLANE_H__
 
 #include <drm/drm_device.h>
-#include <exynos_drm_drv.h>
+
+#include "exynos_drm_drv.h"
 
 #define EXYNOS_PLANE_ALPHA_MAX          0xff
 

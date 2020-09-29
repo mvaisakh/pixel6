@@ -18,9 +18,9 @@
 #include <linux/fs.h>
 #include <linux/mm_types.h>
 #include <linux/ion.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_gem.h>
-#include <exynos_drm_dsim.h>
+
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_gem.h"
 
 struct exynos_drm_gem *exynos_drm_gem_alloc(struct drm_device *dev,
 					    size_t size, unsigned int flags)
@@ -61,7 +61,7 @@ exynos_drm_gem_prime_import_sg_table(struct drm_device *dev,
 		return ERR_PTR(exynos_gem_obj->dma_addr);
 	}
 
-	pr_debug("mapped dma_addr: 0x%pK\n", exynos_gem_obj->dma_addr);
+	pr_debug("mapped dma_addr: 0x%llx\n", exynos_gem_obj->dma_addr);
 
 	return &exynos_gem_obj->base;
 }
@@ -167,7 +167,7 @@ struct drm_gem_object *exynos_drm_gem_prime_import(struct drm_device *dev,
 	return drm_gem_prime_import_dev(dev, dma_buf, priv->iommu_client);
 }
 
-int exynos_drm_gem_mmap_object(struct exynos_drm_gem *exynos_gem_obj,
+static int exynos_drm_gem_mmap_object(struct exynos_drm_gem *exynos_gem_obj,
 			       struct vm_area_struct *vma)
 {
 	struct dma_buf_attachment *attach = exynos_gem_obj->base.import_attach;
@@ -266,7 +266,7 @@ void exynos_drm_gem_print_info(struct drm_printer *p, unsigned int indent,
 {
 	const struct exynos_drm_gem *exynos_gem_obj = to_exynos_gem(obj);
 
-	drm_printf_indent(p, indent, "dma_addr=0x%pK\n",
+	drm_printf_indent(p, indent, "dma_addr=0x%llx\n",
 			  exynos_gem_obj->dma_addr);
 	drm_printf_indent(p, indent, "flags=0x%x\n", exynos_gem_obj->flags);
 }

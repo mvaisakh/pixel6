@@ -15,7 +15,6 @@
 
 #include <asm/unaligned.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_of.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_panel.h>
@@ -23,6 +22,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_modes.h>
 #include <drm/exynos_display_common.h>
+#include <drm/drm_vblank.h>
 
 #include <linux/clk.h>
 #include <linux/gpio/consumer.h>
@@ -46,11 +46,11 @@
 #include <dt-bindings/soc/google/gs101-devfreq.h>
 #include <soc/google/exynos-devfreq.h>
 
-#include <exynos_drm_crtc.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_decon.h>
-
 #include <regs-dsim.h>
+
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_dsim.h"
 
 struct dsim_device *dsim_drvdata[MAX_DSI_CNT];
 
@@ -1355,8 +1355,6 @@ static int dsim_probe(struct platform_device *pdev)
 {
 	struct dsim_device *dsim;
 	int ret;
-
-	pr_info("%s +\n", __func__);
 
 	dsim = devm_kzalloc(&pdev->dev, sizeof(*dsim), GFP_KERNEL);
 	if (!dsim)

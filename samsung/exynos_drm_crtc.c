@@ -13,20 +13,22 @@
  * option) any later version.
  */
 
-#include <drm/drmP.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_color_mgmt.h>
+#include <drm/drm_crtc_helper.h>
+#include <drm/drm_fourcc.h>
+#include <drm/drm_ioctl.h>
+#include <drm/drm_vblank.h>
 #include <drm/samsung_drm.h>
 
-#include <exynos_drm_crtc.h>
-#include <exynos_drm_drv.h>
-#include <exynos_drm_plane.h>
-#include <exynos_drm_decon.h>
-
 #include <dqe_cal.h>
+
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_plane.h"
 
 static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 					  struct drm_crtc_state *old_state)

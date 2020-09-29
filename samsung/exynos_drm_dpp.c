@@ -10,9 +10,9 @@
  * Free Software Foundation;  either version 2 of the  License, or (at your
  * option) any later version.
  */
-#include <drm/drmP.h>
 #include <drm/exynos_drm.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_fourcc.h>
 
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -26,14 +26,14 @@
 #include <linux/soc/samsung/exynos-smc.h>
 #include <linux/ion.h>
 
-#include <exynos_drm_fb.h>
-#include <exynos_drm_dpp.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_format.h>
-#include <exynos_drm_decon.h>
-
-#include <regs-dpp.h>
 #include <hdr_cal.h>
+#include <regs-dpp.h>
+
+#include "exynos_drm_decon.h"
+#include "exynos_drm_dpp.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_fb.h"
+#include "exynos_drm_format.h"
 
 #define dpp_info(dpp, fmt, ...)	\
 pr_info("%s[%d]: "fmt, dpp->dev->driver->name, dpp->id, ##__VA_ARGS__)
@@ -845,7 +845,7 @@ static int dpp_init_resources(struct dpp_device *dpp)
 	dpp_regs_desc_init(dpp->regs.dma_base_regs, "dma", REGS_DMA, dpp->id);
 
 	dpp->dma_irq = of_irq_get_byname(np, "dma");
-	dpp_info(dpp, "dma irq no = %lld\n", dpp->dma_irq);
+	dpp_info(dpp, "dma irq no = %d\n", dpp->dma_irq);
 	ret = devm_request_irq(dev, dpp->dma_irq, dma_irq_handler, 0,
 			pdev->name, dpp);
 	if (ret) {
@@ -865,7 +865,7 @@ static int dpp_init_resources(struct dpp_device *dpp)
 				dpp->id);
 
 		dpp->dpp_irq = of_irq_get_byname(np, "dpp");
-		dpp_info(dpp, "dpp irq no = %lld\n", dpp->dpp_irq);
+		dpp_info(dpp, "dpp irq no = %d\n", dpp->dpp_irq);
 		ret = devm_request_irq(dev, dpp->dpp_irq, dpp_irq_handler, 0,
 				pdev->name, dpp);
 		if (ret) {

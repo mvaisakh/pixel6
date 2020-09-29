@@ -14,10 +14,11 @@
 #ifndef _EXYNOS_DRM_DPP_H_
 #define _EXYNOS_DRM_DPP_H_
 
-#include <exynos_drm_drv.h>
 #include <drm/samsung_drm.h>
 
 #include <dpp_cal.h>
+
+#include "exynos_drm_drv.h"
 
 enum EXYNOS9_DPP_FEATURES {
 	/* Can reads the graphical image */

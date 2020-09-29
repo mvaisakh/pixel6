@@ -9,9 +9,10 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/of_platform.h>
 #include <linux/module.h>
-#include <panel-samsung-drv.h>
+#include <linux/of_platform.h>
+
+#include "panel-samsung-drv.h"
 
 static const unsigned char SEQ_PPS_WQHD[] = {
 	// WQHD+ :1440x3040

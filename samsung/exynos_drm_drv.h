@@ -16,13 +16,15 @@
 #ifndef _EXYNOS_DRM_DRV_H_
 #define _EXYNOS_DRM_DRV_H_
 
-#include <drm/drmP.h>
+#include <drm/drm_crtc.h>
+#include <drm/drm_plane.h>
 #include <drm/drm_property.h>
 #include <drm/samsung_drm.h>
 #include <linux/module.h>
 
-#include <exynos_drm_dqe.h>
 #include <decon_cal.h>
+
+#include "exynos_drm_dqe.h"
 
 #define MAX_CRTC	3
 #define MAX_PLANE	MAX_WIN_PER_DECON

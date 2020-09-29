@@ -11,9 +11,10 @@
  */
 
 #include <cal_config.h>
-#include <regs-hdr.h>
 #include <hdr_cal.h>
 #include <dpp_cal.h>
+
+#include "regs-hdr.h"
 
 static struct cal_regs_desc regs_hdr[REGS_DPP_ID_MAX - 1];
 

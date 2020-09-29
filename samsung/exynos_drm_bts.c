@@ -10,10 +10,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <exynos_drm_decon.h>
-#include <exynos_drm_writeback.h>
-#include <exynos_drm_format.h>
-
 #include <soc/google/bts.h>
 #if defined(CONFIG_SOC_GS101)
 #include <soc/google/exynos-devfreq.h>
@@ -27,6 +23,10 @@
 #elif defined(CONFIG_SOC_EXYNOS9820)
 #include <dt-bindings/clock/exynos9820.h>
 #endif
+
+#include "exynos_drm_decon.h"
+#include "exynos_drm_format.h"
+#include "exynos_drm_writeback.h"
 
 #define DISP_FACTOR		100UL
 #define MULTI_FACTOR		(1UL << 10)
@@ -236,7 +236,7 @@ static u64 dpu_bts_get_resol_clock(u32 xres, u32 yres, u32 fps)
 	return resol_khz;
 }
 
-u64 dpu_bts_calc_aclk_disp(struct decon_device *decon,
+static u64 dpu_bts_calc_aclk_disp(struct decon_device *decon,
 		struct dpu_bts_win_config *config, u64 resol_clock)
 {
 	u64 s_ratio_h, s_ratio_v;
@@ -492,7 +492,7 @@ static void dpu_bts_convert_config_to_info(struct bts_dpp_info *dpp,
 			dpp->dst.x1, dpp->dst.x2, dpp->dst.y1, dpp->dst.y2);
 }
 
-void dpu_bts_calc_bw(struct decon_device *decon)
+static void dpu_bts_calc_bw(struct decon_device *decon)
 {
 	struct dpu_bts_win_config *config;
 	struct bts_decon_info bts_info;
@@ -563,7 +563,7 @@ void dpu_bts_calc_bw(struct decon_device *decon)
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 
-void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
+static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 {
 	struct bts_bw bw = { 0, };
 
@@ -603,7 +603,7 @@ void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 
-void dpu_bts_release_bw(struct decon_device *decon)
+static void dpu_bts_release_bw(struct decon_device *decon)
 {
 	struct bts_bw bw = { 0, };
 
@@ -624,7 +624,7 @@ void dpu_bts_release_bw(struct decon_device *decon)
 }
 
 #define MAX_IDX_NAME_SIZE	16
-void dpu_bts_init(struct decon_device *decon)
+static void dpu_bts_init(struct decon_device *decon)
 {
 	int i;
 	char bts_idx_name[MAX_IDX_NAME_SIZE];
@@ -678,7 +678,7 @@ void dpu_bts_init(struct decon_device *decon)
 	DPU_INFO_BTS("decon%d bts feature is enabled\n", decon->id);
 }
 
-void dpu_bts_deinit(struct decon_device *decon)
+static void dpu_bts_deinit(struct decon_device *decon)
 {
 	if (!decon->bts.enabled)
 		return;

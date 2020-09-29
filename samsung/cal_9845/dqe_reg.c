@@ -11,10 +11,11 @@
  */
 
 #include <cal_config.h>
-#include <regs-dqe.h>
 #include <dqe_cal.h>
 #include <decon_cal.h>
 #include <drm/samsung_drm.h>
+
+#include "regs-dqe.h"
 
 static struct cal_regs_desc regs_dqe;
 

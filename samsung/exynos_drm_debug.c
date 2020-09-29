@@ -10,20 +10,21 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/ktime.h>
 #include <linux/debugfs.h>
-#include <linux/pm_runtime.h>
+#include <linux/ktime.h>
 #include <linux/moduleparam.h>
+#include <linux/pm_runtime.h>
+#include <linux/time.h>
 #include <video/mipi_display.h>
-#include <drm/drmP.h>
 #include <drm/drm_print.h>
 
-#include <exynos_drm_decon.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_writeback.h>
 #include <cal_config.h>
 #include <dt-bindings/soc/google/gs101-devfreq.h>
 #include <soc/google/exynos-devfreq.h>
+
+#include "exynos_drm_decon.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_writeback.h"
 
 /* Default is 1024 entries array for event log buffer */
 static unsigned int dpu_event_log_max = 1024;
@@ -299,7 +300,7 @@ static void dpu_print_log_atomic(struct dpu_log_atomic *atomic,
 	}
 }
 
-void dpu_print_log_rsc(char *buf, int len, struct dpu_log_rsc_occupancy *rsc)
+static void dpu_print_log_rsc(char *buf, int len, struct dpu_log_rsc_occupancy *rsc)
 {
 	int i, len_chs, len_wins;
 	char str_chs[128];
@@ -330,7 +331,7 @@ static int dpu_print_log_freqs(char *buf, int len, struct dpu_log_freqs *freqs)
 			freqs->mif_freq, freqs->int_freq, freqs->disp_freq);
 }
 
-const char *get_event_name(enum dpu_event_type type)
+static const char *get_event_name(enum dpu_event_type type)
 {
 	static const char events[][32] = {
 		"NONE",				"DECON_ENABLED",
@@ -520,24 +521,11 @@ static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
 		pr_err("failed to create %s dir\n", name);
 		return NULL;
 	}
-	if (!debugfs_create_bool("force_enable", 0664, dent, &d->force_en)) {
-		pr_err("failed to create %s force_enable\n", name);
-		goto err;
-	}
-	if (!debugfs_create_bool("verbose", 0664, dent, &d->verbose)) {
-		pr_err("failed to create %s verbose\n", name);
-		goto err;
-	}
-	if (!debugfs_create_u32("val", 0664, dent, &d->val)) {
-		pr_err("failed to create %s val\n", name);
-		goto err;
-	}
+	debugfs_create_bool("force_enable", 0664, dent, &d->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &d->verbose);
+	debugfs_create_u32("val", 0664, dent, &d->val);
 
 	return dent;
-
-err:
-	debugfs_remove_recursive(dent);
-	return NULL;
 }
 
 #define MAX_NAME_SIZE	32
@@ -583,11 +571,7 @@ int dpu_init_debug(struct decon_device *decon)
 		goto err_event_log;
 	}
 
-	if (!debugfs_create_u32("underrun_cnt", 0664,
-			crtc->debugfs_entry, &decon->d.underrun_cnt)) {
-		DRM_ERROR("failed to create debugfs underrun_cnt file\n");
-		goto err_debugfs;
-	}
+	debugfs_create_u32("underrun_cnt", 0664, crtc->debugfs_entry, &decon->d.underrun_cnt);
 
 	urgent_dent = debugfs_create_dir("urgent", crtc->debugfs_entry);
 	if (!urgent_dent) {
@@ -595,65 +579,16 @@ int dpu_init_debug(struct decon_device *decon)
 		goto err_debugfs;
 	}
 
-	if (!debugfs_create_u32("rd_en", 0664,
-			urgent_dent, &decon->config.urgent.rd_en)) {
-		DRM_ERROR("failed to create debugfs rd_en file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("rd_hi_thres", 0664,
-			urgent_dent, &decon->config.urgent.rd_hi_thres)) {
-		DRM_ERROR("failed to create debugfs rd_hi_thres file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("rd_lo_thres", 0664,
-			urgent_dent, &decon->config.urgent.rd_lo_thres)) {
-		DRM_ERROR("failed to create debugfs rd_lo_thres file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("rd_wait_cycle", 0664,
-			urgent_dent, &decon->config.urgent.rd_wait_cycle)) {
-		DRM_ERROR("failed to create debugfs rd_wait_cycle file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_u32("wr_en", 0664,
-			urgent_dent, &decon->config.urgent.wr_en)) {
-		DRM_ERROR("failed to create debugfs wr_en file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("wr_hi_thres", 0664,
-			urgent_dent, &decon->config.urgent.wr_hi_thres)) {
-		DRM_ERROR("failed to create debugfs wr_hi_thres file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("wr_lo_thres", 0664,
-			urgent_dent, &decon->config.urgent.wr_lo_thres)) {
-		DRM_ERROR("failed to create debugfs wr_lo_thres file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_bool("dta_en", 0664,
-			urgent_dent, &decon->config.urgent.dta_en)) {
-		DRM_ERROR("failed to create debugfs dta_en file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("dta_hi_thres", 0664,
-			urgent_dent, &decon->config.urgent.dta_hi_thres)) {
-		DRM_ERROR("failed to create debugfs dta_hi_thres file\n");
-		goto err_urgent;
-	}
-
-	if (!debugfs_create_x32("dta_lo_thres", 0664,
-			urgent_dent, &decon->config.urgent.dta_lo_thres)) {
-		DRM_ERROR("failed to create debugfs dta_lo_thres file\n");
-		goto err_urgent;
-	}
+	debugfs_create_u32("rd_en", 0664, urgent_dent, &decon->config.urgent.rd_en);
+	debugfs_create_x32("rd_hi_thres", 0664, urgent_dent, &decon->config.urgent.rd_hi_thres);
+	debugfs_create_x32("rd_lo_thres", 0664, urgent_dent, &decon->config.urgent.rd_lo_thres);
+	debugfs_create_x32("rd_wait_cycle", 0664, urgent_dent, &decon->config.urgent.rd_wait_cycle);
+	debugfs_create_u32("wr_en", 0664, urgent_dent, &decon->config.urgent.wr_en);
+	debugfs_create_x32("wr_hi_thres", 0664, urgent_dent, &decon->config.urgent.wr_hi_thres);
+	debugfs_create_x32("wr_lo_thres", 0664, urgent_dent, &decon->config.urgent.wr_lo_thres);
+	debugfs_create_bool("dta_en", 0664, urgent_dent, &decon->config.urgent.dta_en);
+	debugfs_create_x32("dta_hi_thres", 0664, urgent_dent, &decon->config.urgent.dta_hi_thres);
+	debugfs_create_x32("dta_lo_thres", 0664, urgent_dent, &decon->config.urgent.dta_lo_thres);
 
 	if (dqe) {
 		cgc_dither_dent = exynos_debugfs_add_dqe_override("cgc_dither",

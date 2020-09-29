@@ -15,7 +15,7 @@
  * published by the Free Software Foundation.
  */
 
-#include <regs-dsim.h>
+#include "regs-dsim.h"
 #include <dsim_cal.h>
 #include <cal_config.h>
 

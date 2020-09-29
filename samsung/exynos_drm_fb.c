@@ -13,33 +13,33 @@
  * option) any later version.
  */
 
-#include <drm/drmP.h>
+#include <drm/drm_atomic.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_atomic.h>
-#include <drm/drm_atomic_helper.h>
 #include <uapi/drm/exynos_drm.h>
 #include <uapi/linux/videodev2_exynos_media.h>
 #include <linux/dma-buf.h>
 
-#include <exynos_drm_decon.h>
-#include <exynos_drm_drv.h>
-#include <exynos_drm_fb.h>
-#include <exynos_drm_fbdev.h>
-#include <exynos_drm_crtc.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_format.h>
-#include <exynos_drm_gem.h>
-#include <exynos_drm_hibernation.h>
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_fb.h"
+#include "exynos_drm_fbdev.h"
+#include "exynos_drm_format.h"
+#include "exynos_drm_gem.h"
+#include "exynos_drm_hibernation.h"
 
 static const struct drm_framebuffer_funcs exynos_drm_fb_funcs = {
 	.destroy	= drm_gem_fb_destroy,
 	.create_handle	= drm_gem_fb_create_handle,
 };
 
-struct drm_framebuffer *
+static struct drm_framebuffer *
 exynos_drm_framebuffer_init(struct drm_device *dev,
 			    const struct drm_mode_fb_cmd2 *mode_cmd,
 			    struct drm_gem_object **obj,
@@ -146,7 +146,7 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 		size = get_plane_size(mode_cmd, i, info);
 		if (!size || mode_cmd->offsets[i] + size > obj[i]->size) {
-			DRM_ERROR("offsets[%d](%d) size(%d) obj[%d]->size(%d)\n",
+			DRM_ERROR("offsets[%d](%d) size(%zd) obj[%d]->size(%zd)\n",
 					i, mode_cmd->offsets[i], size, i,
 					obj[i]->size);
 			i++;
@@ -204,7 +204,7 @@ dma_addr_t exynos_drm_fb_dma_addr(const struct drm_framebuffer *fb, int index)
 
 	exynos_gem = to_exynos_gem(fb->obj[index]);
 
-	DRM_DEBUG("%s:%d, dma_addr[%d] = 0x%llx (+%llx)\n", __func__, __LINE__,
+	DRM_DEBUG("%s:%d, dma_addr[%d] = 0x%llx (+0x%x)\n", __func__, __LINE__,
 			index, exynos_gem->dma_addr, fb->offsets[index]);
 
 	return exynos_gem->dma_addr + fb->offsets[index];
@@ -261,7 +261,7 @@ static void plane_state_to_win_config(struct dpu_bts_win_config *win_config,
 			win_config->src_w, win_config->src_h,
 			win_config->dst_x, win_config->dst_y,
 			win_config->dst_w, win_config->dst_h);
-	DRM_DEBUG("rot[%d] afbc[%d] format[%d] ch[%d] zpos[%d] comp_src[%lu]\n",
+	DRM_DEBUG("rot[%d] afbc[%d] format[%d] ch[%d] zpos[%d] comp_src[%llu]\n",
 			win_config->is_rot, win_config->is_comp,
 			win_config->format, win_config->dpp_ch,
 			plane_state->normalized_zpos,
@@ -298,7 +298,7 @@ static void conn_state_to_win_config(struct dpu_bts_win_config *win_config,
 			win_config->src_w, win_config->src_h,
 			win_config->dst_x, win_config->dst_y,
 			win_config->dst_w, win_config->dst_h);
-	DRM_DEBUG("rot[%d] afbc[%d] format[%d] ch[%d] comp_src[%lu]\n",
+	DRM_DEBUG("rot[%d] afbc[%d] format[%d] ch[%d] comp_src[%llu]\n",
 			win_config->is_rot, win_config->is_comp,
 			win_config->format, win_config->dpp_ch,
 			win_config->comp_src);
@@ -437,7 +437,7 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 }
 
 #define TIMEOUT	msecs_to_jiffies(50)
-void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
+static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
 	int i, ret;
 	struct drm_device *dev = old_state->dev;

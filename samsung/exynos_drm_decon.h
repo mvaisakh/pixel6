@@ -30,15 +30,16 @@
 #include <drm/drm_device.h>
 #include <video/videomode.h>
 
-#include <exynos_drm_dpp.h>
-#include <exynos_drm_drv.h>
-#include <exynos_drm_fb.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_hibernation.h>
-#include <exynos_drm_writeback.h>
-#include <exynos_drm_dqe.h>
-
 #include <decon_cal.h>
+
+#include "exynos_drm_dpp.h"
+#include "exynos_drm_dqe.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_dsim.h"
+
+#include "exynos_drm_fb.h"
+#include "exynos_drm_hibernation.h"
+#include "exynos_drm_writeback.h"
 
 enum decon_state {
 	DECON_STATE_INIT = 0,

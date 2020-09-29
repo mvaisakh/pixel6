@@ -12,8 +12,8 @@
  * option) any later version.
  *
  */
-#include <drm/drmP.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_vblank.h>
 #include <drm/exynos_drm.h>
 #include <drm/exynos_display_common.h>
 
@@ -33,16 +33,16 @@
 
 #include <video/videomode.h>
 
-#include <exynos_drm_crtc.h>
-#include <exynos_drm_plane.h>
-#include <exynos_drm_dpp.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_drv.h>
-#include <exynos_drm_fb.h>
-#include <exynos_drm_decon.h>
-
 #include <decon_cal.h>
 #include <regs-decon.h>
+
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_dpp.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_fb.h"
+#include "exynos_drm_plane.h"
 
 struct decon_device *decon_drvdata[MAX_DECON_CNT];
 
@@ -432,7 +432,7 @@ static bool decon_mode_fixup(struct exynos_drm_crtc *crtc,
 
 	if (!(mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO)) {
 		if (!decon->irq_te || !decon->res.pinctrl) {
-			decon_err(decon, "TE error: irq_te %p, te_pinctrl %p\n",
+			decon_err(decon, "TE error: irq_te %d, te_pinctrl %p\n",
 				  decon->irq_te, decon->res.pinctrl);
 
 			return false;

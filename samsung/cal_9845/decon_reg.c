@@ -18,12 +18,13 @@
 #include <cal_config.h>
 #include <decon_cal.h>
 #include <dqe_cal.h>
-#include <regs-decon.h>
-#include <regs-dqe.h>
 #ifdef __linux__
-#include <exynos_drm_decon.h>
+#include "../exynos_drm_decon.h"
 #include <linux/of_address.h>
 #endif
+
+#include "regs-decon.h"
+#include "regs-dqe.h"
 
 enum decon_dsc_id {
 	DECON_DSC_ENC0 = 0x0,

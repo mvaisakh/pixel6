@@ -12,27 +12,30 @@
  * option) any later version.
  */
 
+#include <linux/component.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <drm/drmP.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_uapi.h>
-
-#include <linux/component.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_ioctl.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_vblank.h>
 
 #include <drm/exynos_drm.h>
-
-#include <exynos_drm_drv.h>
-#include <exynos_drm_fbdev.h>
-#include <exynos_drm_fb.h>
-#include <exynos_drm_plane.h>
-#include <exynos_drm_crtc.h>
-#include <exynos_drm_gem.h>
-#include <exynos_drm_writeback.h>
-#include <exynos_drm_decon.h>
-#include <exynos_drm_dsim.h>
 #include <drm/exynos_display_common.h>
+
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_fb.h"
+#include "exynos_drm_fbdev.h"
+#include "exynos_drm_gem.h"
+#include "exynos_drm_plane.h"
+#include "exynos_drm_writeback.h"
 
 #define DRIVER_NAME	"exynos"
 #define DRIVER_DESC	"Samsung SoC DRM"

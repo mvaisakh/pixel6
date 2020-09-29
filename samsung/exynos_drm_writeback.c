@@ -21,22 +21,23 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
-#include <drm/drmP.h>
 #include <drm/exynos_drm.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_edid.h>
-#include <drm/drm_atomic_helper.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <drm/drm_probe_helper.h>
 
-#include <exynos_drm_fb.h>
-#include <exynos_drm_dsim.h>
-#include <exynos_drm_format.h>
-#include <exynos_drm_decon.h>
-#include <exynos_drm_writeback.h>
-#include <exynos_drm_crtc.h>
 #include <regs-dpp.h>
+
+#include "exynos_drm_crtc.h"
+#include "exynos_drm_decon.h"
+#include "exynos_drm_dsim.h"
+#include "exynos_drm_fb.h"
+#include "exynos_drm_format.h"
+#include "exynos_drm_writeback.h"
 
 static inline bool wb_is_cwb(const struct writeback_device *wb)
 {
@@ -169,7 +170,7 @@ static const struct drm_connector_helper_funcs wb_connector_helper_funcs = {
 };
 
 /* TODO: check the func */
-struct drm_connector_state *
+static struct drm_connector_state *
 exynos_drm_writeback_duplicate_state(struct drm_connector *connector)
 {
 	struct exynos_drm_writeback_state *exynos_state;
@@ -201,7 +202,7 @@ static void exynos_drm_writeback_destroy_state(struct drm_connector *connector,
 	__drm_atomic_helper_connector_destroy_state(old_state);
 	kfree(old_exynos_state);
 
-	pr_debug("%s -%d\n", __func__);
+	pr_debug("%s -\n", __func__);
 }
 
 static void exynos_drm_writeback_reset(struct drm_connector *connector)
@@ -606,7 +607,7 @@ static int wb_init_resources(struct writeback_device *wb)
 	dpp_regs_desc_init(wb->regs.dma_base_regs, "dma", REGS_DMA, wb->id);
 
 	wb->odma_irq = of_irq_get_byname(np, "dma");
-	pr_info("dma irq no = %lld\n", wb->odma_irq);
+	pr_info("dma irq no = %d\n", wb->odma_irq);
 	ret = devm_request_irq(dev, wb->odma_irq, odma_irq_handler, 0,
 			pdev->name, wb);
 	if (ret) {

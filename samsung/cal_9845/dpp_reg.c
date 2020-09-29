@@ -23,11 +23,14 @@
 
 #include <exynos_dpp_coef.h>
 #include <exynos_hdr_lut.h>
-#include <exynos_drm_format.h>
 #include <cal_config.h>
 #include <dpp_cal.h>
 #include <hdr_cal.h>
-#include <regs-dpp.h>
+
+#include "regs-dpp.h"
+
+#include "../exynos_drm_format.h"
+#include "../exynos_drm_plane.h"
 
 #define DPP_SC_RATIO_MAX	((1 << 20) * 8 / 8)
 #define DPP_SC_RATIO_7_8	((1 << 20) * 8 / 7)

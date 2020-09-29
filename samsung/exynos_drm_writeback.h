@@ -15,10 +15,13 @@
 #define _EXYNOS_DRM_WRTIEBACK_H_
 
 #include <drm/drm_writeback.h>
-#include <exynos_drm_dpp.h>
+
 #include <decon_cal.h>
 #include <dpp_cal.h>
-#include <exynos_drm_drv.h>
+
+#include "exynos_drm_dpp.h"
+#include "exynos_drm_drv.h"
+#include "exynos_drm_plane.h"
 
 extern const struct dpp_restriction dpp_drv_data;
 

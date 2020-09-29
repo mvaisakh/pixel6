@@ -12,19 +12,20 @@
 #include <linux/debugfs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
-#include <drm/drmP.h>
-#include <drm/drm_mipi_dsi.h>
-#include <drm/drm_panel.h>
-#include <drm/drm_encoder.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_encoder.h>
+#include <drm/drm_mipi_dsi.h>
+#include <drm/drm_panel.h>
+#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 
-#include <panel-samsung-drv.h>
+#include "panel-samsung-drv.h"
 
 #define PANEL_ID_REG		0xA1
 #define PANEL_ID_LEN		7
@@ -416,8 +417,8 @@ static int exynos_drm_connector_get_property(struct drm_connector *connector,
 	return 0;
 }
 
-void exynos_drm_connector_print_state(struct drm_printer *p,
-				      const struct drm_connector_state *state)
+static void exynos_drm_connector_print_state(struct drm_printer *p,
+					     const struct drm_connector_state *state)
 {
 	const struct exynos_panel *ctx =
 		connector_to_exynos_panel(state->connector);
@@ -460,8 +461,8 @@ static int exynos_drm_connector_modes(struct drm_connector *connector)
 	return ret;
 }
 
-int exynos_drm_connector_atomic_check(struct drm_connector *connector,
-				      struct drm_atomic_state *state)
+static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
+					     struct drm_atomic_state *state)
 {
 	struct drm_connector_state *new_state =
 		drm_atomic_get_new_connector_state(state, connector);

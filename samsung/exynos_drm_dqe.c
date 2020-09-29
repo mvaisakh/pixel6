@@ -9,10 +9,12 @@
  *
  */
 
+#include <linux/of_address.h>
+
 #include <dqe_cal.h>
 #include <decon_cal.h>
-#include <exynos_drm_decon.h>
-#include <linux/of_address.h>
+
+#include "exynos_drm_decon.h"
 
 static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		struct exynos_dqe_state *state, u32 width, u32 height)

@@ -23,9 +23,9 @@
 #include <linux/err.h>
 #include <linux/atomic.h>
 
-#include <exynos_drm_hibernation.h>
-#include <exynos_drm_decon.h>
-#include <exynos_drm_writeback.h>
+#include "exynos_drm_decon.h"
+#include "exynos_drm_hibernation.h"
+#include "exynos_drm_writeback.h"
 
 #define HIBERNATION_ENTRY_DEFAULT_FPS		60
 #define HIBERNATION_ENTRY_MIN_TIME_MS		50

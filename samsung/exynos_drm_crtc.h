@@ -16,7 +16,7 @@
 #ifndef _EXYNOS_DRM_CRTC_H_
 #define _EXYNOS_DRM_CRTC_H_
 
-#include <exynos_drm_drv.h>
+#include "exynos_drm_drv.h"
 
 #define HAL_COLOR_MODE_NATIVE				0
 #define HAL_COLOR_MODE_STANDARD_BT601_625		1
