@@ -45,8 +45,6 @@ exynos_drm_gem_prime_import_sg_table(struct drm_device *dev,
 				     struct sg_table *sgt);
 struct drm_gem_object *exynos_drm_gem_prime_import(struct drm_device *dev,
 						   struct dma_buf *dma_buf);
-void exynos_drm_gem_print_info(struct drm_printer *p, unsigned int indent,
-			       const struct drm_gem_object *obj);
 
 #define to_exynos_gem(x)    container_of(x, struct exynos_drm_gem, base)
 

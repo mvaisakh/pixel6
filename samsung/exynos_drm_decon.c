@@ -460,7 +460,7 @@ static void decon_mode_set(struct exynos_drm_crtc *crtc,
 	decon->bts.vbp = vm.vback_porch;
 	decon->bts.vfp = vm.vfront_porch;
 	decon->bts.vsa = vm.vsync_len;
-	decon->bts.fps = adjusted_mode->vrefresh;
+	decon->bts.fps = drm_mode_vrefresh(adjusted_mode);
 
 	for (i = 0; i < dev->mode_config.num_total_plane; i++) {
 		decon->bts.win_config[i].state = DPU_WIN_STATE_DISABLED;

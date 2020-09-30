@@ -170,7 +170,7 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 err:
 	while (i--)
-		drm_gem_object_put_unlocked(obj[i]);
+		drm_gem_object_put(obj[i]);
 
 	return ERR_PTR(ret);
 

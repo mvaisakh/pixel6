@@ -40,7 +40,7 @@
 #include <video/mipi_display.h>
 
 #if defined(CONFIG_CPU_IDLE)
-#include <soc/samsung/exynos-cpupm.h>
+#include <soc/google/exynos-cpupm.h>
 #endif
 
 #include <dt-bindings/soc/google/gs101-devfreq.h>
@@ -491,7 +491,7 @@ static void dsim_adjust_video_timing(struct dsim_device *dsim,
 	p_timing->hfp = vm.hfront_porch;
 	p_timing->hbp = vm.hback_porch;
 	p_timing->hsa = vm.hsync_len;
-	p_timing->vrefresh = mode->vrefresh;
+	p_timing->vrefresh = drm_mode_vrefresh(mode);
 
 	dsim_set_clock_mode(dsim, mode);
 }
@@ -879,7 +879,7 @@ static int dsim_host_attach(struct mipi_dsi_host *host,
 			return PTR_ERR(panel);
 		}
 
-		bridge = devm_drm_panel_bridge_add(host->dev, panel,
+		bridge = devm_drm_panel_bridge_add_typed(host->dev, panel,
 						   DRM_MODE_CONNECTOR_DSI);
 		if (IS_ERR(bridge)) {
 			dsim_err(dsim, "failed to create panel bridge\n");
@@ -887,7 +887,7 @@ static int dsim_host_attach(struct mipi_dsi_host *host,
 		}
 	}
 
-	ret = drm_bridge_attach(&dsim->encoder, bridge, dsim->encoder.bridge);
+	ret = drm_bridge_attach(&dsim->encoder, bridge, NULL, 0);
 	if (ret) {
 		dsim_err(dsim, "Unable to attach panel bridge\n");
 	} else {
@@ -1077,7 +1077,7 @@ static int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0,
 	case MIPI_DSI_DCS_SHORT_WRITE:
 	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
 	case MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE:
-	case MIPI_DSI_DCS_COMPRESSION_MODE:
+	case MIPI_DSI_COMPRESSION_MODE:
 	case MIPI_DSI_COLOR_MODE_OFF:
 	case MIPI_DSI_COLOR_MODE_ON:
 	case MIPI_DSI_SHUTDOWN_PERIPHERAL:
@@ -1097,7 +1097,7 @@ static int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0,
 	/* long packet types of packet types for command. */
 	case MIPI_DSI_GENERIC_LONG_WRITE:
 	case MIPI_DSI_DCS_LONG_WRITE:
-	case MIPI_DSI_PPS_LONG_WRITE:
+	case MIPI_DSI_PICTURE_PARAMETER_SET:
 		dsim_long_data_wr(dsim, d0, d1);
 		dsim_reg_wr_tx_header(dsim->id, id, d1 & 0xff,
 				(d1 & 0xff00) >> 8, false);

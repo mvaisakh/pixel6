@@ -366,7 +366,7 @@ static void DPU_EVENT_SHOW(const struct decon_device *decon, struct drm_printer 
 	int idx = atomic_read(&decon->d.event_log_idx);
 	struct dpu_log *log;
 	int latest = idx % dpu_event_log_max;
-	struct timeval tv;
+	struct timespec64 ts;
 	ktime_t prev_ktime;
 	const char *str_comp;
 	char buf[LOG_BUF_SIZE];
@@ -397,13 +397,13 @@ static void DPU_EVENT_SHOW(const struct decon_device *decon, struct drm_printer 
 		log = &decon->d.event_log[idx];
 
 		/* TIME */
-		tv = ktime_to_timeval(log->time);
+		ts = ktime_to_timespec64(log->time);
 
-		len = scnprintf(buf, sizeof(buf), "[%6ld.%06ld] ", tv.tv_sec,
-				tv.tv_usec);
+		len = scnprintf(buf, sizeof(buf), "[%6lld.%06ld] ", ts.tv_sec,
+				ts.tv_nsec / NSEC_PER_USEC);
 
 		/* If there is no timestamp, then exit directly */
-		if (!tv.tv_sec)
+		if (!ts.tv_sec)
 			break;
 
 		len += scnprintf(buf + len, sizeof(buf) - len,  "%20s",

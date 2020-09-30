@@ -83,6 +83,7 @@ static const struct exynos_display_mode emul_exynos_mode = {
 static const struct drm_display_mode emul_modes[] = {
 	{
 		/* 1440x3120 @ 60 */
+		.clock = 283680,
 		.hdisplay = 1440,
 		.hsync_start = 1440 + 32,
 		.hsync_end = 1440 + 32 + 12,
@@ -91,7 +92,6 @@ static const struct drm_display_mode emul_modes[] = {
 		.vsync_start = 3120 + 12,
 		.vsync_end = 3120 + 12 + 4,
 		.vtotal = 3120 + 12 + 4 + 16,
-		.vrefresh = 60,
 		.flags = 0,
 		.width_mm = 80,
 		.height_mm = 120,
@@ -100,6 +100,7 @@ static const struct drm_display_mode emul_modes[] = {
 	},
 	{
 		/* 1440x3120 @ 120 */
+		.clock = 567360,
 		.hdisplay = 1440,
 		.hsync_start = 1440 + 32,
 		.hsync_end = 1440 + 32 + 12,
@@ -108,7 +109,6 @@ static const struct drm_display_mode emul_modes[] = {
 		.vsync_start = 3120 + 12,
 		.vsync_end = 3120 + 12 + 4,
 		.vtotal = 3120 + 12 + 4 + 16,
-		.vrefresh = 120,
 		.flags = 0,
 		.width_mm = 80,
 		.height_mm = 120,

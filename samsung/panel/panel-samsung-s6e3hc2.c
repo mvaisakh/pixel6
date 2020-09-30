@@ -99,7 +99,7 @@ static void s6e3hc2_set_mode(struct exynos_panel *ctx,
 {
 	u8 val = S6E3HC2_WRCTRLD_BCTRL_BIT;
 
-	if (mode->vrefresh == 90)
+	if (drm_mode_vrefresh(mode) == 90)
 		val |= S6E3HC2_WRCTRLD_FRAME_RATE_BIT;
 
 	if (ctx->hbm_mode)
@@ -107,7 +107,7 @@ static void s6e3hc2_set_mode(struct exynos_panel *ctx,
 
 	dev_dbg(ctx->dev,
 				 "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n", __func__, val,
-				 ctx->hbm_mode ? "on" : "off", mode->vrefresh);
+				 ctx->hbm_mode ? "on" : "off", drm_mode_vrefresh(mode));
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x53, val);
 
@@ -237,16 +237,17 @@ static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
 };
 
 static const struct drm_display_mode s6e3hc2_wqhd_modes[] = {
-	{ /* 1440x3040 @ 60Hz */
+	{
+		/* 1440x3040 @ 60Hz */
+		.clock = 266568,
 		.hdisplay = 1440,
 		.hsync_start = 1440 + 2,
 		.hsync_end = 1440 + 2 + 2,
-		.htotal = 1440 + 2 + 2 + 2,
+		.htotal = 1440 + 6 + 2 + 2,
 		.vdisplay = 3040,
 		.vsync_start = 3040 + 8,
 		.vsync_end = 3040 + 8 + 1,
 		.vtotal = 3040 + 8 + 1 + 15,
-		.vrefresh = 60,
 		.flags = 0,
 		.width_mm = 69,
 		.height_mm = 142,
@@ -254,15 +255,15 @@ static const struct drm_display_mode s6e3hc2_wqhd_modes[] = {
 		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
 	},
 	{ /* 1440x3040 @ 90Hz */
+		.clock = 399852,
 		.hdisplay = 1440,
 		.hsync_start = 1440 + 2,
 		.hsync_end = 1440 + 2 + 2,
-		.htotal = 1440 + 2 + 2 + 2,
+		.htotal = 1440 + 6 + 2 + 2,
 		.vdisplay = 3040,
 		.vsync_start = 3040 + 8,
 		.vsync_end = 3040 + 8 + 1,
 		.vtotal = 3040 + 8 + 1 + 15,
-		.vrefresh = 90,
 		.flags = 0,
 		.width_mm = 69,
 		.height_mm = 142,
@@ -284,23 +285,26 @@ static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
 };
 
 static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
-	{ /* 1080x2340 @ 60Hz */
+	{
+		/* 1080x2340 @ 60Hz */
+		.clock = 164358,
 		.hdisplay = 1080,
 		.hsync_start = 1080 + 32, // add hfp
 		.hsync_end = 1080 + 32 + 12, // add hsa
-		.htotal = 1080 + 32 + 12 + 16, // add hbp
+		.htotal = 1080 + 32 + 12 + 26, // add hbp
 		.vdisplay = 2340,
 		.vsync_start = 2340 + 12, // add vfp
 		.vsync_end = 2340 + 12 + 4, // add vsa
-		.vtotal = 2340 + 12 + 4 + 16, // add vbp
-		.vrefresh = 60,
+		.vtotal = 2340 + 12 + 4 + 26, // add vbp
 		.flags = 0,
 		.width_mm = 63,
 		.height_mm = 137,
 		.private = (int *)&s6e3hc2_fhd_mode_private,
 		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
 	},
-	{ /* 1080x2340 @ 90Hz */
+	{
+		/* 1080x2340 @ 90Hz */
+		.clock = 246537,
 		.hdisplay = 1080,
 		.hsync_start = 1080 + 32, // add hfp
 		.hsync_end = 1080 + 32 + 12, // add hsa
@@ -309,7 +313,6 @@ static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
 		.vsync_start = 2340 + 12, // add vfp
 		.vsync_end = 2340 + 12 + 4, // add vsa
 		.vtotal = 2340 + 12 + 4 + 16, // add vbp
-		.vrefresh = 90,
 		.flags = 0,
 		.width_mm = 63,
 		.height_mm = 137,
