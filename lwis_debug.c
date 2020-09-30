@@ -292,48 +292,54 @@ int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate event states info");
-		return ret;
+		goto exit;
 	}
 	pr_info("%s", buffer);
-	return 0;
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate transaction info");
-		return ret;
+		goto exit;
 	}
 	pr_info("%s", buffer);
-	return 0;
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 int lwis_debug_print_buffer_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate buffer info");
-		return ret;
+		goto exit;
 	}
 	pr_info("%s", buffer);
-	return 0;
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 /* DebugFS specific functions */
@@ -363,17 +369,20 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate event states info");
-		return ret;
+		goto exit;
 	}
-	return simple_read_from_buffer(user_buf, count, position, buffer,
-				       strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer,
+				      strlen(buffer));
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
@@ -381,18 +390,21 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate transaction info\n");
-		return 0;
+		goto exit;
 	}
 
-	return simple_read_from_buffer(user_buf, count, position, buffer,
-				       strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer,
+				      strlen(buffer));
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
@@ -400,18 +412,21 @@ static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
 {
 	int ret = 0;
 	/* Buffer to store information */
-	char buffer[2048] = {};
-	const size_t buffer_size = sizeof(buffer);
+	const size_t buffer_size = 2048;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate buffer info\n");
-		return 0;
+		goto exit;
 	}
 
-	return simple_read_from_buffer(user_buf, count, position, buffer,
-				       strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer,
+				      strlen(buffer));
+exit:
+	kfree(buffer);
+	return ret;
 }
 
 static struct file_operations dev_info_fops = {
