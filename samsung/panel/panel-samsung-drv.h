@@ -28,6 +28,8 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/exynos_display_common.h>
 
+#include "../exynos_drm_connector.h"
+
 #define MAX_REGULATORS		3
 #define MAX_HDR_FORMATS		4
 
@@ -115,7 +117,7 @@ struct exynos_panel {
 	struct gpio_desc *enable_gpio;
 	struct regulator *vci;
 	struct regulator *vddi;
-	struct drm_connector connector;
+	struct exynos_drm_connector exynos_connector;
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;
 	const struct drm_display_mode *current_mode;
@@ -128,13 +130,6 @@ struct exynos_panel {
 	char panel_extinfo[PANEL_EXTINFO_MAX];
 
 	struct device_node *touch_dev;
-
-	struct {
-		struct drm_property *max_luminance;
-		struct drm_property *max_avg_luminance;
-		struct drm_property *min_luminance;
-		struct drm_property *hdr_formats;
-	} props;
 
 	struct {
 		/* indicate if local hbm enabled or not */

@@ -27,6 +27,7 @@
 #include <drm/drm_probe_helper.h>
 #include <video/mipi_display.h>
 
+#include "../exynos_drm_connector.h"
 #include "panel-samsung-drv.h"
 
 #define PANEL_ID_REG		0xA1
@@ -36,15 +37,15 @@
 
 static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
 
-#define connector_to_exynos_panel(c)                                           \
-	container_of((c), struct exynos_panel, connector)
+#define exynos_connector_to_panel(c)					\
+	container_of((c), struct exynos_panel, exynos_connector)
 
 #define bridge_to_exynos_panel(b) \
 	container_of((b), struct exynos_panel, bridge)
 
 static inline bool in_tui(struct exynos_panel *ctx)
 {
-	const struct drm_connector_state *conn_state = ctx->connector.state;
+	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
 
 	if (conn_state && conn_state->crtc) {
 		const struct drm_crtc_state *crtc_state =
@@ -450,32 +451,12 @@ static const struct attribute *panel_attrs[] = {
 	NULL
 };
 
-static int exynos_drm_connector_get_property(struct drm_connector *connector,
-				const struct drm_connector_state *state,
-				struct drm_property *property,
-				uint64_t *val)
+static void exynos_panel_connector_print_state(struct drm_printer *p,
+					       const struct exynos_drm_connector_state *state)
 {
-	const struct exynos_panel *ctx = connector_to_exynos_panel(connector);
-
-	if (property == ctx->props.max_luminance)
-		*val = ctx->desc->max_luminance;
-	else if (property == ctx->props.max_avg_luminance)
-		*val = ctx->desc->max_avg_luminance;
-	else if (property == ctx->props.min_luminance)
-		*val = ctx->desc->min_luminance;
-	else if (property == ctx->props.hdr_formats)
-		*val = ctx->desc->hdr_formats;
-	else
-		return -EINVAL;
-
-	return 0;
-}
-
-static void exynos_drm_connector_print_state(struct drm_printer *p,
-					     const struct drm_connector_state *state)
-{
-	const struct exynos_panel *ctx =
-		connector_to_exynos_panel(state->connector);
+	const struct exynos_drm_connector *exynos_connector =
+		to_exynos_connector(state->base.connector);
+	const struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	const struct exynos_panel_desc *desc = ctx->desc;
 
 	drm_printf(p, "\tenabled: %d\n", ctx->enabled);
@@ -492,18 +473,14 @@ static void exynos_drm_connector_print_state(struct drm_printer *p,
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
 }
 
-static const struct drm_connector_funcs exynos_connector_funcs = {
-	.fill_modes = drm_helper_probe_single_connector_modes,
-	.reset = drm_atomic_helper_connector_reset,
-	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
-	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.atomic_get_property = exynos_drm_connector_get_property,
-	.atomic_print_state = exynos_drm_connector_print_state,
+static const struct exynos_drm_connector_funcs exynos_panel_connector_funcs = {
+	.atomic_print_state = exynos_panel_connector_print_state,
 };
 
 static int exynos_drm_connector_modes(struct drm_connector *connector)
 {
-	struct exynos_panel *ctx = connector_to_exynos_panel(connector);
+	struct exynos_drm_connector *exynos_connector = to_exynos_connector(connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	int ret;
 
 	ret = drm_panel_get_modes(&ctx->panel, connector);
@@ -518,12 +495,13 @@ static int exynos_drm_connector_modes(struct drm_connector *connector)
 static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 					     struct drm_atomic_state *state)
 {
+	struct exynos_drm_connector *exynos_connector = to_exynos_connector(connector);
 	struct drm_connector_state *new_state =
 		drm_atomic_get_new_connector_state(state, connector);
 	struct drm_bridge *bridge;
 	struct drm_crtc_state *crtc_state;
 	struct drm_encoder *encoder = new_state->best_encoder;
-	struct exynos_panel *ctx = connector_to_exynos_panel(connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 
 	if (!ctx->touch_dev)
 		return 0;
@@ -551,63 +529,6 @@ static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 	.atomic_check = exynos_drm_connector_atomic_check,
 	.get_modes = exynos_drm_connector_modes,
 };
-
-static int exynos_drm_connector_create_luminance_properties(
-				struct drm_connector *connector)
-{
-	struct exynos_panel *ctx = connector_to_exynos_panel(connector);
-	struct drm_property *prop;
-
-	prop = drm_property_create_range(connector->dev, 0, "max_luminance",
-			0, UINT_MAX);
-	if (!prop)
-		return -ENOMEM;
-
-	drm_object_attach_property(&connector->base, prop, 0);
-	ctx->props.max_luminance = prop;
-
-	prop = drm_property_create_range(connector->dev, 0, "max_avg_luminance",
-			0, UINT_MAX);
-	if (!prop)
-		return -ENOMEM;
-
-	drm_object_attach_property(&connector->base, prop, 0);
-	ctx->props.max_avg_luminance = prop;
-
-	prop = drm_property_create_range(connector->dev, 0, "min_luminance",
-			0, UINT_MAX);
-	if (!prop)
-		return -ENOMEM;
-
-	drm_object_attach_property(&connector->base, prop, 0);
-	ctx->props.min_luminance = prop;
-
-	return 0;
-}
-
-static int exynos_drm_connector_create_hdr_formats_property(
-				struct drm_connector *connector)
-{
-	static const struct drm_prop_enum_list props[] = {
-		{ __builtin_ffs(HDR_DOLBY_VISION) - 1,	"Dolby Vision"	},
-		{ __builtin_ffs(HDR_HDR10) - 1,		"HDR10"		},
-		{ __builtin_ffs(HDR_HLG) - 1,		"HLG"		},
-	};
-	struct exynos_panel *ctx = connector_to_exynos_panel(connector);
-	struct drm_property *prop;
-
-	prop = drm_property_create_bitmask(connector->dev, 0, "hdr_formats",
-					   props, ARRAY_SIZE(props),
-					   HDR_DOLBY_VISION | HDR_HDR10 |
-					   HDR_HLG);
-	if (!prop)
-		return -ENOMEM;
-
-	drm_object_attach_property(&connector->base, prop, 0);
-	ctx->props.hdr_formats = prop;
-
-	return 0;
-}
 
 #ifdef CONFIG_DEBUG_FS
 static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
@@ -910,28 +831,23 @@ static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
 }
 #endif
 
-static int exynos_panel_create_lp_mode(struct drm_connector *conn,
-                                const struct drm_display_mode *lp_mode)
+static int exynos_panel_attach_lp_mode(struct exynos_drm_connector *exynos_conn,
+				       const struct drm_display_mode *lp_mode)
 {
-        struct drm_mode_modeinfo umode;
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_conn);
+	struct drm_mode_modeinfo umode;
         struct drm_property_blob *blob;
-        struct drm_property *prop;
 
         if (!lp_mode)
                 return -ENOENT;
 
         drm_mode_convert_to_umode(&umode, lp_mode);
-        blob = drm_property_create_blob(conn->dev, sizeof(umode), &umode);
+        blob = drm_property_create_blob(exynos_conn->base.dev, sizeof(umode), &umode);
         if (IS_ERR(blob))
                 return PTR_ERR(blob);
 
-        prop = drm_property_create(conn->dev,
-                                   DRM_MODE_PROP_IMMUTABLE | DRM_MODE_PROP_BLOB,
-                                   "lp_mode", 0);
-        if (!prop)
-                return -ENOMEM;
-
-        drm_object_attach_property(&conn->base, prop, blob->base.id);
+        drm_object_attach_property(&exynos_conn->base.base, p->lp_mode, blob->base.id);
 
         return 0;
 }
@@ -1013,25 +929,54 @@ static struct attribute *bl_device_attrs[] = {
 };
 ATTRIBUTE_GROUPS(bl_device);
 
+static int exynos_panel_attach_properties(struct exynos_panel *ctx)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(&ctx->exynos_connector);
+	struct drm_mode_object *obj = &ctx->exynos_connector.base.base;
+	const struct exynos_panel_desc *desc = ctx->desc;
+	int ret = 0;
+
+	if (!p || !desc)
+		return -ENOENT;
+
+	drm_object_attach_property(obj, p->min_luminance, desc->min_luminance);
+	drm_object_attach_property(obj, p->max_luminance, desc->max_luminance);
+	drm_object_attach_property(obj, p->max_avg_luminance, desc->max_avg_luminance);
+	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
+
+	if (desc->lp_mode) {
+		ret = exynos_panel_attach_lp_mode(&ctx->exynos_connector, desc->lp_mode);
+		if (ret)
+			dev_err(ctx->dev, "Failed to attach lp mode (%d)\n", ret);
+	}
+
+	return ret;
+}
+
 static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 				      enum drm_bridge_attach_flags flags)
 {
+	struct drm_device *dev = bridge->dev;
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
-	struct drm_connector *connector = &ctx->connector;
+	struct drm_connector *connector = &ctx->exynos_connector.base;
 	int ret;
 
-	ret = drm_connector_init(bridge->dev, connector,
-				 &exynos_connector_funcs,
-				 DRM_MODE_CONNECTOR_DSI);
+	ret = exynos_drm_connector_init(dev, &ctx->exynos_connector,
+					&exynos_panel_connector_funcs,
+					DRM_MODE_CONNECTOR_DSI);
 	if (ret) {
 		dev_err(ctx->dev, "failed to initialize connector with drm\n");
 		return ret;
 	}
 
-	drm_connector_helper_add(connector, &exynos_connector_helper_funcs);
+	ret = exynos_panel_attach_properties(ctx);
+	if (ret) {
+		dev_err(ctx->dev, "failed to attach connector properties\n");
+		return ret;
+	}
 
-	exynos_drm_connector_create_luminance_properties(connector);
-	exynos_drm_connector_create_hdr_formats_property(connector);
+	drm_connector_helper_add(connector, &exynos_connector_helper_funcs);
 
 	drm_connector_register(connector);
 
@@ -1050,12 +995,6 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 		return ret;
 	}
 
-	if (ctx->desc && ctx->desc->lp_mode) {
-		ret = exynos_panel_create_lp_mode(connector, ctx->desc->lp_mode);
-		if (ret)
-			dev_err(ctx->dev, "Failed to create lp mode (%d)\n", ret);
-	}
-
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
 	exynos_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->debugfs_entry);
 	hbm_mode_debugfs_add(ctx, ctx->debugfs_entry);
@@ -1071,8 +1010,8 @@ static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 
 	exynos_debugfs_panel_remove(ctx);
 	drm_panel_detach(&ctx->panel);
-	drm_connector_unregister(&ctx->connector);
-	drm_connector_cleanup(&ctx->connector);
+	drm_connector_unregister(&ctx->exynos_connector.base);
+	drm_connector_cleanup(&ctx->exynos_connector.base);
 }
 
 static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
@@ -1156,9 +1095,10 @@ static bool exynos_panel_bridge_mode_fixup(struct drm_bridge *bridge,
 				    struct drm_display_mode *adjusted_mode)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	const struct drm_connector *connector = &ctx->exynos_connector.base;
 	struct drm_display_mode *m;
 
-	list_for_each_entry(m, &ctx->connector.modes, head) {
+	list_for_each_entry(m, &connector->modes, head) {
 		if (drm_mode_equal(m, adjusted_mode)) {
 			adjusted_mode->private = m->private;
 			adjusted_mode->private_flags = m->private_flags;
