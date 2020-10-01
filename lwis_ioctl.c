@@ -977,7 +977,7 @@ static int construct_transaction(struct lwis_client *client,
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
 			k_buf = kvzalloc(k_entries[i].rw_batch.size_in_bytes,
-					GFP_KERNEL);
+					 GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1123,9 +1123,10 @@ static int ioctl_transaction_cancel(struct lwis_client *client,
 
 	ret = lwis_transaction_cancel(client, id);
 	if (ret) {
-		dev_warn_ratelimited(lwis_dev->dev,
-				    "Failed to cancel transaction id 0x%llx (%d)\n",
-				    id, ret);
+		dev_warn_ratelimited(
+			lwis_dev->dev,
+			"Failed to cancel transaction id 0x%llx (%d)\n", id,
+			ret);
 		return ret;
 	}
 

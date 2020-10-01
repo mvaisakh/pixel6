@@ -222,6 +222,7 @@ struct lwis_event_control {
 // Invalid ID for Transaction id and Periodic IO id
 #define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
+#define LWIS_EVENT_COUNTER_EVERY_TIME (-2LL)
 struct lwis_transaction_info {
 	// Input
 	int trigger_device_id;
