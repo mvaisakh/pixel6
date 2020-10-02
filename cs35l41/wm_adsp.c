@@ -693,10 +693,10 @@ static void wm_adsp2_init_debugfs(struct wm_adsp *dsp,
 		goto err;
 	if (!debugfs_create_bool("running", 0444, root, &dsp->running))
 		goto err;
-	if (!debugfs_create_x32("fw_id", 0444, root, &dsp->fw_id))
-		goto err;
-	if (!debugfs_create_x32("fw_version", 0444, root, &dsp->fw_id_version))
-		goto err;
+
+	debugfs_create_x32("fw_id", 0444, root, &dsp->fw_id);
+	debugfs_create_x32("fw_version", 0444, root, &dsp->fw_id_version);
+
 	for (i = 0; i < ARRAY_SIZE(wm_adsp_debugfs_fops); ++i) {
 		if (!debugfs_create_file(wm_adsp_debugfs_fops[i].name,
 					 0444, root, dsp,
@@ -3226,20 +3226,20 @@ int wm_adsp_compr_open(struct wm_adsp *dsp, struct snd_compr_stream *stream)
 	mutex_lock(&dsp->pwr_lock);
 	if (wm_adsp_fw[dsp->fw].num_caps == 0) {
 		adsp_err(dsp, "%s: Firmware does not support compressed API\n",
-			 rtd->codec_dai->name);
+			 (asoc_rtd_to_codec(rtd, 0))->name);
 		ret = -ENXIO;
 		goto out;
 	}
 	if (wm_adsp_fw[dsp->fw].compr_direction != stream->direction) {
 		adsp_err(dsp, "%s: Firmware does not support stream direction\n",
-			 rtd->codec_dai->name);
+			 (asoc_rtd_to_codec(rtd, 0))->name);
 		ret = -EINVAL;
 		goto out;
 	}
 	list_for_each_entry(tmp, &dsp->compr_list, list) {
-		if (!strcmp(tmp->name, rtd->codec_dai->name)) {
+		if (!strcmp(tmp->name, (asoc_rtd_to_codec(rtd, 0))->name)) {
 			adsp_err(dsp, "%s: Only a single stream supported per dai\n",
-				 rtd->codec_dai->name);
+				 (asoc_rtd_to_codec(rtd, 0))->name);
 			ret = -EBUSY;
 			goto out;
 		}
@@ -3251,7 +3251,7 @@ int wm_adsp_compr_open(struct wm_adsp *dsp, struct snd_compr_stream *stream)
 	}
 	compr->dsp = dsp;
 	compr->stream = stream;
-	compr->name = rtd->codec_dai->name;
+	compr->name = (asoc_rtd_to_codec(rtd, 0))->name;
 	list_add_tail(&compr->list, &dsp->compr_list);
 	stream->runtime->private_data = compr;
 out:
