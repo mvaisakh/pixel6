@@ -159,6 +159,7 @@ struct max1720x_chip {
 	int nb_history_pages;
 	int nb_history_flag_reg;
 
+	int fake_battery;
 	/* for storage interface */
 	struct max1720x_history history_storage;
 
@@ -1905,6 +1906,8 @@ static int max1720x_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_PRESENT:
 		if (chip->gauge_type == -1) {
 			val->intval = 0;
+		} else if (chip->fake_battery != -1) {
+			val->intval = chip->fake_battery;
 		} else {
 			err = REGMAP_READ(map, MAX1720X_STATUS, &data);
 			if (err < 0)
@@ -3021,6 +3024,17 @@ static ssize_t debug_get_nvram_por(struct file *filp,
 
 BATTERY_DEBUG_ATTRIBUTE(debug_nvram_por_fops, debug_get_nvram_por, NULL);
 
+static int debug_fake_battery_set(void *data, u64 val)
+{
+	struct max1720x_chip *chip = (struct max1720x_chip *)data;
+
+	chip->fake_battery = (int)val;
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(debug_fake_battery_fops, NULL,
+			debug_fake_battery_set, "%llu\n");
+
 static void max17x0x_reglog_dump(struct max17x0x_reglog *regs,
 				 size_t size,
 				 char *buff)
@@ -3217,6 +3231,8 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 	debugfs_create_file("nvram_por", 0440, de, chip, &debug_nvram_por_fops);
 	debugfs_create_file("fg_reset", 0400, de, chip, &debug_fg_reset_fops);
 	debugfs_create_file("ce_start", 0400, de, chip, &debug_ce_start_fops);
+	debugfs_create_file("fake_battery", 0400, de,
+			    chip, &debug_fake_battery_fops);
 	debugfs_create_file("batt_id", 0600, de, chip, &debug_batt_id_fops);
 
 	if (chip->regmap.reglog)
@@ -4809,6 +4825,7 @@ static int max1720x_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	chip->dev = dev;
+	chip->fake_battery = -1;
 	chip->primary = client;
 	chip->batt_id_defer_cnt = DEFAULT_BATTERY_ID_RETRIES;
 	i2c_set_clientdata(client, chip);
