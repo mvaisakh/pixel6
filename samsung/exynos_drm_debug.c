@@ -720,4 +720,113 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 
 	return NOTIFY_DONE;
 }
+
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+static int dphy_diag_text_show(struct seq_file *m, void *p)
+{
+      seq_printf(m, "%s\n", m->private);
+      return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(dphy_diag_text);
+
+static ssize_t dphy_diag_reg_write(struct file *file, const char *user_buf,
+			      size_t count, loff_t *f_pos)
+{
+	int ret;
+	uint32_t val;
+	struct seq_file *m = file->private_data;
+	struct dsim_dphy_diag *diag = m->private;
+
+	ret = kstrtou32_from_user(user_buf, count, 0, &val);
+	if (ret)
+		return ret;
+
+	ret = dsim_dphy_diag_set_reg(diag->private, diag, val);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static int dphy_diag_reg_show(struct seq_file *m, void *data)
+{
+	struct dsim_dphy_diag *diag = m->private;
+	uint32_t regs[MAX_DIAG_REG_NUM];
+	uint32_t ix;
+	int ret;
+
+	ret = dsim_dphy_diag_get_reg(diag->private, diag, regs);
+
+	if (ret == 0) {
+		for (ix = 0; ix < diag->num_reg; ++ix)
+			seq_printf(m, "%d ", regs[ix]);
+		seq_puts(m, "\n");
+	}
+
+	return ret;
+}
+
+static int dphy_diag_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dphy_diag_reg_show, inode->i_private);
+}
+
+static const struct file_operations dphy_diag_reg_fops = {
+	.owner = THIS_MODULE,
+	.open = dphy_diag_reg_open,
+	.write = dphy_diag_reg_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+void dsim_diag_create_debugfs(struct dsim_device *dsim) {
+	struct dentry *dent_dphy;
+	struct dentry *dent_diag;
+	struct dsim_dphy_diag *diag;
+	char dir_name[32];
+	int ix;
+
+	scnprintf(dir_name, sizeof(dir_name), "dsim%d", dsim->id);
+	dsim->debugfs_entry = debugfs_create_dir(
+		dir_name, dsim->encoder.dev->primary->debugfs_root);
+	if (!dsim->debugfs_entry) {
+		pr_warn("%s: failed to create %s\n", __func__, dir_name);
+		return;
+	}
+
+	if (dsim->config.num_dphy_diags == 0)
+		return;
+
+	dent_dphy = debugfs_create_dir("dphy", dsim->debugfs_entry);
+	if (!dent_dphy) {
+		pr_warn("%s: failed to create %s\n", __func__, dir_name);
+		return;
+	}
+
+	for (ix = 0; ix < dsim->config.num_dphy_diags; ++ix) {
+		diag = &dsim->config.dphy_diags[ix];
+		dent_diag = debugfs_create_dir(diag->name, dent_dphy);
+		if (!dent_diag) {
+			pr_warn("%s: failed to create %s\n", __func__,
+				diag->name);
+			continue;
+		}
+		debugfs_create_file("desc", 0400, dent_diag, (void *)diag->desc,
+				    &dphy_diag_text_fops);
+		debugfs_create_file("help", 0400, dent_diag, (void *)diag->help,
+				    &dphy_diag_text_fops);
+		diag->private = dsim;
+		debugfs_create_file("value", diag->read_only ? 0400 : 0600,
+				    dent_diag, diag, &dphy_diag_reg_fops);
+	}
+}
+
+void dsim_diag_remove_debugfs(struct dsim_device *dsim) {
+	debugfs_remove_recursive(dsim->debugfs_entry);
+	dsim->debugfs_entry = NULL;
+}
 #endif
