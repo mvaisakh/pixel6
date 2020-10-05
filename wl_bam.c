@@ -69,9 +69,9 @@ wl_bad_ap_mngr_add_entry(wl_bad_ap_mngr_t *bad_ap_mngr, wl_bad_ap_info_t *bad_ap
 #define WL_BAD_AP_INFO_FMT_ITEM_CNT	15u
 
 static inline void
-wl_bad_ap_mngr_tm2ts(struct timespec *ts, const struct tm tm)
+wl_bad_ap_mngr_tm2ts(struct timespec64 *ts, const struct tm tm)
 {
-	ts->tv_sec = mktime(tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+	ts->tv_sec = mktime64(tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	ts->tv_nsec = 0;
 }
 
@@ -85,8 +85,8 @@ wl_bad_ap_mngr_timecmp(void *priv, struct list_head *a, struct list_head *b)
 {
 	int ret;
 
-	struct timespec ts1;
-	struct timespec ts2;
+	struct timespec64 ts1;
+	struct timespec64 ts2;
 
 	wl_bad_ap_info_entry_t *e1 = CONTAINEROF(a, wl_bad_ap_info_entry_t, list);
 	wl_bad_ap_info_entry_t *e2 = CONTAINEROF(b, wl_bad_ap_info_entry_t, list);
@@ -94,7 +94,7 @@ wl_bad_ap_mngr_timecmp(void *priv, struct list_head *a, struct list_head *b)
 	wl_bad_ap_mngr_tm2ts(&ts1, e1->bad_ap.tm);
 	wl_bad_ap_mngr_tm2ts(&ts2, e2->bad_ap.tm);
 
-	ret = timespec_compare((const struct timespec *)&ts1, (const struct timespec *)&ts2);
+	ret = timespec64_compare((const struct timespec64 *)&ts1, (const struct timespec64 *)&ts2);
 
 	return ret;
 }
@@ -452,7 +452,7 @@ wl_event_adps_bad_ap_mngr(struct bcm_cfg80211 *cfg, void *data)
 	wl_bad_ap_info_entry_t *entry;
 	wl_bad_ap_info_t temp;
 #if !defined(DHD_ADPS_BAM_EXPORT)
-	struct timespec ts;
+	struct timespec64 ts;
 #endif	/* !DHD_ADPS_BAM_EXPORT */
 
 	if (event_data->version != WL_EVENT_ADPS_VER_1) {
@@ -473,7 +473,7 @@ wl_event_adps_bad_ap_mngr(struct bcm_cfg80211 *cfg, void *data)
 		wl_bad_ap_mngr_fread(cfg, WL_BAD_AP_INFO_FILE_PATH);
 	}
 
-	getnstimeofday(&ts);
+	ktime_get_real_ts64(&ts);
 	entry = wl_bad_ap_mngr_find(&cfg->bad_ap_mngr, &bad_ap_data->ea);
 	if (entry != NULL) {
 		time_to_tm((ts.tv_sec - (sys_tz.tz_minuteswest * 60)), 0, &entry->bad_ap.tm);

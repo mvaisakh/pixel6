@@ -1491,16 +1491,16 @@ __dhd_dbg_pkt_hash(uintptr_t pkt, uint32 pktid)
 			(__pkt + __pktid * __pktid));
 }
 
-#define __TIMESPEC_TO_US(ts) \
-	(((uint32)(ts).tv_sec * USEC_PER_SEC) + ((ts).tv_nsec / NSEC_PER_USEC))
+#define __TIMESPEC64_TO_US(ts) \
+	(((ts).tv_sec * USEC_PER_SEC) + ((ts).tv_nsec / NSEC_PER_USEC))
 
 uint32
 __dhd_dbg_driver_ts_usec(void)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	get_monotonic_boottime(&ts);
-	return ((uint32)(__TIMESPEC_TO_US(ts)));
+	GET_MONOTONIC_BOOT_TIME(&ts);
+	return ((uint32)(__TIMESPEC64_TO_US(ts)));
 }
 
 wifi_tx_packet_fate

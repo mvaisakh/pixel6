@@ -21554,16 +21554,16 @@ char*
 dhd_dbg_get_system_timestamp(void)
 {
 	static char timebuf[DEBUG_DUMP_TIME_BUF_LEN];
-	struct timeval tv;
-	unsigned long local_time;
+	struct timespec64 ts;
+	unsigned long long local_time;
 	struct rtc_time tm;
 	memset(timebuf, 0, DEBUG_DUMP_TIME_BUF_LEN);
-	do_gettimeofday(&tv);
-	local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	GET_TIME_OF_DAY(&ts);
+	local_time = (u64)(ts.tv_sec - (sys_tz.tz_minuteswest * 60));
 	rtc_time_to_tm(local_time, &tm);
 	scnprintf(timebuf, DEBUG_DUMP_TIME_BUF_LEN,
 			"%02d:%02d:%02d.%06lu",
-			tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/NSEC_PER_USEC);
 	return timebuf;
 }
 
@@ -22989,19 +22989,19 @@ void dhd_schedule_gather_ap_stadata(void *bcm_cfg, void *ndev, const wl_event_ms
 void
 get_debug_dump_time(char *str)
 {
-	struct timeval curtime;
-	unsigned long local_time;
+	struct timespec64 curtime;
+	unsigned long long local_time;
 	struct rtc_time tm;
 
 	if (!strlen(str)) {
-		do_gettimeofday(&curtime);
-		local_time = (u32)(curtime.tv_sec -
+		GET_TIME_OF_DAY(&curtime);
+		local_time = (u64)(curtime.tv_sec -
 				(sys_tz.tz_minuteswest * DHD_LOG_DUMP_TS_MULTIPLIER_VALUE));
 		rtc_time_to_tm(local_time, &tm);
 
 		snprintf(str, DEBUG_DUMP_TIME_BUF_LEN, DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS,
 				tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-				tm.tm_sec, (int)(curtime.tv_usec/NSEC_PER_USEC));
+				tm.tm_sec, (int)(curtime.tv_nsec/NSEC_PER_MSEC));
 	}
 }
 
