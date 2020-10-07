@@ -23,8 +23,8 @@
 #include <soc/google/exynos_pm_qos.h>
 #endif
 #include <linux/notifier.h>
-#if defined(CONFIG_EXYNOS_ITMON)
-#include <soc/samsung/exynos-itmon.h>
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+#include <soc/google/exynos-itmon.h>
 #endif
 #include <soc/google/bts.h>
 #include <drm/drm_device.h>
