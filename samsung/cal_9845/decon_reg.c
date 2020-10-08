@@ -1276,7 +1276,6 @@ static int dsc_reg_init(u32 id, struct decon_config *config, u32 overlap_w,
 	decon_reg_config_data_path_size(id, dsc_enc.width_per_enc,
 			config->image_height, overlap_w, &dsc_enc,
 			&config->dsc);
-	decon_reg_update_req_compress(id);
 
 	return 0;
 }
@@ -1926,7 +1925,8 @@ int decon_reg_wait_update_done_timeout(u32 id, unsigned long timeout_us)
 			decon_regs_desc(id)->regs + SHD_REG_UP_REQ, val,
 			!val, 10, timeout_us);
 	if (ret) {
-		cal_log_err(id, "timeout of updating decon registers\n");
+		cal_log_err(id, "timeout of updating decon registers (0x%x)\n", val);
+
 		return ret;
 	}
 
