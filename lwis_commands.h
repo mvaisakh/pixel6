@@ -233,6 +233,7 @@ struct lwis_transaction_info {
 	bool run_in_event_context;
 	int64_t emit_success_event_id;
 	int64_t emit_error_event_id;
+	bool allow_counter_eq;
 	// Output
 	int64_t id;
 	// Only will be set if trigger_event_id is specified.

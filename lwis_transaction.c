@@ -553,9 +553,12 @@ int lwis_transaction_submit_locked(struct lwis_client *client,
 				   struct lwis_transaction *transaction)
 {
 	int ret;
+	struct lwis_transaction_info *info = &transaction->info;
 
-	ret = check_transaction_param_locked(client, transaction,
-					     /*allow_counter_eq=*/true);
+	ret = check_transaction_param_locked(
+		client, transaction,
+		/*allow_counter_eq=*/info->allow_counter_eq);
+
 	if (ret) {
 		return ret;
 	}
