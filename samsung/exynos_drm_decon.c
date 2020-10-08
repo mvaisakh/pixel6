@@ -121,19 +121,16 @@ static inline bool is_tui(const struct drm_crtc_state *crtc_state)
 #define COLOR_MAP_VALUE			0x00340080
 
 /*
- * This function is used to disable all windows and make black frame via
- * decon on the first frame after enabling.
+ * This function can be used in cases where all windows are disabled
+ * but need something to be rendered for display. This will make a black
+ * frame via decon using a single window with color map enabled.
  */
 static void decon_set_color_map(struct decon_device *decon, u32 win_id,
 						u32 hactive, u32 vactive)
 {
 	struct decon_window_regs win_info;
-	int i;
 
 	decon_debug(decon, "%s +\n", __func__);
-
-	for (i = 0; i < MAX_WIN_PER_DECON; ++i)
-		decon_reg_set_win_enable(decon->id, i, 0);
 
 	memset(&win_info, 0, sizeof(struct decon_window_regs));
 	win_info.start_pos = win_start_pos(0, 0);
@@ -264,8 +261,8 @@ static void decon_update_plane(struct exynos_drm_crtc *crtc,
 
 	decon_reg_set_window_control(decon->id, zpos, &win_info, is_colormap);
 
+	dpp->decon_id = decon->id;
 	if (!is_colormap) {
-		dpp->decon_id = decon->id;
 		dpp->update(dpp, state);
 		dpp->is_win_connected = true;
 	} else {
@@ -316,7 +313,7 @@ static void decon_disable_plane(struct exynos_drm_crtc *exynos_crtc,
 	 */
 	if (dpp->is_win_connected &&
 	    (!plane->state->visible || !plane->state->crtc)) {
-		dpp->decon_id = decon->id;
+		dpp->decon_id = -1;
 		dpp->disable(dpp);
 		dpp->is_win_connected = false;
 	}
@@ -631,10 +628,22 @@ static void decon_enable(struct exynos_drm_crtc *crtc)
 
 	_decon_enable(decon);
 
-	decon_print_config_info(decon);
+	for (i = 0; i < decon->dpp_cnt; i++) {
+		struct dpp_device *dpp = decon->dpp[i];
 
-	for (i = 0; i < MAX_PLANE; ++i)
-		decon->dpp[i]->win_id = 0xFF;
+		if ((dpp->win_id < MAX_WIN_PER_DECON) &&
+		    ((dpp->decon_id < 0) || (dpp->decon_id == decon->id)))
+			dpp->win_id = 0xFF;
+	}
+
+	/*
+	 * Make sure all window connections are disabled when getting enabled, in case there are any
+	 * stale mappings. New mappings will happen later before atomic flush
+	 */
+	for (i = 0; i < MAX_WIN_PER_DECON; ++i)
+		decon_reg_set_win_enable(decon->id, i, 0);
+
+	decon_print_config_info(decon);
 
 	decon->state = DECON_STATE_ON;
 
