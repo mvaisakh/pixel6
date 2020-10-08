@@ -17,21 +17,36 @@
 
 #include "regs-dqe.h"
 
-static struct cal_regs_desc regs_dqe;
+#define DISP_DITHER_OFFSET_B0	0x400
 
-#define dqe_read(offset)	cal_read((&regs_dqe), offset)
-#define dqe_write(offset, val)	cal_write((&regs_dqe), offset, val)
+struct cal_regs_dqe {
+	struct cal_regs_desc desc;
+	enum dqe_version version;
+};
+
+static struct cal_regs_dqe regs_dqe;
+
+#define dqe_read(offset)	cal_read((&regs_dqe.desc), offset)
+#define dqe_write(offset, val)	cal_write((&regs_dqe.desc), offset, val)
 #define dqe_read_mask(offset, mask)		\
-		cal_read_mask((&regs_dqe), offset, mask)
+		cal_read_mask((&regs_dqe.desc), offset, mask)
 #define dqe_write_mask(offset, val, mask)	\
-		cal_write_mask((&regs_dqe), offset, val, mask)
+		cal_write_mask((&regs_dqe.desc), offset, val, mask)
 #define dqe_write_relaxed(offset, val)		\
-		cal_write_relaxed((&regs_dqe), offset, val)
+		cal_write_relaxed((&regs_dqe.desc), offset, val)
 
-void dqe_regs_desc_init(void __iomem *regs, const char *name)
+#define dither_offset(ver)	(ver > DQE_V1 ? DISP_DITHER_OFFSET_B0 : 0)
+#define dither_read(offset)		\
+	dqe_read(offset + dither_offset(regs_dqe.version))
+#define dither_write(offset, val)	\
+	dqe_write(offset + dither_offset(regs_dqe.version), val)
+
+void
+dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver)
 {
-	regs_dqe.regs = regs;
-	regs_dqe.name = name;
+	regs_dqe.version = ver;
+	regs_dqe.desc.regs = regs;
+	regs_dqe.desc.name = name;
 }
 
 static void dqe_reg_set_img_size(u32 width, u32 height)
@@ -146,14 +161,14 @@ void dqe_reg_set_cgc_dither(struct dither_config *config)
 {
 	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
 
-	dqe_write(DQE0_CGC_DITHER, value);
+	dither_write(DQE0_CGC_DITHER, value);
 }
 
 void dqe_reg_set_disp_dither(struct dither_config *config)
 {
 	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
 
-	dqe_write(DQE0_DISP_DITHER, value);
+	dither_write(DQE0_DISP_DITHER, value);
 }
 
 void dqe_reg_print_dither(enum dqe_dither_type dither)
@@ -165,9 +180,9 @@ void dqe_reg_print_dither(enum dqe_dither_type dither)
 	};
 
 	if (dither == CGC_DITHER)
-		val = dqe_read(DQE0_CGC_DITHER);
+		val = dither_read(DQE0_CGC_DITHER);
 	else if (dither == DISP_DITHER)
-		val = dqe_read(DQE0_DISP_DITHER);
+		val = dither_read(DQE0_DISP_DITHER);
 	else
 		return;
 

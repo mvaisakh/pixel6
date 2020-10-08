@@ -20,12 +20,18 @@
 #define DEGAMMA_LUT_SIZE	65
 #define REGAMMA_LUT_SIZE	65
 
+enum dqe_version {
+	DQE_V1,
+	DQE_V2,
+};
+
 enum dqe_dither_type {
 	CGC_DITHER = 0,
 	DISP_DITHER = 1,
 };
 
-void dqe_regs_desc_init(void __iomem *regs, const char *name);
+void
+dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver);
 void dqe_reg_init(u32 width, u32 height);
 void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut);
 void dqe_reg_set_cgc_lut(const struct cgc_lut *lut);
