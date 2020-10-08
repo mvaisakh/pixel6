@@ -49,13 +49,55 @@ static int edgetpu_mmap_compat(struct edgetpu_client *client,
 	if (ret)
 		etdev_dbg(client->etdev,
 			  "Error remapping PFN range: %d\n", ret);
-
 	return ret;
 }
+
+static void edgetpu_vma_open(struct vm_area_struct *vma)
+{
+	struct edgetpu_client *client = vma->vm_private_data;
+
+	switch (vma->vm_pgoff) {
+	case 0:
+	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+		mutex_lock(&client->wakelock.lock);
+		client->wakelock.csr_map_count++;
+		mutex_unlock(&client->wakelock.lock);
+		break;
+	}
+}
+
+static void edgetpu_vma_close(struct vm_area_struct *vma)
+{
+	struct edgetpu_client *client = vma->vm_private_data;
+
+	switch (vma->vm_pgoff) {
+	case 0:
+	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+		mutex_lock(&client->wakelock.lock);
+		if (!client->wakelock.csr_map_count)
+			etdev_warn(client->etdev,
+				   "unbalanced vma_close on CSR mapping\n");
+		else
+			client->wakelock.csr_map_count--;
+		etdev_dbg(client->etdev,
+			  "%s: unmap CSRS. pgoff = %lX count = %u\n", __func__,
+			  vma->vm_pgoff, client->wakelock.csr_map_count);
+		mutex_unlock(&client->wakelock.lock);
+		break;
+	}
+}
+
+static const struct vm_operations_struct edgetpu_vma_ops = {
+	.open = edgetpu_vma_open,
+	.close = edgetpu_vma_close,
+};
+
 
 /* Map exported device CSRs or queue into user space. */
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 {
+	int ret;
+
 	if (vma->vm_start & ~PAGE_MASK) {
 		etdev_dbg(client->etdev,
 			  "Base address not page-aligned: 0x%lx\n",
@@ -63,14 +105,27 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
-	vma->vm_private_data = client->etdev;
+	etdev_dbg(client->etdev, "%s: mmap pgoff = %lX\n", __func__,
+		  vma->vm_pgoff);
+
+	vma->vm_private_data = client;
+	vma->vm_ops = &edgetpu_vma_ops;
 
 	/* Mark the VMA's pages as uncacheable. */
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	/* If backward compat map all CSRs */
-	if (!vma->vm_pgoff)
-		return edgetpu_mmap_compat(client, vma);
+	if (!vma->vm_pgoff) {
+		mutex_lock(&client->wakelock.lock);
+		if (!client->wakelock.req_count)
+			ret = -EAGAIN;
+		else
+			ret = edgetpu_mmap_compat(client, vma);
+		if (!ret)
+			client->wakelock.csr_map_count++;
+		mutex_unlock(&client->wakelock.lock);
+		return ret;
+	}
 
 	/* Allow mapping log and telemetry buffers without creating a group */
 	if (vma->vm_pgoff == EDGETPU_MMAP_LOG_BUFFER_OFFSET >> PAGE_SHIFT)
@@ -80,18 +135,38 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 		return edgetpu_mmap_telemetry_buffer(
 			client->etdev, EDGETPU_TELEMETRY_TRACE, vma);
 
-	if (!client->group)
+	mutex_lock(&client->group_lock);
+	if (!client->group) {
+		mutex_unlock(&client->group_lock);
 		return -EINVAL;
+	}
 
-	if (vma->vm_pgoff == EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT)
-		return edgetpu_mmap_csr(client->group, vma);
-	if (vma->vm_pgoff == EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT)
-		return edgetpu_mmap_queue(client->group, MAILBOX_CMD_QUEUE,
-					  vma);
-	if (vma->vm_pgoff == EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT)
-		return edgetpu_mmap_queue(client->group, MAILBOX_RESP_QUEUE,
-					  vma);
-	return -EINVAL;
+	switch (vma->vm_pgoff) {
+	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+		mutex_lock(&client->wakelock.lock);
+		if (!client->wakelock.req_count)
+			ret = -EAGAIN;
+		else
+			ret = edgetpu_mmap_csr(client->group, vma);
+		if (!ret)
+			client->wakelock.csr_map_count++;
+		etdev_dbg(client->etdev, "%s: mmap CSRS. count = %u ret = %d\n",
+			  __func__, client->wakelock.csr_map_count, ret);
+		mutex_unlock(&client->wakelock.lock);
+		break;
+	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
+		ret = edgetpu_mmap_queue(client->group, MAILBOX_CMD_QUEUE, vma);
+		break;
+	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
+		ret = edgetpu_mmap_queue(client->group, MAILBOX_RESP_QUEUE,
+					 vma);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	mutex_unlock(&client->group_lock);
+	return ret;
 }
 
 static struct edgetpu_mailbox_manager_desc mailbox_manager_desc = {
@@ -102,6 +177,21 @@ static struct edgetpu_mailbox_manager_desc mailbox_manager_desc = {
 	.get_cmd_queue_csr_base = edgetpu_mailbox_get_cmd_queue_csr_base,
 	.get_resp_queue_csr_base = edgetpu_mailbox_get_resp_queue_csr_base,
 };
+
+int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev)
+{
+	switch (etdev->state) {
+	case ETDEV_STATE_BAD:
+		return -ENODEV;
+	case ETDEV_STATE_FWLOADING:
+		return -EAGAIN;
+	case ETDEV_STATE_NOFW:
+		return -EINVAL;
+	default:
+		break;
+	}
+	return 0;
+}
 
 int edgetpu_device_add(struct edgetpu_dev *etdev,
 		       const struct edgetpu_mapped_resource *regs)
@@ -129,6 +219,8 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	mutex_init(&etdev->open.lock);
 	mutex_init(&etdev->groups_lock);
 	etdev->group_join_lockout = false;
+	mutex_init(&etdev->state_lock);
+	etdev->state = ETDEV_STATE_NOFW;
 
 	ret = edgetpu_dev_add(etdev);
 	if (ret) {
@@ -160,6 +252,10 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		ret = -ENOMEM;
 		goto detach_mmu;
 	}
+
+	ret = edgetpu_mcp_verify_membership(etdev);
+	if (ret)
+		etdev_warn(etdev, "edgetpu MCP info invalid");
 
 	ret = edgetpu_kci_init(etdev->mailbox_manager, etdev->kci);
 	if (ret) {
@@ -211,6 +307,10 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	client->pid = current->pid;
 	client->tgid = current->tgid;
 	client->etdev = etdev;
+	mutex_init(&client->group_lock);
+	mutex_init(&client->wakelock.lock);
+	/* Initialize client wakelock state to "acquired" */
+	client->wakelock.req_count = 1;
 	refcount_set(&client->count, 1);
 	return client;
 }
@@ -233,7 +333,16 @@ void edgetpu_client_remove(struct edgetpu_client *client)
 {
 	if (IS_ERR_OR_NULL(client))
 		return;
-	edgetpu_device_group_leave(client);
+	/*
+	 * A quick check without holding client->group_lock.
+	 *
+	 * If client doesn't belong to a group then we are fine to not proceed.
+	 * If there is a race that the client belongs to a group but is removing
+	 * by another process - this will be detected by the check with holding
+	 * client->group_lock later.
+	 */
+	if (client->group)
+		edgetpu_device_group_leave(client);
 }
 
 int edgetpu_register_irq(struct edgetpu_dev *etdev, int irq)

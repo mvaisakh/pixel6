@@ -21,6 +21,7 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-shared-fw.h"
+#include "edgetpu-sw-watchdog.h"
 #include "edgetpu-telemetry.h"
 
 /*
@@ -252,14 +253,14 @@ static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 {
 	enum edgetpu_fw_flavor fw_flavor;
 	struct edgetpu_firmware_buffer *fw_buf;
+	struct edgetpu_dev *etdev = et_fw->etdev;
 
 	/* Give the firmware some time to initialize */
 	msleep(100);
-	etdev_dbg(et_fw->etdev, "Detecting firmware flavor...");
-	fw_flavor = edgetpu_kci_fw_flavor(et_fw->etdev->kci);
+	etdev_dbg(etdev, "Detecting firmware flavor...");
+	fw_flavor = edgetpu_kci_fw_flavor(etdev->kci);
 	if (fw_flavor < 0) {
-		etdev_err(et_fw->etdev, "firmware handshake failed: %d",
-			  fw_flavor);
+		etdev_err(etdev, "firmware handshake failed: %d", fw_flavor);
 		et_fw->p->status = FW_INVALID;
 		et_fw->p->fw_flavor = FW_FLAVOR_UNKNOWN;
 		return fw_flavor;
@@ -267,17 +268,21 @@ static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 
 	if (fw_flavor != FW_FLAVOR_BL1) {
 		fw_buf = &et_fw->p->fw_desc.buf;
-		etdev_info(et_fw->etdev, "loaded %s firmware%s",
+		etdev_info(etdev, "loaded %s firmware%s",
 			   fw_flavor_str(fw_flavor),
 			   fw_buf->flags & FW_ONDEV ? " on device" : "");
 	} else {
-		etdev_dbg(et_fw->etdev, "loaded stage 2 bootloader");
+		etdev_dbg(etdev, "loaded stage 2 bootloader");
 	}
 	et_fw->p->status = FW_VALID;
 	et_fw->p->fw_flavor = fw_flavor;
 	/* Hermosa second-stage bootloader doesn't implement log/trace */
-	if (fw_flavor != FW_FLAVOR_BL1)
-		edgetpu_telemetry_kci(et_fw->etdev);
+	if (fw_flavor != FW_FLAVOR_BL1) {
+		int ret = edgetpu_telemetry_kci(etdev);
+
+		if (ret)
+			etdev_warn(etdev, "telemetry KCI error: %d", ret);
+	}
 	return 0;
 }
 
@@ -288,8 +293,11 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	const struct edgetpu_firmware_handlers *handlers = et_fw->p->handlers;
 	struct edgetpu_firmware_desc new_fw_desc;
 	int ret;
+	bool wdt_en = !(flags & FW_BL1); /* not BL1 */
 
 	et_fw->p->status = FW_LOADING;
+	if (wdt_en)
+		edgetpu_sw_wdt_stop(et_fw->etdev);
 
 	memset(&new_fw_desc, 0, sizeof(new_fw_desc));
 	ret = edgetpu_firmware_load_locked(et_fw, &new_fw_desc, name, flags);
@@ -312,7 +320,12 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	edgetpu_firmware_unload_locked(et_fw, &et_fw->p->fw_desc);
 	et_fw->p->fw_desc = new_fw_desc;
 
-	return edgetpu_firmware_handshake(et_fw);
+	ret = edgetpu_firmware_handshake(et_fw);
+
+	/* Don't start wdt if loaded firmware is second stage bootloader. */
+	if (!ret && wdt_en && et_fw->p->fw_flavor != FW_FLAVOR_BL1)
+		edgetpu_sw_wdt_start(et_fw->etdev);
+	return ret;
 
 out_unload_new_fw:
 	edgetpu_firmware_unload_locked(et_fw, &new_fw_desc);
@@ -324,12 +337,28 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 {
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 	int ret;
+	enum edgetpu_dev_state prev_state;
 
 	if (!et_fw)
 		return -ENODEV;
+	/*
+	 * All other operations on device will first check for device state
+	 * and then proceed.
+	 */
+	mutex_lock(&etdev->state_lock);
+	if (etdev->state == ETDEV_STATE_FWLOADING) {
+		mutex_unlock(&etdev->state_lock);
+		return -EAGAIN;
+	}
+	prev_state = etdev->state;
+	etdev->state = ETDEV_STATE_FWLOADING;
+	mutex_unlock(&etdev->state_lock);
 	ret = edgetpu_firmware_lock(etdev);
 	if (ret) {
 		etdev_err(etdev, "%s: lock failed (%d)\n", __func__, ret);
+		mutex_lock(&etdev->state_lock);
+		etdev->state = prev_state; /* restore etdev state */
+		mutex_unlock(&etdev->state_lock);
 		return ret;
 	}
 	/*
@@ -344,6 +373,16 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 	etdev->firmware = et_fw;
 	edgetpu_pm_put(etdev->pm);
 	edgetpu_firmware_unlock(etdev);
+
+	mutex_lock(&etdev->state_lock);
+	if (ret == -EIO)
+		etdev->state = ETDEV_STATE_BAD; /* f/w handshake error */
+	else if (ret)
+		etdev->state = ETDEV_STATE_NOFW; /* other errors */
+	else
+		etdev->state = ETDEV_STATE_GOOD; /* f/w handshake success */
+	mutex_unlock(&etdev->state_lock);
+
 	return ret;
 }
 
@@ -400,12 +439,16 @@ int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
 	int ret;
 
 	et_fw->p->status = FW_LOADING;
+	edgetpu_sw_wdt_stop(etdev);
 	if (handlers && handlers->prepare_run) {
 		ret = handlers->prepare_run(et_fw, &et_fw->p->fw_desc.buf);
 		if (ret)
 			return ret;
 	}
-	return edgetpu_firmware_handshake(et_fw);
+	ret = edgetpu_firmware_handshake(et_fw);
+	if (!ret)
+		edgetpu_sw_wdt_start(etdev);
+	return ret;
 }
 
 static ssize_t load_firmware_show(
@@ -484,6 +527,77 @@ static const struct attribute_group edgetpu_firmware_attr_group = {
 	.attrs = dev_attrs,
 };
 
+static void edgetpu_firmware_wdt_timeout_action(void *data)
+{
+	int ret, i, num_clients = 0;
+	struct edgetpu_dev *etdev = data;
+	struct edgetpu_device_group *group;
+	struct edgetpu_client *clients[EDGETPU_NGROUPS];
+	struct edgetpu_list_client *c;
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	/* Don't attempt f/w restart if device is off. */
+	if (!edgetpu_is_powered(etdev))
+		return;
+
+	mutex_lock(&etdev->state_lock);
+	if (etdev->state == ETDEV_STATE_FWLOADING) {
+		mutex_unlock(&etdev->state_lock);
+		return;
+	}
+	etdev->state = ETDEV_STATE_FWLOADING;
+	mutex_unlock(&etdev->state_lock);
+
+	for (i = 0; i < EDGETPU_NGROUPS; i++) {
+		group = etdev->groups[i];
+		if (!group)
+			continue;
+		mutex_lock(&group->lock);
+		list_for_each_entry(c, &group->clients, list) {
+			if (etdev == c->client->etdev) {
+				clients[num_clients++] =
+						edgetpu_client_get(c->client);
+				break;
+			}
+		}
+		mutex_unlock(&group->lock);
+	}
+	// TODO(b/154626503): Notify runtime to abort current tasks
+	for (i = 0; i < num_clients; i++) {
+		/*
+		 * No need to hold state lock here since all group operations on
+		 * client are protected by state being GOOD.
+		 */
+		edgetpu_device_group_leave_locked(clients[i]);
+		edgetpu_client_put(clients[i]);
+	}
+
+	ret = edgetpu_firmware_lock(etdev);
+	/*
+	 * edgetpu_firmware_lock() should always return success here as etdev
+	 * is already removed from all groups and fw loader exists.
+	 */
+	if (ret) {
+		etdev_err(etdev, "%s: lock failed (%d)\n", __func__, ret);
+		return;
+	}
+	et_fw->p->status = FW_LOADING;
+	ret = edgetpu_pm_get(etdev->pm);
+	if (!ret)
+		ret = edgetpu_firmware_restart_locked(etdev);
+	edgetpu_pm_put(etdev->pm);
+	edgetpu_firmware_unlock(etdev);
+
+	mutex_lock(&etdev->state_lock);
+	if (ret == -EIO)
+		etdev->state = ETDEV_STATE_BAD;
+	else if (ret)
+		etdev->state = ETDEV_STATE_NOFW;
+	else
+		etdev->state = ETDEV_STATE_GOOD;
+	mutex_unlock(&etdev->state_lock);
+}
+
 int edgetpu_firmware_create(struct edgetpu_dev *etdev,
 			    const struct edgetpu_firmware_handlers *handlers)
 {
@@ -522,6 +636,12 @@ int edgetpu_firmware_create(struct edgetpu_dev *etdev,
 	}
 
 	etdev->firmware = et_fw;
+	ret = edgetpu_sw_wdt_create(etdev, EDGETPU_DORMANT_DEV_BEAT_MS);
+	if (ret)
+		etdev_err(etdev, "Failed to create sw wdt instance\n");
+	else
+		edgetpu_sw_wdt_set_handler(
+			etdev, edgetpu_firmware_wdt_timeout_action, etdev);
 	return 0;
 
 out_device_remove_group:
@@ -540,6 +660,7 @@ void edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
 
 	if (!et_fw)
 		return;
+	edgetpu_sw_wdt_destroy(etdev);
 
 	if (et_fw->p) {
 		handlers = et_fw->p->handlers;

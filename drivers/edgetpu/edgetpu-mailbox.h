@@ -226,6 +226,12 @@ void edgetpu_mailbox_free_queue(struct edgetpu_dev *etdev,
 				struct edgetpu_mailbox *mailbox,
 				edgetpu_queue_mem *mem);
 
+/*
+ * Re-configure VII mailbox queues which have an active client, re-using
+ * existing buffers
+ */
+void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev);
+
 /* Return context ID for mailbox. */
 static inline enum edgetpu_context_id
 edgetpu_mailbox_context_id(struct edgetpu_mailbox *mailbox)

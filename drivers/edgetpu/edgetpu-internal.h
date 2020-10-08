@@ -51,6 +51,9 @@
 /* Up to 7 concurrent device groups / workloads per device. */
 #define EDGETPU_NGROUPS		7
 
+/* 1 context per VII/group plus 1 for KCI */
+#define EDGETPU_NCONTEXTS	(EDGETPU_NGROUPS + 1)
+
 /*
  * Common-layer context IDs for non-secure TPU access, translated to chip-
  * specific values in the mmu driver.
@@ -85,6 +88,8 @@ struct edgetpu_client {
 	pid_t tgid;
 	/* Reference count */
 	refcount_t count;
+	/* protects group. */
+	struct mutex group_lock;
 	/*
 	 * The virtual device group this client belongs to. Can be NULL if the
 	 * client doesn't belong to any group.
@@ -103,6 +108,12 @@ struct edgetpu_client {
 	dma_addr_t *remote_drams_dma_addrs;
 	/* range of device CSRs mmap()'able */
 	struct edgetpu_reg_window reg_window;
+	/* Per-client request to keep device active */
+	struct {
+		struct mutex lock;
+		uint req_count;
+		uint csr_map_count;
+	} wakelock;
 };
 
 struct edgetpu_mapping;
@@ -120,6 +131,13 @@ struct edgetpu_mapped_resource {
 	resource_size_t size;	/* size in bytes */
 };
 
+enum edgetpu_dev_state {
+	ETDEV_STATE_NOFW = 0,	/* no firmware running on device. */
+	ETDEV_STATE_GOOD = 1,	/* healthy firmware running. */
+	ETDEV_STATE_FWLOADING = 2, /* firmware is getting loaded on device. */
+	ETDEV_STATE_BAD = 3,	/* firmware/device is in unusable state. */
+};
+
 struct edgetpu_dev {
 	struct device *dev;	   /* platform/pci bus device */
 	struct device *etcdev;	   /* edgetpu class char device */
@@ -132,6 +150,8 @@ struct edgetpu_dev {
 	} open;
 	struct edgetpu_mapped_resource regs; /* ioremapped CSRs */
 	struct dentry *d_entry;    /* debugfs dir for this device */
+	struct mutex state_lock;   /* protects state of this device */
+	enum edgetpu_dev_state state;
 	struct mutex groups_lock;  /* protects groups and lockout */
 	struct edgetpu_device_group *groups[EDGETPU_NGROUPS];
 	bool group_join_lockout;   /* disable group join while reinit */
@@ -148,6 +168,8 @@ struct edgetpu_dev {
 	int mcp_id;		/* multichip pkg id, or -1 for none */
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */
+	struct edgetpu_sw_wdt *etdev_sw_wdt;	/* software watchdog */
+	u64 mcp_serial_num;	/* multichip serial number */
 };
 
 /* Status regs dump. */
@@ -238,9 +260,6 @@ void edgetpu_chip_exit(struct edgetpu_dev *etdev);
 /* IRQ handler */
 irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg);
 
-/* Return true if the device is marked as bypassed. */
-bool edgetpu_chip_bypassed(struct edgetpu_dev *etdev);
-
 /* Device -> Core API */
 
 /* Add current thread as new TPU client */
@@ -260,5 +279,11 @@ void edgetpu_client_put(struct edgetpu_client *client);
 
 /* Mark die that fails probe to allow bypassing */
 void edgetpu_mark_probe_fail(struct edgetpu_dev *etdev);
+
+/*
+ * Get error code corresponding to @etdev state. Caller holds
+ * etdev->state_lock.
+ */
+int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev);
 
 #endif /* __EDGETPU_INTERNAL_H__ */

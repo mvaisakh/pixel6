@@ -63,4 +63,7 @@ void edgetpu_pm_destroy(struct edgetpu_dev *etdev);
  */
 void edgetpu_pm_shutdown(struct edgetpu_dev *etdev);
 
+/* Check if device is powered on. power_up_count is not protected by a lock */
+bool edgetpu_is_powered(struct edgetpu_dev *etdev);
+
 #endif /* __EDGETPU_PM_H__ */

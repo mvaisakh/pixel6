@@ -6,6 +6,7 @@
  */
 #ifdef CONFIG_X86
 #include <linux/printk.h>	// pr_warn used by set_memory.h
+#include <asm/pgtable_types.h>
 #include <asm/set_memory.h>
 #endif
 #include <linux/dma-mapping.h>
@@ -253,40 +254,8 @@ static void edgetpu_fw_trace(struct edgetpu_dev *etdev,
 			     struct edgetpu_telemetry *trace)
 {
 	struct edgetpu_telemetry_header *header = trace->header;
-#ifndef DEBUG
+
 	header->head = header->tail;
-#else /* DEBUG */
-	struct edgetpu_trace_entry_header entry;
-	u8 *start;
-	const size_t queue_size = trace->coherent_mem.size - sizeof(*header);
-	const size_t max_length = queue_size - sizeof(entry);
-	char *buffer = kmalloc(max_length + 1, GFP_ATOMIC);
-
-	if (!buffer) {
-		header->head = header->tail;
-		etdev_err_ratelimited(etdev, "failed to allocate trace buffer");
-		return;
-	}
-	start = (u8 *)header + sizeof(*header);
-
-	while (header->head != header->tail) {
-		copy_with_wrap(header, &entry, sizeof(entry), queue_size,
-			       start);
-		if (entry.length > max_length) {
-			header->head = header->tail;
-			etdev_err_ratelimited(etdev,
-					      "trace queue is corrupted");
-			break;
-		}
-		copy_with_wrap(header, buffer, entry.length, queue_size, start);
-		buffer[entry.length] = 0;
-		etdev_dbg_ratelimited(
-			etdev, "trace: %s: tid=%llu, start=%lld, end=%lld\n",
-			buffer, entry.thread_id, entry.start_timestamp,
-			entry.end_timestamp);
-	}
-	kfree(buffer);
-#endif /* DEBUG */
 }
 
 /*

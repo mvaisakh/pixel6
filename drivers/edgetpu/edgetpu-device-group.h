@@ -37,7 +37,7 @@ enum edgetpu_device_group_status {
 	EDGETPU_DEVICE_GROUP_DISBANDED,
 };
 
-#define EDGETPU_EVENT_COUNT 1
+#define EDGETPU_EVENT_COUNT 2
 
 /* eventfds registered for event notifications from kernel for a device group */
 struct edgetpu_events {
@@ -79,6 +79,8 @@ struct edgetpu_device_group {
 	/* TPU IOVA mapped to buffers backed by dma-buf */
 	struct edgetpu_mapping_root dmabuf_mappings;
 	struct edgetpu_events events;
+	/* Mailbox attributes used to create this group */
+	struct edgetpu_mailbox_attr mbox_attr;
 };
 
 /*
@@ -178,7 +180,8 @@ static inline struct edgetpu_dev *edgetpu_device_group_nth_etdev(
 }
 
 /*
- * Let @client leave the group it belongs to.
+ * Let @client leave the group it belongs to. Caller should hold the client's
+ * etdev state_lock.
  *
  * If @client is the leader of a group, the group will be marked as "disbanded".
  *
@@ -192,6 +195,9 @@ static inline struct edgetpu_dev *edgetpu_device_group_nth_etdev(
  * @client->group will be removed from @client->etdev->groups.
  * @client->group will be set as NULL.
  */
+void edgetpu_device_group_leave_locked(struct edgetpu_client *client);
+
+/* Let @client leave the group. Device should be in good state, warn if not. */
 void edgetpu_device_group_leave(struct edgetpu_client *client);
 
 /* Returns whether @client is the leader of @group. */
@@ -277,5 +283,8 @@ bool edgetpu_in_any_group(struct edgetpu_dev *etdev);
  * joined to a group.
  */
 bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
+
+/* Notify all device groups of @etdev about a failure on the die */
+void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev);
 
 #endif /* __EDGETPU_DEVICE_GROUP_H__ */

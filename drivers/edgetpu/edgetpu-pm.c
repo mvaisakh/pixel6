@@ -8,12 +8,16 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 
+#include "edgetpu-device-group.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
+#include "edgetpu-mailbox.h"
 #include "edgetpu-pm.h"
+#include "edgetpu-sw-watchdog.h"
 
 struct edgetpu_pm_private {
 	const struct edgetpu_pm_handlers *handlers;
+	struct mutex lock;
 	int power_up_count;
 };
 
@@ -24,11 +28,16 @@ int edgetpu_pm_get(struct edgetpu_pm *etpm)
 
 	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
 		return 0;
+	mutex_lock(&etpm->p->lock);
 	power_up_count = etpm->p->power_up_count++;
-	if (!power_up_count)
+	if (!power_up_count) {
 		ret = etpm->p->handlers->power_up(etpm);
+		if (!ret)
+			edgetpu_mailbox_restore_active_vii_queues(etpm->etdev);
+	}
 	if (ret)
 		etpm->p->power_up_count--;
+	mutex_unlock(&etpm->p->lock);
 	return ret;
 }
 
@@ -36,13 +45,18 @@ void edgetpu_pm_put(struct edgetpu_pm *etpm)
 {
 	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_down)
 		return;
+	mutex_lock(&etpm->p->lock);
 	if (!etpm->p->power_up_count) {
 		dev_err(etpm->etdev->dev, "Unbalanced pm_put");
 		WARN_ON(1);
+		mutex_unlock(&etpm->p->lock);
 		return;
 	}
-	if (!--etpm->p->power_up_count)
+	if (!--etpm->p->power_up_count) {
+		edgetpu_sw_wdt_stop(etpm->etdev);
 		etpm->p->handlers->power_down(etpm);
+	}
+	mutex_unlock(&etpm->p->lock);
 }
 
 int edgetpu_pm_create(struct edgetpu_dev *etdev,
@@ -69,6 +83,8 @@ int edgetpu_pm_create(struct edgetpu_dev *etdev,
 
 	etpm->p->handlers = handlers;
 	etpm->etdev = etdev;
+
+	mutex_init(&etpm->p->lock);
 
 	if (handlers->after_create) {
 		ret = handlers->after_create(etpm);
@@ -108,6 +124,7 @@ void edgetpu_pm_shutdown(struct edgetpu_dev *etdev)
 
 	if (!etpm)
 		return;
+	mutex_lock(&etpm->p->lock);
 	if (etdev->firmware)
 		edgetpu_firmware_lock(etdev);
 	if (etpm->p->power_up_count) {
@@ -118,4 +135,15 @@ void edgetpu_pm_shutdown(struct edgetpu_dev *etdev)
 		etpm->p->handlers->power_down(etpm);
 	if (etdev->firmware)
 		edgetpu_firmware_unlock(etdev);
+	mutex_unlock(&etpm->p->lock);
+}
+
+bool edgetpu_is_powered(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_pm *etpm = etdev->pm;
+
+	if (!etpm)
+		/* Assume powered-on in case of no power interface. */
+		return true;
+	return etpm->p->power_up_count;
 }

@@ -82,23 +82,22 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	struct device *dev = cooling->dev;
 	unsigned long pwr_state;
 
-	if (state_original >= ARRAY_SIZE(state_mapping)) {
+	if (WARN_ON(state_original >= ARRAY_SIZE(state_mapping))) {
 		dev_err(dev, "%s: invalid cooling state %lu\n", __func__,
 			state_original);
-		WARN_ON(1);
 		return -EINVAL;
 	}
 
-	pwr_state = state_mapping[state_original];
-	cooling->pwr_state = pwr_state;
-
 	mutex_lock(&cooling->lock);
-
-	ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, pwr_state);
-	if (ret) {
-		dev_err(dev, "error setting tpu policy: %d\n", ret);
-		mutex_unlock(&cooling->lock);
-		return ret;
+	pwr_state = state_mapping[state_original];
+	if (state_original != cooling->cooling_state) {
+		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, pwr_state);
+		if (ret) {
+			dev_err(dev, "error setting tpu policy: %d\n", ret);
+			mutex_unlock(&cooling->lock);
+			return ret;
+		}
+		cooling->cooling_state = state_original;
 	}
 
 	mutex_unlock(&cooling->lock);
@@ -107,18 +106,28 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 
 static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
-{	unsigned long state_original;
+{
+	int ret = 0;
 	struct edgetpu_thermal *cooling = cdev->devdata;
-	int i = 0;
 
-	state_original = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
-	find_state_pwr(i, state_original, state_mapping[i], state_mapping,
-		       *state, i);
-	dev_err(cooling->dev, "Unknown get state req for: %lu\n",
-		state_original);
-	*state = 0;
-	WARN_ON(1);
-	return -EINVAL;
+	*state = cooling->cooling_state;
+	if (*state >= ARRAY_SIZE(state_mapping)) {
+		dev_warn(cooling->dev, "Unknown cooling state: %lu, resetting\n", *state);
+		mutex_lock(&cooling->lock);
+
+		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, TPU_ACTIVE_OD);
+		if (ret) {
+			dev_err(cooling->dev, "error setting tpu policy: %d\n", ret);
+			mutex_unlock(&cooling->lock);
+			return ret;
+		}
+
+		//setting back to "no cooling"
+		cooling->cooling_state = 0;
+		mutex_unlock(&cooling->lock);
+	}
+
+	return 0;
 }
 
 static int edgetpu_state2power_internal(unsigned long state, u32 *power,
@@ -211,12 +220,18 @@ static void devm_tpu_thermal_release(struct device *dev, void *res)
 static int
 tpu_thermal_cooling_register(struct edgetpu_thermal *thermal, char *type)
 {
+	struct device_node *cooling_node = NULL;
+
 	thermal->op_data = NULL;
 
 	mutex_init(&thermal->lock);
-	thermal->pwr_state = TPU_OFF;
+	cooling_node = of_find_node_by_name(NULL, "tpu-cooling");
+	if (!cooling_node)
+		dev_warn(thermal->dev, "failed to find cooling node\n");
+	// Initialize the cooling state as 0, means "no cooling"
+	thermal->cooling_state = 0;
 	thermal->cdev = thermal_of_cooling_device_register(
-		NULL, type, thermal, &edgetpu_cooling_ops);
+		cooling_node, type, thermal, &edgetpu_cooling_ops);
 	if (IS_ERR(thermal->cdev))
 		return PTR_ERR(thermal->cdev);
 	return 0;

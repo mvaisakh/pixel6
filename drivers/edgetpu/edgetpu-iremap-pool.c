@@ -9,6 +9,7 @@
 #include <linux/printk.h>
 
 #ifdef CONFIG_X86
+#include <asm/pgtable_types.h>
 #include <asm/set_memory.h>
 #endif
 
@@ -176,6 +177,8 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 	struct edgetpu_mempool *etmempool = etdev->iremap_pool;
 	size_t offset;
 	phys_addr_t phys;
+	int ret;
+	unsigned long orig_pgoff = vma->vm_pgoff;
 
 #ifdef CONFIG_ARM64
 	/*
@@ -188,13 +191,19 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 #endif
 
 	vma->vm_pgoff = 0;
-	if (!etmempool)
-		return dma_mmap_coherent(etdev->dev, vma, mem->vaddr,
-					 mem->dma_addr, mem->size);
+	if (!etmempool) {
+		ret = dma_mmap_coherent(etdev->dev, vma, mem->vaddr,
+					mem->dma_addr, mem->size);
+		vma->vm_pgoff = orig_pgoff;
+		return ret;
+	}
+
 	offset = mem->vaddr - etmempool->base_vaddr;
 	phys = etmempool->base_phys_addr + offset;
 	etdev_dbg(etdev, "iremap_mmap: virt = %llx phys = %llx\n",
 		  (u64)mem->vaddr, phys);
-	return remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
-			       vma->vm_end - vma->vm_start, vma->vm_page_prot);
+	ret = remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
+			      vma->vm_end - vma->vm_start, vma->vm_page_prot);
+	vma->vm_pgoff = orig_pgoff;
+	return ret;
 }

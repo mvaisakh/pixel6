@@ -37,6 +37,9 @@ typedef __u32 edgetpu_map_flag_t;
 #define EDGETPU_MAP_CPU_NONACCESSIBLE	(1u << 3)
 /* Skip CPU sync on unmap */
 #define EDGETPU_MAP_SKIP_CPU_SYNC	(1u << 4)
+/* Offset and mask to set the PBHA bits of IOMMU mappings */
+#define EDGETPU_MAP_ATTR_PBHA_SHIFT	5
+#define EDGETPU_MAP_ATTR_PBHA_MASK	0xf
 
 struct edgetpu_map_ioctl {
 	__u64 host_address;
@@ -68,7 +71,8 @@ struct edgetpu_map_ioctl {
 	 *               0 = Don't skip CPU sync. Default DMA API behavior.
 	 *               1 = Skip CPU sync.
 	 *             Note: This bit is ignored on the map call.
-	 *   [31:5]  - RESERVED
+	 *   [8:5]   - Value of PBHA bits for IOMMU mappings. For Abrolhos only.
+	 *   [31:9]  - RESERVED
 	 */
 	edgetpu_map_flag_t flags;
 	/*
@@ -107,6 +111,7 @@ struct edgetpu_map_ioctl {
  * for notifications.
  */
 #define EDGETPU_EVENT_RESPDATA		0
+#define EDGETPU_EVENT_FATAL_ERROR	1
 
 struct edgetpu_event_register {
 	__u32 event_id;
@@ -117,7 +122,8 @@ struct edgetpu_event_register {
 #define EDGETPU_SET_EVENTFD \
 	_IOR(EDGETPU_IOCTL_BASE, 5, struct edgetpu_event_register)
 
-struct edgetpu_mailbox_attr {
+/* TODO(b/167151866): remove this structure and EDGETPU_CREATE_GROUP_COMPAT */
+struct edgetpu_mailbox_attr_compat {
 	__u32 cmd_queue_size    : 10; /* size of cmd queue in KB */
 	__u32 resp_queue_size   : 10; /* size of response queue in KB */
 	__u32 priority          :  4; /* mailbox service priority */
@@ -125,8 +131,34 @@ struct edgetpu_mailbox_attr {
 };
 
 /* Create a new device group with the caller as the master. */
+#define EDGETPU_CREATE_GROUP_COMPAT \
+	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr_compat)
+
+struct edgetpu_mailbox_attr {
+	/*
+	 * There are limitations on these size fields, see the error cases in
+	 * EDGETPU_CREATE_GROUP.
+	 */
+
+	__u32 cmd_queue_size; /* size of command queue in KB */
+	__u32 resp_queue_size; /* size of response queue in KB */
+	__u32 sizeof_cmd; /* size of command element in bytes */
+	__u32 sizeof_resp; /* size of response element in bytes */
+	__u32 priority          : 4; /* mailbox service priority */
+	__u32 cmdq_tail_doorbell: 1; /* auto doorbell on cmd queue tail move */
+};
+
+/*
+ * Create a new device group with the caller as the master.
+ *
+ * EINVAL: If the caller already belongs to a group.
+ * EINVAL: If @cmd/resp_queue_size equals 0.
+ * EINVAL: If @sizeof_cmd/resp equals 0.
+ * EINVAL: If @cmd_queue_size * 1024 / @sizeof_cmd >= 1024, this is a hardware
+ *         limitation. Same rule for the response sizes pair.
+ */
 #define EDGETPU_CREATE_GROUP \
-	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
+	_IOW(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
 
 /* Join the calling fd to the device group of the supplied fd. */
 #define EDGETPU_JOIN_GROUP \
@@ -255,8 +287,8 @@ struct edgetpu_map_dmabuf_ioctl {
 	 * Flags indicating mapping attributes. See edgetpu_map_ioctl.flags for
 	 * details.
 	 *
-	 * Note: the SKIP_CPU_SYNC flag is ignored, the behavior of
-	 * synchronization on unmap is controlled by the dma-buf exporter.
+	 * Note: the SKIP_CPU_SYNC and PBHA flags are ignored, DMA flags to be
+	 * used is controlled by the dma-buf exporter.
 	 */
 	edgetpu_map_flag_t flags;
 	/*
@@ -417,5 +449,19 @@ struct edgetpu_sync_fence_status {
  */
 #define EDGETPU_SYNC_FENCE_STATUS \
 	_IOWR(EDGETPU_IOCTL_BASE, 24, struct edgetpu_sync_fence_status)
+
+/*
+ * Release the current client's wakelock, allowing firmware to be shut down if
+ * no other clients are active.
+ * Groups and buffer mappings are preserved.
+ * WARNING: Attempts to access any mapped CSRs before re-acquiring the wakelock
+ * may crash the system.
+ */
+#define EDGETPU_RELEASE_WAKE_LOCK	_IO(EDGETPU_IOCTL_BASE, 25)
+
+/*
+ * Acquire the wakelock for this client, ensures firmware keeps running.
+ */
+#define EDGETPU_ACQUIRE_WAKE_LOCK	_IO(EDGETPU_IOCTL_BASE, 26)
 
 #endif /* __EDGETPU_H__ */

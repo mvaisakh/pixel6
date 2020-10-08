@@ -45,14 +45,6 @@ struct edgetpu_log_entry_header {
 	u16 crc16;
 } __packed;
 
-struct edgetpu_trace_entry_header {
-	u64 thread_id;
-	s64 start_timestamp;
-	s64 end_timestamp;
-	u16 length; /* the size of string appended after this entry in bytes */
-	u16 crc16;
-} __packed;
-
 struct edgetpu_telemetry {
 	/*
 	 * State transitioning is to prevent racing in IRQ handlers. e.g. the

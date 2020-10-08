@@ -21,8 +21,6 @@
 #include <linux/iommu-ext.h>
 #endif
 
-/* 1 context per VII/group plus 1 for KCI */
-#define NCONTEXTS			(EDGETPU_NGROUPS + 1)
 
 struct edgetpu_iommu_domain {
 	struct iommu_domain *iommu_domain;
@@ -31,7 +29,7 @@ struct edgetpu_iommu_domain {
 
 struct edgetpu_iommu {
 	struct iommu_group *iommu_group;
-	struct edgetpu_iommu_domain domain[NCONTEXTS];
+	struct edgetpu_iommu_domain domain[EDGETPU_NCONTEXTS];
 	bool context_0_default;		/* is context 0 domain the default? */
 };
 
@@ -48,7 +46,7 @@ static int edgetpu_iommu_fault_handler(struct iommu_domain *domain,
 	struct edgetpu_iommu_domain *etdomain =
 		(struct edgetpu_iommu_domain *)token;
 
-	dev_err(dev, "IOMMU fault on address %08lX. PASID = %d flags = %08X",
+	dev_err(dev, "IOMMU fault on address %08lX. PASID = %u flags = %08X",
 		iova, etdomain->pasid, flags);
 	// Tell the IOMMU driver we are OK with this fault
 	return 0;
@@ -104,27 +102,30 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	if (!iommu_dev_feature_enabled(etdev->dev, IOMMU_DEV_FEAT_AUX))
 		return i ? 0 : -EINVAL;
 
-	for (; i < NCONTEXTS; i++) {
-		unsigned int pasid;
+	for (; i < EDGETPU_NCONTEXTS; i++) {
+		int pasid, ret;
 
 		domain = iommu_domain_alloc(etdev->dev->bus);
 
 		if (!domain) {
-			dev_warn(etdev->dev, "iommu domain %d alloc failed\n",
-				 i);
+			etdev_warn(etdev, "iommu domain %d alloc failed\n", i);
 			break;
 		}
-		iommu_aux_attach_device(domain, etdev->dev);
+		ret = iommu_aux_attach_device(domain, etdev->dev);
+		if (ret) {
+			etdev_warn(etdev, "Attach IOMMU aux failed: %d", ret);
+			iommu_domain_free(domain);
+			continue;
+		}
 		pasid = iommu_aux_get_pasid(domain, etdev->dev);
-		if (!pasid || pasid >= NCONTEXTS) {
-			dev_warn(etdev->dev,
-				 "Invalid PASID %d returned from iommu\n",
-				 pasid);
+		if (pasid <= 0 || pasid >= EDGETPU_NCONTEXTS) {
+			etdev_warn(etdev,
+				   "Invalid PASID %d returned from iommu\n",
+				   pasid);
 			iommu_aux_detach_device(domain, etdev->dev);
 			iommu_domain_free(domain);
 		} else if (etiommu->domain[pasid].iommu_domain) {
-			dev_warn(etdev->dev, "PASID %d already in use\n",
-				 pasid);
+			etdev_warn(etdev, "PASID %d already in use\n", pasid);
 			iommu_aux_detach_device(domain, etdev->dev);
 			iommu_domain_free(domain);
 		} else {
@@ -150,7 +151,8 @@ void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 
 	edgetpu_mmu_reset(etdev);
 
-	for (i = etiommu->context_0_default ? 1 : 0; i < NCONTEXTS; i++) {
+	for (i = etiommu->context_0_default ? 1 : 0; i < EDGETPU_NCONTEXTS;
+	     i++) {
 		if (etiommu->domain[i].iommu_domain) {
 			if (i) {
 				iommu_aux_detach_device(
@@ -193,7 +195,7 @@ static int get_iommu_map_params(struct edgetpu_dev *etdev,
 	int i;
 	struct scatterlist *sg;
 
-	if (pasid >= NCONTEXTS) {
+	if (pasid >= EDGETPU_NCONTEXTS) {
 		dev_err(etdev->dev, "Invalid context_id %d\n", context_id);
 		return -EINVAL;
 	}
@@ -213,6 +215,7 @@ static int get_iommu_map_params(struct edgetpu_dev *etdev,
 	for_each_sg(map->sgt.sgl, sg, map->sgt.orig_nents, i)
 		size += sg->length;
 
+	prot |= IOMMU_PBHA_PROT(EDGEPTU_MAP_PBHA_VALUE(map->flags));
 	params->prot = prot;
 	params->size = size;
 	params->domain = domain;
@@ -238,8 +241,8 @@ int edgetpu_mmu_map(struct edgetpu_dev *etdev, struct edgetpu_mapping *map,
 			      "%s: 64-bit addressing is not supported",
 			      __func__);
 
-	ret = dma_map_sg(etdev->dev, map->sgt.sgl, map->sgt.nents,
-			 edgetpu_host_dma_dir(map->dir));
+	ret = dma_map_sg_attrs(etdev->dev, map->sgt.sgl, map->sgt.nents,
+			       edgetpu_host_dma_dir(map->dir), map->dma_attrs);
 	if (!ret)
 		return -EINVAL;
 	map->sgt.nents = ret;
@@ -354,7 +357,7 @@ int edgetpu_mmu_add_translation(struct edgetpu_dev *etdev, unsigned long iova,
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	uint pasid = context_id_to_pasid(context_id);
 
-	if (pasid >= NCONTEXTS)
+	if (pasid >= EDGETPU_NCONTEXTS)
 		return -EINVAL;
 
 	domain = etiommu->domain[pasid].iommu_domain;
@@ -376,7 +379,7 @@ void edgetpu_mmu_remove_translation(struct edgetpu_dev *etdev,
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	uint pasid = context_id_to_pasid(context_id);
 
-	if (pasid >= NCONTEXTS)
+	if (pasid >= EDGETPU_NCONTEXTS)
 		return;
 
 	domain = etiommu->domain[pasid].iommu_domain;
@@ -401,7 +404,7 @@ tpu_addr_t edgetpu_mmu_tpu_map(struct edgetpu_dev *etdev, dma_addr_t down_addr,
 	int prot = __dma_dir_to_iommu_prot(dir);
 	uint pasid = context_id_to_pasid(context_id);
 
-	if (pasid >= NCONTEXTS)
+	if (pasid >= EDGETPU_NCONTEXTS)
 		return 0;
 	domain = etiommu->domain[pasid].iommu_domain;
 
@@ -432,7 +435,7 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
 		iommu_get_domain_for_dev(etdev->dev);
 	uint pasid = context_id_to_pasid(context_id);
 
-	if (pasid >= NCONTEXTS)
+	if (pasid >= EDGETPU_NCONTEXTS)
 		return;
 	domain = etiommu->domain[pasid].iommu_domain;
 
@@ -445,4 +448,8 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
 		return;
 	/* Unmap the address from the context-specific domain */
 	iommu_unmap(domain, tpu_addr, size);
+}
+
+void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev)
+{
 }

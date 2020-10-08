@@ -10,9 +10,18 @@
 #include "edgetpu-config.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
+#include "abrolhos-platform.h"
 #include "edgetpu-telemetry.h"
 
 #define HOST_NONSECURE_INTRSRCMASKREG	0x000f0004
+
+#define SSMT_NS_READ_STREAM_VID_OFFSET(n) (0x1000u + (0x4u * (n)))
+#define SSMT_NS_WRITE_STREAM_VID_OFFSET(n) (0x1200u + (0x4u * (n)))
+
+#define SSMT_NS_READ_STREAM_VID_REG(base, n)                                   \
+	((base) + SSMT_NS_READ_STREAM_VID_OFFSET(n))
+#define SSMT_NS_WRITE_STREAM_VID_REG(base, n)                                  \
+	((base) + SSMT_NS_WRITE_STREAM_VID_OFFSET(n))
 
 /*
  * The interrupt handler for mailboxes.
@@ -67,17 +76,25 @@ irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg)
 
 void edgetpu_chip_init(struct edgetpu_dev *etdev)
 {
+	int i;
+	struct edgetpu_platform_dev *etpdev = container_of(
+			etdev, struct edgetpu_platform_dev, edgetpu_dev);
+
 	/* Disable the CustomBlock Interrupt. */
 	edgetpu_dev_write_32(etdev, HOST_NONSECURE_INTRSRCMASKREG, 0x1);
+
+	if (!etpdev->ssmt_base)
+		return;
+
+	/* Setup non-secure SCIDs, assume VID = SCID */
+	for (i = 0; i < EDGETPU_NCONTEXTS; i++) {
+		writel(i, SSMT_NS_READ_STREAM_VID_REG(etpdev->ssmt_base, i));
+		writel(i, SSMT_NS_WRITE_STREAM_VID_REG(etpdev->ssmt_base, i));
+	}
 }
 
 void edgetpu_chip_exit(struct edgetpu_dev *etdev)
 {
-}
-
-bool edgetpu_chip_bypassed(struct edgetpu_dev *etdev)
-{
-	return false;
 }
 
 void edgetpu_mark_probe_fail(struct edgetpu_dev *etdev)

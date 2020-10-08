@@ -5,13 +5,17 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
+#include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/gsa/gsa_tpu.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/iommu.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
+#include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -26,11 +30,28 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 
+#define MAX_SEGS     1
+
 static const struct of_device_id edgetpu_of_match[] = {
 	{ .compatible = "google,darwinn", },
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, edgetpu_of_match);
+
+static void edgetpu_sscd_release(struct device *dev)
+{
+	pr_debug(DRIVER_NAME " release\n");
+}
+static struct sscd_platform_data edgetpu_sscd_pdata;
+static struct platform_device edgetpu_sscd_dev = {
+	.name            = DRIVER_NAME,
+	.driver_override = SSCD_NAME,
+	.id              = -1,
+	.dev             = {
+		.platform_data = &edgetpu_sscd_pdata,
+		.release       = edgetpu_sscd_release,
+	},
+};
 
 /*
  * Log and trace buffers at the beginning of the remapped region,
@@ -57,6 +78,7 @@ static void abrolhos_get_telemetry_mem(struct edgetpu_platform_dev *etpdev,
 static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 {
 	struct edgetpu_dev *etdev = &etpdev->edgetpu_dev;
+	struct platform_device *gsa_pdev;
 	struct device *dev = etdev->dev;
 	struct resource r;
 	struct device_node *np;
@@ -74,8 +96,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	err = of_address_to_resource(np, 0, &r);
 	of_node_put(np);
 	if (err) {
-		dev_err(dev,
-			"No memory address assigned to firmware region\n");
+		dev_err(dev, "No memory address assigned to firmware region\n");
 		return err;
 	}
 
@@ -86,30 +107,32 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 		return -ENOSPC;
 	}
 
-	etpdev->fw_region_vaddr =
-		memremap(r.start, region_map_size, MEMREMAP_WC);
-	if (!etpdev->fw_region_vaddr) {
-		dev_err(dev, "Firmware memory remap failed\n");
-		return -EINVAL;
+	/* Get GSA device from device tree */
+	np = of_parse_phandle(dev->of_node, "gsa-device", 0);
+	if (!np) {
+		dev_err(dev, "No gsa-dev in device tree\n");
+		return -ENODEV;
 	}
+	gsa_pdev = of_find_device_by_node(np);
+	if (!gsa_pdev) {
+		dev_err(dev, "GSA device not found\n");
+		of_node_put(np);
+		return -ENODEV;
+	}
+	etpdev->gsa_dev = &gsa_pdev->dev;
+	of_node_put(np);
 
-	etpdev->shared_mem_vaddr =
-		etpdev->fw_region_vaddr + EDGETPU_REMAPPED_DATA_OFFSET;
-	etpdev->shared_mem_paddr = r.start + EDGETPU_REMAPPED_DATA_OFFSET;
-
+	etpdev->fw_region_paddr = r.start;
 	etpdev->fw_region_size = EDGETPU_FW_SIZE_MAX;
 
-	/* Add an IOMMU translation to the physical address of the region. */
-	err = edgetpu_mmu_add_translation(etdev, FW_IOVA, r.start,
-					  region_map_size,
-					  IOMMU_READ | IOMMU_WRITE |
-					  IOMMU_PRIV, EDGETPU_CONTEXT_KCI);
-	if (err) {
-		dev_err(dev, "Unable to map firmware memory into IOMMU\n");
-		memunmap(etpdev->fw_region_vaddr);
-		etpdev->fw_region_vaddr = NULL;
-		return err;
+	etpdev->shared_mem_vaddr =
+		memremap(r.start + EDGETPU_REMAPPED_DATA_OFFSET,
+			 EDGETPU_REMAPPED_DATA_SIZE, MEMREMAP_WC);
+	if (!etpdev->shared_mem_vaddr) {
+		dev_err(dev, "Shared memory remap failed\n");
+		return -EINVAL;
 	}
+	etpdev->shared_mem_paddr = r.start + EDGETPU_REMAPPED_DATA_OFFSET;
 
 	err = of_property_read_u32(dev->of_node, "csr-iova", &csr_iova);
 	/* Device did not define a CSR region */
@@ -119,8 +142,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	/* If an IOVA was found, we must also have physical address and size */
 	err = of_property_read_u32(dev->of_node, "csr-phys", &csr_phys);
 	if (err) {
-		dev_err(dev,
-			"Device tree: invalid CSR physical address\n");
+		dev_err(dev, "Device tree: invalid CSR physical address\n");
 		goto out_unmap;
 	}
 
@@ -131,7 +153,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	}
 
 	dev_dbg(dev, "Mapping device CSRs: %X -> %X (%d bytes)\n", csr_iova,
-		 csr_phys, csr_size);
+		csr_phys, csr_size);
 	/* Add an IOMMU translation for the Mailbox CSRs */
 	err = edgetpu_mmu_add_translation(etdev, csr_iova, csr_phys, csr_size,
 					  IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV,
@@ -144,31 +166,28 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 	etpdev->csr_size = csr_size;
 	return 0;
 out_unmap:
-	memunmap(etpdev->fw_region_vaddr);
-	etpdev->fw_region_vaddr = NULL;
-	edgetpu_mmu_remove_translation(etdev, FW_IOVA, region_map_size,
-				       EDGETPU_CONTEXT_KCI);
+	memunmap(etpdev->shared_mem_vaddr);
+	etpdev->shared_mem_vaddr = NULL;
 	return err;
 }
 
 static void edgetpu_platform_cleanup_fw_region(
 	struct edgetpu_platform_dev *etpdev)
 {
-	if (!etpdev->fw_region_vaddr)
-		return;
+	gsa_unload_tpu_fw_image(etpdev->gsa_dev);
 
-	edgetpu_mmu_remove_translation(&etpdev->edgetpu_dev, FW_IOVA,
-				       EDGETPU_FW_SIZE_MAX +
-					       EDGETPU_REMAPPED_DATA_SIZE,
-				       EDGETPU_CONTEXT_KCI);
 	if (etpdev->csr_iova) {
 		edgetpu_mmu_remove_translation(&etpdev->edgetpu_dev,
 					       etpdev->csr_iova,
 					       etpdev->csr_size,
 					       EDGETPU_CONTEXT_KCI);
 	}
-	memunmap(etpdev->fw_region_vaddr);
-	etpdev->fw_region_vaddr = NULL;
+	etpdev->csr_iova = 0;
+
+	if (!etpdev->shared_mem_vaddr)
+		return;
+	memunmap(etpdev->shared_mem_vaddr);
+	etpdev->shared_mem_vaddr = NULL;
 }
 
 void edgetpu_setup_mmu(struct edgetpu_dev *etdev)
@@ -179,6 +198,90 @@ void edgetpu_setup_mmu(struct edgetpu_dev *etdev)
 	ret = edgetpu_mmu_attach(etdev, NULL);
 	if (ret)
 		dev_warn(etdev->dev, "failed to attach IOMMU: %d\n", ret);
+}
+
+static int edgetpu_sscd_generate_coredump(void)
+{
+	struct sscd_platform_data *pdata = &edgetpu_sscd_pdata;
+	static struct sscd_segment segs[MAX_SEGS];
+	char msg[128];
+	int cnt;
+
+	if (!pdata->sscd_report) {
+		pr_err(DRIVER_NAME " failed to generate coredump\n");
+		return -1;
+	}
+
+	/*
+	 * TODO (b/156049774):
+	 * Replace with dump information when it's available
+	 */
+	cnt = scnprintf(msg, sizeof(msg), "HELLO TPU!");
+	segs[0].addr = (void *)&msg;
+	segs[0].size = cnt;
+
+	pr_debug(DRIVER_NAME " report: %d segments", MAX_SEGS);
+	return pdata->sscd_report(&edgetpu_sscd_dev, segs, MAX_SEGS,
+				  0, "edgetpu_coredump");
+}
+
+static ssize_t edgetpu_coredump_store(struct file *filep,
+	const char __user *ubuf, size_t size, loff_t *offp)
+{
+	int generate_coredump, ret;
+
+	ret = kstrtoint_from_user(ubuf, size, 0, &generate_coredump);
+	if (ret)
+		return ret;
+	if (generate_coredump) {
+		ret = edgetpu_sscd_generate_coredump();
+		if (ret) {
+			pr_err(DRIVER_NAME " failed to generate coredump: %d\n",
+			       ret);
+			return ret;
+		}
+	}
+
+	return size;
+};
+
+static const struct file_operations coredump_ops = {
+	.owner = THIS_MODULE,
+	.write = edgetpu_coredump_store,
+};
+
+static void edgetpu_sscd_init(struct edgetpu_dev *etdev)
+{
+	/*
+	 * TODO (b/156049774):
+	 * Remove debugfs file after dump information is available and
+	 * edgetpu_sscd_generate_coredump is triggered by a crash
+	 */
+	debugfs_create_file("coredump", 0220, etdev->d_entry, etdev,
+			    &coredump_ops);
+}
+
+static int abrolhos_parse_ssmt(struct edgetpu_platform_dev *etpdev)
+{
+	struct edgetpu_dev *etdev = &etpdev->edgetpu_dev;
+	struct platform_device *pdev = to_platform_device(etdev->dev);
+	struct resource *res;
+	int rc;
+	void __iomem *ssmt_base;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ssmt");
+	if (!res) {
+		etdev_warn(etdev, "Failed to find SSMT register base");
+		return -EINVAL;
+	}
+	ssmt_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(ssmt_base)) {
+		rc = PTR_ERR(ssmt_base);
+		etdev_warn(etdev, "Failed to map SSMT register base: %d\n", rc);
+		return rc;
+	}
+	etpdev->ssmt_base = ssmt_base;
+	return 0;
 }
 
 static int edgetpu_platform_probe(struct platform_device *pdev)
@@ -247,6 +350,13 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		goto out;
 	}
 
+	ret = abrolhos_parse_ssmt(edgetpu_pdev);
+	if (ret)
+		dev_warn(
+			dev,
+			"SSMT setup failed (%d). Context isolation not enforced\n",
+			ret);
+
 	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
 				   &log_mem);
 	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
@@ -288,6 +398,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 
 	dev_dbg(dev, "Creating thermal device\n");
 	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
+
+	edgetpu_sscd_init(&edgetpu_pdev->edgetpu_dev);
 
 out:
 	dev_dbg(dev, "Probe finished, powering down\n");
@@ -344,12 +456,19 @@ static int __init edgetpu_platform_init(void)
 	ret = edgetpu_init();
 	if (ret)
 		return ret;
+
+	/* Register SSCD platform device */
+	ret = platform_device_register(&edgetpu_sscd_dev);
+	if (ret)
+		pr_err(DRIVER_NAME " SSCD platform device registration failed: %d\n",
+		       ret);
 	return platform_driver_register(&edgetpu_platform_driver);
 }
 
 static void __exit edgetpu_platform_exit(void)
 {
 	platform_driver_unregister(&edgetpu_platform_driver);
+	platform_device_unregister(&edgetpu_sscd_dev);
 	edgetpu_exit();
 }
 

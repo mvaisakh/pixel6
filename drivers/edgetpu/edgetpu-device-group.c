@@ -27,6 +27,7 @@
 #include "edgetpu-mapping.h"
 #include "edgetpu-mcp.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-sw-watchdog.h"
 #include "edgetpu-usr.h"
 #include "edgetpu.h"
 
@@ -73,7 +74,7 @@ static int edgetpu_kci_join_group_worker(struct kci_worker_param *param)
 	return edgetpu_kci_join_group(etdev->kci, etdev, group->n_clients, i);
 }
 
-static void edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
+static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 {
 	struct edgetpu_device_group *group = param->group;
 	uint i = param->idx;
@@ -81,6 +82,7 @@ static void edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 
 	etdev_dbg(etdev, "%s: leave group %u", __func__, group->workload_id);
 	edgetpu_kci_leave_group(etdev->kci);
+	return 0;
 }
 
 #endif /* CONFIG_ABROLHOS */
@@ -143,6 +145,7 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 	struct edgetpu_async_ctx *ctx_for_leave = edgetpu_async_alloc_ctx();
 	uint i;
 	int ret, val;
+	struct edgetpu_dev *etdev;
 
 	if (!params || !ctx || !ctx_for_leave) {
 		ret = -ENOMEM;
@@ -151,6 +154,17 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 	for (i = 0; i < group->n_clients; i++) {
 		params[i].group = group;
 		params[i].idx = i;
+		etdev = edgetpu_device_group_nth_etdev(group, i);
+		/*
+		 * fast fail.
+		 * It is safe to access @state field here without holding the
+		 * lock as any unresponsive state will lead us to KCI timeout
+		 * anyway.
+		 */
+		if (etdev->state != ETDEV_STATE_GOOD) {
+			ret = edgetpu_get_state_errno_locked(etdev);
+			goto out_free;
+		}
 		ret = edgetpu_async_add_job(
 			ctx, &params[i],
 			(edgetpu_async_job_t)edgetpu_kci_join_group_worker);
@@ -338,7 +352,7 @@ static bool edgetpu_clients_groupable(const struct edgetpu_client *client1,
 static bool edgetpu_group_check_contiguity(struct edgetpu_device_group *group)
 {
 	struct edgetpu_mcp *mcp = edgetpu_mcp_of_etdev(group->etdev);
-	uint i, j;
+	uint i;
 	uint fr, to;
 	uint mcp_n = 0;
 
@@ -349,23 +363,8 @@ static bool edgetpu_group_check_contiguity(struct edgetpu_device_group *group)
 		to = edgetpu_device_group_nth_etdev(group, i)->mcp_die_index;
 		if (fr + 1 == to)
 			continue;
-		/* no bypassed dies' info */
-		if (!mcp)
+		if (!mcp_n || (fr + 1) % mcp_n != to)
 			return false;
-		mutex_lock(&mcp->lock);
-		/* check if all dies between (fr, to) are bypassed */
-		for (j = (fr + 1) % mcp_n; j != to; j = (j + 1) % mcp_n) {
-			if (IS_ERR_OR_NULL(mcp->etdevs[j]) ||
-			    !edgetpu_chip_bypassed(mcp->etdevs[j])) {
-				mutex_unlock(&mcp->lock);
-				etdev_dbg(
-					group->etdev,
-					"contiguity check failed: die %u is not probed or not bypassed",
-					j);
-				return false;
-			}
-		}
-		mutex_unlock(&mcp->lock);
 	}
 
 	return true;
@@ -410,68 +409,112 @@ void edgetpu_device_group_put(struct edgetpu_device_group *group)
 		kfree(group);
 }
 
-struct edgetpu_device_group *edgetpu_device_group_alloc(
-		struct edgetpu_client *client,
-		const struct edgetpu_mailbox_attr *attr)
+/* caller must hold @etdev->groups_lock. */
+static bool edgetpu_in_any_group_locked(struct edgetpu_dev *etdev)
 {
-	static uint cur_workload_id;
-	int ret;
-	struct edgetpu_device_group *group;
+	int i;
 
-	/* the client already belongs to a group */
-	if (client->group)
-		return ERR_PTR(-EINVAL);
-	if (edgetpu_chip_bypassed(client->etdev))
-		return ERR_PTR(-EINVAL);
-
-	group = kzalloc(sizeof(*group), GFP_KERNEL);
-	if (!group)
-		return ERR_PTR(-ENOMEM);
-
-	refcount_set(&group->ref_count, 1);
-	group->workload_id = cur_workload_id++;
-	INIT_LIST_HEAD(&group->clients);
-	group->n_clients = 0;
-	group->status = EDGETPU_DEVICE_GROUP_WAITING;
-	group->etdev = client->etdev;
-	mutex_init(&group->lock);
-	rwlock_init(&group->events.lock);
-	edgetpu_mapping_init(&group->host_mappings);
-	edgetpu_mapping_init(&group->dmabuf_mappings);
-	/* adds @client as the first entry */
-	ret = edgetpu_device_group_add(group, client);
-	if (ret) {
-		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
-			  __func__, group->workload_id, ret);
-		goto error_put_group;
+	for (i = 0; i < EDGETPU_NGROUPS; i++) {
+		if (etdev->groups[i])
+			return true;
 	}
 
-	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
-	if (ret) {
-		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
-			  __func__, group->workload_id, ret);
-		edgetpu_device_group_leave(client);
-		goto error_put_group;
-	}
-
-	return group;
-
-error_put_group:
-	edgetpu_device_group_put(group);
-	return ERR_PTR(ret);
+	return false;
 }
 
-int edgetpu_device_group_add(struct edgetpu_device_group *group,
-			     struct edgetpu_client *client)
+/* caller must hold the client's etdev state_lock. */
+void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
+{
+	struct edgetpu_device_group *group;
+	struct edgetpu_list_client *cur, *nxt;
+	bool will_disband = false;
+	int i;
+
+	mutex_lock(&client->group_lock);
+	group = client->group;
+	if (!group) {
+		mutex_unlock(&client->group_lock);
+		return;
+	}
+
+	mutex_lock(&group->lock);
+	/*
+	 * Disband the group if the leader leaves, or it's finalized and any
+	 * member leaves.
+	 */
+	if (edgetpu_device_group_is_waiting(group)) {
+		if (edgetpu_device_group_leader(group) == client)
+			will_disband = true;
+	} else if (edgetpu_device_group_is_finalized(group)) {
+		will_disband = true;
+	}
+
+	if (will_disband)
+		/* release the group before removing any members */
+		edgetpu_device_group_release(group);
+
+	/* removes the client from the list */
+	for_each_list_client_safe(cur, nxt, group) {
+		if (cur->client == client) {
+			list_del(&cur->list);
+			kfree(cur);
+			edgetpu_client_put(client);
+			group->n_clients--;
+		} else {
+			/*
+			 * Don't modify wdt heartbeat if state is not GOOD.
+			 * Safe to access etdev->state without state_lock as
+			 * racing state change may again restart wdt.
+			 */
+			if (will_disband &&
+			    cur->client->etdev->state == ETDEV_STATE_GOOD) {
+				/*
+				 * set time interval for sw wdt to DORMANT
+				 * state of all other clients in group.
+				 */
+				edgetpu_sw_wdt_modify_heartbeat(
+						cur->client->etdev,
+						EDGETPU_DORMANT_DEV_BEAT_MS);
+			}
+		}
+	}
+	edgetpu_device_group_put(client->group);
+	client->group = NULL;
+	mutex_unlock(&group->lock);
+	mutex_unlock(&client->group_lock);
+	/* remove the group from the client device */
+	mutex_lock(&client->etdev->groups_lock);
+	for (i = 0; i < EDGETPU_NGROUPS; i++) {
+		if (client->etdev->groups[i] == group) {
+			edgetpu_device_group_put(client->etdev->groups[i]);
+			client->etdev->groups[i] = NULL;
+			break;
+		}
+	}
+	/*
+	 * if etdev is not in any group and state is still good, set time
+	 * interval of wdt to DORMANT state.
+	 */
+	if (!edgetpu_in_any_group_locked(client->etdev) &&
+	    client->etdev->state == ETDEV_STATE_GOOD)
+		edgetpu_sw_wdt_modify_heartbeat(client->etdev,
+						EDGETPU_DORMANT_DEV_BEAT_MS);
+	mutex_unlock(&client->etdev->groups_lock);
+}
+
+/* caller should hold client's etdev state lock. */
+static int edgetpu_device_group_add_locked(struct edgetpu_device_group *group,
+					   struct edgetpu_client *client)
 {
 	struct edgetpu_list_client *c;
 	int i;
 	int ret = 0;
 
-	if (client->group != NULL)
+	mutex_lock(&client->group_lock);
+	if (client->group) {
+		mutex_unlock(&client->group_lock);
 		return -EINVAL;
-	if (edgetpu_chip_bypassed(client->etdev))
-		return 0;
+	}
 
 	mutex_lock(&group->lock);
 	if (!edgetpu_device_group_is_waiting(group)) {
@@ -509,58 +552,100 @@ int edgetpu_device_group_add(struct edgetpu_device_group *group,
 
 out:
 	mutex_unlock(&group->lock);
+	mutex_unlock(&client->group_lock);
 	return ret;
 }
 
 void edgetpu_device_group_leave(struct edgetpu_client *client)
 {
-	struct edgetpu_device_group *group = client->group;
-	struct edgetpu_list_client *cur, *nxt;
-	bool will_disband = false;
-	int i;
+	mutex_lock(&client->etdev->state_lock);
+	WARN_ON_ONCE(client->etdev->state != ETDEV_STATE_GOOD &&
+		     client->etdev->state != ETDEV_STATE_FWLOADING);
+	edgetpu_device_group_leave_locked(client);
+	mutex_unlock(&client->etdev->state_lock);
+}
 
-	if (!group)
-		return;
+struct edgetpu_device_group *edgetpu_device_group_alloc(
+		struct edgetpu_client *client,
+		const struct edgetpu_mailbox_attr *attr)
+{
+	static uint cur_workload_id;
+	int ret;
+	struct edgetpu_device_group *group;
 
-	mutex_lock(&group->lock);
+	mutex_lock(&client->etdev->state_lock);
+	if (client->etdev->state != ETDEV_STATE_GOOD) {
+		ret = edgetpu_get_state_errno_locked(client->etdev);
+		goto state_unlock;
+	}
 	/*
-	 * Disband the group if the leader leaves, or it's finalized and any
-	 * member leaves.
+	 * The client already belongs to a group.
+	 * It's safe not to take client->group_lock as
+	 * edgetpu_device_group_add_locked() will fail if there is race.
 	 */
-	if (edgetpu_device_group_is_waiting(group)) {
-		if (edgetpu_device_group_leader(group) == client)
-			will_disband = true;
-	} else if (edgetpu_device_group_is_finalized(group)) {
-		will_disband = true;
+	if (client->group) {
+		ret = -EINVAL;
+		goto state_unlock;
 	}
 
-	if (will_disband)
-		/* release the group before removing any members */
-		edgetpu_device_group_release(group);
+	group = kzalloc(sizeof(*group), GFP_KERNEL);
+	if (!group) {
+		ret = -ENOMEM;
+		goto state_unlock;
+	}
 
-	/* removes the client from the list */
-	for_each_list_client_safe(cur, nxt, group) {
-		if (cur->client == client) {
-			list_del(&cur->list);
-			kfree(cur);
-			edgetpu_client_put(client);
-			group->n_clients--;
-			break;
-		}
+	refcount_set(&group->ref_count, 1);
+	group->workload_id = cur_workload_id++;
+	INIT_LIST_HEAD(&group->clients);
+	group->n_clients = 0;
+	group->status = EDGETPU_DEVICE_GROUP_WAITING;
+	group->etdev = client->etdev;
+	mutex_init(&group->lock);
+	rwlock_init(&group->events.lock);
+	edgetpu_mapping_init(&group->host_mappings);
+	edgetpu_mapping_init(&group->dmabuf_mappings);
+	/* adds @client as the first entry */
+	ret = edgetpu_device_group_add_locked(group, client);
+	if (ret) {
+		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
+			  __func__, group->workload_id, ret);
+		goto error_put_group;
 	}
-	edgetpu_device_group_put(client->group);
-	client->group = NULL;
-	mutex_unlock(&group->lock);
-	/* remove the group from the client device */
-	mutex_lock(&client->etdev->groups_lock);
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (client->etdev->groups[i] == group) {
-			edgetpu_device_group_put(client->etdev->groups[i]);
-			client->etdev->groups[i] = NULL;
-			break;
-		}
+
+	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
+	if (ret) {
+		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
+			  __func__, group->workload_id, ret);
+		edgetpu_device_group_leave_locked(client);
+		goto error_put_group;
 	}
-	mutex_unlock(&client->etdev->groups_lock);
+
+	group->mbox_attr = *attr;
+
+	mutex_unlock(&client->etdev->state_lock);
+	return group;
+
+error_put_group:
+	edgetpu_device_group_put(group);
+state_unlock:
+	mutex_unlock(&client->etdev->state_lock);
+	return ERR_PTR(ret);
+}
+
+int edgetpu_device_group_add(struct edgetpu_device_group *group,
+			     struct edgetpu_client *client)
+{
+	int ret;
+
+	mutex_lock(&client->etdev->state_lock);
+	if (client->etdev->state != ETDEV_STATE_GOOD) {
+		ret = edgetpu_get_state_errno_locked(client->etdev);
+		goto out;
+	}
+	ret = edgetpu_device_group_add_locked(group, client);
+out:
+	mutex_unlock(&client->etdev->state_lock);
+	return ret;
 }
 
 bool edgetpu_device_group_is_leader(struct edgetpu_device_group *group,
@@ -576,7 +661,8 @@ bool edgetpu_device_group_is_leader(struct edgetpu_device_group *group,
 
 int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 {
-	int ret = 0;
+	int ret = 0, i;
+	struct edgetpu_dev *etdev;
 
 	mutex_lock(&group->lock);
 	/* do nothing if the group is finalized */
@@ -617,6 +703,12 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 		goto err_remove_remote_dram;
 
 	group->status = EDGETPU_DEVICE_GROUP_FINALIZED;
+
+	for (i = 0; i < group->n_clients; i++) {
+		etdev = edgetpu_device_group_nth_etdev(group, i);
+		edgetpu_sw_wdt_modify_heartbeat(etdev,
+						EDGETPU_ACTIVE_DEV_BEAT_MS);
+	}
 	mutex_unlock(&group->lock);
 	return 0;
 
@@ -631,18 +723,6 @@ err_release_members:
 err_unlock:
 	mutex_unlock(&group->lock);
 	return ret;
-}
-
-static bool edgetpu_in_any_group_locked(struct edgetpu_dev *etdev)
-{
-	int i;
-
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (etdev->groups[i])
-			return true;
-	}
-
-	return false;
 }
 
 bool edgetpu_in_any_group(struct edgetpu_dev *etdev)
@@ -901,7 +981,7 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 	hmap->map.release = edgetpu_unmap_node;
 	hmap->map.show = edgetpu_host_map_show;
 	hmap->map.flags = flags;
-	hmap->map.dma_attrs = 0;
+	hmap->map.dma_attrs = map_to_dma_attr(flags, true);
 
 	if (IS_MIRRORED(flags)) {
 		hmap->sg_tables = kcalloc(group->n_clients,
@@ -1127,7 +1207,7 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	}
 
 	edgetpu_mapping_unlink(&group->host_mappings, map);
-	map->dma_attrs = map_to_dma_attr(flags);
+	map->dma_attrs = map_to_dma_attr(flags, false);
 	edgetpu_unmap_node(map);
 	edgetpu_mapping_unlock(&group->host_mappings);
 unlock_group:
@@ -1282,4 +1362,17 @@ int edgetpu_mmap_queue(struct edgetpu_device_group *group,
 out:
 	mutex_unlock(&group->lock);
 	return ret;
+}
+
+void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev)
+{
+	int i;
+
+	mutex_lock(&etdev->groups_lock);
+	for (i = 0; i < EDGETPU_NGROUPS; i++) {
+		if (etdev->groups[i])
+			edgetpu_group_notify(etdev->groups[i],
+					     EDGETPU_EVENT_FATAL_ERROR);
+	}
+	mutex_unlock(&etdev->groups_lock);
 }

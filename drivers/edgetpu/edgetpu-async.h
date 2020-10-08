@@ -11,7 +11,7 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 
-typedef void *(*edgetpu_async_job_t)(void *);
+typedef int (*edgetpu_async_job_t)(void *);
 
 struct edgetpu_async_ctx {
 	/* constant fields after initialized */
@@ -29,7 +29,7 @@ struct edgetpu_async_ctx {
 	 * Return values of jobs. This field is available after
 	 * edgetpu_async_wait() is called.
 	 */
-	void **ret;
+	int *ret;
 };
 
 /*
@@ -45,7 +45,7 @@ struct edgetpu_async_entry {
 	struct list_head list;
 	edgetpu_async_job_t job;
 	void *data;
-	void *ret;
+	int ret;
 };
 
 /*

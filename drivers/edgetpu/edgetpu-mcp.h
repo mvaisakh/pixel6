@@ -20,6 +20,7 @@ struct edgetpu_mcp {
 	u8 id;		/* the MCP ID matches etdev->mcp_id */
 	u8 pkgtype;	/* package type, definition is chip-dependent */
 	u8 total_num;	/* total number of etdevs expected by this MCP */
+	u64 serial_num; /* serial number of the package */
 
 	/* fields need to be locked before accessing */
 
@@ -77,6 +78,13 @@ void edgetpu_mcp_remove_etdev(struct edgetpu_dev *etdev);
 void edgetpu_mcp_probe_fail(struct edgetpu_dev *etdev);
 
 /*
+ * Verify that the etdev belongs to the correct MCP.
+ *
+ * Returns 0 on success, -errno otherwise.
+ */
+int edgetpu_mcp_verify_membership(struct edgetpu_dev *etdev);
+
+/*
  * Invokes @callback with each (currently) registered MCP.
  *
  * If @stop_on_err is true, this function stops when @callback returned non-zero
@@ -128,6 +136,11 @@ static inline void edgetpu_mcp_init(void)
 
 static inline void edgetpu_mcp_exit(void)
 {
+}
+
+static inline int edgetpu_mcp_verify_membership(struct edgetpu_dev *etdev)
+{
+	return 0;
 }
 
 #endif /* EDGETPU_HAS_MCP */

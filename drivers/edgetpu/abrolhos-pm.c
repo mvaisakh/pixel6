@@ -6,6 +6,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/gsa/gsa_tpu.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 
@@ -364,6 +365,8 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	struct device *dev = etdev->dev;
 	int ret = abrolhos_pwr_state_set(dev,
 					 abrolhos_get_initial_pwr_state(dev));
+	enum edgetpu_firmware_status firmware_status;
+
 	if (ret)
 		return ret;
 
@@ -381,7 +384,18 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	if (!etdev->firmware)
 		return 0;
 
-	switch (edgetpu_firmware_status_locked(etdev)) {
+	firmware_status = edgetpu_firmware_status_locked(etdev);
+	if (firmware_status == FW_LOADING)
+		goto out;
+	/* attempt firmware run */
+	mutex_lock(&etdev->state_lock);
+	if (etdev->state == ETDEV_STATE_FWLOADING) {
+		mutex_unlock(&etdev->state_lock);
+		return -EAGAIN;
+	}
+	etdev->state = ETDEV_STATE_FWLOADING;
+	mutex_unlock(&etdev->state_lock);
+	switch (firmware_status) {
 	case FW_VALID:
 		ret = edgetpu_firmware_restart_locked(etdev);
 		break;
@@ -390,11 +404,18 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 						  EDGETPU_DEFAULT_FIRMWARE_NAME,
 						  FW_DEFAULT);
 		break;
-	case FW_LOADING:
 	default:
 		break;
 	}
-
+	mutex_lock(&etdev->state_lock);
+	if (ret == -EIO)
+		etdev->state = ETDEV_STATE_BAD; /* f/w handshake error */
+	else if (ret)
+		etdev->state = ETDEV_STATE_NOFW; /* other errors */
+	else
+		etdev->state = ETDEV_STATE_GOOD; /* f/w handshake success */
+	mutex_unlock(&etdev->state_lock);
+out:
 	if (ret)
 		abrolhos_power_down(etpm);
 
@@ -403,9 +424,9 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 static void abrolhos_power_down(struct edgetpu_pm *etpm)
 {
-
 	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-			etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
+		etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	u64 val;
 	int res;
 	int curr_state;
 
@@ -415,6 +436,15 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	if (curr_state == TPU_OFF)
 		return;
 
+	if (abrolhos_pwr_state_get(etpm->etdev->dev, &val)) {
+		etdev_warn(etpm->etdev, "Failed to read current power state\n");
+		val = TPU_ACTIVE_NOM;
+	}
+	if (val == TPU_OFF) {
+		etdev_dbg(etpm->etdev,
+			  "Device already off, skipping shutdown\n");
+		return;
+	}
 	if (etpm->etdev->kci &&
 	    edgetpu_firmware_status_locked(etpm->etdev) == FW_VALID) {
 		res = edgetpu_kci_shutdown(etpm->etdev->kci);
@@ -435,6 +465,10 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 			abrolhos_pwr_policy_set(edgetpu_pdev, TPU_ACTIVE_OD);
 		}
 	}
+	res = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
+	if (res < 0)
+		etdev_warn(etpm->etdev, "GSA shutdown request failed (%d)\n",
+			   res);
 	abrolhos_pwr_state_set(etpm->etdev->dev, TPU_OFF);
 }
 
