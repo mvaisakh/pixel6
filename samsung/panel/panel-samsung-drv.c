@@ -67,12 +67,16 @@ static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
 		return 0;
 	}
 
-	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
 	if (IS_ERR(ctx->reset_gpio)) {
 		dev_err(ctx->dev, "failed to get reset-gpios %ld",
 				PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
+
+	ctx->enabled = gpiod_get_raw_value(ctx->reset_gpio) > 0;
+	if (ctx->enabled)
+		dev_info(ctx->dev, "panel enabled at boot\n");
 
 	ctx->enable_gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->enable_gpio))
@@ -289,14 +293,16 @@ int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connec
 	struct exynos_panel *ctx =
 		container_of(panel, struct exynos_panel, panel);
 	struct drm_display_mode *preferred_mode = NULL;
+	const struct drm_display_mode *current_mode = ctx->current_mode;
 	int i;
 
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 
 	for (i = 0; i < ctx->desc->num_modes; i++) {
+		const struct drm_display_mode *pmode = &ctx->desc->modes[i];
 		struct drm_display_mode *mode;
 
-		mode = drm_mode_duplicate(connector->dev, &ctx->desc->modes[i]);
+		mode = drm_mode_duplicate(connector->dev, pmode);
 		if (!mode)
 			return -ENOMEM;
 
@@ -308,8 +314,12 @@ int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connec
 
 		dev_dbg(ctx->dev, "added display mode: %s\n", mode->name);
 
-		if (!preferred_mode || (mode->type & DRM_MODE_TYPE_PREFERRED))
+		if (!preferred_mode || (mode->type & DRM_MODE_TYPE_PREFERRED)) {
 			preferred_mode = mode;
+			/* if enabled at boot, assume preferred mode was set */
+			if (ctx->enabled && !current_mode)
+				ctx->current_mode = pmode;
+		}
 	}
 
 	if (preferred_mode) {
@@ -339,8 +349,8 @@ static int exynos_update_status(struct backlight_device *bl)
 	dev_dbg(ctx->dev, "br: %d, max br: %d\n", brightness,
 		bl->props.max_brightness);
 
-	if (!ctx->enabled) {
-		dev_err(ctx->dev, "panel is not enabled\n");
+	if (!ctx->enabled || !ctx->initialized) {
+		dev_dbg(ctx->dev, "panel is not enabled\n");
 		return -EPERM;
 	}
 
@@ -683,6 +693,10 @@ static void exynos_panel_enable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
+	/* this handles the case where panel may be enabled while booting already */
+	if (ctx->enabled && !exynos_panel_init(ctx))
+		return;
+
 	if (in_tui(ctx)) {
 		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
 		return;
@@ -738,7 +752,7 @@ static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
 	const struct exynos_panel_funcs *funcs;
 
 	/* no need to go through seamless mode set if panel is disabled */
-	if (!ctx->enabled)
+	if (!ctx->enabled || !ctx->initialized)
 		return false;
 
 	funcs = ctx->desc->exynos_panel_func;
@@ -800,6 +814,20 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 
 	if (WARN_ON(i == ctx->desc->num_modes))
 		return;
+
+	if (!ctx->initialized && ctx->enabled) {
+		/* if panel was enabled at boot and there's no mode change skip mode set */
+		if (ctx->current_mode == pmode)
+			return;
+
+		WARN(1, "mode change at boot to %s\n", adjusted_mode->name);
+
+		/*
+		 * This is unexpected, but the best we can do is to set as disable which will
+		 * force panel reset on next enable. That way it will go into new mode
+		 */
+		ctx->enabled = false;
+	}
 
 	dev_dbg(ctx->dev, "changing display mode to %dx%d@%d\n",
 		pmode->hdisplay, pmode->vdisplay, drm_mode_vrefresh(pmode));
