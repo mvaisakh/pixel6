@@ -74,10 +74,6 @@ static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
 		return PTR_ERR(ctx->reset_gpio);
 	}
 
-	ctx->enabled = gpiod_get_raw_value(ctx->reset_gpio) > 0;
-	if (ctx->enabled)
-		dev_info(ctx->dev, "panel enabled at boot\n");
-
 	ctx->enable_gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->enable_gpio))
 		ctx->enable_gpio = NULL;
@@ -93,13 +89,13 @@ static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 	ctx->vddi = devm_regulator_get(dev, "vddi");
 	if (IS_ERR(ctx->vddi)) {
 		dev_warn(ctx->dev, "failed to get panel vddi.\n");
-		ctx->vddi = NULL;
+		return -EPROBE_DEFER;
 	}
 
 	ctx->vci = devm_regulator_get(dev, "vci");
 	if (IS_ERR(ctx->vci)) {
 		dev_warn(ctx->dev, "failed to get panel vci.\n");
-		ctx->vci = NULL;
+		return -EPROBE_DEFER;
 	}
 
 	return 0;
@@ -191,24 +187,6 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 	if (IS_ENABLED(CONFIG_BOARD_EMULATOR))
 		return 0;
 
-	if (!ctx->vddi) {
-		dev_dbg(ctx->dev, "trying to get vddi regulator\n");
-		ctx->vddi = devm_regulator_get(ctx->dev, "vddi");
-		if (IS_ERR(ctx->vddi)) {
-			dev_warn(ctx->dev, "failed to get vddi regulator\n");
-			ctx->vddi = NULL;
-		}
-	}
-
-	if (!ctx->vci) {
-		dev_dbg(ctx->dev, "trying to get vci regulator\n");
-		ctx->vci = devm_regulator_get(ctx->dev, "vci");
-		if (IS_ERR(ctx->vci)) {
-			dev_warn(ctx->dev, "failed to get vci regulator\n");
-			ctx->vci = NULL;
-		}
-	}
-
 	if (on) {
 		if (ctx->enable_gpio) {
 			gpiod_set_value(ctx->enable_gpio, 1);
@@ -258,6 +236,15 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 	return 0;
 }
 EXPORT_SYMBOL(exynos_panel_set_power);
+
+static void exynos_panel_handoff(struct exynos_panel *ctx)
+{
+	ctx->enabled = gpiod_get_raw_value(ctx->reset_gpio) > 0;
+	if (ctx->enabled) {
+		dev_info(ctx->dev, "panel enabled at boot\n");
+		exynos_panel_set_power(ctx, true);
+	}
+}
 
 static int exynos_panel_parse_dt(struct exynos_panel *ctx)
 {
@@ -574,7 +561,7 @@ static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
 	int ret;
 	bool hbm_en;
 
-	if (!ctx->enabled) {
+	if (!ctx->enabled || !ctx->initialized) {
 		dev_err(ctx->dev, "panel is not enabled\n");
 		return -EPERM;
 	}
@@ -709,6 +696,9 @@ static void exynos_panel_pre_enable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
+	if (ctx->enabled)
+		return;
+
 	if (in_tui(ctx)) {
 		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
 		return;
@@ -827,6 +817,7 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 		 * force panel reset on next enable. That way it will go into new mode
 		 */
 		ctx->enabled = false;
+		exynos_panel_set_power(ctx, false);
 	}
 
 	dev_dbg(ctx->dev, "changing display mode to %dx%d@%d\n",
@@ -871,7 +862,9 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = ctx->desc->data_lane_cnt;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 
-	exynos_panel_parse_dt(ctx);
+	ret = exynos_panel_parse_dt(ctx);
+	if (ret)
+		return ret;
 
 	snprintf(name, sizeof(name), "panel%d-backlight", dsi->channel);
 	ctx->bl = devm_backlight_device_register(ctx->dev, name, NULL,
@@ -896,6 +889,8 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	ret = sysfs_create_files(&dev->kobj, panel_attrs);
 	if (ret)
 		pr_warn("unable to add panel sysfs files (%d)\n", ret);
+
+	exynos_panel_handoff(ctx);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret)
