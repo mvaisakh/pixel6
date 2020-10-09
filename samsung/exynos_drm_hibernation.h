@@ -38,8 +38,6 @@ struct exynos_hibernation {
 	/* register to check whether camera is operating or not */
 	void __iomem *cam_op_reg;
 	struct mutex lock;
-	struct task_struct *thread;
-	struct kthread_worker worker;
 	struct kthread_work work;
 	struct decon_device *decon;
 	struct dsim_device *dsim;

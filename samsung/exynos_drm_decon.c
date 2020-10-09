@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -32,6 +33,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/console.h>
 #include <linux/iommu.h>
+#include <uapi/linux/sched/types.h>
 
 #include <video/videomode.h>
 
@@ -1082,7 +1084,7 @@ static irqreturn_t decon_te_irq_handler(int irq, void *dev_id)
 	hibernation = decon->hibernation;
 
 	if (hibernation && !is_hibernaton_blocked(hibernation))
-		kthread_queue_work(&hibernation->worker, &hibernation->work);
+		kthread_queue_work(&decon->worker, &hibernation->work);
 
 	if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
 		drm_crtc_handle_vblank(&decon->crtc->base);
@@ -1244,6 +1246,9 @@ static int decon_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct decon_device *decon;
 	struct device *dev = &pdev->dev;
+	struct sched_param param = {
+		.sched_priority = 20
+	};
 
 	decon = devm_kzalloc(dev, sizeof(struct decon_device), GFP_KERNEL);
 	if (!decon)
@@ -1271,6 +1276,16 @@ static int decon_probe(struct platform_device *pdev)
 	/* set drvdata */
 	platform_set_drvdata(pdev, decon);
 
+	kthread_init_worker(&decon->worker);
+	decon->thread = kthread_run(kthread_worker_fn, &decon->worker,
+				    "decon%d_kthread", decon->id);
+	if (IS_ERR(decon->thread)) {
+		decon_err(decon, "failed to run display thread\n");
+		ret = PTR_ERR(decon->thread);
+		goto err;
+	}
+	sched_setscheduler_nocheck(decon->thread, SCHED_FIFO, &param);
+
 	decon->hibernation = exynos_hibernation_register(decon);
 
 	decon->dqe = exynos_dqe_register(decon);
@@ -1288,6 +1303,9 @@ err:
 static int decon_remove(struct platform_device *pdev)
 {
 	struct decon_device *decon = platform_get_drvdata(pdev);
+
+	if (decon->thread)
+		kthread_stop(decon->thread);
 
 	exynos_hibernation_destroy(decon->hibernation);
 

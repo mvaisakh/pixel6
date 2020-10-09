@@ -329,6 +329,8 @@ struct decon_device {
 	struct exynos_hibernation	*hibernation;
 	struct completion		framestart_done;
 	struct exynos_dqe		*dqe;
+	struct task_struct		*thread;
+	struct kthread_worker		worker;
 
 	u32				irq_fs;	/* frame start irq number*/
 	u32				irq_fd;	/* frame done irq number*/

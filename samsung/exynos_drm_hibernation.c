@@ -16,10 +16,8 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/mutex.h>
-#include <linux/kthread.h>
 #include <linux/pm_runtime.h>
 #include <linux/sched.h>
-#include <uapi/linux/sched/types.h>
 #include <linux/err.h>
 #include <linux/atomic.h>
 
@@ -115,11 +113,10 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	hibernation_block(hiber);
 
 	/*
-	 * It waits for finishing previous queued hibernation entry work.
-	 * It only goes to sleep when work is queued or executing. If not,
-	 * there is no operation here.
+	 * Cancel and/or wait for finishing previous queued hibernation entry work. It only
+	 * goes to sleep when work is currently executing. If not, there is no operation here.
 	 */
-	kthread_flush_work(&hiber->work);
+	kthread_cancel_work_sync(&hiber->work);
 
 	mutex_lock(&hiber->lock);
 
@@ -194,7 +191,6 @@ struct exynos_hibernation *
 exynos_hibernation_register(struct decon_device *decon)
 {
 	struct device_node *np, *cam_np;
-	struct sched_param param;
 	struct exynos_hibernation *hibernation;
 	struct device *dev = decon->dev;
 
@@ -231,19 +227,6 @@ exynos_hibernation_register(struct decon_device *decon)
 
 	atomic_set(&hibernation->block_cnt, 0);
 
-	kthread_init_worker(&hibernation->worker);
-	hibernation->thread = kthread_run(kthread_worker_fn,
-			&hibernation->worker, "display_hibernation");
-	if (IS_ERR(hibernation->thread)) {
-		pr_err("failed to run display hibernation thread\n");
-		if (hibernation->cam_op_reg)
-			iounmap(hibernation->cam_op_reg);
-		kfree(hibernation);
-		return NULL;
-	}
-
-	param.sched_priority = 20;
-	sched_setscheduler_nocheck(hibernation->thread, SCHED_FIFO, &param);
 	kthread_init_work(&hibernation->work, exynos_hibernation_handler);
 
 	pr_info("display hibernation is supported\n");
@@ -255,9 +238,6 @@ void exynos_hibernation_destroy(struct exynos_hibernation *hiber)
 {
 	if (!hiber)
 		return;
-
-	if (hiber->thread)
-		kthread_stop(hiber->thread);
 
 	if (hiber->cam_op_reg)
 		iounmap(hiber->cam_op_reg);
