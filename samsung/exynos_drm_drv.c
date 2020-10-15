@@ -37,6 +37,9 @@
 #include "exynos_drm_plane.h"
 #include "exynos_drm_writeback.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/dpu_trace.h>
+
 #define DRIVER_NAME	"exynos"
 #define DRIVER_DESC	"Samsung SoC DRM"
 #define DRIVER_DATE	"20110530"
@@ -115,7 +118,9 @@ static void commit_tail(struct drm_atomic_state *old_state)
 
 	funcs = dev->mode_config.helper_private;
 
+	DPU_ATRACE_BEGIN("wait_for_fences");
 	drm_atomic_helper_wait_for_fences(dev, old_state, false);
+	DPU_ATRACE_END("wait_for_fences");
 
 	drm_atomic_helper_wait_for_dependencies(old_state);
 
@@ -179,20 +184,23 @@ int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state,
 	struct exynos_drm_priv_state *exynos_priv_state;
 	int ret;
 
+	DPU_ATRACE_BEGIN("exynos_atomic_commit");
 	ret = drm_atomic_helper_setup_commit(state, nonblock);
 	if (ret)
-		return ret;
+		goto err;
 
 	exynos_priv_state = exynos_drm_get_priv_state(state);
-	if (IS_ERR(exynos_priv_state))
-		return PTR_ERR(exynos_priv_state);
+	if (IS_ERR(exynos_priv_state)) {
+		ret = PTR_ERR(exynos_priv_state);
+		goto err;
+	}
 
 	kthread_init_work(&exynos_priv_state->commit_work, commit_kthread_work);
 	exynos_priv_state->old_state = state;
 
 	ret = drm_atomic_helper_prepare_planes(dev, state);
 	if (ret)
-		return ret;
+		goto err;
 
 	/*
 	 * This is the point of no return - everything below never fails except
@@ -202,7 +210,7 @@ int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state,
 
 	ret = drm_atomic_helper_swap_state(state, true);
 	if (ret)
-		goto err;
+		goto err_clean;
 
 	/*
 	 * Everything below can be run asynchronously without the need to grab
@@ -230,9 +238,13 @@ int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state,
 	else
 		exynos_atomic_queue_work(state, nonblock, &exynos_priv_state->commit_work);
 
+	DPU_ATRACE_END("exynos_atomic_commit");
 	return 0;
-err:
+
+err_clean:
 	drm_atomic_helper_cleanup_planes(dev, state);
+err:
+	DPU_ATRACE_END("exynos_atomic_commit");
 	return ret;
 }
 

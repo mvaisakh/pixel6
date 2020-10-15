@@ -21,6 +21,8 @@
 #include <linux/err.h>
 #include <linux/atomic.h>
 
+#include <trace/dpu_trace.h>
+
 #include "exynos_drm_decon.h"
 #include "exynos_drm_hibernation.h"
 #include "exynos_drm_writeback.h"
@@ -69,6 +71,7 @@ static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
 	if (!decon)
 		return;
 
+	DPU_ATRACE_BEGIN("exynos_hibernation_enter");
 	mutex_lock(&hiber->lock);
 	hibernation_block(hiber);
 
@@ -96,6 +99,7 @@ static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
 ret:
 	hibernation_unblock(hiber);
 	mutex_unlock(&hiber->lock);
+	DPU_ATRACE_END("exynos_hibernation_enter");
 
 	pr_debug("%s: DPU power %s -\n", __func__,
 			pm_runtime_active(decon->dev) ? "on" : "off");
@@ -125,6 +129,8 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	if (decon->state != DECON_STATE_HIBERNATION)
 		goto ret;
 
+	DPU_ATRACE_BEGIN("exynos_hibernation_exit");
+
 	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_IN, decon->id, NULL);
 
 	pm_runtime_get_sync(decon->dev);
@@ -142,6 +148,7 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	}
 
 	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_OUT, decon->id, NULL);
+	DPU_ATRACE_END("exynos_hibernation_exit");
 
 ret:
 	mutex_unlock(&hiber->lock);
