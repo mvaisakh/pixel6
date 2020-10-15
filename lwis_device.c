@@ -335,6 +335,16 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->regulators) {
+		/* Enable all the regulators related to this sensor */
+		ret = lwis_regulator_enable_all(lwis_dev->regulators);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Error enabling regulators (%d)\n", ret);
+			goto error_regulator_enable;
+		}
+	}
+
 	if (lwis_dev->enable_gpios_present) {
 		struct gpio_descs *gpios;
 
@@ -362,16 +372,6 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (lwis_dev->enable_gpios_settle_time > 0) {
 			usleep_range(lwis_dev->enable_gpios_settle_time,
 				     lwis_dev->enable_gpios_settle_time);
-		}
-	}
-
-	if (lwis_dev->regulators) {
-		/* Enable all the regulators related to this sensor */
-		ret = lwis_regulator_enable_all(lwis_dev->regulators);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error enabling regulators (%d)\n", ret);
-			goto error_regulator_enable;
 		}
 	}
 
@@ -692,16 +692,6 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		lwis_dev->enable_gpios = NULL;
 	}
 
-	if (lwis_dev->regulators) {
-		/* Disable all the regulators */
-		ret = lwis_regulator_disable_all(lwis_dev->regulators);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error disabling regulators (%d)\n", ret);
-			return ret;
-		}
-	}
-
 	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
 		/* Set reset pins to 1 (i.e. asserted) */
 		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
@@ -716,6 +706,16 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		lwis_gpio_list_put(lwis_dev->reset_gpios,
 				   &lwis_dev->plat_dev->dev);
 		lwis_dev->reset_gpios = NULL;
+	}
+
+	if (lwis_dev->regulators) {
+		/* Disable all the regulators */
+		ret = lwis_regulator_disable_all(lwis_dev->regulators);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Error disabling regulators (%d)\n", ret);
+			return ret;
+		}
 	}
 
 	if (lwis_dev->clocks) {
