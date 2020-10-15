@@ -49,6 +49,8 @@ struct exynos_dqe {
 
 	struct dither_debug_override cgc_dither_override;
 	struct dither_debug_override disp_dither_override;
+
+	bool cgc_first_write;
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,

@@ -70,6 +70,10 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 	if (dqe->state.cgc_lut != state->cgc_lut) {
 		dqe_reg_set_cgc_lut(state->cgc_lut);
 		dqe->state.cgc_lut = state->cgc_lut;
+		dqe->cgc_first_write = true;
+	} else if (dqe->cgc_first_write) {
+		dqe_reg_set_cgc_lut(dqe->state.cgc_lut);
+		dqe->cgc_first_write = false;
 	}
 
 	if (dqe->state.regamma_lut != state->regamma_lut) {
@@ -107,6 +111,7 @@ void exynos_dqe_reset(struct exynos_dqe *dqe)
 	dqe->state.regamma_lut = NULL;
 	dqe->state.disp_dither_config = NULL;
 	dqe->state.cgc_dither_config = NULL;
+	dqe->cgc_first_write = false;
 }
 
 struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)
