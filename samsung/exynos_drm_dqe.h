@@ -60,6 +60,35 @@ struct debugfs_lut {
 	enum elem_size elem_size;
 	size_t count;
 	size_t pcount;
+	bool *dirty;
+};
+
+struct exynos_debug_info {
+	bool force_en;
+	bool verbose;
+	bool dirty;
+};
+
+struct degamma_debug_override {
+	struct exynos_debug_info info;
+	struct drm_color_lut force_lut[DEGAMMA_LUT_SIZE];
+};
+
+struct regamma_debug_override {
+	struct exynos_debug_info info;
+	struct drm_color_lut force_lut[REGAMMA_LUT_SIZE];
+};
+
+struct cgc_debug_override {
+	bool first_write;
+	u32 verbose_cnt;
+	struct exynos_debug_info info;
+	struct cgc_lut force_lut;
+};
+
+struct matrix_debug_override {
+	struct exynos_debug_info info;
+	struct exynos_matrix force_matrix;
 };
 
 struct exynos_dqe {
@@ -74,13 +103,13 @@ struct exynos_dqe {
 	struct dither_debug_override cgc_dither_override;
 	struct dither_debug_override disp_dither_override;
 
-	bool cgc_first_write;
+	struct degamma_debug_override degamma;
+	struct regamma_debug_override regamma;
+	struct cgc_debug_override cgc;
+	struct matrix_debug_override gamma;
+	struct matrix_debug_override linear;
 
-	bool force_lm;
-	struct exynos_matrix force_linear_matrix;
-
-	bool force_gm;
-	struct exynos_matrix force_gamma_matrix;
+	bool verbose_hist;
 
 	bool force_disabled;
 

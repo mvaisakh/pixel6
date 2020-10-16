@@ -10,6 +10,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/kernel.h>
 #include <linux/debugfs.h>
 #include <linux/ktime.h>
 #include <linux/moduleparam.h>
@@ -21,6 +22,7 @@
 #include <cal_config.h>
 #include <dt-bindings/soc/google/gs101-devfreq.h>
 #include <soc/google/exynos-devfreq.h>
+#include <dqe_cal.h>
 
 #include "exynos_drm_decon.h"
 #include "exynos_drm_dsim.h"
@@ -557,8 +559,7 @@ static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
 	return dent;
 }
 
-static int get_lut(char *lut_buf, u32 count, u32 pcount, void **lut,
-						enum elem_size elem_size)
+static int get_lut(char *lut_buf, u32 count, void **lut, enum elem_size elem_size)
 {
 	int i = 0, ret = 0;
 	char *token;
@@ -571,9 +572,6 @@ static int get_lut(char *lut_buf, u32 count, u32 pcount, void **lut,
 		plut32 = *lut;
 	else
 		return -EINVAL;
-
-	if (!pcount || pcount > count)
-		pcount = count;
 
 	while ((token = strsep(&lut_buf, " "))) {
 		if (i >= count)
@@ -641,7 +639,9 @@ static ssize_t lut_write(struct file *file, const char __user *buffer,
 	char *tmpbuf;
 	struct debugfs_lut *lut =
 		((struct seq_file *)file->private_data)->private;
-	int ret;
+	struct drm_color_lut *dlut = lut->dlut_ptr;
+	int ret, i;
+	u16 *plut;
 
 	if (len == 0)
 		return 0;
@@ -652,10 +652,25 @@ static ssize_t lut_write(struct file *file, const char __user *buffer,
 
 	pr_debug("read %d bytes from userspace\n", (int)len);
 
-	ret = get_lut(tmpbuf, lut->count, lut->pcount, &lut->lut_ptr,
-				lut->elem_size);
+	ret = get_lut(tmpbuf, lut->count, &lut->lut_ptr, lut->elem_size);
 	if (ret)
 		goto err;
+
+	if (dlut) {
+		plut = lut->lut_ptr;
+
+		for (i = 0; i < lut->count; ++i) {
+			if (!strcmp(lut->name, "red") ||
+					!strcmp(lut->name, "lut"))
+				dlut[i].red  = plut[i];
+			else if (!strcmp(lut->name, "green"))
+				dlut[i].green = plut[i];
+			else if (!strcmp(lut->name, "blue"))
+				dlut[i].blue = plut[i];
+		}
+	}
+
+	*(lut->dirty) = true;
 
 	ret = len;
 err:
@@ -675,7 +690,7 @@ static const struct file_operations lut_fops = {
 static void exynos_debugfs_add_lut(const char *name, umode_t mode,
 		struct dentry *parent, size_t count, size_t pcount,
 		void *lut_ptr, struct drm_color_lut *dlut_ptr,
-		enum elem_size elem_size)
+		enum elem_size elem_size, bool *dirty)
 {
 	struct debugfs_lut *lut = kmalloc(sizeof(struct debugfs_lut),
 			GFP_KERNEL);
@@ -696,17 +711,111 @@ static void exynos_debugfs_add_lut(const char *name, umode_t mode,
 	lut->elem_size = elem_size;
 	lut->count = count;
 	lut->pcount = pcount;
+	lut->dirty = dirty;
 
 	debugfs_create_file(name, mode, parent, lut, &lut_fops);
 }
 
-static struct dentry *exynos_debugfs_add_matrix(const char *name,
-		struct dentry *parent, bool *force_enable, void *coeffs,
-		size_t coeffs_cnt, enum elem_size coeffs_elem_size,
-		void *offsets, size_t offsets_cnt,
-		enum elem_size offsets_elem_size)
+#define DEFAULT_PRINT_CNT	128
+static struct dentry *
+exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent)
+{
+	struct dentry *dent, *dent_lut;
+	struct exynos_debug_info *info = &cgc->info;
+
+	dent = debugfs_create_dir("cgc", parent);
+	if (!dent) {
+		pr_err("failed to create cgc directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	debugfs_create_u32("verbose_count", 0664, dent, &cgc->verbose_cnt);
+	cgc->verbose_cnt = DEFAULT_PRINT_CNT;
+
+	dent_lut = debugfs_create_dir("lut", dent);
+	if (!dent_lut) {
+		pr_err("failed to create cgc lut directory\n");
+		debugfs_remove_recursive(dent);
+		return NULL;
+	}
+
+	exynos_debugfs_add_lut("red", 0664, dent_lut,
+			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
+			cgc->force_lut.r_values, NULL, 32, &info->dirty);
+	exynos_debugfs_add_lut("green", 0664, dent_lut,
+			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
+			cgc->force_lut.g_values, NULL, 32, &info->dirty);
+	exynos_debugfs_add_lut("blue", 0664, dent_lut,
+			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
+			cgc->force_lut.b_values, NULL, 32, &info->dirty);
+
+	return dent;
+}
+
+static struct dentry *
+exynos_debugfs_add_regamma(struct regamma_debug_override *regamma,
+						struct dentry *parent)
+{
+	struct dentry *dent, *dent_lut;
+	struct exynos_debug_info *info = &regamma->info;
+
+	dent = debugfs_create_dir("regamma", parent);
+	if (!dent) {
+		pr_err("failed to create regamma directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+
+	dent_lut = debugfs_create_dir("lut", dent);
+	if (!dent_lut) {
+		pr_err("failed to create regamma lut directory\n");
+		debugfs_remove_recursive(dent);
+		return NULL;
+	}
+
+	exynos_debugfs_add_lut("red", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
+			NULL, regamma->force_lut, 16, &info->dirty);
+	exynos_debugfs_add_lut("green", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
+			NULL, regamma->force_lut, 16, &info->dirty);
+	exynos_debugfs_add_lut("blue", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
+			NULL, regamma->force_lut, 16, &info->dirty);
+
+	return dent;
+}
+
+static struct dentry *
+exynos_debugfs_add_degamma(struct degamma_debug_override *degamma,
+						struct dentry *parent)
+{
+	struct dentry *dent;
+	struct exynos_debug_info *info = &degamma->info;
+
+	dent = debugfs_create_dir("degamma", parent);
+	if (!dent) {
+		pr_err("failed to create degamma directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	exynos_debugfs_add_lut("lut", 0664, dent, DEGAMMA_LUT_SIZE, 0, NULL,
+			degamma->force_lut, 16, &info->dirty);
+
+	return dent;
+}
+
+static struct dentry *
+exynos_debugfs_add_matrix(struct matrix_debug_override *matrix,
+				const char *name, struct dentry *parent)
 {
 	struct dentry *dent, *dent_matrix;
+	struct exynos_debug_info *info = &matrix->info;
+	u32 coeffs_cnt = DRM_SAMSUNG_MATRIX_DIMENS * DRM_SAMSUNG_MATRIX_DIMENS;
+	u32 offsets_cnt = DRM_SAMSUNG_MATRIX_DIMENS;
 
 	dent = debugfs_create_dir(name, parent);
 	if (!dent) {
@@ -714,7 +823,8 @@ static struct dentry *exynos_debugfs_add_matrix(const char *name,
 		return NULL;
 	}
 
-	debugfs_create_bool("force_enable", 0664, dent, force_enable);
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
 	dent_matrix = debugfs_create_dir("matrix", dent);
 	if (!dent_matrix) {
 		pr_err("failed to create %s directory\n", name);
@@ -723,9 +833,11 @@ static struct dentry *exynos_debugfs_add_matrix(const char *name,
 	}
 
 	exynos_debugfs_add_lut("coeffs", 0664, dent_matrix, coeffs_cnt, 0,
-			coeffs, NULL, coeffs_elem_size);
+			matrix->force_matrix.coeffs , NULL, ELEM_SIZE_16,
+			&info->dirty);
 	exynos_debugfs_add_lut("offsets", 0664, dent_matrix, offsets_cnt, 0,
-			offsets, NULL, offsets_elem_size);
+			matrix->force_matrix.offsets, NULL, ELEM_SIZE_16,
+			&info->dirty);
 
 	return dent;
 }
@@ -734,6 +846,8 @@ static void
 exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 {
 	struct dentry *dent_dir;
+	struct matrix_debug_override *gamma = &dqe->gamma;
+	struct matrix_debug_override *linear = &dqe->linear;
 
 	if (!dqe)
 		return;
@@ -752,18 +866,16 @@ exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 			&dqe->disp_dither_override, dent_dir))
 		goto err;
 
-	if (!exynos_debugfs_add_matrix("linear_matrix", dent_dir,
-			&dqe->force_lm, dqe->force_linear_matrix.coeffs,
-			DRM_SAMSUNG_MATRIX_DIMENS * DRM_SAMSUNG_MATRIX_DIMENS,
-			ELEM_SIZE_16, dqe->force_linear_matrix.offsets,
-			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
+	exynos_debugfs_add_cgc(&dqe->cgc, dent_dir);
+	exynos_debugfs_add_regamma(&dqe->regamma, dent_dir);
+	exynos_debugfs_add_degamma(&dqe->degamma, dent_dir);
+
+	debugfs_create_bool("histogram", 0664, dent_dir, &dqe->verbose_hist);
+
+	if (!exynos_debugfs_add_matrix(linear, "linear_matrix", dent_dir))
 		goto err;
 
-	if (!exynos_debugfs_add_matrix("gamma_matrix", dent_dir,
-			&dqe->force_gm, dqe->force_gamma_matrix.coeffs,
-			DRM_SAMSUNG_MATRIX_DIMENS * DRM_SAMSUNG_MATRIX_DIMENS,
-			ELEM_SIZE_16, dqe->force_gamma_matrix.offsets,
-			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
+	if (!exynos_debugfs_add_matrix(gamma, "gamma_matrix", dent_dir))
 		goto err;
 
 	debugfs_create_bool("force_disabled", 0664, dent_dir,
