@@ -34,10 +34,9 @@ static void sofef01_write_display_mode(struct exynos_panel *ctx,
 
 static int sofef01_pre_enable(struct exynos_panel *ctx)
 {
-	const struct drm_display_mode *mode;
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
 
-	mode = ctx->current_mode;
-	if (!mode) {
+	if (!pmode) {
 		dev_err(ctx->dev, "no current mode set\n");
 		return -EINVAL;
 	}
@@ -63,7 +62,7 @@ static int sofef01_pre_enable(struct exynos_panel *ctx)
 
 	EXYNOS_DCS_WRITE_SEQ_DELAY(ctx, 110, 0x53, 0x28);
 
-	sofef01_write_display_mode(ctx, mode);
+	sofef01_write_display_mode(ctx, &pmode->mode);
 
 	return 0;
 }
@@ -98,37 +97,38 @@ static int sofef01_enable(struct drm_panel *panel)
 static void sofef01_set_hbm_mode(struct exynos_panel *exynos_panel,
 				bool hbm_mode)
 {
+	const struct exynos_panel_mode *pmode = exynos_panel->current_mode;
+
 	exynos_panel->hbm_mode = hbm_mode;
 
-	sofef01_write_display_mode(exynos_panel, exynos_panel->current_mode);
+	sofef01_write_display_mode(exynos_panel, &pmode->mode);
 }
 
-static const struct exynos_display_mode sofef01_mode_private = {
-	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-	.vblank_usec = 120,
-	.bpc = 8,
-	.dsc = {
-		.enabled = false,
-	},
-};
-
-static const struct drm_display_mode sofef01_modes[] = {
+static const struct exynos_panel_mode sofef01_modes[] = {
 	{
 		/* 1080x2340 @ 60Hz */
-		.clock = 162633,
-		.hdisplay = 1080,
-		.hsync_start = 1080 + 32,
-		.hsync_end = 1080 + 32 + 32,
-		.htotal = 1080 + 32 + 32 + 6,
-		.vdisplay = 2340,
-		.vsync_start = 2340 + 8,
-		.vsync_end = 2340 + 8 + 1,
-		.vtotal = 2340 + 8 + 1 + 8,
-		.flags = 0,
-		.width_mm = 66,
-		.height_mm = 144,
-		.private = (int *)&sofef01_mode_private,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 162633,
+			.hdisplay = 1080,
+			.hsync_start = 1080 + 32,
+			.hsync_end = 1080 + 32 + 32,
+			.htotal = 1080 + 32 + 32 + 6,
+			.vdisplay = 2340,
+			.vsync_start = 2340 + 8,
+			.vsync_end = 2340 + 8 + 1,
+			.vtotal = 2340 + 8 + 1 + 8,
+			.flags = 0,
+			.width_mm = 66,
+			.height_mm = 144,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+			.vblank_usec = 120,
+			.bpc = 8,
+			.dsc = {
+				.enabled = false,
+			},
+		},
 	},
 };
 

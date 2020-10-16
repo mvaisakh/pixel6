@@ -207,7 +207,7 @@ struct exynos_drm_plane_config {
  */
 struct exynos_drm_crtc;
 struct exynos_drm_crtc_ops {
-	void (*enable)(struct exynos_drm_crtc *crtc);
+	void (*enable)(struct exynos_drm_crtc *crtc, struct drm_crtc_state *old_state);
 	void (*disable)(struct exynos_drm_crtc *crtc);
 	int (*enable_vblank)(struct exynos_drm_crtc *crtc);
 	void (*disable_vblank)(struct exynos_drm_crtc *crtc);

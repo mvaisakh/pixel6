@@ -27,6 +27,8 @@
 #include <drm/drm_probe_helper.h>
 #include <video/mipi_display.h>
 
+#include <drm/exynos_display_common.h>
+
 #include "../exynos_drm_connector.h"
 #include "panel-samsung-drv.h"
 
@@ -285,16 +287,16 @@ int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connec
 	struct exynos_panel *ctx =
 		container_of(panel, struct exynos_panel, panel);
 	struct drm_display_mode *preferred_mode = NULL;
-	const struct drm_display_mode *current_mode = ctx->current_mode;
+	const struct exynos_panel_mode *current_mode = ctx->current_mode;
 	int i;
 
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 
 	for (i = 0; i < ctx->desc->num_modes; i++) {
-		const struct drm_display_mode *pmode = &ctx->desc->modes[i];
+		const struct exynos_panel_mode *pmode = &ctx->desc->modes[i];
 		struct drm_display_mode *mode;
 
-		mode = drm_mode_duplicate(connector->dev, pmode);
+		mode = drm_mode_duplicate(connector->dev, &pmode->mode);
 		if (!mode)
 			return -ENOMEM;
 
@@ -461,7 +463,7 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 
 	drm_printf(p, "\tenabled: %d\n", ctx->enabled);
 	if (ctx->current_mode) {
-		const struct drm_display_mode *m = ctx->current_mode;
+		const struct drm_display_mode *m = &ctx->current_mode->mode;
 
 		drm_printf(p, " \tcurrent mode: %dx%d@%d\n", m->hdisplay,
 			   m->vdisplay, drm_mode_vrefresh(m));
@@ -492,37 +494,107 @@ static int exynos_drm_connector_modes(struct drm_connector *connector)
 	return ret;
 }
 
+static const struct exynos_panel_mode *exynos_panel_get_mode(struct exynos_panel *ctx,
+							     const struct drm_display_mode *mode)
+{
+	const struct exynos_panel_mode *pmode;
+	int i;
+
+	for (i = 0; i < ctx->desc->num_modes; i++) {
+		pmode = &ctx->desc->modes[i];
+
+		if (drm_mode_equal(&pmode->mode, mode))
+			return pmode;
+	}
+
+	pmode = ctx->desc->lp_mode;
+	if (pmode && drm_mode_equal(&pmode->mode, mode))
+		return pmode;
+
+	return NULL;
+}
+
+static void exynos_drm_connector_attach_touch(struct exynos_panel *ctx,
+					      const struct drm_connector_state *connector_state,
+					      const struct drm_crtc_state *crtc_state)
+{
+	struct drm_encoder *encoder = connector_state->best_encoder;
+	struct drm_bridge *bridge;
+
+	if (!encoder) {
+		dev_warn(ctx->dev, "%s encoder is null\n", __func__);
+		return;
+	}
+
+	bridge = of_drm_find_bridge(ctx->touch_dev);
+	if (!bridge || bridge->dev)
+		return;
+
+	drm_bridge_attach(encoder, bridge, NULL, 0);
+	dev_info(ctx->dev, "attach bridge %p to encoder %p\n", bridge, encoder);
+}
+
+/*
+ * Check whether transition to new mode can be done seamlessly without having
+ * to turn display off before mode change. This is currently only possible if
+ * only clocks/refresh rate is changing
+ */
+static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
+					  const struct exynos_panel_mode *mode)
+{
+	const struct exynos_panel_funcs *funcs;
+
+	/* no need to go through seamless mode set if panel is disabled */
+	if (!ctx->enabled || !ctx->initialized)
+		return false;
+
+	funcs = ctx->desc->exynos_panel_func;
+	if (!funcs || !funcs->is_mode_seamless)
+		return false;
+
+	return funcs->is_mode_seamless(ctx, mode);
+}
+
+static int exynos_drm_connector_check_mode(struct exynos_panel *ctx,
+					   struct drm_connector_state *connector_state,
+					   const struct drm_display_mode *mode)
+{
+	struct exynos_drm_connector_state *exynos_connector_state =
+		to_exynos_connector_state(connector_state);
+	const struct exynos_panel_mode *pmode = exynos_panel_get_mode(ctx, mode);
+
+	if (!pmode) {
+		dev_warn(ctx->dev, "invalid mode %s\n", mode->name);
+		return -EINVAL;
+	}
+
+	exynos_connector_state->seamless_possible = exynos_panel_is_mode_seamless(ctx, pmode);
+	exynos_connector_state->exynos_mode = pmode->exynos_mode;
+
+	return 0;
+}
+
 static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 					     struct drm_atomic_state *state)
 {
 	struct exynos_drm_connector *exynos_connector = to_exynos_connector(connector);
-	struct drm_connector_state *new_state =
+	struct drm_connector_state *connector_state =
 		drm_atomic_get_new_connector_state(state, connector);
-	struct drm_bridge *bridge;
-	struct drm_crtc_state *crtc_state;
-	struct drm_encoder *encoder = new_state->best_encoder;
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+	struct drm_crtc_state *crtc_state;
 
-	if (!ctx->touch_dev)
+	/* nothing to do if disabled or if mode is unchanged */
+	if (!connector_state->crtc)
 		return 0;
 
-	if (!encoder) {
-		dev_warn(ctx->dev, "%s encoder is null\n", __func__);
-		return 0;
-	}
-
-	crtc_state = drm_atomic_get_new_crtc_state(state, new_state->crtc);
+	crtc_state = drm_atomic_get_new_crtc_state(state, connector_state->crtc);
 	if (!drm_atomic_crtc_needs_modeset(crtc_state))
 		return 0;
 
-	bridge = of_drm_find_bridge(ctx->touch_dev);
-	if (!bridge || bridge->dev)
-		return 0;
+	if (ctx->touch_dev)
+		exynos_drm_connector_attach_touch(ctx, connector_state, crtc_state);
 
-	drm_bridge_attach(encoder, bridge, NULL, 0);
-	dev_info(ctx->dev, "attach bridge %p to encoder %p\n", bridge, encoder);
-
-	return 0;
+	 return exynos_drm_connector_check_mode(ctx, connector_state, &crtc_state->mode);
 }
 
 static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
@@ -946,7 +1018,7 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
 
 	if (desc->lp_mode) {
-		ret = exynos_panel_attach_lp_mode(&ctx->exynos_connector, desc->lp_mode);
+		ret = exynos_panel_attach_lp_mode(&ctx->exynos_connector, &desc->lp_mode->mode);
 		if (ret)
 			dev_err(ctx->dev, "Failed to attach lp mode (%d)\n", ret);
 	}
@@ -1069,84 +1141,17 @@ static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge)
 	drm_panel_unprepare(&ctx->panel);
 }
 
-/*
- * Check whether transition to new mode can be done seamlessly without having
- * to turn display off before mode change. This is currently only possible if
- * only clocks/refresh rate is changing
- */
-static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
-					  const struct drm_display_mode *mode)
-{
-	const struct exynos_panel_funcs *funcs;
-
-	/* no need to go through seamless mode set if panel is disabled */
-	if (!ctx->enabled || !ctx->initialized)
-		return false;
-
-	funcs = ctx->desc->exynos_panel_func;
-	if (!funcs || !funcs->is_mode_seamless)
-		return false;
-
-	return funcs->is_mode_seamless(ctx, mode);
-}
-
-static bool exynos_panel_bridge_mode_fixup(struct drm_bridge *bridge,
-				    const struct drm_display_mode *mode,
-				    struct drm_display_mode *adjusted_mode)
-{
-	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
-	const struct drm_connector *connector = &ctx->exynos_connector.base;
-	struct drm_display_mode *m;
-
-	list_for_each_entry(m, &connector->modes, head) {
-		if (drm_mode_equal(m, adjusted_mode)) {
-			adjusted_mode->private = m->private;
-			adjusted_mode->private_flags = m->private_flags;
-
-			if (mode->private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI)
-				adjusted_mode->private_flags |=
-					EXYNOS_DISPLAY_MODE_FLAG_TUI;
-			else
-				adjusted_mode->private_flags &=
-					~EXYNOS_DISPLAY_MODE_FLAG_TUI;
-
-			if (exynos_panel_is_mode_seamless(ctx, m))
-				adjusted_mode->private_flags |= EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS;
-
-			return true;
-		}
-	}
-
-	dev_err(ctx->dev, "unsupported mode %s\n", adjusted_mode->name);
-
-	return false;
-}
-
 static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 				  const struct drm_display_mode *mode,
 				  const struct drm_display_mode *adjusted_mode)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	const struct drm_display_mode *pmode;
-	const struct exynos_display_mode *mode_priv;
+	const struct exynos_panel_mode *pmode = exynos_panel_get_mode(ctx, mode);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
-	int i;
 
-	for (i = 0; i < ctx->desc->num_modes; i++) {
-		pmode = &ctx->desc->modes[i];
-
-		if (drm_mode_equal(pmode, adjusted_mode) &&
-		    (pmode->private == adjusted_mode->private))
-			break;
-	}
-
-        if (i == ctx->desc->num_modes) {
-                if (!drm_mode_equal(adjusted_mode, ctx->desc->lp_mode))
-                        return;
-
-                pmode = ctx->desc->lp_mode;
-        }
+	if (WARN_ON(!pmode))
+		return;
 
 	if (!ctx->initialized && ctx->enabled) {
 		/* if panel was enabled at boot and there's no mode change skip mode set */
@@ -1164,10 +1169,9 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 	}
 
 	dev_dbg(ctx->dev, "changing display mode to %dx%d@%d\n",
-		pmode->hdisplay, pmode->vdisplay, drm_mode_vrefresh(pmode));
+		pmode->mode.hdisplay, pmode->mode.vdisplay, drm_mode_vrefresh(&pmode->mode));
 
-	mode_priv = drm_mode_to_exynos(adjusted_mode);
-	dsi->mode_flags = mode_priv->mode_flags;
+	dsi->mode_flags = pmode->exynos_mode.mode_flags;
 
 	if (funcs && funcs->mode_set)
 		funcs->mode_set(ctx, pmode);
@@ -1207,7 +1211,6 @@ static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.enable = exynos_panel_bridge_enable,
 	.disable = exynos_panel_bridge_disable,
 	.post_disable = exynos_panel_bridge_post_disable,
-	.mode_fixup = exynos_panel_bridge_mode_fixup,
 	.mode_set = exynos_panel_bridge_mode_set,
 };
 

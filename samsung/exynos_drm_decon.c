@@ -182,14 +182,99 @@ static bool has_writeback_job(struct drm_crtc_state *new_crtc_state)
 	return false;
 }
 
+static void decon_update_config(struct decon_config *config,
+				const struct drm_display_mode *mode,
+				const struct exynos_display_mode *exynos_mode)
+{
+	bool is_vid_mode;
+
+	config->image_width = mode->hdisplay;
+	config->image_height = mode->vdisplay;
+
+	if (!exynos_mode) {
+		pr_debug("%s: no private mode config\n", __func__);
+
+		/* valid defaults (ex. for writeback) */
+		config->dsc.enabled = false;
+		config->out_bpc = 8;
+		return;
+	}
+
+	config->dsc.enabled = exynos_mode->dsc.enabled;
+	if (exynos_mode->dsc.enabled) {
+		config->dsc.dsc_count = exynos_mode->dsc.dsc_count;
+		config->dsc.slice_count = exynos_mode->dsc.slice_count;
+		config->dsc.slice_height = exynos_mode->dsc.slice_height;
+		config->dsc.slice_width = DIV_ROUND_UP(config->image_width,
+						       config->dsc.slice_count);
+	}
+
+	is_vid_mode = (exynos_mode->mode_flags & MIPI_DSI_MODE_VIDEO) != 0;
+	config->mode.op_mode = is_vid_mode ? DECON_VIDEO_MODE : DECON_COMMAND_MODE;
+
+	config->out_bpc = exynos_mode->bpc;
+}
+
+static bool decon_is_seamless_possible(const struct decon_device *decon,
+				       const struct drm_display_mode *mode,
+				       const struct exynos_display_mode *exynos_mode)
+{
+	struct decon_config new_config = decon->config;
+
+	decon_update_config(&new_config, mode, exynos_mode);
+
+	/* don't allow any changes in decon config */
+	return !memcmp(&new_config, &decon->config, sizeof(new_config));
+}
+
+static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
+			       struct drm_crtc_state *crtc_state)
+{
+	const struct drm_atomic_state *state = crtc_state->state;
+	const struct decon_device *decon = exynos_crtc->ctx;
+	struct exynos_drm_crtc_state *exynos_crtc_state;
+	const struct exynos_drm_connector_state *exynos_conn_state;
+
+	exynos_conn_state = crtc_get_exynos_connector_state(state, crtc_state);
+	if (!exynos_conn_state)
+		return 0;
+
+	if (!(exynos_conn_state->exynos_mode.mode_flags & MIPI_DSI_MODE_VIDEO)) {
+		if (!decon->irq_te || !decon->res.pinctrl) {
+			decon_err(decon, "TE error: irq_te %d, te_pinctrl %p\n",
+				  decon->irq_te, decon->res.pinctrl);
+
+			return -EINVAL;
+		}
+	}
+
+	if (exynos_conn_state->seamless_possible && !crtc_state->connectors_changed &&
+	    !crtc_state->active_changed && crtc_state->active) {
+		if (!decon_is_seamless_possible(decon, &crtc_state->adjusted_mode,
+						&exynos_conn_state->exynos_mode)) {
+			decon_warn(decon, "seamless not possible for mode %s\n",
+				   crtc_state->adjusted_mode.name);
+		} else {
+			exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+			exynos_crtc_state->seamless_mode_changed = true;
+			crtc_state->mode_changed = false;
+
+			decon_debug(decon, "switch to mode %s can be seamless\n",
+				    crtc_state->adjusted_mode.name);
+		}
+	}
+
+	return 0;
+}
+
 static int decon_atomic_check(struct exynos_drm_crtc *exynos_crtc,
-			      struct drm_crtc_state *state)
+			      struct drm_crtc_state *crtc_state)
 {
 	const struct decon_device *decon = exynos_crtc->ctx;
-	const bool is_wb = has_writeback_job(state);
+	const bool is_wb = has_writeback_job(crtc_state);
 	const bool is_swb = decon->config.out_type == DECON_OUT_WB;
-	struct exynos_drm_crtc_state *exynos_crtc_state =
-					to_exynos_crtc_state(state);
+	struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+	int ret = 0;
 
 	if (is_wb) {
 		exynos_crtc_state->wb_type =
@@ -199,18 +284,12 @@ static int decon_atomic_check(struct exynos_drm_crtc *exynos_crtc,
 	}
 
 	if (is_swb)
-		state->no_vblank = true;
+		crtc_state->no_vblank = true;
 
-	if (state->mode_changed && !state->connectors_changed &&
-	    !state->active_changed && state->active &&
-	    exynos_drm_mode_is_seamless(&state->adjusted_mode)) {
-		decon_debug(decon, "switch to mode %s can be seamless\n",
-			    state->adjusted_mode.name);
-		state->mode_changed = false;
-		exynos_crtc_state->seamless_mode_changed = true;
-	}
+	if (crtc_state->mode_changed)
+		ret = decon_check_modeset(exynos_crtc, crtc_state);
 
-	return 0;
+	return ret;
 }
 
 static void decon_atomic_begin(struct exynos_drm_crtc *crtc)
@@ -458,76 +537,6 @@ static void _decon_enable(struct decon_device *decon)
 	decon_enable_irqs(decon);
 }
 
-static void decon_update_config_for_display_mode(struct decon_config *config,
-						 const struct drm_display_mode *mode)
-{
-	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
-	bool is_vid_mode;
-
-	config->image_width = mode->hdisplay;
-	config->image_height = mode->vdisplay;
-
-	if (!mode_priv) {
-		pr_warn("%s: no private mode config\n", __func__);
-		return;
-	}
-
-	config->dsc.enabled = mode_priv->dsc.enabled;
-	if (mode_priv->dsc.enabled) {
-		config->dsc.dsc_count = mode_priv->dsc.dsc_count;
-		config->dsc.slice_count = mode_priv->dsc.slice_count;
-		config->dsc.slice_height = mode_priv->dsc.slice_height;
-		config->dsc.slice_width = DIV_ROUND_UP(config->image_width,
-						       config->dsc.slice_count);
-	}
-
-	is_vid_mode = (mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO) != 0;
-	config->mode.op_mode = is_vid_mode ? DECON_VIDEO_MODE : DECON_COMMAND_MODE;
-
-	config->out_bpc = mode_priv->bpc;
-}
-
-static bool decon_is_seamless_possible(struct decon_device *decon,
-				       const struct drm_display_mode *mode)
-{
-	struct decon_config new_config = decon->config;
-
-	decon_update_config_for_display_mode(&new_config, mode);
-
-	/* don't allow any changes in decon config */
-	return !memcmp(&new_config, &decon->config, sizeof(new_config));
-}
-
-static bool decon_mode_fixup(struct exynos_drm_crtc *crtc,
-			const struct drm_display_mode *mode,
-			struct drm_display_mode *adjusted_mode)
-{
-	const struct exynos_display_mode *mode_priv;
-	struct decon_device *decon = crtc->ctx;
-
-	if (exynos_drm_mode_is_seamless(adjusted_mode) &&
-	    !decon_is_seamless_possible(decon, adjusted_mode)) {
-		decon_warn(decon, "seamless not possible for mode %s\n", mode->name);
-
-		adjusted_mode->private_flags &= ~EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS;
-	}
-
-	mode_priv = drm_mode_to_exynos(adjusted_mode);
-	if (!mode_priv)
-		return true;
-
-	if (!(mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO)) {
-		if (!decon->irq_te || !decon->res.pinctrl) {
-			decon_err(decon, "TE error: irq_te %d, te_pinctrl %p\n",
-				  decon->irq_te, decon->res.pinctrl);
-
-			return false;
-		}
-	}
-
-	return true;
-}
-
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode)
 {
 	struct videomode vm;
@@ -551,8 +560,6 @@ static void decon_mode_set(struct exynos_drm_crtc *crtc,
 	struct decon_device *decon = crtc->ctx;
 
 	decon_mode_update_bts(decon, adjusted_mode);
-
-	decon_update_config_for_display_mode(&decon->config, adjusted_mode);
 }
 
 #if defined(CONFIG_EXYNOS_BTS)
@@ -623,10 +630,23 @@ static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 	}
 }
 
-static void decon_enable(struct exynos_drm_crtc *crtc)
+static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *old_crtc_state)
 {
+	const struct drm_crtc_state *crtc_state = crtc->base.state;
 	struct decon_device *decon = crtc->ctx;
 	int i;
+
+	if (crtc_state->mode_changed) {
+		const struct drm_atomic_state *state = old_crtc_state->state;
+		const struct exynos_drm_connector_state *exynos_conn_state =
+			crtc_get_exynos_connector_state(state, crtc_state);
+		const struct exynos_display_mode *exynos_mode = NULL;
+
+		if (exynos_conn_state)
+			exynos_mode = &exynos_conn_state->exynos_mode;
+
+		decon_update_config(&decon->config, &crtc_state->adjusted_mode, exynos_mode);
+	}
 
 	if (decon->state == DECON_STATE_ON) {
 		decon_info(decon, "already enabled(%d)\n", decon->state);
@@ -635,7 +655,7 @@ static void decon_enable(struct exynos_drm_crtc *crtc)
 
 	decon_info(decon, "%s +\n", __func__);
 
-	if (is_tui(crtc->base.state)) {
+	if (is_tui(crtc_state)) {
 		decon_debug(decon, "tui_state : skip power enable\n");
 	} else {
 		pm_runtime_get_sync(decon->dev);
@@ -746,7 +766,6 @@ static const struct exynos_drm_crtc_ops decon_crtc_ops = {
 	.disable = decon_disable,
 	.enable_vblank = decon_enable_vblank,
 	.disable_vblank = decon_disable_vblank,
-	.mode_fixup = decon_mode_fixup,
 	.mode_set = decon_mode_set,
 	.atomic_check = decon_atomic_check,
 	.atomic_begin = decon_atomic_begin,

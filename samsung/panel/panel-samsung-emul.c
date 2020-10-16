@@ -69,51 +69,60 @@ static int emul_enable(struct drm_panel *panel)
 	return 0;
 }
 
-static const struct exynos_display_mode emul_exynos_mode = {
-	.mode_flags = MIPI_DSI_MODE_VIDEO,
-	.bpc = 8,
-	.dsc = {
-		.enabled = true,
-		.dsc_count = 2,
-		.slice_count = 2,
-		.slice_height = 65,
-	},
-};
-
-static const struct drm_display_mode emul_modes[] = {
+static const struct exynos_panel_mode emul_modes[] = {
 	{
 		/* 1440x3120 @ 60 */
-		.clock = 283680,
-		.hdisplay = 1440,
-		.hsync_start = 1440 + 32,
-		.hsync_end = 1440 + 32 + 12,
-		.htotal = 1440 + 32 + 12 + 16,
-		.vdisplay = 3120,
-		.vsync_start = 3120 + 12,
-		.vsync_end = 3120 + 12 + 4,
-		.vtotal = 3120 + 12 + 4 + 16,
-		.flags = 0,
-		.width_mm = 80,
-		.height_mm = 120,
-		.private = (int *)&emul_exynos_mode,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 283680,
+			.hdisplay = 1440,
+			.hsync_start = 1440 + 32,
+			.hsync_end = 1440 + 32 + 12,
+			.htotal = 1440 + 32 + 12 + 16,
+			.vdisplay = 3120,
+			.vsync_start = 3120 + 12,
+			.vsync_end = 3120 + 12 + 4,
+			.vtotal = 3120 + 12 + 4 + 16,
+			.flags = 0,
+			.width_mm = 80,
+			.height_mm = 120,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_MODE_VIDEO,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 65,
+			},
+		},
 	},
 	{
 		/* 1440x3120 @ 120 */
-		.clock = 567360,
-		.hdisplay = 1440,
-		.hsync_start = 1440 + 32,
-		.hsync_end = 1440 + 32 + 12,
-		.htotal = 1440 + 32 + 12 + 16,
-		.vdisplay = 3120,
-		.vsync_start = 3120 + 12,
-		.vsync_end = 3120 + 12 + 4,
-		.vtotal = 3120 + 12 + 4 + 16,
-		.flags = 0,
-		.width_mm = 80,
-		.height_mm = 120,
-		.private = (int *)&emul_exynos_mode,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 567360,
+			.hdisplay = 1440,
+			.hsync_start = 1440 + 32,
+			.hsync_end = 1440 + 32 + 12,
+			.htotal = 1440 + 32 + 12 + 16,
+			.vdisplay = 3120,
+			.vsync_start = 3120 + 12,
+			.vsync_end = 3120 + 12 + 4,
+			.vtotal = 3120 + 12 + 4 + 16,
+			.flags = 0,
+			.width_mm = 80,
+			.height_mm = 120,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_MODE_VIDEO,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 65,
+			},
+		},
 	},
 };
 

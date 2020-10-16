@@ -26,7 +26,6 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_property.h>
 #include <drm/drm_mipi_dsi.h>
-#include <drm/exynos_display_common.h>
 
 #include "../exynos_drm_connector.h"
 
@@ -38,6 +37,18 @@
 #define HDR_HLG			BIT(3)
 
 struct exynos_panel;
+
+/**
+ * struct exynos_panel_mode - panel mode info
+ */
+struct exynos_panel_mode {
+	/* @mode: drm display mode info */
+	struct drm_display_mode mode;
+
+	/* @exynos_mode: exynos driver specific mode info */
+	struct exynos_display_mode exynos_mode;
+};
+
 struct exynos_panel_funcs {
 	/**
 	 * @set_brightness:
@@ -73,7 +84,7 @@ struct exynos_panel_funcs {
 	 * seamlessly without full mode set given the current hardware configuration
 	 */
 	bool (*is_mode_seamless)(const struct exynos_panel *exynos_panel,
-				 const struct drm_display_mode *mode);
+				 const struct exynos_panel_mode *mode);
 
 	/**
 	 * @mode_set:
@@ -83,7 +94,7 @@ struct exynos_panel_funcs {
 	 * state to perform appropriate mode set configuration depending on this state.
 	 */
 	void (*mode_set)(struct exynos_panel *exynos_panel,
-			 const struct drm_display_mode *mode);
+			 const struct exynos_panel_mode *mode);
 };
 
 struct exynos_panel_desc {
@@ -96,14 +107,12 @@ struct exynos_panel_desc {
 	u32 min_luminance;
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
-	const struct drm_display_mode *modes;
-	/* @lp_mode: provides a low power mode if available, otherwise null */
-	const struct drm_display_mode *lp_mode;
+	const struct exynos_panel_mode *modes;
+	const struct exynos_panel_mode *lp_mode;
 	size_t num_modes;
 	const struct drm_panel_funcs *panel_func;
 	const struct exynos_panel_funcs *exynos_panel_func;
 };
-
 
 #define PANEL_ID_MAX		32
 #define PANEL_EXTINFO_MAX	16
@@ -120,7 +129,7 @@ struct exynos_panel {
 	struct exynos_drm_connector exynos_connector;
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;
-	const struct drm_display_mode *current_mode;
+	const struct exynos_panel_mode *current_mode;
 	struct backlight_device *bl;
 	bool enabled;
 	bool initialized;

@@ -81,10 +81,9 @@ static void s6e3hc2_write_display_mode(struct exynos_panel *ctx,
 
 static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
 {
-	const struct drm_display_mode *mode;
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
 
-	mode = ctx->current_mode;
-	if (!mode) {
+	if (!pmode) {
 		dev_err(ctx->dev, "no current mode set\n");
 		return -EINVAL;
 	}
@@ -118,7 +117,7 @@ static int s6e3hc2_common_pre_enable(struct exynos_panel *ctx)
 			0xF2, 0x03, 0x00, 0xFF, 0x02, 0x0A, 0x0A, 0x0A, 0x0A,
 			0x0F, 0x23);
 
-	s6e3hc2_write_display_mode(ctx, mode);
+	s6e3hc2_write_display_mode(ctx, &pmode->mode);
 
 	return 0;
 }
@@ -176,121 +175,144 @@ static int s6e3hc2_fhd_enable(struct drm_panel *panel)
 static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
 				bool hbm_mode)
 {
+	const struct exynos_panel_mode *pmode = exynos_panel->current_mode;
+
 	exynos_panel->hbm_mode = hbm_mode;
 
-	s6e3hc2_write_display_mode(exynos_panel, exynos_panel->current_mode);
+	s6e3hc2_write_display_mode(exynos_panel, &pmode->mode);
 }
 
 static void s6e3hc2_mode_set(struct exynos_panel *ctx,
-			     const struct drm_display_mode *mode)
+			     const struct exynos_panel_mode *pmode)
 {
 	if (!ctx->enabled)
 		return;
 
-	s6e3hc2_write_display_mode(ctx, mode);
+	s6e3hc2_write_display_mode(ctx, &pmode->mode);
 }
 
 static bool s6e3hc2_is_mode_seamless(const struct exynos_panel *ctx,
-				     const struct drm_display_mode *mode)
+				     const struct exynos_panel_mode *pmode)
 {
 	/* seamless mode switch is possible if only changing refresh rate */
-	return drm_mode_equal_no_clocks(ctx->current_mode, mode);
+	return drm_mode_equal_no_clocks(&ctx->current_mode->mode, &pmode->mode);
 }
 
-static const struct exynos_display_mode s6e3hc2_wqhd_mode_private = {
-	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-	.vblank_usec = 120,
-	.bpc = 8,
-	.dsc = {
-		.enabled = true,
-		.dsc_count = 2,
-		.slice_count = 2,
-		.slice_height = 40,
-	},
-};
-
-static const struct drm_display_mode s6e3hc2_wqhd_modes[] = {
+static const struct exynos_panel_mode s6e3hc2_wqhd_modes[] = {
 	{
 		/* 1440x3040 @ 60Hz */
-		.clock = 266568,
-		.hdisplay = 1440,
-		.hsync_start = 1440 + 2,
-		.hsync_end = 1440 + 2 + 2,
-		.htotal = 1440 + 6 + 2 + 2,
-		.vdisplay = 3040,
-		.vsync_start = 3040 + 8,
-		.vsync_end = 3040 + 8 + 1,
-		.vtotal = 3040 + 8 + 1 + 15,
-		.flags = 0,
-		.width_mm = 69,
-		.height_mm = 142,
-		.private = (int *)&s6e3hc2_wqhd_mode_private,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 266568,
+			.hdisplay = 1440,
+			.hsync_start = 1440 + 2,
+			.hsync_end = 1440 + 2 + 2,
+			.htotal = 1440 + 6 + 2 + 2,
+			.vdisplay = 3040,
+			.vsync_start = 3040 + 8,
+			.vsync_end = 3040 + 8 + 1,
+			.vtotal = 3040 + 8 + 1 + 15,
+			.flags = 0,
+			.width_mm = 69,
+			.height_mm = 142,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+			.vblank_usec = 120,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 40,
+			},
+		},
 	},
-	{ /* 1440x3040 @ 90Hz */
-		.clock = 399852,
-		.hdisplay = 1440,
-		.hsync_start = 1440 + 2,
-		.hsync_end = 1440 + 2 + 2,
-		.htotal = 1440 + 6 + 2 + 2,
-		.vdisplay = 3040,
-		.vsync_start = 3040 + 8,
-		.vsync_end = 3040 + 8 + 1,
-		.vtotal = 3040 + 8 + 1 + 15,
-		.flags = 0,
-		.width_mm = 69,
-		.height_mm = 142,
-		.private = (int *)&s6e3hc2_wqhd_mode_private,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
-	},
+	{
+		/* 1440x3040 @ 90Hz */
+		.mode = {
+			.clock = 399852,
+			.hdisplay = 1440,
+			.hsync_start = 1440 + 2,
+			.hsync_end = 1440 + 2 + 2,
+			.htotal = 1440 + 6 + 2 + 2,
+			.vdisplay = 3040,
+			.vsync_start = 3040 + 8,
+			.vsync_end = 3040 + 8 + 1,
+			.vtotal = 3040 + 8 + 1 + 15,
+			.flags = 0,
+			.width_mm = 69,
+			.height_mm = 142,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+			.vblank_usec = 120,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 40,
+			},
+		},
+	}
 };
 
-static const struct exynos_display_mode s6e3hc2_fhd_mode_private = {
-	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-	.vblank_usec = 120,
-	.bpc = 8,
-	.dsc = {
-		.enabled = true,
-		.dsc_count = 2,
-		.slice_count = 2,
-		.slice_height = 65,
-	},
-};
-
-static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
+static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 	{
 		/* 1080x2340 @ 60Hz */
-		.clock = 164358,
-		.hdisplay = 1080,
-		.hsync_start = 1080 + 32, // add hfp
-		.hsync_end = 1080 + 32 + 12, // add hsa
-		.htotal = 1080 + 32 + 12 + 26, // add hbp
-		.vdisplay = 2340,
-		.vsync_start = 2340 + 12, // add vfp
-		.vsync_end = 2340 + 12 + 4, // add vsa
-		.vtotal = 2340 + 12 + 4 + 26, // add vbp
-		.flags = 0,
-		.width_mm = 63,
-		.height_mm = 137,
-		.private = (int *)&s6e3hc2_fhd_mode_private,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 164358,
+			.hdisplay = 1080,
+			.hsync_start = 1080 + 32, // add hfp
+			.hsync_end = 1080 + 32 + 12, // add hsa
+			.htotal = 1080 + 32 + 12 + 26, // add hbp
+			.vdisplay = 2340,
+			.vsync_start = 2340 + 12, // add vfp
+			.vsync_end = 2340 + 12 + 4, // add vsa
+			.vtotal = 2340 + 12 + 4 + 26, // add vbp
+			.flags = 0,
+			.width_mm = 63,
+			.height_mm = 137,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+			.vblank_usec = 120,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 65,
+			},
+		},
 	},
 	{
 		/* 1080x2340 @ 90Hz */
-		.clock = 246537,
-		.hdisplay = 1080,
-		.hsync_start = 1080 + 32, // add hfp
-		.hsync_end = 1080 + 32 + 12, // add hsa
-		.htotal = 1080 + 32 + 12 + 26, // add hbp
-		.vdisplay = 2340,
-		.vsync_start = 2340 + 12, // add vfp
-		.vsync_end = 2340 + 12 + 4, // add vsa
-		.vtotal = 2340 + 12 + 4 + 26, // add vbp
-		.flags = 0,
-		.width_mm = 63,
-		.height_mm = 137,
-		.private = (int *)&s6e3hc2_fhd_mode_private,
-		.private_flags = EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL,
+		.mode = {
+			.clock = 246537,
+			.hdisplay = 1080,
+			.hsync_start = 1080 + 32, // add hfp
+			.hsync_end = 1080 + 32 + 12, // add hsa
+			.htotal = 1080 + 32 + 12 + 26, // add hbp
+			.vdisplay = 2340,
+			.vsync_start = 2340 + 12, // add vfp
+			.vsync_end = 2340 + 12 + 4, // add vsa
+			.vtotal = 2340 + 12 + 4 + 26, // add vbp
+			.flags = 0,
+			.width_mm = 63,
+			.height_mm = 137,
+		},
+		.exynos_mode = {
+			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+			.vblank_usec = 120,
+			.bpc = 8,
+			.dsc = {
+				.enabled = true,
+				.dsc_count = 2,
+				.slice_count = 2,
+				.slice_height = 65,
+			},
+		},
 	},
 };
 
