@@ -130,8 +130,15 @@ struct dpu_bts {
 	u32 max_disp_freq;
 	u32 prev_max_disp_freq;
 	u64 ppc;
-	u32 line_mem_cnt;
-	u32 cycle_per_line;
+	u32 ppc_rotator;
+	u32 ppc_scaler;
+	u32 delay_comp;
+	u32 delay_scaler;
+	u32 bus_width;
+	u32 bus_util_pct;
+	u32 rot_util_pct;
+	u32 dfs_lv_cnt;
+	u32 dfs_lv_khz[BTS_DFS_MAX];
 	u32 vbp;
 	u32 vfp;
 	u32 vsa;

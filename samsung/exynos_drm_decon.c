@@ -900,6 +900,8 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 	u32 val;
 	int ret = 0, i;
 	int dpp_id;
+	u32 dfs_lv_cnt, dfs_lv_khz[BTS_DFS_MAX] = {400000, 0, };
+	bool err_flag = false;
 
 	of_property_read_u32(np, "decon,id", &decon->id);
 
@@ -1009,19 +1011,67 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		decon->bts.ppc = 2UL;
 	decon_info(decon, "PPC(%llu)\n", decon->bts.ppc);
 
-	if (of_property_read_u32(np, "line_mem_cnt",
-				(u32 *)&decon->bts.line_mem_cnt)) {
-		decon->bts.line_mem_cnt = 4UL;
-		decon_warn(decon, "line memory cnt is not defined in DT.\n");
+	if (of_property_read_u32(np, "ppc_rotator",
+					(u32 *)&decon->bts.ppc_rotator)) {
+		decon->bts.ppc_rotator = 4U;
+		decon_warn(decon, "WARN: rotator ppc is not defined in DT.\n");
 	}
-	decon_info(decon, "line memory cnt(%d)\n", decon->bts.line_mem_cnt);
+	decon_info(decon, "rotator ppc(%d)\n", decon->bts.ppc_rotator);
 
-	if (of_property_read_u32(np, "cycle_per_line",
-				(u32 *)&decon->bts.cycle_per_line)) {
-		decon->bts.cycle_per_line = 8UL;
-		decon_warn(decon, "cycle per line is not defined in DT.\n");
+	if (of_property_read_u32(np, "ppc_scaler",
+					(u32 *)&decon->bts.ppc_scaler)) {
+		decon->bts.ppc_scaler = 2U;
+		decon_warn(decon, "WARN: scaler ppc is not defined in DT.\n");
 	}
-	decon_info(decon, "cycle per line(%d)\n", decon->bts.cycle_per_line);
+	decon_info(decon, "scaler ppc(%d)\n", decon->bts.ppc_scaler);
+
+	if (of_property_read_u32(np, "delay_comp",
+				(u32 *)&decon->bts.delay_comp)) {
+		decon->bts.delay_comp = 4UL;
+		decon_warn(decon, "WARN: comp line delay is not defined in DT.\n");
+	}
+	decon_info(decon, "line delay comp(%d)\n", decon->bts.delay_comp);
+
+	if (of_property_read_u32(np, "delay_scaler",
+				(u32 *)&decon->bts.delay_scaler)) {
+		decon->bts.delay_scaler = 2UL;
+		decon_warn(decon, "WARN: scaler line delay is not defined in DT.\n");
+	}
+	decon_info(decon, "line delay scaler(%d)\n", decon->bts.delay_scaler);
+
+	if (of_property_read_u32(np, "bus_width", &decon->bts.bus_width)) {
+		decon->bts.bus_width = 16;
+		decon_warn(decon, "WARN: bus_width is not defined in DT.\n");
+	}
+	if (of_property_read_u32(np, "bus_util", &decon->bts.bus_util_pct)) {
+		decon->bts.bus_util_pct = 65;
+		decon_warn(decon, "WARN: bus_util_pct is not defined in DT.\n");
+	}
+	if (of_property_read_u32(np, "rot_util", &decon->bts.rot_util_pct)) {
+		decon->bts.rot_util_pct = 60;
+		decon_warn(decon, "WARN: rot_util_pct is not defined in DT.\n");
+	}
+	decon_info(decon, "bus_width(%d) bus_util_pct(%d) rot_util_pct(%d)\n",
+			decon->bts.bus_width, decon->bts.bus_util_pct,
+			decon->bts.rot_util_pct);
+
+	if (of_property_read_u32(np, "dfs_lv_cnt", &dfs_lv_cnt)) {
+		err_flag = true;
+		dfs_lv_cnt = 1;
+		decon->bts.dfs_lv_khz[0] = 400000U; /* 400Mhz */
+		decon_warn(decon, "WARN: DPU DFS Info is not defined in DT.\n");
+	}
+	decon->bts.dfs_lv_cnt = dfs_lv_cnt;
+
+	if (!err_flag) {
+		of_property_read_u32_array(np, "dfs_lv", dfs_lv_khz, dfs_lv_cnt);
+		decon_info(decon, "DPU DFS Level : ");
+		for (i = 0; i < dfs_lv_cnt; i++) {
+			decon->bts.dfs_lv_khz[i] = dfs_lv_khz[i];
+			decon_info(decon, "%6d ", dfs_lv_khz[i]);
+		}
+		decon_info(decon, "\n");
+	}
 
 	if (decon->config.out_type == DECON_OUT_DSI)
 		decon->config.mode.dsi_mode = DSI_MODE_DUAL_DSI;
