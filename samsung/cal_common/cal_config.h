@@ -130,4 +130,7 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);
 #define cal_info_ratelimited(id, fmt, ...)	\
 	cal_msg(pr_info_ratelimited, id, fmt, ##__VA_ARGS__)
 
+#define GET_LUT_H(v)	(((v) >> 16) & 0xFFFF)
+#define GET_LUT_L(v)	((v) & 0xFFFF)
+
 #endif /* __CAL_OS_CONFIG_H__ */

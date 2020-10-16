@@ -19,6 +19,7 @@
 
 #define DEGAMMA_LUT_SIZE		65
 #define REGAMMA_LUT_SIZE		65
+#define CGC_LUT_SIZE			4913
 #define GAMMA_MATRIX_COEFFS_CNT		9
 #define LINEAR_MATRIX_COEFFS_CNT	9
 
@@ -43,4 +44,7 @@ void dqe_reg_set_disp_dither(struct dither_config *config);
 void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm);
 void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix);
 void dqe_reg_print_dither(enum dqe_dither_type dither);
+void dqe_reg_print_degamma_lut(void);
+void dqe_reg_print_cgc_lut(u32 count);
+void dqe_reg_print_regamma_lut(void);
 #endif /* __SAMSUNG_DQE_CAL_H__ */

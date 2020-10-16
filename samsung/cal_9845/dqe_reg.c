@@ -198,6 +198,89 @@ void dqe_reg_print_dither(enum dqe_dither_type dither)
 		(val & DITHER_TABLE_SEL_B) ? 'B' : 'A');
 }
 
+static void dqe_reg_print_lut(u32 start, u32 count)
+{
+	u32 val;
+	int i;
+	char buf[128];
+	char *p = buf;
+	const char *end = buf + sizeof(buf);
+
+	for (i = 0; i < DIV_ROUND_UP(count, 2); ++i) {
+		val = dqe_read(start + i * 4);
+
+		p += scnprintf(p, end - p, "[%4d]%4x ", i * 2, GET_LUT_L(val));
+
+		if ((i * 2 + 1) != count)
+			p += scnprintf(p, end - p, "[%4d]%4x ", i * 2 + 1,
+					GET_LUT_H(val));
+
+		if ((i % 5) == 4) {
+			cal_log_info(0, "%s\n", buf);
+			p = buf;
+		}
+	}
+
+	if (p != buf)
+		cal_log_info(0, "%s\n", buf);
+}
+
+void dqe_reg_print_degamma_lut(void)
+{
+	u32 val;
+
+	val = dqe_read(DQE0_DEGAMMA_CON);
+	cal_log_info(0, "DQE: degamma %s\n", val ? "on" : "off");
+
+	if (!val)
+		return;
+
+	dqe_reg_print_lut(DQE0_DEGAMMALUT(0), DEGAMMA_LUT_SIZE);
+}
+
+void dqe_reg_print_cgc_lut(u32 count)
+{
+	u32 val;
+
+	val = dqe_read_mask(DQE0_CGC_CON, CGC_EN);
+	cal_log_info(0, "DQE: cgc %s\n", val ? "on" : "off");
+
+	if (!val)
+		return;
+
+	if (count > CGC_LUT_SIZE)
+		count = CGC_LUT_SIZE;
+
+	cal_log_info(0, "[Red]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_R(0), count);
+
+	cal_log_info(0, "[Green]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_G(0), count);
+
+	cal_log_info(0, "[Blue]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_B(0), count);
+}
+
+void dqe_reg_print_regamma_lut(void)
+{
+	u32 val;
+
+	val = dqe_read(DQE0_REGAMMA_CON);
+	cal_log_info(0, "DQE: regamma %s\n", val ? "on" : "off");
+
+	if (!val)
+		return;
+
+	cal_log_info(0, "[Red]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_R(0), REGAMMA_LUT_SIZE);
+
+	cal_log_info(0, "[Green]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_G(0), REGAMMA_LUT_SIZE);
+
+	cal_log_info(0, "[Blue]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_B(0), REGAMMA_LUT_SIZE);
+}
+
 void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
 {
 	int i, reg_cnt;
