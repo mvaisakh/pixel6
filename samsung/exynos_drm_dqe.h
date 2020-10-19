@@ -15,6 +15,7 @@
 
 #include <drm/samsung_drm.h>
 #include <dqe_cal.h>
+#include <cal_config.h>
 
 struct decon_device;
 struct exynos_dqe;
@@ -45,11 +46,6 @@ struct dither_debug_override {
 	bool force_en;
 	bool verbose;
 	struct dither_config val;
-};
-
-enum elem_size {
-	ELEM_SIZE_16 = 16,
-	ELEM_SIZE_32 = 32,
 };
 
 #define MAX_NAME_SIZE		32

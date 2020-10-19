@@ -19,6 +19,7 @@
 #include <dpp_cal.h>
 
 #include "exynos_drm_drv.h"
+#include "exynos_drm_dqe.h"
 
 enum EXYNOS9_DPP_FEATURES {
 	/* Can reads the graphical image */
@@ -34,6 +35,35 @@ enum EXYNOS9_DPP_FEATURES {
 enum dpp_state {
 	DPP_STATE_OFF = 0,
 	DPP_STATE_ON,
+};
+
+struct eotf_debug_override {
+	struct exynos_debug_info info;
+	struct hdr_eotf_lut force_lut;
+};
+
+struct oetf_debug_override {
+	struct exynos_debug_info info;
+	struct hdr_oetf_lut force_lut;
+};
+
+struct gm_debug_override {
+	struct exynos_debug_info info;
+	struct hdr_gm_data force_data;
+};
+
+struct tm_debug_override {
+	struct exynos_debug_info info;
+	struct hdr_tm_data force_data;
+};
+
+struct exynos_hdr {
+	struct exynos_hdr_state state;
+
+	struct eotf_debug_override eotf;
+	struct oetf_debug_override oetf;
+	struct gm_debug_override gm;
+	struct tm_debug_override tm;
 };
 
 struct dpp_device {
@@ -80,7 +110,7 @@ struct dpp_device {
 	int (*check)(struct dpp_device *this_dpp,
 				const struct exynos_drm_plane_state *state);
 	int (*update)(struct dpp_device *this_dpp,
-				const struct exynos_drm_plane_state *state);
+				struct exynos_drm_plane_state *state);
 	int (*disable)(struct dpp_device *this_dpp);
 
 	/*
@@ -90,7 +120,7 @@ struct dpp_device {
 	dma_addr_t dbg_dma_addr;
 	struct exynos_drm_plane plane;
 
-	struct exynos_hdr_state hdr_state;
+	struct exynos_hdr hdr;
 };
 
 #ifdef CONFIG_OF

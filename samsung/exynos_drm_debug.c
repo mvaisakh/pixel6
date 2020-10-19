@@ -743,13 +743,13 @@ exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent)
 
 	exynos_debugfs_add_lut("red", 0664, dent_lut,
 			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
-			cgc->force_lut.r_values, NULL, 32, &info->dirty);
+			cgc->force_lut.r_values, NULL, ELEM_SIZE_32, &info->dirty);
 	exynos_debugfs_add_lut("green", 0664, dent_lut,
 			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
-			cgc->force_lut.g_values, NULL, 32, &info->dirty);
+			cgc->force_lut.g_values, NULL, ELEM_SIZE_32, &info->dirty);
 	exynos_debugfs_add_lut("blue", 0664, dent_lut,
 			DRM_SAMSUNG_CGC_LUT_REG_CNT, cgc->verbose_cnt,
-			cgc->force_lut.b_values, NULL, 32, &info->dirty);
+			cgc->force_lut.b_values, NULL, ELEM_SIZE_32, &info->dirty);
 
 	return dent;
 }
@@ -778,11 +778,11 @@ exynos_debugfs_add_regamma(struct regamma_debug_override *regamma,
 	}
 
 	exynos_debugfs_add_lut("red", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
-			NULL, regamma->force_lut, 16, &info->dirty);
+			NULL, regamma->force_lut, ELEM_SIZE_16, &info->dirty);
 	exynos_debugfs_add_lut("green", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
-			NULL, regamma->force_lut, 16, &info->dirty);
+			NULL, regamma->force_lut, ELEM_SIZE_16, &info->dirty);
 	exynos_debugfs_add_lut("blue", 0664, dent_lut, REGAMMA_LUT_SIZE, 0,
-			NULL, regamma->force_lut, 16, &info->dirty);
+			NULL, regamma->force_lut, ELEM_SIZE_16, &info->dirty);
 
 	return dent;
 }
@@ -803,7 +803,7 @@ exynos_debugfs_add_degamma(struct degamma_debug_override *degamma,
 	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
 	exynos_debugfs_add_lut("lut", 0664, dent, DEGAMMA_LUT_SIZE, 0, NULL,
-			degamma->force_lut, 16, &info->dirty);
+			degamma->force_lut, ELEM_SIZE_16, &info->dirty);
 
 	return dent;
 }
@@ -1010,6 +1010,148 @@ err_event_log:
 	vfree(decon->d.event_log);
 	return -ENOENT;
 }
+
+static struct dentry *exynos_debugfs_add_hdr_lut(const char *name,
+		struct dentry *parent, struct exynos_debug_info *info,
+		void *posx_lut, size_t posx_cnt, enum elem_size posx_type,
+		void *posy_lut, size_t posy_cnt, enum elem_size posy_type)
+{
+	struct dentry *dent, *dent_lut;
+
+	dent = debugfs_create_dir(name, parent);
+	if (!dent) {
+		pr_err("failed to create %s directory\n", name);
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+
+	dent_lut = debugfs_create_dir("lut", dent);
+	if (!dent_lut) {
+		pr_err("failed to create %s lut directory\n", name);
+		debugfs_remove_recursive(dent);
+		return NULL;
+	}
+
+	exynos_debugfs_add_lut("posx", 0664, dent_lut, posx_cnt, 0, posx_lut,
+			NULL,  posx_type, &info->dirty);
+	exynos_debugfs_add_lut("posy", 0664, dent_lut, posy_cnt, 0, posy_lut,
+			NULL,  posy_type, &info->dirty);
+
+	return dent;
+}
+
+static struct dentry *exynos_debugfs_add_gammut(struct exynos_hdr *hdr,
+		struct dentry *parent)
+{
+	struct dentry *dent, *dent_matrix;
+	struct gm_debug_override *gm = &hdr->gm;
+	struct exynos_debug_info *info = &gm->info;
+
+	dent = debugfs_create_dir("gammut", parent);
+	if (!dent) {
+		pr_err("failed to create gammut directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
+	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+
+	dent_matrix = debugfs_create_dir("matrix", dent);
+	if (!dent_matrix) {
+		pr_err("failed to create gammut matrix directory\n");
+		debugfs_remove_recursive(dent);
+		return NULL;
+	}
+
+	exynos_debugfs_add_lut("coeffs", 0664, dent_matrix,
+			DRM_SAMSUNG_HDR_GM_DIMENS * DRM_SAMSUNG_HDR_GM_DIMENS,
+			0, gm->force_data.coeffs, NULL, ELEM_SIZE_32, &info->dirty);
+	exynos_debugfs_add_lut("offsets", 0664, dent_matrix,
+			DRM_SAMSUNG_HDR_GM_DIMENS, 0,
+			gm->force_data.offsets, NULL, ELEM_SIZE_32, &info->dirty);
+
+	return dent;
+}
+
+static struct dentry *exynos_debugfs_add_tm(struct exynos_hdr *hdr,
+		struct dentry *parent)
+{
+	struct dentry *dent;
+	struct tm_debug_override *tm = &hdr->tm;
+	struct exynos_debug_info *info = &tm->info;
+	struct hdr_tm_data *tm_data = &tm->force_data;
+
+	dent = exynos_debugfs_add_hdr_lut("tone_mapping", parent, info,
+			tm->force_data.posx, DRM_SAMSUNG_HDR_TM_LUT_LEN, ELEM_SIZE_16,
+			tm->force_data.posy, DRM_SAMSUNG_HDR_TM_LUT_LEN, ELEM_SIZE_32);
+
+	debugfs_create_u16("coeff_r", 0664, dent, &tm_data->coeff_r);
+	debugfs_create_u16("coeff_g", 0664, dent, &tm_data->coeff_g);
+	debugfs_create_u16("coeff_b", 0664, dent, &tm_data->coeff_b);
+
+	debugfs_create_u16("range_x_min", 0664, dent, &tm_data->rng_x_min);
+	debugfs_create_u16("range_x_max", 0664, dent, &tm_data->rng_x_max);
+	debugfs_create_u16("range_y_min", 0664, dent, &tm_data->rng_y_min);
+	debugfs_create_u16("range_y_max", 0664, dent, &tm_data->rng_y_max);
+
+	return dent;
+}
+
+int exynos_drm_debugfs_plane_add(struct exynos_drm_plane *exynos_plane)
+{
+	struct drm_plane *plane = &exynos_plane->base;
+	struct drm_minor *minor = plane->dev->primary;
+	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
+	struct dentry *root, *ent, *hdr_dent;
+	struct exynos_hdr *hdr = &dpp->hdr;
+
+	root = debugfs_create_dir(plane->name, minor->debugfs_root);
+	if (!root)
+		return -ENOMEM;
+
+	exynos_plane->debugfs_entry = root;
+
+	if (test_bit(DPP_ATTR_HDR, &dpp->attr)) {
+		hdr_dent = debugfs_create_dir("hdr", root);
+		if (!hdr_dent)
+			goto err;
+
+		ent = exynos_debugfs_add_hdr_lut("eotf", hdr_dent,
+				&hdr->eotf.info, hdr->eotf.force_lut.posx,
+				DRM_SAMSUNG_HDR_EOTF_LUT_LEN, ELEM_SIZE_16,
+				hdr->eotf.force_lut.posy,
+				DRM_SAMSUNG_HDR_EOTF_LUT_LEN, ELEM_SIZE_32);
+		if (!ent)
+			goto err;
+
+		ent = exynos_debugfs_add_hdr_lut("oetf", hdr_dent,
+				&hdr->oetf.info, hdr->oetf.force_lut.posx,
+				DRM_SAMSUNG_HDR_OETF_LUT_LEN, ELEM_SIZE_16,
+				hdr->oetf.force_lut.posy,
+				DRM_SAMSUNG_HDR_OETF_LUT_LEN, ELEM_SIZE_16);
+		if (!ent)
+			goto err;
+
+		ent = exynos_debugfs_add_gammut(hdr, hdr_dent);
+		if (!ent)
+			goto err;
+	}
+
+	if (test_bit(DPP_ATTR_HDR10_PLUS, &dpp->attr)) {
+		ent = exynos_debugfs_add_tm(hdr, hdr_dent ? : root);
+		if (!ent)
+			goto err;
+	}
+
+	return 0;
+err:
+	debugfs_remove_recursive(exynos_plane->debugfs_entry);
+	exynos_plane->debugfs_entry = NULL;
+	return -ENOMEM;
+}
+
 
 #define PREFIX_LEN	40
 #define ROW_LEN		32

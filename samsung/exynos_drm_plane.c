@@ -321,16 +321,24 @@ static void exynos_drm_plane_print_state(struct drm_printer *p,
 	}
 }
 
+static int exynos_drm_plane_late_register(struct drm_plane *plane)
+{
+	struct exynos_drm_plane *exynos_plane = to_exynos_plane(plane);
+
+	return exynos_drm_debugfs_plane_add(exynos_plane);
+}
+
 static struct drm_plane_funcs exynos_plane_funcs = {
-	.update_plane	= drm_atomic_helper_update_plane,
-	.disable_plane	= drm_atomic_helper_disable_plane,
-	.destroy	= drm_plane_cleanup,
-	.reset		= exynos_drm_plane_reset,
-	.atomic_duplicate_state = exynos_drm_plane_duplicate_state,
-	.atomic_destroy_state = exynos_drm_plane_destroy_state,
-	.atomic_set_property = exynos_drm_plane_set_property,
-	.atomic_get_property = exynos_drm_plane_get_property,
-	.atomic_print_state = exynos_drm_plane_print_state,
+	.update_plane		= drm_atomic_helper_update_plane,
+	.disable_plane		= drm_atomic_helper_disable_plane,
+	.destroy		= drm_plane_cleanup,
+	.reset			= exynos_drm_plane_reset,
+	.atomic_duplicate_state	= exynos_drm_plane_duplicate_state,
+	.atomic_destroy_state	= exynos_drm_plane_destroy_state,
+	.atomic_set_property	= exynos_drm_plane_set_property,
+	.atomic_get_property	= exynos_drm_plane_get_property,
+	.atomic_print_state	= exynos_drm_plane_print_state,
+	.late_register		= exynos_drm_plane_late_register,
 };
 
 static int

@@ -55,6 +55,11 @@
 #endif
 #endif
 
+enum elem_size {
+	ELEM_SIZE_16 = 16,
+	ELEM_SIZE_32 = 32,
+};
+
 struct cal_regs_desc {
 	const char *name;
 	void __iomem *regs;

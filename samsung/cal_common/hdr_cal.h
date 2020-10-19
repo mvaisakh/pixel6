@@ -21,4 +21,8 @@ void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut);
 void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut);
 void hdr_reg_set_gm(u32 id, struct hdr_gm_data *data);
 void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm);
+void hdr_reg_print_eotf_lut(u32 id);
+void hdr_reg_print_oetf_lut(u32 id);
+void hdr_reg_print_gm(u32 id);
+void hdr_reg_print_tm(u32 id);
 #endif /* __SAMSUNG_HDR_CAL_H__ */

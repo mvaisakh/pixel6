@@ -150,6 +150,7 @@ to_exynos_plane_state(const struct drm_plane_state *state)
 struct exynos_drm_plane {
 	struct drm_plane base;
 	unsigned int index;
+	struct dentry *debugfs_entry;
 
 	struct {
 		struct drm_property *restriction;

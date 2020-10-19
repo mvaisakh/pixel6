@@ -463,7 +463,7 @@ static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
 			       struct exynos_drm_plane *exynos_plane)
 {
 	const struct drm_plane_state *plane_state = exynos_plane->base.state;
-	const struct exynos_drm_plane_state *exynos_plane_state =
+	struct exynos_drm_plane_state *exynos_plane_state =
 		to_exynos_plane_state(plane_state);
 	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
 	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
