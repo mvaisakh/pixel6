@@ -20,6 +20,7 @@
 #define DEGAMMA_LUT_SIZE		65
 #define REGAMMA_LUT_SIZE		65
 #define CGC_LUT_SIZE			4913
+#define HIST_BIN_SIZE			256
 #define GAMMA_MATRIX_COEFFS_CNT		9
 #define LINEAR_MATRIX_COEFFS_CNT	9
 
@@ -47,4 +48,5 @@ void dqe_reg_print_dither(enum dqe_dither_type dither);
 void dqe_reg_print_degamma_lut(void);
 void dqe_reg_print_cgc_lut(u32 count);
 void dqe_reg_print_regamma_lut(void);
+void dqe_reg_print_hist(void);
 #endif /* __SAMSUNG_DQE_CAL_H__ */

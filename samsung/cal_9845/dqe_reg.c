@@ -157,6 +157,63 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
+static void dqe_reg_print_lut(u32 start, u32 count)
+{
+	u32 val;
+	int i;
+	char buf[128];
+	char *p = buf;
+	const char *end = buf + sizeof(buf);
+
+	for (i = 0; i < DIV_ROUND_UP(count, 2); ++i) {
+		val = dqe_read(start + i * 4);
+
+		p += scnprintf(p, end - p, "[%4d]%4x ", i * 2, GET_LUT_L(val));
+
+		if ((i * 2 + 1) != count)
+			p += scnprintf(p, end - p, "[%4d]%4x ", i * 2 + 1,
+					GET_LUT_H(val));
+
+		if ((i % 5) == 4) {
+			cal_log_info(0, "%s\n", buf);
+			p = buf;
+		}
+	}
+
+	if (p != buf)
+		cal_log_info(0, "%s\n", buf);
+}
+
+void dqe_reg_print_hist(void)
+{
+	u32 val;
+
+	val = dqe_read(DQE0_HIST);
+	cal_log_info(0, "DQE: histogram EN(%d) ROI_ON(%d) LUMA_SEL(%d)\n",
+			cal_mask(val, HIST_EN), cal_mask(val, HIST_ROI_ON),
+			cal_mask(val, HIST_LUMA_SEL));
+
+	val = dqe_read(DQE0_HIST_SIZE);
+	cal_log_info(0, "image size: %d x %d\n", cal_mask(val, HIST_HSIZE_MASK),
+			cal_mask(val, HIST_VSIZE_MASK));
+
+	val = dqe_read(DQE0_HIST_START);
+	cal_log_info(0, "ROI position start x,y(%d,%d)\n",
+			cal_mask(val, HIST_START_X_MASK),
+			cal_mask(val, HIST_START_Y_MASK));
+
+	val = dqe_read(DQE0_HIST_WEIGHT_0);
+	cal_log_info(0, "weight red(%d) green(%d) blue(%d)\n",
+			cal_mask(val, HIST_WEIGHT_R_MASK),
+			cal_mask(val, HIST_WEIGHT_G_MASK),
+			dqe_read_mask(DQE0_HIST_WEIGHT_1, HIST_WEIGHT_B_MASK));
+
+	cal_log_info(0, "threshold: %d\n",
+			dqe_read_mask(DQE0_HIST_THRESH, HIST_THRESHOLD_MASK));
+
+	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE);
+}
+
 void dqe_reg_set_cgc_dither(struct dither_config *config)
 {
 	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
@@ -196,33 +253,6 @@ void dqe_reg_print_dither(enum dqe_dither_type dither)
 		(val & DITHER_TABLE_SEL_R) ? 'B' : 'A',
 		(val & DITHER_TABLE_SEL_G) ? 'B' : 'A',
 		(val & DITHER_TABLE_SEL_B) ? 'B' : 'A');
-}
-
-static void dqe_reg_print_lut(u32 start, u32 count)
-{
-	u32 val;
-	int i;
-	char buf[128];
-	char *p = buf;
-	const char *end = buf + sizeof(buf);
-
-	for (i = 0; i < DIV_ROUND_UP(count, 2); ++i) {
-		val = dqe_read(start + i * 4);
-
-		p += scnprintf(p, end - p, "[%4d]%4x ", i * 2, GET_LUT_L(val));
-
-		if ((i * 2 + 1) != count)
-			p += scnprintf(p, end - p, "[%4d]%4x ", i * 2 + 1,
-					GET_LUT_H(val));
-
-		if ((i % 5) == 4) {
-			cal_log_info(0, "%s\n", buf);
-			p = buf;
-		}
-	}
-
-	if (p != buf)
-		cal_log_info(0, "%s\n", buf);
 }
 
 void dqe_reg_print_degamma_lut(void)

@@ -113,6 +113,8 @@ static inline void cal_write_mask(struct cal_regs_desc *regs_desc,
 	cal_write(regs_desc, offset, val);
 }
 
+#define cal_mask(val, mask)	(((val) & (mask)) >> (ffs(mask) - 1))
+
 void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);
 
 /* log messages */
