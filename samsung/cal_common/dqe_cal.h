@@ -17,8 +17,10 @@
 #include <drm/samsung_drm.h>
 #include <drm/drm_mode.h>
 
-#define DEGAMMA_LUT_SIZE	65
-#define REGAMMA_LUT_SIZE	65
+#define DEGAMMA_LUT_SIZE		65
+#define REGAMMA_LUT_SIZE		65
+#define GAMMA_MATRIX_COEFFS_CNT		9
+#define LINEAR_MATRIX_COEFFS_CNT	9
 
 enum dqe_version {
 	DQE_V1,
@@ -38,5 +40,7 @@ void dqe_reg_set_cgc_lut(const struct cgc_lut *lut);
 void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut);
 void dqe_reg_set_cgc_dither(struct dither_config *config);
 void dqe_reg_set_disp_dither(struct dither_config *config);
+void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm);
+void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix);
 void dqe_reg_print_dither(enum dqe_dither_type dither);
 #endif /* __SAMSUNG_DQE_CAL_H__ */

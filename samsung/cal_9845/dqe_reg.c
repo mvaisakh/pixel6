@@ -197,3 +197,69 @@ void dqe_reg_print_dither(enum dqe_dither_type dither)
 		(val & DITHER_TABLE_SEL_G) ? 'B' : 'A',
 		(val & DITHER_TABLE_SEL_B) ? 'B' : 'A');
 }
+
+void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
+{
+	int i, reg_cnt;
+	u32 val;
+
+	cal_log_debug(0, "%s +\n", __func__);
+
+	if (!lm) {
+		dqe_write(DQE0_LINEAR_MATRIX_CON, 0);
+		return;
+	}
+
+	reg_cnt = DIV_ROUND_UP(LINEAR_MATRIX_COEFFS_CNT , 2);
+	for (i = 0; i < reg_cnt; ++i) {
+		if (i == reg_cnt - 1)
+			val = LINEAR_MATRIX_COEFF_L(lm->coeffs[i * 2]);
+		else
+			val = LINEAR_MATRIX_COEFF_H(lm->coeffs[i * 2 + 1]) |
+				LINEAR_MATRIX_COEFF_L(lm->coeffs[i * 2]);
+		dqe_write(DQE0_LINEAR_MATRIX_COEFF(i), val);
+	}
+
+	dqe_write(DQE0_LINEAR_MATRIX_OFFSET0,
+			LINEAR_MATRIX_OFFSET_1(lm->offsets[1]) |
+			LINEAR_MATRIX_OFFSET_0(lm->offsets[0]));
+	dqe_write(DQE0_LINEAR_MATRIX_OFFSET1,
+			LINEAR_MATRIX_OFFSET_2(lm->offsets[2]));
+
+	dqe_write(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN);
+
+	cal_log_debug(0, "%s -\n", __func__);
+}
+
+void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
+{
+	int i, reg_cnt;
+	u32 val;
+
+	cal_log_debug(0, "%s +\n", __func__);
+
+	if (!matrix) {
+		dqe_write(DQE0_GAMMA_MATRIX_CON, 0);
+		return;
+	}
+
+	reg_cnt = DIV_ROUND_UP(GAMMA_MATRIX_COEFFS_CNT , 2);
+	for (i = 0; i < reg_cnt; ++i) {
+		if (i == reg_cnt - 1)
+			val = GAMMA_MATRIX_COEFF_L(matrix->coeffs[i * 2]);
+		else
+			val = GAMMA_MATRIX_COEFF_H(matrix->coeffs[i * 2 + 1]) |
+				GAMMA_MATRIX_COEFF_L(matrix->coeffs[i * 2]);
+		dqe_write(DQE0_GAMMA_MATRIX_COEFF(i), val);
+	}
+
+	dqe_write(DQE0_GAMMA_MATRIX_OFFSET0,
+			GAMMA_MATRIX_OFFSET_1(matrix->offsets[1]) |
+			GAMMA_MATRIX_OFFSET_0(matrix->offsets[0]));
+	dqe_write(DQE0_GAMMA_MATRIX_OFFSET1,
+			GAMMA_MATRIX_OFFSET_2(matrix->offsets[2]));
+
+	dqe_write(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN);
+
+	cal_log_debug(0, "%s -\n", __func__);
+}
