@@ -214,6 +214,34 @@ void dqe_reg_print_hist(void)
 	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE);
 }
 
+void dqe_reg_print_gamma_matrix(void)
+{
+	cal_log_info(0, "DQE: gamma matrix %s\n",
+			dqe_read_mask(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN) ?
+			"on" : "off");
+
+	cal_log_info(0, "COEFFS:\n");
+	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_COEFF(0), GAMMA_MATRIX_COEFFS_CNT);
+
+	cal_log_info(0, "OFFSETS:\n");
+	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_OFFSET0, GAMMA_MATRIX_OFFSETS_CNT);
+}
+
+void dqe_reg_print_linear_matrix(void)
+{
+	cal_log_info(0, "DQE: linear matrix %s\n",
+			dqe_read_mask(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN)
+			? "on" : "off");
+
+	cal_log_info(0, "COEFFS:\n");
+	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_COEFF(0),
+			LINEAR_MATRIX_COEFFS_CNT);
+
+	cal_log_info(0, "OFFSETS:\n");
+	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_OFFSET0,
+			LINEAR_MATRIX_OFFSETS_CNT);
+}
+
 void dqe_reg_set_cgc_dither(struct dither_config *config)
 {
 	u32 value = config ? cpu_to_le32(*(u32 *)config) : 0;
