@@ -30,6 +30,12 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		dqe->initialized = true;
 	}
 
+	if (dqe->force_lm)
+		state->linear_matrix = &dqe->force_linear_matrix;
+
+	if (dqe->force_gm)
+		state->gamma_matrix = &dqe->force_gamma_matrix;
+
 	if (dqe->cgc_dither_override.force_en) {
 		dqe_reg_set_cgc_dither(&dqe->cgc_dither_override.val);
 		dqe->state.cgc_dither_config = &dqe->cgc_dither_override.val;
@@ -74,6 +80,16 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 	} else if (dqe->cgc_first_write) {
 		dqe_reg_set_cgc_lut(dqe->state.cgc_lut);
 		dqe->cgc_first_write = false;
+	}
+
+	if (dqe->state.linear_matrix != state->linear_matrix) {
+		dqe_reg_set_linear_matrix(state->linear_matrix);
+		dqe->state.linear_matrix = state->linear_matrix;
+	}
+
+	if (dqe->state.gamma_matrix != state->gamma_matrix) {
+		dqe_reg_set_gamma_matrix(state->gamma_matrix);
+		dqe->state.gamma_matrix = state->gamma_matrix;
 	}
 
 	if (dqe->state.regamma_lut != state->regamma_lut) {
