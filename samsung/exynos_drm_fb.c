@@ -560,7 +560,7 @@ static const struct drm_mode_config_funcs exynos_drm_mode_config_funcs = {
 	.get_format_info = exynos_get_format_info,
 	.output_poll_changed = exynos_drm_output_poll_changed,
 	.atomic_check = exynos_atomic_check,
-	.atomic_commit = drm_atomic_helper_commit,
+	.atomic_commit = exynos_atomic_commit,
 };
 
 void exynos_drm_mode_config_init(struct drm_device *dev)

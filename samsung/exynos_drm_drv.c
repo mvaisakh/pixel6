@@ -43,6 +43,18 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
+static struct exynos_drm_priv_state *exynos_drm_get_priv_state(struct drm_atomic_state *state)
+{
+	struct exynos_drm_private *priv = state->dev->dev_private;
+	struct drm_private_state *priv_state;
+
+	priv_state = drm_atomic_get_private_obj_state(state, &priv->obj);
+	if (IS_ERR(priv))
+		return ERR_CAST(priv);
+
+	return to_exynos_priv_state(priv_state);
+}
+
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
@@ -66,6 +78,161 @@ int exynos_atomic_check(struct drm_device *dev,
 	if (ret)
 		return ret;
 
+	return ret;
+}
+
+static struct drm_private_state *exynos_atomic_duplicate_priv_state(struct drm_private_obj *obj)
+{
+	const struct exynos_drm_priv_state *old_state = to_exynos_priv_state(obj->state);
+	struct exynos_drm_priv_state *new_state;
+
+	new_state = kmemdup(old_state, sizeof(*old_state), GFP_KERNEL);
+	if (!new_state)
+		return NULL;
+
+	__drm_atomic_helper_private_obj_duplicate_state(obj, &new_state->base);
+
+	return &new_state->base;
+}
+
+static void exynos_atomic_destroy_priv_state(struct drm_private_obj *obj,
+					     struct drm_private_state *state)
+{
+	struct exynos_drm_priv_state *priv_state = to_exynos_priv_state(state);
+
+	kfree(priv_state);
+}
+
+static const struct drm_private_state_funcs exynos_priv_state_funcs = {
+	.atomic_duplicate_state = exynos_atomic_duplicate_priv_state,
+	.atomic_destroy_state = exynos_atomic_destroy_priv_state,
+};
+
+static void commit_tail(struct drm_atomic_state *old_state)
+{
+	struct drm_device *dev = old_state->dev;
+	const struct drm_mode_config_helper_funcs *funcs;
+
+	funcs = dev->mode_config.helper_private;
+
+	drm_atomic_helper_wait_for_fences(dev, old_state, false);
+
+	drm_atomic_helper_wait_for_dependencies(old_state);
+
+	if (funcs && funcs->atomic_commit_tail)
+		funcs->atomic_commit_tail(old_state);
+	else
+		drm_atomic_helper_commit_tail(old_state);
+
+	drm_atomic_helper_commit_cleanup_done(old_state);
+
+	drm_atomic_state_put(old_state);
+}
+
+static void commit_kthread_work(struct kthread_work *work)
+{
+	struct exynos_drm_priv_state *exynos_priv_state =
+		container_of(work, struct exynos_drm_priv_state, commit_work);
+	struct drm_atomic_state *old_state = exynos_priv_state->old_state;
+
+	commit_tail(old_state);
+}
+
+static void commit_work(struct work_struct *work)
+{
+	struct drm_atomic_state *old_state =
+		container_of(work, struct drm_atomic_state, commit_work);
+
+	commit_tail(old_state);
+}
+
+static void exynos_atomic_queue_work(struct drm_atomic_state *old_state, bool nonblock,
+				     struct kthread_work *work)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+	int i;
+
+	/*
+	 * queuing to first decon worker in atomic commit even if there are
+	 * multiple displays updated within same commit
+	 *
+	 * TODO: can work be split per display?
+	 */
+	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+		struct exynos_drm_crtc *exynos_crtc =
+			container_of(crtc, struct exynos_drm_crtc, base);
+		struct decon_device *decon = exynos_crtc->ctx;
+
+		kthread_queue_work(&decon->worker, work);
+
+		return;
+	}
+
+	/* fallback to regular commit work if we get here (no crtcs in commit state) */
+	INIT_WORK(&old_state->commit_work, commit_work);
+	queue_work(system_highpri_wq, &old_state->commit_work);
+}
+
+int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state, bool nonblock)
+{
+	struct exynos_drm_priv_state *exynos_priv_state;
+	int ret;
+
+	ret = drm_atomic_helper_setup_commit(state, nonblock);
+	if (ret)
+		return ret;
+
+	exynos_priv_state = exynos_drm_get_priv_state(state);
+	if (IS_ERR(exynos_priv_state))
+		return PTR_ERR(exynos_priv_state);
+
+	kthread_init_work(&exynos_priv_state->commit_work, commit_kthread_work);
+	exynos_priv_state->old_state = state;
+
+	ret = drm_atomic_helper_prepare_planes(dev, state);
+	if (ret)
+		return ret;
+
+	/*
+	 * This is the point of no return - everything below never fails except
+	 * when the hw goes bonghits. Which means we can commit the new state on
+	 * the software side now.
+	 */
+
+	ret = drm_atomic_helper_swap_state(state, true);
+	if (ret)
+		goto err;
+
+	/*
+	 * Everything below can be run asynchronously without the need to grab
+	 * any modeset locks at all under one condition: It must be guaranteed
+	 * that the asynchronous work has either been cancelled (if the driver
+	 * supports it, which at least requires that the framebuffers get
+	 * cleaned up with drm_atomic_helper_cleanup_planes()) or completed
+	 * before the new state gets committed on the software side with
+	 * drm_atomic_helper_swap_state().
+	 *
+	 * This scheme allows new atomic state updates to be prepared and
+	 * checked in parallel to the asynchronous completion of the previous
+	 * update. Which is important since compositors need to figure out the
+	 * composition of the next frame right after having submitted the
+	 * current layout.
+	 *
+	 * NOTE: Commit work has multiple phases, first hardware commit, then
+	 * cleanup. We want them to overlap, hence need system_unbound_wq to
+	 * make sure work items don't artificially stall on each another.
+	 */
+
+	drm_atomic_state_get(state);
+	if (!nonblock)
+		commit_tail(state);
+	else
+		exynos_atomic_queue_work(state, nonblock, &exynos_priv_state->commit_work);
+
+	return 0;
+err:
+	drm_atomic_helper_cleanup_planes(dev, state);
 	return ret;
 }
 
@@ -372,6 +539,7 @@ static int exynos_drm_bind(struct device *dev)
 	struct exynos_drm_private *private;
 	struct drm_encoder *encoder;
 	struct drm_device *drm;
+	struct exynos_drm_priv_state *priv_state;
 	u32 wb_mask = 0;
 	u32 encoder_mask = 0;
 	int ret;
@@ -392,14 +560,25 @@ static int exynos_drm_bind(struct device *dev)
 	dev_set_drvdata(dev, drm);
 	drm->dev_private = (void *)private;
 
-	drm_mode_config_init(drm);
+	ret = drm_mode_config_init(drm);
+	if (ret)
+		goto err_free_drm;
 
 	exynos_drm_mode_config_init(drm);
+
+	priv_state = kzalloc(sizeof(*priv_state), GFP_KERNEL);
+	if (!priv_state) {
+		ret = -ENOMEM;
+		goto err_mode_config_cleanup;
+	}
+
+	drm_atomic_private_obj_init(drm, &private->obj, &priv_state->base,
+				    &exynos_priv_state_funcs);
 
 	/* Try to bind all sub drivers. */
 	ret = component_bind_all(drm->dev, drm);
 	if (ret)
-		goto err_mode_config_cleanup;
+		goto err_priv_state_cleanup;
 
 	drm_for_each_encoder(encoder, drm) {
 		if (encoder->encoder_type == DRM_MODE_ENCODER_VIRTUAL)
@@ -461,12 +640,12 @@ err_cleanup_poll:
 	drm_kms_helper_poll_fini(drm);
 err_unbind_all:
 	component_unbind_all(drm->dev, drm);
+err_priv_state_cleanup:
+	drm_atomic_private_obj_fini(&private->obj);
 err_mode_config_cleanup:
 	drm_mode_config_cleanup(drm);
-	kfree(private);
 err_free_drm:
 	drm_dev_put(drm);
-	drm_mode_config_cleanup(drm);
 	kfree(private);
 
 	return ret;
@@ -475,8 +654,11 @@ err_free_drm:
 static void exynos_drm_unbind(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
+	struct exynos_drm_private *private = drm->dev_private;
 
 	drm_dev_unregister(drm);
+
+	drm_atomic_private_obj_fini(&private->obj);
 
 	exynos_drm_fbdev_fini(drm);
 	drm_kms_helper_poll_fini(drm);
