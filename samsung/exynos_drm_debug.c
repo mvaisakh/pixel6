@@ -379,7 +379,8 @@ static const char *get_event_name(enum dpu_event_type type)
 		"FRAMESTART_TIMEOUT",
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
 		"BTS_UPDATE_BW",		"DSIM_CRC",
-		"DSIM_ECC",
+		"DSIM_ECC",			"VBLANK_ENABLE",
+		"VBLANK_DISABLE",
 	};
 
 	if (type >= DPU_EVT_MAX)

@@ -35,6 +35,7 @@
 #include <linux/iommu.h>
 #include <uapi/linux/sched/types.h>
 
+#include <soc/google/exynos-cpupm.h>
 #include <video/videomode.h>
 
 #include <decon_cal.h>
@@ -147,12 +148,26 @@ static void decon_set_color_map(struct decon_device *decon, u32 win_id,
 	decon_debug(decon, "%s -\n", __func__);
 }
 
+static inline bool decon_is_te_enabled(const struct decon_device *decon)
+{
+	return (decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
+		(decon->config.mode.trig_mode == DECON_HW_TRIG);
+}
+
 static int decon_enable_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
 
-	/* TODO : need to write code completely */
-	decon_debug(decon, "%s\n", __func__);
+	decon_debug(decon, "%s +\n", __func__);
+
+	if (decon_is_te_enabled(decon))
+		enable_irq(decon->irq_te);
+	else /* use framestart interrupt to track vsyncs */
+		enable_irq(decon->irq_fs);
+
+	DPU_EVENT_LOG(DPU_EVT_VBLANK_ENABLE, decon->id, NULL);
+
+	decon_debug(decon, "%s -\n", __func__);
 
 	return 0;
 }
@@ -161,8 +176,16 @@ static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
 
-	/* TODO : need to write code completely */
-	decon_debug(decon, "%s\n", __func__);
+	decon_debug(decon, "%s +\n", __func__);
+
+	if (decon_is_te_enabled(decon))
+		disable_irq_nosync(decon->irq_te);
+	else
+		disable_irq_nosync(decon->irq_fs);
+
+	DPU_EVENT_LOG(DPU_EVT_VBLANK_DISABLE, decon->id, NULL);
+
+	decon_debug(decon, "%s -\n", __func__);
 }
 
 static int decon_get_crtc_out_type(const struct drm_crtc_state *crtc_state)
@@ -651,18 +674,19 @@ static void decon_enable_irqs(struct decon_device *decon)
 {
 	decon_reg_set_interrupts(decon->id, 1);
 
-	enable_irq(decon->irq_fs);
 	enable_irq(decon->irq_fd);
 	enable_irq(decon->irq_ext);
-	if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
-			(decon->config.mode.trig_mode == DECON_HW_TRIG))
-		enable_irq(decon->irq_te);
+	if (decon_is_te_enabled(decon))
+		enable_irq(decon->irq_fs);
 }
 
 static void _decon_enable(struct decon_device *decon)
 {
+	struct drm_crtc *crtc = &decon->crtc->base;
+
 	decon_reg_init(decon->id, &decon->config);
 	decon_enable_irqs(decon);
+	drm_crtc_vblank_get(crtc);
 }
 
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode)
@@ -848,22 +872,22 @@ void decon_exit_hibernation(struct decon_device *decon)
 
 static void decon_disable_irqs(struct decon_device *decon)
 {
-	disable_irq(decon->irq_fs);
 	disable_irq(decon->irq_fd);
 	disable_irq(decon->irq_ext);
 	decon_reg_set_interrupts(decon->id, 0);
-	if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
-			(decon->config.mode.trig_mode == DECON_HW_TRIG))
-		disable_irq(decon->irq_te);
+	if (decon_is_te_enabled(decon))
+		disable_irq(decon->irq_fs);
 }
 
 static void _decon_disable(struct decon_device *decon)
 {
-	const struct drm_crtc_state *crtc_state = decon->crtc->base.state;
+	struct drm_crtc *crtc = &decon->crtc->base;
+	const struct drm_crtc_state *crtc_state = crtc->state;
 	bool reset = crtc_state->active_changed || crtc_state->connectors_changed;
 
 	_decon_stop(decon, reset);
 	decon_disable_irqs(decon);
+	drm_crtc_vblank_put(crtc);
 }
 
 void decon_enter_hibernation(struct decon_device *decon)
@@ -1273,7 +1297,13 @@ static irqreturn_t decon_te_irq_handler(int irq, void *dev_id)
 {
 	struct decon_device *decon = dev_id;
 
-	if (!decon || decon->state != DECON_STATE_ON)
+	if (!decon)
+		goto end;
+
+	pr_debug("%s: state(%d)\n", __func__, decon->state);
+
+	if (decon->state != DECON_STATE_ON &&
+				decon->state != DECON_STATE_HIBERNATION)
 		goto end;
 
 	DPU_EVENT_LOG(DPU_EVT_TE_INTERRUPT, decon->id, NULL);

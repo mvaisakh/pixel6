@@ -217,6 +217,9 @@ enum dpu_event_type {
 	DPU_EVT_DSIM_CRC,
 	DPU_EVT_DSIM_ECC,
 
+	DPU_EVT_VBLANK_ENABLE,
+	DPU_EVT_VBLANK_DISABLE,
+
 	DPU_EVT_MAX, /* End of EVENT */
 };
 
