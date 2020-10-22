@@ -40,7 +40,7 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 	strlcat(k_buf, "Pending Transactions:\n", k_buf_size);
 	hash_for_each (client->transaction_list, i, transaction_list, node) {
 		if (list_empty(&transaction_list->list)) {
-			snprintf(tmp_buf, sizeof(tmp_buf),
+			scnprintf(tmp_buf, sizeof(tmp_buf),
 				 "No pending transaction for event 0x%llx\n",
 				 transaction_list->event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
@@ -50,7 +50,7 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   event_list_node);
-			snprintf(
+			scnprintf(
 				tmp_buf, sizeof(tmp_buf),
 				"ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx Submitted: %lld\n",
 				transaction->info.id,
@@ -58,7 +58,7 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 				transaction->info.trigger_event_counter,
 				transaction->info.submission_timestamp_ns);
 			strlcat(k_buf, tmp_buf, k_buf_size);
-			snprintf(tmp_buf, sizeof(tmp_buf),
+			scnprintf(tmp_buf, sizeof(tmp_buf),
 				 "  Emit Success: 0x%llx Error: %llx\n",
 				 transaction->info.emit_success_event_id,
 				 transaction->info.emit_error_event_id);
@@ -72,13 +72,13 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 		trans_hist = &client->debug_info.transaction_hist[hist_idx];
 		/* Skip uninitialized entries */
 		if (trans_hist->trigger_event_id != 0) {
-			snprintf(
+			scnprintf(
 				tmp_buf, sizeof(tmp_buf),
 				"[%2d] ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n",
 				i, trans_hist->id, trans_hist->trigger_event_id,
 				trans_hist->trigger_event_counter);
 			strlcat(k_buf, tmp_buf, k_buf_size);
-			snprintf(tmp_buf, sizeof(tmp_buf),
+			scnprintf(tmp_buf, sizeof(tmp_buf),
 				 "     Emit Success: 0x%llx Error: %llx\n",
 				 trans_hist->emit_success_event_id,
 				 trans_hist->emit_error_event_id);
@@ -117,7 +117,7 @@ static void list_allocated_buffers(struct lwis_client *client, char *k_buf,
 static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 				  size_t k_buf_size)
 {
-	char tmp_buf[64] = {};
+	char tmp_buf[128] = {};
 	struct lwis_enrolled_buffer *buffer;
 	int i;
 	int idx = 0;
@@ -129,11 +129,14 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 
 	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
 	hash_for_each (client->enrolled_buffers, i, buffer, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf),
-			 "[%2d] FD: %d Mode: %s%s Addr: 0x%08llx\n", idx++,
+		scnprintf(tmp_buf, sizeof(tmp_buf),
+			 "[%2d] FD: %d Mode: %s%s Addr:[0x%px ~ 0x%px] Size: %zu\n",
+			 idx++,
 			 buffer->info.fd, buffer->info.dma_read ? "r" : "",
 			 buffer->info.dma_write ? "w" : "",
-			 buffer->info.dma_vaddr);
+			 buffer->info.dma_vaddr,
+			 (buffer->info.dma_vaddr + (buffer->dma_buf->size -1)),
+			 buffer->dma_buf->size);
 		strlcat(k_buf, tmp_buf, k_buf_size);
 	}
 }
@@ -145,7 +148,7 @@ static int generate_device_info(struct lwis_device *lwis_dev, char *buffer,
 		pr_err("Unknown LWIS device pointer\n");
 		return -EINVAL;
 	}
-	snprintf(buffer, buffer_size, "%s Device Name: %s ID: %d State: %s\n",
+	scnprintf(buffer, buffer_size, "%s Device Name: %s ID: %d State: %s\n",
 		 lwis_device_type_to_string(lwis_dev->type), lwis_dev->name,
 		 lwis_dev->id, lwis_dev->enabled ? "Enabled" : "Disabled");
 	return 0;
@@ -167,7 +170,7 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	snprintf(buffer, buffer_size, "=== LWIS EVENT STATES INFO: %s ===\n",
+	scnprintf(buffer, buffer_size, "=== LWIS EVENT STATES INFO: %s ===\n",
 		 lwis_dev->name);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -178,7 +181,7 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 	strlcat(buffer, "Enabled Device Events:\n", buffer_size);
 	hash_for_each (lwis_dev->event_states, i, state, node) {
 		if (state->enable_counter > 0) {
-			snprintf(tmp_buf, sizeof(tmp_buf),
+			scnprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", idx++,
 				 state->event_id, state->event_counter);
 			strlcat(buffer, tmp_buf, buffer_size);
@@ -194,7 +197,7 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 		state = &lwis_dev->debug_info.event_hist[idx];
 		/* Skip uninitialized entries */
 		if (state->event_id != 0) {
-			snprintf(tmp_buf, sizeof(tmp_buf),
+			scnprintf(tmp_buf, sizeof(tmp_buf),
 				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", i,
 				 state->event_id, state->event_counter);
 			strlcat(buffer, tmp_buf, buffer_size);
@@ -223,15 +226,15 @@ static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer,
 		return -EINVAL;
 	}
 
-	snprintf(buffer, buffer_size, "=== LWIS TRANSACTION INFO: %s ===\n",
+	scnprintf(buffer, buffer_size, "=== LWIS TRANSACTION INFO: %s ===\n",
 		 lwis_dev->name);
 
 	if (list_empty(&lwis_dev->clients)) {
-		snprintf(buffer, buffer_size, "No clients opened\n");
+		scnprintf(buffer, buffer_size, "No clients opened\n");
 		return 0;
 	}
 	list_for_each_entry (client, &lwis_dev->clients, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
+		scnprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
 		strlcat(buffer, tmp_buf, buffer_size);
 		list_transactions(client, buffer, buffer_size);
 		idx++;
@@ -253,16 +256,16 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer,
 		return -EINVAL;
 	}
 
-	snprintf(buffer, buffer_size, "=== LWIS BUFFER INFO: %s ===\n",
+	scnprintf(buffer, buffer_size, "=== LWIS BUFFER INFO: %s ===\n",
 		 lwis_dev->name);
 
 	if (list_empty(&lwis_dev->clients)) {
-		snprintf(buffer, buffer_size, "No clients opened\n");
+		scnprintf(buffer, buffer_size, "No clients opened\n");
 		return 0;
 	}
 
 	list_for_each_entry (client, &lwis_dev->clients, node) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
+		scnprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
 		strlcat(buffer, tmp_buf, buffer_size);
 		list_allocated_buffers(client, buffer, buffer_size);
 		list_enrolled_buffers(client, buffer, buffer_size);
