@@ -121,15 +121,16 @@ static int chg_vote_input_suspend(struct chg_drv *chg_drv,
 				  char *voter, bool suspend);
 
 struct bd_data {
-	u32 bd_trigger_voltage;	/* (d) upper bound */
-	u32 bd_trigger_temp;	/* (d) temperature */
-	u32 bd_trigger_time;	/* (d) debounce window */
-	u32 bd_recharge_voltage;/* (d) */
+	u32 bd_trigger_voltage;	/* also recharge upper bound */
+	u32 bd_trigger_temp;	/* single reading */
+	u32 bd_trigger_time;	/* debounce window after trigger*/
+	u32 bd_recharge_voltage;
 
-	u32 bd_resume_abs_temp;	/* (d) exit */
-	u32 bd_resume_time;
-	u32 bd_resume_temp;
-	u32 bd_resume_soc;
+	u32 bd_resume_abs_temp;	/* at any time after trigger */
+
+	u32 bd_resume_soc;	/* any time after disconnect */
+	u32 bd_resume_time;	/* debounce window for resume temp */
+	u32 bd_resume_temp;	/* check resume_time after disconnect */
 
 	long long temp_sum;
 	ktime_t time_sum;
@@ -1074,7 +1075,7 @@ static void bd_init(struct bd_data *bd_state, struct device *dev)
 	/* also call to resume charging */
 	bd_reset(bd_state);
 	if (!bd_state->enabled)
-		dev_warn(dev, "TEMP-DEFEND not enabled\n", ret);
+		dev_warn(dev, "TEMP-DEFEND not enabled\n");
 
 }
 
@@ -1085,7 +1086,6 @@ static int bd_update_stats(struct bd_data *bd_state,
 	const bool triggered = bd_state->triggered;
 	const ktime_t now = get_boot_sec();
 	int ret, vbatt, temp;
-	long long temp_avg;
 
 	if (!bd_state->enabled)
 		return 0;
@@ -1118,10 +1118,9 @@ static int bd_update_stats(struct bd_data *bd_state,
 		return 0;
 
 	/* exit and entry criteria */
-	temp_avg = bd_state->temp_sum / bd_state->time_sum;
 	if (triggered && temp <= bd_state->bd_resume_abs_temp)
 		bd_reset(bd_state);
-	else if (temp_avg >= bd_state->bd_trigger_temp)
+	else if (temp >= bd_state->bd_trigger_temp)
 		bd_state->triggered = 1;
 
 	return 0;
@@ -1233,7 +1232,7 @@ static void bd_work(struct work_struct *work)
 		container_of(work, struct chg_drv, bd_work.work);
 	struct bd_data *bd_state = &chg_drv->bd_state;
 	const ktime_t now = get_boot_sec();
-	const delta_time = now - bd_state->disconnect_time;
+	const long long delta_time = now - bd_state->disconnect_time;
 	int interval_ms = CHG_WORK_BD_TRIGGERED_MS;
 	int ret, soc = 0;
 
@@ -1258,7 +1257,7 @@ static void bd_work(struct work_struct *work)
 		goto bd_rerun;
 	}
 
-	/* reset based on average or instant temp */
+	/* set on time and temperature, reset on abs temperature */
 	ret = bd_update_stats(bd_state, chg_drv->bat_psy);
 	if (ret < 0) {
 		pr_err("MSC_BD_WORK: update stats: %d\n", ret);
@@ -1266,16 +1265,16 @@ static void bd_work(struct work_struct *work)
 		goto bd_rerun;
 	}
 
-	/* reset based on time since disconnect & optional temperature */
+	/* reset on time since disconnect & optional temperature reading */
 	if (bd_state->bd_resume_time && delta_time > bd_state->bd_resume_time) {
 		const int temp = bd_state->last_temp; /* or use avg */
-		int triggered = 0;
+		int triggered;
 
-		if (bd_state->bd_resume_temp)
-			triggered = temp > bd_state->bd_resume_temp;
-
+		/* single reading < of resume temp, or total average temp */
+		triggered = bd_state->bd_resume_temp &&
+			    temp > bd_state->bd_resume_temp;
 		if (!triggered) {
-			pr_info("MSC_BD_WORK: done time=%lld limit=%lld, temp=%d limit=%d\n",
+			pr_info("MSC_BD_WORK: done time=%lld limit=%d, temp=%d limit=%d\n",
 				delta_time, bd_state->bd_resume_time,
 				temp, bd_state->bd_resume_temp);
 
@@ -1284,13 +1283,12 @@ static void bd_work(struct work_struct *work)
 		}
 	}
 
-	pr_debug("MSC_BD_WORK: triggered=%d time=%lld < %lld soc=%d > %d temp=%d temp_avg=%lld > %d\n",
+	pr_debug("MSC_BD_WORK: trig=%d soc=%d time=%lld limit=%d temp=%d limit=%d avg=%lld\n",
 		bd_state->triggered,
+		soc,
 		delta_time, bd_state->bd_resume_time,
-		soc, bd_state->bd_resume_soc,
-		bd_state->last_temp,
-		bd_state->temp_sum / bd_state->time_sum,
-		bd_state->bd_resume_abs_temp);
+		bd_state->last_temp, bd_state->bd_resume_abs_temp,
+		bd_state->temp_sum / bd_state->time_sum);
 
 bd_rerun:
 	if (!bd_state->triggered) {
