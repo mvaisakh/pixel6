@@ -375,40 +375,32 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->reset_gpios_present) {
+	if (lwis_dev->shared_enable_gpios_present) {
 		struct gpio_descs *gpios;
 
-		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
+					   "shared-enable");
 		if (IS_ERR_OR_NULL(gpios)) {
-			dev_err(lwis_dev->dev,
-				"Failed to obtain reset gpio list (%ld)\n",
-				PTR_ERR(gpios));
-			ret = PTR_ERR(gpios);
-			goto error_reset_gpio_get;
-		}
-		/* Setting reset_gpios to non-NULL to indicate that this lwis
-			 device is holding onto the GPIO pins. */
-		lwis_dev->reset_gpios = gpios;
-
-		/* Set reset pin to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 1);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Failed to set reset GPIOs to ACTIVE (%d)\n",
-				ret);
-			goto error_reset_gpio_set;
-		}
-
-		/* Inherited from FIMC, will see if this is needed */
-		usleep_range(1500, 1500);
-
-		/* Set reset pin to 0 (i.e. deasserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 0);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Failed to set reset GPIOs to INACTIVE (%d)\n",
-				ret);
-			goto error_reset_gpio_unset;
+			if (PTR_ERR(gpios) == -EBUSY) {
+				dev_warn(
+					lwis_dev->dev,
+					"Shared gpios requested by another device\n");
+			} else {
+				dev_err(lwis_dev->dev,
+					"Failed to obtain shared gpio list (%ld)\n",
+					PTR_ERR(gpios));
+				ret = PTR_ERR(gpios);
+				goto error_shared_gpio_get;
+			}
+		} else {
+			/* Set enable pins to 1 (i.e. asserted) */
+			ret = lwis_gpio_list_set_output_value(gpios, 1);
+			lwis_dev->shared_enable_gpios = gpios;
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Error enabling GPIO pins (%d)\n", ret);
+				goto error_shared_gpio_set;
+			}
 		}
 	}
 
@@ -459,32 +451,40 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->shared_enable_gpios_present) {
+	if (lwis_dev->reset_gpios_present) {
 		struct gpio_descs *gpios;
 
-		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
-					   "shared-enable");
+		gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev, "reset");
 		if (IS_ERR_OR_NULL(gpios)) {
-			if (PTR_ERR(gpios) == -EBUSY) {
-				dev_warn(
-					lwis_dev->dev,
-					"Shared gpios requested by another device\n");
-			} else {
-				dev_err(lwis_dev->dev,
-					"Failed to obtain shared gpio list (%ld)\n",
-					PTR_ERR(gpios));
-				ret = PTR_ERR(gpios);
-				goto error_shared_gpio_get;
-			}
-		} else {
-			/* Set enable pins to 1 (i.e. asserted) */
-			ret = lwis_gpio_list_set_output_value(gpios, 1);
-			lwis_dev->shared_enable_gpios = gpios;
-			if (ret) {
-				dev_err(lwis_dev->dev,
-					"Error enabling GPIO pins (%d)\n", ret);
-				goto error_shared_gpio_set;
-			}
+			dev_err(lwis_dev->dev,
+				"Failed to obtain reset gpio list (%ld)\n",
+				PTR_ERR(gpios));
+			ret = PTR_ERR(gpios);
+			goto error_reset_gpio_get;
+		}
+		/* Setting reset_gpios to non-NULL to indicate that this lwis
+			 device is holding onto the GPIO pins. */
+		lwis_dev->reset_gpios = gpios;
+
+		/* Set reset pin to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to set reset GPIOs to ACTIVE (%d)\n",
+				ret);
+			goto error_reset_gpio_set;
+		}
+
+		/* Inherited from FIMC, will see if this is needed */
+		usleep_range(1500, 1500);
+
+		/* Set reset pin to 0 (i.e. deasserted) */
+		ret = lwis_gpio_list_set_output_value(gpios, 0);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to set reset GPIOs to INACTIVE (%d)\n",
+				ret);
+			goto error_reset_gpio_unset;
 		}
 	}
 
@@ -659,6 +659,22 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
+		/* Set reset pins to 1 (i.e. asserted) */
+		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Error setting reset GPIOs to ACTIVE (%d)\n",
+				ret);
+			return ret;
+		}
+
+		/* Release ownership of the GPIO pins */
+		lwis_gpio_list_put(lwis_dev->reset_gpios,
+				   &lwis_dev->plat_dev->dev);
+		lwis_dev->reset_gpios = NULL;
+	}
+
 	if (lwis_dev->shared_enable_gpios_present &&
 	    lwis_dev->shared_enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
@@ -690,22 +706,6 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		lwis_gpio_list_put(lwis_dev->enable_gpios,
 				   &lwis_dev->plat_dev->dev);
 		lwis_dev->enable_gpios = NULL;
-	}
-
-	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
-		/* Set reset pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error setting reset GPIOs to ACTIVE (%d)\n",
-				ret);
-			return ret;
-		}
-
-		/* Release ownership of the GPIO pins */
-		lwis_gpio_list_put(lwis_dev->reset_gpios,
-				   &lwis_dev->plat_dev->dev);
-		lwis_dev->reset_gpios = NULL;
 	}
 
 	if (lwis_dev->regulators) {
