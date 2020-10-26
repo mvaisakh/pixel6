@@ -720,6 +720,74 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 }
 
 /*
+ *  lwis_dev_power_seq_list_alloc:
+ *  Allocate an instance of the lwis_device_power_sequence_info
+ *  and initialize the data structures according to the number of
+ *  lwis_device_power_sequence_info specified.
+ */
+struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count)
+{
+	struct lwis_device_power_sequence_list *list;
+
+	/* No need to allocate if count is invalid */
+	if (count <= 0) {
+		return ERR_PTR(-EINVAL);
+	}
+
+	list = kzalloc(count * sizeof(struct lwis_device_power_sequence_list),
+	               GFP_KERNEL);
+	if (!list) {
+		pr_err("Failed to allocate power sequence list\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	list->seq_info = kzalloc(
+		count * sizeof(struct lwis_device_power_sequence_info),
+		GFP_KERNEL);
+	if (!list->seq_info) {
+		pr_err("Failed to allocate lwis_device_power_sequence_info "
+		       "instances\n");
+		kfree(list);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	list->count = count;
+
+	return list;
+}
+
+/*
+ *  lwis_dev_power_seq_list_free: Deallocate the
+ *  lwis_device_power_sequence_info structure.
+ */
+void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list)
+{
+	if (!list) {
+		return;
+	}
+
+	if (list->seq_info) {
+		kfree(list->seq_info);
+	}
+
+	kfree(list);
+}
+
+/*
+ *  lwis_dev_power_seq_list_print:
+ *  Print lwis_device_power_sequence_list content
+ */
+void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
+{
+	int i;
+
+	for (i = 0; i < list->count; ++i) {
+		pr_info("type:%s  name:%s  delay:%d\n", list->seq_info[i].type,
+			list->seq_info[i].name, list->seq_info[i].delay);
+	}
+}
+
+/*
  *  lwis_find_top_dev: Find LWIS top device.
  */
 struct lwis_device *lwis_find_top_dev()
@@ -1061,6 +1129,9 @@ static void __exit lwis_driver_exit(void)
 		/* Release device phy list */
 		if (lwis_dev->phys)
 			lwis_phy_list_free(lwis_dev->phys);
+		/* Release device power sequence list */
+		if (lwis_dev->power_up_sequence)
+			lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
 		/* Release device gpio list */
 		if (lwis_dev->reset_gpios)
 			lwis_gpio_list_put(lwis_dev->reset_gpios,
