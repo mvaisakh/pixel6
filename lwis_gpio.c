@@ -62,6 +62,26 @@ int lwis_gpio_list_set_output_value(struct gpio_descs *gpios, int value)
 	return 0;
 }
 
+int lwis_gpio_list_set_output_value_raw(struct gpio_descs *gpios, int value)
+{
+	int i;
+	int ret;
+
+	if (!gpios) {
+		return -EINVAL;
+	}
+
+	for (i = 0; i < gpios->ndescs; ++i) {
+		ret = gpiod_direction_output_raw(gpios->desc[i], value);
+		if (ret) {
+			pr_err("Failed to set value for GPIO %d\n", i);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int lwis_gpio_list_set_input(struct gpio_descs *gpios)
 {
 	int i;

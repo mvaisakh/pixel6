@@ -37,6 +37,13 @@ void lwis_gpio_list_put(struct gpio_descs *gpios, struct device *dev);
 int lwis_gpio_list_set_output_value(struct gpio_descs *gpios, int value);
 
 /*
+ *  Set output value for all the GPIOs in the list.  This function ignores the
+ *  active-low or open drain property of a GPIO and work on the raw line value,
+ *  i.e. 0 = physical line low, 1 = physical line high.
+ */
+int lwis_gpio_list_set_output_value_raw(struct gpio_descs *gpios, int value);
+
+/*
  *  Set all the GPIO pins in the list to input.
  */
 int lwis_gpio_list_set_input(struct gpio_descs *gpios);

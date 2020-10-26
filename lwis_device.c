@@ -362,7 +362,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		lwis_dev->enable_gpios = gpios;
 
 		/* Set enable pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		ret = lwis_gpio_list_set_output_value_raw(gpios, 1);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error enabling GPIO pins (%d)\n", ret);
@@ -394,7 +394,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			}
 		} else {
 			/* Set enable pins to 1 (i.e. asserted) */
-			ret = lwis_gpio_list_set_output_value(gpios, 1);
+			ret = lwis_gpio_list_set_output_value_raw(gpios, 1);
 			lwis_dev->shared_enable_gpios = gpios;
 			if (ret) {
 				dev_err(lwis_dev->dev,
@@ -467,24 +467,12 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		lwis_dev->reset_gpios = gpios;
 
 		/* Set reset pin to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 1);
+		ret = lwis_gpio_list_set_output_value_raw(gpios, 1);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Failed to set reset GPIOs to ACTIVE (%d)\n",
 				ret);
 			goto error_reset_gpio_set;
-		}
-
-		/* Inherited from FIMC, will see if this is needed */
-		usleep_range(1500, 1500);
-
-		/* Set reset pin to 0 (i.e. deasserted) */
-		ret = lwis_gpio_list_set_output_value(gpios, 0);
-		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Failed to set reset GPIOs to INACTIVE (%d)\n",
-				ret);
-			goto error_reset_gpio_unset;
 		}
 	}
 
@@ -531,8 +519,7 @@ error_irq_request:
 error_phy_set_power:
 	if (lwis_dev->shared_enable_gpios_present &&
 	    lwis_dev->shared_enable_gpios) {
-		lwis_gpio_list_set_output_value(lwis_dev->shared_enable_gpios,
-						0);
+		lwis_gpio_list_set_output_value_raw(lwis_dev->shared_enable_gpios, 0);
 	}
 error_shared_gpio_set:
 	if (lwis_dev->shared_enable_gpios_present &&
@@ -549,7 +536,7 @@ error_shared_gpio_get:
 error_mclk_enable:
 	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
 		/* Set reset pins to 1 (i.e. asserted) */
-		lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
+		lwis_gpio_list_set_output_value_raw(lwis_dev->reset_gpios, 0);
 	}
 error_reset_gpio_unset:
 error_reset_gpio_set:
@@ -661,10 +648,10 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 
 	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
 		/* Set reset pins to 1 (i.e. asserted) */
-		ret = lwis_gpio_list_set_output_value(lwis_dev->reset_gpios, 1);
+		ret = lwis_gpio_list_set_output_value_raw(lwis_dev->reset_gpios, 0);
 		if (ret) {
 			dev_err(lwis_dev->dev,
-				"Error setting reset GPIOs to ACTIVE (%d)\n",
+				"Error setting reset GPIOs to low (%d)\n",
 				ret);
 			return ret;
 		}
@@ -678,7 +665,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->shared_enable_gpios_present &&
 	    lwis_dev->shared_enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
-		ret = lwis_gpio_list_set_output_value(
+		ret = lwis_gpio_list_set_output_value_raw(
 			lwis_dev->shared_enable_gpios, 0);
 		if (ret) {
 			dev_err(lwis_dev->dev,
@@ -694,8 +681,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 
 	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
-		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
-						      0);
+		ret = lwis_gpio_list_set_output_value_raw(lwis_dev->enable_gpios, 0);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error disabling GPIO pins (%d)\n", ret);
