@@ -36,6 +36,15 @@
 #define HDR_HDR10		BIT(2)
 #define HDR_HLG			BIT(3)
 
+#define BL_STATE_STANDBY	BL_CORE_FBBLANK
+#define BL_STATE_LP		BIT(30) /* backlight is in LP mode */
+
+enum exynos_panel_state {
+	PANEL_STATE_ON = 0,
+	PANEL_STATE_LP,
+	PANEL_STATE_OFF
+};
+
 struct exynos_panel;
 
 /**
@@ -193,10 +202,12 @@ struct exynos_panel {
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;
 	const struct exynos_panel_mode *current_mode;
-	struct backlight_device *bl;
 	bool enabled;
 	bool initialized;
+
 	bool hbm_mode;
+	struct backlight_device *bl;
+	struct mutex bl_state_lock;
 
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];

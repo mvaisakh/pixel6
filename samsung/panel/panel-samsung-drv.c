@@ -45,6 +45,9 @@ static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
 #define bridge_to_exynos_panel(b) \
 	container_of((b), struct exynos_panel, bridge)
 
+static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
+					enum exynos_panel_state panel_state);
+
 static inline bool in_tui(struct exynos_panel *ctx)
 {
 	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
@@ -419,6 +422,9 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 		return;
 
 	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
+
+	exynos_panel_set_backlight_state(ctx,
+		!binned_lp->bl_threshold ? PANEL_STATE_OFF : PANEL_STATE_LP);
 }
 EXPORT_SYMBOL(exynos_panel_set_binned_lp);
 
@@ -1069,6 +1075,45 @@ static struct attribute *bl_device_attrs[] = {
 };
 ATTRIBUTE_GROUPS(bl_device);
 
+static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
+					enum exynos_panel_state panel_state)
+{
+	unsigned long state = bl->props.state;
+
+	switch (panel_state) {
+	case PANEL_STATE_ON:
+		state &= ~(BL_STATE_STANDBY | BL_STATE_LP);
+		break;
+	case PANEL_STATE_LP:
+		state |= BL_STATE_LP;
+		break;
+	case PANEL_STATE_OFF:
+		state &= ~(BL_STATE_LP);
+		state |= BL_STATE_STANDBY;
+		break;
+	}
+
+	return state;
+}
+
+static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
+					enum exynos_panel_state panel_state)
+{
+	struct backlight_device *bl = ctx->bl;
+
+	if (!bl)
+		return;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	bl->props.state = get_backlight_state_from_panel(bl, panel_state);
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	dev_info(ctx->dev, "%s: panel:%d, bl:0x%x\n", __func__,
+		 panel_state, bl->props.state);
+}
+
 static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 {
 	struct exynos_drm_connector_properties *p =
@@ -1183,6 +1228,8 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
 	}
 
 	drm_panel_enable(&ctx->panel);
+
+	exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 }
 
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge)
@@ -1222,6 +1269,8 @@ static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge)
 	}
 
 	drm_panel_unprepare(&ctx->panel);
+
+	exynos_panel_set_backlight_state(ctx, PANEL_STATE_OFF);
 }
 
 static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
@@ -1266,6 +1315,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			need_update_backlight = true;
 		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
 			funcs->set_nolp_mode(ctx, pmode);
+			exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 			need_update_backlight = true;
 		} else if (funcs->mode_set) {
 			funcs->mode_set(ctx, pmode);
@@ -1352,6 +1402,8 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode)
 		local_hbm_data_init(ctx);
+
+	mutex_init(&ctx->bl_state_lock);
 
 	drm_panel_init(&ctx->panel, dev, ctx->desc->panel_func, DRM_MODE_CONNECTOR_DSI);
 
