@@ -64,6 +64,21 @@ static inline bool in_tui(struct exynos_panel *ctx)
 	return false;
 }
 
+static inline bool is_backlight_off_state(const struct backlight_device *bl)
+{
+	return (bl->props.state & BL_STATE_STANDBY) != 0;
+}
+
+static inline bool is_backlight_lp_state(const struct backlight_device *bl)
+{
+	return (bl->props.state & BL_STATE_LP) != 0;
+}
+
+static void backlight_state_changed(struct backlight_device *bl)
+{
+	sysfs_notify(&bl->dev.kobj, NULL, "state");
+}
+
 static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
 {
 	struct device *dev = ctx->dev;
@@ -705,6 +720,9 @@ static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
 
 	exynos_panel_func->set_hbm_mode(ctx, hbm_en);
 
+	if (ctx->bl)
+		backlight_state_changed(ctx->bl);
+
 	return count;
 }
 
@@ -1068,9 +1086,47 @@ static ssize_t local_hbm_max_timeout_show(struct device *dev,
 
 static DEVICE_ATTR_RW(local_hbm_max_timeout);
 
+static ssize_t state_show(struct device *dev,
+			  struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	bool show_mode = true;
+	const char *statestr;
+	int rc;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	if (is_backlight_off_state(bl)) {
+		statestr = "Off";
+		show_mode = false;
+	} else if (is_backlight_lp_state(bl)) {
+		statestr = "LP";
+	} else {
+		statestr = (ctx->hbm_mode) ? "HBM" : "On";
+	}
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	if (show_mode) {
+		const struct exynos_panel_mode *pmode = ctx->current_mode;
+
+		rc = snprintf(buf, PAGE_SIZE, "%s: %dx%d@%d\n", statestr,
+			      pmode->mode.hdisplay, pmode->mode.vdisplay,
+			      drm_mode_vrefresh(&pmode->mode));
+	} else {
+		rc = snprintf(buf, PAGE_SIZE, "%s\n", statestr);
+	}
+
+	return rc;
+}
+
+static DEVICE_ATTR_RO(state);
+
 static struct attribute *bl_device_attrs[] = {
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
+	&dev_attr_state.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(bl_device);
@@ -1109,6 +1165,8 @@ static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
 	bl->props.state = get_backlight_state_from_panel(bl, panel_state);
 
 	mutex_unlock(&ctx->bl_state_lock);
+
+	backlight_state_changed(bl);
 
 	dev_info(ctx->dev, "%s: panel:%d, bl:0x%x\n", __func__,
 		 panel_state, bl->props.state);
@@ -1319,10 +1377,13 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			need_update_backlight = true;
 		} else if (funcs->mode_set) {
 			funcs->mode_set(ctx, pmode);
+			if (ctx->bl)
+				backlight_state_changed(ctx->bl);
 		}
 	}
 	ctx->current_mode = pmode;
-	if (need_update_backlight)
+
+	if (need_update_backlight && ctx->bl)
 		backlight_update_status(ctx->bl);
 }
 
@@ -1338,9 +1399,6 @@ static void local_hbm_timeout_work(struct work_struct *work)
 
 static void local_hbm_data_init(struct exynos_panel *ctx)
 {
-	if (sysfs_create_groups(&ctx->bl->dev.kobj, bl_device_groups))
-		dev_err(ctx->dev, "unable to create bl_device_groups groups\n");
-
 	mutex_init(&ctx->local_hbm.lock);
 	ctx->local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
 	ctx->local_hbm.enabled = false;
@@ -1419,6 +1477,10 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	if (ret)
 		pr_warn("unable to add panel sysfs files (%d)\n", ret);
 
+	ret = sysfs_create_groups(&ctx->bl->dev.kobj, bl_device_groups);
+	if (ret)
+		dev_err(ctx->dev, "unable to create bl_device_groups groups\n");
+
 	exynos_panel_handoff(ctx);
 
 	ret = mipi_dsi_attach(dsi);
@@ -1441,14 +1503,12 @@ EXPORT_SYMBOL(exynos_panel_probe);
 int exynos_panel_remove(struct mipi_dsi_device *dsi)
 {
 	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
-	const struct exynos_panel_funcs *exynos_panel_func;
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
 	drm_bridge_remove(&ctx->bridge);
-	exynos_panel_func = ctx->desc->exynos_panel_func;
-	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode)
-		sysfs_remove_groups(&ctx->bl->dev.kobj, bl_device_groups);
+
+	sysfs_remove_groups(&ctx->bl->dev.kobj, bl_device_groups);
 	devm_backlight_device_unregister(ctx->dev, ctx->bl);
 
 	return 0;
