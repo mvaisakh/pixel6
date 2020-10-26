@@ -1132,6 +1132,8 @@ static void __exit lwis_driver_exit(void)
 		/* Release device power sequence list */
 		if (lwis_dev->power_up_sequence)
 			lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
+		if (lwis_dev->power_down_sequence)
+			lwis_dev_power_seq_list_free(lwis_dev->power_down_sequence);
 		/* Release device gpio list */
 		if (lwis_dev->reset_gpios)
 			lwis_gpio_list_put(lwis_dev->reset_gpios,
