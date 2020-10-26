@@ -31,6 +31,7 @@
 
 #define MAX_REGULATORS		3
 #define MAX_HDR_FORMATS		4
+#define MAX_BL_RANGES		10
 
 #define HDR_DOLBY_VISION	BIT(1)
 #define HDR_HDR10		BIT(2)
@@ -175,6 +176,8 @@ struct exynos_panel_desc {
 	u32 min_luminance;
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
+	const u32 *bl_range;
+	u32 bl_num_ranges;
 	const struct exynos_panel_mode *modes;
 	size_t num_modes;
 	/* @lp_mode: provides a low power mode if available, otherwise null */
@@ -189,6 +192,12 @@ struct exynos_panel_desc {
 #define PANEL_ID_MAX		32
 #define PANEL_EXTINFO_MAX	16
 #define LOCAL_HBM_MAX_TIMEOUT_MS 1500 /* 1500 ms */
+
+struct exynos_bl_notifier {
+	u32 ranges[MAX_BL_RANGES];
+	u32 num_ranges;
+	u32 current_range;
+};
 
 struct exynos_panel {
 	struct device *dev;
@@ -208,6 +217,7 @@ struct exynos_panel {
 	bool hbm_mode;
 	struct backlight_device *bl;
 	struct mutex bl_state_lock;
+	struct exynos_bl_notifier bl_notifier;
 
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];
