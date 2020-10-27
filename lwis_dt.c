@@ -97,6 +97,7 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 
 	/* No regulators found, or entry does not exist, just return */
 	if (count <= 0) {
+		lwis_dev->regulators = NULL;
 		return 0;
 	}
 
@@ -107,6 +108,10 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 		dev_node, "regulator-voltages", sizeof(u32));
 
 	lwis_dev->regulators = lwis_regulator_list_alloc(count);
+	if (IS_ERR(lwis_dev->regulators)) {
+		pr_err("Cannot allocate regulator list\n");
+		return PTR_ERR(lwis_dev->regulators);
+	}
 
 	/* Parse regulator list and acquire the regulator pointers */
 	for (i = 0; i < count; ++i) {
@@ -159,10 +164,15 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 
 	/* No clocks found, just return */
 	if (count <= 0) {
+		lwis_dev->clocks = NULL;
 		return 0;
 	}
 
 	lwis_dev->clocks = lwis_clock_list_alloc(count);
+	if (IS_ERR(lwis_dev->clocks)) {
+		pr_err("Cannot allocate clocks list\n");
+		return PTR_ERR(lwis_dev->clocks);
+	}
 
 	/* Parse and acquire clock pointers and frequencies, if applicable */
 	for (i = 0; i < count; ++i) {
@@ -291,6 +301,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	if (count != event_infos_count) {
 		pr_err("DT numbers of irqs: %d != event infos: %d in DT\n",
 		       count, event_infos_count);
+		ret = -EINVAL;
 		goto error_get_irq;
 	}
 	/* Get event infos */
@@ -492,6 +503,7 @@ static int parse_phys(struct lwis_device *lwis_dev)
 
 	/* No PHY found, just return */
 	if (count <= 0) {
+		lwis_dev->phys = NULL;
 		return 0;
 	}
 
