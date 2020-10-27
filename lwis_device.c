@@ -322,7 +322,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (ret) {
 		dev_err(lwis_dev->dev,
 			"Platform-specific device enable fail: %d\n", ret);
-		goto error_platform_enable;
+		goto error_power_up;
 	}
 
 	if (lwis_dev->clocks) {
@@ -331,7 +331,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error enabling clocks (%d)\n",
 				ret);
-			goto error_clock_enable;
+			goto error_power_up;
 		}
 	}
 
@@ -341,7 +341,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error enabling regulators (%d)\n", ret);
-			goto error_regulator_enable;
+			goto error_power_up;
 		}
 	}
 
@@ -354,7 +354,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 				"Failed to obtain enable gpio list (%ld)\n",
 				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
-			goto error_gpio_get;
+			goto error_power_up;
 		}
 
 		/* Setting enable_gpios to non-NULL to indicate that this lwis
@@ -366,7 +366,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error enabling GPIO pins (%d)\n", ret);
-			goto error_gpio_set;
+			goto error_power_up;
 		}
 
 		if (lwis_dev->enable_gpios_settle_time > 0) {
@@ -390,7 +390,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					"Failed to obtain shared gpio list (%ld)\n",
 					PTR_ERR(gpios));
 				ret = PTR_ERR(gpios);
-				goto error_shared_gpio_get;
+				goto error_power_up;
 			}
 		} else {
 			/* Set enable pins to 1 (i.e. asserted) */
@@ -399,7 +399,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			if (ret) {
 				dev_err(lwis_dev->dev,
 					"Error enabling GPIO pins (%d)\n", ret);
-				goto error_shared_gpio_set;
+				goto error_power_up;
 			}
 		}
 	}
@@ -413,7 +413,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev, "Failed to get mclk\n");
 			ret = PTR_ERR(lwis_dev->mclk_ctrl);
 			lwis_dev->mclk_ctrl = NULL;
-			goto error_mclk_enable;
+			goto error_power_up;
 		}
 		if (lwis_dev->shared_pinctrl > 0) {
 			struct lwis_device *lwis_dev_it;
@@ -446,7 +446,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					MCLK_ON_STRING, ret);
 				devm_pinctrl_put(lwis_dev->mclk_ctrl);
 				lwis_dev->mclk_ctrl = NULL;
-				goto error_mclk_enable;
+				goto error_power_up;
 			}
 		}
 	}
@@ -460,7 +460,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 				"Failed to obtain reset gpio list (%ld)\n",
 				PTR_ERR(gpios));
 			ret = PTR_ERR(gpios);
-			goto error_reset_gpio_get;
+			goto error_power_up;
 		}
 		/* Setting reset_gpios to non-NULL to indicate that this lwis
 			 device is holding onto the GPIO pins. */
@@ -472,7 +472,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev,
 				"Failed to set reset GPIOs to ACTIVE (%d)\n",
 				ret);
-			goto error_reset_gpio_set;
+			goto error_power_up;
 		}
 	}
 
@@ -482,7 +482,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					     /* power_on = */ true);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error powering on PHY\n");
-			goto error_phy_set_power;
+			goto error_power_up;
 		}
 	}
 
@@ -491,7 +491,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Failed to request interrupts (%d)\n", ret);
-			goto error_irq_request;
+			goto error_power_up;
 		}
 	}
 
@@ -500,78 +500,17 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error executing device enable function\n");
-			goto error_vops_device_enable;
+			goto error_power_up;
 		}
 	}
 
 	/* Sleeping to make sure all pins are ready to go */
 	usleep_range(2000, 2000);
 	return 0;
+
 	/* Error handling */
-error_vops_device_enable:
-	if (lwis_dev->irqs) {
-		lwis_interrupt_free_all_default(lwis_dev->irqs);
-	}
-error_irq_request:
-	if (lwis_dev->phys) {
-		lwis_phy_set_power_all(lwis_dev->phys, /* power_on = */ false);
-	}
-error_phy_set_power:
-	if (lwis_dev->shared_enable_gpios_present &&
-	    lwis_dev->shared_enable_gpios) {
-		lwis_gpio_list_set_output_value_raw(lwis_dev->shared_enable_gpios, 0);
-	}
-error_shared_gpio_set:
-	if (lwis_dev->shared_enable_gpios_present &&
-	    lwis_dev->shared_enable_gpios) {
-		/* Release "ownership" of the GPIO pins */
-		lwis_gpio_list_put(lwis_dev->shared_enable_gpios,
-				   &lwis_dev->plat_dev->dev);
-		lwis_dev->shared_enable_gpios = NULL;
-	}
-error_shared_gpio_get:
-	if (lwis_dev->mclk_ctrl) {
-		lwis_pinctrl_set_state(lwis_dev->mclk_ctrl, MCLK_OFF_STRING);
-	}
-error_mclk_enable:
-	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
-		/* Set reset pins to 1 (i.e. asserted) */
-		lwis_gpio_list_set_output_value_raw(lwis_dev->reset_gpios, 0);
-	}
-error_reset_gpio_unset:
-error_reset_gpio_set:
-	if (lwis_dev->reset_gpios_present && lwis_dev->reset_gpios) {
-		/* Release ownership of the GPIO pins */
-		lwis_gpio_list_put(lwis_dev->reset_gpios,
-				   &lwis_dev->plat_dev->dev);
-		lwis_dev->reset_gpios = NULL;
-	}
-error_reset_gpio_get:
-	if (lwis_dev->regulators) {
-		/* Disable all the regulators */
-		lwis_regulator_disable_all(lwis_dev->regulators);
-	}
-error_regulator_enable:
-	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
-		/* Set enable pins to 0 (i.e. deasserted) */
-		lwis_gpio_list_set_output_value(lwis_dev->enable_gpios, 0);
-	}
-error_gpio_set:
-	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
-		/* Release "ownership" of the GPIO pins */
-		lwis_gpio_list_put(lwis_dev->enable_gpios,
-				   &lwis_dev->plat_dev->dev);
-		lwis_dev->enable_gpios = NULL;
-	}
-error_gpio_get:
-	if (lwis_dev->clocks) {
-		/* Disable all clocks */
-		lwis_clock_disable_all(lwis_dev->clocks);
-	}
-error_clock_enable:
-	/* Let's do the platform-specific disable call */
-	lwis_platform_device_disable(lwis_dev);
-error_platform_enable:
+error_power_up:
+	lwis_dev_power_down_locked(lwis_dev);
 	return ret;
 }
 
@@ -583,13 +522,14 @@ error_platform_enable:
 int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 {
 	int ret;
+	int last_error = 0;
 
 	if (lwis_dev->vops.device_disable) {
 		ret = lwis_dev->vops.device_disable(lwis_dev);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error executing device disable function\n");
-			return ret;
+			last_error = ret;
 		}
 	}
 
@@ -603,7 +543,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 					     /* power_on = */ false);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error powering off PHY\n");
-			return ret;
+			last_error = ret;
 		}
 	}
 
@@ -639,7 +579,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 				dev_err(lwis_dev->dev,
 					"Error setting %s state (%d)\n",
 					MCLK_OFF_STRING, ret);
-				return ret;
+				last_error = ret;
 			}
 			devm_pinctrl_put(lwis_dev->mclk_ctrl);
 			lwis_dev->mclk_ctrl = NULL;
@@ -653,7 +593,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev,
 				"Error setting reset GPIOs to low (%d)\n",
 				ret);
-			return ret;
+			last_error = ret;
 		}
 
 		/* Release ownership of the GPIO pins */
@@ -670,7 +610,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error disabling GPIO pins (%d)\n", ret);
-			return ret;
+			last_error = ret;
 		}
 
 		/* Release "ownership" of the GPIO pins */
@@ -685,7 +625,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error disabling GPIO pins (%d)\n", ret);
-			return ret;
+			last_error = ret;
 		}
 
 		/* Release "ownership" of the GPIO pins */
@@ -700,7 +640,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error disabling regulators (%d)\n", ret);
-			return ret;
+			last_error = ret;
 		}
 	}
 
@@ -714,8 +654,13 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	if (ret) {
 		dev_err(lwis_dev->dev,
 			"Platform-specific device disable fail: %d\n", ret);
-		return ret;
+		last_error = ret;
 	}
+
+	if (last_error) {
+		return last_error;
+	}
+
 	return ret;
 }
 
