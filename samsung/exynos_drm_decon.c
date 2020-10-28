@@ -333,6 +333,7 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	struct exynos_drm_crtc_state *old_exynos_crtc_state =
 					to_exynos_crtc_state(old_crtc_state);
 	struct exynos_dqe *dqe = decon->dqe;
+	unsigned long flags;
 
 	decon_debug(decon, "%s +\n", __func__);
 
@@ -365,7 +366,6 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 				decon->config.image_height);
 
 	decon_reg_all_win_shadow_update_req(decon->id);
-	reinit_completion(&decon->framestart_done);
 
 	if (atomic_add_unless(&decon->bts.delayed_update, -1, 0))
 		decon_mode_update_bts(decon, &new_crtc_state->adjusted_mode);
@@ -373,7 +373,10 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	if (new_exynos_crtc_state->seamless_mode_changed)
 		decon_seamless_mode_set(exynos_crtc, old_crtc_state);
 
+	spin_lock_irqsave(&decon->slock, flags);
 	decon_reg_start(decon->id, &decon->config);
+	reinit_completion(&decon->framestart_done);
+	spin_unlock_irqrestore(&decon->slock, flags);
 
 	if (!new_crtc_state->no_vblank)
 		exynos_crtc_handle_event(exynos_crtc);

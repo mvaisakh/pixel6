@@ -1283,13 +1283,16 @@ static int dsc_reg_init(u32 id, struct decon_config *config, u32 overlap_w,
 	return 0;
 }
 
+static void decon_reg_clear_int(u32 id, u32 mask)
+{
+	decon_write_mask(id, DECON_INT_PEND, mask, mask);
+}
+
 static void decon_reg_clear_int_all(u32 id)
 {
 	u32 mask;
 
-	mask = (INT_EN_FRAME_DONE
-			| INT_EN_FRAME_START);
-	decon_write_mask(id, DECON_INT_PEND, ~0, mask);
+	decon_reg_clear_int(id, INT_EN_FRAME_DONE | INT_EN_FRAME_START);
 
 	mask = (INT_EN_RESOURCE_CONFLICT | INT_EN_TIME_OUT);
 	decon_write_mask(id, DECON_INT_PEND_EXTRA, ~0, mask);
@@ -1756,6 +1759,9 @@ int decon_reg_start(u32 id, struct decon_config *config)
 
 	decon_reg_direct_on_off(id, 1);
 	decon_reg_update_req_global(id);
+
+	/* clear pending frame start if any to ensure next frame start reflects new update */
+	decon_reg_clear_int(id, INT_EN_FRAME_START);
 
 	/*
 	 * DECON goes to run-status as soon as
