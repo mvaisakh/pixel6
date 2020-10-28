@@ -23,6 +23,7 @@
 #include <uapi/drm/exynos_drm.h>
 #include <uapi/linux/videodev2_exynos_media.h>
 #include <linux/dma-buf.h>
+#include <linux/pm_runtime.h>
 
 #include <trace/dpu_trace.h>
 
@@ -441,17 +442,20 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 #define TIMEOUT	msecs_to_jiffies(50)
 static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
-	int i, ret;
+	int i;
 	struct drm_device *dev = old_state->dev;
 	struct decon_device *decon;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
 	unsigned int hibernation_crtc_mask = 0;
+	unsigned int disabling_crtc_mask = 0;
 
 	DPU_ATRACE_BEGIN("exynos_atomic_commit_tail");
 
 	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state,
 			new_crtc_state, i) {
+		const struct drm_crtc_helper_funcs *funcs;
+
 		decon = crtc_to_decon(crtc);
 
 		DRM_DEBUG("[CRTC-%d] old en:%d active:%d change[%d %d %d]\n",
@@ -479,21 +483,23 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		}
 
 		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
-			/*
-			 * If hw related to crtc is processing, it also should
-			 * be delayed. If not, the hw does not shut down
-			 * normally.
-			 */
-			DPU_ATRACE_BEGIN("wait_for_frame_done");
-			ret = wait_event_interruptible_timeout(
-					decon->framedone_wait,
-					decon->busy == false, TIMEOUT);
-			DPU_ATRACE_END("wait_for_frame_done");
-			if (ret == 0) {
-				pr_err("decon%d framedone timeout\n",
-						decon->id);
-				decon_dump_all(decon);
-			}
+			/* keep runtime vote while disabling is taking place */
+			pm_runtime_get_sync(decon->dev);
+			disabling_crtc_mask |= drm_crtc_mask(crtc);
+
+			DPU_ATRACE_BEGIN("crtc_disable");
+
+			funcs = crtc->helper_private;
+			if (new_crtc_state->enable && funcs->prepare)
+				funcs->prepare(crtc);
+			else if (funcs->atomic_disable)
+				funcs->atomic_disable(crtc, old_crtc_state);
+			else if (funcs->disable)
+				funcs->disable(crtc);
+			else if (funcs->dpms)
+				funcs->dpms(crtc, DRM_MODE_DPMS_OFF);
+
+			DPU_ATRACE_END("crtc_disable");
 		}
 	}
 
@@ -554,10 +560,11 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	exynos_atomic_bts_post_update(dev, old_state);
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
-		if (hibernation_crtc_mask & drm_crtc_mask(crtc)) {
-			decon = crtc_to_decon(crtc);
+		decon = crtc_to_decon(crtc);
+		if (hibernation_crtc_mask & drm_crtc_mask(crtc))
 			hibernation_unblock(decon->hibernation);
-		}
+		if (disabling_crtc_mask & drm_crtc_mask(crtc))
+			pm_runtime_put_sync(decon->dev);
 	}
 
 	drm_atomic_helper_commit_hw_done(old_state);

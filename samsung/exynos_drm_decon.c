@@ -693,10 +693,11 @@ static void decon_disable_irqs(struct decon_device *decon)
 
 static void _decon_disable(struct decon_device *decon)
 {
+	const struct drm_crtc_state *crtc_state = decon->crtc->base.state;
 	int i;
 
+	decon_reg_stop(decon->id, &decon->config, crtc_state->active_changed, decon->bts.fps);
 	decon_disable_irqs(decon);
-	decon_reg_stop(decon->id, &decon->config, true, decon->bts.fps);
 
 	for (i = 0; i < decon->dpp_cnt; ++i) {
 		struct dpp_device *dpp = decon->dpp[i];
@@ -724,6 +725,9 @@ void decon_enter_hibernation(struct decon_device *decon)
 static void decon_disable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
+
+	if (decon->state == DECON_STATE_OFF)
+		return;
 
 	decon_info(decon, "%s +\n", __func__);
 
@@ -848,18 +852,18 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 	decon_debug(decon, "%s: irq_sts_reg = %x, ext_irq = %x\n",
 			__func__, irq_sts_reg, ext_irq);
 
-	if (irq_sts_reg & DPU_FRAME_START_INT_PEND) {
-		decon->busy = true;
-		complete(&decon->framestart_done);
-		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
-		decon_debug(decon, "%s: frame start\n", __func__);
-	}
-
 	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND) {
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, decon->id, decon);
 		decon->busy = false;
 		wake_up_interruptible_all(&decon->framedone_wait);
 		decon_debug(decon, "%s: frame done\n", __func__);
+	}
+
+	if (irq_sts_reg & DPU_FRAME_START_INT_PEND) {
+		decon->busy = true;
+		complete(&decon->framestart_done);
+		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
+		decon_debug(decon, "%s: frame start\n", __func__);
 	}
 
 	if (ext_irq & DPU_RESOURCE_CONFLICT_INT_PEND)
