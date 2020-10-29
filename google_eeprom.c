@@ -32,6 +32,8 @@
 #define BATT_EEPROM_TAG_GMSR_LEN	GBMS_GMSR_LEN
 #define BATT_EEPROM_TAG_HIST_OFFSET	0x6A
 #define BATT_EEPROM_TAG_HIST_LEN	BATT_ONE_HIST_LEN
+#define BATT_EEPROM_TAG_CNHS_OFFSET	0x86
+#define BATT_EEPROM_TAG_CNHS_LEN	2
 #define BATT_EEPROM_TAG_BGPN_OFFSET	0x03
 #define BATT_EEPROM_TAG_BGPN_LEN	GBMS_BGPN_LEN
 
@@ -73,6 +75,10 @@ static int gbee_storage_info(gbms_tag_t tag, size_t *addr, size_t *count,
 		*addr = BATT_EEPROM_TAG_BCNT_OFFSET;
 		*count = BATT_EEPROM_TAG_BCNT_LEN;
 		break;
+	case GBMS_TAG_CNHS:
+		*addr = BATT_EEPROM_TAG_CNHS_OFFSET;
+		*count = BATT_EEPROM_TAG_CNHS_LEN;
+		break;
 	default:
 		ret = -ENOENT;
 		break;
@@ -86,7 +92,8 @@ static int gbee_storage_iter(int index, gbms_tag_t *tag, void *ptr)
 	static gbms_tag_t keys[] = { GBMS_TAG_BGPN, GBMS_TAG_MINF,
 				     GBMS_TAG_DINF, GBMS_TAG_HIST,
 				     GBMS_TAG_BRID, GBMS_TAG_SNUM,
-				     GBMS_TAG_GMSR, GBMS_TAG_BCNT };
+				     GBMS_TAG_GMSR, GBMS_TAG_BCNT,
+				     GBMS_TAG_CNHS };
 	const int count = ARRAY_SIZE(keys);
 
 	if (index < 0 || index >= count)
@@ -142,7 +149,7 @@ static int gbee_storage_write(gbms_tag_t tag, const void *buff, size_t size,
 	int ret, write_size = 0;
 
 	if ((tag != GBMS_TAG_DINF) && (tag != GBMS_TAG_GMSR) &&
-	    (tag != GBMS_TAG_BCNT))
+	    (tag != GBMS_TAG_BCNT) && (tag != GBMS_TAG_CNHS))
 		return -ENOENT;
 
 	ret = gbee_storage_info(tag, &offset, &len, ptr);
