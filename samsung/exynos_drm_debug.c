@@ -92,6 +92,14 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		return;
 
 	switch (type) {
+	case DPU_EVT_DECON_FRAMESTART:
+		decon->d.auto_refresh_frames++;
+	case DPU_EVT_DECON_FRAMEDONE:
+	case DPU_EVT_DPP_FRAMEDONE:
+	case DPU_EVT_DSIM_FRAMEDONE:
+		if (decon->d.auto_refresh_frames > 3)
+			return;
+		break;
 	case DPU_EVT_TE_INTERRUPT:
 		break;
 	case DPU_EVT_DSIM_UNDERRUN:
@@ -215,6 +223,8 @@ void DPU_EVENT_LOG_ATOMIC_COMMIT(int index)
 
 	log->type = DPU_EVT_ATOMIC_COMMIT;
 	log->time = ktime_get();
+
+	decon->d.auto_refresh_frames = 0;
 
 	for (i = 0; i < MAX_WIN_PER_DECON; ++i) {
 		memcpy(&log->data.atomic.win_config[i].win,

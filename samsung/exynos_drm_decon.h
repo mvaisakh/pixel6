@@ -308,6 +308,8 @@ struct decon_debug {
 	atomic_t event_log_idx;
 	/* lock for saving log to event log buffer */
 	spinlock_t event_lock;
+
+	u32 auto_refresh_frames;
 };
 
 struct decon_device {
