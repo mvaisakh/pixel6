@@ -621,6 +621,7 @@ static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 
 	config->mode = (mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO) ?
 				DSIM_VIDEO_MODE : DSIM_COMMAND_MODE;
+	config->bpp = mode_priv->bpc * 3;
 
 	config->dsc.enabled = mode_priv->dsc.enabled;
 	if (config->dsc.enabled) {
@@ -639,6 +640,7 @@ static void dsim_set_display_mode(struct dsim_device *dsim,
 	if (!dsim->dsi_device)
 		return;
 
+	mutex_lock(&dsim->state_lock);
 	dsim->config.data_lane_cnt = dsim->dsi_device->lanes;
 
 	dsim_update_config_for_mode(&dsim->config, mode);
@@ -652,6 +654,7 @@ static void dsim_set_display_mode(struct dsim_device *dsim,
 			dsim->config.dsc.slice_count,
 			dsim->config.dsc.slice_width,
 			dsim->config.dsc.slice_height);
+	mutex_unlock(&dsim->state_lock);
 }
 
 static void dsim_mode_set(struct drm_encoder *encoder,
@@ -1486,17 +1489,6 @@ static const struct mipi_dsi_host_ops dsim_host_ops = {
 	.transfer = dsim_host_transfer,
 };
 
-static const struct drm_display_mode *dsim_get_current_mode(
-						const struct dsim_device *dsim)
-{
-	struct drm_crtc *crtc = dsim->encoder.crtc;
-
-	if (crtc && crtc->state)
-		return &crtc->state->adjusted_mode;
-
-	return NULL;
-}
-
 static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 			 struct stdphy_pms *pms, unsigned int hs_clock_mhz)
 {
@@ -1563,12 +1555,12 @@ static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 	return 0;
 }
 
-static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
-			      const struct drm_display_mode *mode,
-			      uint32_t lanes, uint32_t *underrun,
+static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun,
 			      uint32_t hs_clock_mhz)
 {
-	uint32_t bpp;
+	const struct dsim_pll_features *pll_features = dsim->pll_params->features;
+	const struct dsim_reg_config *config = &dsim->config;
+	uint32_t lanes = config->data_lane_cnt;
 	uint32_t number_of_transfer;
 	uint32_t w_threshold;
 	uint64_t wclk;
@@ -1578,25 +1570,18 @@ static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
 	uint64_t min_frame_transfer_time;
 	uint64_t max_lp_time;
 
-	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
-
-	if (!mode_priv) {
-		/* dsc, bpc are needed for underrun calculation */
-		return -ENODEV;
-	}
-
-	bpp = mode_priv->bpc * 3;
-	number_of_transfer = mode->vdisplay;
-	w_threshold = (mode_priv->dsc.enabled ?
-		       mode->hdisplay / 3 : mode->hdisplay);
+	number_of_transfer = config->p_timing.vactive;
+	w_threshold = config->p_timing.hactive;
+	if (config->dsc.enabled)
+		w_threshold /= 3;
 	wclk = (uint64_t) hs_clock_mhz * 1000000 / 16;
 
 	/* max time to transfer one frame, in the unit of nanosecond */
 	max_frame_time = NSEC_PER_SEC * 100 /
-		(drm_mode_vrefresh(mode) * (100 + pll_features->te_var)) -
+		(config->p_timing.vrefresh * (100 + pll_features->te_var)) -
 		NSEC_PER_USEC * pll_features->te_idle;
 	/* one frame pixel data (bytes) */
-	frame_data = number_of_transfer * w_threshold * bpp / 8;
+	frame_data = number_of_transfer * w_threshold * config->bpp / 8;
 	/* packet header (bytes) */
 	packet_header = number_of_transfer * 7;
 	/* minimum time to transfer one frame, in nanosecond */
@@ -1621,7 +1606,6 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 {
 	int ret;
 	struct stdphy_pms pms;
-	const struct drm_display_mode *mode;
 	uint32_t lp_underrun = 0;
 	struct dsim_pll_param *pll_param;
 
@@ -1635,18 +1619,8 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 		return -EINVAL;
 	}
 
-	drm_modeset_lock(&dsim->encoder.dev->mode_config.connection_mutex,
-			 NULL);
 	mutex_lock(&dsim->state_lock);
-	mode = dsim_get_current_mode(dsim);
-	if (!mode) {
-		ret = -ENODEV;
-		goto out;
-	}
-
-	ret = dsim_calc_underrun(dsim->pll_params->features, mode,
-				 dsim->config.data_lane_cnt, &lp_underrun,
-				 hs_clock);
+	ret = dsim_calc_underrun(dsim, &lp_underrun, hs_clock);
 	if (ret < 0) {
 		dsim_err(dsim, "Failed to update underrun\n");
 		goto out;
@@ -1682,7 +1656,6 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 
 out:
 	mutex_unlock(&dsim->state_lock);
-	drm_modeset_unlock(&dsim->encoder.dev->mode_config.connection_mutex);
 
 	return ret;
 }
