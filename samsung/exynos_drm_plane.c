@@ -456,17 +456,15 @@ static void exynos_plane_atomic_update(struct drm_plane *plane,
 	struct drm_plane_state *state = plane->state;
 	struct exynos_drm_crtc *exynos_crtc;
 	struct exynos_drm_plane *exynos_plane = to_exynos_plane(plane);
-	const struct dpp_device *dpp = plane_to_dpp(exynos_plane);
 
 	if (!state->crtc)
 		return;
 
 	exynos_crtc = to_exynos_crtc(state->crtc);
 
-	if (!state->visible || (dpp->win_id != state->normalized_zpos))
+	if (!state->visible)
 		exynos_plane_disable(plane, state->crtc);
-
-	if (state->visible && exynos_crtc->ops->update_plane)
+	else if (exynos_crtc->ops->update_plane)
 		exynos_crtc->ops->update_plane(exynos_crtc, exynos_plane);
 }
 

@@ -425,6 +425,7 @@ static void __dpp_disable(struct dpp_device *dpp)
 
 	set_protection(dpp, 0);
 	dpp->state = DPP_STATE_OFF;
+	dpp->decon_id = -1;
 
 	dpp_debug(dpp, "disabled\n");
 }
@@ -812,7 +813,6 @@ static irqreturn_t dma_irq_handler(int irq, void *priv)
 		str_comp = get_comp_src_name(dpp->comp_src);
 		dpp_info(dpp, "recovery start(0x%x) cnt(%d) src(%s)\n", irqs,
 				dpp->recovery_cnt, str_comp);
-		goto irq_end;
 	}
 
 	/*
@@ -822,7 +822,6 @@ static irqreturn_t dma_irq_handler(int irq, void *priv)
 	if (irqs & IDMA_STATUS_FRAMEDONE_IRQ) {
 		DPU_EVENT_LOG(DPU_EVT_DPP_FRAMEDONE, dpp->decon_id,
 				dpp);
-		goto irq_end;
 	}
 
 irq_end:

@@ -224,6 +224,32 @@ static void decon_atomic_begin(struct exynos_drm_crtc *crtc)
 	decon_debug(decon, "%s -\n", __func__);
 }
 
+static void decon_disable_win(struct decon_device *decon, int win_id)
+{
+	const struct drm_crtc *crtc = &decon->crtc->base;
+	const unsigned int num_planes = hweight32(crtc->state->plane_mask);
+
+	decon_debug(decon, "winid:%d/%d\n", win_id, num_planes);
+
+	/*
+	 * When disabling the plane, previously connected window(zpos) should be
+	 * disabled not newly requested zpos(window). Only disable window if it
+	 * was previously connected and it's not going to be used by any other
+	 * plane, by using normalized zpos as win_id we know that any win_id
+	 * beyond the number of planes will not be used.
+	 */
+	if (win_id < MAX_PLANE && win_id >= num_planes)
+		decon_reg_set_win_enable(decon->id, win_id, 0);
+}
+
+static void _dpp_disable(struct dpp_device *dpp)
+{
+	if (dpp->is_win_connected) {
+		dpp->disable(dpp);
+		dpp->is_win_connected = false;
+	}
+}
+
 static void decon_update_plane(struct exynos_drm_crtc *crtc,
 			       struct exynos_drm_plane *plane)
 {
@@ -261,6 +287,10 @@ static void decon_update_plane(struct exynos_drm_crtc *crtc,
 	if (zpos == 0 && hw_alpha == EXYNOS_PLANE_ALPHA_MAX)
 		win_info.blend = DRM_MODE_BLEND_PIXEL_NONE;
 
+	/* disable previous window if zpos has changed */
+	if (dpp->win_id != zpos)
+		decon_disable_win(decon, dpp->win_id);
+
 	decon_reg_set_window_control(decon->id, zpos, &win_info, is_colormap);
 
 	dpp->decon_id = decon->id;
@@ -268,8 +298,7 @@ static void decon_update_plane(struct exynos_drm_crtc *crtc,
 		dpp->update(dpp, state);
 		dpp->is_win_connected = true;
 	} else {
-		dpp->disable(dpp);
-		dpp->is_win_connected = false;
+		_dpp_disable(dpp);
 	}
 
 	dpp->win_id = zpos;
@@ -288,37 +317,13 @@ static void decon_disable_plane(struct exynos_drm_crtc *exynos_crtc,
 {
 	struct decon_device *decon = exynos_crtc->ctx;
 	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
-	const struct drm_plane *plane = &exynos_plane->base;
-	const struct drm_crtc *crtc = &exynos_crtc->base;
-	const unsigned int num_planes = hweight32(crtc->state->plane_mask);
 
 	decon_debug(decon, "%s +\n", __func__);
 
-	decon_debug(decon, "%s winid:%d/%d zpos:%d win_connect:%d visible:%d\n",
-		 plane->name, dpp->win_id, num_planes,
-		 plane->state->normalized_zpos, dpp->is_win_connected,
-		 plane->state->visible);
+	decon_disable_win(decon, dpp->win_id);
 
-	/*
-	 * When disabling the plane, previously connected window(zpos) should be
-	 * disabled not newly requested zpos(window). Only disable window if it
-	 * was previously connected and it's not going to be used by any other
-	 * plane, by using normalized zpos as win_id we know that any win_id
-	 * beyond the number of planes will not be used.
-	 */
-	if (dpp->win_id < MAX_PLANE && dpp->win_id >= num_planes)
-		decon_reg_set_win_enable(decon->id, dpp->win_id, 0);
+	_dpp_disable(dpp);
 
-	/*
-	 * This can be called when changing zpos. Only disable dpp if plane is
-	 * not going to be visible anymore (with different win_id)
-	 */
-	if (dpp->is_win_connected &&
-	    (!plane->state->visible || !plane->state->crtc)) {
-		dpp->decon_id = -1;
-		dpp->disable(dpp);
-		dpp->is_win_connected = false;
-	}
 	DPU_EVENT_LOG(DPU_EVT_PLANE_DISABLE, decon->id, dpp);
 	decon_debug(decon, "%s -\n", __func__);
 }
@@ -693,19 +698,9 @@ static void decon_disable_irqs(struct decon_device *decon)
 static void _decon_disable(struct decon_device *decon)
 {
 	const struct drm_crtc_state *crtc_state = decon->crtc->base.state;
-	int i;
 
 	decon_reg_stop(decon->id, &decon->config, crtc_state->active_changed, decon->bts.fps);
 	decon_disable_irqs(decon);
-
-	for (i = 0; i < decon->dpp_cnt; ++i) {
-		struct dpp_device *dpp = decon->dpp[i];
-
-		if (!dpp)
-			continue;
-
-		dpp->disable(dpp);
-	}
 }
 
 void decon_enter_hibernation(struct decon_device *decon)
