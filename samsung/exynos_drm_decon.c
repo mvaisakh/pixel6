@@ -368,7 +368,7 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	decon_reg_all_win_shadow_update_req(decon->id);
 
 	if (atomic_add_unless(&decon->bts.delayed_update, -1, 0))
-		decon_mode_update_bts(decon, &new_crtc_state->adjusted_mode);
+		decon_mode_update_bts(decon, &new_crtc_state->mode);
 
 	if (new_exynos_crtc_state->seamless_mode_changed)
 		decon_seamless_mode_set(exynos_crtc, old_crtc_state);
