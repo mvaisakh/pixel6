@@ -3649,6 +3649,15 @@ static int p9221_parse_dt(struct device *dev,
 	if (ret >= 0)
 		dev_info(dev, "ben gpio:%d\n", pdata->ben_gpio);
 
+	ret = of_get_named_gpio(node, "idt,gpio_extben", 0);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+	pdata->ext_ben_gpio = ret;
+	if (ret >= 0) {
+		ret = gpio_request(pdata->ext_ben_gpio, "wc_ref");
+		dev_info(dev, "ext ben gpio:%d, ret=%d\n", pdata->ext_ben_gpio, ret);
+	}
+
 	ret = of_get_named_gpio(node, "idt,gpio_switch", 0);
 	if (ret == -EPROBE_DEFER)
 		return ret;
@@ -4036,6 +4045,9 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	if (charger->pdata->switch_gpio >= 0)
 		gpio_direction_output(charger->pdata->switch_gpio, 0);
+
+	if (charger->pdata->ext_ben_gpio >= 0)
+		gpio_direction_output(charger->pdata->ext_ben_gpio, 0);
 
 	/* Default to R5+ */
 	charger->cust_id = 5;
