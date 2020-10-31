@@ -911,22 +911,27 @@ static void batt_rl_update_status(struct batt_drv *batt_drv)
 
 /*
  * msc_logic_health() sync ce_data->ce_health to batt_drv->chg_health
- * return -EINVAL when the device is not connected to power or when
- * ttf_soc_estimate() return a negative value.
- *
+ * . return -EINVAL when the device is not connected to power -ERANGE when
+ *   ttf_soc_estimate() returns a negative value (invalid parameters, or
+ *   corrupted internal data)
+ * . the estimate is 0 when the device is at 100%.
+ * . the estimate is negative during debounce, when in overheat, when
+ *   custom charge levels are active.
  */
 static int batt_ttf_estimate(ktime_t *res, const struct batt_drv *batt_drv)
 {
-	qnum_t soc_raw = ssoc_get_real_raw(&batt_drv->ssoc_state);
 	qnum_t raw_full = ssoc_point_full - qnum_rconst(SOC_ROUND_BASE);
-	ktime_t estimate = batt_drv->ttf_stats.ttf_fake;
+	qnum_t soc_raw = ssoc_get_real_raw(&batt_drv->ssoc_state);
+	ktime_t estimate;
 	int rc;
 
 	if (batt_drv->ssoc_state.buck_enabled != 1)
 		return -EINVAL;
 
-	if (batt_drv->ttf_stats.ttf_fake != -1)
+	if (batt_drv->ttf_stats.ttf_fake != -1) {
+		estimate = batt_drv->ttf_stats.ttf_fake;
 		goto done;
+	}
 
 	/* TTF is 0 when UI shows 100% */
 	if (ssoc_get_capacity(&batt_drv->ssoc_state) == SSOC_FULL) {
@@ -934,13 +939,10 @@ static int batt_ttf_estimate(ktime_t *res, const struct batt_drv *batt_drv)
 		goto done;
 	}
 
-	if (batt_drv->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
-		estimate = -1;
-		goto done;
-	}
-
-	/* debounce the stats until the battery is actually charging */
-	if (batt_drv->ttf_debounce) {
+	/* no estimates during debounce or with special profiles */
+	if (batt_drv->ttf_debounce ||
+	    batt_drv->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT ||
+	    batt_drv->chg_state.f.flags & GBMS_CS_FLAG_CCLVL) {
 		estimate = -1;
 		goto done;
 	}
@@ -950,6 +952,8 @@ static int batt_ttf_estimate(ktime_t *res, const struct batt_drv *batt_drv)
 	 * example: 96.64% with SOC_ROUND_BASE = 0.5 -> UI = 97
 	 *    ttf = elap[96] * 0.36 + elap[97] + elap[98] +
 	 * 	    elap[99] * (1 - 0.5)
+	 *
+	 * negative return value (usually) means data corruption
 	 */
 	rc = ttf_soc_estimate(&estimate, &batt_drv->ttf_stats,
 			      &batt_drv->ce_data, soc_raw, raw_full);
@@ -4722,11 +4726,14 @@ static int gbatt_get_property(struct power_supply *psy,
 		}
 		break;
 
+	/* cannot set err, negative estimate will revert to HAL */
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW: {
 		ktime_t res;
 
 		rc = batt_ttf_estimate(&res, batt_drv);
 		if (rc == 0) {
+			if (res < 0)
+				res = 0;
 			val->intval = res;
 		} else if (!batt_drv->fg_psy) {
 			val->intval = -1;
