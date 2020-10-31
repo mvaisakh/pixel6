@@ -50,6 +50,7 @@ struct edgetpu_firmware_private {
 
 	struct mutex fw_desc_lock;
 	struct edgetpu_firmware_desc fw_desc;
+	struct edgetpu_firmware_desc bl1_fw_desc;
 	enum edgetpu_firmware_status status;
 	enum edgetpu_fw_flavor fw_flavor;
 };
@@ -293,10 +294,10 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	const struct edgetpu_firmware_handlers *handlers = et_fw->p->handlers;
 	struct edgetpu_firmware_desc new_fw_desc;
 	int ret;
-	bool wdt_en = !(flags & FW_BL1); /* not BL1 */
+	bool is_bl1_run = (flags & FW_BL1);
 
 	et_fw->p->status = FW_LOADING;
-	if (wdt_en)
+	if (!is_bl1_run)
 		edgetpu_sw_wdt_stop(et_fw->etdev);
 
 	memset(&new_fw_desc, 0, sizeof(new_fw_desc));
@@ -317,13 +318,18 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	 * new firmware buffer. Unload this before et_fw->p->fw_buf is
 	 * overwritten by new buffer information.
 	 */
-	edgetpu_firmware_unload_locked(et_fw, &et_fw->p->fw_desc);
-	et_fw->p->fw_desc = new_fw_desc;
+	if (!is_bl1_run) {
+		edgetpu_firmware_unload_locked(et_fw, &et_fw->p->fw_desc);
+		et_fw->p->fw_desc = new_fw_desc;
+	} else {
+		edgetpu_firmware_unload_locked(et_fw, &et_fw->p->bl1_fw_desc);
+		et_fw->p->bl1_fw_desc = new_fw_desc;
+	}
 
 	ret = edgetpu_firmware_handshake(et_fw);
 
 	/* Don't start wdt if loaded firmware is second stage bootloader. */
-	if (!ret && wdt_en && et_fw->p->fw_flavor != FW_FLAVOR_BL1)
+	if (!ret && !is_bl1_run && et_fw->p->fw_flavor != FW_FLAVOR_BL1)
 		edgetpu_sw_wdt_start(et_fw->etdev);
 	return ret;
 
@@ -562,7 +568,7 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 		}
 		mutex_unlock(&group->lock);
 	}
-	// TODO(b/154626503): Notify runtime to abort current tasks
+	edgetpu_fatal_error_notify(etdev);
 	for (i = 0; i < num_clients; i++) {
 		/*
 		 * No need to hold state lock here since all group operations on
@@ -677,6 +683,7 @@ void edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
 	if (et_fw->p) {
 		mutex_lock(&et_fw->p->fw_desc_lock);
 		edgetpu_firmware_unload_locked(et_fw, &et_fw->p->fw_desc);
+		edgetpu_firmware_unload_locked(et_fw, &et_fw->p->bl1_fw_desc);
 		mutex_unlock(&et_fw->p->fw_desc_lock);
 	}
 

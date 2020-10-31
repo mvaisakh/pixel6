@@ -194,10 +194,10 @@ void edgetpu_mailbox_init_doorbells(struct edgetpu_mailbox *mailbox);
 /* requests the mailbox for KCI */
 struct edgetpu_mailbox *edgetpu_mailbox_kci(
 		struct edgetpu_mailbox_manager *mgr);
-int edgetpu_mailbox_inc_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
-				       u32 inc);
-int edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
+void edgetpu_mailbox_inc_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
 					u32 inc);
+void edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
+					 u32 inc);
 
 /* utility functions for VII */
 
@@ -264,7 +264,7 @@ static inline u32 circular_queue_inc(u32 index, u32 inc, u32 queue_size)
 {
 	u32 new_index = CIRCULAR_QUEUE_REAL_INDEX(index) + inc;
 
-	if (new_index >= queue_size)
+	if (unlikely(new_index >= queue_size))
 		return (index + inc - queue_size) ^ CIRCULAR_QUEUE_WRAP_BIT;
 	else
 		return index + inc;

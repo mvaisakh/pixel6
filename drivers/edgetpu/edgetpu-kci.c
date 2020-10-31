@@ -99,7 +99,7 @@ static void edgetpu_kci_consume_wait_list(
 {
 	struct edgetpu_kci_wait_list *cur, *nxt;
 
-	mutex_lock(&kci->wait_list_lock);
+	spin_lock(&kci->wait_list_lock);
 
 	list_for_each_entry_safe(cur, nxt, &kci->wait_list, list) {
 		if (cur->resp->seq > resp->seq)
@@ -116,7 +116,7 @@ static void edgetpu_kci_consume_wait_list(
 		kfree(cur);
 	}
 
-	mutex_unlock(&kci->wait_list_lock);
+	spin_unlock(&kci->wait_list_lock);
 }
 
 /* Handler of a response. */
@@ -134,7 +134,8 @@ static void edgetpu_kci_handle_response(
  * @total_ptr will be the number of elements fetched.
  *
  * Returns -ENOMEM if failed on memory allocation.
- * Returns NULL if the response queue is empty.
+ * Returns NULL if the response queue is empty or there is another worker
+ * fetching responses.
  */
 static struct edgetpu_kci_response_element *edgetpu_kci_fetch_responses(
 		struct edgetpu_kci *kci, u32 *total_ptr)
@@ -150,7 +151,9 @@ static struct edgetpu_kci_response_element *edgetpu_kci_fetch_responses(
 	struct edgetpu_kci_response_element *ret = NULL;
 	struct edgetpu_kci_response_element *prev_ptr = NULL;
 
-	mutex_lock(&kci->resp_queue_lock);
+	/* someone is working on consuming - we can leave early */
+	if (!spin_trylock(&kci->resp_queue_lock))
+		goto out;
 
 	head = kci->mailbox->resp_queue_head;
 	/* loop until our head equals to CSR tail */
@@ -162,7 +165,7 @@ static struct edgetpu_kci_response_element *edgetpu_kci_fetch_responses(
 
 		prev_ptr = ret;
 		ret = krealloc(prev_ptr, (total + count) * sizeof(*queue),
-			       GFP_KERNEL);
+			       GFP_ATOMIC);
 		/*
 		 * Out-of-memory, we can return the previously fetched responses
 		 * if any, or ENOMEM otherwise.
@@ -186,14 +189,15 @@ static struct edgetpu_kci_response_element *edgetpu_kci_fetch_responses(
 	}
 	edgetpu_mailbox_inc_resp_queue_head(kci->mailbox, total);
 
-	mutex_unlock(&kci->resp_queue_lock);
+	spin_unlock(&kci->resp_queue_lock);
 	/*
-	 * Ring the doorbell of *cmd* queue if the firmware might be waiting us
-	 * to consume the response queue.
+	 * We consumed a lot of responses - ring the doorbell of *cmd* queue to
+	 * notify the firmware, which might be waiting us to consume the
+	 * response queue.
 	 */
-	if (total == size)
+	if (total >= size / 2)
 		EDGETPU_MAILBOX_CMD_QUEUE_WRITE(kci->mailbox, doorbell_set, 1);
-
+out:
 	*total_ptr = total;
 	return ret;
 }
@@ -216,8 +220,8 @@ static void edgetpu_kci_consume_responses_work(struct work_struct *work)
 
 	/* fetch responses and bump RESP_QUEUE_HEAD */
 	responses = edgetpu_kci_fetch_responses(kci, &count);
-	/* Wake up threads that waiting for response doorbell to be rung. */
-	wake_up(&kci->resp_doorbell_waitq);
+	if (count == 0)
+		return;
 	if (IS_ERR(responses)) {
 		etdev_err(mailbox->etdev,
 			  "KCI failed on fetching responses: %ld",
@@ -234,15 +238,69 @@ static void edgetpu_kci_consume_responses_work(struct work_struct *work)
 	kfree(responses);
 }
 
+/* Returns the number of responses fetched - either 0 or 1. */
+static int
+edgetpu_kci_fetch_one_response(struct edgetpu_kci *kci,
+			       struct edgetpu_kci_response_element *resp)
+{
+	u32 head;
+	u32 tail;
+	const struct edgetpu_kci_response_element *queue = kci->resp_queue;
+
+	if (!spin_trylock(&kci->resp_queue_lock))
+		return 0;
+
+	head = kci->mailbox->resp_queue_head;
+	tail = EDGETPU_MAILBOX_RESP_QUEUE_READ_SYNC(kci->mailbox, tail);
+	/* queue empty */
+	if (head == tail) {
+		spin_unlock(&kci->resp_queue_lock);
+		return 0;
+	}
+
+	memcpy(resp, &queue[CIRCULAR_QUEUE_REAL_INDEX(head)], sizeof(*queue));
+	resp->status = KCI_STATUS_OK;
+	edgetpu_mailbox_inc_resp_queue_head(kci->mailbox, 1);
+
+	spin_unlock(&kci->resp_queue_lock);
+
+	return 1;
+}
+
+static void edgetpu_kci_consume_one_response(struct edgetpu_kci *kci)
+{
+	struct edgetpu_kci_response_element resp;
+	int ret;
+
+	/* fetch (at most) one response */
+	ret = edgetpu_kci_fetch_one_response(kci, &resp);
+	if (!ret)
+		return;
+	edgetpu_kci_handle_response(kci, &resp);
+	/*
+	 * Responses handled, wake up threads that are waiting for a response.
+	 */
+	wake_up(&kci->wait_list_waitq);
+}
+
 /*
  * IRQ handler of KCI mailbox.
  *
- * Puts the edgetpu_kci_consume_responses_work() into the system work queue.
+ * Consumes one response (if any) and puts edgetpu_kci_consume_responses_work()
+ * into the system work queue.
  */
 static void edgetpu_kci_handle_irq(struct edgetpu_mailbox *mailbox)
 {
 	struct edgetpu_kci *kci = mailbox->internal.kci;
 
+	/* Wake up threads that are waiting for response doorbell to be rung. */
+	wake_up(&kci->resp_doorbell_waitq);
+	/*
+	 * Quickly consumes one response, which should be enough for usual
+	 * cases, to prevent the host from being too busy to execute the
+	 * scheduled work.
+	 */
+	edgetpu_kci_consume_one_response(kci);
 	schedule_work(&kci->work);
 }
 
@@ -275,7 +333,7 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 		return PTR_ERR(addr);
 	}
 	kci->resp_queue = addr;
-	mutex_init(&kci->resp_queue_lock);
+	spin_lock_init(&kci->resp_queue_lock);
 	etdev_dbg(mgr->etdev, "%s: rspq kva=%pK iova=0x%llx dma=%pad", __func__,
 		  addr, kci->resp_queue_tpu_addr, &kci->resp_queue_dma_addr);
 
@@ -286,7 +344,7 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	mutex_init(&kci->mailbox_lock);
 	init_waitqueue_head(&kci->resp_doorbell_waitq);
 	INIT_LIST_HEAD(&kci->wait_list);
-	mutex_init(&kci->wait_list_lock);
+	spin_lock_init(&kci->wait_list_lock);
 	init_waitqueue_head(&kci->wait_list_waitq);
 	INIT_WORK(&kci->work, edgetpu_kci_consume_responses_work);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
@@ -366,9 +424,9 @@ static int edgetpu_kci_push_wait_resp(struct edgetpu_kci *kci,
 	if (!entry)
 		return -ENOMEM;
 	entry->resp = resp;
-	mutex_lock(&kci->wait_list_lock);
+	spin_lock(&kci->wait_list_lock);
 	list_add_tail(&entry->list, &kci->wait_list);
-	mutex_unlock(&kci->wait_list_lock);
+	spin_unlock(&kci->wait_list_lock);
 
 	return 0;
 }
@@ -383,7 +441,7 @@ static void edgetpu_kci_del_wait_resp(struct edgetpu_kci *kci,
 {
 	struct edgetpu_kci_wait_list *cur;
 
-	mutex_lock(&kci->wait_list_lock);
+	spin_lock(&kci->wait_list_lock);
 
 	list_for_each_entry(cur, &kci->wait_list, list) {
 		if (cur->resp->seq > resp->seq)
@@ -395,7 +453,7 @@ static void edgetpu_kci_del_wait_resp(struct edgetpu_kci *kci,
 		}
 	}
 
-	mutex_unlock(&kci->wait_list_lock);
+	spin_unlock(&kci->wait_list_lock);
 }
 
 int edgetpu_kci_push_cmd(struct edgetpu_kci *kci,
@@ -628,12 +686,6 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci)
 		case FW_FLAVOR_PROD_DEFAULT:
 		case FW_FLAVOR_CUSTOM:
 			flavor = resp.retval;
-			break;
-		/* TODO(b/163366965): remove when old bl1 no longer in use. */
-		case 0xb01ab01a:
-			etdev_dbg(kci->mailbox->etdev,
-				  "old bl1 loader detected\n");
-			flavor = FW_FLAVOR_BL1;
 			break;
 		default:
 			etdev_dbg(kci->mailbox->etdev,

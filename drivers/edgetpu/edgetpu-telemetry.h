@@ -16,7 +16,9 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 
-#define EDGETPU_TELEMETRY_BUFFER_SIZE 4096
+#define EDGETPU_TELEMETRY_BUFFER_SIZE (16 * 4096)
+/* assumes buffer size is power of 2 */
+#define EDGETPU_TELEMETRY_WRAP_BIT EDGETPU_TELEMETRY_BUFFER_SIZE
 
 enum edgetpu_telemetry_state {
 	EDGETPU_TELEMETRY_DISABLED = 0,

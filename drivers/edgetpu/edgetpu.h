@@ -104,6 +104,9 @@ struct edgetpu_map_ioctl {
  * fetched from the kernel's record.
  */
 #define EDGETPU_UNMAP_BUFFER \
+	_IOW(EDGETPU_IOCTL_BASE, 4, struct edgetpu_map_ioctl)
+
+#define EDGETPU_UNMAP_BUFFER_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 4, struct edgetpu_map_ioctl)
 
 /*
@@ -120,6 +123,9 @@ struct edgetpu_event_register {
 
 /* Set eventfd for notification of events from kernel to the device group. */
 #define EDGETPU_SET_EVENTFD \
+	_IOW(EDGETPU_IOCTL_BASE, 5, struct edgetpu_event_register)
+
+#define EDGETPU_SET_EVENTFD_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 5, struct edgetpu_event_register)
 
 /* TODO(b/167151866): remove this structure and EDGETPU_CREATE_GROUP_COMPAT */
@@ -160,8 +166,14 @@ struct edgetpu_mailbox_attr {
 #define EDGETPU_CREATE_GROUP \
 	_IOW(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
 
+#define EDGETPU_CREATE_GROUP_COMPAT_2 \
+	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
+
 /* Join the calling fd to the device group of the supplied fd. */
 #define EDGETPU_JOIN_GROUP \
+	_IOW(EDGETPU_IOCTL_BASE, 7, __u32)
+
+#define EDGETPU_JOIN_GROUP_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 7, __u32)
 
 /* Finalize the device group with the caller as the master. */
@@ -177,6 +189,9 @@ struct edgetpu_mailbox_attr {
 
 /* Set eventfd for notification of per-die events from kernel. */
 #define EDGETPU_SET_PERDIE_EVENTFD \
+	_IOW(EDGETPU_IOCTL_BASE, 9, struct edgetpu_event_register)
+
+#define EDGETPU_SET_PERDIE_EVENTFD_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 9, struct edgetpu_event_register)
 
 struct edgetpu_device_buffer_ioctl {
@@ -210,10 +225,16 @@ struct edgetpu_device_buffer_ioctl {
 
 /* Unset event by event_id registered with EDGETPU_SET_EVENTFD. */
 #define EDGETPU_UNSET_EVENT \
+	_IOW(EDGETPU_IOCTL_BASE, 14, __u32)
+
+#define EDGETPU_UNSET_EVENT_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 14, __u32)
 
 /* Unset event by event_id registered with EDGETPU_SET_PERDIE_EVENTFD. */
 #define EDGETPU_UNSET_PERDIE_EVENT \
+	_IOW(EDGETPU_IOCTL_BASE, 15, __u32)
+
+#define EDGETPU_UNSET_PERDIE_EVENT_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 15, __u32)
 
 #define EDGETPU_SYNC_FOR_DEVICE		(0 << 2)
@@ -264,6 +285,9 @@ struct edgetpu_sync_ioctl {
  * EINVAL: If the target device group is disbanded.
  */
 #define EDGETPU_SYNC_BUFFER \
+	_IOW(EDGETPU_IOCTL_BASE, 16, struct edgetpu_sync_ioctl)
+
+#define EDGETPU_SYNC_BUFFER_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 16, struct edgetpu_sync_ioctl)
 
 struct edgetpu_map_dmabuf_ioctl {
@@ -322,6 +346,9 @@ struct edgetpu_map_dmabuf_ioctl {
  * EINVAL: If the target device group is disbanded.
  */
 #define EDGETPU_UNMAP_DMABUF \
+	_IOW(EDGETPU_IOCTL_BASE, 18, struct edgetpu_map_dmabuf_ioctl)
+
+#define EDGETPU_UNMAP_DMABUF_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 18, struct edgetpu_map_dmabuf_ioctl)
 
 /*
@@ -333,6 +360,9 @@ struct edgetpu_map_dmabuf_ioctl {
  * ENOTTY: If config EDGETPU_DEVICE_DRAM is disabled.
  */
 #define EDGETPU_ALLOCATE_DEVICE_BUFFER \
+	_IOW(EDGETPU_IOCTL_BASE, 19, __u64)
+
+#define EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT_2 \
 	_IOR(EDGETPU_IOCTL_BASE, 19, __u64)
 
 /*
@@ -375,6 +405,9 @@ struct edgetpu_signal_sync_fence_data {
  * Signals the first DMA sync fence in the sync file.
  */
 #define EDGETPU_SIGNAL_SYNC_FENCE \
+	_IOW(EDGETPU_IOCTL_BASE, 21, struct edgetpu_signal_sync_fence_data)
+
+#define EDGETPU_SIGNAL_SYNC_FENCE_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 21, struct edgetpu_signal_sync_fence_data)
 
 #define EDGETPU_IGNORE_FD (-1)
@@ -427,6 +460,9 @@ struct edgetpu_map_bulk_dmabuf_ioctl {
  * EINVAL: If the target device group is disbanded.
  */
 #define EDGETPU_UNMAP_BULK_DMABUF \
+	_IOW(EDGETPU_IOCTL_BASE, 23, struct edgetpu_map_bulk_dmabuf_ioctl)
+
+#define EDGETPU_UNMAP_BULK_DMABUF_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 23, struct edgetpu_map_bulk_dmabuf_ioctl)
 
 /*

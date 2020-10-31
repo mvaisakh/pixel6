@@ -18,6 +18,7 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-pm.h"
+#include "edgetpu-telemetry.h"
 
 /* Default power state: the lowest power state that keeps firmware running */
 static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
@@ -362,6 +363,8 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm);
 static int abrolhos_power_up(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
+	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
+		etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
 	struct device *dev = etdev->dev;
 	int ret = abrolhos_pwr_state_set(dev,
 					 abrolhos_get_initial_pwr_state(dev));
@@ -369,6 +372,12 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 	if (ret)
 		return ret;
+
+	/* Clear out log / trace buffers */
+	memset(edgetpu_pdev->log_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
+#if IS_ENABLED(CONFIG_EDGETPU_TELEMETRY_TRACE)
+	memset(edgetpu_pdev->trace_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
+#endif
 
 	edgetpu_chip_init(etdev);
 
