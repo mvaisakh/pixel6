@@ -56,6 +56,15 @@ struct exynos_panel_funcs {
 	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, bool hbm_mode);
 
 	/**
+	 * @set_local_hbm_mode:
+	 *
+	 * This callback is used to implement panel specific logic for local high
+	 * brightness mode enablement. If this is not defined, it means that panel
+	 * does not support local HBM
+	 */
+	void (*set_local_hbm_mode)(struct exynos_panel *exynos_panel,
+				 bool local_hbm_en);
+	/**
 	 * @is_mode_seamless:
 	 *
 	 * This callback is used to check if a switch to a particular mode can be done
@@ -96,6 +105,7 @@ struct exynos_panel_desc {
 
 #define PANEL_ID_MAX		32
 #define PANEL_EXTINFO_MAX	16
+#define LOCAL_HBM_MAX_TIMEOUT_MS 1500 /* 1500 ms */
 
 struct exynos_panel {
 	struct device *dev;
@@ -125,6 +135,18 @@ struct exynos_panel {
 		struct drm_property *min_luminance;
 		struct drm_property *hdr_formats;
 	} props;
+
+	struct {
+		/* indicate if local hbm enabled or not */
+		bool enabled;
+		/* max local hbm on period in ms */
+		u32 max_timeout_ms;
+		/* used to protect local hbm operation */
+		struct mutex lock;
+		/* workqueue used to turn off local hbm if reach max_timeout */
+		struct workqueue_struct *wq;
+		struct delayed_work timeout_work;
+	} local_hbm;
 };
 
 static inline int exynos_dcs_write(struct exynos_panel *ctx, const void *data,
