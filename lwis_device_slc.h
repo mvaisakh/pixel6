@@ -14,7 +14,7 @@
 #include "lwis_device.h"
 #include <soc/google/pt.h>
 
-#define NUM_PT 5
+#define NUM_PT 6
 
 struct slc_partition {
 	int id;

@@ -60,7 +60,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 	int i = 0;
 	int ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
-	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048, 3072 };
+	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 1024, 2048, 3072 };
 
 	if (!lwis_dev) {
 		pr_err("LWIS device cannot be NULL\n");
@@ -110,9 +110,9 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < NUM_PT; i++) {
 		if (slc_dev->pt[i].partition_id != PT_PTID_INVALID) {
-			dev_err(slc_dev->base_dev.dev,
-				"Closing partition id %d at device shutdown",
-				slc_dev->pt[i].id);
+			dev_info(slc_dev->base_dev.dev,
+				 "Closing partition id %d at device shutdown",
+				 slc_dev->pt[i].id);
 			pt_client_disable(slc_dev->partition_handle,
 					  slc_dev->pt[i].id);
 			slc_dev->pt[i].partition_id = PT_PTID_INVALID;
