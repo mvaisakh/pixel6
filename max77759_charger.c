@@ -32,6 +32,30 @@
 #include "max_m5.h"
 #include "max77759.h"
 
+/* Hardware modes */
+enum max77759_charger_modes {
+	MAX77759_CHGR_MODE_ALL_OFF = 0x00,
+	MAX77759_CHGR_MODE_BUCK_ON = 0x04,
+	MAX77759_CHGR_MODE_CHGR_BUCK_ON = 0x05,
+	MAX77759_CHGR_MODE_BOOST_UNO_ON = 0x08,
+	MAX77759_CHGR_MODE_BOOST_ON = 0x09,
+	MAX77759_CHGR_MODE_OTG_BOOST_ON = 0x0a,
+	MAX77759_CHGR_MODE_BUCK_BOOST_UNO_ON = 0x0c,
+	MAX77759_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON = 0x0d,
+	MAX77759_CHGR_MODE_OTG_BUCK_BOOST_ON = 0x0e,
+	MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON = 0x0f,
+};
+
+/* internal system values */
+enum {
+	GBMS_CHGR_MODE_STBY_ON	    = 0x10 + MAX77759_CHGR_MODE_ALL_OFF,
+	GBMS_CHGR_MODE_CHGR_BUCK_ON = 0x10 + MAX77759_CHGR_MODE_CHGR_BUCK_ON,
+	GBMS_CHGR_MODE_BOOST_UNO_ON = 0x10 + MAX77759_CHGR_MODE_BOOST_UNO_ON,
+};
+
+#define MAX77759_DEFAULT_MODE	MAX77759_CHGR_MODE_ALL_OFF
+
+
 /* CHG_DETAILS_01:CHG_DTLS */
 #define CHGR_DTLS_DEAD_BATTERY_MODE			0x00
 #define CHGR_DTLS_FAST_CHARGE_CONST_CURRENT_MODE	0x01
@@ -46,7 +70,14 @@
 #define CHGR_DTLS_OFF_JEITA				0x0c
 #define CHGR_DTLS_OFF_TEMP				0x0d
 
-#define MAX77759_DEFAULT_MODE	GBMS_CHGR_MODE_ALL_OFF
+/* for usecases */
+struct max77759_usecase_data {
+	int bst_on;	/* */
+	int bst_sel;	/* */
+	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
+
+	bool init_done;
+};
 
 struct max77759_chgr_data {
 	struct device *dev;
@@ -60,6 +91,7 @@ struct max77759_chgr_data {
 
 	struct gvotable_election *mode_votable;
 	enum gbms_charger_modes last_mode;
+	struct max77759_usecase_data uc_data;
 
 	struct gvotable_election *dc_icl_votable;
 	struct gvotable_election *dc_suspend_votable;
@@ -79,6 +111,8 @@ struct max77759_chgr_data {
 	struct mutex io_lock;
 	bool resume_complete;
 	bool init_complete;
+
+	int use_case;
 
 	int fship_dtls;
 	bool online;
@@ -160,106 +194,634 @@ static int max77759_wdt_enable(struct max77759_chgr_data *data, bool enable)
 		0 : -EINVAL;
 }
 
-struct max77759_foreach_callback_data {
+
+struct max77759_foreach_cb_data {
 	struct gvotable_election *el;
+
 	const char *reason;
-	bool force_off;
-	bool chgin_off;
-	bool wcin_off;
-	int cp_on;
-	int uno_on;
-	int chgr_on;
-	int boost_on;
-	int buck_on;
-	int otg_on;
-	int mode;
+
+	bool chgr_on;	/* CC_MAX != 0 */
+	bool stby_on;	/* on disconnect */
+
+	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
+
+	bool otg_on;	/* power out, usually external */
+	bool frs_on;	/* fast role swap */
+
+	bool wlc_on;	/* charging wireless */
+	bool wlc_tx;	/* battery share */
+
+	bool pps_dc;	/* PPS enabled - wired */
+	bool wlc_dc;	/* PPS enabled - wireless */
+
+	bool boost_on;	/* old for WLC program */
+	bool uno_on;	/* old for WLC program */
+
+	u8 raw_value;	/* hard override */
+	bool use_raw;
+
 	u8 reg;
 };
 
-/*
- *
- */
+/* First step to convert votes to a usecase and a setting for mode */
 static int max77759_foreach_callback(void *data, const char *reason,
 				     void *vote)
 {
-	struct max77759_foreach_callback_data *cb_data = data;
+	struct max77759_foreach_cb_data *cb_data = data;
 	int mode = (int)vote; /* max77759_mode is an int election */
 
-	pr_debug("%s: cb_data(reg=0x%x mode=%d reason=%s) mode=%x reason=%s\n",
-		 __func__, cb_data->reg, cb_data->mode, cb_data->reason,
-		 mode, reason ? reason : "");
+	pr_info("%s: %s : reason=%s mode=%x\n", __func__,
+		 cb_data->reason, reason ? reason : "", mode);
 
-	/* RAW modes map MW registers to a register value */
 	switch (mode) {
-	/* a single ALL OFF overrides everybody */
-	case GBMS_CHGR_MODE_ALL_OFF:
-		if (!cb_data->force_off)
-			cb_data->reason = reason;
-		cb_data->force_off += 1;
+	/* Direct raw modes last come fist served */
+	case MAX77759_CHGR_MODE_ALL_OFF:
+	case MAX77759_CHGR_MODE_BUCK_ON:
+	case MAX77759_CHGR_MODE_CHGR_BUCK_ON:
+	case MAX77759_CHGR_MODE_BOOST_UNO_ON:
+	case MAX77759_CHGR_MODE_BOOST_ON:
+	case MAX77759_CHGR_MODE_OTG_BOOST_ON:
+	case MAX77759_CHGR_MODE_BUCK_BOOST_UNO_ON:
+	case MAX77759_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
+	case MAX77759_CHGR_MODE_OTG_BUCK_BOOST_ON:
+	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
+		if (cb_data->use_raw)
+			break;
+		pr_info("%s:%d RAW vote=%x\n", __func__, __LINE__, mode);
+		cb_data->raw_value = mode;
+		cb_data->reason = reason;
+		cb_data->use_raw = true;
 		break;
 
-	/* inflow on but not charging */
-	case GBMS_CHGR_MODE_BUCK_ON:
-		if (!cb_data->buck_on)
-			cb_data->reason = reason;
-		cb_data->buck_on += 1;
-		break;
-
-	/*  inflow on, charging is on */
-	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
-		if (!cb_data->chgr_on || !cb_data->buck_on)
-			cb_data->reason = reason;
-		cb_data->chgr_on += 1;
-		cb_data->buck_on += 1;
-		break;
-
+	/* temporary, can be used to program the WLC chip, remove */
 	case GBMS_CHGR_MODE_BOOST_UNO_ON:
 		if (!cb_data->boost_on || !cb_data->uno_on)
 			cb_data->reason = reason;
+		pr_info("%s:%d BOOST_UNO vote=%x\n", __func__, __LINE__, mode);
 		cb_data->boost_on += 1;
 		cb_data->uno_on += 1;
 		break;
 
-	/* boost mode, source */
-	case GBMS_CHGR_MODE_OTG_BOOST_ON:
-		if (!cb_data->boost_on || !cb_data->otg_on)
+	/* SYSTEM modes can add complex transactions */
+
+	/* MAX77759: on disconnect */
+	case GBMS_CHGR_MODE_STBY_ON:
+		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		cb_data->boost_on += 1;
+		pr_info("%s:%d FORCE_OFF vote=%x\n", __func__, __LINE__, mode);
+		cb_data->stby_on += 1;
+		break;
+
+	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
+	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
+		if (!cb_data->chgr_on)
+			cb_data->reason = reason;
+		pr_info("%s:%d CHGR_BUCK_ON vote=%x\n", __func__, __LINE__, mode);
+		cb_data->chgr_on += 1;
+		break;
+
+	/* USB: inflow, actual charging controlled via BUCK_ON */
+	case GBMS_USB_BUCK_ON:
+		if (!cb_data->buck_on)
+			cb_data->reason = reason;
+		pr_info("%s:%d BUCK_ON vote=%x\n", __func__, __LINE__, mode);
+		cb_data->buck_on += 1;
+		break;
+	/* USB: OTG, source, fast role swap case */
+	case GBMS_USB_OTG_FRS_ON:
+		if (!cb_data->frs_on)
+			cb_data->reason = reason;
+		pr_info("%s:%d FRS_ON vote=%x\n", __func__, __LINE__, mode);
+		cb_data->frs_on += 1;
+		break;
+	/* USB: boost mode, source, normally external boost */
+	case GBMS_USB_OTG_ON:
+		if (!cb_data->otg_on)
+			cb_data->reason = reason;
+		pr_info("%s:%d OTG_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->otg_on += 1;
 		break;
-
-	case GBMS_CHGR_MODE_BOOST_ON:
-	case GBMS_CHGR_MODE_BUCK_BOOST_UNO_ON:
-	case GBMS_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
-	case GBMS_CHGR_MODE_OTG_BUCK_BOOST_ON:
-	case GBMS_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
-		pr_err("mode=%x not implemented\n", mode);
-		break;
-
-	/* SYSTEM or COOKED modes can add complex transactions */
-
-	/* DC Charging: mode=0, set CP_EN. TODO: enable WDTEN */
+	/* DC Charging: mode=0, set CP_EN */
 	case GBMS_CHGR_MODE_CHGR_DC:
-		if (!cb_data->cp_on)
+		if (!cb_data->pps_dc)
 			cb_data->reason = reason;
-		cb_data->cp_on += 1;
+		pr_info("%s:%d DC_ON vote=%x\n", __func__, __LINE__, mode);
+		cb_data->pps_dc += 1;
 		break;
 
 	default:
-		pr_err("mode=%x not supported\n", mode);
+		pr_info("mode=%x not supported\n", mode);
 		break;
 	}
 
 	return 0;
 }
 
-/* I am using a the comparator_none, need scan all the votes */
+/*
+ *  Use cases, these are platform specific and need to be outside the driver.
+ * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSx	Name
+ * ----------------------------------------------------------------------------
+ * 1-1	1	0	x	0	IF-PMIC-VBUS	0	0/0	USB_CHG
+ * 1-2	2	0	x	0	DC VBUS		0	0/0	USB_DC
+ * 2-1	1	0	0	1	IF-PMIC-VBUS	2	0/1	USB_CHG_WLC_TX
+ * 2-2	2	0	0	1	DC CHG		2	0/1	USB_DC_WLC_TX
+ * 3-1	0	0	1	0	IF-PMIC-WCIN	0	0/0	WLC_RX
+ * 3-2	0	0	2	0	DC WCIN		0	0/0	WLC_DC
+ * 4-1	0	1	1	0	IF-PMIC-WCIN	1	1/0	USB_OTG_WLC_RX
+ * 4-2	0	1	2	0	DC WCIN		1	1/0	USB_OTG_WLC_DC
+ * 5-1	0	1	0	0	0		1	1/0	USB_OTG
+ * 5-2	0	1	0	0	OTG 5V		0	0/0	USB_OTG_FRS
+ * 6-2	0	0	0	1	0		2	0/1	WLC_TX
+ * 7-2	0	1	0	1	MW OTG 5V	2	0/1	USB_OTG_WLC_TX
+ * 8	0	0	0	0	0		0	0/0	IDLE
+ * ----------------------------------------------------------------------------
+ *
+ * Ext_Boost = 0 off, 1 = OTG 5V, 2 = WTX 7.5
+ * USB_chg = 0 off, 1 = on, 2 = PPS
+ * WLC_chg = 0 off, 1 = on, 2 = PPS
+ */
+
+enum gsu_usecases {
+	GSU_RAW_MODE 		= -1,	/* raw mode, default, */
+
+	GSU_MODE_STANDBY	= 0,	/* 8, PMIC mode 0 */
+	GSU_MODE_USB_CHG	= 1,	/* 1-1 wired mode 0x4, mode 0x5 */
+	GSU_MODE_USB_DC 	= 2,	/* 1-2 wired mode 0x0 */
+	GSU_MODE_USB_CHG_WLC_TX = 3,	/* 2-1, 1041, */
+	GSU_MODE_USB_DC_WLC_TX	= 4,	/* 2-2 1042, */
+
+	GSU_MODE_WLC_RX		= 5,	/* 3-1, mode 0x4, mode 0x5 */
+	GSU_MODE_WLC_DC		= 6,	/* 3-2, mode 0x0 */
+
+	GSU_MODE_USB_OTG_WLC_RX = 7,	/* 4-1, 524, */
+	GSU_MODE_USB_OTG_WLC_DC = 8,	/* 4-2, 532, */
+	GSU_MODE_USB_OTG 	= 9,	/* 5-1, 516,*/
+	GSU_MODE_USB_OTG_FRS	= 10,	/* 5-2, PMIC mode 0x0a */
+
+	GSU_MODE_WLC_TX 	= 11,	/* 6-2, 1056, */
+	GSU_MODE_USB_OTG_WLC_TX	= 12,	/* 7-2, 1060, */
+};
+
+
+/* control VENDOR_EXTBST_CTRL (from TCPCI module) */
+static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
+{
+	int ret = 0;
+
+	pr_info("%s: mode=%d on=%d sel=%d\n", __func__, mode,
+		data->uc_data.ext_bst_ctl);
+
+	if (data->uc_data.ext_bst_ctl < 0)
+		return 0;
+
+	switch (mode) {
+	case 0:
+		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 0);
+		break;
+	case 1:
+		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 1);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+/* control external boost mode
+ * can be done controlling ls1, ls2
+ */
+#define EXT_MODE_OFF		0
+#define EXT_MODE_OTG_5_0V	1
+#define EXT_MODE_OTG_7_5V	2
+
+/* GPIO5 on Max77759 on canopy and on all whitefins */
+static int max77759_ext_mode(struct max77759_chgr_data *data, int mode)
+{
+	int ret = 0;
+
+	pr_info("%s: mode=%d on=%d sel=%d\n", __func__, mode,
+		data->uc_data.bst_on, data->uc_data.bst_sel);
+
+	if (data->uc_data.bst_on < 0 || data->uc_data.bst_sel < 0)
+		return 0;
+
+	switch (mode) {
+	case EXT_MODE_OFF:
+		gpio_set_value_cansleep(data->uc_data.bst_on, 0);
+		break;
+	case EXT_MODE_OTG_5_0V:
+		gpio_set_value_cansleep(data->uc_data.bst_sel, 0);
+		mdelay(100);
+		gpio_set_value_cansleep(data->uc_data.bst_on, 1);
+		break;
+	case EXT_MODE_OTG_7_5V: /* TODO: verify this */
+		gpio_set_value_cansleep(data->uc_data.bst_sel, 1);
+		mdelay(100);
+		gpio_set_value_cansleep(data->uc_data.bst_on, 1);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+/*
+ * Transition to standby (if needed) at the beginning of the sequences
+ * @return <0 on error, 0 on success. ->use_case becomes GSU_MODE_STANDBY
+ * if the transition is necessary (and successful).
+ */
+static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
+{
+	bool need_stby = false;
+	int ret;
+
+	switch (data->use_case) {
+		case GSU_MODE_USB_CHG:
+			need_stby = use_case != GSU_MODE_USB_CHG_WLC_TX &&
+				    use_case != GSU_MODE_WLC_RX &&
+				    use_case != GSU_MODE_USB_DC;
+			break;
+		case GSU_MODE_WLC_RX:
+			need_stby = use_case != GSU_MODE_USB_OTG_WLC_RX &&
+				    use_case != GSU_MODE_WLC_DC;
+			break;
+		case GSU_MODE_WLC_TX:
+			need_stby = use_case != GSU_MODE_USB_OTG_WLC_TX &&
+				    use_case != GSU_MODE_USB_CHG_WLC_TX &&
+				    use_case != GSU_MODE_USB_DC_WLC_TX;
+			break;
+		case GSU_MODE_USB_CHG_WLC_TX:
+			need_stby = use_case != GSU_MODE_USB_CHG;
+			break;
+		case GSU_MODE_USB_OTG: 	/* From 5. USB OTG to 8. standby */
+
+
+			if (use_case == GSU_MODE_USB_OTG_FRS)
+				break;
+
+			/* missing setting EXT_BST_EN in MW (TCPM) */
+
+			ret = max77759_ext_mode(data, 0);
+			if (ret < 0) {
+				dev_err(data->dev, "cannot turn off ext (%d)\n",
+					ret);
+				return -EIO;
+			}
+
+			/* missing Discharge IN/OUT nodes with AO37  */
+			mdelay(100);
+
+			need_stby = true;
+			break;
+
+		case GSU_MODE_USB_OTG_FRS:
+
+			if (use_case == GSU_MODE_USB_OTG)
+				break;
+
+			need_stby = true;
+			break;
+
+		/* no need to transition to stby for these modes */
+		case GSU_MODE_USB_OTG_WLC_RX:
+		case GSU_MODE_USB_OTG_WLC_TX:
+		case GSU_MODE_STANDBY:
+		default:
+			need_stby = false;
+			break;
+	}
+
+	pr_info("%s: use_case=%d->%d need_stby=%x\n", __func__,
+		data->use_case, use_case, need_stby);
+
+	if (!need_stby)
+		return 0;
+
+	if (data->use_case == GSU_MODE_WLC_TX) {
+		/* not yet */
+	}
+
+	/* transition to STBY (might need to be up) */
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00, 0);
+	if (ret < 0) {
+		dev_err(data->dev, "cannot reset mode (%d)\n", ret);
+		return -EIO;
+	}
+
+	data->use_case = GSU_MODE_STANDBY;
+	return 0;
+}
+
+/*
+ * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
+ * -------------------------------------------------------------------------------------
+ * 4-1	0	1	10	0	IF-PMIC-WCIN	1	1/0	USB_OTG_WLC_RX
+ * 4-2	0	1	01	0	DC WCIN		1	1/0	USB_OTG_WLC_DC
+ * 5-1	0	1	0	0	0		1	1/0	USB_OTG
+ * 5-2	0	1	0	0	OTG_5V		0	0/0	USB_OTG_FRS
+ * 7-2	0	1	0	1	OTG_5V		2	0/1	USB_OTG_WLC_TX
+ * -------------------------------------------------------------------------------------
+ * WLC_chg = 0 off, 1 = on, 2 = PPS
+ * Ext_Boost = 0 off, 1 = OTG 5V, 2 = WTX 7.5
+ *
+ * 5-1: mode=0x0 in MW, EXT_B=1, LS1=1, LS2=0, IDLE <-> OTG (ext)
+ * 5-2: mode=0xa in MW, EXT_B=0, LS1=0, LS2=0, IDLE <-> OTG_FRS
+ * 7-2: mode=0xa in MW, EXT_B=2, LS1=0, LS2=1
+ *
+ * AO37 + GPIO5 MW (canopy 3, whitev2p2)
+ * . AO_ls1 <&max20339_gpio 0 GPIO_ACTIVE_HIGH> - bit0
+ * . AO_ls2 <&max20339_gpio 1 GPIO_ACTIVE_HIGH> - bit4
+ *
+ * ls1 can be controlled poking the AO37 OR using a MW_GPIO _> EXT_BST_EN
+ *
+ * max77759,bst_on = <&max777x9_gpio 4 GPIO_ACTIVE_HIGH>
+ * max77759,bst-sel = <&gpp27 3 GPIO_ACTIVE_HIGH>
+ * max77759,bst_on=0, max77759,bst_sel=x => OFF
+ * max77759,bst_on=1, max77759,bst_sel=0 => 5V
+ * max77759,bst_on=1, max77759,bst_sel=1 => 7.5V
+ *
+ * Ext_Boost = 0 off
+ * 	MW_gpio5	: Ext_B = 0, MW_gpio5 -> LOW
+ * 	AO_ls1/ls2	: 0/0
+ *
+ * Ext_Boost = 1 = OTG 5V
+ * 	MW_gpio5	: Ext_B = 1, MW_gpio5 -> HIGH
+ * 	AO_ls1/ls2	: 1/0
+ *
+ * Ext_Boost = 2 WTX 7.5
+ * 	MW_gpio5	: Ext_B = 2, MW_gpio5 -> HIGH
+ * 	AO_ls1/ls2	: 0/1
+ *
+ * NOTE: do not call with (cb_data->wlc_on && cb_data->wlc_tx)
+ */
+static int max77759_to_otg_usecase(struct max77759_chgr_data *data,
+				   int use_case, u8 reg)
+{
+	int ret = 0;
+
+	if (!data->uc_data.init_done)
+		return -EPROBE_DEFER;
+
+	if (data->use_case == GSU_MODE_STANDBY) {
+		/* 5-1: #3: stby to USB OTG, mode = 1 */
+		/* 5-2: #3: stby to USB OTG_FRS, mode = 0 */
+		const int mode = use_case == GSU_MODE_USB_OTG_FRS ?
+					     EXT_MODE_OFF :
+					     EXT_MODE_OTG_5_0V;
+
+		/* Write 0b11 to IN_CTR(0x10).INSwEn[1:0] */
+		/* Write 0b1 to AO37 SwCntl (0xA).LSw1En */
+		/* TCPCM controls EXT_BST_EN? */
+		ret = max77759_ls_mode(data, 1);
+		if (ret == 0)
+			ret = max77759_ext_mode(data, mode);
+
+	} else if (data->use_case == GSU_MODE_USB_OTG) {
+		/*
+		 * OTG source handover: OTG -> OTG_FRS
+		 * from IF-PMIC OTG (FRS OTG) to EXT_BST (regular OTG)
+		 */
+	} else if (data->use_case == GSU_MODE_USB_OTG_FRS) {
+		/*
+		 * OTG source handover: OTG_FRS -> OTG
+		 * from EXT_BST (Regular OTG) to IF-PMIC OTG (FRS OTG)
+		 */
+	}
+
+	return ret;
+}
+
+/* handles the transition data->use_case ==> use_case */
+static int max77759_to_usecase(struct max77759_chgr_data *data,
+			       int use_case, u8 reg)
+{
+	int ret = 0;
+
+	pr_info("%s: use_case=%d->%d reg=%x\n", __func__,
+		data->use_case, use_case, reg);
+
+	switch (use_case) {
+	case GSU_MODE_USB_OTG:
+	case GSU_MODE_USB_OTG_FRS:
+		ret = max77759_to_otg_usecase(data, use_case, reg);
+		if (ret < 0)
+			return ret;
+		break;
+	case GSU_MODE_WLC_TX:
+		break;
+	default:
+		break;
+	}
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00, reg);
+	if (ret < 0) {
+		dev_err(data->dev, "cannot set CNFG_00 (%d)\n", ret);
+		return -EIO;
+	}
+
+	return ret;
+
+}
+
+/*
+ * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
+ * -------------------------------------------------------------------------------------
+ * 4-1	0	1	10	0	IF-PMIC-WCIN	1	1/0	USB_OTG_WLC_RX
+ * 4-2	0	1	01	0	DC WCIN		1	1/0	USB_OTG_WLC_DC
+ * 5-1	0	1	0	0	0		1	1/0	USB_OTG
+ * 5-2	0	1	0	0	OTG_5V		0	0/0	USB_OTG_FRS
+ * 7-2	0	1	0	1	OTG_5V		2	0/1	USB_OTG_WLC_TX
+ * -------------------------------------------------------------------------------------
+ * Ext_Boost = 0 off, 1 = OTG 5V, 2 = WTX 7.5
+ * WLC_chg = 0 off, 1 = on, 2 = PPS
+ *
+ * NOTE: do not call with (cb_data->wlc_on && cb_data->wlc_tx)
+ */
+static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
+{
+	int usecase;
+	u8 mode;
+
+	/* invalid, not with USB power */
+	if (cb_data->buck_on) {
+		pr_err("%s: buck_on with OTG\n", __func__);
+		return -EINVAL;
+	}
+
+	/* pure OTG default to FRS */
+	if (!cb_data->wlc_on && !cb_data->wlc_tx) {
+		/* 5-1: USB_OTG or  5-2: USB_OTG_FRS */
+
+		/* HACK: force FRS */
+		//cb_data->frs_on = 1;
+
+		if (cb_data->frs_on) {
+			usecase = GSU_MODE_USB_OTG_FRS;
+			mode = MAX77759_CHGR_MODE_OTG_BOOST_ON;
+		} else {
+			usecase = GSU_MODE_USB_OTG;
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+		}
+
+		if (cb_data->pps_dc)
+			pr_err("%s: charge pump on with OTG\n", __func__);
+		cb_data->pps_dc = 0;
+	} else if (cb_data->wlc_tx) {
+		/* 7-2 */
+		usecase = GSU_MODE_USB_OTG_WLC_TX;
+		pr_err("%s: GSU_MODE_WLC_TX not yet\n", __func__);
+
+		return -EINVAL;
+	} else if (cb_data->wlc_dc) {
+		/* 4-2, maybe use pps_dc */
+
+		pr_err("%s: GSU_MODE_WLC_TX not yet\n", __func__);
+
+		usecase = GSU_MODE_USB_OTG_WLC_DC;
+		mode = MAX77759_CHGR_MODE_ALL_OFF;
+
+		/* TODO: enable Ext_B 5V  */
+		return -EINVAL;
+	} else {
+
+		usecase = GSU_MODE_USB_OTG_WLC_RX;
+		mode = MAX77759_CHGR_MODE_ALL_OFF;
+
+		pr_debug("%s: chgr_on with OTG\n", __func__);
+
+	}
+
+	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, cb_data->pps_dc);
+	cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg, mode);
+	return usecase;
+}
+
+/*
+ * Determines the use case to switch to. This is device/system dependent and
+ * will likely be  factored to a separate file (compile module).
+ */
+static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
+{
+	int usecase;
+	u8 mode;
+
+	/* Raw mode, just use it TODO: transition to stby first */
+	if (cb_data->use_raw) {
+		cb_data->reg = cb_data->raw_value;
+		return GSU_RAW_MODE;
+	}
+
+	/* consistency check, TOD: add more */
+	if (cb_data->wlc_tx && cb_data->wlc_on) {
+		pr_err("%s: wlc_tx and wlc_rx\n", __func__);
+		return -EINVAL;
+	}
+
+	/* OTG modes override the others */
+	if (cb_data->otg_on || cb_data->frs_on)
+		return max77759_get_otg_usecase(cb_data);
+
+	/* buck_on is wired, wlc_on is wireless */
+	if (!cb_data->buck_on && !cb_data->wlc_on) {
+		mode = MAX77759_CHGR_MODE_ALL_OFF;
+		usecase = GSU_MODE_STANDBY;
+	} else {
+		/* MODE_BUCK_ON is inflow */
+		if (cb_data->chgr_on) {
+			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
+			usecase = GSU_MODE_USB_CHG;
+		} else {
+			mode = MAX77759_CHGR_MODE_BUCK_ON;
+			usecase = GSU_MODE_USB_CHG;
+		}
+
+		/* direct charging or off mode */
+		if (cb_data->pps_dc) {
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_USB_DC;
+		} else if (cb_data->wlc_dc) {
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_WLC_DC;
+		} else if (cb_data->stby_on) {
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_STANDBY;
+		}
+
+	}
+
+	/* reg might be ignored later */
+	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, cb_data->pps_dc);
+	cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg, mode);
+
+	return usecase;
+}
+
+/* switch to a use case, handle the transitions */
+static int max77759_set_usecase(struct max77759_chgr_data *data, u8 reg,
+				int use_case)
+{
+	int ret;
+
+	/* raw mode doesn't do any transition: this minimal implementation */
+	if (use_case == GSU_RAW_MODE)
+		return max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00,
+					  reg);
+
+	/* transition to STBY if requested from the use case. */
+	ret = max77759_to_standby(data, use_case);
+	if (ret < 0)
+		return ret;
+
+	/* transition from data->use_case to use_case */
+	ret = max77759_to_usecase(data, use_case, reg);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+static int max77759_wcin_is_online(struct max77759_chgr_data *data);
+
+/* lazy init on the */
+static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
+				    struct device_node *node)
+{
+
+	if (!node) {
+		uc_data->init_done = false;
+		uc_data->bst_on = -EPROBE_DEFER;
+		uc_data->bst_sel = -EPROBE_DEFER;
+		uc_data->ext_bst_ctl = -EPROBE_DEFER;
+		return 0;
+	}
+
+	if (uc_data->bst_on == -EPROBE_DEFER)
+		uc_data->bst_on = of_get_named_gpio(node, "max77759,bst-on", 0);
+
+	if (uc_data->bst_sel == -EPROBE_DEFER)
+		uc_data->bst_sel = of_get_named_gpio(node, "max77759,bst-sel", 0);
+
+	if (uc_data->ext_bst_ctl == -EPROBE_DEFER)
+		uc_data->ext_bst_ctl = of_get_named_gpio(node, "max77759,extbst-ctl", 0);
+
+	return uc_data->bst_on != -EPROBE_DEFER &&
+	       uc_data->bst_sel != -EPROBE_DEFER &&
+	       uc_data->ext_bst_ctl != -EPROBE_DEFER;
+}
+
+/*
+ * I am using a the comparator_none, need scan all the votes to determine
+ * the actual.
+ */
 static void max77759_mode_callback(struct gvotable_election *el,
 				   const char *reason, void *value)
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
-	struct max77759_foreach_callback_data cb_data = { 0 };
-	int ret;
+	struct max77759_usecase_data *uc_data = &data->uc_data;
+	struct max77759_foreach_cb_data cb_data = { 0 };
+	int use_case, ret;
 	u8 reg;
 
 	/* reason and value are the last voted on */
@@ -268,6 +830,13 @@ static void max77759_mode_callback(struct gvotable_election *el,
 
 	mutex_lock(&data->io_lock);
 
+	/* wait for usecases */
+	if (!uc_data->init_done) {
+		uc_data->init_done = max77759_setup_usecases(uc_data, data->dev->of_node);
+		dev_info(data->dev, "bst_on:%d, bst_sel:%d, ext_bst_ctl:%d",
+			 uc_data->bst_on, uc_data->bst_sel, uc_data->ext_bst_ctl);
+	}
+
 	/* no caching */
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
 	if (ret < 0) {
@@ -275,86 +844,60 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		goto unlock_done;
 	}
 
-	/* this is the last vote of the election,*/
-	cb_data.reason = reason;	/* from election */
-	cb_data.mode = -1;		/* requested */
-	cb_data.reg = reg;		/* actual register value */
-	cb_data.el = el;
+	/* this is the last vote of the election */
+	cb_data.reg = reg;	/* current */
+	cb_data.el = el;	/* election */
+	cb_data.wlc_on = max77759_wcin_is_online(data);
 
-	/* now scan all the reasons */
+	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
 
-	/* and parse the results to figure out mode */
-	if (cb_data.mode == -1)
-		cb_data.mode = (u8)value;
+	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
+		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
+		 reg);
 
-	/* buck on is inflow */
-	if (cb_data.buck_on)
-		cb_data.mode = GBMS_CHGR_MODE_BUCK_ON;
-	/* chgr on must have buck on */
-	if (cb_data.chgr_on)
-		cb_data.mode = GBMS_CHGR_MODE_CHGR_BUCK_ON;
-	/* direct charging and off mode */
-	if (cb_data.cp_on || cb_data.force_off)
-		cb_data.mode = GBMS_CHGR_MODE_ALL_OFF;
+	dev_info(data->dev, "%s: stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
+		"boost_on=%d, otg_on=%d, uno_on=%d\n", __func__,
+		cb_data.stby_on, cb_data.pps_dc, cb_data.chgr_on,
+		cb_data.buck_on, cb_data.boost_on, cb_data.otg_on,
+		cb_data.uno_on);
 
-	/* OTG case overrides the above */
-	if (cb_data.boost_on) {
-		if (cb_data.cp_on)
-			dev_warn(data->dev, "charge pump on with OTG\n");
-
-		if (cb_data.chgr_on)
-			dev_err(data->dev, "chgr_on with OTG\n");
-		if (cb_data.buck_on)
-			dev_err(data->dev, "buck_on with OTG\n");
-
-		if (cb_data.otg_on)
-			cb_data.mode = GBMS_CHGR_MODE_OTG_BOOST_ON;
-		else if (cb_data.otg_on)
-
-		cb_data.cp_on = 0;
+	/* figure out next use case */
+	use_case = max77759_get_usecase(&cb_data);
+	if (use_case < 0) {
+		dev_err(data->dev, "max77759_charger: no valid use case %d\n",
+			 use_case);
+		goto unlock_done;
 	}
 
-	/* more cases here... */
+	dev_info(data->dev, "%s: use_case=%x->%x reg=%x->%x\n", __func__,
+		 data->use_case, use_case, reg, cb_data.reg);
 
-	/* Fix the register now */
-	cb_data.reg = _chg_cnfg_00_cp_en_set(cb_data.reg, cb_data.cp_on);
-	cb_data.reg = _chg_cnfg_00_mode_set(cb_data.reg, cb_data.mode);
+	/* TODO: state machine that handle transition between states */
+	ret = max77759_set_usecase(data, cb_data.reg, use_case);
+	if (ret < 0) {
+		dev_err(data->dev, "%s: use_case=%x->%x reg=%x->%x ret=%d\n",
+			__func__, data->use_case, use_case, reg, cb_data.reg,
+			ret);
+		goto unlock_done;
+	}
 
 	/* the election is an int election */
-	ret = gvotable_election_set_result(el, cb_data.reason,
-					   (void*)(uintptr_t)cb_data.mode);
+	if (cb_data.reason)
+		reason = cb_data.reason;
+	if (!reason)
+		reason = "<>";
+
+	ret = gvotable_election_set_result(el, reason,
+					   (void*)(uintptr_t)cb_data.reg);
 	if (ret < 0) {
-		dev_err(data->dev, "max77759_charger: cannot update result %d\n",
+		dev_err(data->dev, "max77759_charger: cannot update election %d\n",
 			 ret);
 		goto unlock_done;
 	}
 
-	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x->%x\n",
-		 cb_data.mode, cb_data.reason ? cb_data.reason : "",
-		 reg, cb_data.reg);
-
-	if (cb_data.reg == reg)
-		goto unlock_done;
-
-	/* TODO: state machine that handle transition between states */
-
-	/* every transition start from mode 0 */
-	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00, 0);
-	if (ret < 0) {
-		dev_err(data->dev, "cannot reset mode (%d)\n", ret);
-		goto unlock_done;
-	}
-
-	/* TODO: state machine that handle transition between states */
-
-	/* change to final mode */
-	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00,
-				 cb_data.reg);
-	if (ret < 0)
-		dev_err(data->dev, "cannot set CNFG_00 (%d)\n", ret);
-
-	data->last_mode = cb_data.mode;
+	/* mode */
+	data->use_case = use_case;
 
 unlock_done:
 	mutex_unlock(&data->io_lock);
@@ -371,9 +914,9 @@ static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
 		return ret;
 
 	switch ((uintptr_t)vote) {
-	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
-	case GBMS_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
-	case GBMS_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
+	case MAX77759_CHGR_MODE_CHGR_BUCK_ON:
+	case MAX77759_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
+	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
 		*enabled = 1;
 		break;
 	default:
@@ -384,7 +927,7 @@ static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
 	return ret;
 }
 
-/* called from gcpm to turn on charging & from to DC_SUSPEND */
+/* called from gcpm, DC_SUSPEND and for CC_MAX == 0 */
 static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
@@ -393,12 +936,12 @@ static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				  enabled);
 }
 
-/* called from google_charger on disconnect, when CC_MAX is 0 */
+/* google_charger on disconnect */
 static int max77759_set_charge_disable(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
 	return gvotable_cast_vote(data->mode_votable, reason,
-				  (void*)GBMS_CHGR_MODE_ALL_OFF,
+				  (void*)GBMS_CHGR_MODE_STBY_ON,
 				  enabled);
 }
 
@@ -494,7 +1037,7 @@ static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 				   MAX77759_CHG_CNFG_02_CHGCC_MASK,
 				   value);
 	if (ret == 0)
-		ret = max77759_set_charge_disable(data, disabled, "CC_MAX");
+		ret = max77759_set_charge_enabled(data, !disabled, "CC_MAX");
 
 	return ret;
 }
@@ -1122,7 +1665,7 @@ static int max77759_set_online(struct max77759_chgr_data *data, bool online)
 
 	if (data->online != online) {
 		ret = gvotable_cast_vote(data->mode_votable, "OFFLINE",
-					 (void *)GBMS_CHGR_MODE_ALL_OFF,
+					 (void *)GBMS_CHGR_MODE_STBY_ON,
 					 !online);
 		data->online = online;
 	}
@@ -1508,6 +2051,9 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 {
 	int ret;
 
+	/* initialized to -EPROBE_DEFER */
+	max77759_setup_usecases(&data->uc_data, NULL);
+
 	/* votes might change mode */
 	data->mode_votable = gvotable_create_int_election(NULL, NULL,
 					max77759_mode_callback,
@@ -1520,8 +2066,7 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 
 	gvotable_set_vote2str(data->mode_votable, gvotable_v2s_uint);
 	/* will use gvotable_get_default() when available */
-	gvotable_set_default(data->mode_votable,
-			     (void *)GBMS_CHGR_MODE_ALL_OFF);
+	gvotable_set_default(data->mode_votable, (void *)GBMS_CHGR_MODE_STBY_ON);
 	gvotable_election_set_name(data->mode_votable, GBMS_MODE_VOTABLE);
 
 	/* Wireless charging, DC name is for compat */
@@ -1609,9 +2154,10 @@ static int max77759_charger_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
+	/* other drivers (ex tcpci) need this. */
 	ret = max77759_setup_votables(data);
 	if (ret < 0)
-		return -EINVAL;
+		return ret;
 
 	data->irq_gpio = of_get_named_gpio(dev->of_node, "max77759,irq-gpio", 0);
 	if (data->irq_gpio < 0) {
