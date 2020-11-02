@@ -521,15 +521,15 @@ static int chg_usb_online(struct power_supply *usb_psy)
 	}
 #else
 	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
-
-	if (!mode) {
+	if (mode == 0 || rc < 0) {
 		int usb_type = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_USB_TYPE, &rc);
 
-		if (usb_type == POWER_SUPPLY_USB_TYPE_UNKNOWN)
+		if (usb_type == POWER_SUPPLY_USB_TYPE_UNKNOWN) {
 			usb_online = 0;
-		else
+		} else {
 			/* for input suspend case */
 			usb_online = 1;
+		}
 	}
 #endif
 
@@ -875,9 +875,10 @@ static void chg_work(struct work_struct *work)
 {
 	struct chg_drv *chg_drv =
 		container_of(work, struct chg_drv, chg_work.work);
-	struct power_supply *usb_psy = chg_drv->usb_psy;
-	struct power_supply *wlc_psy = chg_drv->wlc_psy;
 	struct power_supply *bat_psy = chg_drv->bat_psy;
+	struct power_supply *wlc_psy = chg_drv->wlc_psy;
+	struct power_supply *usb_psy = chg_drv->tcpm_psy ? chg_drv->tcpm_psy :
+				       chg_drv->usb_psy;
 	union gbms_ce_adapter_details ad = { .v = 0 };
 	int soc, disable_charging = 0, disable_pwrsrc = 0;
 	int usb_online, wlc_online = 0;
@@ -1272,18 +1273,14 @@ static int chg_vote_input_suspend(struct chg_drv *chg_drv,
 		return -EINVAL;
 
 	rc = vote(chg_drv->usb_icl_votable, voter, suspend, 0);
-	if (rc < 0) {
+	if (rc < 0)
 		dev_err(chg_drv->device, "Couldn't vote to %s USB rc=%d\n",
 			suspend ? "suspend" : "resume", rc);
-		return rc;
-	}
 
 	rc = vote(chg_drv->dc_suspend_votable, voter, suspend, 0);
-	if (rc < 0) {
+	if (rc < 0)
 		dev_err(chg_drv->device, "Couldn't vote to %s DC rc=%d\n",
 			suspend ? "suspend" : "resume", rc);
-		return rc;
-	}
 
 	return 0;
 }
@@ -1311,7 +1308,16 @@ static int chg_set_input_suspend(void *data, u64 val)
 	if (chg_find_votables(chg_drv) < 0)
 		return -EINVAL;
 
+	/* will set suspend on DC and vote 0 on ICL */
 	rc = chg_vote_input_suspend(chg_drv, USER_VOTER, val != 0);
+	if (rc < 0)
+		return rc;
+
+	/* make sure that power is disabled */
+	rc = vote(chg_drv->msc_chg_disable_votable, USER_VOTER, val != 0, 0);
+	if (rc < 0)
+		dev_err(chg_drv->device, "Couldn't vote to %s USB rc=%d\n",
+			val != 0 ? "suspend" : "resume", rc);
 
 	if (chg_drv->chg_psy)
 		power_supply_changed(chg_drv->chg_psy);
