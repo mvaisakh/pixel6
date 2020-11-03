@@ -1115,6 +1115,38 @@ struct lwis_device *lwis_find_dev_by_id(int dev_id)
 }
 
 /*
+ *  lwis_i2c_dev_is_in_use: Check i2c device is in use.
+ */
+bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev)
+{
+	struct lwis_device *lwis_dev_it;
+	struct lwis_i2c_device *i2c_dev;
+
+	if (lwis_dev->type != DEVICE_TYPE_I2C) {
+		dev_err(lwis_dev->dev, "It's not i2c device\n");
+		return false;
+	}
+
+	i2c_dev = (struct lwis_i2c_device *)lwis_dev;
+	mutex_lock(&core.lock);
+	list_for_each_entry (lwis_dev_it, &core.lwis_dev_list, dev_list) {
+		if (lwis_dev_it->type == DEVICE_TYPE_I2C) {
+			struct lwis_i2c_device *i2c_dev_it =
+				(struct lwis_i2c_device *)lwis_dev_it;
+			/* Look up if i2c bus are still in use by other device*/
+			if ((i2c_dev_it->state_pinctrl ==
+			     i2c_dev->state_pinctrl) &&
+			    (i2c_dev_it != i2c_dev) && lwis_dev_it->enabled) {
+				mutex_unlock(&core.lock);
+				return true;
+			}
+		}
+	}
+	mutex_unlock(&core.lock);
+	return false;
+}
+
+/*
  *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
 int lwis_base_probe(struct lwis_device *lwis_dev,

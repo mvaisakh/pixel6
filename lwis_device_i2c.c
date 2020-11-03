@@ -73,11 +73,14 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 	int ret;
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
-	/* Disable the I2C bus */
-	ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
-	if (ret) {
-		dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
-		return ret;
+	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
+		/* Disable the I2C bus */
+		ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n",
+				ret);
+			return ret;
+		}
 	}
 
 	return 0;

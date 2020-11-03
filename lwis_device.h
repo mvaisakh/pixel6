@@ -311,6 +311,12 @@ struct lwis_device *lwis_find_top_dev(void);
 struct lwis_device *lwis_find_dev_by_id(int dev_id);
 
 /*
+ * Check i2c device is still in use:
+ * Check if there is any other device using the same I2C bus.
+ */
+bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev);
+
+/*
  * Power up a LWIS device, should be called when lwis_dev->enabled is 0
  * lwis_dev->client_lock should be held before this function.
  */
