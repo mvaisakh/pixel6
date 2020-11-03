@@ -1575,7 +1575,7 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 
 		pr_info("MSC_PRE vt=%d vb=%d fv_uv=%d chg_type=%d\n",
 			vtier, vbatt, *fv_uv, chg_type);
-	} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER) {
+	} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT) {
 		/*
 		 * Not fast, taper or precharge: in *_UNKNOWN and *_NONE
 		 * set checked_cv_cnt=0 and check current to avoid early
@@ -1764,7 +1764,7 @@ static int msc_logic_internal(struct batt_drv *batt_drv)
 
 		if (chg_type == POWER_SUPPLY_CHARGE_TYPE_FAST) {
 			msc_state = MSC_FAST;
-		} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER) {
+		} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT) {
 			msc_state = MSC_TYPE;
 		} else {
 			msc_state = MSC_LAST;

@@ -3888,7 +3888,7 @@ static enum power_supply_property p9221_props[] = {
 
 static const struct power_supply_desc p9221_psy_desc = {
 	.name = "wireless",
-	.type = POWER_SUPPLY_TYPE_WIRELESS,
+	.type = POWER_SUPPLY_TYPE_WIRELESS_EXT,
 	.properties = p9221_props,
 	.num_properties = ARRAY_SIZE(p9221_props),
 	.get_property = p9221_get_property,

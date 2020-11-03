@@ -3861,7 +3861,7 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 
 	/*
 	 * TODO: determine if we need to use the wireless power supply
-	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS) {
+	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS_EXT) {
 	 *	pca9468->ta_type = TA_TYPE_WIRELESS;
 	 *	pr_info("%s: The current power supply type is WC,
 	 * 		ta_type=%d\n", __func__, pca9468->ta_type);
@@ -4624,7 +4624,7 @@ static int pca9468_get_charge_type(struct pca9468_charger *pca9468)
 		return POWER_SUPPLY_CHARGE_TYPE_FAST;
 	case DC_STATE_START_CV:
 	case DC_STATE_CV_MODE:
-		return POWER_SUPPLY_CHARGE_TYPE_TAPER;
+		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
 	case DC_STATE_CHARGING_DONE:
 		break;
 	}

@@ -1373,7 +1373,7 @@ static int max77759_wcin_prop_is_writeable(struct power_supply *psy,
 
 static const struct power_supply_desc max77759_wcin_psy_desc = {
 	.name = "dc",
-	.type = POWER_SUPPLY_TYPE_WIRELESS,
+	.type = POWER_SUPPLY_TYPE_WIRELESS_EXT,
 	.properties = max77759_wcin_props,
 	.num_properties = ARRAY_SIZE(max77759_wcin_props),
 	.get_property = max77759_wcin_get_prop,
@@ -1451,7 +1451,7 @@ static int max77759_get_charge_type(struct max77759_chgr_data *data)
 		return POWER_SUPPLY_CHARGE_TYPE_FAST;
 	case CHGR_DTLS_FAST_CHARGE_CONST_VOLTAGE_MODE:
 	case CHGR_DTLS_TOP_OFF_MODE:
-		return POWER_SUPPLY_CHARGE_TYPE_TAPER;
+		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
 
 	case CHGR_DTLS_DONE_MODE:
 	case CHGR_DTLS_TIMER_FAULT_MODE:
