@@ -184,7 +184,7 @@ static void telemetry_unset_event(struct edgetpu_dev *etdev,
 static void copy_with_wrap(struct edgetpu_telemetry_header *header, void *dest,
 			   u32 length, u32 size, void *start)
 {
-	const u32 wrap_bit = 1 << 12;
+	const u32 wrap_bit = EDGETPU_TELEMETRY_WRAP_BIT;
 	u32 remaining = 0;
 	u32 head = header->head & (wrap_bit - 1);
 
@@ -200,7 +200,7 @@ static void copy_with_wrap(struct edgetpu_telemetry_header *header, void *dest,
 	}
 }
 
-/* Log messages from the R52 to dmesg */
+/* Log messages from TPU CPU to dmesg */
 static void edgetpu_fw_log(struct edgetpu_dev *etdev,
 			   struct edgetpu_telemetry *log)
 {
@@ -221,9 +221,11 @@ static void edgetpu_fw_log(struct edgetpu_dev *etdev,
 	while (header->head != header->tail) {
 		copy_with_wrap(header, &entry, sizeof(entry), queue_size,
 			       start);
-		if (entry.length > max_length) {
+		if (entry.length == 0 || entry.length > max_length) {
 			header->head = header->tail;
+#if 0 /* TODO(b/170340226): add me back */
 			etdev_err_ratelimited(etdev, "log queue is corrupted");
+#endif
 			break;
 		}
 		copy_with_wrap(header, buffer, entry.length, queue_size, start);
@@ -249,7 +251,7 @@ static void edgetpu_fw_log(struct edgetpu_dev *etdev,
 	kfree(buffer);
 }
 
-/* Show trace events from the R52 in dmesg */
+/* Consumes the queue buffer. */
 static void edgetpu_fw_trace(struct edgetpu_dev *etdev,
 			     struct edgetpu_telemetry *trace)
 {

@@ -11,6 +11,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include "edgetpu-internal.h"
 #include "edgetpu-mapping.h"
@@ -20,7 +21,6 @@
 #if IS_ENABLED(CONFIG_EDGETPU_TEST)
 #include <linux/iommu-ext.h>
 #endif
-
 
 struct edgetpu_iommu_domain {
 	struct iommu_domain *iommu_domain;
@@ -38,6 +38,69 @@ struct edgetpu_iommu_map_params {
 	size_t size;
 	struct iommu_domain *domain;
 };
+
+/*
+ * Kernel 5.3 introduced iommu_register_device_fault_handler
+ */
+
+#if KERNEL_VERSION(5, 3, 0) <=  LINUX_VERSION_CODE
+
+static int edgetpu_iommu_dev_fault_handler(struct iommu_fault *fault,
+					   void *token)
+{
+	struct edgetpu_dev *etdev = (struct edgetpu_dev *)token;
+
+	if (fault->type == IOMMU_FAULT_DMA_UNRECOV) {
+		etdev_err(etdev, "Unrecoverable IOMMU fault!\n");
+		etdev_err(etdev, "Reason = %08X\n", fault->event.reason);
+		etdev_err(etdev, "flags = %08X\n", fault->event.flags);
+		etdev_err(etdev, "pasid = %08X\n", fault->event.pasid);
+		etdev_err(etdev, "perms = %08X\n", fault->event.perm);
+		etdev_err(etdev, "addr = %llX\n", fault->event.addr);
+		etdev_err(etdev, "fetch_addr = %llX\n",
+			  fault->event.fetch_addr);
+	} else if (fault->type == IOMMU_FAULT_PAGE_REQ) {
+		etdev_err(etdev, "IOMMU page request fault!\n");
+		etdev_err(etdev, "flags = %08X\n", fault->prm.flags);
+		etdev_err(etdev, "pasid = %08X\n", fault->prm.pasid);
+		etdev_err(etdev, "grpid = %08X\n", fault->prm.grpid);
+		etdev_err(etdev, "perms = %08X\n", fault->prm.perm);
+		etdev_err(etdev, "addr = %llX\n", fault->prm.addr);
+	}
+	// Tell the IOMMU driver to carry on
+	return -EAGAIN;
+}
+
+static int
+edgetpu_register_iommu_device_fault_handler(struct edgetpu_dev *etdev)
+{
+	etdev_dbg(etdev, "Registering IOMMU device fault handler\n");
+	return iommu_register_device_fault_handler(
+		etdev->dev, edgetpu_iommu_dev_fault_handler, etdev);
+}
+
+static int
+edgetpu_unregister_iommu_device_fault_handler(struct edgetpu_dev *etdev)
+{
+	etdev_dbg(etdev, "Unregistering IOMMU device fault handler\n");
+	return iommu_unregister_device_fault_handler(etdev->dev);
+}
+
+#else /* kernel version before 5.3 */
+
+static int
+edgetpu_register_iommu_device_fault_handler(struct edgetpu_dev *etdev)
+{
+	return 0;
+}
+
+static int
+edgetpu_unregister_iommu_device_fault_handler(struct edgetpu_dev *etdev)
+{
+	return 0;
+}
+
+#endif /* KERNEL_VERSION(5, 3, 0) <=  LINUX_VERSION_CODE */
 
 static int edgetpu_iommu_fault_handler(struct iommu_domain *domain,
 				       struct device *dev, unsigned long iova,
@@ -67,7 +130,7 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
 	struct edgetpu_iommu *etiommu;
 	struct iommu_domain *domain;
-	int i;
+	int i, ret;
 
 	etiommu = kzalloc(sizeof(*etiommu), GFP_KERNEL);
 	if (!etiommu)
@@ -99,8 +162,10 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	}
 
 	iommu_dev_enable_feature(etdev->dev, IOMMU_DEV_FEAT_AUX);
-	if (!iommu_dev_feature_enabled(etdev->dev, IOMMU_DEV_FEAT_AUX))
+	if (!iommu_dev_feature_enabled(etdev->dev, IOMMU_DEV_FEAT_AUX)) {
+		etdev_warn(etdev, "AUX domains not supported\n");
 		return i ? 0 : -EINVAL;
+	}
 
 	for (; i < EDGETPU_NCONTEXTS; i++) {
 		int pasid, ret;
@@ -133,6 +198,10 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 					      domain, pasid);
 		}
 	}
+	ret = edgetpu_register_iommu_device_fault_handler(etdev);
+	if (ret)
+		etdev_warn(etdev, "Failed to register fault handler! (%d)\n",
+			   ret);
 	return 0;
 }
 
@@ -144,11 +213,16 @@ void edgetpu_mmu_reset(struct edgetpu_dev *etdev)
 void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
-	int i;
+	int i, ret;
 
 	if (!etiommu)
 		return;
 
+	ret = edgetpu_unregister_iommu_device_fault_handler(etdev);
+	if (ret)
+		etdev_warn(etdev,
+			   "Failed to unregister device fault handler (%d)\n",
+			   ret);
 	edgetpu_mmu_reset(etdev);
 
 	for (i = etiommu->context_0_default ? 1 : 0; i < EDGETPU_NCONTEXTS;

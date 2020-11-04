@@ -12,6 +12,7 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/seq_file.h>
+#include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/wait.h>
 
@@ -151,14 +152,14 @@ struct edgetpu_kci {
 	tpu_addr_t cmd_queue_tpu_addr;  /* TPU device address for cmd queue */
 	dma_addr_t cmd_queue_dma_addr;  /* DMA address for cmd queue */
 	struct edgetpu_kci_response_element *resp_queue;
-	struct mutex resp_queue_lock;	/* protects resp_queue */
+	spinlock_t resp_queue_lock;	/* protects resp_queue */
 	tpu_addr_t resp_queue_tpu_addr; /* TPU device address for resp queue */
 	dma_addr_t resp_queue_dma_addr; /* DMA address for resp queue */
 	/* queue for waiting for the response doorbell to be rung */
 	wait_queue_head_t resp_doorbell_waitq;
 	/* add to this list if a command needs to wait for a response */
 	struct list_head wait_list;
-	struct mutex wait_list_lock;	/* protects wait_list */
+	spinlock_t wait_list_lock;	/* protects wait_list */
 	/* queue for waiting for the wait_list to be consumed */
 	wait_queue_head_t wait_list_waitq;
 	struct work_struct work;	/* worker of consuming responses */

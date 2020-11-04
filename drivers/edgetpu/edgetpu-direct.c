@@ -464,15 +464,20 @@ static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 {
 	/* @client must not belong to any group */
 	if (cmd == EDGETPU_CREATE_GROUP_COMPAT || cmd == EDGETPU_CREATE_GROUP ||
-	    cmd == EDGETPU_JOIN_GROUP)
+	    cmd == EDGETPU_JOIN_GROUP_COMPAT || cmd == EDGETPU_JOIN_GROUP ||
+	    cmd == EDGETPU_CREATE_GROUP_COMPAT_2)
 		return !client->group;
 
 	/* Valid for any @client */
 	if (cmd == EDGETPU_SET_PERDIE_EVENTFD ||
+	    cmd == EDGETPU_SET_PERDIE_EVENTFD_COMPAT ||
 	    cmd == EDGETPU_UNSET_PERDIE_EVENT ||
+	    cmd == EDGETPU_UNSET_PERDIE_EVENT_COMPAT ||
 	    cmd == EDGETPU_ALLOCATE_DEVICE_BUFFER ||
+	    cmd == EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT_2 ||
 	    cmd == EDGETPU_CREATE_SYNC_FENCE ||
 	    cmd == EDGETPU_SIGNAL_SYNC_FENCE ||
+	    cmd == EDGETPU_SIGNAL_SYNC_FENCE_COMPAT ||
 	    cmd == EDGETPU_SYNC_FENCE_STATUS ||
 	    cmd == EDGETPU_RELEASE_WAKE_LOCK ||
 	    cmd == EDGETPU_ACQUIRE_WAKE_LOCK)
@@ -573,9 +578,11 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 		ret = etdirect_map_buffer(client->group, argp);
 		break;
 	case EDGETPU_UNMAP_BUFFER:
+	case EDGETPU_UNMAP_BUFFER_COMPAT:
 		ret = etdirect_unmap_buffer(client->group, argp);
 		break;
 	case EDGETPU_UNSET_EVENT:
+	case EDGETPU_UNSET_EVENT_COMPAT:
 		edgetpu_group_unset_eventfd(client->group, arg);
 		ret = 0;
 		break;
@@ -587,21 +594,25 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 							     argp);
 		break;
 	case EDGETPU_SYNC_BUFFER:
+	case EDGETPU_SYNC_BUFFER_COMPAT:
 		ret = etdirect_sync_buffer(client->group, argp);
 		break;
 	case EDGETPU_MAP_DMABUF:
 		ret = etdirect_map_dmabuf(client->group, argp);
 		break;
 	case EDGETPU_UNMAP_DMABUF:
+	case EDGETPU_UNMAP_DMABUF_COMPAT:
 		ret = etdirect_unmap_dmabuf(client->group, argp);
 		break;
 	case EDGETPU_MAP_BULK_DMABUF:
 		ret = edgetpu_ioctl_map_bulk_dmabuf(client->group, argp);
 		break;
 	case EDGETPU_UNMAP_BULK_DMABUF:
+	case EDGETPU_UNMAP_BULK_DMABUF_COMPAT:
 		ret = edgetpu_ioctl_unmap_bulk_dmabuf(client->group, argp);
 		break;
 	case EDGETPU_SET_EVENTFD:
+	case EDGETPU_SET_EVENTFD_COMPAT:
 		ret = etdirect_set_eventfd(client->group, argp);
 		break;
 	default:
@@ -613,27 +624,33 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 
 	switch (cmd) {
 	case EDGETPU_CREATE_GROUP:
+	case EDGETPU_CREATE_GROUP_COMPAT_2:
 		ret = edgetpu_ioctl_create_group(client, argp);
 		break;
 	case EDGETPU_CREATE_GROUP_COMPAT:
 		ret = etdirect_create_group(client, argp);
 		break;
 	case EDGETPU_JOIN_GROUP:
+	case EDGETPU_JOIN_GROUP_COMPAT:
 		ret = etdirect_join_group(client, (u64)argp);
 		break;
 	case EDGETPU_SET_PERDIE_EVENTFD:
+	case EDGETPU_SET_PERDIE_EVENTFD_COMPAT:
 		ret = etdirect_set_perdie_eventfd(client->etdev, argp);
 		break;
 	case EDGETPU_UNSET_PERDIE_EVENT:
+	case EDGETPU_UNSET_PERDIE_EVENT_COMPAT:
 		ret = etdirect_unset_perdie_eventfd(client->etdev, arg);
 		break;
 	case EDGETPU_ALLOCATE_DEVICE_BUFFER:
+	case EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT_2:
 		ret = etdirect_allocate_device_buffer(client, (u64)argp);
 		break;
 	case EDGETPU_CREATE_SYNC_FENCE:
 		ret = edgetpu_ioctl_sync_fence_create(argp);
 		break;
 	case EDGETPU_SIGNAL_SYNC_FENCE:
+	case EDGETPU_SIGNAL_SYNC_FENCE_COMPAT:
 		ret = edgetpu_ioctl_sync_fence_signal(argp);
 		break;
 	case EDGETPU_SYNC_FENCE_STATUS:
@@ -679,6 +696,10 @@ static struct edgetpu_dumpregs_range common_statusregs_ranges[] = {
 	{
 		.firstreg = EDGETPU_REG_USER_HIB_ERROR_STATUS,
 		.lastreg = EDGETPU_REG_USER_HIB_ERROR_MASK,
+	},
+	{
+		.firstreg = EDGETPU_REG_SC_CURRENTPC,
+		.lastreg = EDGETPU_REG_SC_DECODEPC,
 	},
 	{
 		.firstreg = EDGETPU_REG_SC_RUNSTATUS,

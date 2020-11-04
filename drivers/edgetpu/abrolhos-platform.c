@@ -291,7 +291,6 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	struct resource *r;
 	struct edgetpu_mapped_resource regs;
 	int ret;
-	struct edgetpu_coherent_mem log_mem, trace_mem;
 
 	edgetpu_pdev =
 		devm_kzalloc(dev, sizeof(*edgetpu_pdev), GFP_KERNEL);
@@ -340,8 +339,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	dev_info(dev, "%s edgetpu initialized\n",
-		 edgetpu_pdev->edgetpu_dev.dev_name);
+	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
+		 edgetpu_pdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
 
 	ret = edgetpu_platform_setup_fw_region(edgetpu_pdev);
 	if (ret) {
@@ -358,12 +357,13 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 			ret);
 
 	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
-				   &log_mem);
+				   &edgetpu_pdev->log_mem);
 	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
-				   &trace_mem);
+				   &edgetpu_pdev->trace_mem);
 
-	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev, &log_mem,
-				     &trace_mem);
+	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev,
+				     &edgetpu_pdev->log_mem,
+				     &edgetpu_pdev->trace_mem);
 	if (ret)
 		goto out_cleanup_fw;
 

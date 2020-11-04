@@ -109,34 +109,16 @@ static void edgetpu_vii_irq_handler(struct edgetpu_mailbox *mailbox)
  *
  * This method will update both mailbox->cmd_queue_tail and CSR on device.
  *
- * Returns 0 on success.
- * If command queue tail will exceed command queue head after adding @inc,
- * -EBUSY is returned and all fields are remain unchanged. The caller should
- * handle this case and implement a mechanism to wait until the consumer
- * consumes commands.
+ * Caller ensures @inc is less than the space remain in the command queue.
  */
-int edgetpu_mailbox_inc_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
-				       u32 inc)
+void edgetpu_mailbox_inc_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
+					u32 inc)
 {
-	u32 head;
-	u32 remain_size;
 	u32 new_tail;
-
-	if (inc > mailbox->cmd_queue_size)
-		return -EINVAL;
-
-	head = EDGETPU_MAILBOX_CMD_QUEUE_READ(mailbox, head);
-	remain_size = mailbox->cmd_queue_size -
-		      circular_queue_count(head, mailbox->cmd_queue_tail,
-					   mailbox->cmd_queue_size);
-	/* no enough space left */
-	if (inc > remain_size)
-		return -EBUSY;
 
 	new_tail = circular_queue_inc(mailbox->cmd_queue_tail, inc,
 				      mailbox->cmd_queue_size);
 	edgetpu_mailbox_set_cmd_queue_tail(mailbox, new_tail);
-	return 0;
 }
 
 /*
@@ -149,30 +131,17 @@ int edgetpu_mailbox_inc_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
  *
  * This method will update both mailbox->resp_queue_head and CSR on device.
  *
- * Returns 0 on success.
- * -EINVAL is returned if the queue head will exceed tail of queue, and no
- * fields or CSR is updated in this case.
+ * Caller ensures @inc is less than the distance between resp_head and
+ * resp_tail.
  */
-int edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
-					u32 inc)
+void edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
+					 u32 inc)
 {
-	u32 tail;
-	u32 size;
 	u32 new_head;
 
-	if (inc > mailbox->resp_queue_size)
-		return -EINVAL;
-
-	tail = EDGETPU_MAILBOX_RESP_QUEUE_READ(mailbox, tail);
-	size = circular_queue_count(mailbox->resp_queue_head, tail,
-				    mailbox->resp_queue_size);
-	if (inc > size)
-		return -EINVAL;
 	new_head = circular_queue_inc(mailbox->resp_queue_head, inc,
 				      mailbox->resp_queue_size);
 	edgetpu_mailbox_set_resp_queue_head(mailbox, new_head);
-
-	return 0;
 }
 
 /*
@@ -525,13 +494,6 @@ int edgetpu_mailbox_alloc_queue(struct edgetpu_dev *etdev,
 
 	/* Align queue size to page size for TPU MMU map. */
 	size = __ALIGN_KERNEL(size, PAGE_SIZE);
-
-	/*
-	 * TODO(b/136515481):
-	 * Check if allocating many VII + P2P mailbox queues in coherent memory
-	 * is a problem.
-	 */
-
 	ret = edgetpu_iremap_alloc(etdev, size, mem,
 				   edgetpu_mailbox_context_id(mailbox));
 	if (ret)

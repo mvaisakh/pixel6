@@ -32,6 +32,8 @@ struct edgetpu_platform_dev {
 	size_t csr_size;
 	struct device *gsa_dev;
 	void __iomem *ssmt_base;
+	struct edgetpu_coherent_mem log_mem;
+	struct edgetpu_coherent_mem trace_mem;
 };
 
 #endif /* __EDGETPU_PLATFORM_H__ */
