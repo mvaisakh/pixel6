@@ -149,7 +149,7 @@
 #define INT_EN_FRAME_START			(1 << 12)
 #define INT_EN_EXTRA				(1 << 4)
 #define INT_EN					(1 << 0)
-#define INT_EN_MASK				(0x3011)
+#define INT_EN_MASK				(0x303011)
 
 #define DECON_INT_EN_EXTRA			(0x0064)
 #define INT_EN_UNMASK_START			(1 << 24)

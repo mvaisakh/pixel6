@@ -1311,9 +1311,11 @@ static void decon_reg_clear_int_all(u32 id)
 {
 	u32 mask;
 
-	decon_reg_clear_int(id, INT_EN_FRAME_DONE | INT_EN_FRAME_START);
+	mask = INT_PEND_DQE_DIMMING_END | INT_PEND_DQE_DIMMING_START |
+		INT_PEND_FRAME_DONE | INT_PEND_FRAME_START;
+	decon_reg_clear_int(id, mask);
 
-	mask = (INT_EN_RESOURCE_CONFLICT | INT_EN_TIME_OUT);
+	mask = INT_PEND_RESOURCE_CONFLICT | INT_PEND_TIME_OUT;
 	decon_write_mask(id, DECON_INT_PEND_EXTRA, ~0, mask);
 }
 
@@ -2060,15 +2062,17 @@ void decon_reg_config_wb_size(u32 id, struct decon_config *config)
 
 void decon_reg_set_interrupts(u32 id, u32 en)
 {
-	u32 val, mask;
+	u32 val = 0;
+	u32 mask;
 
 	decon_reg_clear_int_all(id);
 
 	if (en) {
-		val = (INT_EN_FRAME_DONE
-			| INT_EN_FRAME_START
-			| INT_EN_EXTRA
-			| INT_EN);
+		if (id == 0)
+			val = INT_EN_DQE_DIMMING_END | INT_EN_DQE_DIMMING_START;
+
+		val |= INT_EN_FRAME_DONE | INT_EN_FRAME_START | INT_EN_EXTRA |
+			INT_EN;
 
 		decon_write_mask(id, DECON_INT_EN, val, INT_EN_MASK);
 		cal_log_debug(id, "interrupt val = %x\n", val);
@@ -2111,6 +2115,12 @@ int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq)
 
 	reg_id = DECON_INT_PEND;
 	val = decon_read(id, reg_id);
+
+	if (val & INT_PEND_DQE_DIMMING_END)
+		decon_write(id, reg_id, INT_PEND_DQE_DIMMING_END);
+
+	if (val & INT_PEND_DQE_DIMMING_START)
+		decon_write(id, reg_id, INT_PEND_DQE_DIMMING_START);
 
 	if (val & INT_PEND_FRAME_DONE)
 		decon_write(id, reg_id, INT_PEND_FRAME_DONE);

@@ -678,6 +678,10 @@ static void decon_enable_irqs(struct decon_device *decon)
 	enable_irq(decon->irq_ext);
 	if (decon_is_te_enabled(decon))
 		enable_irq(decon->irq_fs);
+	if (decon->irq_ds >= 0)
+		enable_irq(decon->irq_ds);
+	if (decon->irq_de >= 0)
+		enable_irq(decon->irq_de);
 }
 
 static void _decon_enable(struct decon_device *decon)
@@ -864,6 +868,7 @@ void decon_exit_hibernation(struct decon_device *decon)
 	decon_debug(decon, "%s +\n", __func__);
 
 	_decon_enable(decon);
+	exynos_dqe_restore_lpd_data(decon->dqe);
 
 	decon->state = DECON_STATE_ON;
 
@@ -874,6 +879,10 @@ static void decon_disable_irqs(struct decon_device *decon)
 {
 	disable_irq(decon->irq_fd);
 	disable_irq(decon->irq_ext);
+	if (decon->irq_ds >= 0)
+		disable_irq(decon->irq_ds);
+	if (decon->irq_de >= 0)
+		disable_irq(decon->irq_de);
 	decon_reg_set_interrupts(decon->id, 0);
 	if (decon_is_te_enabled(decon))
 		disable_irq(decon->irq_fs);
@@ -1041,7 +1050,27 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND) {
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, decon->id, decon);
 		wake_up_interruptible_all(&decon->framedone_wait);
+		exynos_dqe_save_lpd_data(decon->dqe);
 		decon_debug(decon, "%s: frame done\n", __func__);
+	}
+
+	if (irq_sts_reg & INT_PEND_DQE_DIMMING_START) {
+		decon->keep_unmask = true;
+		if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
+			decon_reg_set_trigger(decon->id, &decon->config.mode,
+					DECON_TRIG_UNMASK);
+
+		DPU_EVENT_LOG(DPU_EVT_DIMMING_START, decon->id, NULL);
+	}
+
+	if (irq_sts_reg & INT_PEND_DQE_DIMMING_END) {
+		decon->keep_unmask = false;
+		if (decon->framestart_done.done &&
+				decon->config.mode.op_mode == DECON_COMMAND_MODE)
+			decon_reg_set_trigger(decon->id, &decon->config.mode,
+					DECON_TRIG_MASK);
+
+		DPU_EVENT_LOG(DPU_EVT_DIMMING_END, decon->id, NULL);
 	}
 
 	if (ext_irq & DPU_RESOURCE_CONFLICT_INT_PEND)
@@ -1380,6 +1409,26 @@ static int decon_register_irqs(struct decon_device *decon)
 		return ret;
 	}
 	disable_irq(decon->irq_ext);
+
+	/* 4: DIMMING START */
+	decon->irq_ds = of_irq_get_byname(np, "dimming_start");
+	if (devm_request_irq(dev, decon->irq_ds, decon_irq_handler,
+			0, pdev->name, decon)) {
+		decon->irq_ds = -1;
+		decon_info(decon, "dimming start irq is not supported\n");
+	} else {
+		disable_irq(decon->irq_ds);
+	}
+
+	/* 5: DIMMING END */
+	decon->irq_de = of_irq_get_byname(np, "dimming_end");
+	if (devm_request_irq(dev, decon->irq_de, decon_irq_handler,
+			0, pdev->name, decon)) {
+		decon->irq_de = -1;
+		decon_info(decon, "dimming end irq is not supported\n");
+	} else {
+		disable_irq(decon->irq_de);
+	}
 
 	decon->irq_te = -1;
 

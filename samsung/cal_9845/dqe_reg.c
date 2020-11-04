@@ -94,12 +94,31 @@ static void dqe_reg_set_full_img_size(u32 width, u32 height)
 	dqe_write(DQE0_TOP_FRM_PXL_NUM, val);
 }
 
+static void dqe_reg_set_atc_ibsi(u32 width, u32 height)
+{
+	u32 hori_grid = DIV_ROUND_UP(width, 8);
+	u32 verti_grid = DIV_ROUND_UP(height, 16);
+	u32 ibsi_x, ibsi_y;
+
+	ibsi_x = (1 << 16) / (hori_grid * 4);
+	ibsi_y = (1 << 16) / (verti_grid * 4);
+
+	dqe_write(DQE0_ATC_PARTIAL_IBSI_P1,
+			ATC_IBSI_X_P1(ibsi_x) | ATC_IBSI_Y_P1(ibsi_y));
+
+	ibsi_x = (1 << 16) / (hori_grid * 2);
+	ibsi_y = (1 << 16) / (verti_grid * 2);
+	dqe_write(DQE0_ATC_PARTIAL_IBSI_P2,
+			ATC_IBSI_X_P2(ibsi_x) | ATC_IBSI_Y_P2(ibsi_y));
+}
+
 /* exposed to driver layer for DQE CAL APIs */
 void dqe_reg_init(u32 width, u32 height)
 {
 	cal_log_debug(0, "%s +\n", __func__);
 	dqe_reg_set_img_size(width, height);
 	dqe_reg_set_full_img_size(width, height);
+	dqe_reg_set_atc_ibsi(width, height);
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
@@ -435,4 +454,86 @@ void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
 	matrix_write(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
+}
+
+void dqe_reg_set_atc(const struct exynos_atc *atc)
+{
+	u32 val, mask;
+
+	if (!atc) {
+		dqe_write_mask(DQE0_ATC_CONTROL, 0, DQE_ATC_EN_MASK);
+		return;
+	}
+
+	dqe_write_mask(DQE0_ATC_CONTROL, ~0, DQE_ATC_EN_MASK);
+
+	val = ATC_LT(atc->lt) | ATC_NS(atc->ns) | ATC_ST(atc->st) |
+		ATC_ONE_DITHER(atc->dither);
+	dqe_write(DQE0_ATC_GAIN, val);
+
+	val = ATC_PL_W1(atc->pl_w1) | ATC_PL_W2(atc->pl_w2);
+	dqe_write(DQE0_ATC_WEIGHT, val);
+
+	dqe_write(DQE0_ATC_CTMODE, atc->ctmode);
+	dqe_write(DQE0_ATC_PPEN, atc->pp_en);
+
+	val = ATC_TDR_MIN(atc->tdr_min) | ATC_TDR_MAX(atc->tdr_max) |
+		ATC_UPGRADE_ON(atc->upgrade_on);
+	mask = ATC_TDR_MIN_MASK | ATC_TDR_MAX_MASK | ATC_UPGRADE_ON_MASK;
+	dqe_write_mask(DQE0_ATC_TDRMINMAX, val, mask);
+
+	dqe_write(DQE0_ATC_AMBIENT_LIGHT, atc->ambient_light);
+	dqe_write(DQE0_ATC_BACK_LIGHT, atc->back_light);
+	dqe_write(DQE0_ATC_DSTEP, atc->dstep);
+	dqe_write(DQE0_ATC_SCALE_MODE, atc->scale_mode);
+
+	val = ATC_THRESHOLD_1(atc->threshold_1) |
+		ATC_THRESHOLD_2(atc->threshold_2) |
+		ATC_THRESHOLD_3(atc->threshold_3);
+	dqe_write(DQE0_ATC_THRESHOLD, val);
+
+	val = ATC_GAIN_LIMIT(atc->gain_limit) |
+		ATC_LT_CALC_AB_SHIFT(atc->lt_calc_ab_shift);
+	dqe_write(DQE0_ATC_GAIN_LIMIT, val);
+}
+
+void dqe_reg_print_atc(void)
+{
+	u32 val;
+
+	val = dqe_read_mask(DQE0_ATC_CONTROL, DQE_ATC_EN_MASK);
+	cal_log_info(0, "DQE: atc %s\n", val ? "on" : "off");
+
+	if (!val)
+		return;
+
+	cal_log_info(0, "ATC configuration\n");
+	dpu_print_hex_dump(regs_dqe.desc.regs,
+			regs_dqe.desc.regs + DQE0_ATC_CONTROL, 0x40);
+}
+
+void dqe_reg_save_lpd_atc(u32 *lpd_atc_regs)
+{
+	int i;
+
+	for (i = 0; i < LPD_ATC_REG_CNT; ++i)
+		lpd_atc_regs[i] = dqe_read(DQE0_TOP_LPD_ATC_CON + (i * 4));
+
+	dqe_write(DQE0_TOP_LPD_MODE_CONTROL, 0);
+}
+
+void dqe_reg_restore_lpd_atc(u32 *lpd_atc_regs)
+{
+	int i;
+
+	dqe_write(DQE0_TOP_LPD_MODE_CONTROL, DQE_LPD_MODE_EXIT);
+
+	for (i = 0; i < LPD_ATC_REG_CNT; ++i)
+		dqe_write(DQE0_TOP_LPD_ATC_CON + (i * 4), lpd_atc_regs[i]);
+}
+
+bool dqe_reg_dimming_in_progress(void)
+{
+	return dqe_read_mask(DQE0_ATC_DIMMING_DONE_INTR,
+			ATC_DIMMING_IN_PROGRESS);
 }

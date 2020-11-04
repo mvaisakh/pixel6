@@ -380,7 +380,8 @@ static const char *get_event_name(enum dpu_event_type type)
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
 		"BTS_UPDATE_BW",		"DSIM_CRC",
 		"DSIM_ECC",			"VBLANK_ENABLE",
-		"VBLANK_DISABLE",
+		"VBLANK_DISABLE",		"DIMMING_START",
+		"DIMMING_END",
 	};
 
 	if (type >= DPU_EVT_MAX)

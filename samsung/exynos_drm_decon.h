@@ -220,6 +220,9 @@ enum dpu_event_type {
 	DPU_EVT_VBLANK_ENABLE,
 	DPU_EVT_VBLANK_DISABLE,
 
+	DPU_EVT_DIMMING_START,
+	DPU_EVT_DIMMING_END,
+
 	DPU_EVT_MAX, /* End of EVENT */
 };
 
@@ -346,6 +349,8 @@ struct decon_device {
 	u32				irq_fd;	/* frame done irq number*/
 	u32				irq_ext;/* extra irq number*/
 	int				irq_te;
+	int				irq_ds;	/* dimming start irq number */
+	int				irq_de;	/* dimming end irq number */
 
 	spinlock_t			slock;
 
@@ -355,6 +360,8 @@ struct decon_device {
 #endif
 
 	wait_queue_head_t framedone_wait;
+
+	bool keep_unmask;
 };
 
 extern struct dpu_bts_ops dpu_bts_control;

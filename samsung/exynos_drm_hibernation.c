@@ -23,6 +23,8 @@
 
 #include <trace/dpu_trace.h>
 
+#include <dqe_cal.h>
+
 #include "exynos_drm_decon.h"
 #include "exynos_drm_hibernation.h"
 #include "exynos_drm_writeback.h"
@@ -49,7 +51,9 @@ static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 	pr_debug("%s +\n", __func__);
 
 	return (!is_hibernaton_blocked(hiber) &&
-		!is_camera_operating(hiber));
+		!is_camera_operating(hiber) &&
+		pm_runtime_active(hiber->decon->dev) &&
+		!dqe_reg_dimming_in_progress());
 }
 
 static inline void hibernation_block(struct exynos_hibernation *hiber)
@@ -217,12 +221,16 @@ static void exynos_hibernation_handler(struct kthread_work *work)
 	struct exynos_hibernation *hibernation = container_of(work,
 			struct exynos_hibernation, dwork.work);
 	const struct exynos_hibernation_funcs *funcs = hibernation->funcs;
+	struct decon_device *decon = hibernation->decon;
 
 	pr_debug("Display hibernation handler is called\n");
 
 	/* If hibernation entry condition does NOT meet, just return here */
-	if (!funcs->check(hibernation))
+	if (!funcs->check(hibernation)) {
+		kthread_mod_delayed_work(&decon->worker, &hibernation->dwork,
+			msecs_to_jiffies(HIBERNATION_ENTRY_MIN_TIME_MS));
 		return;
+	}
 
 	funcs->enter(hibernation);
 }

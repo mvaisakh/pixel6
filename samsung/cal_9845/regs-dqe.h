@@ -143,7 +143,8 @@
 
 
 #define DQE0_ATC_TDRMINMAX		(0x0414)
-#define ATC_UPGRADE_ON			(0x1 << 31)
+#define ATC_UPGRADE_ON(_v)		((_v) << 31)
+#define ATC_UPGRADE_ON_MASK		(0x1 << 31)
 #define ATC_TDR_MAX(_v)			((_v) << 16)
 #define ATC_TDR_MAX_MASK		(0x3FF << 16)
 #define ATC_TDR_MIN(_v)			((_v) << 0)
@@ -166,12 +167,12 @@
 #define ATC_SCALE_MODE_MASK		(0x3 << 0)
 
 #define DQE0_ATC_THRESHOLD		(0x0428)
-#define ATC_THRESHOLD_3(_v)		((_v) << 3)
-#define ATC_THRESHOLD_3_MASK		(0x3 << 3)
+#define ATC_THRESHOLD_3(_v)		((_v) << 4)
+#define ATC_THRESHOLD_3_MASK		(0x3 << 4)
 #define ATC_THRESHOLD_2(_v)		((_v) << 2)
-#define ATC_THRESHOLD_2_MASK		(0x3 << 3)
+#define ATC_THRESHOLD_2_MASK		(0x3 << 2)
 #define ATC_THRESHOLD_1(_v)		((_v) << 0)
-#define ATC_THRESHOLD_1_MASK		(0x3 << 3)
+#define ATC_THRESHOLD_1_MASK		(0x3 << 0)
 
 #define DQE0_ATC_GAIN_LIMIT		(0x042C)
 #define ATC_LT_CALC_AB_SHIFT(_v)	((_v) << 16)
