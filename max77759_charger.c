@@ -640,7 +640,7 @@ static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 					      const char *reason, void *value)
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
-	int ret, suspend = (int)value >= 0;
+	int ret, suspend = (int)value > 0;
 
 	ret = max77759_wcin_input_suspend(data, suspend, "DC_SUSPEND");
 	if (ret < 0)
@@ -1536,9 +1536,7 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 	}
 
 	gvotable_set_vote2str(data->dc_suspend_votable, gvotable_v2s_int);
-	gvotable_set_default(data->dc_suspend_votable, (void *)-1);
 	gvotable_election_set_name(data->dc_suspend_votable, "DC_SUSPEND");
-	gvotable_use_default(data->dc_suspend_votable, true);
 
 	data->dc_icl_votable =
 		gvotable_create_int_election(NULL, gvotable_comparator_int_min,
