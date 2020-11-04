@@ -139,6 +139,7 @@ struct max1720x_chip {
 	long model_next_update;
 	/* also used to restore model state from permanent storage */
 	u16 reg_prop_capacity_raw;
+	bool model_state_valid;
 	int model_reload;
 
 	/* history */
@@ -815,6 +816,10 @@ static ssize_t max1720x_model_show_state(struct device *dev,
 	return len;
 }
 
+/*
+ * force is true when changing the model via debug props
+ * call holding model_lock
+ */
 static void max1720x_model_reload(struct max1720x_chip *chip, bool force)
 {
 	const bool pending = chip->model_reload == MAX_M5_LOAD_MODEL_REQUEST;
@@ -854,8 +859,11 @@ static ssize_t max1720x_model_set_state(struct device *dev,
 
 	/* overwrite with userland, will commit at cycle count */
 	ret = max_m5_model_state_sscan(chip->model_data, buf, count);
-	if (ret == 0)
+	if (ret == 0) {
+		/* force model state */
+		chip->model_state_valid = true;
 		max1720x_model_reload(chip, true);
+	}
 
 	mutex_unlock(&chip->model_lock);
 	return count;
@@ -3036,7 +3044,7 @@ static int max1720x_model_load(struct max1720x_chip *chip)
 	int ret;
 
 	/* retrieve model state from permanent storage only on boot */
-	if (chip->reg_prop_capacity_raw != MAX1720X_REPSOC) {
+	if (!chip->model_state_valid) {
 
 		/* will retry on -EAGAIN as long as model_reload > _IDLE */
 		ret = max_m5_load_state_data(chip->model_data);
@@ -3055,8 +3063,9 @@ static int max1720x_model_load(struct max1720x_chip *chip)
 		return -EAGAIN;
 	}
 
-	/* mark model state as "safe" */
 	chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
+	chip->model_state_valid = true;
+
 	return 0;
 }
 

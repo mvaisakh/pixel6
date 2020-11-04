@@ -44,8 +44,10 @@
 /** ------------------------------------------------------------------------ */
 
 /*
- * Custom parameters are updated while the device is runnig. These are saved
- * to permanent storage and restored from userspace (on load).
+ * Custom parameters are updated while the device is runnig.
+ * NOTE: a subset (model_state_save) is saved to permanent storage every "n"
+ * cycles and restored when the model is reloaded (usually on POR).
+ * TODO: handle switching between RC1 and RC2 model types.
  */
 struct max_m5_custom_parameters {
 	u16 iavg_empty; /* WV */
@@ -77,6 +79,7 @@ struct max_m5_custom_parameters {
 	u16 filtercfg; 	/* write to 0x0029 */
 } __attribute__((packed));
 
+/* this is what is saved and restored to/from GMSR */
 struct model_state_save {
 	u16 rcomp0;
 	u16 tempco;
@@ -89,21 +92,22 @@ struct model_state_save {
 	u16 qresidual30;
 	u16 mixcap;
 	u16 halftime;
-};
+} __attribute__((packed));
 
 struct max_m5_data {
 	struct device *dev;
+	struct max17x0x_regmap *regmap;
 
+	/* initial parameters are in device tree they are also learned */
 	struct max_m5_custom_parameters parameters;
 	u16 cycles;
 	u16 mixcap;
 	u16 halftime;
 
-	struct max17x0x_regmap *regmap;
-
 	int custom_model_size;
 	u16 *custom_model;
 
+	/* to/from GMSR */
 	struct model_state_save model_save;
 };
 
