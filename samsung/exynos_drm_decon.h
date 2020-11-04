@@ -308,6 +308,8 @@ struct decon_debug {
 	atomic_t event_log_idx;
 	/* lock for saving log to event log buffer */
 	spinlock_t event_lock;
+
+	u32 auto_refresh_frames;
 };
 
 struct decon_device {
@@ -339,7 +341,7 @@ struct decon_device {
 
 	spinlock_t			slock;
 
-#if defined(CONFIG_EXYNOS_ITMON)
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	struct notifier_block itmon_nb;
 	bool itmon_notified;
 #endif
@@ -360,6 +362,7 @@ static inline struct decon_device *get_decon_drvdata(u32 id)
 }
 
 void decon_dump(struct decon_device *decon);
+void decon_dump_all(struct decon_device *decon);
 int dpu_init_debug(struct decon_device *decon);
 void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv);
 void DPU_EVENT_LOG_ATOMIC_COMMIT(int index);
@@ -369,7 +372,7 @@ void DPU_EVENT_LOG_CMD(int index, struct dsim_device *dsim, u32 cmd_id,
 void decon_enter_hibernation(struct decon_device *decon);
 void decon_exit_hibernation(struct decon_device *decon);
 
-#if defined(CONFIG_EXYNOS_ITMON)
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 int dpu_itmon_notifier(struct notifier_block *nb, unsigned long action,
 		void *data);
 #endif

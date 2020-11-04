@@ -16,10 +16,12 @@
 #ifndef _EXYNOS_DRM_DRV_H_
 #define _EXYNOS_DRM_DRV_H_
 
+#include <drm/drm_atomic.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_plane.h>
 #include <drm/drm_property.h>
 #include <drm/samsung_drm.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 
 #include <decon_cal.h>
@@ -275,6 +277,19 @@ struct drm_exynos_file_private {
 	u32 dummy;
 };
 
+struct exynos_drm_priv_state {
+	struct drm_private_state base;
+
+	struct drm_atomic_state *old_state;
+	struct kthread_work commit_work;
+};
+
+static inline struct exynos_drm_priv_state *
+to_exynos_priv_state(const struct drm_private_state *state)
+{
+	return container_of(state, struct exynos_drm_priv_state, base);
+}
+
 /*
  * Exynos drm private structure.
  *
@@ -301,6 +316,7 @@ struct exynos_drm_private {
 	spinlock_t		lock;
 	wait_queue_head_t	wait;
 
+	struct drm_private_obj	obj;
 };
 
 static inline struct device *to_dma_dev(struct drm_device *dev)

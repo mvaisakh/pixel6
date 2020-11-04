@@ -92,6 +92,14 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		return;
 
 	switch (type) {
+	case DPU_EVT_DECON_FRAMESTART:
+		decon->d.auto_refresh_frames++;
+	case DPU_EVT_DECON_FRAMEDONE:
+	case DPU_EVT_DPP_FRAMEDONE:
+	case DPU_EVT_DSIM_FRAMEDONE:
+		if (decon->d.auto_refresh_frames > 3)
+			return;
+		break;
 	case DPU_EVT_TE_INTERRUPT:
 		break;
 	case DPU_EVT_DSIM_UNDERRUN:
@@ -215,6 +223,8 @@ void DPU_EVENT_LOG_ATOMIC_COMMIT(int index)
 
 	log->type = DPU_EVT_ATOMIC_COMMIT;
 	log->time = ktime_get();
+
+	decon->d.auto_refresh_frames = 0;
 
 	for (i = 0; i < MAX_WIN_PER_DECON; ++i) {
 		memcpy(&log->data.atomic.win_config[i].win,
@@ -378,7 +388,7 @@ static const char *get_event_name(enum dpu_event_type type)
 	return events[type];
 }
 
-static void DPU_EVENT_SHOW(const struct decon_device *decon, struct drm_printer *p)
+static void dpu_event_log_print(const struct decon_device *decon, struct drm_printer *p)
 {
 	int idx = atomic_read(&decon->d.event_log_idx);
 	struct dpu_log *log;
@@ -518,7 +528,7 @@ static int dpu_debug_event_show(struct seq_file *s, void *unused)
 	struct decon_device *decon = s->private;
 	struct drm_printer p = drm_seq_file_printer(s);
 
-	DPU_EVENT_SHOW(decon, &p);
+	dpu_event_log_print(decon, &p);
 	return 0;
 }
 
@@ -663,16 +673,26 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len)
 	}
 }
 
-#if defined(CONFIG_EXYNOS_ITMON)
+void decon_dump_all(struct decon_device *decon)
+{
+	struct drm_printer p = drm_info_printer(decon->dev);
+	bool active = pm_runtime_active(decon->dev);
+
+	pr_info("DPU power %s state\n", active ? "on" : "off");
+
+	dpu_event_log_print(decon, &p);
+
+	if (active)
+		decon_dump(decon);
+}
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 {
 	struct decon_device *decon;
 	struct itmon_notifier *itmon_data = data;
-	struct drm_printer p;
-	bool active;
 
 	decon = container_of(nb, struct decon_device, itmon_nb);
-	p = drm_info_printer(decon->dev);
 
 	pr_debug("%s: DECON%d +\n", __func__, decon->id);
 
@@ -690,13 +710,7 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 		pr_info("%s: port: %s, dest: %s\n", __func__,
 				itmon_data->port, itmon_data->dest);
 
-		active = pm_runtime_active(decon->dev);
-		pr_info("DPU power %s state\n", active ? "on" : "off");
-
-		DPU_EVENT_SHOW(decon, &p);
-
-		if (active)
-			decon_dump(decon);
+		decon_dump_all(decon);
 
 		decon->itmon_notified = true;
 		return NOTIFY_OK;

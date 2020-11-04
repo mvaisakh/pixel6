@@ -23,6 +23,9 @@
 #include <uapi/drm/exynos_drm.h>
 #include <uapi/linux/videodev2_exynos_media.h>
 #include <linux/dma-buf.h>
+#include <linux/pm_runtime.h>
+
+#include <trace/dpu_trace.h>
 
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_decon.h"
@@ -439,15 +442,20 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 #define TIMEOUT	msecs_to_jiffies(50)
 static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
-	int i, ret;
+	int i;
 	struct drm_device *dev = old_state->dev;
 	struct decon_device *decon;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
 	unsigned int hibernation_crtc_mask = 0;
+	unsigned int disabling_crtc_mask = 0;
+
+	DPU_ATRACE_BEGIN("exynos_atomic_commit_tail");
 
 	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state,
 			new_crtc_state, i) {
+		const struct drm_crtc_helper_funcs *funcs;
+
 		decon = crtc_to_decon(crtc);
 
 		DRM_DEBUG("[CRTC-%d] old en:%d active:%d change[%d %d %d]\n",
@@ -475,28 +483,38 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		}
 
 		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
-			/*
-			 * If hw related to crtc is processing, it also should
-			 * be delayed. If not, the hw does not shut down
-			 * normally.
-			 */
-			ret = wait_event_interruptible_timeout(
-					decon->framedone_wait,
-					decon->busy == false, TIMEOUT);
-			if (ret == 0)
-				pr_err("decon%d framedone timeout\n",
-						decon->id);
+			/* keep runtime vote while disabling is taking place */
+			pm_runtime_get_sync(decon->dev);
+			disabling_crtc_mask |= drm_crtc_mask(crtc);
+
+			DPU_ATRACE_BEGIN("crtc_disable");
+
+			funcs = crtc->helper_private;
+			if (new_crtc_state->enable && funcs->prepare)
+				funcs->prepare(crtc);
+			else if (funcs->atomic_disable)
+				funcs->atomic_disable(crtc, old_crtc_state);
+			else if (funcs->disable)
+				funcs->disable(crtc);
+			else if (funcs->dpms)
+				funcs->dpms(crtc, DRM_MODE_DPMS_OFF);
+
+			DPU_ATRACE_END("crtc_disable");
 		}
 	}
 
+	DPU_ATRACE_BEGIN("modeset");
 	drm_atomic_helper_commit_modeset_disables(dev, old_state);
 
 	exynos_atomic_bts_pre_update(dev, old_state);
 
 	drm_atomic_helper_commit_modeset_enables(dev, old_state);
+	DPU_ATRACE_END("modeset");
 
+	DPU_ATRACE_BEGIN("commit_planes");
 	drm_atomic_helper_commit_planes(dev, old_state,
 					DRM_PLANE_COMMIT_ACTIVE_ONLY);
+	DPU_ATRACE_END("commit_planes");
 
 	/*
 	 * hw is flushed at this point, signal flip done for fake commit to
@@ -507,7 +525,9 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_fake_vblank(old_state);
 
+	DPU_ATRACE_BEGIN("wait_for_vblanks");
 	drm_atomic_helper_wait_for_vblanks(dev, old_state);
+	DPU_ATRACE_END("wait_for_vblanks");
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
 		struct decon_mode *mode;
@@ -517,13 +537,16 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		if (!new_crtc_state->active)
 			continue;
 
+		DPU_ATRACE_BEGIN("wait_for_frame_start");
 		if (!wait_for_completion_timeout(&decon->framestart_done,
 						 TIMEOUT)) {
 			DPU_EVENT_LOG(DPU_EVT_FRAMESTART_TIMEOUT,
 					decon->id, NULL);
 			pr_warn("decon%d framestart timeout\n",
 					decon->id);
+			decon_dump_all(decon);
 		}
+		DPU_ATRACE_END("wait_for_frame_start");
 
 		mode = &decon->config.mode;
 		if (mode->op_mode == DECON_COMMAND_MODE) {
@@ -537,15 +560,18 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	exynos_atomic_bts_post_update(dev, old_state);
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
-		if (hibernation_crtc_mask & drm_crtc_mask(crtc)) {
-			decon = crtc_to_decon(crtc);
+		decon = crtc_to_decon(crtc);
+		if (hibernation_crtc_mask & drm_crtc_mask(crtc))
 			hibernation_unblock(decon->hibernation);
-		}
+		if (disabling_crtc_mask & drm_crtc_mask(crtc))
+			pm_runtime_put_sync(decon->dev);
 	}
 
 	drm_atomic_helper_commit_hw_done(old_state);
 
 	drm_atomic_helper_cleanup_planes(dev, old_state);
+
+	DPU_ATRACE_END("exynos_atomic_commit_tail");
 }
 
 static struct drm_mode_config_helper_funcs exynos_drm_mode_config_helpers = {
@@ -557,7 +583,7 @@ static const struct drm_mode_config_funcs exynos_drm_mode_config_funcs = {
 	.get_format_info = exynos_get_format_info,
 	.output_poll_changed = exynos_drm_output_poll_changed,
 	.atomic_check = exynos_atomic_check,
-	.atomic_commit = drm_atomic_helper_commit,
+	.atomic_commit = exynos_atomic_commit,
 };
 
 void exynos_drm_mode_config_init(struct drm_device *dev)
