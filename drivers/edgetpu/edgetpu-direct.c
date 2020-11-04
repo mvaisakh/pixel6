@@ -49,16 +49,8 @@ static atomic_t char_minor = ATOMIC_INIT(-1);
 
 static struct dentry *edgetpu_debugfs_dir;
 
-static const struct file_operations edgetpu_fops;
-
-/*
- * Switch device file private_data to point to the client after open,
- * providing for multiple clients.
- */
-static int edgetpu_open(struct inode *inode, struct file *file)
+int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
 {
-	struct edgetpu_dev *etdev =
-		container_of(inode->i_cdev, struct edgetpu_dev, cdev);
 	struct edgetpu_client *client;
 	int res;
 
@@ -84,6 +76,14 @@ static int edgetpu_open(struct inode *inode, struct file *file)
 	mutex_unlock(&etdev->open.lock);
 	file->private_data = client;
 	return 0;
+}
+
+static int edgetpu_dev_open(struct inode *inode, struct file *file)
+{
+	struct edgetpu_dev *etdev =
+		container_of(inode->i_cdev, struct edgetpu_dev, cdev);
+
+	return edgetpu_open(etdev, file);
 }
 
 static int etdirect_release(struct inode *inode, struct file *file)
@@ -185,11 +185,6 @@ static int etdirect_join_group(struct edgetpu_client *client, u64 leader_fd)
 		ret = -EBADF;
 		goto out;
 	}
-	if (file->f_op != &edgetpu_fops) {
-		ret = -EINVAL;
-		goto out;
-	}
-
 	leader = file->private_data;
 	if (!leader) {
 		ret = -EINVAL;
@@ -221,32 +216,6 @@ static int edgetpu_ioctl_create_group(struct edgetpu_client *client,
 	if (copy_from_user(&attr, argp, sizeof(attr)))
 		return -EFAULT;
 
-	group = edgetpu_device_group_alloc(client, &attr);
-	if (IS_ERR(group))
-		return PTR_ERR(group);
-
-	edgetpu_device_group_put(group);
-	return 0;
-}
-
-/* TODO(b/167151866): remove me */
-static int
-etdirect_create_group(struct edgetpu_client *client,
-		      struct edgetpu_mailbox_attr_compat __user *argp)
-{
-	struct edgetpu_mailbox_attr_compat attr_c;
-	struct edgetpu_mailbox_attr attr;
-	struct edgetpu_device_group *group;
-
-	if (copy_from_user(&attr_c, argp, sizeof(attr_c)))
-		return -EFAULT;
-
-	attr.cmd_queue_size = attr_c.cmd_queue_size;
-	attr.resp_queue_size = attr_c.resp_queue_size;
-	attr.sizeof_cmd = EDGETPU_SIZEOF_VII_CMD_ELEMENT;
-	attr.sizeof_resp = EDGETPU_SIZEOF_VII_RESP_ELEMENT;
-	attr.priority = attr_c.priority;
-	attr.cmdq_tail_doorbell = attr_c.cmdq_tail_doorbell;
 	group = edgetpu_device_group_alloc(client, &attr);
 	if (IS_ERR(group))
 		return PTR_ERR(group);
@@ -451,6 +420,16 @@ static int edgetpu_ioctl_sync_fence_status(
 	return ret;
 }
 
+static int edgetpu_ioctl_fw_version(struct edgetpu_dev *etdev,
+				    struct edgetpu_fw_version __user *argp)
+{
+	if (etdev->fw_version.kci_version == EDGETPU_INVALID_KCI_VERSION)
+		return -ENODEV;
+	if (copy_to_user(argp, &etdev->fw_version, sizeof(*argp)))
+		return -EFAULT;
+	return 0;
+}
+
 static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 {
 	return file->f_mode & FMODE_WRITE;
@@ -463,9 +442,9 @@ static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 {
 	/* @client must not belong to any group */
-	if (cmd == EDGETPU_CREATE_GROUP_COMPAT || cmd == EDGETPU_CREATE_GROUP ||
-	    cmd == EDGETPU_JOIN_GROUP_COMPAT || cmd == EDGETPU_JOIN_GROUP ||
-	    cmd == EDGETPU_CREATE_GROUP_COMPAT_2)
+	if (cmd == EDGETPU_CREATE_GROUP ||
+	    cmd == EDGETPU_CREATE_GROUP_COMPAT_2 ||
+	    cmd == EDGETPU_JOIN_GROUP_COMPAT || cmd == EDGETPU_JOIN_GROUP)
 		return !client->group;
 
 	/* Valid for any @client */
@@ -480,7 +459,8 @@ static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 	    cmd == EDGETPU_SIGNAL_SYNC_FENCE_COMPAT ||
 	    cmd == EDGETPU_SYNC_FENCE_STATUS ||
 	    cmd == EDGETPU_RELEASE_WAKE_LOCK ||
-	    cmd == EDGETPU_ACQUIRE_WAKE_LOCK)
+	    cmd == EDGETPU_ACQUIRE_WAKE_LOCK ||
+	    cmd == EDGETPU_FIRMWARE_VERSION)
 		return true;
 
 	if (!client->group)
@@ -555,7 +535,7 @@ static int etdirect_ioctl_acquire_wakelock(struct edgetpu_client *client)
 	return 0;
 }
 
-static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
+long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 {
 	struct edgetpu_client *client = file->private_data;
 	void __user *argp = (void __user *)arg;
@@ -627,9 +607,6 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 	case EDGETPU_CREATE_GROUP_COMPAT_2:
 		ret = edgetpu_ioctl_create_group(client, argp);
 		break;
-	case EDGETPU_CREATE_GROUP_COMPAT:
-		ret = etdirect_create_group(client, argp);
-		break;
 	case EDGETPU_JOIN_GROUP:
 	case EDGETPU_JOIN_GROUP_COMPAT:
 		ret = etdirect_join_group(client, (u64)argp);
@@ -662,11 +639,22 @@ static long etdirect_ioctl(struct file *file, uint cmd, ulong arg)
 	case EDGETPU_ACQUIRE_WAKE_LOCK:
 		ret = etdirect_ioctl_acquire_wakelock(client);
 		break;
+	case EDGETPU_FIRMWARE_VERSION:
+		ret = edgetpu_ioctl_fw_version(client->etdev, argp);
+		break;
 	default:
 		return -ENOTTY; /* unknown command */
 	}
 
 	return ret;
+}
+
+static long edgetpu_dev_ioctl(struct file *file, uint cmd, ulong arg)
+{
+	if (file->f_op != &edgetpu_fops)
+		return -ENOTTY;
+
+	return edgetpu_ioctl(file, cmd, arg);
 }
 
 /* Map a region of device/coherent memory. */
@@ -889,13 +877,13 @@ static void edgetpu_dev_setup_debugfs(struct edgetpu_dev *etdev)
 			    &statusregs_ops);
 }
 
-static const struct file_operations edgetpu_fops = {
+const struct file_operations edgetpu_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_llseek,
 	.mmap = etdirect_mmap,
-	.open = edgetpu_open,
+	.open = edgetpu_dev_open,
 	.release = etdirect_release,
-	.unlocked_ioctl = etdirect_ioctl,
+	.unlocked_ioctl = edgetpu_dev_ioctl,
 };
 
 /* Called from edgetpu core to add a new edgetpu device. */

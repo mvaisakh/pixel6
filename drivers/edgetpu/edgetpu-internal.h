@@ -12,6 +12,7 @@
 #include <linux/device.h>
 #include <linux/dma-direction.h>
 #include <linux/firmware.h>
+#include <linux/fs.h>
 #include <linux/io.h>
 #include <linux/irqreturn.h>
 #include <linux/mm_types.h>
@@ -138,6 +139,9 @@ enum edgetpu_dev_state {
 	ETDEV_STATE_BAD = 3,	/* firmware/device is in unusable state. */
 };
 
+/* a mark to know whether we read valid versions from the firmware header */
+#define EDGETPU_INVALID_KCI_VERSION (~0u)
+
 struct edgetpu_dev {
 	struct device *dev;	   /* platform/pci bus device */
 	struct device *etcdev;	   /* edgetpu class char device */
@@ -170,7 +174,11 @@ struct edgetpu_dev {
 	u8 mcp_pkg_type;	/* multichip pkg type */
 	struct edgetpu_sw_wdt *etdev_sw_wdt;	/* software watchdog */
 	u64 mcp_serial_num;	/* multichip serial number */
+	/* version read from the firmware binary file */
+	struct edgetpu_fw_version fw_version;
 };
+
+extern const struct file_operations edgetpu_fops;
 
 /* Status regs dump. */
 struct edgetpu_dumpregs_range {
@@ -228,6 +236,10 @@ static inline void edgetpu_dev_write_64(struct edgetpu_dev *etdev,
 {
 	writeq_relaxed(value, etdev->regs.mem + reg_offset);
 }
+
+/* External drivers can hook up to edgetpu driver using these calls. */
+int edgetpu_open(struct edgetpu_dev *etdev, struct file *file);
+long edgetpu_ioctl(struct file *file, uint cmd, ulong arg);
 
 /* Bus (Platform/PCI) <-> Core API */
 

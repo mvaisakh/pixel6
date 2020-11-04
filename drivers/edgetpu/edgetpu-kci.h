@@ -76,11 +76,6 @@ struct edgetpu_vii_response_element {
 	u64 retval;
 } __packed;
 
-/* TODO(b/167151866): remove these two constants */
-/* KCI and VII command elements are the same size */
-#define EDGETPU_SIZEOF_VII_CMD_ELEMENT sizeof(struct edgetpu_command_element)
-#define EDGETPU_SIZEOF_VII_RESP_ELEMENT sizeof(struct edgetpu_vii_response_element)
-
 /*
  * Definition of code in command elements.
  * Code for KCI is a 16-bit unsigned integer.

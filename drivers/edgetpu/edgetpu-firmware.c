@@ -367,6 +367,8 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 		mutex_unlock(&etdev->state_lock);
 		return ret;
 	}
+	/* will be overwritten when we successfully parse the f/w header */
+	etdev->fw_version.kci_version = EDGETPU_INVALID_KCI_VERSION;
 	/*
 	 * Prevent platform-specific code from trying to run the previous
 	 * firmware
