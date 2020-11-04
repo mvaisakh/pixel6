@@ -121,6 +121,26 @@ struct lwis_event_subscribe_operations {
 	void (*release)(struct lwis_device *lwis_dev);
 };
 
+/*
+ * struct lwis_device_power_sequence_info
+ * This struct is to store the power up/down sequence information
+ */
+struct lwis_device_power_sequence_info {
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	char type[LWIS_MAX_NAME_STRING_LEN];
+	int delay;
+};
+
+/*
+ * struct lwis_device_power_sequence_list
+ * This struct is to store the power up/down sequence list
+ */
+struct lwis_device_power_sequence_list {
+	struct lwis_device_power_sequence_info *seq_info;
+	/* Count of power sequence info */
+	int count;
+};
+
 /* struct lwis_client_debug_info
  * This struct applies to each of the LWIS clients, and the purpose is to
  * store information in help debugability.
@@ -212,6 +232,15 @@ struct lwis_device {
 	const char *bts_scenario_name;
 	/* BTS scenario index */
 	unsigned int bts_scenario;
+
+	/* Does power-up-seqs present */
+	bool power_up_seqs_present;
+	/* Power up sequence information */
+	struct lwis_device_power_sequence_list *power_up_sequence;
+	/* Does power-down-seqs present */
+	bool power_down_seqs_present;
+	/* Power down sequence information */
+	struct lwis_device_power_sequence_list *power_down_sequence;
 };
 
 /*
@@ -292,5 +321,25 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev);
  * lwis_dev->client_lock should be held before this function.
  */
 int lwis_dev_power_down_locked(struct lwis_device *lwis_dev);
+
+/*
+ *  lwis_dev_power_seq_list_alloc:
+ *  Allocate an instance of the lwis_device_power_sequence_info
+ *  and initialize the data structures according to the number of
+ *  lwis_device_power_sequence_info specified.
+ */
+struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count);
+
+/*
+ *  lwis_dev_power_seq_list_free: Deallocate the
+ *  wis_device_power_sequence_info structure.
+ */
+void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list);
+
+/*
+ *  lwis_dev_power_seq_list_print:
+ *  Print lwis_device_power_sequence_list content
+ */
+void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list);
 
 #endif /* LWIS_DEVICE_H_ */

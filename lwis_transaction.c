@@ -22,6 +22,10 @@
 #include "lwis_event.h"
 #include "lwis_util.h"
 
+#define EXPLICIT_EVENT_COUNTER(x)                                              \
+	((x) != LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE &&                       \
+	 (x) != LWIS_EVENT_COUNTER_EVERY_TIME)
+
 static struct lwis_transaction_event_list *
 event_list_find(struct lwis_client *client, int64_t event_id)
 {
@@ -119,7 +123,7 @@ static void free_transaction(struct lwis_transaction *transaction)
 {
 	int i = 0;
 
-	kvfree(transaction->resp);
+	kfree(transaction->resp);
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
 		if (transaction->info.io_entries[i].type ==
 		    LWIS_IO_ENTRY_WRITE_BATCH) {
@@ -229,7 +233,14 @@ event_push:
 		}
 	}
 	save_transaction_to_history(client, info);
-	free_transaction(transaction);
+	if (info->trigger_event_counter == LWIS_EVENT_COUNTER_EVERY_TIME) {
+		/* Only clean the transaction struct for this iteration. The
+                 * I/O entries are not being freed. */
+		kfree(transaction->resp);
+		kfree(transaction);
+	} else {
+		free_transaction(transaction);
+	}
 	return ret;
 }
 
@@ -430,8 +441,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 
 	/* Both trigger event ID and counter are defined */
 	if (info->trigger_event_id != LWIS_EVENT_ID_NONE &&
-	    info->trigger_event_counter !=
-		    LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
+	    EXPLICIT_EVENT_COUNTER(info->trigger_event_counter)) {
 		/* Check if event has happened already */
 		if (info->trigger_event_counter ==
 		    info->current_trigger_event_counter) {
@@ -497,7 +507,7 @@ static int prepare_response_locked(struct lwis_client *client,
 	/* Revisit the use of GFP_ATOMIC here. Reason for this to be atomic is
 	 * because this function can be called by transaction_replace while
 	 * holding onto a spinlock. */
-	transaction->resp = kvzalloc(resp_size, GFP_ATOMIC);
+	transaction->resp = kzalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
 		pr_err_ratelimited("Cannot allocate transaction response\n");
 		return -ENOMEM;
@@ -543,9 +553,12 @@ int lwis_transaction_submit_locked(struct lwis_client *client,
 				   struct lwis_transaction *transaction)
 {
 	int ret;
+	struct lwis_transaction_info *info = &transaction->info;
 
-	ret = check_transaction_param_locked(client, transaction,
-					     /*allow_counter_eq=*/true);
+	ret = check_transaction_param_locked(
+		client, transaction,
+		/*allow_counter_eq=*/info->allow_counter_eq);
+
 	if (ret) {
 		return ret;
 	}
@@ -559,6 +572,41 @@ int lwis_transaction_submit_locked(struct lwis_client *client,
 	return ret;
 }
 
+static struct lwis_transaction *
+new_repeating_transaction_iteration(struct lwis_client *client,
+				    struct lwis_transaction *transaction)
+{
+	struct lwis_transaction *new_instance;
+	uint8_t *resp_buf;
+
+	/* Construct a new instance for repeating transactions */
+	new_instance = kzalloc(sizeof(struct lwis_transaction), GFP_ATOMIC);
+	if (!new_instance) {
+		dev_err(client->lwis_dev->dev,
+			"Failed to allocate repeating transaction instance\n");
+		return NULL;
+	}
+	memcpy(&new_instance->info, &transaction->info,
+	       sizeof(struct lwis_transaction_info));
+
+	/* Allocate response buffer */
+	resp_buf = kzalloc(sizeof(struct lwis_transaction_response_header) +
+				   transaction->resp->results_size_bytes,
+			   GFP_ATOMIC);
+	if (!resp_buf) {
+		kfree(new_instance);
+		dev_err(client->lwis_dev->dev,
+			"Failed to allocate repeating transaction response\n");
+		return NULL;
+	}
+	memcpy(resp_buf, transaction->resp,
+	       sizeof(struct lwis_transaction_response_header));
+	new_instance->resp =
+		(struct lwis_transaction_response_header *)resp_buf;
+
+	return new_instance;
+}
+
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   int64_t event_counter,
 				   struct list_head *pending_events,
@@ -568,6 +616,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	struct lwis_transaction_event_list *event_list;
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
+	struct lwis_transaction *new_instance;
 	int64_t trigger_counter = 0;
 
 	/* Find event list that matches the trigger event ID. */
@@ -593,23 +642,49 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 		/* Compare current event with trigger event counter to make
 		 * sure this transaction needs to be executed now. */
 		trigger_counter = transaction->info.trigger_event_counter;
-		if (trigger_counter != LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE &&
-		    trigger_counter != event_counter) {
-			continue;
-		}
-		/* I2C read/write cannot be executed in IRQ context */
-		if (transaction->info.run_in_event_context &&
-		    client->lwis_dev->type != DEVICE_TYPE_I2C) {
-			list_del(&transaction->event_list_node);
-			spin_unlock_irqrestore(&client->transaction_lock,
-					       flags);
-			process_transaction(client, transaction, pending_events,
-					    in_irq);
-			spin_lock_irqsave(&client->transaction_lock, flags);
-		} else {
-			list_add_tail(&transaction->process_queue_node,
-				      &client->transaction_process_queue);
-			list_del(&transaction->event_list_node);
+		if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
+		    trigger_counter == event_counter) {
+			/* I2C read/write cannot be executed in IRQ context */
+			if (transaction->info.run_in_event_context &&
+			    client->lwis_dev->type != DEVICE_TYPE_I2C) {
+				list_del(&transaction->event_list_node);
+				spin_unlock_irqrestore(
+					&client->transaction_lock, flags);
+				process_transaction(client, transaction,
+						    pending_events, in_irq);
+				spin_lock_irqsave(&client->transaction_lock,
+						  flags);
+			} else {
+				list_add_tail(
+					&transaction->process_queue_node,
+					&client->transaction_process_queue);
+				list_del(&transaction->event_list_node);
+			}
+		} else if (trigger_counter == LWIS_EVENT_COUNTER_EVERY_TIME) {
+			new_instance = new_repeating_transaction_iteration(
+				client, transaction);
+			if (!new_instance) {
+				transaction->resp->error_code = -ENOMEM;
+				list_add_tail(
+					&transaction->process_queue_node,
+					&client->transaction_process_queue);
+				list_del(&transaction->event_list_node);
+				continue;
+			}
+			/* I2C read/write cannot be executed in IRQ context */
+			if (transaction->info.run_in_event_context &&
+			    client->lwis_dev->type != DEVICE_TYPE_I2C) {
+				spin_unlock_irqrestore(
+					&client->transaction_lock, flags);
+				process_transaction(client, new_instance,
+						    pending_events, in_irq);
+				spin_lock_irqsave(&client->transaction_lock,
+						  flags);
+			} else {
+				list_add_tail(
+					&new_instance->process_queue_node,
+					&client->transaction_process_queue);
+			}
 		}
 	}
 
