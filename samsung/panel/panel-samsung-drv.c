@@ -24,6 +24,7 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
+#include <video/mipi_display.h>
 
 #include "panel-samsung-drv.h"
 
@@ -613,10 +614,242 @@ static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
 
 	return 0;
 }
+
+static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
+				     const void *data, size_t len)
+{
+	const struct mipi_dsi_host_ops *ops = dsi->host->ops;
+	struct mipi_dsi_msg msg = {
+		.channel = dsi->channel,
+		.tx_buf = data,
+		.tx_len = len,
+		.type = type,
+	};
+
+	if (!ops || !ops->transfer)
+		return -ENOSYS;
+
+	if (dsi->mode_flags & MIPI_DSI_MODE_LPM)
+		msg.flags |= MIPI_DSI_MSG_USE_LPM;
+	msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+	return ops->transfer(dsi->host, &msg);
+}
+
+
+static ssize_t exynos_dsi_dcs_write_buffer(struct mipi_dsi_device *dsi,
+				  const void *data, size_t len)
+{
+	u8 type;
+
+	switch (len) {
+	case 0:
+		return -EINVAL;
+
+	case 1:
+		type = MIPI_DSI_DCS_SHORT_WRITE;
+		break;
+
+	case 2:
+		type = MIPI_DSI_DCS_SHORT_WRITE_PARAM;
+		break;
+
+	default:
+		type = MIPI_DSI_DCS_LONG_WRITE;
+		break;
+	}
+
+	return exynos_dsi_dcs_transfer(dsi, type, data, len);
+}
+
+static int exynos_dsi_name_show(struct seq_file *m, void *data)
+{
+	struct mipi_dsi_device *dsi = m->private;
+
+	seq_puts(m, dsi->name);
+	seq_putc(m, '\n');
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(exynos_dsi_name);
+
+static ssize_t parse_byte_buf(u8 *out, size_t len, char *src)
+{
+	const char *skip = "\n ";
+	size_t i = 0;
+	int rc = 0;
+	char *s;
+
+	while (src && !rc && i < len) {
+		s = strsep(&src, skip);
+		if (*s != '\0') {
+			rc = kstrtou8(s, 16, out + i);
+			i++;
+		}
+	}
+
+	return rc ? : i;
+}
+
+
+struct exynos_dsi_reg_data {
+	struct mipi_dsi_device *dsi;
+	u8 address;
+	u8 type;
+	size_t count;
+};
+
+static ssize_t exynos_dsi_payload_write(struct file *file,
+			       const char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	struct seq_file *m = file->private_data;
+	struct exynos_dsi_reg_data *reg_data = m->private;
+	char *buf;
+	char *payload;
+	size_t len;
+	int ret;
+
+	buf = memdup_user_nul(user_buf, count);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	/* calculate length for worst case (1 digit per byte + whitespace) */
+	len = (count + 1) / 2;
+	payload = kmalloc(len, GFP_KERNEL);
+	if (!payload) {
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	ret = parse_byte_buf(payload, len, buf);
+	if (ret <= 0) {
+		ret = -EINVAL;
+	} else if (reg_data->type) {
+		ret = exynos_dsi_dcs_transfer(reg_data->dsi, reg_data->type,
+					    payload, ret);
+	} else {
+		ret = exynos_dsi_dcs_write_buffer(reg_data->dsi, payload, ret);
+	}
+
+	kfree(buf);
+	kfree(payload);
+
+	return ret ? : count;
+}
+
+static int exynos_dsi_payload_show(struct seq_file *m, void *data)
+{
+	struct exynos_dsi_reg_data *reg_data = m->private;
+	char *buf;
+	ssize_t rc;
+
+	if (!reg_data->count)
+		return -EINVAL;
+
+	buf = kmalloc(reg_data->count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	rc = mipi_dsi_dcs_read(reg_data->dsi, reg_data->address, buf,
+			       reg_data->count);
+	if (rc > 0) {
+		seq_hex_dump(m, "", DUMP_PREFIX_NONE, 16, 1, buf, rc, false);
+		rc = 0;
+	} else if (rc == 0) {
+		pr_debug("no response back\n");
+	}
+	kfree(buf);
+
+	return 0;
+}
+
+static int exynos_dsi_payload_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, exynos_dsi_payload_show, inode->i_private);
+}
+
+static const struct file_operations exynos_dsi_payload_fops = {
+	.owner		= THIS_MODULE,
+	.open		= exynos_dsi_payload_open,
+	.write		= exynos_dsi_payload_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
+			 struct dentry *parent)
+{
+	struct dentry *reg_root;
+	struct exynos_dsi_reg_data *reg_data;
+
+	reg_root = debugfs_create_dir("reg", parent);
+	if (!reg_root)
+		return -EFAULT;
+
+	reg_data = devm_kzalloc(&dsi->dev, sizeof(*reg_data), GFP_KERNEL);
+	if (!reg_data)
+		return -ENOMEM;
+
+	reg_data->dsi = dsi;
+
+	debugfs_create_u8("address", 0600, reg_root, &reg_data->address);
+	debugfs_create_u8("type", 0600, reg_root, &reg_data->type);
+	debugfs_create_size_t("count", 0600, reg_root, &reg_data->count);
+	debugfs_create_file("payload", 0600, reg_root, reg_data,
+			    &exynos_dsi_payload_fops);
+
+	debugfs_create_file("name", 0600, parent, dsi, &exynos_dsi_name_fops);
+
+	return 0;
+}
+
+static int exynos_debugfs_panel_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	struct dentry *root;
+
+	if (!parent)
+		return -EINVAL;
+
+	root = debugfs_create_dir("panel", parent);
+	if (!root)
+		return -EPERM;
+
+	ctx->debugfs_entry = root;
+
+	return 0;
+}
+
+static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
+{
+	if (!ctx->debugfs_entry)
+		return;
+
+	debugfs_remove_recursive(ctx->debugfs_entry);
+
+	ctx->debugfs_entry = NULL;
+}
 #else
 static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
 {
 	return 0;
+}
+
+static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
+			 struct dentry *parent)
+{
+	return 0;
+}
+
+static int exynos_debugfs_panel_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	return 0;
+}
+
+static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
+{
+	return;
 }
 #endif
 
@@ -657,10 +890,9 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 		return ret;
 	}
 
-#ifdef CONFIG_DRM_DEBUGFS_PANEL
-	mipi_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->panel.debugfs_entry);
-	hbm_mode_debugfs_add(ctx, ctx->panel.debugfs_entry);
-#endif
+	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
+	exynos_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->debugfs_entry);
+	hbm_mode_debugfs_add(ctx, ctx->debugfs_entry);
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
@@ -671,6 +903,7 @@ static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
+	exynos_debugfs_panel_remove(ctx);
 	drm_panel_detach(&ctx->panel);
 	drm_connector_unregister(&ctx->connector);
 	drm_connector_cleanup(&ctx->connector);
