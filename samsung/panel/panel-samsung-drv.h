@@ -86,6 +86,8 @@ struct exynos_panel_desc {
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
 	const struct drm_display_mode *modes;
+	/* @lp_mode: provides a low power mode if available, otherwise null */
+	const struct drm_display_mode *lp_mode;
 	size_t num_modes;
 	const struct drm_panel_funcs *panel_func;
 	const struct exynos_panel_funcs *exynos_panel_func;

@@ -853,6 +853,32 @@ static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
 }
 #endif
 
+static int exynos_panel_create_lp_mode(struct drm_connector *conn,
+                                const struct drm_display_mode *lp_mode)
+{
+        struct drm_mode_modeinfo umode;
+        struct drm_property_blob *blob;
+        struct drm_property *prop;
+
+        if (!lp_mode)
+                return -ENOENT;
+
+        drm_mode_convert_to_umode(&umode, lp_mode);
+        blob = drm_property_create_blob(conn->dev, sizeof(umode), &umode);
+        if (IS_ERR(blob))
+                return PTR_ERR(blob);
+
+        prop = drm_property_create(conn->dev,
+                                   DRM_MODE_PROP_IMMUTABLE | DRM_MODE_PROP_BLOB,
+                                   "lp_mode", 0);
+        if (!prop)
+                return -ENOMEM;
+
+        drm_object_attach_property(&conn->base, prop, blob->base.id);
+
+        return 0;
+}
+
 static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 				      enum drm_bridge_attach_flags flags)
 {
@@ -888,6 +914,12 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 	if (ret) {
 		dev_err(ctx->dev, "unable to attach drm panel\n");
 		return ret;
+	}
+
+	if (ctx->desc && ctx->desc->lp_mode) {
+		ret = exynos_panel_create_lp_mode(connector, ctx->desc->lp_mode);
+		if (ret)
+			dev_err(ctx->dev, "Failed to create lp mode\n", ret);
 	}
 
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
@@ -1035,8 +1067,12 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 			break;
 	}
 
-	if (WARN_ON(i == ctx->desc->num_modes))
-		return;
+        if (i == ctx->desc->num_modes) {
+                if (!drm_mode_equal(adjusted_mode, ctx->desc->lp_mode))
+                        return;
+
+                pmode = ctx->desc->lp_mode;
+        }
 
 	if (!ctx->initialized && ctx->enabled) {
 		/* if panel was enabled at boot and there's no mode change skip mode set */

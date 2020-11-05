@@ -18,6 +18,7 @@
 #define EXYNOS_DISPLAY_MODE_FLAG_EXYNOS_PANEL	(1 << 0)
 #define EXYNOS_DISPLAY_MODE_FLAG_TUI		(1 << 1)
 #define EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS	(1 << 2)
+#define EXYNOS_DISPLAY_MODE_FLAG_LP_MODE	(1 << 3)
 
 struct exynos_display_dsc {
 	bool enabled;
