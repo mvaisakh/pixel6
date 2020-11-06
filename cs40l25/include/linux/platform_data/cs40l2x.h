@@ -1,4 +1,5 @@
-/*
+/* SPDX-License-Identifier: GPL-2.0
+ *
  * linux/platform_data/cs40l2x.h -- Platform data for
  * CS40L20/CS40L25/CS40L25A/CS40L25B
  *
@@ -30,6 +31,7 @@ struct cs40l2x_platform_data {
 	unsigned int boost_ipk;
 	unsigned int boost_ctl;
 	unsigned int boost_ovp;
+	unsigned int boost_clab;
 	bool refclk_gpio2;
 	unsigned int f0_default;
 	unsigned int f0_min;
@@ -42,6 +44,8 @@ struct cs40l2x_platform_data {
 	unsigned int q_max;
 	bool redc_comp_disable;
 	bool comp_disable;
+	bool dyn_f0_disable;
+	bool open_wt_disable;
 	unsigned int gpio1_rise_index;
 	unsigned int gpio1_fall_index;
 	unsigned int gpio1_fall_timeout;
