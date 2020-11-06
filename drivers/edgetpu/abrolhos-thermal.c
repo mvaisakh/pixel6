@@ -144,7 +144,6 @@ static int edgetpu_state2power_internal(unsigned long state, u32 *power,
 }
 
 static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
-				       struct thermal_zone_device *tz,
 				       u32 *power)
 {
 	unsigned long state_original;
@@ -156,7 +155,6 @@ static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
 }
 
 static int edgetpu_state2power(struct thermal_cooling_device *cdev,
-			       struct thermal_zone_device *tz,
 			       unsigned long state, u32 *power)
 {
 	struct edgetpu_thermal *cooling = cdev->devdata;
@@ -172,8 +170,7 @@ static int edgetpu_state2power(struct thermal_cooling_device *cdev,
 }
 
 static int edgetpu_power2state(struct thermal_cooling_device *cdev,
-			       struct thermal_zone_device *tz, u32 power,
-			       unsigned long *state)
+			       u32 power, unsigned long *state)
 {
 	int i;
 	struct edgetpu_thermal *cooling = cdev->devdata;
