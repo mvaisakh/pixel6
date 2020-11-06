@@ -35,8 +35,8 @@
 #define GBMS_BGPN_LEN	10
 /* Battery device info length */
 #define GBMS_DINF_LEN	32
-/* Battery device info length */
-#define GBMS_MINF_LEN	32
+/* Battery manufacturer info length */
+#define GBMS_MINF_LEN	30
 /* Gauge Model State Restore */
 #define GBMS_GMSR_LEN	22
 

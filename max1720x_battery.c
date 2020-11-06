@@ -170,7 +170,7 @@ struct max1720x_chip {
 	int previous_qh;
 	int current_capacity;
 	int prev_charge_status;
-	char serial_number[25];
+	char serial_number[30];
 	bool offmode_charger;
 	s32 convgcfg_hysteresis;
 	int nb_convgcfg;
@@ -3832,6 +3832,12 @@ static void max17x0x_read_serial_number(struct max1720x_chip *chip)
 {
 	char buff[32] = {0};
 	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_MINF, buff, GBMS_MINF_LEN);
+	if (ret >= 0) {
+		strncpy(chip->serial_number, buff, ret);
+		return;
+	}
 
 	ret = gbms_storage_read(GBMS_TAG_SNUM, buff, sizeof(buff));
 	if (ret < 0) {
