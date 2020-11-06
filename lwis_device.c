@@ -328,9 +328,8 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < list->count; ++i) {
 #ifdef LWIS_PWR_SEQ_DEBUG
-		dev_info(lwis_dev->dev,
-			 "%s: %d - %s %s", __func__, i, list->seq_info[i].type,
-			 list->seq_info[i].name);
+		dev_info(lwis_dev->dev, "%s: %d - %s %s", __func__, i,
+			 list->seq_info[i].type, list->seq_info[i].name);
 #endif
 		if (strcmp(list->seq_info[i].type, "regulator") == 0) {
 			if (lwis_dev->regulators == NULL) {
@@ -342,19 +341,22 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 				lwis_dev->regulators, list->seq_info[i].name);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error enabling regulators (%d)\n", ret);
+					"Error enabling regulators (%d)\n",
+					ret);
 				return ret;
 			}
 		} else if (strcmp(list->seq_info[i].type, "gpio") == 0) {
 			struct gpio_descs *gpios;
 
-			gpios = lwis_gpio_list_get(
-				&lwis_dev->plat_dev->dev, list->seq_info[i].name);
+			gpios = lwis_gpio_list_get(&lwis_dev->plat_dev->dev,
+						   list->seq_info[i].name);
 			if (IS_ERR_OR_NULL(gpios)) {
 				if (PTR_ERR(gpios) == -EBUSY &&
-				    strcmp(list->seq_info[i].name, "shared-enable") == 0) {
-					dev_warn(lwis_dev->dev,
-						 "Shared gpios requested by another device\n");
+				    strcmp(list->seq_info[i].name,
+					   "shared-enable") == 0) {
+					dev_warn(
+						lwis_dev->dev,
+						"Shared gpios requested by another device\n");
 				} else {
 					dev_err(lwis_dev->dev,
 						"Failed to obtain gpio list (%ld)\n",
@@ -363,7 +365,8 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 				}
 			} else {
 				/* Set GPIO pins to high */
-				ret = lwis_gpio_list_set_output_value_raw(gpios, 1);
+				ret = lwis_gpio_list_set_output_value_raw(gpios,
+									  1);
 				if (ret) {
 					dev_err(lwis_dev->dev,
 						"Error enabling GPIO pins (%d)\n",
@@ -374,15 +377,18 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 
 			if (strcmp(list->seq_info[i].name, "enable") == 0) {
 				lwis_dev->enable_gpios = gpios;
-			} else if (strcmp(list->seq_info[i].name, "shared-enable") == 0) {
+			} else if (strcmp(list->seq_info[i].name,
+					  "shared-enable") == 0) {
 				lwis_dev->shared_enable_gpios = gpios;
-			} else if (strcmp(list->seq_info[i].name, "reset") == 0) {
+			} else if (strcmp(list->seq_info[i].name, "reset") ==
+				   0) {
 				lwis_dev->reset_gpios = gpios;
 			}
 		} else if (strcmp(list->seq_info[i].type, "pinctrl") == 0) {
 			bool activate_mclk = true;
 
-			lwis_dev->mclk_ctrl = devm_pinctrl_get(&lwis_dev->plat_dev->dev);
+			lwis_dev->mclk_ctrl =
+				devm_pinctrl_get(&lwis_dev->plat_dev->dev);
 			if (IS_ERR(lwis_dev->mclk_ctrl)) {
 				dev_err(lwis_dev->dev, "Failed to get mclk\n");
 				ret = PTR_ERR(lwis_dev->mclk_ctrl);
@@ -394,17 +400,20 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 				struct lwis_device *lwis_dev_it;
 				/* Look up if pinctrl it's already enabled */
 				mutex_lock(&core.lock);
-				list_for_each_entry (lwis_dev_it, &core.lwis_dev_list,
-						dev_list) {
+				list_for_each_entry (lwis_dev_it,
+						     &core.lwis_dev_list,
+						     dev_list) {
 					if ((lwis_dev->id != lwis_dev_it->id) &&
 					    (lwis_dev_it->shared_pinctrl ==
 					     lwis_dev->shared_pinctrl) &&
 					    lwis_dev_it->enabled) {
 						activate_mclk = false;
-						devm_pinctrl_put(lwis_dev->mclk_ctrl);
+						devm_pinctrl_put(
+							lwis_dev->mclk_ctrl);
 						lwis_dev->mclk_ctrl = NULL;
-						dev_info(lwis_dev->dev,
-							 "mclk already acquired\n");
+						dev_info(
+							lwis_dev->dev,
+							"mclk already acquired\n");
 						break;
 					}
 				}
@@ -413,8 +422,9 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 
 			if (activate_mclk) {
 				/* Set MCLK state to on */
-				ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-							     list->seq_info[i].name);
+				ret = lwis_pinctrl_set_state(
+					lwis_dev->mclk_ctrl,
+					list->seq_info[i].name);
 				if (ret) {
 					dev_err(lwis_dev->dev,
 						"Error setting %s state (%d)\n",
@@ -488,8 +498,9 @@ static int lwis_dev_power_up_by_default(struct lwis_device *lwis_dev)
 					   "shared-enable");
 		if (IS_ERR_OR_NULL(gpios)) {
 			if (PTR_ERR(gpios) == -EBUSY) {
-				dev_warn(lwis_dev->dev,
-					 "Shared gpios requested by another device\n");
+				dev_warn(
+					lwis_dev->dev,
+					"Shared gpios requested by another device\n");
 			} else {
 				dev_err(lwis_dev->dev,
 					"Failed to obtain shared gpio list (%ld)\n",
@@ -525,7 +536,7 @@ static int lwis_dev_power_up_by_default(struct lwis_device *lwis_dev)
 			/* Look up if pinctrl it's already enabled */
 			mutex_lock(&core.lock);
 			list_for_each_entry (lwis_dev_it, &core.lwis_dev_list,
-					dev_list) {
+					     dev_list) {
 				if ((lwis_dev->id != lwis_dev_it->id) &&
 				    (lwis_dev_it->shared_pinctrl ==
 				     lwis_dev->shared_pinctrl) &&
@@ -625,14 +636,15 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->power_up_seqs_present) {
 		ret = lwis_dev_power_up_by_seqs(lwis_dev);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error lwis_dev_power_up_by_seqs (%d)\n",
-				ret);
+			dev_err(lwis_dev->dev,
+				"Error lwis_dev_power_up_by_seqs (%d)\n", ret);
 			goto error_power_up;
 		}
 	} else {
 		ret = lwis_dev_power_up_by_default(lwis_dev);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error lwis_dev_power_up_by_default (%d)\n",
+			dev_err(lwis_dev->dev,
+				"Error lwis_dev_power_up_by_default (%d)\n",
 				ret);
 			goto error_power_up;
 		}
@@ -696,9 +708,8 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < list->count; ++i) {
 #ifdef LWIS_PWR_SEQ_DEBUG
-		dev_info(lwis_dev->dev,
-			 "%s: %d - %s %s", __func__, i, list->seq_info[i].type,
-			 list->seq_info[i].name);
+		dev_info(lwis_dev->dev, "%s: %d - %s %s", __func__, i,
+			 list->seq_info[i].type, list->seq_info[i].name);
 #endif
 		if (strcmp(list->seq_info[i].type, "regulator") == 0) {
 			if (lwis_dev->regulators == NULL) {
@@ -711,7 +722,8 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 				lwis_dev->regulators, list->seq_info[i].name);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error disabling regulators (%d)\n", ret);
+					"Error disabling regulators (%d)\n",
+					ret);
 				last_error = ret;
 			}
 		} else if (strcmp(list->seq_info[i].type, "gpio") == 0) {
@@ -719,20 +731,22 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 
 			if (strcmp(list->seq_info[i].name, "enable") == 0) {
 				gpios = &lwis_dev->enable_gpios;
-			} else if (strcmp(list->seq_info[i].name, "shared-enable") == 0) {
+			} else if (strcmp(list->seq_info[i].name,
+					  "shared-enable") == 0) {
 				gpios = &lwis_dev->shared_enable_gpios;
-			} else if (strcmp(list->seq_info[i].name, "reset") == 0) {
+			} else if (strcmp(list->seq_info[i].name, "reset") ==
+				   0) {
 				gpios = &lwis_dev->reset_gpios;
 			} else {
-				dev_err(lwis_dev->dev, "Unknown GPIO group name: %s\n",
+				dev_err(lwis_dev->dev,
+					"Unknown GPIO group name: %s\n",
 					list->seq_info[i].name);
 				last_error = -ENODEV;
 				continue;
 			}
 
 			if (*gpios == NULL) {
-				dev_err(lwis_dev->dev,
-					"No %s gpios defined\n",
+				dev_err(lwis_dev->dev, "No %s gpios defined\n",
 					list->seq_info[i].name);
 				last_error = -ENODEV;
 				continue;
@@ -741,7 +755,8 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 			ret = lwis_gpio_list_set_output_value_raw(*gpios, 0);
 			if (ret) {
 				dev_err(lwis_dev->dev,
-					"Error disabling GPIO pins (%d)\n", ret);
+					"Error disabling GPIO pins (%d)\n",
+					ret);
 				last_error = ret;
 			}
 
@@ -752,8 +767,7 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 			bool deactivate_mclk = true;
 
 			if (lwis_dev->mclk_ctrl == NULL) {
-				dev_err(lwis_dev->dev,
-					"No pinctrl defined\n");
+				dev_err(lwis_dev->dev, "No pinctrl defined\n");
 				last_error = -ENODEV;
 				continue;
 			}
@@ -762,7 +776,8 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 				struct lwis_device *lwis_dev_it;
 				/* Look up if pinctrl still used by other device */
 				mutex_lock(&core.lock);
-				list_for_each_entry (lwis_dev_it, &core.lwis_dev_list,
+				list_for_each_entry (lwis_dev_it,
+						     &core.lwis_dev_list,
 						     dev_list) {
 					if ((lwis_dev->id != lwis_dev_it->id) &&
 					    (lwis_dev_it->shared_pinctrl ==
@@ -784,8 +799,9 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 
 			if (deactivate_mclk) {
 				/* Set MCLK state to off */
-				ret = lwis_pinctrl_set_state(lwis_dev->mclk_ctrl,
-							     list->seq_info[i].name);
+				ret = lwis_pinctrl_set_state(
+					lwis_dev->mclk_ctrl,
+					list->seq_info[i].name);
 				if (ret) {
 					dev_err(lwis_dev->dev,
 						"Error setting %s state (%d)\n",
@@ -893,7 +909,8 @@ static int lwis_dev_power_down_by_default(struct lwis_device *lwis_dev)
 
 	if (lwis_dev->enable_gpios_present && lwis_dev->enable_gpios) {
 		/* Set enable pins to 0 (i.e. deasserted) */
-		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios, 0);
+		ret = lwis_gpio_list_set_output_value(lwis_dev->enable_gpios,
+						      0);
 		if (ret) {
 			dev_err(lwis_dev->dev,
 				"Error disabling GPIO pins (%d)\n", ret);
@@ -958,14 +975,16 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->power_down_seqs_present) {
 		ret = lwis_dev_power_down_by_seqs(lwis_dev);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error lwis_dev_power_down_by_seqs (%d)\n",
+			dev_err(lwis_dev->dev,
+				"Error lwis_dev_power_down_by_seqs (%d)\n",
 				ret);
 			last_error = ret;
 		}
 	} else {
 		ret = lwis_dev_power_down_by_default(lwis_dev);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error lwis_dev_power_down_by_default (%d)\n",
+			dev_err(lwis_dev->dev,
+				"Error lwis_dev_power_down_by_default (%d)\n",
 				ret);
 			last_error = ret;
 		}
@@ -1007,15 +1026,15 @@ struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count)
 	}
 
 	list = kzalloc(count * sizeof(struct lwis_device_power_sequence_list),
-	               GFP_KERNEL);
+		       GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate power sequence list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->seq_info = kzalloc(
-		count * sizeof(struct lwis_device_power_sequence_info),
-		GFP_KERNEL);
+	list->seq_info =
+		kzalloc(count * sizeof(struct lwis_device_power_sequence_info),
+			GFP_KERNEL);
 	if (!list->seq_info) {
 		pr_err("Failed to allocate lwis_device_power_sequence_info "
 		       "instances\n");
@@ -1403,9 +1422,11 @@ static void __exit lwis_driver_exit(void)
 			lwis_phy_list_free(lwis_dev->phys);
 		/* Release device power sequence list */
 		if (lwis_dev->power_up_sequence)
-			lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
+			lwis_dev_power_seq_list_free(
+				lwis_dev->power_up_sequence);
 		if (lwis_dev->power_down_sequence)
-			lwis_dev_power_seq_list_free(lwis_dev->power_down_sequence);
+			lwis_dev_power_seq_list_free(
+				lwis_dev->power_down_sequence);
 		/* Release device gpio list */
 		if (lwis_dev->reset_gpios)
 			lwis_gpio_list_put(lwis_dev->reset_gpios,
