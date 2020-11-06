@@ -240,7 +240,7 @@ void DPU_EVENT_LOG_ATOMIC_COMMIT(int index)
 	}
 }
 
-extern void *return_address(int);
+extern void *return_address(unsigned int);
 
 /*
  * DPU_EVENT_LOG_CMD() - store DSIM command information
