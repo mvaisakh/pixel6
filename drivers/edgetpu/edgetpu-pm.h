@@ -10,6 +10,10 @@
 
 #include "edgetpu-internal.h"
 
+#define STATE_SHUTDOWN					1
+#define STATE_RUN					0
+#define EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT		15	/* 15us */
+
 struct edgetpu_pm_private;
 struct edgetpu_pm;
 
@@ -65,5 +69,19 @@ void edgetpu_pm_shutdown(struct edgetpu_dev *etdev);
 
 /* Check if device is powered on. power_up_count is not protected by a lock */
 bool edgetpu_is_powered(struct edgetpu_dev *etdev);
+
+/*
+ * Request run state and deassert CPU reset to TPU CPU on p-channel
+ * interface.
+ */
+void edgetpu_pchannel_power_up(struct edgetpu_dev *etdev);
+
+/*
+ * Request shutdown state and assert CPU reset to TPU CPU on p-channel
+ * interface. Set @wait_on_pactive if chip has working PACTIVE implementation,
+ * false otherwise that will sleep for set amount of time.
+ */
+int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev,
+				bool wait_on_pactive);
 
 #endif /* __EDGETPU_PM_H__ */

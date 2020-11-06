@@ -194,4 +194,8 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 				const char *name,
 				enum edgetpu_firmware_flags flags);
 
+/* Returns the firmware image flavor loaded on the device. */
+enum edgetpu_fw_flavor
+edgetpu_firmware_get_flavor(struct edgetpu_firmware *et_fw);
+
 #endif /* __EDGETPU_FIRMWARE_H__ */

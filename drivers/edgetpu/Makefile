@@ -14,7 +14,7 @@ else
 endif
 
 edgetpu-fw-objs := edgetpu-firmware-util.o edgetpu-shared-fw.o edgetpu-firmware.o
-edgetpu-objs	:= edgetpu-core.o edgetpu-mailbox.o edgetpu-kci.o edgetpu-device-group.o edgetpu-telemetry.o edgetpu-mapping.o edgetpu-dmabuf.o edgetpu-async.o edgetpu-pm.o edgetpu-iremap-pool.o edgetpu-sw-watchdog.o $(edgetpu-fw-objs)
+edgetpu-objs	:= edgetpu-core.o edgetpu-mailbox.o edgetpu-kci.o edgetpu-device-group.o edgetpu-telemetry.o edgetpu-mapping.o edgetpu-dmabuf.o edgetpu-async.o edgetpu-iremap-pool.o edgetpu-sw-watchdog.o $(edgetpu-fw-objs)
 
 abrolhos-objs	:= abrolhos-device.o abrolhos-firmware.o edgetpu-direct.o abrolhos-platform.o abrolhos-iommu.o abrolhos-thermal.o abrolhos-pm.o $(edgetpu-objs)
 

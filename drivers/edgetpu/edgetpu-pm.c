@@ -5,12 +5,15 @@
  * Copyright (C) 2020 Google, Inc.
  */
 
+#include <linux/iopoll.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
 
+#include "edgetpu-config.h"
 #include "edgetpu-device-group.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
+#include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-sw-watchdog.h"
@@ -37,6 +40,7 @@ int edgetpu_pm_get(struct edgetpu_pm *etpm)
 	}
 	if (ret)
 		etpm->p->power_up_count--;
+	etdev_dbg(etpm->etdev, "%s: %d\n", __func__, etpm->p->power_up_count);
 	mutex_unlock(&etpm->p->lock);
 	return ret;
 }
@@ -56,6 +60,7 @@ void edgetpu_pm_put(struct edgetpu_pm *etpm)
 		edgetpu_sw_wdt_stop(etpm->etdev);
 		etpm->p->handlers->power_down(etpm);
 	}
+	etdev_dbg(etpm->etdev, "%s: %d\n", __func__, etpm->p->power_up_count);
 	mutex_unlock(&etpm->p->lock);
 }
 
@@ -146,4 +151,92 @@ bool edgetpu_is_powered(struct edgetpu_dev *etdev)
 		/* Assume powered-on in case of no power interface. */
 		return true;
 	return etpm->p->power_up_count;
+}
+
+static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
+{
+	int ret;
+	u32 val;
+	bool deny = false;
+
+	/* P-channel state change request and handshake. */
+	val = edgetpu_dev_read_32(etdev, EDGETPU_REG_POWER_CONTROL);
+	/* Phase 1: Drive PREQ to 0 */
+	if (val & PREQ) {
+		edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL,
+				     val & ~(PREQ));
+		ret = readl_relaxed_poll_timeout(
+			etdev->regs.mem + EDGETPU_REG_POWER_CONTROL, val,
+			(val & PACCEPT) == 0, 1,
+			EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT);
+		if (ret) {
+			etdev_err(etdev, "p-channel request timeout\n");
+			return ret;
+		}
+	}
+	/* Phase 2: Request state */
+	edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL, state | PREQ);
+
+	/* don't wait for state accept if STATE RUN */
+	if (state == STATE_RUN)
+		return 0;
+
+	/* Phase 3: R52 acknowledgment */
+	ret = readl_relaxed_poll_timeout(
+		etdev->regs.mem + EDGETPU_REG_POWER_CONTROL, val,
+		(val & PACCEPT) || (val & PDENY), 1,
+		EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT);
+	if (val & PDENY) {
+		edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL,
+				     val & !state);
+		etdev_err(etdev, "p-channel state change request denied\n");
+		deny = true;
+	}
+	if (ret) {
+		etdev_err(etdev, "p-channel state change request timeout\n");
+		return ret;
+	}
+	/* Phase 4. Drive PREQ to 0 */
+	edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL, val & ~(PREQ));
+	ret = readl_relaxed_poll_timeout(
+		etdev->regs.mem + EDGETPU_REG_POWER_CONTROL, val,
+		((val & PACCEPT) == 0) && ((val & PDENY) == 0), 1,
+		EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT);
+
+	return deny ? -EACCES : ret;
+}
+
+int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
+{
+	int ret;
+	u32 val;
+
+	etdev_dbg(etdev, "Starting p-channel power down\n");
+	edgetpu_sw_wdt_stop(etdev);
+	ret = edgetpu_kci_shutdown(etdev->kci);
+	if (ret) {
+		etdev_err(etdev, "request power down routing failed\n");
+		return ret;
+	}
+	/*
+	 * wait some time for f/w to execute power down and for TPU CPU to enter
+	 * wfi.
+	 */
+	if (!wait_on_pactive)
+		msleep(200);
+	else
+		/* wait for PACTIVE[1] goes low. */
+		ret = readl_relaxed_poll_timeout(
+			etdev->regs.mem + EDGETPU_REG_POWER_CONTROL, val,
+			(val & PACTIVE) == 0, 1,
+			EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT);
+	if (ret)
+		return ret;
+	ret = pchannel_state_change_request(etdev, STATE_SHUTDOWN);
+	return ret;
+}
+
+void edgetpu_pchannel_power_up(struct edgetpu_dev *etdev)
+{
+	pchannel_state_change_request(etdev, STATE_RUN);
 }

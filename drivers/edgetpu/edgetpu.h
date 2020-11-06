@@ -154,9 +154,6 @@ struct edgetpu_mailbox_attr {
 #define EDGETPU_CREATE_GROUP \
 	_IOW(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
 
-#define EDGETPU_CREATE_GROUP_COMPAT_2 \
-	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
-
 /* Join the calling fd to the device group of the supplied fd. */
 #define EDGETPU_JOIN_GROUP \
 	_IOW(EDGETPU_IOCTL_BASE, 7, __u32)

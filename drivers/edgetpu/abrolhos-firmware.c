@@ -74,6 +74,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	struct edgetpu_platform_dev *edgetpu_pdev =
 		container_of(etdev, struct edgetpu_platform_dev, edgetpu_dev);
 	void *image_vaddr, *header_vaddr;
+	struct abrolhos_image_config *image_config;
 	dma_addr_t header_dma_addr;
 	int ret, tpu_state;
 
@@ -137,6 +138,11 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 		ret = -EIO;
 		goto out_free_gsa;
 	}
+
+	/* fetch the firmware versions */
+	image_config = fw_buf->vaddr + ABROLHOS_IMAGE_CONFIG_OFFSET;
+	memcpy(&etdev->fw_version, &image_config->firmware_versions,
+	       sizeof(etdev->fw_version));
 
 	/* Reset KCI mailbox before starting f/w, don't process anything old.*/
 	edgetpu_mailbox_reset(etdev->kci->mailbox);

@@ -442,9 +442,8 @@ static bool etdirect_ioctl_check_permissions(struct file *file, uint cmd)
 static bool etdirect_ioctl_check_group(struct edgetpu_client *client, uint cmd)
 {
 	/* @client must not belong to any group */
-	if (cmd == EDGETPU_CREATE_GROUP ||
-	    cmd == EDGETPU_CREATE_GROUP_COMPAT_2 ||
-	    cmd == EDGETPU_JOIN_GROUP_COMPAT || cmd == EDGETPU_JOIN_GROUP)
+	if (cmd == EDGETPU_CREATE_GROUP || cmd == EDGETPU_JOIN_GROUP_COMPAT ||
+	    cmd == EDGETPU_JOIN_GROUP)
 		return !client->group;
 
 	/* Valid for any @client */
@@ -604,7 +603,6 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 
 	switch (cmd) {
 	case EDGETPU_CREATE_GROUP:
-	case EDGETPU_CREATE_GROUP_COMPAT_2:
 		ret = edgetpu_ioctl_create_group(client, argp);
 		break;
 	case EDGETPU_JOIN_GROUP:

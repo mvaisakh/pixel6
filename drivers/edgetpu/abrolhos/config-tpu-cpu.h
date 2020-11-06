@@ -10,12 +10,18 @@
 
 /* TODO(137684940): Modify the CSR generator tool to output the values. */
 #define EDGETPU_REG_RESET_CONTROL			0x90010
+#define CPUPORESET					(1 << 1)
 #define EDGETPU_REG_INSTRUCTION_REMAP_CONTROL		0x90050
 #define EDGETPU_REG_INSTRUCTION_REMAP_BASE		0x90058
 #define EDGETPU_REG_INSTRUCTION_REMAP_LIMIT		0x90060
 #define EDGETPU_REG_INSTRUCTION_REMAP_NEW_BASE		0x90068
 #define EDGETPU_REG_INSTRUCTION_REMAP_SECURITY		0x90070
 #define EDGETPU_REG_SECURITY				0x90048
-
+#define EDGETPU_REG_POWER_CONTROL			0xA0008
+#define PSTATE						(1 << 0)
+#define PREQ						(1 << 1)
+#define PDENY						(1 << 2)
+#define PACCEPT						(1 << 3)
+#define PACTIVE						(1 << 5)
 
 #endif /* __ABROLHOS_CONFIG_TPU_CPU_H__ */
