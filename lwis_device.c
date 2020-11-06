@@ -715,7 +715,7 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 				last_error = ret;
 			}
 		} else if (strcmp(list->seq_info[i].type, "gpio") == 0) {
-			struct gpio_descs **gpios;
+			struct gpio_descs **gpios = NULL;
 
 			if (strcmp(list->seq_info[i].name, "enable") == 0) {
 				gpios = &lwis_dev->enable_gpios;
@@ -724,7 +724,10 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 			} else if (strcmp(list->seq_info[i].name, "reset") == 0) {
 				gpios = &lwis_dev->reset_gpios;
 			} else {
-				*gpios = NULL;
+				dev_err(lwis_dev->dev, "Unknown GPIO group name: %s\n",
+					list->seq_info[i].name);
+				last_error = -ENODEV;
+				continue;
 			}
 
 			if (*gpios == NULL) {
