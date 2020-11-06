@@ -202,10 +202,6 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 		return -ENODEV;
 	}
 
-	if (value == 0) {
-		value = EXYNOS_PM_QOS_DEFAULT_VALUE;
-	}
-
 	switch (clock_family) {
 	case CLOCK_FAMILY_INTCAM:
 		qos_req = &platform->pm_qos_int_cam;
