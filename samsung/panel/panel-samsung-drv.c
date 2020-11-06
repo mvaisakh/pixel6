@@ -651,12 +651,6 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 	if (ret)
 		dev_warn(ctx->dev, "unable to link panel sysfs (%d)\n", ret);
 
-	ret = drm_panel_attach(&ctx->panel, connector);
-	if (ret) {
-		dev_err(ctx->dev, "unable to attach drm panel\n");
-		return ret;
-	}
-
 #ifdef CONFIG_DRM_DEBUGFS_PANEL
 	mipi_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->panel.debugfs_entry);
 	hbm_mode_debugfs_add(ctx, ctx->panel.debugfs_entry);
@@ -671,7 +665,6 @@ static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
-	drm_panel_detach(&ctx->panel);
 	drm_connector_unregister(&ctx->connector);
 	drm_connector_cleanup(&ctx->connector);
 }
@@ -901,7 +894,6 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	return 0;
 
 err_panel:
-	drm_panel_detach(&ctx->panel);
 	drm_panel_remove(&ctx->panel);
 	dev_err(ctx->dev, "failed to probe samsung panel driver(%d)\n", ret);
 
