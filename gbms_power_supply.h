@@ -24,11 +24,6 @@ enum {
 	GBMS_TAPER_CONTROL_OFF = 0,
 };
 
-enum {
-	/* hACK: b/169690554 */
-	POWER_SUPPLY_TYPE_WIRELESS = POWER_SUPPLY_TYPE_UNKNOWN,
-};
-
 /* Indicates USB Type-C CC connection status */
 /* Deprecated */
 enum power_supply_typec_mode {
