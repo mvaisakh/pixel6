@@ -25,6 +25,7 @@
 #include <soc/google/acpm_ipc_ctrl.h>
 #endif
 #include <soc/google/exynos-el3_mon.h>
+#include <soc/google/debug-snapshot.h>
 /* TODO: temporary workaround. must remove. see b/169128860  */
 #include <linux/soc/samsung/exynos-smc.h>
 #include "../../bms/google_bms.h"
@@ -32,7 +33,8 @@
 #define BMS_RSBM_VALID   BIT(31)
 
 static struct regmap *pmureg;
-static u32 reboot_offset, reboot_trigger;
+static u32 warm_reboot_offset, warm_reboot_trigger;
+static u32 cold_reboot_offset, cold_reboot_trigger;
 static u32 reboot_cmd_offset;
 static u32 shutdown_offset, shutdown_trigger;
 static phys_addr_t pmu_alive_base;
@@ -176,11 +178,19 @@ static int exynos_restart_handler(struct notifier_block *this, unsigned long mod
 	/* Do S/W Reset */
 	pr_emerg("%s: Exynos SoC reset right now\n", __func__);
 
-	ret = set_priv_reg(pmu_alive_base + reboot_offset, reboot_trigger);
+	if (s2mpg10_get_rev_id() == S2MPG10_EVT0 ||
+	    !target_bms_rsbm_supported() ||
+	    dbg_snapshot_get_panic_status()) {
+		ret = set_priv_reg(pmu_alive_base + warm_reboot_offset, warm_reboot_trigger);
 
-	/* TODO: this is a temporary workaround. must remove. see b/169128860 */
-	if (ret == SMC_CMD_PRIV_REG || ret == -EINVAL)
-		regmap_write(pmureg, reboot_offset, reboot_trigger);
+		/* TODO: this is a temporary workaround. must remove. see b/169128860 */
+		if (ret == SMC_CMD_PRIV_REG || ret == -EINVAL)
+			regmap_write(pmureg, warm_reboot_offset, warm_reboot_trigger);
+	} else {
+		pr_emerg("Set PS_HOLD Low.\n");
+		mdelay(2);
+		regmap_update_bits(pmureg, cold_reboot_offset, cold_reboot_trigger, 0);
+	}
 
 	while (1)
 		wfi();
@@ -220,26 +230,29 @@ static int exynos_reboot_probe(struct platform_device *pdev)
 
 	pmu_alive_base = res.start;
 
-	if (of_property_read_u32(np, "reboot-offset", &reboot_offset) < 0) {
-		pr_err("failed to find reboot-offset property\n");
+	if (of_property_read_u32(np, "swreset-system-offset", &warm_reboot_offset) < 0) {
+		pr_err("failed to find swreset-system-offset property\n");
 		return -EINVAL;
 	}
 
-	if (of_property_read_u32(np, "reboot-trigger", &reboot_trigger) < 0) {
-		pr_err("failed to find reboot-trigger property\n");
+	if (of_property_read_u32(np, "swreset-system-trigger", &warm_reboot_trigger) < 0) {
+		pr_err("failed to find swreset-system-trigger property\n");
 		return -EINVAL;
 	}
 
-	if (of_property_read_u32(np, "shutdown-offset", &shutdown_offset) < 0) {
-		pr_err("failed to find shutdown-offset property\n");
+	if (of_property_read_u32(np, "pshold-control-offset", &cold_reboot_offset) < 0) {
+		pr_err("failed to find pshold-control-offset property\n");
 		return -EINVAL;
 	}
 
-	if (of_property_read_u32(np, "shutdown-trigger",
-				 &shutdown_trigger) < 0) {
+	if (of_property_read_u32(np, "pshold-control-trigger",
+				 &cold_reboot_trigger) < 0) {
 		pr_err("failed to find shutdown-trigger property\n");
 		return -EINVAL;
 	}
+
+	shutdown_offset = cold_reboot_offset;
+	shutdown_trigger = cold_reboot_trigger;
 
 	if (of_property_read_u32(np, "reboot-cmd-offset",
 				 &reboot_cmd_offset) < 0) {
