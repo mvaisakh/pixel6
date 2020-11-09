@@ -134,8 +134,8 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 			 idx++,
 			 buffer->info.fd, buffer->info.dma_read ? "r" : "",
 			 buffer->info.dma_write ? "w" : "",
-			 buffer->info.dma_vaddr,
-			 (buffer->info.dma_vaddr + (buffer->dma_buf->size -1)),
+			 (void *)buffer->info.dma_vaddr,
+			 (void *)(buffer->info.dma_vaddr + (buffer->dma_buf->size - 1)),
 			 buffer->dma_buf->size);
 		strlcat(k_buf, tmp_buf, k_buf_size);
 	}

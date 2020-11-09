@@ -67,7 +67,7 @@ lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 	pr_err("############ LWIS IOMMU PAGE FAULT ############\n");
 	pr_err("\n");
 	pr_err("Device: %s IOMMU Page Fault at Address: 0x%px Flag: 0x%08x\n",
-		lwis_dev->name, fault->event.addr, fault->event.flags);
+		lwis_dev->name, (void *)fault->event.addr, fault->event.flags);
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
