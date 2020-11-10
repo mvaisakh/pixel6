@@ -62,16 +62,6 @@ DECLARE_CRC8_TABLE(p9221_crc8_table);
 static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
 static void p9221_icl_ramp_start(struct p9221_charger_data *charger);
 
-/*
- * TODO(168282168): Was P9221R5_OVSET_REG, what happened to this?
- * raw_data &= P9221R5_OVSET_MASK;
- *		*val = p9221_ov_set_lut[raw_data];
- * 		break;
- */
-static const u32 p9221_ov_set_lut[] = {
-	17000000, 20000000, 15000000, 13000000,
-	11000000, 11000000, 11000000, 11000000};
-
 static char *align_status_str[] = {
 	"...", "M2C", "OK", "-1"
 };
