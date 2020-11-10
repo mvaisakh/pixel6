@@ -1144,7 +1144,7 @@ static bool batt_chg_stats_close(struct batt_drv *batt_drv,
 
 		memcpy(ce_qual, &batt_drv->ce_data, sizeof(*ce_qual));
 
-		pr_info("MSC_STAT %s: elap=%ld ssoc=%d->%d v=%d->%d c=%d->%d\n",
+		pr_info("MSC_STAT %s: elap=%lld ssoc=%d->%d v=%d->%d c=%d->%d\n",
 			reason,
 			ce_qual->last_update - ce_qual->first_update,
 			ce_qual->charging_stats.ssoc_in,
@@ -1225,7 +1225,7 @@ static int batt_chg_stats_cstr(char *buff, int size,
 				ce_data->charging_stats.cc_in,
 				ce_data->charging_stats.cc_out);
 
-		len += scnprintf(&buff[len], size - len, " %ld,%ld",
+		len += scnprintf(&buff[len], size - len, " %lld,%lld",
 				ce_data->first_update,
 				ce_data->last_update);
 	}
@@ -3012,7 +3012,7 @@ batt_check_pairing_state(struct batt_drv *batt_drv)
 	}
 
 	if (batt_drv->dev_info_check[0] == 0) {
-		char data[len + GBMS_MINF_LEN];
+		char data[DEV_SN_LENGTH + GBMS_MINF_LEN];
 
 		ret = gbms_storage_read(GBMS_TAG_MINF, mfg_info, GBMS_MINF_LEN);
 		if (ret < 0) {
@@ -3572,7 +3572,7 @@ static int gbatt_set_property(struct power_supply *psy,
 			batt_drv->ttf_stats.ttf_fake = -1;
 		else
 			batt_drv->ttf_stats.ttf_fake = val->intval;
-		pr_info("time_to_full = %ld\n", batt_drv->ttf_stats.ttf_fake);
+		pr_info("time_to_full = %lld\n", batt_drv->ttf_stats.ttf_fake);
 		if (batt_drv->psy)
 			power_supply_changed(batt_drv->psy);
 		break;
