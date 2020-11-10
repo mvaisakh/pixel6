@@ -16,6 +16,13 @@
 #include <linux/of_device.h>
 #include <linux/regmap.h>
 
+#define MAX20339_STATUS1			0x1
+#define MAX20339_STATUS2			0x2
+#define MAX20339_STATUS3			0x3
+#define MAX20339_INT1				0x4
+#define MAX20339_INT2				0x5
+#define MAX20339_INT3				0x6
+#define MAX20339_INTMASK1			0x7
 #define MAX20339_OVLOSEL			0x11
 #define MAX20339_OVLOSEL_INOVLOSEL_14_5		0x2
 #define MAX20339_IN_CTR				0x10
@@ -66,10 +73,32 @@ static const struct regmap_config max20339_regmap_config = {
 	.wr_table = &max20339_ovp_write_table,
 };
 
+void max20339_irq(void *data)
+{
+	struct max20339_ovp *ovp = data;
+	struct device *dev;
+	u8 buf[6];
+	int ret;
+
+	if (!ovp)
+		return;
+
+	dev = &ovp->client->dev;
+	ret = regmap_bulk_read(ovp->regmap, MAX20339_STATUS1, buf, ARRAY_SIZE(buf));
+	if (!ret)
+		dev_info(dev,
+			 "OVP TRIGGERED: STATUS1:%#x STATUS2:%#x STATUS3:%#x INT1:%#x INT2:%#x INT3:%#x\n",
+			 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
+	else
+		dev_err(dev, "OVP TRIGGERED: Failed on reading status:%d\n", ret);
+}
+EXPORT_SYMBOL_GPL(max20339_irq);
+
 static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 {
 	int ret;
 	unsigned int val;
+	const u8 irq_mask[] = {0xff, 0xff, 0xff};
 
 	ret = regmap_read(regmap, MAX20339_OVLOSEL, &val);
 	if (ret < 0) {
@@ -104,6 +133,12 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 	ret = regmap_write(regmap, MAX20339_IN_CTR, val);
 	if (ret < 0) {
 		dev_err(dev, "IN_CTR write error: ret %d\n", ret);
+		return ret;
+	}
+
+	ret = regmap_bulk_write(regmap, MAX20339_INTMASK1, irq_mask, ARRAY_SIZE(irq_mask));
+	if (ret < 0) {
+		dev_err(dev, "INTMASK1-3 enable failed: ret\n", ret);
 		return ret;
 	}
 
@@ -213,6 +248,10 @@ static int max20339_probe(struct i2c_client *client,
 	}
 
 	max20339_init_regs(ovp->regmap, &client->dev);
+	i2c_set_clientdata(client, ovp);
+
+	/* Read to clear interrupts */
+	max20339_irq(ovp);
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	/* Setup GPIO controller */
