@@ -22,7 +22,19 @@ extern int maxq_query_contaminant(struct max77759_maxq *maxq, u8 cc1_raw,
 				  u8 *response, u8 response_len);
 extern int maxq_gpio_control_read(struct max77759_maxq *maxq, u8 *gpio);
 extern int maxq_gpio_control_write(struct max77759_maxq *maxq, u8 gpio);
+extern int maxq_gpio_trigger_read(struct max77759_maxq *maxq, u8 gpio, bool *trigger_falling);
+extern int maxq_gpio_trigger_write(struct max77759_maxq *maxq, u8 gpio, bool trigger_falling);
 # else
+static inline int maxq_gpio_trigger_read(struct max77759_maxq *maxq, u8 gpio, bool *trigger_falling)
+{
+	return -EINVAL;
+}
+
+static inline int maxq_gpio_trigger_write(struct max77759_maxq *maxq, u8 gpio,
+					  bool trigger_falling)
+{
+	return -EINVAL;
+}
 static inline struct max77759_maxq *maxq_init(struct device *dev,
 					      struct regmap *regmap,
 					      bool poll)

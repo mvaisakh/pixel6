@@ -22,8 +22,24 @@
 #include "max77759_regs.h"
 #include "gbms_storage.h"
 
+#define MAX_GPIO_TRIG_RISING			0
+#define MAX_GPIO_TRIG_FALLING			1
+
+#define MAX_GPIO5_TRIG_MASK			BIT(0)
+#define MAX_GPIO5_TRIG(x)			((x) << 0)
+#define MAX_GPIO6_TRIG_MASK			BIT(1)
+#define MAX_GPIO6_TRIG(x)			((x) << 1)
+
 #define PAYLOAD_REQUEST_LENGTH_BYTES		33
 #define PAYLOAD_RESPONSE_LENGTH_BYTES		3
+#define OPCODE_GPIO_TRIGGER_READ		0x21
+#define OPCODE_GPIO_TRIGGER_R_REQ_LEN		1
+#define OPCODE_GPIO_TRIGGER_R_RES_LEN		2
+#define OPCODE_GPIO_TRIGGER_R_RES_OFFSET	1
+#define OPCODE_GPIO_TRIGGER_WRITE		0x22
+#define OPCODE_GPIO_TRIGGER_W_REQ_LEN           2
+#define OPCODE_GPIO_TRIGGER_W_REQ_OFFSET        1
+#define OPCODE_GPIO_TRIGGER_W_RES_LEN           1
 #define OPCODE_GPIO_CONTROL_READ		0x23
 #define OPCODE_GPIO_CONTROL_R_REQ_LEN		1
 #define OPCODE_GPIO_CONTROL_R_RES_LEN		2
@@ -409,6 +425,81 @@ int maxq_gpio_control_write(struct max77759_maxq *maxq, u8 gpio)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(maxq_gpio_control_write);
+
+int maxq_gpio_trigger_read(struct max77759_maxq *maxq, u8 gpio, bool *trigger_falling)
+{
+	int ret;
+	u8 request = OPCODE_GPIO_TRIGGER_READ;
+	u8 response[OPCODE_GPIO_TRIGGER_R_RES_LEN];
+
+	/* Only GPIO5 and GPIO6 supported */
+	if (gpio != 5 && gpio != 6) {
+		logbuffer_log(maxq->log, "MAXQ gpio trigger read invalid gpio %d", gpio);
+		return -EINVAL;
+	}
+
+	logbuffer_log(maxq->log, "MAXQ gpio trigger read opcode:%#x", request);
+	ret = maxq_issue_opcode_command(maxq, &request,
+					OPCODE_GPIO_TRIGGER_R_REQ_LEN,
+					response,
+					OPCODE_GPIO_TRIGGER_R_RES_LEN);
+	if (!ret) {
+		*trigger_falling = response[OPCODE_GPIO_TRIGGER_R_RES_OFFSET] & ((gpio == 5) ?
+			MAX_GPIO5_TRIG_MASK : MAX_GPIO6_TRIG_MASK);
+		logbuffer_log(maxq->log, "MAXQ GPIO%d TRIGGER:%s", gpio,
+			      *trigger_falling ? "falling" : "rising");
+	} else {
+		logbuffer_log(maxq->log, "MAXQ GPIO%d TRIGGER read failed", gpio);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxq_gpio_trigger_read);
+
+int maxq_gpio_trigger_write(struct max77759_maxq *maxq, u8 gpio, bool trigger_falling)
+{
+	int ret;
+	u8 request[OPCODE_GPIO_TRIGGER_W_REQ_LEN], response[OPCODE_GPIO_TRIGGER_W_RES_LEN];
+	u8 trigger_val;
+	bool trigger_falling_other;
+
+	/* Only GPIO5 and GPIO6 supported */
+	if (gpio != 5 && gpio != 6) {
+		logbuffer_log(maxq->log, "MAXQ gpio trigger read invalid gpio %d", gpio);
+		return -EINVAL;
+	}
+
+	/* Read the other GPIO */
+	ret = maxq_gpio_trigger_read(maxq, gpio == 5 ? 6 : 5, &trigger_falling_other);
+	if (ret < 0)
+		return ret;
+
+	/* Compose trigger write val */
+	if (gpio == 5) {
+		trigger_val = MAX_GPIO6_TRIG(trigger_falling_other ? MAX_GPIO_TRIG_FALLING :
+					     MAX_GPIO_TRIG_RISING);
+		trigger_val |= MAX_GPIO5_TRIG(trigger_falling ? MAX_GPIO_TRIG_FALLING :
+					      MAX_GPIO_TRIG_RISING);
+	} else {
+		trigger_val = MAX_GPIO5_TRIG(trigger_falling_other ? MAX_GPIO_TRIG_FALLING :
+					     MAX_GPIO_TRIG_RISING);
+		trigger_val |= MAX_GPIO6_TRIG(trigger_falling ? MAX_GPIO_TRIG_FALLING :
+					      MAX_GPIO_TRIG_RISING);
+	}
+
+	request[REQUEST_OPCODE] = OPCODE_GPIO_TRIGGER_WRITE;
+	request[OPCODE_GPIO_TRIGGER_W_REQ_OFFSET] = trigger_val;
+	logbuffer_log(maxq->log, "MAXQ gpio trigger write opcode:%#x val:%#x",
+		      request[REQUEST_OPCODE],
+		      request[OPCODE_GPIO_TRIGGER_W_REQ_OFFSET]);
+	ret = maxq_issue_opcode_command(maxq, request,
+					OPCODE_GPIO_TRIGGER_W_REQ_LEN,
+					response,
+					OPCODE_GPIO_TRIGGER_W_RES_LEN);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxq_gpio_trigger_write);
 
 struct max77759_maxq *maxq_init(struct device *dev, struct regmap *regmap,
 				bool poll)
