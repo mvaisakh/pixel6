@@ -26,6 +26,9 @@
 #include "lwis_ioreg.h"
 #include "lwis_regulator.h"
 
+#define SHARED_STRING "shared-"
+#define PULSE_STRING "pulse-"
+
 /* Uncomment this to help debug device tree parsing. */
 // #define LWIS_DT_DEBUG
 
@@ -566,7 +569,7 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 	lwis_dev->native_value_bitwidth = value_bitwidth;
 }
 
-static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
+static int parse_power_up_seqs(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
 	struct device_node *dev_node;
@@ -578,12 +581,14 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	const char *name;
 	const char *type;
 	int delay_us;
+	int type_gpio_count = 0;
 
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 
-	*is_present = false;
+	lwis_dev->power_up_seqs_present = false;
 	lwis_dev->power_up_sequence = NULL;
+	lwis_dev->gpios_list = NULL;
 
 	power_seq_count =
 		of_property_count_strings(dev_node, "power-up-seqs");
@@ -599,9 +604,8 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	}
 	if (power_seq_count != power_seq_type_count ||
 	    power_seq_count != power_seq_delay_count) {
-		pr_err("Count of power-up-seqs, power-up-seq-types, ");
-		pr_err("power-up-seq-delays-us are not match\n");
-		return -1;
+		pr_err("Count of power-up-seqs-* are not match\n");
+		return -EINVAL;
 	}
 
 	lwis_dev->power_up_sequence =
@@ -629,6 +633,9 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 		}
 		strlcpy(lwis_dev->power_up_sequence->seq_info[i].type,
 			type, LWIS_MAX_NAME_STRING_LEN);
+		if (strcmp(type, "gpio") == 0) {
+			type_gpio_count++;
+		}
 
 		ret = of_property_read_u32_index(
 			dev_node, "power-up-seq-delays-us", i, &delay_us);
@@ -643,16 +650,60 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	lwis_dev_power_seq_list_print(lwis_dev->power_up_sequence);
 #endif
 
-	*is_present = true;
+	lwis_dev->power_up_seqs_present = true;
+
+	if (type_gpio_count == 0) {
+		return 0;
+	}
+
+	lwis_dev->gpios_list = lwis_gpios_list_alloc(type_gpio_count);
+	if (IS_ERR(lwis_dev->gpios_list)) {
+		pr_err("Failed to allocate gpios list\n");
+		ret = PTR_ERR(lwis_dev->gpios_list);
+		goto error_parse_power_up_seqs;
+	}
+
+	type_gpio_count = 0;
+	for (i = 0; i < power_seq_count; ++i) {
+		if (strcmp(lwis_dev->power_up_sequence->seq_info[i].type,
+			   "gpio") != 0) {
+			continue;
+		}
+
+		lwis_dev->gpios_list->gpios_info[type_gpio_count].gpios = NULL;
+
+		strlcpy(lwis_dev->gpios_list->gpios_info[type_gpio_count].name,
+			lwis_dev->power_up_sequence->seq_info[i].name,
+			LWIS_MAX_NAME_STRING_LEN);
+
+		if (strncmp(SHARED_STRING,
+			    lwis_dev->power_up_sequence->seq_info[i].name,
+			    strlen(SHARED_STRING)) == 0) {
+			lwis_dev->gpios_list->gpios_info[type_gpio_count].is_shared = true;
+		} else {
+			lwis_dev->gpios_list->gpios_info[type_gpio_count].is_shared = false;
+		}
+		if (strncmp(PULSE_STRING,
+			    lwis_dev->power_up_sequence->seq_info[i].name,
+			    strlen(PULSE_STRING)) == 0) {
+			lwis_dev->gpios_list->gpios_info[type_gpio_count].is_pulse = true;
+		} else {
+			lwis_dev->gpios_list->gpios_info[type_gpio_count].is_pulse = false;
+		}
+		type_gpio_count++;
+	}
+
 	return 0;
 
 error_parse_power_up_seqs:
+	lwis_gpios_list_free(lwis_dev->gpios_list);
+	lwis_dev->gpios_list = NULL;
 	lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
 	lwis_dev->power_up_sequence = NULL;
 	return ret;
 }
 
-static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
+static int parse_power_down_seqs(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
 	struct device_node *dev_node;
@@ -669,7 +720,7 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 
-	*is_present = false;
+	lwis_dev->power_down_seqs_present = false;
 	lwis_dev->power_down_sequence = NULL;
 
 	power_seq_count =
@@ -686,9 +737,8 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	}
 	if (power_seq_count != power_seq_type_count ||
 	    power_seq_count != power_seq_delay_count) {
-		pr_err("Count of power-down-seqs, power-down-seq-types, ");
-		pr_err("power-down-seq-delays-us are not match\n");
-		return -1;
+		pr_err("Count of power-down-seqs-* are not match\n");
+		return -EINVAL;
 	}
 
 	lwis_dev->power_down_sequence =
@@ -730,7 +780,7 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	lwis_dev_power_seq_list_print(lwis_dev->power_down_sequence);
 #endif
 
-	*is_present = true;
+	lwis_dev->power_down_seqs_present = true;
 	return 0;
 
 error_parse_power_down_seqs:
@@ -784,13 +834,13 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-	ret = parse_power_up_seqs(lwis_dev, &lwis_dev->power_up_seqs_present);
+	ret = parse_power_up_seqs(lwis_dev);
 	if (ret) {
 		pr_err("Error parsing power-up-seqs\n");
 		return ret;
 	}
 
-	ret = parse_power_down_seqs(lwis_dev, &lwis_dev->power_down_seqs_present);
+	ret = parse_power_down_seqs(lwis_dev);
 	if (ret) {
 		pr_err("Error parsing power-down-seqs\n");
 		return ret;

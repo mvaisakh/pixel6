@@ -101,3 +101,61 @@ int lwis_gpio_list_set_input(struct gpio_descs *gpios)
 
 	return 0;
 }
+
+struct lwis_gpios_list *lwis_gpios_list_alloc(int count)
+{
+	struct lwis_gpios_list *list;
+
+	/* No need to allocate if count is invalid */
+	if (count <= 0) {
+		return ERR_PTR(-EINVAL);
+	}
+
+	list = kzalloc(sizeof(struct lwis_gpios_list), GFP_KERNEL);
+	if (!list) {
+		pr_err("Failed to allocate gpios list\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	list->gpios_info =
+		kzalloc(count * sizeof(struct lwis_gpios_info), GFP_KERNEL);
+	if (!list->gpios_info) {
+		pr_err("Failed to allocate lwis_gpios_info instances\n");
+		kfree(list);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	list->count = count;
+
+	return list;
+}
+
+void lwis_gpios_list_free(struct lwis_gpios_list *list)
+{
+	if (!list) {
+		return;
+	}
+
+	if (list->gpios_info) {
+		kfree(list->gpios_info);
+	}
+
+	kfree(list);
+}
+
+struct lwis_gpios_info *lwis_gpios_get_info_by_name(
+	struct lwis_gpios_list *list, char *name)
+{
+	int i;
+
+	if (!list || !name) {
+		return ERR_PTR(-EINVAL);
+	}
+
+	for (i = 0; i < list->count; ++i) {
+		if (!strcmp(list->gpios_info[i].name, name)) {
+			return &list->gpios_info[i];
+		}
+	}
+	return ERR_PTR(-EINVAL);
+}

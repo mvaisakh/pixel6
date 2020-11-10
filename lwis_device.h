@@ -242,6 +242,8 @@ struct lwis_device {
 	bool power_down_seqs_present;
 	/* Power down sequence information */
 	struct lwis_device_power_sequence_list *power_down_sequence;
+	/* GPIOs list */
+	struct lwis_gpios_list *gpios_list;
 };
 
 /*
