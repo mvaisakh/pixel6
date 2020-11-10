@@ -395,6 +395,20 @@ int max_m5_load_gauge_model(struct max_m5_data *m5_data)
 	return -ETIMEDOUT;
 }
 
+/* algo version is ignored here, check code in max1720x_outliers */
+int max_m5_fixup_outliers(struct max1720x_drift_data *ddata,
+			  struct max_m5_data *m5_data)
+{
+	if (ddata->design_capacity != m5_data->parameters.designcap)
+		ddata->design_capacity = m5_data->parameters.designcap;
+	if (ddata->ini_rcomp0 != m5_data->parameters.rcomp0)
+		ddata->ini_rcomp0 = m5_data->parameters.rcomp0;
+	if (ddata->ini_tempco != m5_data->parameters.tempco)
+		ddata->ini_tempco = m5_data->parameters.tempco;
+
+	return 0;
+}
+
 /* load parameters and model state from permanent storage */
 int max_m5_load_state_data(struct max_m5_data *m5_data)
 {

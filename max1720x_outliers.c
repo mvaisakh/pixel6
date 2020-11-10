@@ -271,8 +271,8 @@ static u16 max1720x_check_mw_rcomp0(const struct max1720x_drift_data *ddata,
 {
 	const int ini_rcomp0 = ddata->ini_rcomp0;
 
-	return comp_check(rcomp0, 100, ddata->ini_rcomp0 * MAXIM_RCOMP0_LIM_LO,
-			  ddata->ini_rcomp0 * MAXIM_RCOMP0_LIM_HI);
+	return comp_check(rcomp0, 100, ini_rcomp0 * MAXIM_RCOMP0_LIM_LO,
+			  ini_rcomp0 * MAXIM_RCOMP0_LIM_HI);
 }
 
 /* 0 no changes, >0 changes */

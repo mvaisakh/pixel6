@@ -266,7 +266,6 @@ struct max1720x_drift_data {
 	int ini_rcomp0;
 	int ini_tempco;
 	int ini_filtercfg;
-
 };
 
 extern int max1720x_fixup_comp(struct max1720x_drift_data *ddata,
