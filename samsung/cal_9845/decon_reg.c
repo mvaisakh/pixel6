@@ -391,6 +391,18 @@ static void decon_reg_set_dta_threshold(u32 id, u32 high, u32 low)
 #define OUTIF_DPIF	BIT(3)
 #define COMP_DSC(id)	BIT(id + 4) /* DSC 0,1,2 */
 #define COMP_DSCC	BIT(7)
+
+static void decon_reg_clear_dsimif(u32 id, u32 dsimif)
+{
+	u32 val;
+
+	val = SEL_DSIM_GET(dsimif_read(id, DSIMIF_SEL(dsimif)));
+	if ((id == 0 && val < 2) || (id == 1 && val == 2)) {
+		cal_log_info(id, "clearing dsimif%d sel\n", dsimif);
+		dsimif_write(id, DSIMIF_SEL(dsimif), SEL_DSIM(3));
+	}
+}
+
 static void decon_reg_set_data_path(u32 id, struct decon_config *cfg)
 {
 	enum decon_out_type out_type = cfg->out_type;
@@ -400,6 +412,7 @@ static void decon_reg_set_data_path(u32 id, struct decon_config *cfg)
 	switch (out_type) {
 	case DECON_OUT_DSI0:
 		val = OUTIF_DSI0;
+		decon_reg_clear_dsimif(id, 1);
 		dsimif_write(id, DSIMIF_SEL(0), SEL_DSIM(id == 1 ? 2 : 0));
 		break;
 	/*
@@ -411,6 +424,7 @@ static void decon_reg_set_data_path(u32 id, struct decon_config *cfg)
 	 */
 	case DECON_OUT_DSI1:
 		val = OUTIF_DSI0;
+		decon_reg_clear_dsimif(id, 0);
 		dsimif_write(id, DSIMIF_SEL(1), SEL_DSIM(id == 1 ? 2 : 0));
 		break;
 	case DECON_OUT_DSI:
