@@ -724,17 +724,26 @@ static ssize_t debug_read_tag_data(struct file *filp,
 				   size_t count, loff_t *ppos)
 {
 	struct gbms_cache_entry *ce = filp->private_data;
-	char buf[ce->count];
+	char *buf;
 	int ret;
 
 	if (!ce->count)
 		return -ENODATA;
 
+	buf = kzalloc(sizeof(char) * ce->count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
 	ret = gbms_storage_read(ce->tag, buf, ce->count);
 	if (ret < 0)
-		return ret;
+		goto rtag_free_mem;
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, ce->count);
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, ce->count);
+
+rtag_free_mem:
+	kfree(buf);
+
+	return ret;
 }
 
 static ssize_t debug_write_tag_data(struct file *filp,
@@ -742,21 +751,28 @@ static ssize_t debug_write_tag_data(struct file *filp,
 				    size_t count, loff_t *ppos)
 {
 	struct gbms_cache_entry *ce = filp->private_data;
-	char buf[ce->count];
+	char *buf;
 	int ret;
 
 	if (!ce->count)
 		return -ENODATA;
 
+	buf = kzalloc(sizeof(char) * ce->count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
 	ret = simple_write_to_buffer(buf, ce->count, ppos, user_buf, count);
-	if (!ret)
-		return -EFAULT;
+	if (!ret) {
+		ret = -EFAULT;
+		goto wtag_free_mem;
+	}
 
 	ret = gbms_storage_write(ce->tag, buf, ce->count);
-	if (ret < 0)
-		return ret;
 
-	return count;
+wtag_free_mem:
+	kfree(buf);
+
+	return (ret < 0) ? ret : count;
 }
 
 GBMS_DEBUG_ATTRIBUTE(debug_tag_data_ops, debug_read_tag_data,
@@ -867,11 +883,17 @@ struct gbms_storage_device {
 	void (*show_fn)(struct seq_file *s, const u8 *data, size_t count);
 };
 
+struct gbms_storage_device_seq {
+	struct gbms_storage_device *gbms_device;
+	u8 seq_show_buffer[];
+};
+
 static void *ct_seq_start(struct seq_file *s, loff_t *pos)
 {
 	int ret;
-	struct gbms_storage_device *gdev =
-		(struct gbms_storage_device *)s->private;
+	struct gbms_storage_device_seq *gdev_seq =
+		(struct gbms_storage_device_seq *)s->private;
+	struct gbms_storage_device *gdev = gdev_seq->gbms_device;
 
 	ret = gbms_storage_read_data(gdev->entry.tag, NULL, 0, 0);
 	if (ret < 0) {
@@ -894,8 +916,9 @@ static void *ct_seq_start(struct seq_file *s, loff_t *pos)
 static void *ct_seq_next(struct seq_file *s, void *v, loff_t *pos)
 {
 	loff_t *spos = (loff_t *)v;
-	struct gbms_storage_device *gdev =
-		(struct gbms_storage_device *)s->private;
+	struct gbms_storage_device_seq *gdev_seq =
+		(struct gbms_storage_device_seq *)s->private;
+	struct gbms_storage_device *gdev = gdev_seq->gbms_device;
 
 	*pos = ++*spos;
 	if (*pos >= gdev->count)
@@ -907,8 +930,9 @@ static void *ct_seq_next(struct seq_file *s, void *v, loff_t *pos)
 static void ct_seq_stop(struct seq_file *s, void *v)
 {
 	int ret;
-	struct gbms_storage_device *gdev =
-		(struct gbms_storage_device *)s->private;
+	struct gbms_storage_device_seq *gdev_seq =
+		(struct gbms_storage_device_seq *)s->private;
+	struct gbms_storage_device *gdev = gdev_seq->gbms_device;
 
 	ret = gbms_storage_read_data(gdev->entry.tag, NULL, 0,
 				     GBMS_STORAGE_INDEX_INVALID);
@@ -922,19 +946,19 @@ static void ct_seq_stop(struct seq_file *s, void *v)
 
 static int ct_seq_show(struct seq_file *s, void *v)
 {
-	struct gbms_storage_device *gdev =
-		(struct gbms_storage_device *)s->private;
-	u8 data[gdev->entry.count];
+	struct gbms_storage_device_seq *gdev_seq =
+		(struct gbms_storage_device_seq *)s->private;
+	struct gbms_storage_device *gdev = gdev_seq->gbms_device;
 	loff_t *spos = (loff_t *)v;
 	int ret;
 
-	ret = gbms_storage_read_data(gdev->entry.tag, data, sizeof(data),
-				     *spos);
+	ret = gbms_storage_read_data(gdev->entry.tag, gdev_seq->seq_show_buffer,
+				     gdev->entry.count, *spos);
 	if (ret < 0)
 		return ret;
 
 	if (gdev->show_fn)
-		gdev->show_fn(s, data, ret);
+		gdev->show_fn(s, gdev_seq->seq_show_buffer, ret);
 
 	return 0;
 }
@@ -955,7 +979,15 @@ static int gbms_storage_dev_open(struct inode *inode, struct file *file)
 	ret = seq_open(file, &ct_seq_ops);
 	if (ret == 0) {
 		struct seq_file *seq = file->private_data;
-		seq->private = gdev;
+		struct gbms_storage_device_seq *gdev_seq;
+
+		seq->private = kzalloc(sizeof(struct gbms_storage_device_seq) +
+				       gdev->entry.count, GFP_KERNEL);
+		if (!seq->private)
+			return -ENOMEM;
+
+		gdev_seq = (struct gbms_storage_device_seq *)seq->private;
+		gdev_seq->gbms_device = gdev;
 	}
 
 	return ret;
@@ -963,6 +995,10 @@ static int gbms_storage_dev_open(struct inode *inode, struct file *file)
 
 static int gbms_storage_dev_release(struct inode *inode, struct file *file)
 {
+	struct seq_file *seq = file->private_data;
+
+	kfree(seq->private);
+
 	return seq_release(inode, file);
 }
 
