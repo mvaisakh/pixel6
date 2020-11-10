@@ -455,7 +455,7 @@ EXPORT_SYMBOL_GPL(gbms_cycle_count_cstr_bc);
 /* parse the result of gbms_cycle_count_cstr_bc() back to array */
 int gbms_cycle_count_sscan_bc(u16 *ccount, int bcnt, const char *buff)
 {
-	int i, val[bcnt];
+	int i, val[10];
 
 	/* sscanf has 10 fixed conversions */
 	if (bcnt != 10)
