@@ -63,6 +63,8 @@ static inline int max77759_read_batt_id(struct i2c_client *client,
 }
 #endif
 
+void max20339_irq(void *data);
+
 /* mux configuration in MAX77759_PMIC_CONTROL_FG */
 #define THMIO_MUX_BATT_PACK	0
 #define THMIO_MUX_USB_TEMP	1

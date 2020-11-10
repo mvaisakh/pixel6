@@ -96,6 +96,8 @@ struct max77729_pmic_data {
 	struct max77759_maxq *maxq;
 
 	struct i2c_client *fg_i2c_client;
+	struct i2c_client *pmic_i2c_client;
+	void *ovp_client_data;
 	struct mutex io_lock;
 	int batt_id;
 
@@ -223,6 +225,45 @@ int max777x9_pmic_reg_update(struct i2c_client *client,
 }
 EXPORT_SYMBOL_GPL(max777x9_pmic_reg_update);
 
+static int get_ovp_client_data(struct max77729_pmic_data *data)
+{
+	struct i2c_client *ovp_i2c_client;
+	struct device_node *ovp_dn, *dn;
+	struct i2c_client *client = data->pmic_i2c_client;
+	u32 handle;
+
+	dn = dev_of_node(&client->dev);
+	if (IS_ERR_OR_NULL(dn)) {
+		dev_err(&client->dev, "of node not found\n");
+		return -EINVAL;
+	}
+
+	if (!of_property_read_u32(dn, "max20339,ovp", &handle)) {
+		ovp_dn = of_find_node_by_phandle(handle);
+	} else {
+		dev_err(&client->dev, "ovp device node not found\n");
+		return -EINVAL;
+	}
+
+	if (IS_ERR_OR_NULL(ovp_dn)) {
+		dev_err(&client->dev, "ovp device node not found !");
+		return -EAGAIN;
+	}
+
+	ovp_i2c_client = of_find_i2c_device_by_node(ovp_dn);
+	if (IS_ERR_OR_NULL(ovp_i2c_client)) {
+		dev_err(&client->dev, "ovp_i2c_client not found !");
+		return -EAGAIN;
+	}
+
+	data->ovp_client_data = i2c_get_clientdata(ovp_i2c_client);
+	if (IS_ERR_OR_NULL(data->ovp_client_data)) {
+		dev_err(&client->dev, "ovp_client_data not found !");
+		return -EAGAIN;
+	}
+
+	return 0;
+}
 
 /* this interrupt is read to clear, in max77759 it should be write to clear */
 static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
@@ -261,6 +302,18 @@ static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
 			maxq_irq(data->maxq);
 			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
 					  MAX77759_PMIC_UIC_INT1_APCMDRESI);
+		}
+
+		/* GPIO6 mapped to OVP */
+		if (uic_int[0] & MAX77759_PMIC_UIC_INT1_GPIO6I) {
+			if (!data->ovp_client_data)
+				get_ovp_client_data(data);
+
+			if (data->ovp_client_data)
+				max20339_irq(data->ovp_client_data);
+
+			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
+					  MAX77759_PMIC_UIC_INT1_GPIO6I);
 		}
 	}
 
@@ -303,8 +356,8 @@ static int max777x9_pmic_set_irqmask(struct max77729_pmic_data *data)
 	int ret;
 
 	if (data->pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
-		const uint8_t uic_mask[] = {0x7f, 0xff, 0xff, 0xff};
-		uint8_t reg;
+		const u8 uic_mask[] = {0x7d, 0xff, 0xff, 0xff};
+		u8 reg;
 
 		ret = max77729_pmic_rd8(data, MAX77759_PMIC_INTSRC,
 					&reg);
@@ -323,7 +376,8 @@ static int max777x9_pmic_set_irqmask(struct max77729_pmic_data *data)
 					MAX77759_PMIC_TOPSYS_INT_MASK_MASK,
 					MAX77759_PMIC_TOPSYS_INT_MASK_DEFAULT);
 		ret |= max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
-					 MAX77759_PMIC_UIC_INT1_APCMDRESI);
+					 MAX77759_PMIC_UIC_INT1_APCMDRESI |
+					 MAX77759_PMIC_UIC_INT1_GPIO6I);
 		ret |= max77729_pmic_writen(data, MAX77759_PMIC_UIC_INT1_M,
 					    uic_mask, sizeof(uic_mask));
 	} else {
@@ -712,6 +766,7 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	atomic_set(&data->sysuvlo_cnt, 0);
 	atomic_set(&data->sysovlo_cnt, 0);
 	i2c_set_clientdata(client, data);
+	data->pmic_i2c_client = client;
 
 	data->regmap = devm_regmap_init_i2c(client, &max777x9_pmic_regmap_cfg);
 	if (IS_ERR(data->regmap)) {
@@ -781,6 +836,16 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		ret = devm_gpiochip_add_data(dev, &data->gpio, data);
 		if (ret)
 			dev_err(dev, "Failed to initialize gpio chip\n");
+
+		/* Configure GPIO6 as falling interrupt to detect OVP interrupts */
+		maxq_gpio_trigger_write(data->maxq, 6, true);
+
+		/* Enable GPIO6 as interrupt */
+		max77759_gpio_direction_input(&data->gpio, MAX77759_GPIO6_OFF);
+
+		get_ovp_client_data(data);
+		if (data->ovp_client_data)
+			max20339_irq(data->ovp_client_data);
 	}
 #endif
 
