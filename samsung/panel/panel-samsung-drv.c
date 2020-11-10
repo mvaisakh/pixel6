@@ -245,6 +245,8 @@ static void exynos_panel_handoff(struct exynos_panel *ctx)
 	if (ctx->enabled) {
 		dev_info(ctx->dev, "panel enabled at boot\n");
 		exynos_panel_set_power(ctx, true);
+	} else {
+		gpiod_direction_output(ctx->reset_gpio, 0);
 	}
 }
 
