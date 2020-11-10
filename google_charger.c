@@ -850,7 +850,7 @@ static bool chg_update_dead_battery(const struct chg_drv *chg_drv)
 	if (dead == 0 && chg_drv->usb_psy) {
 		dead = GPSY_SET_PROP(chg_drv->usb_psy, GBMS_PROP_DEAD_BATTERY, 0);
 		if (dead == 0)
-			pr_info("dead battery cleared uptime=%ld\n", uptime);
+			pr_info("dead battery cleared uptime=%lld\n", uptime);
 	}
 
 	return (dead != 0);
