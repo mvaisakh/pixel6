@@ -369,7 +369,7 @@ static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
 	int ret = 0;
 
 	pr_info("%s: mode=%d on=%d sel=%d\n", __func__, mode,
-		data->uc_data.ext_bst_ctl);
+		data->uc_data.bst_on, data->uc_data.bst_sel);
 
 	if (data->uc_data.ext_bst_ctl < 0)
 		return 0;
