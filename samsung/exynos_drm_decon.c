@@ -756,11 +756,41 @@ static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 	}
 }
 
+static void _decon_stop(struct decon_device *decon, bool reset)
+{
+	int i;
+
+	/*
+	 * Make sure all window connections are disabled when getting disabled,
+	 * in case there are any stale mappings.
+	 */
+	for (i = 0; i < MAX_WIN_PER_DECON; ++i)
+		decon_reg_set_win_enable(decon->id, i, 0);
+
+	for (i = 0; i < decon->dpp_cnt; ++i) {
+		struct dpp_device *dpp = decon->dpp[i];
+
+		if (!dpp)
+			continue;
+
+		if ((dpp->decon_id >= 0) && (dpp->decon_id != decon->id))
+			continue;
+
+		_dpp_disable(dpp);
+
+		if (dpp->win_id < MAX_WIN_PER_DECON) {
+			dpp->win_id = 0xFF;
+			dpp->dbg_dma_addr = 0;
+		}
+	}
+
+	decon_reg_stop(decon->id, &decon->config, reset, decon->bts.fps);
+}
+
 static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *old_crtc_state)
 {
 	const struct drm_crtc_state *crtc_state = crtc->base.state;
 	struct decon_device *decon = crtc->ctx;
-	int i;
 
 	if (crtc_state->mode_changed) {
 		const struct drm_atomic_state *state = old_crtc_state->state;
@@ -788,24 +818,10 @@ static void decon_enable(struct exynos_drm_crtc *crtc, struct drm_crtc_state *ol
 		decon_set_te_pinctrl(decon, true);
 	}
 
+	if (decon->state == DECON_STATE_INIT)
+		_decon_stop(decon, true);
+
 	_decon_enable(decon);
-
-	for (i = 0; i < decon->dpp_cnt; i++) {
-		struct dpp_device *dpp = decon->dpp[i];
-
-		if ((dpp->win_id < MAX_WIN_PER_DECON) &&
-		    ((dpp->decon_id < 0) || (dpp->decon_id == decon->id))) {
-			dpp->win_id = 0xFF;
-			dpp->dbg_dma_addr = 0;
-		}
-	}
-
-	/*
-	 * Make sure all window connections are disabled when getting enabled, in case there are any
-	 * stale mappings. New mappings will happen later before atomic flush
-	 */
-	for (i = 0; i < MAX_WIN_PER_DECON; ++i)
-		decon_reg_set_win_enable(decon->id, i, 0);
 
 	decon_print_config_info(decon);
 
@@ -844,8 +860,9 @@ static void decon_disable_irqs(struct decon_device *decon)
 static void _decon_disable(struct decon_device *decon)
 {
 	const struct drm_crtc_state *crtc_state = decon->crtc->base.state;
+	bool reset = crtc_state->active_changed || crtc_state->connectors_changed;
 
-	decon_reg_stop(decon->id, &decon->config, crtc_state->active_changed, decon->bts.fps);
+	_decon_stop(decon, reset);
 	decon_disable_irqs(decon);
 }
 
@@ -1456,7 +1473,7 @@ static int decon_probe(struct platform_device *pdev)
 	init_completion(&decon->framestart_done);
 	init_waitqueue_head(&decon->framedone_wait);
 
-	decon->state = DECON_STATE_OFF;
+	decon->state = DECON_STATE_INIT;
 	pm_runtime_enable(decon->dev);
 
 	ret = decon_init_resources(decon);
