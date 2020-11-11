@@ -577,7 +577,7 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	int ret;
 	const char *name;
 	const char *type;
-	int delay;
+	int delay_us;
 
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
@@ -591,7 +591,7 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 		of_property_count_strings(dev_node, "power-up-seq-types");
 	power_seq_delay_count =
 		of_property_count_elems_of_size(
-			dev_node, "power-up-seq-delays", sizeof(u32));
+			dev_node, "power-up-seq-delays-us", sizeof(u32));
 
 	/* No power-up-seqs found, just return */
 	if (power_seq_count <= 0) {
@@ -600,7 +600,7 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	if (power_seq_count != power_seq_type_count ||
 	    power_seq_count != power_seq_delay_count) {
 		pr_err("Count of power-up-seqs, power-up-seq-types, ");
-		pr_err("power-up-seq-delays are not match\n");
+		pr_err("power-up-seq-delays-us are not match\n");
 		return -1;
 	}
 
@@ -631,12 +631,12 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev, bool *is_present)
 			type, LWIS_MAX_NAME_STRING_LEN);
 
 		ret = of_property_read_u32_index(
-			dev_node, "power-up-seq-delays", i, &delay);
+			dev_node, "power-up-seq-delays-us", i, &delay_us);
 		if (ret < 0) {
 			pr_err("Error adding power sequence delay[%d]\n", i);
 			goto error_parse_power_up_seqs;
 		}
-		lwis_dev->power_up_sequence->seq_info[i].delay = delay;
+		lwis_dev->power_up_sequence->seq_info[i].delay_us = delay_us;
 	}
 
 #ifdef LWIS_DT_DEBUG
@@ -663,7 +663,7 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	int ret;
 	const char *name;
 	const char *type;
-	int delay;
+	int delay_us;
 
 
 	dev = &lwis_dev->plat_dev->dev;
@@ -678,7 +678,7 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 		of_property_count_strings(dev_node, "power-down-seq-types");
 	power_seq_delay_count =
 		of_property_count_elems_of_size(
-			dev_node, "power-down-seq-delays", sizeof(u32));
+			dev_node, "power-down-seq-delays-us", sizeof(u32));
 
 	/* No power-down-seqs found, just return */
 	if (power_seq_count <= 0) {
@@ -687,7 +687,7 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 	if (power_seq_count != power_seq_type_count ||
 	    power_seq_count != power_seq_delay_count) {
 		pr_err("Count of power-down-seqs, power-down-seq-types, ");
-		pr_err("power-down-seq-delays are not match\n");
+		pr_err("power-down-seq-delays-us are not match\n");
 		return -1;
 	}
 
@@ -718,12 +718,12 @@ static int parse_power_down_seqs(struct lwis_device *lwis_dev, bool *is_present)
 			type, LWIS_MAX_NAME_STRING_LEN);
 
 		ret = of_property_read_u32_index(
-			dev_node, "power-down-seq-delays", i, &delay);
+			dev_node, "power-down-seq-delays-us", i, &delay_us);
 		if (ret < 0) {
 			pr_err("Error adding power sequence delay[%d]\n", i);
 			goto error_parse_power_down_seqs;
 		}
-		lwis_dev->power_down_sequence->seq_info[i].delay = delay;
+		lwis_dev->power_down_sequence->seq_info[i].delay_us = delay_us;
 	}
 
 #ifdef LWIS_DT_DEBUG

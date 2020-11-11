@@ -435,7 +435,7 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 				}
 			}
 		}
-		usleep_range(list->seq_info[i].delay, list->seq_info[i].delay);
+		usleep_range(list->seq_info[i].delay_us, list->seq_info[i].delay_us);
 	}
 
 	return 0;
@@ -812,7 +812,7 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 				lwis_dev->mclk_ctrl = NULL;
 			}
 		}
-		usleep_range(list->seq_info[i].delay, list->seq_info[i].delay);
+		usleep_range(list->seq_info[i].delay_us, list->seq_info[i].delay_us);
 	}
 
 	if (last_error) {
@@ -1073,8 +1073,8 @@ void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
 	int i;
 
 	for (i = 0; i < list->count; ++i) {
-		pr_info("type:%s  name:%s  delay:%d\n", list->seq_info[i].type,
-			list->seq_info[i].name, list->seq_info[i].delay);
+		pr_info("type:%s  name:%s  delay_us:%d\n", list->seq_info[i].type,
+			list->seq_info[i].name, list->seq_info[i].delay_us);
 	}
 }
 

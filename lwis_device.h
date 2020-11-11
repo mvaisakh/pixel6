@@ -128,7 +128,7 @@ struct lwis_event_subscribe_operations {
 struct lwis_device_power_sequence_info {
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	char type[LWIS_MAX_NAME_STRING_LEN];
-	int delay;
+	int delay_us;
 };
 
 /*
