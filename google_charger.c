@@ -500,40 +500,34 @@ static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 /* b/117985113 */
 static int chg_usb_online(struct power_supply *usb_psy)
 {
-	int usb_online = 1, mode;
-	int rc = -EINVAL;
+	int online, rc;
 
 	if (!usb_psy)
 		return 1;
 
 #ifdef CONFIG_USB_ONLINE_IS_TYPEC_MODE
-	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE, &rc);
+	online = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_TYPEC_MODE, &rc);
+	if (rc < 0)
+		return rc;
 
-	switch (mode) {
+	switch (online) {
 	case POWER_SUPPLY_TYPEC_SOURCE_DEFAULT:
 	case POWER_SUPPLY_TYPEC_SOURCE_MEDIUM:
 	case POWER_SUPPLY_TYPEC_SOURCE_HIGH:
 	case POWER_SUPPLY_TYPEC_DAM_MEDIUM:
+		online = 1;
 		break;
 	default:
-		usb_online = 0;
+		online = 0;
 		break;
 	}
 #else
-	mode = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
-	if (mode == 0 || rc < 0) {
-		int usb_type = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_USB_TYPE, &rc);
-
-		if (usb_type == POWER_SUPPLY_USB_TYPE_UNKNOWN) {
-			usb_online = 0;
-		} else {
-			/* for input suspend case */
-			usb_online = 1;
-		}
-	}
+	online = GPSY_GET_INT_PROP(usb_psy, POWER_SUPPLY_PROP_ONLINE, &rc);
+	if (rc < 0)
+		return rc;
 #endif
 
-	return usb_online;
+	return online;
 }
 
 /* returns 1 if charging should be disabled given the current battery capacity
