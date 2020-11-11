@@ -266,7 +266,7 @@ struct lwis_event_subscribe {
 struct lwis_periodic_io_info {
 	// Input
 	int batch_size;
-	int64_t period_ms;
+	int64_t period_ns;
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	int64_t emit_success_event_id;

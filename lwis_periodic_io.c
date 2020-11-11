@@ -389,7 +389,7 @@ static int queue_periodic_io_locked(struct lwis_client *client,
 	int64_t period_ns;
 	struct lwis_periodic_io_list *periodic_io_list;
 	struct lwis_periodic_io_info *info = &periodic_io->info;
-	period_ns = info->period_ms * 1000000;
+	period_ns = info->period_ns;
 	periodic_io_list = periodic_io_list_find_or_create_locked(client, period_ns);
 	if (!periodic_io_list) {
 		pr_err_ratelimited("Cannot create timer/periodic io list\n");
