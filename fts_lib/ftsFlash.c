@@ -354,6 +354,7 @@ int hold_m3(void)
   */
 int parseBinFile(u8 *fw_data, int fw_size, Firmware *fwData, int keep_cx)
 {
+	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int dimension, index = 0;
 	u32 temp;
 	int res, i;
@@ -388,12 +389,12 @@ int parseBinFile(u8 *fw_data, int fw_size, Firmware *fwData, int keep_cx)
 		}
 		pr_info("parseBinFile: ftb_version OK!\n");
 		index += FW_BYTES_ALIGN;
-		if (fw_data[index] != DCHIP_ID_0 || fw_data[index + 1] !=
-		    DCHIP_ID_1) {
+		if (fw_data[index] != info->board->dchip_id[0] ||
+		    fw_data[index + 1] != info->board->dchip_id[1]) {
 			pr_err("parseBinFile: Wrong target %02X != %02X  %02X != %02X ... ERROR %08X\n",
-				fw_data[index], DCHIP_ID_0,
+				fw_data[index], info->board->dchip_id[0],
 				fw_data[index + 1],
-				DCHIP_ID_1, ERROR_FILE_PARSE);
+				info->board->dchip_id[1], ERROR_FILE_PARSE);
 			res = ERROR_FILE_PARSE;
 			goto END;
 		}

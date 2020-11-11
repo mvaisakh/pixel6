@@ -2235,10 +2235,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			j = scnprintf(&driver_test_buff[index],
 				      fileSize - index,
 				      "DATA = %04X, expected = %02X%02X\n",
-				      temp, DCHIP_ID_1,
-				      DCHIP_ID_0);
+				      temp, info->board->dchip_id[1],
+				      info->board->dchip_id[0]);
 			index += j;
-			if (temp != ((DCHIP_ID_1 << 8) | DCHIP_ID_0)) {
+			if (temp != ((info->board->dchip_id[1] << 8) |
+				     info->board->dchip_id[0])) {
 				pr_err("Wrong CHIP ID, Diagnostic failed!\n");
 				res = ERROR_OP_NOT_ALLOW;
 				goto END_DIAGNOSTIC;

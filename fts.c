@@ -5451,6 +5451,13 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	struct device_node *np = dev->of_node;
 	u32 coords[2];
 
+	if (of_property_read_u8_array(np, "st,dchip_id", bdata->dchip_id, 2)) {
+		pr_err("st,dchip_id not found. Use default DCHIP_ID <0x%02X 0x%02X>.\n",
+		       DCHIP_ID_0, DCHIP_ID_1);
+		bdata->dchip_id[0] = DCHIP_ID_0;
+		bdata->dchip_id[1] = DCHIP_ID_1;
+	}
+
 	if (of_property_read_bool(np, "st,panel_map")) {
 		for (index = 0 ;; index++) {
 			retval = of_parse_phandle_with_fixed_args(np,
