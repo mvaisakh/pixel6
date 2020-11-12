@@ -48,6 +48,8 @@
 
 #include <regs-dsim.h>
 
+#include <trace/dpu_trace.h>
+
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_decon.h"
 #include "exynos_drm_dsim.h"
@@ -967,9 +969,11 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 	}
 
 	if (int_src & DSIM_INTSRC_UNDER_RUN) {
+		DPU_ATRACE_INT("DPU_UNDERRUN", 1);
 		dsim_underrun_info(dsim);
 		if (decon)
 			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
+		DPU_ATRACE_INT("DPU_UNDERRUN", 0);
 	}
 
 	if (int_src & DSIM_INTSRC_VT_STATUS) {
