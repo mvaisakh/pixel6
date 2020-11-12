@@ -238,6 +238,7 @@ struct lwis_transaction_info {
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	bool run_in_event_context;
+	bool run_at_real_time;
 	int64_t emit_success_event_id;
 	int64_t emit_error_event_id;
 	bool allow_counter_eq;

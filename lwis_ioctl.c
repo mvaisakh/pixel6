@@ -339,7 +339,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 			ret = register_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_POLL:
-			ret = lwis_entry_poll(lwis_dev, &io_entries[i]);
+			ret = lwis_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
 			break;
 		case LWIS_IO_ENTRY_READ_ASSERT:
 			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i],
@@ -772,8 +772,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 		ret = lwis_client_event_peek_front(lwis_client, &event);
 		if (ret) {
 			if (ret != -ENOENT) {
-				dev_err(lwis_dev->dev,
-					"Error dequeueing event: %ld\n", ret);
+				dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 			}
 			return ret;
 		}
@@ -818,8 +817,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 	 */
 	if (!err) {
 		if (is_error_event) {
-			ret = lwis_client_error_event_pop_front(lwis_client,
-								NULL);
+			ret = lwis_client_error_event_pop_front(lwis_client, NULL);
 		} else {
 			ret = lwis_client_event_pop_front(lwis_client, NULL);
 		}
@@ -1291,7 +1289,7 @@ static int ioctl_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_qos_set
 	}
 
 	ret = copy_from_user((void *)&current_setting, (void __user *)msg,
-		sizeof(struct lwis_qos_setting));
+			     sizeof(struct lwis_qos_setting));
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "failed to copy from user\n");
 		goto out;
