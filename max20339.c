@@ -27,6 +27,7 @@
 #define MAX20339_OVLOSEL			0x11
 #define MAX20339_OVLOSEL_INOVLOSEL_14_5		0x2
 #define MAX20339_IN_CTR				0x10
+#define MAX20339_IN_CTR_IN_SWEN_FORCE_ON	0x3
 
 #define MAX20339_POLL_ATTEMPTS			10
 #define MAX20339_INT2_REG			0x5
@@ -131,7 +132,8 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 		return ret;
 	}
 
-	ret = regmap_write(regmap, MAX20339_IN_CTR, val);
+	/* Enable Force on while re-enabling the switch */
+	ret = regmap_write(regmap, MAX20339_IN_CTR, val | MAX20339_IN_CTR_IN_SWEN_FORCE_ON);
 	if (ret < 0) {
 		dev_err(dev, "IN_CTR write error: ret %d\n", ret);
 		return ret;
