@@ -37,6 +37,7 @@ static const unsigned char PPS_SETTING[] = {
 #define S6E3FC3_WRCTRLD_DIMMING_BIT    0x08
 #define S6E3FC3_WRCTRLD_BCTRL_BIT      0x20
 #define S6E3FC3_WRCTRLD_HBM_BIT        0xC0
+#define S6E3FC3_WRCTRLD_LOCAL_HBM_BIT  0x10
 
 static void s6e3fc3_change_frequency(struct exynos_panel *ctx,
 				     unsigned int vrefresh)
@@ -60,8 +61,12 @@ static void s6e3fc3_write_display_mode(struct exynos_panel *ctx,
 	if (ctx->hbm_mode)
 		val |= S6E3FC3_WRCTRLD_HBM_BIT;
 
-	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s)\n",
-		__func__, val, ctx->hbm_mode ? "on" : "off");
+	if (ctx->local_hbm.enabled)
+		val |= S6E3FC3_WRCTRLD_LOCAL_HBM_BIT;
+
+	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, local_hbm: %s)\n",
+		__func__, val, ctx->hbm_mode ? "on" : "off",
+		ctx->local_hbm.enabled ? "on" : "off");
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 
@@ -133,6 +138,20 @@ static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 	exynos_panel->hbm_mode = hbm_mode;
 
 	s6e3fc3_write_display_mode(exynos_panel, exynos_panel->current_mode);
+}
+
+static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
+				 bool local_hbm_en)
+{
+	if (exynos_panel->local_hbm.enabled == local_hbm_en)
+		return;
+
+	mutex_lock(&exynos_panel->local_hbm.lock);
+	exynos_panel->local_hbm.enabled = local_hbm_en;
+	s6e3fc3_write_display_mode(exynos_panel, exynos_panel->current_mode);
+	mutex_unlock(&exynos_panel->local_hbm.lock);
+	/* TODO: need to wait two drm_crtc_wait_one_vblank() */
+
 }
 
 static void s6e3fc3_mode_set(struct exynos_panel *ctx,
@@ -212,6 +231,7 @@ static const struct drm_panel_funcs s6e3fc3_drm_funcs = {
 static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.set_brightness = exynos_panel_set_brightness,
 	.set_hbm_mode = s6e3fc3_set_hbm_mode,
+	.set_local_hbm_mode = s6e3fc3_set_local_hbm_mode,
 	.is_mode_seamless = s6e3fc3_is_mode_seamless,
 	.mode_set = s6e3fc3_mode_set,
 };
