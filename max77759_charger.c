@@ -1923,6 +1923,140 @@ static ssize_t show_sysuvlo2_cnt(struct device *dev,
 
 static DEVICE_ATTR(sysuvlo2_cnt, 0444, show_sysuvlo2_cnt, NULL);
 
+static int vdroop2_ok_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_dtls1;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &chg_dtls1);
+	if (ret < 0)
+		return -ENODEV;
+
+	*val = _chg_details_01_vdroop2_ok_get(chg_dtls1);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(vdroop2_ok_fops, vdroop2_ok_get, NULL, "%llu\n");
+
+static int vdp1_stp_bst_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg18;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_18, &chg_cnfg18);
+	if (ret < 0)
+		return -ENODEV;
+
+	*val = _chg_cnfg_18_vdp1_stp_bst_get(chg_cnfg18);
+	return 0;
+}
+
+static int vdp1_stp_bst_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg18;
+	const u8 vdp1_stp_bst = (val > 0)? 0x1 : 0x0;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_18, &chg_cnfg18);
+	if (ret < 0)
+		return -ENODEV;
+
+	chg_cnfg18 = _chg_cnfg_18_vdp1_stp_bst_set(chg_cnfg18, vdp1_stp_bst);
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_18, chg_cnfg18);
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(vdp1_stp_bst_fops, vdp1_stp_bst_get, vdp1_stp_bst_set, "%llu\n");
+
+static int vdp2_stp_bst_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg18;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_18, &chg_cnfg18);
+	if (ret < 0)
+		return -ENODEV;
+
+	*val = _chg_cnfg_18_vdp2_stp_bst_get(chg_cnfg18);
+	return 0;
+}
+
+static int vdp2_stp_bst_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg18;
+	const u8 vdp2_stp_bst = (val > 0)? 0x1 : 0x0;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_18, &chg_cnfg18);
+	if (ret < 0)
+		return -ENODEV;
+
+	chg_cnfg18 = _chg_cnfg_18_vdp2_stp_bst_set(chg_cnfg18, vdp2_stp_bst);
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_18, chg_cnfg18);
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(vdp2_stp_bst_fops, vdp2_stp_bst_get, vdp2_stp_bst_set, "%llu\n");
+
+static int sys_uvlo1_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg15;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &chg_cnfg15);
+	if (ret < 0)
+		return -ENODEV;
+
+	*val = chg_cnfg15;
+	return 0;
+}
+
+static int sys_uvlo1_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_15, (u8) val);
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo1_fops, sys_uvlo1_get, sys_uvlo1_set, "0x%x\n");
+
+static int sys_uvlo2_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg16;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_16, &chg_cnfg16);
+	if (ret < 0)
+		return -ENODEV;
+
+	*val = chg_cnfg16;
+	return 0;
+}
+
+static int sys_uvlo2_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_16, (u8) val);
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%x\n");
 
 static int dbg_init_fs(struct max77759_chgr_data *data)
 {
@@ -1946,6 +2080,17 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 				&data->sysuvlo1_cnt);
 	debugfs_create_atomic_t("sysuvlo2_cnt", 0644, data->de,
 				&data->sysuvlo2_cnt);
+
+	debugfs_create_file("vdroop2_ok", 0400, data->de, data,
+			    &vdroop2_ok_fops);
+	debugfs_create_file("vdp1_stp_bst", 0600, data->de, data,
+			    &vdp1_stp_bst_fops);
+	debugfs_create_file("vdp2_stp_bst", 0600, data->de, data,
+			    &vdp2_stp_bst_fops);
+	debugfs_create_file("sys_uvlo1", 0600, data->de, data,
+			    &sys_uvlo1_fops);
+	debugfs_create_file("sys_uvlo2", 0600, data->de, data,
+			    &sys_uvlo2_fops);
 
 	return 0;
 }
