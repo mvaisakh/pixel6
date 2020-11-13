@@ -190,8 +190,12 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 } while (0)
 
 int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
+int exynos_panel_disable(struct drm_panel *panel);
+int exynos_panel_unprepare(struct drm_panel *panel);
+int exynos_panel_prepare(struct drm_panel *panel);
 void exynos_panel_reset(struct exynos_panel *ctx);
 int exynos_panel_set_power(struct exynos_panel *ctx, bool on);
+int exynos_panel_set_brightness(struct exynos_panel *exynos_panel, u16 br);
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi);
 int exynos_panel_remove(struct mipi_dsi_device *dsi);

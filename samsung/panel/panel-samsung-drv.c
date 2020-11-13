@@ -323,6 +323,51 @@ int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connec
 }
 EXPORT_SYMBOL(exynos_panel_get_modes);
 
+int exynos_panel_disable(struct drm_panel *panel)
+{
+	struct exynos_panel *ctx =
+		container_of(panel, struct exynos_panel, panel);
+	ctx->enabled = false;
+	ctx->hbm_mode = false;
+	dev_dbg(ctx->dev, "%s +\n", __func__);
+	return 0;
+}
+EXPORT_SYMBOL(exynos_panel_disable);
+
+int exynos_panel_unprepare(struct drm_panel *panel)
+{
+	struct exynos_panel *ctx =
+		container_of(panel, struct exynos_panel, panel);
+
+	dev_dbg(ctx->dev, "%s +\n", __func__);
+	exynos_panel_set_power(ctx, false);
+	dev_dbg(ctx->dev, "%s -\n", __func__);
+	return 0;
+}
+EXPORT_SYMBOL(exynos_panel_unprepare);
+
+int exynos_panel_prepare(struct drm_panel *panel)
+{
+	struct exynos_panel *ctx =
+		container_of(panel, struct exynos_panel, panel);
+
+	dev_dbg(ctx->dev, "%s +\n", __func__);
+	exynos_panel_set_power(ctx, true);
+	dev_dbg(ctx->dev, "%s -\n", __func__);
+
+	return 0;
+}
+EXPORT_SYMBOL(exynos_panel_prepare);
+
+int exynos_panel_set_brightness(struct exynos_panel *exynos_panel, u16 br)
+{
+	u16 brightness;
+
+	brightness = (br & 0xff) << 8 | br >> 8;
+	return exynos_dcs_set_brightness(exynos_panel, brightness);
+}
+EXPORT_SYMBOL(exynos_panel_set_brightness);
+
 static int exynos_get_brightness(struct backlight_device *bl)
 {
 	return bl->props.brightness;
@@ -941,7 +986,7 @@ static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 	drm_connector_cleanup(&ctx->connector);
 }
 
-static void exynos_panel_enable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
@@ -957,7 +1002,7 @@ static void exynos_panel_enable(struct drm_bridge *bridge)
 	drm_panel_enable(&ctx->panel);
 }
 
-static void exynos_panel_pre_enable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
@@ -972,7 +1017,7 @@ static void exynos_panel_pre_enable(struct drm_bridge *bridge)
 	drm_panel_prepare(&ctx->panel);
 }
 
-static void exynos_panel_disable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_disable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
@@ -984,7 +1029,7 @@ static void exynos_panel_disable(struct drm_bridge *bridge)
 	drm_panel_disable(&ctx->panel);
 }
 
-static void exynos_panel_post_disable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
@@ -1017,7 +1062,7 @@ static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
 	return funcs->is_mode_seamless(ctx, mode);
 }
 
-static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
+static bool exynos_panel_bridge_mode_fixup(struct drm_bridge *bridge,
 				    const struct drm_display_mode *mode,
 				    struct drm_display_mode *adjusted_mode)
 {
@@ -1048,7 +1093,7 @@ static bool exynos_panel_mode_fixup(struct drm_bridge *bridge,
 	return false;
 }
 
-static void exynos_panel_mode_set(struct drm_bridge *bridge,
+static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 				  const struct drm_display_mode *mode,
 				  const struct drm_display_mode *adjusted_mode)
 {
@@ -1103,12 +1148,12 @@ static void exynos_panel_mode_set(struct drm_bridge *bridge,
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.attach = exynos_panel_bridge_attach,
 	.detach = exynos_panel_bridge_detach,
-	.pre_enable = exynos_panel_pre_enable,
-	.enable = exynos_panel_enable,
-	.disable = exynos_panel_disable,
-	.post_disable = exynos_panel_post_disable,
-	.mode_fixup = exynos_panel_mode_fixup,
-	.mode_set = exynos_panel_mode_set,
+	.pre_enable = exynos_panel_bridge_pre_enable,
+	.enable = exynos_panel_bridge_enable,
+	.disable = exynos_panel_bridge_disable,
+	.post_disable = exynos_panel_bridge_post_disable,
+	.mode_fixup = exynos_panel_bridge_mode_fixup,
+	.mode_set = exynos_panel_bridge_mode_set,
 };
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi)

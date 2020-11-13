@@ -55,42 +55,6 @@ static const unsigned char SEQ_PPS_FHD[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-static int s6e3hc2_disable(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-	ctx->enabled = false;
-	ctx->hbm_mode = false;
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	return 0;
-}
-
-static int s6e3hc2_unprepare(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	exynos_panel_set_power(ctx, false);
-	dev_dbg(ctx->dev, "%s -\n", __func__);
-	return 0;
-}
-
-static int s6e3hc2_prepare(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	exynos_panel_set_power(ctx, true);
-	dev_dbg(ctx->dev, "%s -\n", __func__);
-
-	return 0;
-}
-
 #define S6E3HC2_WRCTRLD_DIMMING_BIT    0x08
 #define S6E3HC2_WRCTRLD_FRAME_RATE_BIT 0x10
 #define S6E3HC2_WRCTRLD_BCTRL_BIT      0x20
@@ -207,14 +171,6 @@ static int s6e3hc2_fhd_enable(struct drm_panel *panel)
 	s6e3hc2_common_post_enable(ctx);
 
 	return 0;
-}
-
-static int s6e3hc2_set_brightness(struct exynos_panel *exynos_panel, u16 br)
-{
-	u16 brightness;
-
-	brightness = (br & 0xff) << 8 | br >> 8;
-	return exynos_dcs_set_brightness(exynos_panel, brightness);
 }
 
 static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
@@ -339,23 +295,23 @@ static const struct drm_display_mode s6e3hc2_fhd_modes[] = {
 };
 
 static const struct drm_panel_funcs s6e3hc2_wqhd_drm_funcs = {
-	.disable = s6e3hc2_disable,
-	.unprepare = s6e3hc2_unprepare,
-	.prepare = s6e3hc2_prepare,
+	.disable = exynos_panel_disable,
+	.unprepare = exynos_panel_unprepare,
+	.prepare = exynos_panel_prepare,
 	.enable = s6e3hc2_wqhd_enable,
 	.get_modes = exynos_panel_get_modes,
 };
 
 static const struct drm_panel_funcs s6e3hc2_fhd_drm_funcs = {
-	.disable = s6e3hc2_disable,
-	.unprepare = s6e3hc2_unprepare,
-	.prepare = s6e3hc2_prepare,
+	.disable = exynos_panel_disable,
+	.unprepare = exynos_panel_unprepare,
+	.prepare = exynos_panel_prepare,
 	.enable = s6e3hc2_fhd_enable,
 	.get_modes = exynos_panel_get_modes,
 };
 
 static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
-	.set_brightness = s6e3hc2_set_brightness,
+	.set_brightness = exynos_panel_set_brightness,
 	.set_hbm_mode = s6e3hc2_set_hbm_mode,
 	.is_mode_seamless = s6e3hc2_is_mode_seamless,
 	.mode_set = s6e3hc2_mode_set,

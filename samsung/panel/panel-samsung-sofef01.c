@@ -15,42 +15,6 @@
 
 #include "panel-samsung-drv.h"
 
-static int sofef01_disable(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-	ctx->enabled = false;
-	ctx->hbm_mode = false;
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	return 0;
-}
-
-static int sofef01_unprepare(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	exynos_panel_set_power(ctx, false);
-	dev_dbg(ctx->dev, "%s -\n", __func__);
-	return 0;
-}
-
-static int sofef01_prepare(struct drm_panel *panel)
-{
-	struct exynos_panel *ctx;
-
-	ctx = container_of(panel, struct exynos_panel, panel);
-
-	dev_dbg(ctx->dev, "%s +\n", __func__);
-	exynos_panel_set_power(ctx, true);
-	dev_dbg(ctx->dev, "%s -\n", __func__);
-
-	return 0;
-}
-
 #define SOFEF01_WRCTRLD_BCTRL_BIT      0x20
 #define SOFEF01_WRCTRLD_HBM_BIT        0xC0
 
@@ -131,14 +95,6 @@ static int sofef01_enable(struct drm_panel *panel)
 	return 0;
 }
 
-static int sofef01_set_brightness(struct exynos_panel *exynos_panel, u16 br)
-{
-	u16 brightness;
-
-	brightness = (br & 0xff) << 8 | br >> 8;
-	return exynos_dcs_set_brightness(exynos_panel, brightness);
-}
-
 static void sofef01_set_hbm_mode(struct exynos_panel *exynos_panel,
 				bool hbm_mode)
 {
@@ -177,15 +133,15 @@ static const struct drm_display_mode sofef01_modes[] = {
 };
 
 static const struct drm_panel_funcs sofef01_drm_funcs = {
-	.disable = sofef01_disable,
-	.unprepare = sofef01_unprepare,
-	.prepare = sofef01_prepare,
+	.disable = exynos_panel_disable,
+	.unprepare = exynos_panel_unprepare,
+	.prepare = exynos_panel_prepare,
 	.enable = sofef01_enable,
 	.get_modes = exynos_panel_get_modes,
 };
 
 static const struct exynos_panel_funcs sofef01_exynos_funcs = {
-	.set_brightness = sofef01_set_brightness,
+	.set_brightness = exynos_panel_set_brightness,
 	.set_hbm_mode = sofef01_set_hbm_mode,
 };
 
