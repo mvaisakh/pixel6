@@ -215,14 +215,20 @@ req_unlock:
 	mutex_unlock(&maxq->maxq_lock);
 	return ret;
 }
-static void maxq_log_array(struct max77759_maxq *maxq, char *title,
-							u8 *data, int length)
-{
-	int i, len = 0, size = LOG_BUFFER_SIZE;
-	char buf[size];
 
-	for (i = 0; i < length; i++)
-		len += scnprintf(&buf[len], size - len, "%#x ", data[i]);
+static void maxq_log_array(struct max77759_maxq *maxq, char *title,
+			   u8 *data, int length)
+{
+	char buf[LOG_BUFFER_SIZE];
+	int i, len = 0;
+
+	for (i = 0; i < length; i++) {
+		len += scnprintf(&buf[len], LOG_BUFFER_SIZE - len,
+				 "%#x ", data[i]);
+
+		if (len >= LOG_BUFFER_SIZE)
+			break;
+        }
 
 	logbuffer_log(maxq->log, "%s: %s", title, buf);
 
