@@ -91,9 +91,22 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x35); /* TE on */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x2A, 0x00, 0x00, 0x04, 0x37); /* CASET */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x2B, 0x00, 0x00, 0x09, 0x5F); /* PASET */
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A); /* TEST_KEY_ON_F0 */
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x27, 0xF2); /* FQ_CON_GLOBAL */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x00); /* FQ_CON_0 */
+
+	/* Local HBM circle location setting */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF1, 0x5A, 0x5A); /* TEST_KEY_ON_F1 */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xCC); /* global para 10bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x01, 0x34, 0x68); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0x68, 0x21, 0xC6, 0xE9); /* circle location */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x28, 0xF2); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xC4); /* global para 8bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF1, 0xA5, 0xA5); /* TEST_KEY_OFF_F1 */
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5); /* TEST_KEY_OFF_F0 */
 
 	s6e3fc3_change_frequency(ctx, drm_mode_vrefresh(mode));
