@@ -42,6 +42,7 @@ struct exynos_hibernation {
 	struct dsim_device *dsim;
 	struct writeback_device *wb;
 	const struct exynos_hibernation_funcs *funcs;
+	bool enabled;
 };
 
 bool hibernation_block_exit(struct exynos_hibernation *hiber);

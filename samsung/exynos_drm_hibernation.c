@@ -41,9 +41,16 @@ static bool is_camera_operating(struct exynos_hibernation *hiber)
 	return (readl(hiber->cam_op_reg) & CAMERA_OPERATION_MASK);
 }
 
+static inline bool is_hibernation_enabled(struct exynos_hibernation *hiber)
+{
+	return hiber && hiber->enabled;
+}
+
 static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
 {
-	return (atomic_read(&hiber->block_cnt) > 0) || (hiber->decon->state != DECON_STATE_ON);
+	return (!is_hibernation_enabled(hiber)) ||
+		(atomic_read(&hiber->block_cnt) > 0) ||
+		(hiber->decon->state != DECON_STATE_ON);
 }
 
 static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
@@ -57,17 +64,11 @@ static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 
 static inline void hibernation_block(struct exynos_hibernation *hiber)
 {
-	if (!hiber)
-		return;
-
 	atomic_inc(&hiber->block_cnt);
 }
 
 static inline void hibernation_unblock(struct exynos_hibernation *hiber)
 {
-	if (!hiber)
-		return;
-
 	WARN_ON(!atomic_add_unless(&hiber->block_cnt, -1, 0));
 }
 
@@ -177,6 +178,9 @@ bool hibernation_block_exit(struct exynos_hibernation *hiber)
 
 	hibernation_block(hiber);
 
+	if (!is_hibernation_enabled(hiber))
+		return false;
+
 	funcs = hiber->funcs;
 
 	ret = !funcs || !funcs->exit(hiber);
@@ -271,6 +275,7 @@ exynos_hibernation_register(struct decon_device *decon)
 
 	hibernation->decon = decon;
 	hibernation->funcs = &hibernation_funcs;
+	hibernation->enabled = true;
 
 	mutex_init(&hibernation->lock);
 
@@ -285,7 +290,7 @@ exynos_hibernation_register(struct decon_device *decon)
 
 void exynos_hibernation_destroy(struct exynos_hibernation *hiber)
 {
-	if (!hiber)
+	if (!is_hibernation_enabled(hiber))
 		return;
 
 	if (hiber->cam_op_reg)
