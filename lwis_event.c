@@ -175,10 +175,13 @@ lwis_device_event_state_find_locked(struct lwis_device *lwis_dev,
  */
 static void
 save_device_event_state_to_history_locked(struct lwis_device *lwis_dev,
-					  struct lwis_device_event_state *state)
+					  struct lwis_device_event_state *state,
+					  int64_t timestamp)
 {
-	lwis_dev->debug_info
-		.event_hist[lwis_dev->debug_info.cur_event_hist_idx] = *state;
+	lwis_dev->debug_info.event_hist[lwis_dev->debug_info.cur_event_hist_idx]
+		.state = *state;
+	lwis_dev->debug_info.event_hist[lwis_dev->debug_info.cur_event_hist_idx]
+		.timestamp = timestamp;
 	lwis_dev->debug_info.cur_event_hist_idx++;
 	if (lwis_dev->debug_info.cur_event_hist_idx >=
 	    EVENT_DEBUG_HISTORY_SIZE) {
@@ -626,14 +629,14 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev,
 	device_event_state->event_counter++;
 	/* Save event counter to local variable */
 	event_counter = device_event_state->event_counter;
+	/* Latch timestamp */
+	timestamp = ktime_to_ns(lwis_get_time());
 	/* Saves this event to history buffer */
-	save_device_event_state_to_history_locked(lwis_dev, device_event_state);
+	save_device_event_state_to_history_locked(lwis_dev, device_event_state,
+						  timestamp);
 
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-
-	/* Latch timestamp */
-	timestamp = ktime_to_ns(lwis_get_time());
 
 	/* Emit event to subscriber via top device */
 	spin_lock_irqsave(&lwis_dev->lock, flags);

@@ -158,7 +158,8 @@ struct lwis_client_debug_info {
  */
 #define EVENT_DEBUG_HISTORY_SIZE 16
 struct lwis_device_debug_info {
-	struct lwis_device_event_state event_hist[EVENT_DEBUG_HISTORY_SIZE];
+	struct lwis_device_event_state_history
+		event_hist[EVENT_DEBUG_HISTORY_SIZE];
 	int cur_event_hist_idx;
 };
 
@@ -334,7 +335,8 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev);
  *  and initialize the data structures according to the number of
  *  lwis_device_power_sequence_info specified.
  */
-struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count);
+struct lwis_device_power_sequence_list *
+lwis_dev_power_seq_list_alloc(int count);
 
 /*
  *  lwis_dev_power_seq_list_free: Deallocate the

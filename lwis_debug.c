@@ -158,7 +158,7 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 				      char *buffer, size_t buffer_size)
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
-	char tmp_buf[64] = {};
+	char tmp_buf[96] = {};
 	int i;
 	int idx = 0;
 	unsigned long flags;
@@ -194,12 +194,13 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 	strlcat(buffer, "Last Events:\n", buffer_size);
 	idx = lwis_dev->debug_info.cur_event_hist_idx;
 	for (i = 0; i < EVENT_DEBUG_HISTORY_SIZE; ++i) {
-		state = &lwis_dev->debug_info.event_hist[idx];
+		state = &lwis_dev->debug_info.event_hist[idx].state;
 		/* Skip uninitialized entries */
 		if (state->event_id != 0) {
 			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", i,
-				 state->event_id, state->event_counter);
+				 "[%2d] ID: 0x%llx Counter: 0x%llx Timestamp: %lld\n",
+				 i, state->event_id, state->event_counter,
+				 lwis_dev->debug_info.event_hist[idx].timestamp);
 			strlcat(buffer, tmp_buf, buffer_size);
 		}
 		idx++;
@@ -295,7 +296,7 @@ int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;
 	/* Buffer to store information */
-	const size_t buffer_size = 2048;
+	const size_t buffer_size = 8192;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
@@ -372,7 +373,7 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 {
 	int ret = 0;
 	/* Buffer to store information */
-	const size_t buffer_size = 2048;
+	const size_t buffer_size = 8192;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 

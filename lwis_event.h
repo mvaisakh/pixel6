@@ -41,6 +41,17 @@ struct lwis_device_event_state {
 };
 
 /*
+ * struct lwis_device_event_state_history
+ * For debugging purposes, keeps track of event states and the time an event
+ * triggered.
+ */
+
+struct lwis_device_event_state_history {
+	struct lwis_device_event_state state;
+	int64_t timestamp;
+};
+
+/*
  *  struct lwis_client_event_state
  *  This struct keeps track of client-specific event state and controls
  */
