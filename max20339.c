@@ -15,6 +15,7 @@
 #include <linux/mutex.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
+#include "max20339.h"
 
 #define MAX20339_STATUS1			0x1
 #define MAX20339_STATUS2			0x2
@@ -138,7 +139,7 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 
 	ret = regmap_bulk_write(regmap, MAX20339_INTMASK1, irq_mask, ARRAY_SIZE(irq_mask));
 	if (ret < 0) {
-		dev_err(dev, "INTMASK1-3 enable failed: ret\n", ret);
+		dev_err(dev, "INTMASK1-3 enable failed: ret %d\n", ret);
 		return ret;
 	}
 

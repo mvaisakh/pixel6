@@ -29,6 +29,7 @@
 #include "max_m5.h"
 #include "max77759.h"
 #include "max77759_maxq.h"
+#include "max20339.h"
 
 enum max77729_pmic_register {
 	MAX77729_PMIC_ID         = 0x00,
