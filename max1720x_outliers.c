@@ -128,7 +128,7 @@ static int max1720x_capacity_check(int fullcapnom, int cycle_count,
 	return fullcapnom;
 }
 
-/**
+/*
  * dQACC @0x45 battery charge between relaxation points.
  * dPACC @0x46 change in battery state of charge between relaxation points.
  */
