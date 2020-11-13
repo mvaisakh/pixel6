@@ -30,6 +30,7 @@
 #include "max77759.h"
 #include "max77759_maxq.h"
 #include "max20339.h"
+#include "gbms_storage.h"
 
 enum max77729_pmic_register {
 	MAX77729_PMIC_ID         = 0x00,
@@ -86,10 +87,15 @@ enum max77729_pmic_register {
 #define MAX77759_PMIC_TOPSYS_INT_MASK_DEFAULT \
 		(MAX77759_PMIC_TOPSYS_INT_MASK_TSHDN_INT_M)
 
+#define MAX77759_REV_A0		0x1
+#define MAX77759_STORAGE_SIZE	16
+#define MAX77759_STORAGE_BASE	(MAX77759_PMIC_AP_DATAOUT0 + MAX77759_STORAGE_SIZE)
+
 struct max77729_pmic_data {
 	struct device        *dev;
 	struct regmap        *regmap;
 	uint8_t pmic_id;
+	uint8_t rev_id;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip     gpio;
@@ -105,6 +111,8 @@ struct max77729_pmic_data {
 	atomic_t sysuvlo_cnt;
 	atomic_t sysovlo_cnt;
 	struct dentry *de;
+
+	struct delayed_work storage_init_work;
 };
 
 static bool max77729_pmic_is_reg(struct device *dev, unsigned int reg)
@@ -564,6 +572,80 @@ static int debug_batt_id_get(void *d, u64 *val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, debug_batt_id_get, NULL, "%llu\n");
 
+static int max77759_pmic_storage_iter(int index, gbms_tag_t *tag, void *ptr)
+{
+	if (index < 0 || index > (GBMS_TAG_RRS7 - GBMS_TAG_RRS0))
+		return -ENOENT;
+
+	*tag = GBMS_TAG_RRS0 + index;
+	return 0;
+}
+
+static int max77759_pmic_storage_read(gbms_tag_t tag, void *buff, size_t size, void *ptr)
+{
+	const int base = MAX77759_STORAGE_BASE + tag - GBMS_TAG_RRS0;
+	struct max77729_pmic_data *data = ptr;
+	int ret;
+
+	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
+		return -ENOENT;
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
+		return -ERANGE;
+
+	ret = max77729_pmic_readn(data, base, buff, size);
+	if (ret < 0)
+		ret = -EIO;
+	return ret;
+}
+
+static int max77759_pmic_storage_write(gbms_tag_t tag, const void *buff, size_t size, void *ptr)
+{
+	const int base = MAX77759_STORAGE_BASE + tag - GBMS_TAG_RRS0;
+	struct max77729_pmic_data *data = ptr;
+	int ret;
+
+	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
+		return -ENOENT;
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
+		return -ERANGE;
+
+	ret = max77729_pmic_writen(data, base, buff, size);
+	if (ret < 0)
+		ret = -EIO;
+	return ret;
+}
+
+static struct gbms_storage_desc max77759_pmic_storage_dsc = {
+	.iter = max77759_pmic_storage_iter,
+	.read = max77759_pmic_storage_read,
+	.write = max77759_pmic_storage_write,
+};
+
+#define STORAGE_INIT_DELAY_MS	100
+#define STORAGE_INIT_MAX_RETRY	3
+static void max777x9_pmic_storage_init_work(struct work_struct *work)
+{
+	struct max77729_pmic_data *data = container_of(work, struct max77729_pmic_data,
+						       storage_init_work.work);
+	static int retry_cnt;
+	int ret = 0;
+
+	ret = gbms_storage_register(&max77759_pmic_storage_dsc,
+				    "max777x9_pmic_storage", data);
+
+	if (ret == 0) {
+		pr_info("register storage done\n");
+	} else if (retry_cnt >= STORAGE_INIT_MAX_RETRY) {
+		pr_info("register storage:%d retry_cnt=%d, stop retry.\n", ret, retry_cnt);
+	} else {
+		schedule_delayed_work(&data->storage_init_work,
+				      msecs_to_jiffies(STORAGE_INIT_DELAY_MS));
+		retry_cnt++;
+	}
+
+	return;
+}
+
 static int dbg_init_fs(struct max77729_pmic_data *data)
 {
 	data->de = debugfs_create_dir("max77729_pmic", 0);
@@ -771,6 +853,8 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, data);
 	data->pmic_i2c_client = client;
 
+	INIT_DELAYED_WORK(&data->storage_init_work, max777x9_pmic_storage_init_work);
+
 	data->regmap = devm_regmap_init_i2c(client, &max777x9_pmic_regmap_cfg);
 	if (IS_ERR(data->regmap)) {
 		dev_err(dev, "Failed to initialize regmap\n");
@@ -816,6 +900,22 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		}
 	}
 
+	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
+		u8 rev_reg;
+		int rc = 0;
+
+		rc = max77729_pmic_rd8(data, MAX77759_PMIC_PMIC_REVISION, &rev_reg);
+		if (rc < 0) {
+			dev_err(dev, "Failed to read revision\n");
+			data->rev_id = 0;
+		} else {
+			data->rev_id = _pmic_pmic_revision_rev_get(rev_reg);
+		}
+
+		if (data->rev_id == MAX77759_REV_A0)
+			schedule_delayed_work(&data->storage_init_work, 0);
+	}
+
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
 		/* Setup GPIO controller */
@@ -852,7 +952,7 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	}
 #endif
 
-	dev_info(dev, "probe_done pmic_id = %x\n", pmic_id);
+	dev_info(dev, "probe_done pmic_id = %x, rev_id= %x\n", pmic_id, data->rev_id);
 	return ret;
 }
 
