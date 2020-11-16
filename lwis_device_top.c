@@ -120,7 +120,7 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev,
 	struct lwis_top_device *lwis_top_dev =
 		(struct lwis_top_device *)lwis_dev;
 	struct lwis_trigger_event_info *trigger_event =
-		kzalloc(sizeof(trigger_event), GFP_ATOMIC);
+		kzalloc(sizeof(struct lwis_trigger_event_info), GFP_ATOMIC);
 	unsigned long flags;
 
 	trigger_event->trigger_event_id = trigger_event_id;
