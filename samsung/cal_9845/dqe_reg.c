@@ -15,6 +15,7 @@
 #include <decon_cal.h>
 #include <drm/samsung_drm.h>
 #include <asm/barrier.h>
+#include <drm/drm_print.h>
 
 #include "regs-dqe.h"
 
@@ -214,7 +215,8 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
-static void dqe_reg_print_lut(u32 start, u32 count, const u32 offset)
+static void dqe_reg_print_lut(u32 start, u32 count, const u32 offset,
+						struct drm_printer *pr)
 {
 	u32 val;
 	int i;
@@ -232,77 +234,77 @@ static void dqe_reg_print_lut(u32 start, u32 count, const u32 offset)
 					GET_LUT_H(val));
 
 		if ((i % 5) == 4) {
-			cal_log_info(0, "%s\n", buf);
+			cal_drm_printf(pr, 0, "%s\n", buf);
 			p = buf;
 		}
 	}
 
 	if (p != buf)
-		cal_log_info(0, "%s\n", buf);
+		cal_drm_printf(pr, 0, "%s\n", buf);
 }
 
-void dqe_reg_print_hist(void)
+void dqe_reg_print_hist(struct drm_printer *p)
 {
 	u32 val;
 
 	val = hist_read(DQE0_HIST);
-	cal_log_info(0, "DQE: histogram EN(%d) ROI_ON(%d) LUMA_SEL(%d)\n",
+	cal_drm_printf(p, 0, "DQE: histogram EN(%d) ROI_ON(%d) LUMA_SEL(%d)\n",
 			cal_mask(val, HIST_EN), cal_mask(val, HIST_ROI_ON),
 			cal_mask(val, HIST_LUMA_SEL));
 
 	val = hist_read(DQE0_HIST_SIZE);
-	cal_log_info(0, "image size: %d x %d\n", cal_mask(val, HIST_HSIZE_MASK),
+	cal_drm_printf(p, 0, "image size: %d x %d\n", cal_mask(val, HIST_HSIZE_MASK),
 			cal_mask(val, HIST_VSIZE_MASK));
 
 	val = hist_read(DQE0_HIST_START);
-	cal_log_info(0, "ROI position start x,y(%d,%d)\n",
+	cal_drm_printf(p, 0, "ROI position start x,y(%d,%d)\n",
 			cal_mask(val, HIST_START_X_MASK),
 			cal_mask(val, HIST_START_Y_MASK));
 
 	val = hist_read(DQE0_HIST_WEIGHT_0);
-	cal_log_info(0, "weight red(%d) green(%d) blue(%d)\n",
+	cal_drm_printf(p, 0, "weight red(%d) green(%d) blue(%d)\n",
 			cal_mask(val, HIST_WEIGHT_R_MASK),
 			cal_mask(val, HIST_WEIGHT_G_MASK),
 			hist_read_mask(DQE0_HIST_WEIGHT_1, HIST_WEIGHT_B_MASK));
 
-	cal_log_info(0, "threshold: %d\n",
+	cal_drm_printf(p, 0, "threshold: %d\n",
 			hist_read_mask(DQE0_HIST_THRESH, HIST_THRESHOLD_MASK));
 
-	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE, hist_offset);
+	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE, hist_offset, p);
 }
 
-void dqe_reg_print_gamma_matrix(void)
+void dqe_reg_print_gamma_matrix(struct drm_printer *p)
 {
 	const u32 offset = matrix_offset;
 
-	cal_log_info(0, "DQE: gamma matrix %s\n",
+	cal_drm_printf(p, 0, "DQE: gamma matrix %s\n",
 			matrix_read_mask(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN)
 			? "on" : "off");
 
-	cal_log_info(0, "COEFFS:\n");
+	cal_drm_printf(p, 0, "COEFFS:\n");
 	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_COEFF(0), GAMMA_MATRIX_COEFFS_CNT,
-			offset);
+			offset, p);
 
-	cal_log_info(0, "OFFSETS:\n");
+	cal_drm_printf(p, 0, "OFFSETS:\n");
 	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_OFFSET0, GAMMA_MATRIX_OFFSETS_CNT,
-			offset);
+			offset, p);
 }
 
-void dqe_reg_print_linear_matrix(void)
+void dqe_reg_print_linear_matrix(struct drm_printer *p)
 {
 	const u32 offset = matrix_offset;
 
-	cal_log_info(0, "DQE: linear matrix %s\n",
+	cal_drm_printf(p, 0, "DQE: linear matrix %s\n",
 			matrix_read_mask(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN)
 			? "on" : "off");
 
-	cal_log_info(0, "COEFFS:\n");
+	cal_drm_printf(p, 0, "COEFFS:\n");
 	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_COEFF(0),
-			LINEAR_MATRIX_COEFFS_CNT, offset);
+			LINEAR_MATRIX_COEFFS_CNT, offset, p);
 
-	cal_log_info(0, "OFFSETS:\n");
+	cal_drm_printf(p, 0, "OFFSETS:\n");
 	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_OFFSET0,
-			LINEAR_MATRIX_OFFSETS_CNT, offset);
+			LINEAR_MATRIX_OFFSETS_CNT, offset, p);
 }
 
 void dqe_reg_set_cgc_dither(struct dither_config *config)
@@ -319,7 +321,7 @@ void dqe_reg_set_disp_dither(struct dither_config *config)
 	dither_write(DQE0_DISP_DITHER, value);
 }
 
-void dqe_reg_print_dither(enum dqe_dither_type dither)
+void dqe_reg_print_dither(enum dqe_dither_type dither, struct drm_printer *p)
 {
 	u32 val;
 	const char * const dither_name[] = {
@@ -334,37 +336,37 @@ void dqe_reg_print_dither(enum dqe_dither_type dither)
 	else
 		return;
 
-	cal_log_info(0, "DQE: %s dither %s\n", dither_name[dither],
+	cal_drm_printf(p, 0, "DQE: %s dither %s\n", dither_name[dither],
 		(val & DITHER_EN_MASK) ? "on" : "off");
-	cal_log_info(0, "%s mode, frame control %s, frame offset: %d\n",
+	cal_drm_printf(p, 0, "%s mode, frame control %s, frame offset: %d\n",
 		(val & DITHER_MODE) ? "Shift" : "Dither",
 		(val & DITHER_FRAME_CON) ? "on" : "off",
 		(val & DITHER_FRAME_OFFSET_MASK) >> DITHER_FRAME_OFFSET_SHIFT);
-	cal_log_info(0, "Table red(%c) green(%c) blue(%c)\n",
+	cal_drm_printf(p, 0, "Table red(%c) green(%c) blue(%c)\n",
 		(val & DITHER_TABLE_SEL_R) ? 'B' : 'A',
 		(val & DITHER_TABLE_SEL_G) ? 'B' : 'A',
 		(val & DITHER_TABLE_SEL_B) ? 'B' : 'A');
 }
 
-void dqe_reg_print_degamma_lut(void)
+void dqe_reg_print_degamma_lut(struct drm_printer *p)
 {
 	u32 val;
 
 	val = degamma_read(DQE0_DEGAMMA_CON);
-	cal_log_info(0, "DQE: degamma %s\n", val ? "on" : "off");
+	cal_drm_printf(p, 0, "DQE: degamma %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	dqe_reg_print_lut(DQE0_DEGAMMALUT(0), DEGAMMA_LUT_SIZE, degamma_offset);
+	dqe_reg_print_lut(DQE0_DEGAMMALUT(0), DEGAMMA_LUT_SIZE, degamma_offset, p);
 }
 
-void dqe_reg_print_cgc_lut(u32 count)
+void dqe_reg_print_cgc_lut(u32 count, struct drm_printer *p)
 {
 	u32 val;
 
 	val = cgc_read_mask(DQE0_CGC_CON, CGC_EN);
-	cal_log_info(0, "DQE: cgc %s\n", val ? "on" : "off");
+	cal_drm_printf(p, 0, "DQE: cgc %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
@@ -372,35 +374,35 @@ void dqe_reg_print_cgc_lut(u32 count)
 	if (count > CGC_LUT_SIZE)
 		count = CGC_LUT_SIZE;
 
-	cal_log_info(0, "[Red]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_R(0), count, 0);
+	cal_drm_printf(p, 0, "[Red]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_R(0), count, 0, p);
 
-	cal_log_info(0, "[Green]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_G(0), count, 0);
+	cal_drm_printf(p, 0, "[Green]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_G(0), count, 0, p);
 
-	cal_log_info(0, "[Blue]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_B(0), count, 0);
+	cal_drm_printf(p, 0, "[Blue]\n");
+	dqe_reg_print_lut(DQE0_CGC_LUT_B(0), count, 0, p);
 }
 
-void dqe_reg_print_regamma_lut(void)
+void dqe_reg_print_regamma_lut(struct drm_printer *p)
 {
 	u32 val;
 	const u32 offset = regamma_offset;
 
 	val = regamma_read(DQE0_REGAMMA_CON);
-	cal_log_info(0, "DQE: regamma %s\n", val ? "on" : "off");
+	cal_drm_printf(p, 0, "DQE: regamma %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	cal_log_info(0, "[Red]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_R(0), REGAMMA_LUT_SIZE, offset);
+	cal_drm_printf(p, 0, "[Red]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_R(0), REGAMMA_LUT_SIZE, offset, p);
 
-	cal_log_info(0, "[Green]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_G(0), REGAMMA_LUT_SIZE, offset);
+	cal_drm_printf(p, 0, "[Green]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_G(0), REGAMMA_LUT_SIZE, offset, p);
 
-	cal_log_info(0, "[Blue]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_B(0), REGAMMA_LUT_SIZE, offset);
+	cal_drm_printf(p, 0, "[Blue]\n");
+	dqe_reg_print_lut(DQE0_REGAMMALUT_B(0), REGAMMA_LUT_SIZE, offset, p);
 }
 
 void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
@@ -509,19 +511,42 @@ void dqe_reg_set_atc(const struct exynos_atc *atc)
 	dqe_write_mask(DQE0_ATC_CONTROL, ~0, DQE_ATC_EN_MASK);
 }
 
-void dqe_reg_print_atc(void)
+static void dqe_reg_print_dump(u32 start, u32 count, const u32 offset,
+						struct drm_printer *pr)
+{
+	u32 val;
+	int i;
+	char buf[128];
+	char *p = buf;
+	const char *end = buf + sizeof(buf);
+
+	for (i = 0; i < count; ++i) {
+		val = dqe_read(start + i * 4 + offset);
+
+		p += scnprintf(p, end - p, "[%4d]%8x ", i, val);
+
+		if ((i % 4) == 3) {
+			cal_drm_printf(pr, 0, "%s\n", buf);
+			p = buf;
+		}
+	}
+
+	if (p != buf)
+		cal_drm_printf(pr, 0, "%s\n", buf);
+}
+
+void dqe_reg_print_atc(struct drm_printer *p)
 {
 	u32 val;
 
 	val = dqe_read_mask(DQE0_ATC_CONTROL, DQE_ATC_EN_MASK);
-	cal_log_info(0, "DQE: atc %s\n", val ? "on" : "off");
+	cal_drm_printf(p, 0, "DQE: atc %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	cal_log_info(0, "ATC configuration\n");
-	dpu_print_hex_dump(regs_dqe.desc.regs,
-			regs_dqe.desc.regs + DQE0_ATC_CONTROL, 0x40);
+	cal_drm_printf(p, 0, "ATC configuration\n");
+	dqe_reg_print_dump(DQE0_ATC_CONTROL, 16, 0, p);
 }
 
 void dqe_reg_save_lpd_atc(u32 *lpd_atc_regs)

@@ -213,9 +213,6 @@ dma_addr_t exynos_drm_fb_dma_addr(const struct drm_framebuffer *fb, int index)
 	return exynos_gem->dma_addr + fb->offsets[index];
 }
 
-#define crtc_to_decon(crtc)                                                    \
-	(container_of((crtc), struct exynos_drm_crtc, base)->ctx)
-
 static void plane_state_to_win_config(struct dpu_bts_win_config *win_config,
 				      const struct drm_plane_state *plane_state)
 {

@@ -443,4 +443,21 @@ decon_get_wb(struct decon_device *decon)
 
 	return container_of(wb_connector, struct writeback_device, writeback);
 }
+
+#define crtc_to_decon(crtc)                                                    \
+	(container_of((crtc), struct exynos_drm_crtc, base)->ctx)
+static inline bool is_power_on(struct drm_device *drm_dev)
+{
+	struct drm_crtc *crtc;
+	struct decon_device *decon;
+	bool ret = false;
+
+	drm_for_each_crtc(crtc, drm_dev) {
+		decon = crtc_to_decon(crtc);
+		ret |= pm_runtime_active(decon->dev);
+	}
+
+	return ret;
+}
+
 #endif /* __EXYNOS_DRM_DECON_H__ */

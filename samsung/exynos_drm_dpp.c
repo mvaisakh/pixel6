@@ -656,6 +656,7 @@ exynos_eotf_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 {
 	struct eotf_debug_override *eotf = &dpp->hdr.eotf;
 	struct exynos_debug_info *info = &eotf->info;
+	struct drm_printer p = drm_info_printer(dpp->dev);
 
 	pr_debug("en(%d) dirty(%d)\n", info->force_en, info->dirty);
 
@@ -669,7 +670,7 @@ exynos_eotf_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 	}
 
 	if (info->verbose)
-		hdr_reg_print_eotf_lut(dpp->id);
+		hdr_reg_print_eotf_lut(dpp->id, &p);
 }
 
 static void
@@ -677,6 +678,7 @@ exynos_oetf_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 {
 	struct oetf_debug_override *oetf = &dpp->hdr.oetf;
 	struct exynos_debug_info *info = &oetf->info;
+	struct drm_printer p = drm_info_printer(dpp->dev);
 
 	pr_debug("en(%d) dirty(%d)\n", info->force_en, info->dirty);
 
@@ -690,7 +692,7 @@ exynos_oetf_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 	}
 
 	if (info->verbose)
-		hdr_reg_print_oetf_lut(dpp->id);
+		hdr_reg_print_oetf_lut(dpp->id, &p);
 }
 
 static void
@@ -698,6 +700,7 @@ exynos_gm_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 {
 	struct gm_debug_override *gm = &dpp->hdr.gm;
 	struct exynos_debug_info *info = &gm->info;
+	struct drm_printer p = drm_info_printer(dpp->dev);
 
 	pr_debug("en(%d) dirty(%d)\n", info->force_en, info->dirty);
 
@@ -711,7 +714,7 @@ exynos_gm_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 	}
 
 	if (info->verbose)
-		hdr_reg_print_gm(dpp->id);
+		hdr_reg_print_gm(dpp->id, &p);
 }
 
 static void
@@ -719,6 +722,7 @@ exynos_tm_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 {
 	struct tm_debug_override *tm = &dpp->hdr.tm;
 	struct exynos_debug_info *info = &tm->info;
+	struct drm_printer p = drm_info_printer(dpp->dev);
 
 	pr_debug("en(%d) dirty(%d)\n", info->force_en, info->dirty);
 
@@ -732,7 +736,7 @@ exynos_tm_update(struct dpp_device *dpp, struct exynos_drm_plane_state *state)
 	}
 
 	if (info->verbose)
-		hdr_reg_print_tm(dpp->id);
+		hdr_reg_print_tm(dpp->id, &p);
 }
 
 static void dpp_hdr_update(struct dpp_device *dpp,

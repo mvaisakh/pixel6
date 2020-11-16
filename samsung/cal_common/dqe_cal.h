@@ -16,6 +16,7 @@
 #include <linux/types.h>
 #include <drm/samsung_drm.h>
 #include <drm/drm_mode.h>
+#include <drm/drm_print.h>
 
 #define DEGAMMA_LUT_SIZE		65
 #define REGAMMA_LUT_SIZE		65
@@ -80,14 +81,14 @@ void dqe_reg_set_disp_dither(struct dither_config *config);
 void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm);
 void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix);
 void dqe_reg_set_atc(const struct exynos_atc *atc);
-void dqe_reg_print_dither(enum dqe_dither_type dither);
-void dqe_reg_print_degamma_lut(void);
-void dqe_reg_print_cgc_lut(u32 count);
-void dqe_reg_print_regamma_lut(void);
-void dqe_reg_print_hist(void);
-void dqe_reg_print_gamma_matrix(void);
-void dqe_reg_print_linear_matrix(void);
-void dqe_reg_print_atc(void);
+void dqe_reg_print_dither(enum dqe_dither_type dither, struct drm_printer *p);
+void dqe_reg_print_degamma_lut(struct drm_printer *p);
+void dqe_reg_print_cgc_lut(u32 count, struct drm_printer *p);
+void dqe_reg_print_regamma_lut(struct drm_printer *p);
+void dqe_reg_print_hist(struct drm_printer *p);
+void dqe_reg_print_gamma_matrix(struct drm_printer *p);
+void dqe_reg_print_linear_matrix(struct drm_printer *p);
+void dqe_reg_print_atc(struct drm_printer *p);
 void dqe_reg_save_lpd_atc(u32 *lpd_atc_regs);
 void dqe_reg_restore_lpd_atc(u32 *lpd_atc_regs);
 bool dqe_reg_dimming_in_progress(void);

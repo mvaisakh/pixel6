@@ -87,6 +87,29 @@ struct matrix_debug_override {
 	struct exynos_matrix force_matrix;
 };
 
+enum dump_type {
+	DUMP_TYPE_CGC_DIHTER = 0,
+	DUMP_TYPE_DISP_DITHER,
+	DUMP_TYPE_DEGAMMA_LUT,
+	DUMP_TYPE_REGAMMA_LUT,
+	DUMP_TYPE_CGC_LUT,
+	DUMP_TYPE_LINEAR_MATRIX,
+	DUMP_TYPE_GAMMA_MATRIX,
+	DUMP_TYPE_HISTOGRAM,
+	DUMP_TYPE_ATC,
+	DUMP_TYPE_HDR_EOTF,
+	DUMP_TYPE_HDR_OETF,
+	DUMP_TYPE_HDR_GAMMUT,
+	DUMP_TYPE_HDR_TONEMAP,
+};
+
+struct debugfs_dump {
+	enum dump_type type;
+	u32 id;
+	enum dqe_dither_type dither_type;
+	void *priv;
+};
+
 struct exynos_dqe {
 	void __iomem *regs;
 	bool initialized;

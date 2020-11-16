@@ -13,6 +13,7 @@
 #include <cal_config.h>
 #include <hdr_cal.h>
 #include <dpp_cal.h>
+#include <drm/drm_print.h>
 
 #include "regs-hdr.h"
 
@@ -183,7 +184,8 @@ void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 	cal_log_debug(id, "%s -\n", __func__);
 }
 
-static void hdr_reg_print(u32 id, u32 start, u32 count, enum elem_size size)
+static void hdr_reg_print(u32 id, u32 start, u32 count, enum elem_size size,
+							struct drm_printer *pr)
 {
 	u32 reg, val;
 	int idx, i;
@@ -208,84 +210,84 @@ static void hdr_reg_print(u32 id, u32 start, u32 count, enum elem_size size)
 					GET_LUT_H(reg));
 
 		if ((i % 5) == 4) {
-			cal_log_info(id, "%s\n", buf);
+			cal_drm_printf(pr, id, "%s\n", buf);
 			p = buf;
 		}
 	}
 
 	if (p != buf)
-		cal_log_info(id, "%s\n", buf);
+		cal_drm_printf(pr, id, "%s\n", buf);
 }
 
-void hdr_reg_print_eotf_lut(u32 id)
+void hdr_reg_print_eotf_lut(u32 id, struct drm_printer *p)
 {
 	u32 val;
 
 	val = hdr_read_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_EEN_MASK);
-	cal_log_info(id, "HDR: eotf %s\n", val ? "on" : "off");
+	cal_drm_printf(p, id, "HDR: eotf %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	cal_log_info(id, "POSX:\n");
+	cal_drm_printf(p, id, "POSX:\n");
 	hdr_reg_print(id, HDR_LSI_L_EOTF_POSX(0), DRM_SAMSUNG_HDR_EOTF_LUT_LEN,
-								ELEM_SIZE_16);
-	cal_log_info(id, "POSY:\n");
+							ELEM_SIZE_16, p);
+	cal_drm_printf(p, id, "POSY:\n");
 	hdr_reg_print(id, HDR_LSI_L_EOTF_POSY(0), DRM_SAMSUNG_HDR_EOTF_LUT_LEN,
-								ELEM_SIZE_32);
+							ELEM_SIZE_32, p);
 }
 
-void hdr_reg_print_oetf_lut(u32 id)
+void hdr_reg_print_oetf_lut(u32 id, struct drm_printer *p)
 {
 	u32 val;
 
 	val = hdr_read_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_OEN_MASK);
-	cal_log_info(id, "HDR: oetf %s\n", val ? "on" : "off");
+	cal_drm_printf(p, id, "HDR: oetf %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	cal_log_info(id, "POSX:\n");
+	cal_drm_printf(p, id, "POSX:\n");
 	hdr_reg_print(id, HDR_LSI_L_OETF_POSX(0), DRM_SAMSUNG_HDR_OETF_LUT_LEN,
-								ELEM_SIZE_16);
-	cal_log_info(id, "POSY:\n");
+							ELEM_SIZE_16, p);
+	cal_drm_printf(p, id, "POSY:\n");
 	hdr_reg_print(id, HDR_LSI_L_OETF_POSY(0), DRM_SAMSUNG_HDR_OETF_LUT_LEN,
-								ELEM_SIZE_16);
+							ELEM_SIZE_16, p);
 }
 
-void hdr_reg_print_gm(u32 id)
+void hdr_reg_print_gm(u32 id, struct drm_printer *p)
 {
 	u32 val;
 
 	val = hdr_read_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_GEN_MASK);
-	cal_log_info(id, "HDR: gammut %s\n", val ? "on" : "off");
+	cal_drm_printf(p, id, "HDR: gammut %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	cal_log_info(id, "COEFFS:\n");
+	cal_drm_printf(p, id, "COEFFS:\n");
 	hdr_reg_print(id, HDR_LSI_L_GM_COEF(0), HDR_GM_COEF_REG_CNT,
-							ELEM_SIZE_32);
-	cal_log_info(id, "OFFSETS:\n");
+							ELEM_SIZE_32, p);
+	cal_drm_printf(p, id, "OFFSETS:\n");
 	hdr_reg_print(id, HDR_LSI_L_GM_OFFS(0), HDR_GM_OFFS_REG_CNT,
-							ELEM_SIZE_32);
+							ELEM_SIZE_32, p);
 }
 
-void hdr_reg_print_tm(u32 id)
+void hdr_reg_print_tm(u32 id, struct drm_printer *p)
 {
 	u32 val;
 
 	val = hdr_read_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_TEN_MASK);
-	cal_log_info(id, "HDR: tone mapping %s\n", val ? "on" : "off");
+	cal_drm_printf(p, id, "HDR: tone mapping %s\n", val ? "on" : "off");
 
-	cal_log_info(id, "COEFF: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_COEF));
-	cal_log_info(id, "RNGX: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_RNGX));
-	cal_log_info(id, "RNGY: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_RNGY));
+	cal_drm_printf(p, id, "COEFF: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_COEF));
+	cal_drm_printf(p, id, "RNGX: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_RNGX));
+	cal_drm_printf(p, id, "RNGY: 0x%x\n", hdr_read(id, HDR_LSI_L_TM_RNGY));
 
-	cal_log_info(id, "POSX:\n");
+	cal_drm_printf(p, id, "POSX:\n");
 	hdr_reg_print(id, HDR_LSI_L_TM_POSX(0), DRM_SAMSUNG_HDR_TM_LUT_LEN,
-								ELEM_SIZE_16);
-	cal_log_info(id, "POSY:\n");
+							ELEM_SIZE_16, p);
+	cal_drm_printf(p, id, "POSY:\n");
 	hdr_reg_print(id, HDR_LSI_L_TM_POSY(0), DRM_SAMSUNG_HDR_TM_LUT_LEN,
-								ELEM_SIZE_32);
+							ELEM_SIZE_32, p);
 }

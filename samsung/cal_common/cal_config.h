@@ -25,6 +25,7 @@
 #include <linux/time.h>
 #include <linux/platform_device.h>
 #include <video/mipi_display.h>
+#include <drm/drm_print.h>
 #else
 
 /* TODO: Check with u-boot */
@@ -139,6 +140,8 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);
 #define cal_log_err(id, fmt, ...)	cal_msg(pr_err, id, fmt, ##__VA_ARGS__)
 #define cal_info_ratelimited(id, fmt, ...)	\
 	cal_msg(pr_info_ratelimited, id, fmt, ##__VA_ARGS__)
+#define cal_drm_printf(p, id, fmt, ...)		\
+	drm_printf(p, "%s(#%d) " fmt, __func__, id, ##__VA_ARGS__)
 
 #define GET_LUT_H(v)	(((v) >> 16) & 0xFFFF)
 #define GET_LUT_L(v)	((v) & 0xFFFF)

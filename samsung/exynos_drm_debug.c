@@ -18,11 +18,13 @@
 #include <linux/time.h>
 #include <video/mipi_display.h>
 #include <drm/drm_print.h>
+#include <drm/drm_managed.h>
 
 #include <cal_config.h>
 #include <dt-bindings/soc/google/gs101-devfreq.h>
 #include <soc/google/exynos-devfreq.h>
 #include <dqe_cal.h>
+#include <hdr_cal.h>
 
 #include "exynos_drm_decon.h"
 #include "exynos_drm_dsim.h"
@@ -542,8 +544,74 @@ static const struct file_operations dpu_event_fops = {
 	.release = seq_release,
 };
 
+static int dump_show(struct seq_file *s, void *unused)
+{
+	struct debugfs_dump *dump = s->private;
+	struct drm_device *drm_dev = dump->priv;
+	struct drm_printer p = drm_seq_file_printer(s);
+
+	if (!drm_dev || !is_power_on(drm_dev))
+		return 0;
+
+	if (dump->type == DUMP_TYPE_CGC_LUT)
+		dqe_reg_print_cgc_lut(CGC_LUT_SIZE, &p);
+	else if (dump->type == DUMP_TYPE_DEGAMMA_LUT)
+		dqe_reg_print_degamma_lut(&p);
+	else if (dump->type == DUMP_TYPE_REGAMMA_LUT)
+		dqe_reg_print_regamma_lut(&p);
+	else if (dump->type == DUMP_TYPE_GAMMA_MATRIX)
+		dqe_reg_print_gamma_matrix(&p);
+	else if (dump->type == DUMP_TYPE_LINEAR_MATRIX)
+		dqe_reg_print_linear_matrix(&p);
+	else if (dump->type == DUMP_TYPE_ATC)
+		dqe_reg_print_atc(&p);
+	else if (dump->type == DUMP_TYPE_DISP_DITHER ||
+			dump->type == DUMP_TYPE_CGC_DIHTER)
+		dqe_reg_print_dither(dump->dither_type, &p);
+	else if (dump->type == DUMP_TYPE_HISTOGRAM)
+		dqe_reg_print_hist(&p);
+	else if (dump->type == DUMP_TYPE_HDR_EOTF)
+		hdr_reg_print_eotf_lut(dump->id, &p);
+	else if (dump->type == DUMP_TYPE_HDR_OETF)
+		hdr_reg_print_oetf_lut(dump->id, &p);
+	else if (dump->type == DUMP_TYPE_HDR_GAMMUT)
+		hdr_reg_print_gm(dump->id, &p);
+	else if (dump->type == DUMP_TYPE_HDR_TONEMAP)
+		hdr_reg_print_tm(dump->id, &p);
+
+	return 0;
+}
+
+static int dump_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dump_show, inode->i_private);
+}
+
+static const struct file_operations dump_fops = {
+	.open	 = dump_open,
+	.read	 = seq_read,
+	.llseek	 = seq_lseek,
+	.release = seq_release,
+};
+
+static void exynos_debugfs_add_dump(enum dump_type type, umode_t mode,
+		struct dentry *parent, u32 id, enum dqe_dither_type dither,
+		struct drm_device *drm_dev)
+{
+	struct debugfs_dump *dump = drmm_kzalloc(drm_dev,
+			sizeof(struct debugfs_dump), GFP_KERNEL);
+
+	dump->type = type;
+	dump->id = id;
+	dump->dither_type = dither;
+	dump->priv = drm_dev;
+	debugfs_create_file("dump", mode, parent, dump, &dump_fops);
+}
+
 static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
-			struct dither_debug_override *d, struct dentry *parent)
+			enum dump_type dump, enum dqe_dither_type dither,
+			struct dither_debug_override *d, struct dentry *parent,
+			struct drm_device *drm_dev)
 {
 	struct dentry *dent;
 
@@ -555,6 +623,8 @@ static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
 	debugfs_create_bool("force_enable", 0664, dent, &d->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &d->verbose);
 	debugfs_create_u32("val", 0664, dent, (u32 *)&d->val);
+
+	exynos_debugfs_add_dump(dump, 0444, dent, 0, dither, drm_dev);
 
 	return dent;
 }
@@ -718,7 +788,8 @@ static void exynos_debugfs_add_lut(const char *name, umode_t mode,
 
 #define DEFAULT_PRINT_CNT	128
 static struct dentry *
-exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent)
+exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent,
+							struct drm_device *drm)
 {
 	struct dentry *dent, *dent_lut;
 	struct exynos_debug_info *info = &cgc->info;
@@ -733,6 +804,7 @@ exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent)
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
 	debugfs_create_u32("verbose_count", 0664, dent, &cgc->verbose_cnt);
 	cgc->verbose_cnt = DEFAULT_PRINT_CNT;
+	exynos_debugfs_add_dump(DUMP_TYPE_CGC_LUT, 0444, dent, 0, 0, drm);
 
 	dent_lut = debugfs_create_dir("lut", dent);
 	if (!dent_lut) {
@@ -756,7 +828,7 @@ exynos_debugfs_add_cgc(struct cgc_debug_override *cgc, struct dentry *parent)
 
 static struct dentry *
 exynos_debugfs_add_regamma(struct regamma_debug_override *regamma,
-						struct dentry *parent)
+				struct dentry *parent, struct drm_device *drm)
 {
 	struct dentry *dent, *dent_lut;
 	struct exynos_debug_info *info = &regamma->info;
@@ -769,6 +841,7 @@ exynos_debugfs_add_regamma(struct regamma_debug_override *regamma,
 
 	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	exynos_debugfs_add_dump(DUMP_TYPE_REGAMMA_LUT, 0444, dent, 0, 0, drm);
 
 	dent_lut = debugfs_create_dir("lut", dent);
 	if (!dent_lut) {
@@ -789,7 +862,7 @@ exynos_debugfs_add_regamma(struct regamma_debug_override *regamma,
 
 static struct dentry *
 exynos_debugfs_add_degamma(struct degamma_debug_override *degamma,
-						struct dentry *parent)
+				struct dentry *parent, struct drm_device *drm)
 {
 	struct dentry *dent;
 	struct exynos_debug_info *info = &degamma->info;
@@ -804,13 +877,49 @@ exynos_debugfs_add_degamma(struct degamma_debug_override *degamma,
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
 	exynos_debugfs_add_lut("lut", 0664, dent, DEGAMMA_LUT_SIZE, 0, NULL,
 			degamma->force_lut, ELEM_SIZE_16, &info->dirty);
+	exynos_debugfs_add_dump(DUMP_TYPE_DEGAMMA_LUT, 0444, dent, 0, 0, drm);
+
+	return dent;
+}
+
+static struct dentry *exynos_debugfs_add_histogram(struct exynos_dqe *dqe,
+		struct dentry *parent, struct drm_device *drm)
+{
+	struct dentry *dent;
+
+	dent = debugfs_create_dir("histogram", parent);
+	if (!dent) {
+		pr_err("failed to create histogram directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("verbose", 0664, dent, &dqe->verbose_hist);
+	exynos_debugfs_add_dump(DUMP_TYPE_HISTOGRAM, 0444, dent, 0, 0, drm);
+
+	return dent;
+}
+
+static struct dentry *exynos_debugfs_add_atc(struct exynos_dqe *dqe,
+		struct dentry *parent, struct drm_device *drm)
+{
+	struct dentry *dent;
+
+	dent = debugfs_create_dir("atc", parent);
+	if (!dent) {
+		pr_err("failed to create atc directory\n");
+		return NULL;
+	}
+
+	debugfs_create_bool("verbose", 0664, dent, &dqe->verbose_atc);
+	exynos_debugfs_add_dump(DUMP_TYPE_ATC, 0444, dent, 0, 0, drm);
 
 	return dent;
 }
 
 static struct dentry *
 exynos_debugfs_add_matrix(struct matrix_debug_override *matrix,
-				const char *name, struct dentry *parent)
+				const char *name, struct dentry *parent,
+				enum dump_type dump, struct drm_device *drm)
 {
 	struct dentry *dent, *dent_matrix;
 	struct exynos_debug_info *info = &matrix->info;
@@ -825,6 +934,7 @@ exynos_debugfs_add_matrix(struct matrix_debug_override *matrix,
 
 	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	exynos_debugfs_add_dump(dump, 0444, dent, 0, 0, drm);
 	dent_matrix = debugfs_create_dir("matrix", dent);
 	if (!dent_matrix) {
 		pr_err("failed to create %s directory\n", name);
@@ -848,6 +958,7 @@ exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 	struct dentry *dent_dir;
 	struct matrix_debug_override *gamma = &dqe->gamma;
 	struct matrix_debug_override *linear = &dqe->linear;
+	struct drm_device *drm = dqe->decon->drm_dev;
 
 	if (!dqe)
 		return;
@@ -858,24 +969,32 @@ exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 		return;
 	}
 
-	if (!exynos_debugfs_add_dqe_override("cgc_dither",
-			&dqe->cgc_dither_override, dent_dir))
+	if (!exynos_debugfs_add_dqe_override("cgc_dither", DUMP_TYPE_CGC_DIHTER,
+			CGC_DITHER, &dqe->cgc_dither_override,
+			dent_dir, drm))
 		goto err;
 
 	if (!exynos_debugfs_add_dqe_override("disp_dither",
-			&dqe->disp_dither_override, dent_dir))
+			DUMP_TYPE_DISP_DITHER, DISP_DITHER,
+			&dqe->disp_dither_override, dent_dir, drm))
 		goto err;
 
-	exynos_debugfs_add_cgc(&dqe->cgc, dent_dir);
-	exynos_debugfs_add_regamma(&dqe->regamma, dent_dir);
-	exynos_debugfs_add_degamma(&dqe->degamma, dent_dir);
+	exynos_debugfs_add_cgc(&dqe->cgc, dent_dir, drm);
+	exynos_debugfs_add_regamma(&dqe->regamma, dent_dir, drm);
+	exynos_debugfs_add_degamma(&dqe->degamma, dent_dir, drm);
 
-	debugfs_create_bool("histogram", 0664, dent_dir, &dqe->verbose_hist);
-
-	if (!exynos_debugfs_add_matrix(linear, "linear_matrix", dent_dir))
+	if (!exynos_debugfs_add_atc(dqe, dent_dir, drm))
 		goto err;
 
-	if (!exynos_debugfs_add_matrix(gamma, "gamma_matrix", dent_dir))
+	if (!exynos_debugfs_add_histogram(dqe, dent_dir, drm))
+		goto err;
+
+	if (!exynos_debugfs_add_matrix(linear, "linear_matrix", dent_dir,
+				DUMP_TYPE_LINEAR_MATRIX, drm))
+		goto err;
+
+	if (!exynos_debugfs_add_matrix(gamma, "gamma_matrix", dent_dir,
+				DUMP_TYPE_GAMMA_MATRIX, drm))
 		goto err;
 
 	debugfs_create_bool("force_disabled", 0664, dent_dir,
@@ -1014,7 +1133,9 @@ err_event_log:
 static struct dentry *exynos_debugfs_add_hdr_lut(const char *name,
 		struct dentry *parent, struct exynos_debug_info *info,
 		void *posx_lut, size_t posx_cnt, enum elem_size posx_type,
-		void *posy_lut, size_t posy_cnt, enum elem_size posy_type)
+		void *posy_lut, size_t posy_cnt, enum elem_size posy_type,
+		enum dump_type dump, unsigned int index,
+		struct drm_device *drm)
 {
 	struct dentry *dent, *dent_lut;
 
@@ -1026,6 +1147,7 @@ static struct dentry *exynos_debugfs_add_hdr_lut(const char *name,
 
 	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	exynos_debugfs_add_dump(dump, 0444, dent, index, 0, drm);
 
 	dent_lut = debugfs_create_dir("lut", dent);
 	if (!dent_lut) {
@@ -1043,7 +1165,8 @@ static struct dentry *exynos_debugfs_add_hdr_lut(const char *name,
 }
 
 static struct dentry *exynos_debugfs_add_gammut(struct exynos_hdr *hdr,
-		struct dentry *parent)
+		struct dentry *parent, enum dump_type dump, unsigned int index,
+		struct drm_device *drm)
 {
 	struct dentry *dent, *dent_matrix;
 	struct gm_debug_override *gm = &hdr->gm;
@@ -1057,6 +1180,7 @@ static struct dentry *exynos_debugfs_add_gammut(struct exynos_hdr *hdr,
 
 	debugfs_create_bool("force_enable", 0664, dent, &info->force_en);
 	debugfs_create_bool("verbose", 0664, dent, &info->verbose);
+	exynos_debugfs_add_dump(dump, 0444, dent, index, 0, drm);
 
 	dent_matrix = debugfs_create_dir("matrix", dent);
 	if (!dent_matrix) {
@@ -1076,7 +1200,8 @@ static struct dentry *exynos_debugfs_add_gammut(struct exynos_hdr *hdr,
 }
 
 static struct dentry *exynos_debugfs_add_tm(struct exynos_hdr *hdr,
-		struct dentry *parent)
+		struct dentry *parent, enum dump_type dump, unsigned int index,
+		struct drm_device *drm)
 {
 	struct dentry *dent;
 	struct tm_debug_override *tm = &hdr->tm;
@@ -1085,7 +1210,8 @@ static struct dentry *exynos_debugfs_add_tm(struct exynos_hdr *hdr,
 
 	dent = exynos_debugfs_add_hdr_lut("tone_mapping", parent, info,
 			tm->force_data.posx, DRM_SAMSUNG_HDR_TM_LUT_LEN, ELEM_SIZE_16,
-			tm->force_data.posy, DRM_SAMSUNG_HDR_TM_LUT_LEN, ELEM_SIZE_32);
+			tm->force_data.posy, DRM_SAMSUNG_HDR_TM_LUT_LEN, ELEM_SIZE_32,
+			DUMP_TYPE_HDR_TONEMAP, index, drm);
 
 	debugfs_create_u16("coeff_r", 0664, dent, &tm_data->coeff_r);
 	debugfs_create_u16("coeff_g", 0664, dent, &tm_data->coeff_g);
@@ -1106,6 +1232,8 @@ int exynos_drm_debugfs_plane_add(struct exynos_drm_plane *exynos_plane)
 	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
 	struct dentry *root, *ent, *hdr_dent;
 	struct exynos_hdr *hdr = &dpp->hdr;
+	unsigned int plane_index = drm_plane_index(plane);
+	struct drm_device *drm = plane->dev;
 
 	root = debugfs_create_dir(plane->name, minor->debugfs_root);
 	if (!root)
@@ -1122,7 +1250,8 @@ int exynos_drm_debugfs_plane_add(struct exynos_drm_plane *exynos_plane)
 				&hdr->eotf.info, hdr->eotf.force_lut.posx,
 				DRM_SAMSUNG_HDR_EOTF_LUT_LEN, ELEM_SIZE_16,
 				hdr->eotf.force_lut.posy,
-				DRM_SAMSUNG_HDR_EOTF_LUT_LEN, ELEM_SIZE_32);
+				DRM_SAMSUNG_HDR_EOTF_LUT_LEN, ELEM_SIZE_32,
+				DUMP_TYPE_HDR_EOTF, plane_index, drm);
 		if (!ent)
 			goto err;
 
@@ -1130,17 +1259,20 @@ int exynos_drm_debugfs_plane_add(struct exynos_drm_plane *exynos_plane)
 				&hdr->oetf.info, hdr->oetf.force_lut.posx,
 				DRM_SAMSUNG_HDR_OETF_LUT_LEN, ELEM_SIZE_16,
 				hdr->oetf.force_lut.posy,
-				DRM_SAMSUNG_HDR_OETF_LUT_LEN, ELEM_SIZE_16);
+				DRM_SAMSUNG_HDR_OETF_LUT_LEN, ELEM_SIZE_16,
+				DUMP_TYPE_HDR_OETF, plane_index, drm);
 		if (!ent)
 			goto err;
 
-		ent = exynos_debugfs_add_gammut(hdr, hdr_dent);
+		ent = exynos_debugfs_add_gammut(hdr, hdr_dent,
+				DUMP_TYPE_HDR_GAMMUT, plane_index, drm);
 		if (!ent)
 			goto err;
 	}
 
 	if (test_bit(DPP_ATTR_HDR10_PLUS, &dpp->attr)) {
-		ent = exynos_debugfs_add_tm(hdr, hdr_dent ? : root);
+		ent = exynos_debugfs_add_tm(hdr, hdr_dent ? : root,
+				DUMP_TYPE_HDR_TONEMAP, plane_index, drm);
 		if (!ent)
 			goto err;
 	}

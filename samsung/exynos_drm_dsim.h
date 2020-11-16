@@ -21,6 +21,7 @@
 #include <drm/drm_property.h>
 #include <drm/drm_panel.h>
 #include <video/videomode.h>
+#include <linux/pm_runtime.h>
 
 #include <dsim_cal.h>
 
