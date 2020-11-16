@@ -289,10 +289,9 @@ static int max_m5_update_custom_parameters(struct max_m5_data *m5_data)
 		ret = REGMAP_WRITE_VERIFY(regmap, MAX_M5_QRTABLE30,
 					  cp->qresidual30);
 	if (ret == 0)
-		ret = REGMAP_WRITE_VERIFY(regmap, MAX_M5_RCOMP0,
-					  cp->rcomp0);
+		ret = REGMAP_WRITE_VERIFY(regmap, MAX_M5_RCOMP0, cp->rcomp0);
 	if (ret == 0)
-		ret = REGMAP_WRITE_VERIFY(regmap, MAX_M5_RCOMP0, cp->tempco);
+		ret = REGMAP_WRITE_VERIFY(regmap, MAX_M5_TEMPCO, cp->tempco);
 	if (ret == 0)
 		ret = REGMAP_WRITE(regmap, MAX_M5_ICHGTERM, cp->ichgterm);
 	if (ret == 0)
