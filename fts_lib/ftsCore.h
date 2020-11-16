@@ -191,26 +191,27 @@ typedef struct {
 
 int initCore(struct fts_ts_info *info);
 void setResetGpio(int gpio);
-int fts_system_reset(void);
+int fts_system_reset(struct fts_ts_info *info);
 int isSystemResettedUp(void);
 int isSystemResettedDown(void);
 void setSystemResetedUp(int val);
 void setSystemResetedDown(int val);
-int pollForEvent(int *event_to_search, int event_bytes, u8 *readData, int
-		 time_to_wait);
-int checkEcho(u8 *cmd, int size);
-int setScanMode(u8 mode, u8 settings);
-int setFeatures(u8 feat, u8 *settings, int size);
+int pollForEvent(struct fts_ts_info *info, int *event_to_search,
+		 int event_bytes, u8 *readData, int time_to_wait);
+int checkEcho(struct fts_ts_info *info, u8 *cmd, int size);
+int setScanMode(struct fts_ts_info *info, u8 mode, u8 settings);
+int setFeatures(struct fts_ts_info *info, u8 feat, u8 *settings, int size);
 int defaultSysInfo(int i2cError);
-int writeSysCmd(u8 sys_cmd, u8 *sett, int size);
-int readSysInfo(int request);
-int readConfig(u16 offset, u8 *outBuf, int len);
-int writeConfig(u16 offset, u8 *data, int len);
-int fts_enableInterrupt(bool enable);
-int fts_crc_check(void);
-int requestSyncFrame(u8 type);
-int setActiveScanFrequency(u32 freq);
-int writeHostDataMemory(u8 type, u8 *data, u8 msForceLen, u8 msSenseLen,
+int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size);
+int readSysInfo(struct fts_ts_info *info, int request);
+int readConfig(struct fts_ts_info *info, u16 offset, u8 *outBuf, int len);
+int writeConfig(struct fts_ts_info *info, u16 offset, u8 *data, int len);
+int fts_enableInterrupt(struct fts_ts_info *info, bool enable);
+int fts_crc_check(struct fts_ts_info *info);
+int requestSyncFrame(struct fts_ts_info *info, u8 type);
+int setActiveScanFrequency(struct fts_ts_info *info, u32 freq);
+int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
+			u8 msForceLen, u8 msSenseLen,
 			u8 ssForceLen, u8 ssSenseLen, int save);
-int saveMpFlag(u8 mpflag);
+int saveMpFlag(struct fts_ts_info *info, u8 mpflag);
 #endif	/* FTS_CORE_H */

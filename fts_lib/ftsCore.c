@@ -91,7 +91,7 @@ void setResetGpio(int gpio)
   * (toggling of reset pin) otherwise send an hw command to the IC
   * @return OK if success or an error code which specify the type of error
   */
-int fts_system_reset(void)
+int fts_system_reset(struct fts_ts_info *info)
 {
 	u8 readData[FIFO_EVENT_SIZE];
 	int event_to_search;
@@ -104,12 +104,13 @@ int fts_system_reset(void)
 	pr_info("System resetting...\n");
 	for (i = 0; i < RETRY_SYSTEM_RESET && res < 0; i++) {
 		resetErrorList();
-		fts_enableInterrupt(false);
+		fts_enableInterrupt(info, false);
 		/* disable interrupt before resetting to be able to get boot
 		 * events */
 
 		if (reset_gpio == GPIO_NOT_DEFINED)
-			res = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+			res = fts_writeU8UX(info, FTS_CMD_HW_REG_W,
+					    ADDR_SIZE_HW_REG,
 					    ADDR_SYSTEM_RESET, data, ARRAY_SIZE(
 						    data));
 		else {
@@ -121,7 +122,7 @@ int fts_system_reset(void)
 		if (res < OK)
 			pr_err("fts_system_reset: ERROR %08X\n", ERROR_BUS_W);
 		else {
-			res = pollForEvent(&event_to_search, 1, readData,
+			res = pollForEvent(info, &event_to_search, 1, readData,
 					   GENERAL_TIMEOUT);
 			if (res < OK)
 				pr_err("fts_system_reset: ERROR %08X\n", res);
@@ -195,8 +196,8 @@ void setSystemResetedUp(int val)
   * @param time_to_wait time to wait before going in timeout
   * @return OK if success or an error code which specify the type of error
   */
-int pollForEvent(int *event_to_search, int event_bytes, u8 *readData, int
-		 time_to_wait)
+int pollForEvent(struct fts_ts_info *info, int *event_to_search,
+		 int event_bytes, u8 *readData, int time_to_wait)
 {
 	const u8 NO_RESPONSE = 0xFF;
 	const int POLL_SLEEP_TIME_MS = 5;
@@ -215,7 +216,7 @@ int pollForEvent(int *event_to_search, int event_bytes, u8 *readData, int
 
 	startStopWatch(&clock);
 	while (find != 1 && retry < time_to_count &&
-		fts_writeReadU8UX(cmd[0], 0, 0, readData, FIFO_EVENT_SIZE,
+		fts_writeReadU8UX(info, cmd[0], 0, 0, readData, FIFO_EVENT_SIZE,
 			DUMMY_FIFO)
 	       >= OK) {
 		if (readData[0] == NO_RESPONSE ||
@@ -234,7 +235,7 @@ int pollForEvent(int *event_to_search, int event_bytes, u8 *readData, int
 					  sizeof(temp)));
 			memset(temp, 0, 128);
 			count_err++;
-			err_handling = errorHandler(readData, FIFO_EVENT_SIZE);
+			err_handling = errorHandler(info, readData, FIFO_EVENT_SIZE);
 			if ((err_handling & 0xF0FF0000) ==
 			    ERROR_HANDLER_STOP_PROC) {
 				pr_err("pollForEvent: forced to be stopped! ERROR %08X\n",
@@ -297,7 +298,7 @@ int pollForEvent(int *event_to_search, int event_bytes, u8 *readData, int
   * @param size size of cmd
   * @return OK if success or an error code which specify the type of error
   */
-int checkEcho(u8 *cmd, int size)
+int checkEcho(struct fts_ts_info *info, u8 *cmd, int size)
 {
 	int ret, i;
 	int event_to_search[FIFO_EVENT_SIZE];
@@ -321,20 +322,21 @@ int checkEcho(u8 *cmd, int size)
 			(cmd[1] == SYS_CMD_SPECIAL) &&
 			((cmd[2] == SPECIAL_FULL_PANEL_INIT) ||
 			(cmd[2] == SPECIAL_PANEL_INIT)))
-			ret = pollForEvent(event_to_search, size + 2, readData,
-				   TIMEOUT_ECHO_FPI);
+			ret = pollForEvent(info, event_to_search, size + 2,
+				   readData, TIMEOUT_ECHO_FPI);
 		else if ((cmd[0] == FTS_CMD_SYSTEM) &&
 			(cmd[1] == SYS_CMD_CX_TUNING))
-			ret = pollForEvent(event_to_search, size + 2, readData,
+			ret = pollForEvent(info, event_to_search, size + 2,
+				   readData,
 				   TIMEOUT_ECHO_SINGLE_ENDED_SPECIAL_AUTOTUNE);
 		else if (cmd[0] == FTS_CMD_SYSTEM &&
 			 cmd[1] == SYS_CMD_SPECIAL &&
 			 cmd[2] == SPECIAL_FIFO_FLUSH)
-			ret = pollForEvent(event_to_search, size + 2, readData,
-				   TIMEOUT_ECHO_FLUSH);
+			ret = pollForEvent(info, event_to_search, size + 2,
+				   readData, TIMEOUT_ECHO_FLUSH);
 		else
-			ret = pollForEvent(event_to_search, size + 2, readData,
-				   TIEMOUT_ECHO);
+			ret = pollForEvent(info, event_to_search, size + 2,
+				   readData, TIEMOUT_ECHO);
 		if (ret < OK) {
 			pr_err("checkEcho: Echo Event not found! ERROR %08X\n",
 				ret);
@@ -362,7 +364,7 @@ int checkEcho(u8 *cmd, int size)
   * (for example @link active_bitmask Active Mode Bitmask @endlink)
   * @return OK if success or an error code which specify the type of error
   */
-int setScanMode(u8 mode, u8 settings)
+int setScanMode(struct fts_ts_info *info, u8 mode, u8 settings)
 {
 	u8 cmd[3] = { FTS_CMD_SCAN_MODE, mode, settings };
 	u8 cmd1[7] = {0xFA, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -372,9 +374,9 @@ int setScanMode(u8 mode, u8 settings)
 		__func__, mode, settings);
 	if (mode == SCAN_MODE_LOW_POWER)
 		size = 2;
-	ret = fts_write(cmd1, 7);
+	ret = fts_write(info, cmd1, 7);
 	if(ret >= OK)
-		ret = fts_write(cmd, size);
+		ret = fts_write(info, cmd, size);
 	/* use write instead of writeFw because can be called while the
 	 * interrupt are enabled */
 	if (ret < OK) {
@@ -401,7 +403,7 @@ int setScanMode(u8 mode, u8 settings)
   * @param size in bytes of settings
   * @return OK if success or an error code which specify the type of error
   */
-int setFeatures(u8 feat, u8 *settings, int size)
+int setFeatures(struct fts_ts_info *info, u8 feat, u8 *settings, int size)
 {
 	u8 *cmd;
 	int i = 0;
@@ -428,9 +430,9 @@ int setFeatures(u8 feat, u8 *settings, int size)
 					"%02X ", settings[i]);
 	}
 	pr_info("%s: Settings = %s\n", __func__, buff);
-	ret = fts_write(cmd1, 7);
+	ret = fts_write(info, cmd1, 7);
 	if(ret >= OK)
-		ret = fts_write(cmd, 2 + size);
+		ret = fts_write(info, cmd, 2 + size);
 	/* use write instead of writeFw because can be called while the
 	 * interrupts are enabled */
 	if (ret < OK) {
@@ -459,7 +461,7 @@ int setFeatures(u8 feat, u8 *settings, int size)
   * @param size in bytes of settings
   * @return OK if success or an error code which specify the type of error
   */
-int writeSysCmd(u8 sys_cmd, u8 *sett, int size)
+int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size)
 {
 	u8 *cmd;
 	int ret;
@@ -488,13 +490,13 @@ int writeSysCmd(u8 sys_cmd, u8 *sett, int size)
 		 cmd[1], buff);
 	pr_info("%s: Writing Sys command...\n", __func__);
 	if (sys_cmd != SYS_CMD_LOAD_DATA) {
-		ret = fts_write(cmd1, 7);
+		ret = fts_write(info, cmd1, 7);
 		if(ret >= OK)
-			ret = fts_writeFwCmd(cmd, 2 + size);
+			ret = fts_writeFwCmd(info, cmd, 2 + size);
 	}
 	else {
 		if (size >= 1)
-			ret = requestSyncFrame(sett[0]);
+			ret = requestSyncFrame(info, sett[0]);
 		else {
 			pr_err("%s: No setting argument! ERROR %08X\n",
 				__func__, ERROR_OP_NOT_ALLOW);
@@ -558,7 +560,7 @@ int defaultSysInfo(int i2cError)
   * attempt to read it directly from memory
   * @return OK if success or an error code which specify the type of error
   */
-int readSysInfo(int request)
+int readSysInfo(struct fts_ts_info *info, int request)
 {
 	int ret, i, index = 0;
 	u8 sett = LOAD_SYS_INFO;
@@ -568,7 +570,7 @@ int readSysInfo(int request)
 	if (request == 1) {
 		pr_info("%s: Requesting System Info...\n", __func__);
 
-		ret = writeSysCmd(SYS_CMD_LOAD_DATA, &sett, 1);
+		ret = writeSysCmd(info, SYS_CMD_LOAD_DATA, &sett, 1);
 		if (ret < OK) {
 			pr_err("%s: error while writing the sys cmd ERROR %08X\n",
 				__func__, ret);
@@ -577,7 +579,7 @@ int readSysInfo(int request)
 	}
 
 	pr_info("%s: Reading System Info...\n", __func__);
-	ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16,
+	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
 				ADDR_FRAMEBUFFER, data, SYS_INFO_SIZE,
 				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
@@ -837,14 +839,14 @@ FAIL:
   * @param len number of bytes to read
   * @return OK if success or an error code which specify the type of error
   */
-int readConfig(u16 offset, u8 *outBuf, int len)
+int readConfig(struct fts_ts_info *info, u16 offset, u8 *outBuf, int len)
 {
 	int ret;
 	u64 final_address = offset + ADDR_CONFIG_OFFSET;
 
 	pr_info("%s: Starting to read config memory at %llx ...\n",
 		__func__, final_address);
-	ret = fts_writeReadU8UX(FTS_CMD_CONFIG_R, BITS_16, final_address,
+	ret = fts_writeReadU8UX(info, FTS_CMD_CONFIG_R, BITS_16, final_address,
 				outBuf, len, DUMMY_CONFIG);
 	if (ret < OK) {
 		pr_err("%s: Impossible to read Config Memory... ERROR %08X!\n",
@@ -863,14 +865,14 @@ int readConfig(u16 offset, u8 *outBuf, int len)
   * @param len number of bytes to write
   * @return OK if success or an error code which specify the type of error
   */
-int writeConfig(u16 offset, u8 *data, int len)
+int writeConfig(struct fts_ts_info *info, u16 offset, u8 *data, int len)
 {
 	int ret;
 	u64 final_address = offset + ADDR_CONFIG_OFFSET;
 
 	pr_info("%s: Starting to write config memory at %llx ...\n",
 		__func__, final_address);
-	ret = fts_writeU8UX(FTS_CMD_CONFIG_W, BITS_16, final_address, data,
+	ret = fts_writeU8UX(info, FTS_CMD_CONFIG_W, BITS_16, final_address, data,
 			    len);
 	if (ret < OK) {
 		pr_err("%s: Impossible to write Config Memory... ERROR %08X!\n",
@@ -886,17 +888,15 @@ int writeConfig(u16 offset, u8 *data, int len)
  * @param enable Indicates whether interrupts should enabled.
  * @return OK if success
  */
-int fts_enableInterrupt(bool enable)
+int fts_enableInterrupt(struct fts_ts_info *info, bool enable)
 {
-	struct fts_ts_info *info = NULL;
 	unsigned long flag;
 
-	if (getClient() == NULL) {
+	if (info->client == NULL) {
 		pr_err("Cannot get client irq. Error = %08X\n",
 			ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
-	info = dev_get_drvdata(&getClient()->dev);
 
 	spin_lock_irqsave(&info->fts_int, flag);
 
@@ -905,10 +905,10 @@ int fts_enableInterrupt(bool enable)
 	else {
 		info->irq_enabled = enable;
 		if (enable) {
-			enable_irq(getClient()->irq);
+			enable_irq(info->client->irq);
 			pr_debug("Interrupt enabled.\n");
 		} else {
-			disable_irq_nosync(getClient()->irq);
+			disable_irq_nosync(info->client->irq);
 			pr_debug("Interrupt disabled.\n");
 		}
 	}
@@ -921,7 +921,7 @@ int fts_enableInterrupt(bool enable)
   * Check if there is a crc error in the IC which prevent the fw to run.
   * @return  OK if no CRC error, or a number >OK according the CRC error found
   */
-int fts_crc_check(void)
+int fts_crc_check(struct fts_ts_info *info)
 {
 	u8 val;
 	u8 crc_status;
@@ -934,7 +934,7 @@ int fts_crc_check(void)
 				  EVT_TYPE_ERROR_CRC_CX_SUB_HEAD };
 
 
-	res = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG, ADDR_CRC,
+	res = fts_writeReadU8UX(info, FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG, ADDR_CRC,
 				&val, 1, DUMMY_HW_REG);
 	/* read 2 bytes because the first one is a dummy byte! */
 	if (res < OK) {
@@ -949,7 +949,7 @@ int fts_crc_check(void)
 	}
 
 	pr_info("%s: Verifying if Config CRC Error...\n", __func__);
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res >= OK) {
 		res = pollForErrorType(error_to_search, 2);
 		if (res < OK) {
@@ -986,7 +986,7 @@ int fts_crc_check(void)
   * Option  @endlink)
   * @return OK if success or an error code which specify the type of error
   */
-int requestSyncFrame(u8 type)
+int requestSyncFrame(struct fts_ts_info *info, u8 type)
 {
 	u8 request[3] = { FTS_CMD_SYSTEM, SYS_CMD_LOAD_DATA, type };
 	u8 readData[DATA_HEADER] = { 0 };
@@ -999,7 +999,7 @@ int requestSyncFrame(u8 type)
 	while (retry2 < RETRY_MAX_REQU_DATA) {
 		pr_info("%s: Reading count...\n", __func__);
 
-		ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16,
+		ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
 					ADDR_FRAMEBUFFER, readData, DATA_HEADER,
 					DUMMY_FRAMEBUFFER);
 		if (ret < OK) {
@@ -1020,14 +1020,15 @@ int requestSyncFrame(u8 type)
 
 		pr_info("%s: Requesting frame %02X  attempt = %d\n",
 			__func__,  type, retry2 + 1);
-		ret = fts_write(cmd, 7);
+		ret = fts_write(info, cmd, 7);
 		if(ret >= OK)
-			ret = fts_write(request, ARRAY_SIZE(request));
+			ret = fts_write(info, request, ARRAY_SIZE(request));
 		if (ret >= OK) {
 			pr_info("%s: Polling for new count...\n", __func__);
 			time_to_count = TIMEOUT_REQU_DATA / TIMEOUT_RESOLUTION;
 			while (count == new_count && retry < time_to_count) {
-				ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R,
+				ret = fts_writeReadU8UX(info,
+							FTS_CMD_FRAMEBUFFER_R,
 							BITS_16,
 							ADDR_FRAMEBUFFER,
 							readData,
@@ -1068,7 +1069,7 @@ int requestSyncFrame(u8 type)
   * @return OK if success or an error code which specify the type of error
   * @warning The scan frequency can be set only for the MS scan!
   */
-int setActiveScanFrequency(u32 freq)
+int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 {
 	int res;
 	u8 temp[2] = { 0 };
@@ -1078,7 +1079,7 @@ int setActiveScanFrequency(u32 freq)
 		__func__, freq);
 
 	/* read MRN register */
-	res = readConfig(ADDR_CONFIG_MRN, temp, 1);
+	res = readConfig(info, ADDR_CONFIG_MRN, temp, 1);
 	if (res < OK) {
 		pr_err("%s: error while reading mrn count! ERROR %08X\n",
 			__func__, res);
@@ -1087,7 +1088,7 @@ int setActiveScanFrequency(u32 freq)
 
 	/* setting r count to 0 (= 1 R cycle used) and write it back */
 	temp[0] &= (~0x03);
-	res = writeConfig(ADDR_CONFIG_MRN, temp, 1);
+	res = writeConfig(info, ADDR_CONFIG_MRN, temp, 1);
 	if (res < OK) {
 		pr_err("%s: error while writing mrn count! ERROR %08X\n",
 			__func__, res);
@@ -1096,7 +1097,7 @@ int setActiveScanFrequency(u32 freq)
 
 	/* set first R cycle slot according the specified frequency */
 	/* read T cycle */
-	res = readConfig(ADDR_CONFIG_T_CYCLE, temp, 2);
+	res = readConfig(info, ADDR_CONFIG_T_CYCLE, temp, 2);
 	if (res < OK) {
 		pr_err("%s: error while reading T cycle! ERROR %08X\n",
 			__func__, res);
@@ -1111,7 +1112,7 @@ int setActiveScanFrequency(u32 freq)
 	/* write R cycle in Config Area */
 	pr_info("%s: T cycle  = %d (0x%04X) => R0 cycle = %d (0x%02X)\n",
 		__func__, t_cycle, t_cycle, temp[0], temp[0]);
-	res = writeConfig(ADDR_CONFIG_R0_CYCLE, temp, 1);
+	res = writeConfig(info, ADDR_CONFIG_R0_CYCLE, temp, 1);
 	if (res < OK) {
 		pr_err("%s: error while writing R0 cycle! ERROR %08X\n",
 			__func__, res);
@@ -1121,7 +1122,7 @@ int setActiveScanFrequency(u32 freq)
 	pr_info("%s: Saving Config into the flash ...\n", __func__);
 	/* save config */
 	temp[0] = SAVE_FW_CONF;
-	res = writeSysCmd(SYS_CMD_SAVE_FLASH, temp, 1);
+	res = writeSysCmd(info, SYS_CMD_SAVE_FLASH, temp, 1);
 	if (res < OK) {
 		pr_err("%s: error while saving config into the flash! ERROR %08X\n",
 			__func__, res);
@@ -1129,7 +1130,7 @@ int setActiveScanFrequency(u32 freq)
 	}
 
 	/* system reset */
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < OK) {
 		pr_err("%s: error at system reset! ERROR %08X\n",
 			__func__, res);
@@ -1151,7 +1152,8 @@ int setActiveScanFrequency(u32 freq)
   * @param save if =1 will save the host data written into the flash
   * @return OK if success or an error code which specify the type of error
   */
-int writeHostDataMemory(u8 type, u8 *data, u8 msForceLen, u8 msSenseLen,
+int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
+			u8 msForceLen, u8 msSenseLen,
 			u8 ssForceLen, u8 ssSenseLen, int save)
 {
 	int res;
@@ -1175,7 +1177,7 @@ int writeHostDataMemory(u8 type, u8 *data, u8 msForceLen, u8 msSenseLen,
 	memcpy(&temp[16], data, size);
 
 	pr_info("%s: Write Host Data Memory in buffer...\n", __func__);
-	res = fts_writeU8UX(FTS_CMD_FRAMEBUFFER_W, BITS_16,
+	res = fts_writeU8UX(info, FTS_CMD_FRAMEBUFFER_W, BITS_16,
 			    ADDR_FRAMEBUFFER, temp, size +
 			    SYNCFRAME_DATA_HEADER);
 
@@ -1189,7 +1191,7 @@ int writeHostDataMemory(u8 type, u8 *data, u8 msForceLen, u8 msSenseLen,
 	/* save host data memory into the flash */
 	if (save == 1) {
 		pr_info("%s: Trigger writing into the flash...\n", __func__);
-		res = writeSysCmd(SYS_CMD_SPECIAL, &sett, 1);
+		res = writeSysCmd(info, SYS_CMD_SPECIAL, &sett, 1);
 		if (res < OK) {
 			pr_err("%s: error while writing into the flash! ERROR %08X\n",
 				__func__, res);
@@ -1209,23 +1211,23 @@ int writeHostDataMemory(u8 type, u8 *data, u8 msForceLen, u8 msSenseLen,
  * @param mpflag Value to write in the MP Flag field
  * @return OK if success or an error code which specify the type of error
  */
-int saveMpFlag(u8 mpflag)
+int saveMpFlag(struct fts_ts_info *info, u8 mpflag)
 {
 	int ret = OK;
 	u8 panelCfg = SAVE_PANEL_CONF;
 
 	pr_info("%s: Saving MP Flag = %02X\n", __func__, mpflag);
-	ret |= writeSysCmd(SYS_CMD_MP_FLAG, &mpflag, 1);
+	ret |= writeSysCmd(info, SYS_CMD_MP_FLAG, &mpflag, 1);
 	if (ret < OK)
 		pr_err("%s: Error while writing MP flag on ram... ERROR %08X\n",
 			__func__, ret);
 
-	ret |= writeSysCmd(SYS_CMD_SAVE_FLASH, &panelCfg, 1);
+	ret |= writeSysCmd(info, SYS_CMD_SAVE_FLASH, &panelCfg, 1);
 	if (ret < OK)
 		pr_err("%s: Error while saving MP flag on flash... ERROR %08X\n",
 			__func__, ret);
 
-	ret |= readSysInfo(1);
+	ret |= readSysInfo(info, 1);
 	if (ret < OK) {
 		pr_err("%s: Error while refreshing SysInfo... ERROR %08X\n",
 			__func__, ret);

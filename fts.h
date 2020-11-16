@@ -52,6 +52,8 @@
 #include <linux/input/touch_bus_negotiator.h>
 #endif
 
+#include <linux/proc_fs.h>
+
 #undef DYNAMIC_REFRESH_RATE
 
 /****************** CONFIGURATION SECTION ******************/
@@ -508,6 +510,8 @@ struct fts_ts_info {
 	/* Touch simulation details */
 	struct fts_touchsim touchsim;
 
+	struct proc_dir_entry *fts_dir;
+
 	u8 scanning_frequency;
 
 	/* Preallocated i/o read buffer */
@@ -528,8 +532,8 @@ extern int input_register_notifier_client(struct notifier_block *nb);
 extern int input_unregister_notifier_client(struct notifier_block *nb);
 
 /* export declaration of functions in fts_proc.c */
-extern int fts_proc_init(void);
-extern int fts_proc_remove(void);
+extern int fts_proc_init(struct fts_ts_info *info);
+extern int fts_proc_remove(struct fts_ts_info *info);
 
 /* Bus reference tracking */
 int fts_set_bus_ref(struct fts_ts_info *info, u16 ref, bool enable);

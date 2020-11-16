@@ -922,8 +922,8 @@ int checkLimitsMapAdjTotal(u16 *data, int row, int column, int *max)
   * @param max_val pointer to store the adjacent frame max node value
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ito(const char *path_limits, TestToDo *todo,
-			MutualSenseFrame *frame, u16 *max_val)
+int production_test_ito(struct fts_ts_info *info, const char *path_limits,
+			TestToDo *todo, MutualSenseFrame *frame, u16 *max_val)
 {
 	int res = OK;
 	u8 sett[2] = { 0x00, 0x00 };
@@ -942,7 +942,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 
 	pr_info("ITO Production test is starting...\n");
 
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < 0) {
 		pr_err("%s: ERROR %08X\n", __func__, ERROR_PROD_TEST_ITO);
 		return res | ERROR_PROD_TEST_ITO;
@@ -950,7 +950,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 
 	sett[0] = SPECIAL_TUNING_IOFF;
 	pr_info("Trimming Ioff...\n");
-	res = writeSysCmd(SYS_CMD_SPECIAL_TUNING, sett, 2);
+	res = writeSysCmd(info, SYS_CMD_SPECIAL_TUNING, sett, 2);
 	if (res < OK) {
 		pr_err("production_test_ito: Trimm Ioff ERROR %08X\n",
 			(res | ERROR_PROD_TEST_ITO));
@@ -960,7 +960,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 	sett[0] = 0xFF;
 	sett[1] = 0x01;
 	pr_info("ITO Check command sent...\n");
-	res = writeSysCmd(SYS_CMD_ITO, sett, 2);
+	res = writeSysCmd(info, SYS_CMD_ITO, sett, 2);
 	if (res < OK) {
 		pr_err("production_test_ito: ERROR %08X\n",
 			 (res | ERROR_PROD_TEST_ITO));
@@ -980,7 +980,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 		} else
 			ptr_frame = &msRawFrame;
 
-		res |= getMSFrame3(MS_RAW, ptr_frame);
+		res |= getMSFrame3(info, MS_RAW, ptr_frame);
 		if (res < OK) {
 			pr_err("%s: getMSFrame failed... ERROR %08X\n",
 				__func__, ERROR_PROD_TEST_ITO);
@@ -1015,7 +1015,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 		if (max_val != NULL)
 			*max_val = max_value;
 
-		res = parseProductionTestLimits(path_limits, &limit_file,
+		res = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_RAW_ITO_ADJH, &thresholds,
 						&trows, &tcolumns);
 		if (res < OK || (trows != (*ptr_frame).header.force_node ||
@@ -1067,8 +1067,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 		if (max_val != NULL)
 			*(max_val + 1) = max_value;
 
-
-		res = parseProductionTestLimits(path_limits, &limit_file,
+		res = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_RAW_ITO_ADJV, &thresholds,
 						&trows, &tcolumns);
 		if (res < OK || (trows != (*ptr_frame).header.force_node - 1 ||
@@ -1099,7 +1098,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 
 		pr_info("MS RAW ITO MIN MAX TEST:\n");
 		if (todo->MutualRawMapITO == 1) {
-			res = parseProductionTestLimits(path_limits,
+			res = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_ITO_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (res < OK || (trows !=
@@ -1111,7 +1110,7 @@ int production_test_ito(const char *path_limits, TestToDo *todo,
 				goto ERROR;
 			}
 
-			res = parseProductionTestLimits(path_limits,
+			res = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_ITO_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (res < OK || (trows !=
@@ -1151,7 +1150,7 @@ ERROR:
 	kfree(thresholds_min);
 	kfree(thresholds_max);
 	freeLimitsFile(&limit_file);
-	res |= fts_system_reset();
+	res |= fts_system_reset(info);
 	if (res < OK) {
 		pr_err("production_test_ito: ERROR %08X\n",
 			ERROR_PROD_TEST_ITO);
@@ -1166,7 +1165,7 @@ ERROR:
   * (see @link sys_special_opt Initialization Options (Full or Panel) @endlink)
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_initialization(u8 type)
+int production_test_initialization(struct fts_ts_info *info, u8 type)
 {
 	int res;
 
@@ -1178,7 +1177,7 @@ int production_test_initialization(u8 type)
 		return ERROR_OP_NOT_ALLOW | ERROR_PROD_TEST_INITIALIZATION;
 	}
 
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < 0) {
 		pr_err("production_test_initialization: ERROR %08X\n",
 			ERROR_PROD_TEST_INITIALIZATION);
@@ -1186,7 +1185,7 @@ int production_test_initialization(u8 type)
 	}
 
 	pr_info("INITIALIZATION command sent... %02X\n", type);
-	res = writeSysCmd(SYS_CMD_SPECIAL, &type, 1);
+	res = writeSysCmd(info, SYS_CMD_SPECIAL, &type, 1);
 	if (res < OK) {
 		pr_err("production_test_initialization: ERROR %08X\n",
 			(res | ERROR_PROD_TEST_INITIALIZATION));
@@ -1195,7 +1194,7 @@ int production_test_initialization(u8 type)
 
 
 	pr_info("Refresh Sys Info...\n");
-	res |= readSysInfo(1);	/* need to update the chipInfo in order
+	res |= readSysInfo(info, 1);	/* need to update the chipInfo in order
 				  * to refresh several versions */
 
 	if (res < 0) {
@@ -1223,8 +1222,9 @@ int production_test_initialization(u8 type)
   * @param mpflag MP flag value to write in case of successful test
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_main(const char *pathThresholds, int stop_on_fail,
-			 int saveInit, TestToDo *todo, u8 mpflag)
+int production_test_main(struct fts_ts_info *info, const char *pathThresholds,
+			 int stop_on_fail, int saveInit, TestToDo *todo,
+			 u8 mpflag)
 {
 	int res = 0;
 	int ret = 0;
@@ -1233,7 +1233,7 @@ int production_test_main(const char *pathThresholds, int stop_on_fail,
 
 #ifndef SKIP_PRODUCTION_TEST
 	pr_info("ITO TEST:\n");
-	res = production_test_ito(pathThresholds, todo, NULL, NULL);
+	res = production_test_ito(info, pathThresholds, todo, NULL, NULL);
 	if (res < 0) {
 		pr_err("Error during ITO TEST! ERROR %08X\n", res);
 		/* in case of ITO TEST failure is no sense keep going */
@@ -1244,7 +1244,7 @@ int production_test_main(const char *pathThresholds, int stop_on_fail,
 
 	pr_info("INITIALIZATION TEST :\n");
 	if (saveInit != NO_INIT) {
-		res = production_test_initialization((u8)saveInit);
+		res = production_test_initialization(info, (u8)saveInit);
 		if (res < 0) {
 			pr_err("Error during  INITIALIZATION TEST! ERROR %08X\n",
 				res);
@@ -1257,7 +1257,7 @@ int production_test_main(const char *pathThresholds, int stop_on_fail,
 
 	if (saveInit != NO_INIT) {
 		pr_info("Cleaning up...\n");
-		ret = fts_system_reset();
+		ret = fts_system_reset(info);
 		if (ret < 0) {
 			pr_err("production_test_main: system reset ERROR %08X\n",
 				ret);
@@ -1269,7 +1269,7 @@ int production_test_main(const char *pathThresholds, int stop_on_fail,
 
 #ifndef SKIP_PRODUCTION_TEST
 	pr_info("PRODUCTION DATA TEST:\n");
-	ret = production_test_data(pathThresholds, stop_on_fail, todo);
+	ret = production_test_data(info, pathThresholds, stop_on_fail, todo);
 	if (ret < OK)
 		pr_err("Error during PRODUCTION DATA TEST! ERROR %08X\n", ret);
 	else
@@ -1279,14 +1279,14 @@ int production_test_main(const char *pathThresholds, int stop_on_fail,
 #ifdef COMPUTE_INIT_METHOD
 	if (saveInit != NO_INIT) {
 		pr_info("%s: Clearing the FIFO events!!!\n", __func__);
-		ret = flushFIFO();
+		ret = flushFIFO(info);
 		if (ret < OK)
 			pr_err("%s: Error while Flushing the FIFO! ERROR %8X\n",
 				__func__, ret);
 		/* save the mp flag to desired value
 		 * because data check OK
 		 */
-		ret = saveMpFlag(mpflag);
+		ret = saveMpFlag(info, mpflag);
 		if (ret < OK)
 			pr_err("Error while saving MP FLAG! ERROR %08X\n",
 				ret);
@@ -1320,8 +1320,8 @@ END:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_raw(const char *path_limits, int stop_on_fail,
-			   TestToDo *todo)
+int production_test_ms_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail, TestToDo *todo)
 {
 	int ret, count_fail = 0;
 	MutualSenseFrame msRawFrame;
@@ -1343,14 +1343,14 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 	if (todo->MutualRaw == 1 || todo->MutualRawGap == 1 ||
 	    todo->MutualRawAdj == 1 || todo->MutualRawMap == 1 ||
 	    todo->MutualRawAdjGap == 1 || todo->MutualRawAdjPeak == 1) {
-		ret = setScanMode(SCAN_MODE_LOCKED, LOCKED_ACTIVE);
+		ret = setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
 		msleep(WAIT_FOR_FRESH_FRAMES);
-		ret |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
+		ret |= setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 		msleep(WAIT_AFTER_SENSEOFF);
 #ifdef READ_FILTERED_RAW
-		ret |= getMSFrame3(MS_FILTER, &msRawFrame);
+		ret |= getMSFrame3(info, MS_FILTER, &msRawFrame);
 #else
-		ret |= getMSFrame3(MS_RAW, &msRawFrame);
+		ret |= getMSFrame3(info, MS_RAW, &msRawFrame);
 #endif
 		if (ret < OK) {
 			pr_err("production_test_data: getMSFrame failed... ERROR %08X\n",
@@ -1368,7 +1368,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW MIN MAX TEST:\n");
 		if (todo->MutualRaw == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_RAW_MIN_MAX,
 							&thresholds, &trows,
@@ -1402,7 +1402,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW MAP MIN MAX TEST:\n");
 		if (todo->MutualRawMap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK || (trows !=
@@ -1414,7 +1414,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK || (trows !=
@@ -1454,7 +1454,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW GAP TEST:\n");
 		if (todo->MutualRawGap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file, MS_RAW_GAP,
 							&thresholds, &trows,
 							&tcolumns);
@@ -1500,7 +1500,8 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 			if (todo->MutualRawAdj) {
 				pr_err("MS RAW ADJ HORIZONTAL MIN/MAX:\n");
 
-				ret = parseProductionTestLimits(path_limits,
+				ret = parseProductionTestLimits(info,
+								path_limits,
 								&limit_file,
 								MS_RAW_ADJH,
 								&thresholds,
@@ -1540,7 +1541,8 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 			if (todo->MutualRawAdjGap) {
 				pr_info("MS RAW ADJ HORIZONTAL GAP:\n");
 
-				ret = parseProductionTestLimits(path_limits,
+				ret = parseProductionTestLimits(info,
+							path_limits,
 							&limit_file,
 							MS_RAW_ADJH_GAP,
 							&thresholds, &trows,
@@ -1610,7 +1612,8 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 			if (todo->MutualRawAdj) {
 				pr_info("MS RAW ADJ VERTICAL MIN/MAX:\n");
-				ret = parseProductionTestLimits(path_limits,
+				ret = parseProductionTestLimits(info,
+								path_limits,
 								&limit_file,
 								MS_RAW_ADJV,
 								&thresholds,
@@ -1650,7 +1653,8 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 			if (todo->MutualRawAdjGap) {
 				pr_err("MS RAW ADJ VERTICAL GAP:\n");
-				ret = parseProductionTestLimits(path_limits,
+				ret = parseProductionTestLimits(info,
+							path_limits,
 							&limit_file,
 							MS_RAW_ADJV_GAP,
 							&thresholds, &trows,
@@ -1703,7 +1707,8 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 					}
 				}
 
-				ret = parseProductionTestLimits(path_limits,
+				ret = parseProductionTestLimits(info,
+							path_limits,
 							&limit_file,
 							MS_RAW_ADJ_PEAK,
 							&thresholds, &trows,
@@ -1754,7 +1759,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS KEY RAW TEST:\n");
 	if (todo->MutualKeyRaw == 1) {
-		ret = production_test_ms_key_raw(path_limits);
+		ret = production_test_ms_key_raw(info, path_limits);
 		if (ret < 0) {
 			pr_err("production_test_data: production_test_ms_key_raw failed... ERROR = %08X\n",
 				ret);
@@ -1768,7 +1773,7 @@ int production_test_ms_raw(const char *path_limits, int stop_on_fail,
 	} else
 		pr_info("MS KEY RAW TEST:.................SKIPPED\n");
 
-	ret = production_test_ms_raw_lp(path_limits, stop_on_fail, todo);
+	ret = production_test_ms_raw_lp(info, path_limits, stop_on_fail, todo);
 	if (ret < 0) {
 		pr_err("production_test_data: production_test_ms_raw_lp failed... ERROR = %08X\n",
 			ret);
@@ -1830,7 +1835,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
+int production_test_ms_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo)
 {
 	int ret, count_fail = 0;
@@ -1849,14 +1855,14 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 	pr_info("MS RAW LP DATA TEST:\n");
 	if (todo->MutualRawLP == 1 || todo->MutualRawGapLP == 1 ||
 	    todo->MutualRawAdjLP == 1 || todo->MutualRawMapLP) {
-		ret = setScanMode(SCAN_MODE_LOCKED, LOCKED_LP_ACTIVE);
+		ret = setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_ACTIVE);
 		msleep(WAIT_FOR_FRESH_FRAMES);
-		ret |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
+		ret |= setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 		msleep(WAIT_AFTER_SENSEOFF);
 #ifdef READ_FILTERED_RAW
-		ret |= getMSFrame3(MS_FILTER, &msRawFrame);
+		ret |= getMSFrame3(info, MS_FILTER, &msRawFrame);
 #else
-		ret |= getMSFrame3(MS_RAW, &msRawFrame);
+		ret |= getMSFrame3(info, MS_RAW, &msRawFrame);
 #endif
 		if (ret < 0) {
 			pr_err("production_test_data: getMSFrame failed... ERROR %08X\n",
@@ -1874,7 +1880,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW LP MIN MAX TEST:\n");
 		if (todo->MutualRawLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_RAW_LP_MIN_MAX,
 							&thresholds, &trows,
@@ -1908,7 +1914,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW LP MAP MIN MAX TEST:\n");
 		if (todo->MutualRawMapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_LP_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK ||
@@ -1919,7 +1925,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, MS_RAW_LP_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK ||
@@ -1958,7 +1964,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("MS RAW LP GAP TEST:\n");
 		if (todo->MutualRawGapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_RAW_LP_GAP,
 							&thresholds, &trows,
@@ -2001,7 +2007,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_RAW_LP_ADJH,
 							&thresholds, &trows,
@@ -2050,7 +2056,7 @@ int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_RAW_LP_ADJV,
 							&thresholds, &trows,
@@ -2132,7 +2138,8 @@ ERROR_LIMITS:
   * "NULL" if the limits data should be loaded by a .h file
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_key_raw(const char *path_limits)
+int production_test_ms_key_raw(struct fts_ts_info *info,
+			       const char *path_limits)
 {
 	int ret;
 	MutualSenseFrame msRawFrame;
@@ -2142,18 +2149,18 @@ int production_test_ms_key_raw(const char *path_limits)
 
 	/************** Mutual Sense Test **************/
 	pr_info("MS KEY RAW DATA TEST is starting...\n");
-	ret = setScanMode(SCAN_MODE_ACTIVE, 0xFF);
+	ret = setScanMode(info, SCAN_MODE_ACTIVE, 0xFF);
 	msleep(WAIT_FOR_FRESH_FRAMES);
-	ret |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
+	ret |= setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 	msleep(WAIT_AFTER_SENSEOFF);
-	ret |= getMSFrame3(MS_KEY_RAW, &msRawFrame);
+	ret |= getMSFrame3(info, MS_KEY_RAW, &msRawFrame);
 	if (ret < 0) {
 		pr_err("production_test_data: getMSKeyFrame failed... ERROR %08X\n",
 			ERROR_PROD_TEST_DATA);
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	ret = parseProductionTestLimits(path_limits, &limit_file,
+	ret = parseProductionTestLimits(info, path_limits, &limit_file,
 					MS_KEY_RAW_MIN_MAX, &thresholds, &trows,
 					&tcolumns);
 	if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -2214,8 +2221,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_cx(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo)
+int production_test_ms_cx(struct fts_ts_info *info, const char *path_limits,
+			  int stop_on_fail, TestToDo *todo)
 {
 	int ret;
 	int count_fail = 0;
@@ -2241,7 +2248,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 	/* MS CX TEST */
 	pr_info("MS CX Testes are starting...\n");
 
-	ret = readMutualSenseCompensationData(LOAD_CX_MS_TOUCH, &msCompData);
+	ret = readMutualSenseCompensationData(info, LOAD_CX_MS_TOUCH, &msCompData);
 	/* read MS compensation data */
 	if (ret < 0) {
 		pr_err("production_test_data: readMutualSenseCompensationData failed... ERROR %08X\n",
@@ -2249,7 +2256,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	ret = readTotMutualSenseCompensationData(LOAD_PANEL_CX_TOT_MS_TOUCH,
+	ret = readTotMutualSenseCompensationData(info, LOAD_PANEL_CX_TOT_MS_TOUCH,
 						 &totCompData);
 	/* read  TOT MS compensation data */
 	if (ret < 0) {
@@ -2262,7 +2269,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS CX1 TEST:\n");
 	if (todo->MutualCx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX1_MIN_MAX, &thresholds,
 						&trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -2293,7 +2300,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS CX2 MIN MAX TEST:\n");
 	if (todo->MutualCx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_MAP_MIN, &thresholds_min,
 						&trows, &tcolumns);
 						/* load min thresholds */
@@ -2305,7 +2312,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_MAP_MAX, &thresholds_max,
 						&trows, &tcolumns);
 						/* load max thresholds */
@@ -2356,7 +2363,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("MS CX2 ADJ HORIZ computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -2401,7 +2408,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("MS CX2 ADJ VERT computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -2439,7 +2446,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 	if (todo->MutualCxTotal == 1 || todo->MutualCxTotalAdj == 1) {
 		pr_info("MS TOTAL CX MIN MAX TEST:\n");
 		if (todo->MutualCxTotal == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_TOTAL_CX_MAP_MIN,
 							&thresholds_min,
@@ -2455,7 +2462,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_TOTAL_CX_MAP_MAX,
 							&thresholds_max,
@@ -2512,7 +2519,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("MS TOTAL CX ADJ HORIZ computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						MS_TOTAL_CX_ADJH_MAP_MAX,
 						&thresholds_max,
@@ -2563,7 +2570,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("MS TOTAL CX ADJ VERT computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						MS_TOTAL_CX_ADJV_MAP_MAX,
 						&thresholds_max,
@@ -2607,7 +2614,8 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 
 	if ((todo->MutualCx1LP | todo->MutualCx2LP | todo->MutualCx2AdjLP |
 	     todo->MutualCxTotalLP | todo->MutualCxTotalAdjLP) == 1) {
-		ret = production_test_ms_cx_lp(path_limits, stop_on_fail, todo);
+		ret = production_test_ms_cx_lp(info, path_limits, stop_on_fail,
+					       todo);
 		if (ret < OK) {
 			count_fail += 1;
 			pr_err("production_test_data: production_test_cx_lp failed... ERROR = %08X\n",
@@ -2621,7 +2629,7 @@ int production_test_ms_cx(const char *path_limits, int stop_on_fail,
 
 	if ((todo->MutualKeyCx1 | todo->MutualKeyCx2 |
 	     todo->MutualKeyCxTotal) == 1) {
-		ret = production_test_ms_key_cx(path_limits, stop_on_fail,
+		ret = production_test_ms_key_cx(info, path_limits, stop_on_fail,
 						todo);
 		if (ret < 0) {
 			count_fail += 1;
@@ -2710,7 +2718,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
+int production_test_ms_key_cx(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo)
 {
 	int ret;
@@ -2732,7 +2741,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 	/* MS CX TEST */
 	pr_info("MS KEY CX Testes are starting...\n");
 
-	ret = readMutualSenseCompensationData(LOAD_CX_MS_KEY, &msCompData);
+	ret = readMutualSenseCompensationData(info, LOAD_CX_MS_KEY, &msCompData);
 	/* read MS compensation data */
 	if (ret < 0) {
 		pr_err("production_test_data: readMutualSenseCompensationData failed... ERROR %08X\n",
@@ -2749,7 +2758,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS KEY CX1 TEST:\n");
 	if (todo->MutualKeyCx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_KEY_CX1_MIN_MAX, &thresholds,
 						&trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -2780,7 +2789,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS KEY CX2 TEST:\n");
 	if (todo->MutualKeyCx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_KEY_CX2_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -2793,7 +2802,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_KEY_CX2_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -2832,7 +2841,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 	pr_info("MS KEY TOTAL CX TEST:\n");
 
 	if (todo->MutualKeyCxTotal == 1) {
-		ret = readTotMutualSenseCompensationData(
+		ret = readTotMutualSenseCompensationData(info,
 			LOAD_PANEL_CX_TOT_MS_KEY, &totCompData);
 		if (ret < 0) {
 			pr_err("production_test_data: computeTotalCx failed... ERROR %08X\n",
@@ -2841,7 +2850,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_KEY_TOTAL_CX_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -2854,7 +2863,7 @@ int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_KEY_TOTAL_CX_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -2945,8 +2954,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo)
+int production_test_ms_cx_lp(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail, TestToDo *todo)
 {
 	int ret;
 	int count_fail = 0;
@@ -2972,7 +2981,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 	/* MS CX TEST */
 	pr_info("MS LP CX Testes are starting...\n");
 
-	ret = readMutualSenseCompensationData(LOAD_CX_MS_LOW_POWER,
+	ret = readMutualSenseCompensationData(info, LOAD_CX_MS_LOW_POWER,
 						&msCompData);
 	/* read MS compensation data */
 	if (ret < 0) {
@@ -2981,7 +2990,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	ret = readTotMutualSenseCompensationData(LOAD_PANEL_CX_TOT_MS_LOW_POWER,
+	ret = readTotMutualSenseCompensationData(info, LOAD_PANEL_CX_TOT_MS_LOW_POWER,
 						 &totCompData);
 	/* read  TOT MS compensation data */
 	if (ret < 0) {
@@ -2994,7 +3003,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS LP CX1 TEST:\n");
 	if (todo->MutualCx1LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX1_LP_MIN_MAX, &thresholds,
 						&trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -3025,7 +3034,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 
 	pr_info("MS LP CX2 MIN MAX TEST:\n");
 	if (todo->MutualCx2LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_LP_MAP_MIN,
 						&thresholds_min,
 						&trows, &tcolumns);
@@ -3038,7 +3047,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_LP_MAP_MAX,
 						&thresholds_max,
 						&trows, &tcolumns);
@@ -3090,7 +3099,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("MS LP CX2 ADJ HORIZ computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_ADJH_LP_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -3135,7 +3144,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("MS LP CX2 ADJ VERT computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						MS_CX2_ADJV_LP_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -3173,7 +3182,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 	if (todo->MutualCxTotalLP == 1 || todo->MutualCxTotalAdjLP == 1) {
 		pr_info("MS TOTAL LP CX MIN MAX TEST:\n");
 		if (todo->MutualCxTotalLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_TOTAL_CX_LP_MAP_MIN,
 							&thresholds_min,
@@ -3189,7 +3198,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							MS_TOTAL_CX_LP_MAP_MAX,
 							&thresholds_max,
@@ -3246,7 +3255,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("MS TOTAL CX ADJ HORIZ LP computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						MS_TOTAL_CX_ADJH_LP_MAP_MAX,
 						&thresholds_max,
@@ -3295,7 +3304,7 @@ int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("MS TOTAL CX ADJ VERT LP computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						MS_TOTAL_CX_ADJV_LP_MAP_MAX,
 						&thresholds_max,
@@ -3414,8 +3423,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ss_raw(const char *path_limits, int stop_on_fail,
-			   TestToDo *todo)
+int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail, TestToDo *todo)
 {
 	int ret;
 	int count_fail = 0;
@@ -3434,14 +3443,14 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 	/************** Self Sense Test **************/
 
 	pr_info("Getting SS Frame...\n");
-	ret = setScanMode(SCAN_MODE_LOCKED, LOCKED_ACTIVE);
+	ret = setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
 	msleep(WAIT_FOR_FRESH_FRAMES);
-	ret |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
+	ret |= setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 	msleep(WAIT_AFTER_SENSEOFF);
 #ifdef READ_FILTERED_RAW
-	ret |= getSSFrame3(SS_FILTER, &ssRawFrame);
+	ret |= getSSFrame3(info, SS_FILTER, &ssRawFrame);
 #else
-	ret |= getSSFrame3(SS_RAW, &ssRawFrame);
+	ret |= getSSFrame3(info, SS_RAW, &ssRawFrame);
 #endif
 	if (ret < 0) {
 		pr_err("production_test_data: getSSFrame failed... ERROR %08X\n",
@@ -3476,7 +3485,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceRaw == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_FORCE_MIN_MAX,
 							&thresholds, &trows,
@@ -3511,7 +3520,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW FORCE MAP MIN MAX TEST:\n");
 		if (todo->SelfForceRawMap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_FORCE_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3521,7 +3530,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_FORCE_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3568,7 +3577,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW FORCE GAP TEST:\n");
 		if (todo->SelfForceRawGap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_FORCE_GAP,
 							&thresholds, &trows,
@@ -3617,7 +3626,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseRaw == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_SENSE_MIN_MAX,
 							&thresholds, &trows,
@@ -3652,7 +3661,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW SENSE MAP MIN MAX TEST:\n");
 		if (todo->SelfSenseRawMap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_SENSE_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3662,7 +3671,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_SENSE_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3709,7 +3718,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW SENSE GAP TEST:\n");
 		if (todo->SelfSenseRawGap == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_SENSE_GAP,
 							&thresholds, &trows,
@@ -3746,7 +3755,7 @@ int production_test_ss_raw(const char *path_limits, int stop_on_fail,
 	} else
 		pr_info("SS RAW SENSE TEST:.................SKIPPED\n\n");
 
-	ret = production_test_ss_raw_lp(path_limits, stop_on_fail, todo);
+	ret = production_test_ss_raw_lp(info, path_limits, stop_on_fail, todo);
 	if (ret < OK) {
 		pr_err("production_test_data: ss_raw_lp failed... ERROR = %08X\n",
 			ret);
@@ -3790,7 +3799,8 @@ ERROR_LIMITS:
  * @param todo pointer to a TestToDo variable which select the test to do
  * @return OK if success or an error code which specify the type of error
  */
-int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
+int production_test_ss_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo)
 {
 	int ret;
@@ -3810,14 +3820,14 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 	/************** Self Sense Test **************/
 
 	pr_info("Getting SS LP Frame...\n");
-	ret = setScanMode(SCAN_MODE_LOCKED, LOCKED_LP_DETECT);
+	ret = setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_DETECT);
 	msleep(WAIT_FOR_FRESH_FRAMES);
-	ret |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
+	ret |= setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 	msleep(WAIT_AFTER_SENSEOFF);
 #ifdef READ_FILTERED_RAW
-	ret |= getSSFrame3(SS_DETECT_FILTER, &ssRawFrame);
+	ret |= getSSFrame3(info, SS_DETECT_FILTER, &ssRawFrame);
 #else
-	ret |= getSSFrame3(SS_DETECT_RAW, &ssRawFrame);
+	ret |= getSSFrame3(info, SS_DETECT_RAW, &ssRawFrame);
 #endif
 	if (ret < 0) {
 		pr_err("production_test_data: getSSFrame failed... ERROR %08X\n",
@@ -3850,7 +3860,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceRawLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_LP_FORCE_MIN_MAX,
 							&thresholds,
@@ -3885,7 +3895,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP FORCE MAP MIN MAX TEST:\n");
 		if (todo->SelfForceRawMapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_LP_FORCE_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3895,7 +3905,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_LP_FORCE_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -3942,7 +3952,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP FORCE GAP TEST:\n");
 		if (todo->SelfForceRawGapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_LP_FORCE_GAP,
 							&thresholds, &trows,
@@ -3992,7 +4002,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseRawLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_LP_SENSE_MIN_MAX,
 							&thresholds,
@@ -4027,7 +4037,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP SENSE MAP MIN MAX TEST:\n");
 		if (todo->SelfSenseRawMapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_LP_SENSE_EACH_NODE_MIN,
 				&thresholds_min, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -4037,7 +4047,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 				ret |= ERROR_PROD_TEST_DATA;
 				goto ERROR_LIMITS;
 			}
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 				&limit_file, SS_RAW_LP_SENSE_EACH_NODE_MAX,
 				&thresholds_max, &trows, &tcolumns);
 			if (ret < OK || (trows != rows ||
@@ -4084,7 +4094,7 @@ int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
 
 		pr_info("SS RAW LP SENSE GAP TEST:\n");
 		if (todo->SelfSenseRawGapLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 							&limit_file,
 							SS_RAW_LP_SENSE_GAP,
 							&thresholds, &trows,
@@ -4156,8 +4166,8 @@ ERROR_LIMITS:
  * @param todo pointer to a TestToDo variable which select the test to do
  * @return OK if success or an error code which specify the type of error
  */
-int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo)
+int production_test_ss_ix_cx(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail, TestToDo *todo)
 {
 	int ret;
 	int count_fail = 0;
@@ -4179,7 +4189,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	u16 *total_adjvert = NULL;
 
 	pr_info("SS IX CX testes are starting...\n");
-	ret = readSelfSenseCompensationData(LOAD_CX_SS_TOUCH, &ssCompData);
+	ret = readSelfSenseCompensationData(info, LOAD_CX_SS_TOUCH, &ssCompData);
 	/* read the SS compensation data */
 	if (ret < 0) {
 		pr_err("production_test_data: readSelfSenseCompensationData failed... ERROR %08X\n",
@@ -4187,7 +4197,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	ret = readTotSelfSenseCompensationData(LOAD_PANEL_CX_TOT_SS_TOUCH,
+	ret = readTotSelfSenseCompensationData(info, LOAD_PANEL_CX_TOT_SS_TOUCH,
 					       &totCompData);
 	/* read the TOT SS compensation data */
 	if (ret < 0) {
@@ -4204,7 +4214,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS IX1 FORCE TEST */
 	pr_info("SS IX1 FORCE TEST:\n");
 	if (todo->SelfForceIx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX1_FORCE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -4233,7 +4243,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS IX2 FORCE TEST */
 	pr_info("SS IX2 FORCE MIN MAX TEST:\n");
 	if (todo->SelfForceIx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_FORCE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -4246,7 +4256,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_FORCE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -4298,7 +4308,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("SS IX2 FORCE ADJV computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);	/* load the max
@@ -4339,7 +4349,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	if (todo->SelfForceIxTotal == 1 || todo->SelfForceIxTotalAdj == 1) {
 		pr_info("SS TOTAL IX FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceIxTotal == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_FORCE_MAP_MIN,
 						&thresholds_min,
@@ -4354,7 +4364,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_FORCE_MAP_MAX,
 						&thresholds_max,
@@ -4407,7 +4417,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("SS TOTAL IX FORCE ADJV computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
@@ -4449,7 +4459,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS IX1 SENSE TEST */
 	pr_info("SS IX1 SENSE TEST:\n");
 	if (todo->SelfSenseIx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX1_SENSE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -4479,7 +4489,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS IX2 SENSE TEST */
 	pr_info("SS IX2 SENSE MIN MAX TEST:\n");
 	if (todo->SelfSenseIx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_SENSE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -4492,7 +4502,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_SENSE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -4542,7 +4552,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		pr_info("SS IX2 SENSE ADJ HORIZ computed!\n");
 
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -4581,7 +4591,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	if (todo->SelfSenseIxTotal == 1 || todo->SelfSenseIxTotalAdj == 1) {
 		pr_info("SS TOTAL IX SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseIxTotal == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_SENSE_MAP_MIN,
 						&thresholds_min,
@@ -4595,7 +4605,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_SENSE_MAP_MAX,
 						&thresholds_max,
@@ -4647,7 +4657,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("SS TOTAL IX SENSE ADJ HORIZ computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
@@ -4688,7 +4698,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS CX1 FORCE TEST */
 	pr_info("SS CX1 FORCE TEST:\n");
 	if (todo->SelfForceCx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX1_FORCE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -4718,7 +4728,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS CX2 FORCE TEST */
 	pr_info("SS CX2 FORCE MIN MAX TEST:\n");
 	if (todo->SelfForceCx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_FORCE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -4731,7 +4741,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_FORCE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -4781,7 +4791,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("SS CX2 FORCE ADJV computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -4819,7 +4829,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	if (todo->SelfForceCxTotal == 1 || todo->SelfForceCxTotalAdj == 1) {
 		pr_info("SS TOTAL CX FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceCxTotal == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_FORCE_MAP_MIN,
 						&thresholds_min,
@@ -4834,7 +4844,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_FORCE_MAP_MAX,
 						&thresholds_max,
@@ -4887,7 +4897,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("SS TOTAL CX FORCE ADJV computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
@@ -4930,7 +4940,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS CX1 SENSE TEST */
 	pr_info("SS CX1 SENSE TEST:\n");
 	if (todo->SelfSenseCx1 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX1_SENSE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -4962,7 +4972,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	/* SS CX2 SENSE TEST */
 	pr_info("SS CX2 SENSE MIN MAX TEST:\n");
 	if (todo->SelfSenseCx2 == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_SENSE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -4975,7 +4985,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_SENSE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5024,7 +5034,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		pr_info("SS CX2 SENSE ADJH computed!\n");
 
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5063,7 +5073,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 	if (todo->SelfSenseCxTotal == 1 || todo->SelfSenseCxTotalAdj == 1) {
 		pr_info("SS TOTAL CX SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseCxTotal == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_SENSE_MAP_MIN,
 						&thresholds_min,
@@ -5077,7 +5087,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_SENSE_MAP_MAX,
 						&thresholds_max,
@@ -5130,7 +5140,7 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 			pr_info("SS TOTAL CX SENSE ADJ HORIZ computed!\n");
 
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
@@ -5172,8 +5182,8 @@ int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
 		todo->SelfSenseCxTotalAdjLP | todo->SelfSenseIx1LP |
 		todo->SelfSenseIx2LP | todo->SelfSenseIx2AdjLP |
 		todo->SelfSenseIxTotalLP | todo->SelfSenseIxTotalAdjLP) == 1) {
-		ret = production_test_ss_ix_cx_lp(path_limits, stop_on_fail,
-			todo);
+		ret = production_test_ss_ix_cx_lp(info, path_limits,
+			stop_on_fail, todo);
 		if (ret < OK) {
 			count_fail += 1;
 			pr_err("production_test_data: production_test_ss_ix_cx_lp failed... ERROR = %08X\n",
@@ -5323,7 +5333,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
+int production_test_ss_ix_cx_lp(struct fts_ts_info *info,
+			     const char *path_limits, int stop_on_fail,
 			     TestToDo *todo)
 {
 	int ret;
@@ -5346,7 +5357,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	u16 *total_adjvert = NULL;
 
 	pr_info("SS LP IX CX testes are starting...\n");
-	ret = readSelfSenseCompensationData(LOAD_CX_SS_TOUCH_IDLE, &ssCompData);
+	ret = readSelfSenseCompensationData(info, LOAD_CX_SS_TOUCH_IDLE, &ssCompData);
 	/* read the SS LP compensation data */
 	if (ret < 0) {
 		pr_err("production_test_data: readSelfSenseCompensationData failed... ERROR %08X\n",
@@ -5354,7 +5365,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	ret = readTotSelfSenseCompensationData(LOAD_PANEL_CX_TOT_SS_TOUCH_IDLE,
+	ret = readTotSelfSenseCompensationData(info, LOAD_PANEL_CX_TOT_SS_TOUCH_IDLE,
 					       &totCompData);
 	/* read the TOT SS LP compensation data */
 	if (ret < 0) {
@@ -5371,7 +5382,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS IX1 LP FORCE TEST */
 	pr_info("SS IX1 LP FORCE TEST:\n");
 	if (todo->SelfForceIx1LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX1_LP_FORCE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -5400,7 +5411,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS IX2 LP FORCE TEST */
 	pr_info("SS IX2 LP FORCE MIN MAX TEST:\n");
 	if (todo->SelfForceIx2LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_LP_FORCE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -5413,7 +5424,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_LP_FORCE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5464,7 +5475,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("SS IX2 LP FORCE ADJV computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_LP_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);	/* load the max
@@ -5503,7 +5514,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	if (todo->SelfForceIxTotalLP == 1 || todo->SelfForceIxTotalAdjLP == 1) {
 		pr_info("SS TOTAL IX LP FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceIxTotalLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_LP_FORCE_MAP_MIN,
 						&thresholds_min,
@@ -5518,7 +5529,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_LP_FORCE_MAP_MAX,
 						&thresholds_max,
@@ -5572,7 +5583,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("SS TOTAL IX LP FORCE ADJV computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 					&limit_file,
 					SS_TOTAL_IX_LP_FORCE_ADJV_MAP_MAX,
 					&thresholds_max, &trows,
@@ -5615,7 +5626,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS IX1 LP SENSE TEST */
 	pr_info("SS IX1 LP SENSE TEST:\n");
 	if (todo->SelfSenseIx1LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX1_LP_SENSE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -5645,7 +5656,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS IX2 SENSE TEST */
 	pr_info("SS IX2 LP SENSE MIN MAX TEST:\n");
 	if (todo->SelfSenseIx2LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_LP_SENSE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -5658,7 +5669,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_LP_SENSE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5708,7 +5719,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 		pr_info("SS IX2 SENSE ADJ HORIZ computed!\n");
 
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_IX2_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5747,7 +5758,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	if (todo->SelfSenseIxTotalLP == 1 || todo->SelfSenseIxTotalAdjLP == 1) {
 		pr_info("SS TOTAL IX LP SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseIxTotalLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_LP_SENSE_MAP_MIN,
 						&thresholds_min,
@@ -5761,7 +5772,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_IX_LP_SENSE_MAP_MAX,
 						&thresholds_max,
@@ -5816,7 +5827,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			pr_info("SS TOTAL IX LP SENSE ADJ HORIZ computed!\n");
 
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 					&limit_file,
 					SS_TOTAL_IX_LP_SENSE_ADJH_MAP_MAX,
 					&thresholds_max, &trows,
@@ -5858,7 +5869,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS CX1 LP FORCE TEST */
 	pr_info("SS CX1 LP FORCE TEST:\n");
 	if (todo->SelfForceCx1LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX1_LP_FORCE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -5890,7 +5901,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS CX2 LP FORCE TEST */
 	pr_info("SS CX2 LP FORCE MIN MAX TEST:\n");
 	if (todo->SelfForceCx2LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_FORCE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -5903,7 +5914,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_FORCE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5953,7 +5964,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 		}
 		pr_info("SS CX2 LP FORCE ADJV computed!\n");
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_FORCE_ADJV_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -5991,7 +6002,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	if (todo->SelfForceCxTotalLP == 1 || todo->SelfForceCxTotalAdjLP == 1) {
 		pr_info("SS TOTAL CX LP FORCE MIN MAX TEST:\n");
 		if (todo->SelfForceCxTotalLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_LP_FORCE_MAP_MIN,
 						&thresholds_min,
@@ -6006,7 +6017,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_LP_FORCE_MAP_MAX,
 						&thresholds_max,
@@ -6059,7 +6070,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			}
 			pr_info("SS TOTAL CX LP FORCE ADJV computed!\n");
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 					&limit_file,
 					SS_TOTAL_CX_LP_FORCE_ADJV_MAP_MAX,
 					&thresholds_max, &trows,
@@ -6103,7 +6114,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS CX1 SENSE TEST */
 	pr_info("SS CX1 LP SENSE TEST:\n");
 	if (todo->SelfSenseCx1LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX1_LP_SENSE_MIN_MAX,
 						&thresholds, &trows, &tcolumns);
 		if (ret < 0 || (trows != 1 || tcolumns != 2)) {
@@ -6134,7 +6145,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	/* SS CX2 LP SENSE TEST */
 	pr_info("SS CX2 LP SENSE MIN MAX TEST:\n");
 	if (todo->SelfSenseCx2LP == 1) {
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_SENSE_MAP_MIN,
 						&thresholds_min, &trows,
 						&tcolumns);
@@ -6147,7 +6158,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			goto ERROR_LIMITS;
 		}
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_SENSE_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -6196,7 +6207,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 		pr_info("SS CX2 LP SENSE ADJH computed!\n");
 
 
-		ret = parseProductionTestLimits(path_limits, &limit_file,
+		ret = parseProductionTestLimits(info, path_limits, &limit_file,
 						SS_CX2_LP_SENSE_ADJH_MAP_MAX,
 						&thresholds_max, &trows,
 						&tcolumns);
@@ -6235,7 +6246,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 	if (todo->SelfSenseCxTotalLP == 1 || todo->SelfSenseCxTotalAdjLP == 1) {
 		pr_info("SS TOTAL CX LP SENSE MIN MAX TEST:\n");
 		if (todo->SelfSenseCxTotalLP == 1) {
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_LP_SENSE_MAP_MIN,
 						&thresholds_min,
@@ -6249,7 +6260,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 				goto ERROR_LIMITS;
 			}
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 						&limit_file,
 						SS_TOTAL_CX_LP_SENSE_MAP_MAX,
 						&thresholds_max,
@@ -6302,7 +6313,7 @@ int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
 			pr_info("SS TOTAL CX LP SENSE ADJ HORIZ computed!\n");
 
 
-			ret = parseProductionTestLimits(path_limits,
+			ret = parseProductionTestLimits(info, path_limits,
 					&limit_file,
 					SS_TOTAL_CX_LP_SENSE_ADJH_MAP_MAX,
 					&thresholds_max, &trows,
@@ -6483,8 +6494,8 @@ ERROR_LIMITS:
   * @param todo pointer to a TestToDo variable which select the test to do
   * @return OK if success or an error code which specify the type of error
   */
-int production_test_data(const char *path_limits, int stop_on_fail,
-			 TestToDo *todo)
+int production_test_data(struct fts_ts_info *info, const char *path_limits,
+			 int stop_on_fail, TestToDo *todo)
 {
 	int res = OK, ret;
 
@@ -6498,7 +6509,7 @@ int production_test_data(const char *path_limits, int stop_on_fail,
 	pr_info("DATA Production test is starting...\n");
 
 
-	ret = production_test_ms_raw(path_limits, stop_on_fail, todo);
+	ret = production_test_ms_raw(info, path_limits, stop_on_fail, todo);
 	res |= ret;
 	if (ret < 0) {
 		pr_err("production_test_data: production_test_ms_raw failed... ERROR = %08X\n",
@@ -6509,7 +6520,7 @@ int production_test_data(const char *path_limits, int stop_on_fail,
 
 
 
-	ret = production_test_ms_cx(path_limits, stop_on_fail, todo);
+	ret = production_test_ms_cx(info, path_limits, stop_on_fail, todo);
 	res |= ret;
 	if (ret < 0) {
 		pr_err("production_test_data: production_test_ms_cx failed... ERROR = %08X\n",
@@ -6519,7 +6530,7 @@ int production_test_data(const char *path_limits, int stop_on_fail,
 	}
 
 
-	ret = production_test_ss_raw(path_limits, stop_on_fail, todo);
+	ret = production_test_ss_raw(info, path_limits, stop_on_fail, todo);
 	res |= ret;
 	if (ret < 0) {
 		pr_err("production_test_data: production_test_ss_raw failed... ERROR = %08X\n",
@@ -6528,7 +6539,7 @@ int production_test_data(const char *path_limits, int stop_on_fail,
 			goto END;
 	}
 
-	ret = production_test_ss_ix_cx(path_limits, stop_on_fail, todo);
+	ret = production_test_ss_ix_cx(info, path_limits, stop_on_fail, todo);
 	res |= ret;
 	if (ret < 0) {
 		pr_err("production_test_data: production_test_ss_ix_cx failed... ERROR = %08X\n",
@@ -6560,7 +6571,7 @@ END:
   * the valid interval for the frame, if <0 the test will be skipped
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_test_pre_cal_ms(MutualSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ms(struct fts_ts_info *info, MutualSenseFrame *finalFrame, short target,
 				   int percentage)
 {
 	int ret = OK;
@@ -6574,7 +6585,7 @@ int tp_sensitivity_test_pre_cal_ms(MutualSenseFrame *finalFrame, short target,
 	pr_info("%s: Start TP sensitivity MS Pre Cal...\n", __func__);
 	pr_info("%s: IMPORTANT!!! Stimpad should be on the display of the device!\n",
 		__func__);
-	ret = getMSFrame3(MS_STRENGTH, &frame);
+	ret = getMSFrame3(info, MS_STRENGTH, &frame);
 	if (ret < OK) {
 		pr_err("%s: can not read MS Frame... ERROR %08X\n",
 			__func__, ret);
@@ -6609,7 +6620,7 @@ int tp_sensitivity_test_pre_cal_ms(MutualSenseFrame *finalFrame, short target,
 
 		/* exclude one more reading at the end*/
 		if (count < SENS_TEST_NUM_FRAMES)
-			ret = getMSFrame3(MS_STRENGTH, &frame);
+			ret = getMSFrame3(info, MS_STRENGTH, &frame);
 	} while ((count < SENS_TEST_NUM_FRAMES) && (ret >= OK));
 
 	if (ret < OK) {
@@ -6700,7 +6711,7 @@ ERROR:
   * interval for the frame
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_test_pre_cal_ss(SelfSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ss(struct fts_ts_info *info, SelfSenseFrame *finalFrame, short target,
 				int percentage)
 {
 	int ret = OK;
@@ -6716,7 +6727,7 @@ int tp_sensitivity_test_pre_cal_ss(SelfSenseFrame *finalFrame, short target,
 	pr_info("%s: Start TP sensitivity SS Pre Cal...\n", __func__);
 	pr_info("%s: IMPORTANT!!! Stimpad should be on the display of the device!\n",
 		__func__);
-	ret = getSSFrame3(SS_STRENGTH, &frame);
+	ret = getSSFrame3(info, SS_STRENGTH, &frame);
 	if (ret < OK) {
 		pr_err("%s: can not read SS Frame... ERROR %08X\n",
 			__func__, ret);
@@ -6765,7 +6776,7 @@ int tp_sensitivity_test_pre_cal_ss(SelfSenseFrame *finalFrame, short target,
 
 		/* exclude one more reading at the end*/
 		if (count < SENS_TEST_NUM_FRAMES)
-			ret = getSSFrame3(SS_STRENGTH, &frame);
+			ret = getSSFrame3(info, SS_STRENGTH, &frame);
 	} while ((count < SENS_TEST_NUM_FRAMES) && (ret >= OK));
 
 	if (ret < OK) {
@@ -6868,8 +6879,9 @@ ERROR:
   * not save it
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_compute_gains(MutualSenseFrame *frame, short target,
-				int saveGain)
+int tp_sensitivity_compute_gains(struct fts_ts_info *info,
+				 MutualSenseFrame *frame, short target,
+				 int saveGain)
 {
 	int ret = OK;
 	int i = 0;
@@ -6905,7 +6917,7 @@ int tp_sensitivity_compute_gains(MutualSenseFrame *frame, short target,
 
 	/* if(saveGain==1){ */
 	/* write gains into the IC */
-	ret = writeHostDataMemory(LOAD_SENS_CAL_COEFF, gains,
+	ret = writeHostDataMemory(info, LOAD_SENS_CAL_COEFF, gains,
 				  frame->header.force_node,
 				  frame->header.sense_node, 0, 0, saveGain);
 	if (ret != OK)
@@ -6941,7 +6953,8 @@ int tp_sensitivity_compute_gains(MutualSenseFrame *frame, short target,
   * the edge area
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_test_post_cal_ms(MutualSenseFrame *finalFrame,
+int tp_sensitivity_test_post_cal_ms(struct fts_ts_info *info,
+				    MutualSenseFrame *finalFrame,
 				    MutualSenseFrame *deltas, short target,
 				    int percentage, int *mean_normal,
 				    int *mean_edge)
@@ -6976,7 +6989,7 @@ int tp_sensitivity_test_post_cal_ms(MutualSenseFrame *finalFrame,
 		__func__);
 
 	/* collect frames skipping the tests + print on the log */
-	ret = tp_sensitivity_test_pre_cal_ms(finalFrame, target, -1);
+	ret = tp_sensitivity_test_pre_cal_ms(info, finalFrame, target, -1);
 	if (ret < OK) {
 		pr_err("%s: can not collect MS Frame... ERROR %08X\n",
 			__func__, ret);
@@ -7233,7 +7246,7 @@ ERROR:
   * not save it
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_mode(u8 enter, int saveGain)
+int tp_sensitivity_mode(struct fts_ts_info *info, u8 enter, int saveGain)
 {
 	int res, ret = OK;
 	u8 cmd[4] = { 0xC0, 0x00, 0x00, 0x00 };
@@ -7244,16 +7257,16 @@ int tp_sensitivity_mode(u8 enter, int saveGain)
 		 __func__, enter);
 	if (enter == 1) {
 		/* enter TP Sensitivity mode*/
-		ret = fts_enableInterrupt(false);
+		ret = fts_enableInterrupt(info, false);
 		pr_info("%s: Entering TP Sensitivity Mode disabling algos...\n",
 			__func__);
 		cmd[3] = 0x01;
-		res = fts_writeFwCmd(cmd, 4);
+		res = fts_writeFwCmd(info, cmd, 4);
 		if (res < OK)
 			pr_err("%s: Error while turning on TP Sens Mode! ERROR %08X\n",
 				__func__, res);
 		else {
-			ret = writeSysCmd(SYS_CMD_CX_TUNING, parameter, 2);
+			ret = writeSysCmd(info, SYS_CMD_CX_TUNING, parameter, 2);
 			if (ret < OK)
 				pr_err("%s: error while performing Single Ended Special Autotune! ERROR %08X\n",
 					__func__, ret);
@@ -7262,7 +7275,7 @@ int tp_sensitivity_mode(u8 enter, int saveGain)
 		/* exit TP Sensitivity mode*/
 		pr_info("%s: Exiting TP Sensitivity Mode enabling algos...\n",
 			__func__);
-		res = fts_writeFwCmd(cmd, 4);
+		res = fts_writeFwCmd(info, cmd, 4);
 		if (res < OK)
 			pr_err("%s: Error while turning off TP Sens Mode! ERROR %08X\n",
 				__func__, res);
@@ -7270,14 +7283,14 @@ int tp_sensitivity_mode(u8 enter, int saveGain)
 		if (saveGain == 1) {
 			pr_info("%s: Trigger writing gains into the flash...\n",
 				__func__);
-			ret = writeSysCmd(SYS_CMD_SPECIAL, &sett, 1);
+			ret = writeSysCmd(info, SYS_CMD_SPECIAL, &sett, 1);
 			if (ret < OK)
 				pr_err("%s: error while writing gains into the flash! ERROR %08X\n",
 					__func__, res);
 		}
 
-		res |= senseOn();
-		res |= fts_enableInterrupt(true);
+		res |= senseOn(info);
+		res |= fts_enableInterrupt(info, true);
 	}
 
 	res |= ret;
@@ -7299,32 +7312,31 @@ int tp_sensitivity_mode(u8 enter, int saveGain)
   * the gains will be ignored
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_set_scan_mode(u8 scan, int enableGains)
+int tp_sensitivity_set_scan_mode(struct fts_ts_info *info, u8 scan,
+				 int enableGains)
 {
 	int res, ret = OK;
 	u8 cmd[4] = { 0xC0, 0x00, 0x01, 0x00 };
 
-
 	pr_info("%s: Set TP Sensitivity Scan Mode... scan = %02X, enableGains = %d\n",
 		__func__, scan, enableGains);
-
 
 	if (enableGains == 1) {
 		/* Consider Sensitivity Gains when computing Strength */
 		cmd[3] = 0x01;
-		ret = fts_writeFwCmd(cmd, 4);
+		ret = fts_writeFwCmd(info, cmd, 4);
 		if (ret < OK)
 			pr_err("%s: Error while enabling Gains in TP Sens Mode! ERROR %08X\n",
 				__func__, ret);
 	} else {
 		/* Exclude Sensitivity Gains when computing Strength */
-		ret = fts_writeFwCmd(cmd, 4);
+		ret = fts_writeFwCmd(info, cmd, 4);
 		if (ret < OK)
 			pr_err("%s: Error while disabling Gain in TP Sens Mode! ERROR %08X\n",
 				__func__, ret);
 	}
 
-	res = setScanMode(SCAN_MODE_LOCKED, scan);
+	res = setScanMode(info, SCAN_MODE_LOCKED, scan);
 	if (res < OK)
 		pr_err("Error while setting the scan frequency... ERROR %08X\n",
 			res);
@@ -7351,7 +7363,8 @@ int tp_sensitivity_set_scan_mode(u8 scan, int enableGains)
   * deviation for each node
   * @return OK if success or an error code which specify the type of error
   */
-int tp_sensitivity_test_std_ms(int numFrames, MutualSenseFrame *std)
+int tp_sensitivity_test_std_ms(struct fts_ts_info *info,
+			       int numFrames, MutualSenseFrame *std)
 {
 	int ret = OK;
 	int i = 0, count = 0;
@@ -7372,7 +7385,7 @@ int tp_sensitivity_test_std_ms(int numFrames, MutualSenseFrame *std)
 		__func__, numFrames);
 
 	/* collect frames skipping the tests + print on the log */
-	ret = getMSFrame3(MS_STRENGTH, &frame);
+	ret = getMSFrame3(info, MS_STRENGTH, &frame);
 	if (ret < OK) {
 		pr_err("%s: can not read MS Frame... ERROR %08X\n",
 			__func__, ret);
@@ -7412,7 +7425,7 @@ int tp_sensitivity_test_std_ms(int numFrames, MutualSenseFrame *std)
 
 		/* exclude one more reading at the end*/
 		if (count < numFrames)
-			ret = getMSFrame3(MS_STRENGTH, &frame);
+			ret = getMSFrame3(info, MS_STRENGTH, &frame);
 	} while ((count < numFrames) && (ret >= OK));
 
 	if (ret < OK) {
@@ -7482,7 +7495,7 @@ ERROR:
   * data
   * @return OK if success or an error code which specify the type of error
   */
-int getLimitsFile(const char *path, LimitFile *file)
+int getLimitsFile(struct fts_ts_info *info, const char *path, LimitFile *file)
 {
 	const struct firmware *fw = NULL;
 	struct device *dev = NULL;
@@ -7521,7 +7534,7 @@ int getLimitsFile(const char *path, LimitFile *file)
 		return ERROR_FILE_NOT_FOUND;
 #endif
 	} else {
-		dev = getDev();
+		dev = info->dev;
 		if (dev != NULL) {
 			pr_info("Loading Limits File from .csv!\n");
 			fd = request_firmware(&fw, path, dev);
@@ -7613,8 +7626,9 @@ int freeCurrentLimitsFile(void)
   * column of data
   * @return OK if success or an error code which specify the type of error
   */
-int parseProductionTestLimits(const char *path, LimitFile *file, char *label,
-			      int **data, int *row, int *column)
+int parseProductionTestLimits(struct fts_ts_info *info, const char *path,
+			      LimitFile *file, char *label, int **data,
+			      int *row, int *column)
 {
 	int find = 0;
 	char *token = NULL;
@@ -7629,11 +7643,10 @@ int parseProductionTestLimits(const char *path, LimitFile *file, char *label,
 	char *data_file = NULL;
 
 	if (file == NULL || strcmp(path, file->name) != 0 || file->size == 0) {
-		struct fts_ts_info *info = dev_get_drvdata(getDev());
 		const char *limits_file = info->board->limits_name;
 
 		pr_info("No limit File data passed... try to get them from the system!\n");
-		ret = getLimitsFile(limits_file, &limit_file);
+		ret = getLimitsFile(info, limits_file, &limit_file);
 		if (ret < OK) {
 			pr_err("parseProductionTestLimits: ERROR %08X\n",
 				ERROR_FILE_NOT_FOUND);

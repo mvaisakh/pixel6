@@ -234,7 +234,7 @@ static ssize_t fwupdate_store(struct device *dev,
 		if (info->sensor_sleep)
 			ret = ERROR_BUS_WR;
 		else
-			ret = flashProcedure(path, mode[0], mode[1]);
+			ret = flashProcedure(info, path, mode[0], mode[1]);
 
 		info->fwupdate_stat = ret;
 
@@ -350,7 +350,7 @@ static ssize_t fw_file_test_show(struct device *dev,
 	char temp[100] = { 0 };
 
 	fw.data = NULL;
-	ret = readFwFile(info->board->fw_name, &fw, 0);
+	ret = readFwFile(info, info->board->fw_name, &fw, 0);
 
 	if (ret < OK)
 		pr_err("Error during reading FW file! ERROR %08X\n", ret);
@@ -387,8 +387,8 @@ static ssize_t status_show(struct device *dev,
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "Mode: 0x%08X\n", info->mode);
 
-	res = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG, ADDR_ICR,
-				&reg, 1, DUMMY_HW_REG);
+	res = fts_writeReadU8UX(info, FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
+				ADDR_ICR, &reg, 1, DUMMY_HW_REG);
 	if (res < 0)
 		pr_err("%s: failed to read ICR.\n", __func__);
 	else
@@ -402,7 +402,8 @@ static ssize_t status_show(struct device *dev,
 		goto exit;
 	}
 
-	res = dumpErrorInfo(dump, ERROR_DUMP_ROW_SIZE * ERROR_DUMP_COL_SIZE);
+	res = dumpErrorInfo(info, dump,
+			    ERROR_DUMP_ROW_SIZE * ERROR_DUMP_COL_SIZE);
 	if (res >= 0) {
 		written += strlcat(buf + written, "Error dump:",
 				   PAGE_SIZE - written);
@@ -451,18 +452,18 @@ static ssize_t fts_strength_frame_show(struct device *dev,
 
 	frame.node_data = NULL;
 
-	res = fts_enableInterrupt(false);
+	res = fts_enableInterrupt(info, false);
 	if (res < OK)
 		goto END;
 
-	res = senseOn();
+	res = senseOn(info);
 	if (res < OK) {
 		pr_err("%s: could not start scanning! ERROR %08X\n",
 			__func__, res);
 		goto END;
 	}
 	mdelay(WAIT_FOR_FRESH_FRAMES);
-	res = senseOff();
+	res = senseOff(info);
 	if (res < OK) {
 		pr_err("%s: could not finish scanning! ERROR %08X\n",
 			__func__, res);
@@ -470,9 +471,9 @@ static ssize_t fts_strength_frame_show(struct device *dev,
 	}
 
 	mdelay(WAIT_AFTER_SENSEOFF);
-	flushFIFO();
+	flushFIFO(info);
 
-	res = getMSFrame3(MS_STRENGTH, &frame);
+	res = getMSFrame3(info, MS_STRENGTH, &frame);
 	if (res < OK) {
 		pr_err("%s: could not get the frame! ERROR %08X\n",
 			__func__, res);
@@ -489,7 +490,7 @@ static ssize_t fts_strength_frame_show(struct device *dev,
 	}
 
 END:
-	flushFIFO();
+	flushFIFO(info);
 	release_all_touches(info);
 	fts_mode_handler(info, 1);
 
@@ -527,7 +528,7 @@ END:
 		pr_err("%s: Unable to allocate all_strbuff! ERROR %08X\n",
 			__func__, ERROR_ALLOC);
 
-	fts_enableInterrupt(true);
+	fts_enableInterrupt(info, true);
 	return count;
 }
 #endif
@@ -1558,7 +1559,7 @@ static int touchsim_start(struct fts_touchsim *touchsim)
 	touchsim->y_step = 2;
 
 	/* Disable touch interrupts from hw */
-	res = fts_enableInterrupt(false);
+	res = fts_enableInterrupt(info, false);
 	if ( res != OK)
 		pr_err("%s: fts_enableInterrupt: ERROR %08X\n", __func__, res);
 
@@ -1602,7 +1603,7 @@ static int touchsim_stop(struct fts_touchsim *touchsim)
 	release_all_touches(info);
 
 	/* re enable the hw touch interrupt */
-	res = fts_enableInterrupt(true);
+	res = fts_enableInterrupt(info, true);
 	if ( res != OK)
 		pr_err("%s: fts_enableInterrupt: ERROR %08X\n", __func__, res);
 
@@ -1895,7 +1896,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 	}
 
 	if (numberParameters >= 1) {
-		res = fts_enableInterrupt(false);
+		res = fts_enableInterrupt(info, false);
 		if (res < 0) {
 			pr_err("fts_enableInterrupt: ERROR %08X\n", res);
 			res = (res | ERROR_DISABLE_INTER);
@@ -1906,7 +1907,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 		/*ITO TEST*/
 		case 0x01:
 			frameMS.node_data = NULL;
-			res = production_test_ito(limits_file, &tests,
+			res = production_test_ito(info, limits_file, &tests,
 				&frameMS, ito_max_val);
 			/* report MS raw frame only if was successfully
 			 * acquired */
@@ -1925,7 +1926,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 					res);
 				break;
 			}
-			res = production_test_initialization(init_type);
+			res = production_test_initialization(info, init_type);
 			break;
 
 		case 0x00:
@@ -1945,8 +1946,9 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				pr_info("Skip Full Panel Init!\n");
 			}
 #endif
-			res = production_test_main(limits_file, 1, init_type,
-						   &tests, MP_FLAG_FACTORY);
+			res = production_test_main(info, limits_file, 1,
+						   init_type, &tests,
+						   MP_FLAG_FACTORY);
 			break;
 
 		/*read mutual raw*/
@@ -1954,28 +1956,28 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			pr_info("Get 1 MS Frame\n");
 			if (numberParameters >= 2 &&
 				typeOfCommand[1] == LOCKED_LP_ACTIVE)
-				setScanMode(SCAN_MODE_LOCKED, LOCKED_LP_ACTIVE);
+				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_ACTIVE);
 			else
-				setScanMode(SCAN_MODE_LOCKED, LOCKED_ACTIVE);
+				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
 			msleep(WAIT_FOR_FRESH_FRAMES);
 			/* Skip sensing off when typeOfCommand[2]=0x01
 			 * to avoid sense on force cal after reading raw data
 			 */
 			if (!(numberParameters >= 3 &&
 				typeOfCommand[2] == 0x01)) {
-				setScanMode(SCAN_MODE_ACTIVE, 0x00);
+				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 				msleep(WAIT_AFTER_SENSEOFF);
 				/* Delete the events related to some touch
 				 * (allow to call this function while touching
 				 * the screen without having a flooding of the
 				 * FIFO)
 				 */
-				flushFIFO();
+				flushFIFO(info);
 			}
 #ifdef READ_FILTERED_RAW
-			res = getMSFrame3(MS_FILTER, &frameMS);
+			res = getMSFrame3(info, MS_FILTER, &frameMS);
 #else
-			res = getMSFrame3(MS_RAW, &frameMS);
+			res = getMSFrame3(info, MS_RAW, &frameMS);
 #endif
 			if (res < 0) {
 				pr_err("Error while taking the MS frame... ERROR %08X\n",
@@ -2009,18 +2011,18 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			pr_info("Get 1 SS Frame\n");
 			if (numberParameters >= 2 &&
 				typeOfCommand[1] == LOCKED_LP_DETECT)
-				setScanMode(SCAN_MODE_LOCKED, LOCKED_LP_DETECT);
+				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_DETECT);
 			else
-				setScanMode(SCAN_MODE_LOCKED, LOCKED_ACTIVE);
+				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
 			msleep(WAIT_FOR_FRESH_FRAMES);
 			/* Skip sensing off when typeOfCommand[2]=0x01
 			 * to avoid sense on force cal after reading raw data
 			 */
 			if (!(numberParameters >= 3 &&
 				typeOfCommand[2] == 0x01)) {
-				setScanMode(SCAN_MODE_ACTIVE, 0x00);
+				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 				msleep(WAIT_AFTER_SENSEOFF);
-				flushFIFO();
+				flushFIFO(info);
 				/* delete the events related to some touch
 				 * (allow to call this function while touching
 				 * the screen without having a flooding of the
@@ -2030,15 +2032,17 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			if (numberParameters >= 2 &&
 				typeOfCommand[1] == LOCKED_LP_DETECT)
 #ifdef READ_FILTERED_RAW
-				res = getSSFrame3(SS_DETECT_FILTER, &frameSS);
+				res = getSSFrame3(info, SS_DETECT_FILTER,
+						  &frameSS);
 #else
-				res = getSSFrame3(SS_DETECT_RAW, &frameSS);
+				res = getSSFrame3(info, SS_DETECT_RAW,
+						  &frameSS);
 #endif
 			else
 #ifdef READ_FILTERED_RAW
-				res = getSSFrame3(SS_FILTER, &frameSS);
+				res = getSSFrame3(info, SS_FILTER, &frameSS);
 #else
-				res = getSSFrame3(SS_RAW, &frameSS);
+				res = getSSFrame3(info, SS_RAW, &frameSS);
 #endif
 			if (res < OK) {
 				pr_err("Error while taking the SS frame... ERROR %08X\n",
@@ -2075,7 +2079,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 
 		case 0x14:	/* read mutual comp data */
 			pr_info("Get MS Compensation Data\n");
-			res = readMutualSenseCompensationData(LOAD_CX_MS_TOUCH,
+			res = readMutualSenseCompensationData(info,
+							      LOAD_CX_MS_TOUCH,
 							      &compData);
 
 			if (res < 0)
@@ -2099,7 +2104,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 
 		case 0x16:	/* read self comp data */
 			pr_info("Get SS Compensation Data...\n");
-			res = readSelfSenseCompensationData(LOAD_CX_SS_TOUCH,
+			res = readSelfSenseCompensationData(info,
+							    LOAD_CX_SS_TOUCH,
 							    &comData);
 			if (res < 0)
 				pr_err("Error reading SS compensation data ERROR %08X\n",
@@ -2142,14 +2148,14 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			 */
 			if (!(numberParameters >= 2 &&
 				typeOfCommand[1] == 0x01)) {
-				setScanMode(SCAN_MODE_ACTIVE, 0xFF);
+				setScanMode(info, SCAN_MODE_ACTIVE, 0xFF);
 				msleep(WAIT_FOR_FRESH_FRAMES);
-				setScanMode(SCAN_MODE_ACTIVE, 0x00);
+				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 				msleep(WAIT_AFTER_SENSEOFF);
 				/* Flush outstanding touch events */
-				flushFIFO();
+				flushFIFO(info);
 			}
-			nodes = getMSFrame3(MS_STRENGTH, &frameMS);
+			nodes = getMSFrame3(info, MS_STRENGTH, &frameMS);
 			if (nodes < 0) {
 				res = nodes;
 				pr_err("Error while taking the MS strength... ERROR %08X\n",
@@ -2173,30 +2179,34 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			}
 			break;
 		case 0x03:	/* MS Raw DATA TEST */
-			res = fts_system_reset();
+			res = fts_system_reset(info);
 			if (res >= OK)
-				res = production_test_ms_raw(limits_file, 1,
+				res = production_test_ms_raw(info,
+							     limits_file, 1,
 							     &tests);
 			break;
 
 		case 0x04:	/* MS CX DATA TEST */
-			res = fts_system_reset();
+			res = fts_system_reset(info);
 			if (res >= OK)
-				res = production_test_ms_cx(limits_file, 1,
+				res = production_test_ms_cx(info,
+							    limits_file, 1,
 							    &tests);
 			break;
 
 		case 0x05:	/* SS RAW DATA TEST */
-			res = fts_system_reset();
+			res = fts_system_reset(info);
 			if (res >= OK)
-				res = production_test_ss_raw(limits_file, 1,
+				res = production_test_ss_raw(info,
+							     limits_file, 1,
 							     &tests);
 			break;
 
 		case 0x06:	/* SS IX CX DATA TEST */
-			res = fts_system_reset();
+			res = fts_system_reset(info);
 			if (res >= OK)
-				res = production_test_ss_ix_cx(limits_file, 1,
+				res = production_test_ss_ix_cx(info,
+							       limits_file, 1,
 							       &tests);
 			break;
 
@@ -2204,7 +2214,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 		case 0xF0:
 		case 0xF1:	/* TOUCH ENABLE/DISABLE */
 			doClean = (int)(typeOfCommand[0] & 0x01);
-			res = cleanUp(doClean);
+			res = cleanUp(info, doClean);
 			break;
 
 		default:
@@ -2215,7 +2225,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 
 		doClean = fts_mode_handler(info, 1);
 		if (typeOfCommand[0] != 0xF0)
-			doClean |= fts_enableInterrupt(true);
+			doClean |= fts_enableInterrupt(info, true);
 		if (doClean < 0)
 			pr_err("%s: ERROR %08X\n", __func__,
 				 (doClean | ERROR_ENABLE_INTER));
@@ -2490,11 +2500,11 @@ static ssize_t autotune_store(struct device *dev,
 
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, true);
 
-	ret = production_test_main(info->board->limits_name, 1,
+	ret = production_test_main(info, info->board->limits_name, 1,
 				   SPECIAL_FULL_PANEL_INIT, &tests,
 				   MP_FLAG_BOOT);
 
-	cleanUp(true);
+	cleanUp(info, true);
 
 	info->autotune_stat = ret;
 
@@ -2529,7 +2539,7 @@ static ssize_t infoblock_getdata_show(struct device *dev,
 
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, true);
 
-	res = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
+	res = fts_writeReadU8UX(info, FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
 				ADDR_FLASH_STATUS, &control_reg,
 				1, DUMMY_HW_REG);
 
@@ -2543,7 +2553,7 @@ static ssize_t infoblock_getdata_show(struct device *dev,
 	count += scnprintf(&buf[count], PAGE_SIZE - count,
 			   "The value:0x%X 0x%X\n", control_reg, flash_status);
 
-	res = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+	res = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 			    ADDR_FLASH_STATUS, &flash_status, 1);
 	if (res < OK) {
 		count += scnprintf(&buf[count], PAGE_SIZE - count,
@@ -2556,7 +2566,7 @@ static ssize_t infoblock_getdata_show(struct device *dev,
 				   "kmalloc failed\n");
 		goto END;
 	}
-	res = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
+	res = fts_writeReadU8UX(info, FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
 				ADDR_INFOBLOCK, data, INFO_BLOCK_SIZE,
 				DUMMY_HW_REG);
 	if (res < OK) {
@@ -2687,7 +2697,7 @@ END:
 	kfree(data);
 
 	if (control_reg != flash_status)
-		fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 			      ADDR_FLASH_STATUS, &control_reg, 1);
 
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, false);
@@ -3115,9 +3125,9 @@ static bool fts_error_event_handler(struct fts_ts_info *info, unsigned
 
 		fts_chip_powercycle(info);
 
-		error = fts_system_reset();
+		error = fts_system_reset(info);
 		error |= fts_mode_handler(info, 0);
-		error |= fts_enableInterrupt(true);
+		error |= fts_enableInterrupt(info, true);
 		if (error < OK)
 			pr_err("%s Cannot restore the device ERROR %08X\n",
 				__func__, error);
@@ -3126,12 +3136,12 @@ static bool fts_error_event_handler(struct fts_ts_info *info, unsigned
 	case EVT_TYPE_ERROR_HARD_FAULT:	/* hard fault */
 	case EVT_TYPE_ERROR_WATCHDOG:	/* watch dog timer */
 	{
-		dumpErrorInfo(NULL, 0);
+		dumpErrorInfo(info, NULL, 0);
 		/* before reset clear all slots */
 		release_all_touches(info);
-		error = fts_system_reset();
+		error = fts_system_reset(info);
 		error |= fts_mode_handler(info, 0);
-		error |= fts_enableInterrupt(true);
+		error |= fts_enableInterrupt(info, true);
 		if (error < OK)
 			pr_err("%s Cannot reset the device ERROR %08X\n",
 				__func__, error);
@@ -3704,7 +3714,7 @@ static void fts_gesture_event_handler(struct fts_ts_info *info, unsigned
 		}
 
 		if (needCoords == 1)
-			readGestureCoords(event);
+			readGestureCoords(info, event);
 
 		fts_input_report_key(info, value);
 
@@ -3753,12 +3763,12 @@ static bool fts_user_report_event_handler(struct fts_ts_info *info, unsigned
 }
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-static void heatmap_enable(void)
+static void heatmap_enable(struct fts_ts_info info)
 {
 	u8 command[] = {FTS_CMD_SYSTEM, SYS_CMD_LOAD_DATA,
 					LOCAL_HEATMAP_MODE};
 	pr_info("%s\n", __func__);
-	fts_write(command, ARRAY_SIZE(command));
+	fts_write(info, command, ARRAY_SIZE(command));
 }
 
 static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
@@ -3785,8 +3795,9 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 	struct heatmap_report report = {0};
 
 	if (info->heatmap_mode == FTS_HEATMAP_PARTIAL) {
-		result = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16,
-					   ADDR_FRAMEBUFFER, (uint8_t *)&report,
+		result = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R,
+					   BITS_16, ADDR_FRAMEBUFFER,
+					   (uint8_t *)&report,
 					   sizeof(report), DUMMY_FRAMEBUFFER);
 		if (result != OK) {
 			pr_err("%s: i2c read failed, fts_writeRead returned %i",
@@ -3796,7 +3807,7 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 		if (report.mode != LOCAL_HEATMAP_MODE) {
 			pr_err("Touch IC not in local heatmap mode: %X %X %i",
 				report.prefix, report.mode, report.counter);
-			heatmap_enable();
+			heatmap_enable(info);
 			return false;
 		}
 
@@ -3854,7 +3865,7 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 		uint32_t frame_index = 0, x, y;
 		uint32_t x_val, y_val;
 
-		result = getMSFrame3(MS_STRENGTH, &ms_frame);
+		result = getMSFrame3(info, MS_STRENGTH, &ms_frame);
 		if (result <= 0) {
 			pr_err("getMSFrame3 failed with result=0x%08X.\n",
 			       result);
@@ -3942,7 +3953,7 @@ static int update_motion_filter(struct fts_ts_info *info)
 		pr_debug("%s: setting motion filter = %s.\n", __func__,
 			 (next_state == FTS_MF_UNFILTERED) ? "false" : "true");
 		cmd[2] = (next_state == FTS_MF_UNFILTERED) ? 0x01 : 0x00;
-		fts_write(cmd, sizeof(cmd));
+		fts_write(info, cmd, sizeof(cmd));
 	}
 	info->mf_state = next_state;
 
@@ -3958,9 +3969,9 @@ int fts_enable_grip(struct fts_ts_info *info, bool enable)
 	int res;
 
 	if (enable)
-		res = fts_write(enable_cmd, sizeof(enable_cmd));
+		res = fts_write(info, enable_cmd, sizeof(enable_cmd));
 	else
-		res = fts_write(disable_cmd, sizeof(disable_cmd));
+		res = fts_write(info, disable_cmd, sizeof(disable_cmd));
 	if (res < 0)
 		pr_err("%s: fts_write failed with res=%d.\n", __func__,
 		       res);
@@ -4187,7 +4198,7 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	/* Read the first FIFO event and the number of events remaining */
-	error = fts_writeReadU8UX(regAdd, 0, 0, data, FIFO_EVENT_SIZE,
+	error = fts_writeReadU8UX(info, regAdd, 0, 0, data, FIFO_EVENT_SIZE,
 				  DUMMY_FIFO);
 	events_remaining = data[EVENTS_REMAINING_POS] & EVENTS_REMAINING_MASK;
 	events_remaining = (events_remaining > FIFO_DEPTH - 1) ?
@@ -4195,7 +4206,8 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 
 	/* Drain the rest of the FIFO, up to 31 events */
 	if (error == OK && events_remaining > 0) {
-		error = fts_writeReadU8UX(regAdd, 0, 0, &data[FIFO_EVENT_SIZE],
+		error = fts_writeReadU8UX(info, regAdd, 0, 0,
+					  &data[FIFO_EVENT_SIZE],
 					  FIFO_EVENT_SIZE * events_remaining,
 					  DUMMY_FIFO);
 	}
@@ -4589,7 +4601,7 @@ static int fts_fw_update(struct fts_ts_info *info)
 	pr_info("Fw Auto Update is starting...\n");
 
 	/* Check CRC status */
-	ret = fts_crc_check();
+	ret = fts_crc_check(info);
 	if (ret > OK) {
 		pr_err("%s: CRC Error or NO FW!\n", __func__);
 		info->reflash_fw = 1;
@@ -4628,7 +4640,7 @@ static int fts_fw_update(struct fts_ts_info *info)
 	}
 
 	if (info->board->auto_fw_update) {
-		ret = flashProcedure(info->board->fw_name, info->reflash_fw,
+		ret = flashProcedure(info, info->board->fw_name, info->reflash_fw,
 				     keep_cx);
 		if ((ret & 0xF000000F) == ERROR_FILE_NOT_FOUND) {
 			pr_err("%s: firmware file not found. Bypassing update.\n",
@@ -4640,7 +4652,7 @@ static int fts_fw_update(struct fts_ts_info *info)
 				__func__, ret);
 			/* Power cycle the touch IC */
 			fts_chip_powercycle(info);
-			ret = flashProcedure(info->board->fw_name,
+			ret = flashProcedure(info, info->board->fw_name,
 					     info->reflash_fw, keep_cx);
 			if ((ret & 0xFF000000) == ERROR_FLASH_PROCEDURE) {
 				pr_err("%s: firmware update failed again! ERROR %08X\n",
@@ -4653,7 +4665,7 @@ static int fts_fw_update(struct fts_ts_info *info)
 	}
 
 	pr_info("%s: Verifying if CX CRC Error...\n", __func__);
-	ret = fts_system_reset();
+	ret = fts_system_reset(info);
 	if (ret >= OK) {
 		ret = pollForErrorType(error_to_search, 4);
 		if (ret < OK) {
@@ -4682,7 +4694,7 @@ static int fts_fw_update(struct fts_ts_info *info)
 #ifndef COMPUTE_INIT_METHOD
 			pr_info("%s: Try to recovery with CX in fw file...\n",
 				__func__);
-			ret = flashProcedure(info->board->fw_name, CRC_CX, 0);
+			ret = flashProcedure(info, info->board->fw_name, CRC_CX, 0);
 			pr_info("%s: Refresh panel init data", __func__);
 #else
 			pr_info("%s: Select Full Panel Init...\n", __func__);
@@ -4730,7 +4742,7 @@ out:
 		}
 
 		/* Reset after initialization */
-		ret = fts_system_reset();
+		ret = fts_system_reset(info);
 		if (ret < OK) {
 			pr_err("%s: Reset failed, ERROR %08X\n", __func__,
 			       ret);
@@ -4773,7 +4785,7 @@ int save_golden_ms_raw(struct fts_ts_info *info)
 	u8 cmd[3] = {0xC0, 0x01, 0x01};
 	int ret = 0;
 
-	ret = fts_write(cmd, 3);
+	ret = fts_write(info, cmd, 3);
 	if (ret < 0)
 		pr_err("Fail to save golden MS raw, ret = %d", ret);
 	else {
@@ -4801,13 +4813,13 @@ static int fts_chip_initialization(struct fts_ts_info *info, int init_type)
 	/* initialization error, retry initialization */
 	for (retry = 0; retry < RETRY_INIT_BOOT; retry++) {
 #ifndef COMPUTE_INIT_METHOD
-		ret2 = production_test_initialization(init_type);
+		ret2 = production_test_initialization(info, init_type);
 		if (ret2 == OK &&
 		    info->board->separate_save_golden_ms_raw_cmd)
 			save_golden_ms_raw(info);
 #else
-		ret2 = production_test_main(limits_file, 1, init_type, &tests,
-			MP_FLAG_BOOT);
+		ret2 = production_test_main(info, limits_file, 1, init_type,
+			&tests, MP_FLAG_BOOT);
 #endif
 		if (ret2 == OK)
 			break;
@@ -4867,7 +4879,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 	install_handler(info, USER_REPORT, user_report);
 
 	/* disable interrupts in any case */
-	error = fts_enableInterrupt(false);
+	error = fts_enableInterrupt(info, false);
 	if (error) {
 		return error;
 	}
@@ -4891,7 +4903,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
   */
 static void fts_interrupt_uninstall(struct fts_ts_info *info)
 {
-	fts_enableInterrupt(false);
+	fts_enableInterrupt(info, false);
 
 	kfree(info->event_dispatch_table);
 
@@ -4912,7 +4924,7 @@ static int fts_init(struct fts_ts_info *info)
 	int error;
 
 
-	error = fts_system_reset();
+	error = fts_system_reset(info);
 	if (error < OK && isI2cError(error)) {
 		pr_err("Cannot reset the device! ERROR %08X\n", error);
 		return error;
@@ -4921,7 +4933,7 @@ static int fts_init(struct fts_ts_info *info)
 			pr_err("Setting default Sys INFO!\n");
 			error = defaultSysInfo(0);
 		} else {
-			error = readSysInfo(0);	/* system reset OK */
+			error = readSysInfo(info, 0);	/* system reset OK */
 			if (error < OK) {
 				if (!isI2cError(error))
 					error = OK;
@@ -4948,7 +4960,7 @@ int fts_chip_powercycle(struct fts_ts_info *info)
 	pr_info("%s: Disabling IRQ...\n", __func__);
 	/** if IRQ pin is short with DVDD a call to the ISR will triggered when
 	  * the regulator is turned off if IRQ not disabled */
-	fts_enableInterrupt(false);
+	fts_enableInterrupt(info, false);
 
 	if (info->vdd_reg) {
 		error = regulator_disable(info->vdd_reg);
@@ -5017,17 +5029,17 @@ static int fts_init_sensing(struct fts_ts_info *info)
 	int error = 0;
 
 	error |= register_panel_bridge(info);
-	error |= fts_interrupt_install(info);	/* register event handler */
-	error |= fts_mode_handler(info, 0);	/* enable the features and
-						 * sensing */
-	error |= fts_enableInterrupt(true);	/* enable the interrupt */
+	error |= fts_interrupt_install(info);	  /* register event handler */
+	error |= fts_mode_handler(info, 0);	  /* enable the features and
+						   * sensing */
+	error |= fts_enableInterrupt(info, true); /* enable the interrupt */
 
 	if (error < OK)
 		pr_err("%s Init after Probe error (ERROR = %08X)\n",
 			__func__, error);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-	heatmap_enable();
+	heatmap_enable(info);
 #endif
 
 	return error;
@@ -5075,7 +5087,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		pr_info("%s: Sense OFF!\n", __func__);
 		/* for speed reason (no need to check echo in this case and
 		  * interrupt can be enabled) */
-		ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
+		ret = setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 		res |= ret;	/* to avoid warning unsused ret variable when a
 				  * ll the features are disabled */
 
@@ -5083,7 +5095,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		if (info->gesture_enabled == 1) {
 			pr_info("%s: enter in gesture mode !\n",
 				 __func__);
-			res = enterGestureMode(isSystemResettedDown());
+			res = enterGestureMode(info, isSystemResettedDown());
 			if (res >= OK) {
 				enable_irq_wake(info->client->irq);
 				fromIDtoMask(FEAT_SEL_GESTURE,
@@ -5108,7 +5120,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 			pr_info("%s: Glove Mode setting...\n", __func__);
 			settings[0] = info->glove_enabled;
 			/* required to satisfy also the disable case */
-			ret = setFeatures(FEAT_SEL_GLOVE, settings, 1);
+			ret = setFeatures(info, FEAT_SEL_GLOVE, settings, 1);
 			if (ret < OK)
 				pr_err("%s: error during setting GLOVE_MODE! ERROR %08X\n",
 					__func__, ret);
@@ -5129,7 +5141,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		     isSystemResettedUp()) || force == 1) {
 			pr_info("%s: Cover Mode setting...\n", __func__);
 			settings[0] = info->cover_enabled;
-			ret = setFeatures(FEAT_SEL_COVER, settings, 1);
+			ret = setFeatures(info, FEAT_SEL_COVER, settings, 1);
 			if (ret < OK)
 				pr_err("%s: error during setting COVER_MODE! ERROR %08X\n",
 					__func__, ret);
@@ -5149,7 +5161,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 			pr_info("%s: Charger Mode setting...\n", __func__);
 
 			settings[0] = info->charger_enabled;
-			ret = setFeatures(FEAT_SEL_CHARGER, settings, 1);
+			ret = setFeatures(info, FEAT_SEL_CHARGER, settings, 1);
 			if (ret < OK)
 				pr_err("%s: error during setting CHARGER_MODE! ERROR %08X\n",
 					__func__, ret);
@@ -5173,7 +5185,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		     isSystemResettedUp()) || force == 1) {
 			pr_info("%s: Grip Mode setting...\n", __func__);
 			settings[0] = info->grip_enabled;
-			ret = setFeatures(FEAT_SEL_GRIP, settings, 1);
+			ret = setFeatures(info, FEAT_SEL_GRIP, settings, 1);
 			if (ret < OK)
 				pr_err("%s: error during setting GRIP_MODE! ERROR %08X\n",
 					__func__, ret);
@@ -5196,7 +5208,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		settings[0] = 0xFF;	/* enable all the possible scans mode
 					  * supported by the config */
 		pr_info("%s: Sense ON!\n", __func__);
-		res |= setScanMode(SCAN_MODE_ACTIVE, settings[0]);
+		res |= setScanMode(info, SCAN_MODE_ACTIVE, settings[0]);
 		info->mode |= (SCAN_MODE_ACTIVE << 24);
 		MODE_ACTIVE(info->mode, settings[0]);
 
@@ -5264,7 +5276,7 @@ static void fts_resume_work(struct work_struct *work)
 
 	info->resume_bit = 1;
 
-	fts_system_reset();
+	fts_system_reset(info);
 
 	release_all_touches(info);
 
@@ -5274,7 +5286,7 @@ static void fts_resume_work(struct work_struct *work)
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	/* heatmap must be enabled after every chip reset (fts_system_reset) */
-	heatmap_enable();
+	heatmap_enable(info);
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
@@ -5290,7 +5302,7 @@ static void fts_resume_work(struct work_struct *work)
 	}
 #endif
 
-	fts_enableInterrupt(true);
+	fts_enableInterrupt(info, true);
 
 	complete_all(&info->bus_resumed);
 }
@@ -5318,11 +5330,11 @@ static void fts_suspend_work(struct work_struct *work)
 
 	release_all_touches(info);
 
-	fts_enableInterrupt(false);
+	fts_enableInterrupt(info, false);
 
 	/* Flush any outstanding touch events */
-	fts_system_reset();
-	flushFIFO();
+	fts_system_reset(info);
+	flushFIFO(info);
 
 	fts_pinctrl_setup(info, false);
 
@@ -6224,8 +6236,8 @@ static int fts_probe(struct spi_device *client)
 	info->v4l2.parent_dev = info->dev;
 	info->v4l2.input_dev = info->input_dev;
 	info->v4l2.read_frame = read_heatmap_raw;
-	info->v4l2.width = getForceLen();
-	info->v4l2.height = getSenseLen();
+	info->v4l2.width = getForceLen(info);
+	info->v4l2.height = getSenseLen(info);
 	/* 120 Hz operation */
 	info->v4l2.timeperframe.numerator = 1;
 	info->v4l2.timeperframe.denominator = 120;
@@ -6298,9 +6310,10 @@ static int fts_probe(struct spi_device *client)
 		goto ProbeErrorExit_7;
 	}
 
-	retval = fts_proc_init();
+	retval = fts_proc_init(info);
 	if (retval < OK)
 		pr_err("Error: can not create /proc file!\n");
+	info->diag_node_open = false;
 
 	if (info->fwu_workqueue)
 		queue_delayed_work(info->fwu_workqueue, &info->fwu_work,
@@ -6391,7 +6404,7 @@ static int fts_remove(struct spi_device *client)
 	tbn_cleanup(info->tbn);
 #endif
 
-	fts_proc_remove();
+	fts_proc_remove(info);
 
 	/* sysfs stuff */
 	sysfs_remove_group(&client->dev.kobj, &info->attrs);

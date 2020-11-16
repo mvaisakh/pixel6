@@ -444,57 +444,69 @@ int checkLimitsGapOffsets(short *data, int row, int column, int threshold,
   * in order to satisfy different scenarios
   * @{
   */
-int production_test_ito(const char *path_limits, TestToDo *todo,
-			MutualSenseFrame *frame, u16 *max_val);
-int production_test_initialization(u8 type);
-int production_test_main(const char *pathThresholds, int stop_on_fail,
-			 int saveInit, TestToDo *todo, u8 mpflag);
-int production_test_ms_raw(const char *path_limits, int stop_on_fail,
-			   TestToDo *todo);
-int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
+int production_test_ito(struct fts_ts_info *info, const char *path_limits,
+			TestToDo *todo, MutualSenseFrame *frame, u16 *max_val);
+int production_test_initialization(struct fts_ts_info *info, u8 type);
+int production_test_main(struct fts_ts_info *info, const char *pathThresholds,
+			 int stop_on_fail, int saveInit,
+			 TestToDo *todo, u8 mpflag);
+int production_test_ms_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail, TestToDo *todo);
+int production_test_ms_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo);
-int production_test_ms_cx(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_ss_raw(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
+int production_test_ms_cx(struct fts_ts_info *info, const char *path_limits,
+			  int stop_on_fail, TestToDo *todo);
+int production_test_ms_cx_lp(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail, TestToDo *todo);
+int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail, TestToDo *todo);
+int production_test_ss_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo);
-int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_data(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
+int production_test_ss_ix_cx(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail, TestToDo *todo);
+int production_test_ss_ix_cx_lp(struct fts_ts_info *info,
+				const char *path_limits, int stop_on_fail,
+				TestToDo *todo);
+int production_test_data(struct fts_ts_info *info, const char *path_limits,
+			 int stop_on_fail, TestToDo *todo);
+int production_test_ms_key_cx(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail,
 			      TestToDo *todo);
-int production_test_ms_key_raw(const char *path_limits);
+int production_test_ms_key_raw(struct fts_ts_info *info,
+			       const char *path_limits);
 /** @}*/
 
 /**
   * @addtogroup limit_file
   * @{
   */
-int parseProductionTestLimits(const char *path, LimitFile *file, char *label,
-			      int **data, int *row, int *column);
+int parseProductionTestLimits(struct fts_ts_info *info, const char *path,
+			      LimitFile *file, char *label, int **data,
+			      int *row, int *column);
 int readLine(char *data, char *line, int size, int *n);
-int getLimitsFile(const char *path, LimitFile *file);
+int getLimitsFile(struct fts_ts_info *info, const char *path, LimitFile *file);
 int freeLimitsFile(LimitFile *file);
 int freeCurrentLimitsFile(void);
 /**@}*/
 
-int tp_sensitivity_test_pre_cal_ms(MutualSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ms(struct fts_ts_info *info,
+				   MutualSenseFrame *finalFrame, short target,
 				   int percentage);
-int tp_sensitivity_test_pre_cal_ss(SelfSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ss(struct fts_ts_info *info,
+				   SelfSenseFrame *finalFrame, short target,
 				   int percentage);
-int tp_sensitivity_compute_gains(MutualSenseFrame *frame, short target,
+int tp_sensitivity_compute_gains(struct fts_ts_info *info,
+				  MutualSenseFrame *frame, short target,
 				 int saveGain);
-int tp_sensitivity_test_post_cal_ms(MutualSenseFrame *finalFrame,
+int tp_sensitivity_test_post_cal_ms(struct fts_ts_info *info,
+				    MutualSenseFrame *finalFrame,
 				    MutualSenseFrame *deltas, short target,
 				    int percentage, int *mean_normal,
 				    int *mean_edge);
-int tp_sensitivity_set_scan_mode(u8 scan, int enableGains);
-int tp_sensitivity_mode(u8 enter, int saveGain);
-int tp_sensitivity_test_std_ms(int numFrames, MutualSenseFrame *std);
+int tp_sensitivity_set_scan_mode(struct fts_ts_info *info, u8 scan, int enableGains);
+int tp_sensitivity_mode(struct fts_ts_info *info, u8 enter, int saveGain);
+int tp_sensitivity_test_std_ms(struct fts_ts_info *info, int numFrames,
+			       MutualSenseFrame *std);
 #endif

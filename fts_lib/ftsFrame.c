@@ -52,12 +52,12 @@ extern SysInfo systemInfo;	/* /< forward declaration of the global variable
   * Read the channels lengths from the config memory
   * @return OK if success or an error code which specify the type of error
   */
-int getChannelsLength(void)
+int getChannelsLength(struct fts_ts_info *info)
 {
 	int ret;
 	u8 data[2];
 
-	ret = readConfig(ADDR_CONFIG_SENSE_LEN, data, 2);
+	ret = readConfig(info, ADDR_CONFIG_SENSE_LEN, data, 2);
 	if (ret < OK) {
 		pr_err("getChannelsLength: ERROR %08X\n", ret);
 
@@ -83,7 +83,7 @@ int getChannelsLength(void)
   * data
   * @return OK if success or an error code which specify the type of error
   */
-int getFrameData(u16 address, int size, short *frame)
+int getFrameData(struct fts_ts_info *info, u16 address, int size, short *frame)
 {
 	int i, j, ret;
 	u8 *data = (u8 *)kmalloc(size * sizeof(u8), GFP_KERNEL);
@@ -93,8 +93,8 @@ int getFrameData(u16 address, int size, short *frame)
 		return ERROR_ALLOC;
 	}
 
-	ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16, address, data,
-				size, DUMMY_FRAMEBUFFER);
+	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address,
+				data, size, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
 		pr_err("getFrameData: ERROR %08X\n", ERROR_BUS_R);
 		kfree(data);
@@ -114,10 +114,10 @@ int getFrameData(u16 address, int size, short *frame)
   * Return the number of Sense Channels (Rx)
   * @return number of Rx channels
   */
-int getSenseLen(void)
+int getSenseLen(struct fts_ts_info *info)
 {
 	if (systemInfo.u8_scrRxLen == 0)
-		getChannelsLength();
+		getChannelsLength(info);
 	return systemInfo.u8_scrRxLen;
 }
 
@@ -125,10 +125,10 @@ int getSenseLen(void)
   * Return the number of Force Channels (Tx)
   * @return number of Tx channels
   */
-int getForceLen(void)
+int getForceLen(struct fts_ts_info *info)
 {
 	if (systemInfo.u8_scrTxLen == 0)
-		getChannelsLength();
+		getChannelsLength(info);
 	return systemInfo.u8_scrTxLen;
 }
 
@@ -143,13 +143,14 @@ int getForceLen(void)
   * @return > 0 if success specifying the number of node into the frame or
   * an error code which specify the type of error
   */
-int getMSFrame3(MSFrameType type, MutualSenseFrame *frame)
+int getMSFrame3(struct fts_ts_info *info, MSFrameType type,
+		MutualSenseFrame *frame)
 {
 	u16 offset;
 	int ret, force_len, sense_len;
 
-	force_len = getForceLen();
-	sense_len = getSenseLen();
+	force_len = getForceLen(info);
+	sense_len = getSenseLen(info);
 
 	frame->node_data = NULL;
 
@@ -239,7 +240,8 @@ LOAD_FRC:
 		return ERROR_ALLOC | ERROR_GET_FRAME;
 	}
 
-	ret = getFrameData(offset, frame->node_data_size * BYTES_PER_NODE,
+	ret = getFrameData(info, offset,
+			   frame->node_data_size * BYTES_PER_NODE,
 			   (frame->node_data));
 	if (ret < OK) {
 		pr_err("%s: ERROR %08X\n", __func__, ERROR_GET_FRAME_DATA);
@@ -262,7 +264,7 @@ LOAD_FRC:
   * @return > 0 if success specifying the number of node into frame or an
   * error code which specify the type of error
   */
-int getSSFrame3(SSFrameType type, SelfSenseFrame *frame)
+int getSSFrame3(struct fts_ts_info *info, SSFrameType type, SelfSenseFrame *frame)
 {
 	u16 offset_force, offset_sense;
 	int ret;
@@ -270,11 +272,11 @@ int getSSFrame3(SSFrameType type, SelfSenseFrame *frame)
 	frame->force_data = NULL;
 	frame->sense_data = NULL;
 
-	frame->header.force_node = getForceLen();	/* use getForce/SenseLen
+	frame->header.force_node = getForceLen(info);	/* use getForce/SenseLen
 							 * because introduce
 							 * a recover mechanism
 							 * in case of len =0 */
-	frame->header.sense_node = getSenseLen();
+	frame->header.sense_node = getSenseLen(info);
 
 	if (frame->header.force_node == 0 || frame->header.sense_node == 0) {
 		pr_err("%s: number of channels not initialized ERROR %08X\n",
@@ -414,7 +416,7 @@ int getSSFrame3(SSFrameType type, SelfSenseFrame *frame)
 		return ERROR_ALLOC | ERROR_GET_FRAME;
 	}
 
-	ret = getFrameData(offset_force, frame->header.force_node *
+	ret = getFrameData(info, offset_force, frame->header.force_node *
 			   BYTES_PER_NODE, (frame->force_data));
 	if (ret < OK) {
 		pr_err("%s: error while reading force data ERROR %08X\n",
@@ -426,7 +428,7 @@ int getSSFrame3(SSFrameType type, SelfSenseFrame *frame)
 		return ret | ERROR_GET_FRAME_DATA | ERROR_GET_FRAME;
 	}
 
-	ret = getFrameData(offset_sense, frame->header.sense_node *
+	ret = getFrameData(info, offset_sense, frame->header.sense_node *
 			   BYTES_PER_NODE, (frame->sense_data));
 	if (ret < OK) {
 		pr_err("%s: error while reading sense data ERROR %08X\n",
@@ -459,15 +461,16 @@ int getSSFrame3(SSFrameType type, SelfSenseFrame *frame)
   * to the next data
   * @return OK if success or an error code which specify the type of error
   */
-int readSyncDataHeader(u8 type, DataHeader *msHeader, DataHeader *ssHeader,
-		       u64 *address)
+int readSyncDataHeader(struct fts_ts_info *info, u8 type, DataHeader *msHeader,
+		       DataHeader *ssHeader, u64 *address)
 {
 	u64 offset = ADDR_FRAMEBUFFER;
 	u8 data[SYNCFRAME_DATA_HEADER];
 	int ret;
 
-	ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16, offset, data,
-				SYNCFRAME_DATA_HEADER, DUMMY_FRAMEBUFFER);
+	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, offset,
+				data, SYNCFRAME_DATA_HEADER,
+				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {	/* i2c function have already a retry mechanism */
 		pr_err("%s: error while reading data header ERROR %08X\n",
 			__func__, ret);
@@ -520,7 +523,8 @@ int readSyncDataHeader(u8 type, DataHeader *msHeader, DataHeader *ssHeader,
   * @return >0 if success specifying the total number of nodes copied into
   * msFrame and ssFrame or an error code which specify the type of error
   */
-int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame)
+int getSyncFrame(struct fts_ts_info *info, u8 type, MutualSenseFrame *msFrame,
+		 SelfSenseFrame *ssFrame)
 {
 	int res;
 	u64 address;
@@ -556,15 +560,15 @@ int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame)
 	}
 
 	pr_info("%s: Requesting Sync Frame %02X...\n", __func__, type);
-	res = requestSyncFrame(type);
+	res = requestSyncFrame(info, type);
 	if (res < OK) {
 		pr_err("%s: error while requesting Sync Frame ERROR %08X\n",
 			__func__, res | ERROR_GET_FRAME_DATA);
 		return res | ERROR_GET_FRAME_DATA;
 	}
 
-	res = readSyncDataHeader(type, &(msFrame->header), &(ssFrame->header),
-				 &address);
+	res = readSyncDataHeader(info, type, &(msFrame->header),
+				 &(ssFrame->header), &address);
 	if (res < OK) {
 		pr_err("%s: error while reading Sync Frame header... ERROR %08X\n",
 			__func__, res | ERROR_GET_FRAME_DATA);
@@ -583,7 +587,8 @@ int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame)
 	}
 
 	pr_info("%s: Getting MS frame at %llx...\n", __func__, address);
-	res = getFrameData(address, (msFrame->node_data_size) * BYTES_PER_NODE,
+	res = getFrameData(info, address,
+			   (msFrame->node_data_size) * BYTES_PER_NODE,
 			   (msFrame->node_data));
 	if (res < OK) {
 		pr_err("%s: error while getting MS data...ERROR %08X\n",
@@ -605,7 +610,7 @@ int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame)
 	}
 
 	pr_info("%s: Getting SS force frame at %llx...\n", __func__, address);
-	res = getFrameData(address, (ssFrame->header.force_node) *
+	res = getFrameData(info, address, (ssFrame->header.force_node) *
 			   BYTES_PER_NODE, (ssFrame->force_data));
 	if (res < OK) {
 		pr_err("%s: error while getting SS force data...ERROR %08X\n",
@@ -627,7 +632,7 @@ int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame)
 	}
 
 	pr_info("%s: Getting SS sense frame at %llx...\n", __func__, address);
-	res = getFrameData(address, (ssFrame->header.sense_node) *
+	res = getFrameData(info, address, (ssFrame->header.sense_node) *
 			   BYTES_PER_NODE, (ssFrame->sense_data));
 	if (res < OK) {
 		pr_err("%s: error while getting SS sense data...ERROR %08X\n",

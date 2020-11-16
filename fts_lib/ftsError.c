@@ -59,7 +59,7 @@ int isI2cError(int error)
   * ERROR_DUMP_ROW_SIZE*ERROR_DUMP_COL_SIZE bytes will be copied
   * @return OK if success or an error code which specify the type of error
   */
-int dumpErrorInfo(u8 *outBuf, int size)
+int dumpErrorInfo(struct fts_ts_info *info, u8 *outBuf, int size)
 {
 	int ret, i;
 	u8 data[ERROR_DUMP_ROW_SIZE * ERROR_DUMP_COL_SIZE] = { 0 };
@@ -67,8 +67,9 @@ int dumpErrorInfo(u8 *outBuf, int size)
 
 	pr_err("%s: Starting dump of error info...\n", __func__);
 
-	ret = fts_writeReadU8UX(FTS_CMD_FRAMEBUFFER_R, BITS_16, ADDR_ERROR_DUMP,
-				data, ERROR_DUMP_ROW_SIZE * ERROR_DUMP_COL_SIZE,
+	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
+				ADDR_ERROR_DUMP, data,
+				ERROR_DUMP_ROW_SIZE * ERROR_DUMP_COL_SIZE,
 				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
 		pr_err("%s: reading data ERROR %08X\n", __func__,
@@ -133,13 +134,9 @@ int dumpErrorInfo(u8 *outBuf, int size)
   * otherwise return an error code which specify the kind of error.
   * If ERROR_HANDLER_STOP_PROC the calling function must stop!
   */
-int errorHandler(u8 *event, int size)
+int errorHandler(struct fts_ts_info *info, u8 *event, int size)
 {
 	int res = OK;
-	struct fts_ts_info *info = NULL;
-
-	if (getDev() != NULL)
-		info = dev_get_drvdata(getDev());
 
 	if (info != NULL && event != NULL && size > 1 &&
 	    event[0] == EVT_ID_ERROR) {
@@ -153,7 +150,7 @@ int errorHandler(u8 *event, int size)
 				pr_err("errorHandler: Error performing powercycle ERROR %08X\n",
 					res);
 
-			res = fts_system_reset();
+			res = fts_system_reset(info);
 			if (res < OK)
 				pr_err("errorHandler: Cannot reset the device ERROR %08X\n",
 					res);
@@ -161,8 +158,8 @@ int errorHandler(u8 *event, int size)
 			break;
 
 		case EVT_TYPE_ERROR_WATCHDOG:	/* watchdog */
-			dumpErrorInfo(NULL, 0);
-			res = fts_system_reset();
+			dumpErrorInfo(info, NULL, 0);
+			res = fts_system_reset(info);
 			if (res < OK)
 				pr_err("errorHandler: Cannot reset the device ERROR %08X\n",
 					res);

@@ -65,16 +65,12 @@ extern SysInfo systemInfo;	/* /< forward declaration of the global variable
   * data
   * @return OK if success or an error code which specify the type of error
   */
-int getFWdata(const char *pathToFile, u8 **data, int *size)
+int getFWdata(struct fts_ts_info *info, const char *pathToFile, u8 **data,
+	      int *size)
 {
 	const struct firmware *fw = NULL;
-	struct device *dev = getDev();
-	struct fts_ts_info *info = NULL;
 	int res, from = 0;
 	char *path = (char *)pathToFile;
-
-	if (dev != NULL)
-		info = dev_get_drvdata(dev);
 
 	pr_info("getFWdata starting ...\n");
 	if (strncmp(pathToFile, "NULL", 4) == 0) {
@@ -104,8 +100,8 @@ int getFWdata(const char *pathToFile, u8 **data, int *size)
 	default:
 		pr_info("Read FW from BIN file %s !\n", path);
 
-		if (dev != NULL) {
-			res = request_firmware(&fw, path, dev);
+		if (info->dev != NULL) {
+			res = request_firmware(&fw, path, info->dev);
 			if (res == 0) {
 				*size = fw->size;
 				*data = (u8 *)kmalloc((*size) * sizeof(u8),
@@ -146,20 +142,21 @@ int getFWdata(const char *pathToFile, u8 **data, int *size)
   * @param keep_cx if 1, the CX area will be loaded otherwise will be skipped
   * @return OK if success or an error code which specify the type of error
   */
-int readFwFile(const char *path, Firmware *fw, int keep_cx)
+int readFwFile(struct fts_ts_info *info, const char *path, Firmware *fw,
+	       int keep_cx)
 {
 	int res;
 	int orig_size;
 	u8 *orig_data = NULL;
 
 
-	res = getFWdata(path, &orig_data, &orig_size);
+	res = getFWdata(info, path, &orig_data, &orig_size);
 	if (res < OK) {
 		pr_err("readFwFile: impossible retrieve FW... ERROR %08X\n",
 			ERROR_MEMH_READ);
 		return res | ERROR_MEMH_READ;
 	}
-	res = parseBinFile(orig_data, orig_size, fw, keep_cx);
+	res = parseBinFile(info, orig_data, orig_size, fw, keep_cx);
 	if (res < OK) {
 		pr_err("readFwFile: impossible parse ERROR %08X\n",
 			 ERROR_MEMH_READ);
@@ -180,14 +177,15 @@ int readFwFile(const char *path, Firmware *fw, int keep_cx)
   * skipped and the area will be untouched
   * @return OK if success or an error code which specify the type of error
   */
-int flashProcedure(const char *path, int force, int keep_cx)
+int flashProcedure(struct fts_ts_info *info, const char *path, int force,
+		   int keep_cx)
 {
 	Firmware fw;
 	int res;
 
 	fw.data = NULL;
 	pr_info("Reading Fw file...\n");
-	res = readFwFile(path, &fw, keep_cx);
+	res = readFwFile(info, path, &fw, keep_cx);
 	if (res < OK) {
 		pr_err("flashProcedure: ERROR %08X\n",
 			 (res | ERROR_FLASH_PROCEDURE));
@@ -197,7 +195,7 @@ int flashProcedure(const char *path, int force, int keep_cx)
 	pr_info("Fw file read COMPLETED!\n");
 
 	pr_info("Starting flashing procedure...\n");
-	res = flash_burn(fw, force, keep_cx);
+	res = flash_burn(info, fw, force, keep_cx);
 	if (res < OK && res != (ERROR_FW_NO_UPDATE | ERROR_FLASH_BURN_FAILED)) {
 		pr_err("flashProcedure: ERROR %08X\n",
 			 ERROR_FLASH_PROCEDURE);
@@ -216,7 +214,7 @@ int flashProcedure(const char *path, int force, int keep_cx)
   * @param type register to check according to the previous command sent
   * @return OK if success or an error code which specify the type of error
   */
-int wait_for_flash_ready(u8 type)
+int wait_for_flash_ready(struct fts_ts_info *info, u8 type)
 {
 	u8 cmd[5] = { FTS_CMD_HW_REG_R, 0x20, 0x00, 0x00, type };
 
@@ -225,7 +223,7 @@ int wait_for_flash_ready(u8 type)
 
 	pr_info("Waiting for flash ready ...\n");
 	for (i = 0; i < FLASH_RETRY_COUNT && res != 0; i++) {
-		res = fts_writeRead(cmd, ARRAY_SIZE(cmd), readData, 2);
+		res = fts_writeRead(info, cmd, ARRAY_SIZE(cmd), readData, 2);
 		if (res < OK)
 			pr_err("wait_for_flash_ready: ERROR %08X\n",
 				ERROR_BUS_W);
@@ -256,15 +254,14 @@ int wait_for_flash_ready(u8 type)
   * Put the M3 in hold
   * @return OK if success or an error code which specify the type of error
   */
-int hold_m3(void)
+int hold_m3(struct fts_ts_info *info)
 {
-	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int ret;
 	u8 cmd[1] = { 0x01 };
 	u64 address = 0x0;
 
 	pr_info("Command m3 hold...\n");
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+	ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 			    ADDR_SYSTEM_RESET, cmd, 1);
 	if (ret < OK) {
 		pr_err("%s: ERROR %08X\n", __func__, ret);
@@ -273,13 +270,13 @@ int hold_m3(void)
 	pr_info("Hold M3 DONE!\n");
 
 #if !defined(I2C_INTERFACE)
-	if (getClient() &&
-		(getClient()->mode & SPI_3WIRE) == 0) {
+	if (info->client &&
+		(info->client->mode & SPI_3WIRE) == 0) {
 		/* configure manually SPI4 because when no fw is running the
 		 * chip use SPI3 by default */
 		pr_info("Setting SPI4 mode...\n");
 		cmd[0] = 0x10;
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 				    ADDR_GPIO_DIRECTION, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set gpio dir ERROR %08X\n",
@@ -288,7 +285,7 @@ int hold_m3(void)
 		}
 
 		cmd[0] = 0x02;
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 				    ADDR_GPIO_PULLUP, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set gpio pull-up ERROR %08X\n",
@@ -304,7 +301,7 @@ int hold_m3(void)
 			cmd[0] = 0x07;
 			address = ADDR_GPIO_CONFIG_REG2;
 		}
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 				    address, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set gpio config ERROR %08X\n",
@@ -313,7 +310,7 @@ int hold_m3(void)
 		}
 
 		cmd[0] = 0x30;
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 				    ADDR_GPIO_CONFIG_REG0, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set gpio config ERROR %08X\n",
@@ -322,7 +319,7 @@ int hold_m3(void)
 		}
 
 		cmd[0] = SPI4_MASK;
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+		ret = fts_writeU8UX(info, FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 			ADDR_ICR, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set spi4 mode ERROR %08X\n",
@@ -350,9 +347,9 @@ int hold_m3(void)
   * skipped and the area will be untouched
   * @return OK if success or an error code which specify the type of error
   */
-int parseBinFile(u8 *fw_data, int fw_size, Firmware *fwData, int keep_cx)
+int parseBinFile(struct fts_ts_info *info, u8 *fw_data, int fw_size,
+		 Firmware *fwData, int keep_cx)
 {
-	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int dimension, index = 0;
 	u32 temp;
 	int res, i;
@@ -550,7 +547,7 @@ END:
  * Enable UVLO and Auto Power Down Mode
  * @return OK if success or an error code which specify the type of error
  */
-int flash_enable_uvlo_autopowerdown(void)
+int flash_enable_uvlo_autopowerdown(struct fts_ts_info *info)
 {
 	u8 cmd[6] = { FTS_CMD_HW_REG_W, 0x20, 0x00, 0x00,
 			FLASH_UVLO_ENABLE_CODE0,
@@ -560,11 +557,11 @@ int flash_enable_uvlo_autopowerdown(void)
 			FLASH_AUTOPOWERDOWN_ENABLE_CODE1 };
 
 	pr_info("Command enable uvlo ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < OK) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < OK) {
 		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
-	if (fts_write(cmd1, ARRAY_SIZE(cmd1)) < OK) {
+	if (fts_write(info, cmd1, ARRAY_SIZE(cmd1)) < OK) {
 		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
@@ -578,7 +575,7 @@ int flash_enable_uvlo_autopowerdown(void)
   * Unlock the flash to be programmed
   * @return OK if success or an error code which specify the type of error
   */
-int flash_unlock(void)
+int flash_unlock(struct fts_ts_info *info)
 {
 	u8 cmd[6] = { FTS_CMD_HW_REG_W,	  0x20,	  0x00,	  0x00,
 		      FLASH_UNLOCK_CODE0, FLASH_UNLOCK_CODE1 };
@@ -587,12 +584,12 @@ int flash_unlock(void)
 		       FLASH_UNLOCK_CODE2, FLASH_UNLOCK_CODE3 };
 
 	pr_info("Command unlock ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < OK) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < OK) {
 		pr_err("flash_unlock: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
-	if (fts_write(cmd1, ARRAY_SIZE(cmd1)) < OK) {
+	if (fts_write(info, cmd1, ARRAY_SIZE(cmd1)) < OK) {
 		pr_err("Command unlock: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
@@ -606,7 +603,7 @@ int flash_unlock(void)
   * Unlock the flash to be erased
   * @return OK if success or an error code which specify the type of error
   */
-int flash_erase_unlock(void)
+int flash_erase_unlock(struct fts_ts_info *info)
 {
 	u8 cmd[6] = { FTS_CMD_HW_REG_W,		0x20,	      0x00,
 		      0x00,
@@ -615,7 +612,7 @@ int flash_erase_unlock(void)
 	pr_info("Try to erase unlock flash...\n");
 
 	pr_info("Command erase unlock ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < 0) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < 0) {
 		pr_err("flash_erase_unlock: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
@@ -629,7 +626,7 @@ int flash_erase_unlock(void)
   * Erase the full flash
   * @return OK if success or an error code which specify the type of error
   */
-int flash_full_erase(void)
+int flash_full_erase(struct fts_ts_info *info)
 {
 	int status;
 
@@ -638,18 +635,18 @@ int flash_full_erase(void)
 	u8 cmd[6] = { FTS_CMD_HW_REG_W, 0x20, 0x00, 0x00,
 		      FLASH_ERASE_CODE0, FLASH_ERASE_CODE1 };
 
-	if (fts_write(cmd1, ARRAY_SIZE(cmd1)) < OK) {
+	if (fts_write(info, cmd1, ARRAY_SIZE(cmd1)) < OK) {
 		pr_err("flash_erase_page_by_page: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
 	pr_info("Command full erase sent ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < OK) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < OK) {
 		pr_err("flash_full_erase: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
-	status = wait_for_flash_ready(FLASH_ERASE_CODE0);
+	status = wait_for_flash_ready(info, FLASH_ERASE_CODE0);
 
 	if (status != OK) {
 		pr_err("flash_full_erase: ERROR %08X\n", ERROR_FLASH_NOT_READY);
@@ -670,7 +667,8 @@ int flash_full_erase(void)
   * be deleted
   * @return OK if success or an error code which specify the type of error
   */
-int flash_erase_page_by_page(ErasePage keep_cx, Firmware *fw)
+int flash_erase_page_by_page(struct fts_ts_info *info, ErasePage keep_cx,
+			     Firmware *fw)
 {
 	u8 status, i = 0;
 
@@ -738,26 +736,26 @@ int flash_erase_page_by_page(ErasePage keep_cx, Firmware *fw)
 	pr_info("Setting the page mask = %s\n", buff);
 
 	pr_info("Writing page mask...\n");
-	if (fts_write(cmd2, ARRAY_SIZE(cmd2)) < OK) {
+	if (fts_write(info, cmd2, ARRAY_SIZE(cmd2)) < OK) {
 		pr_err("flash_erase_page_by_page: Page mask ERROR %08X\n",
 			ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
-	if (fts_write(cmd1, ARRAY_SIZE(cmd1)) < OK) {
+	if (fts_write(info, cmd1, ARRAY_SIZE(cmd1)) < OK) {
 		pr_err("flash_erase_page_by_page: Disable info ERROR %08X\n",
 			ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
 	pr_info("Command erase pages sent ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < OK) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < OK) {
 		pr_err("flash_erase_page_by_page: Erase ERROR %08X\n",
 			ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
-	status = wait_for_flash_ready(FLASH_ERASE_CODE0);
+	status = wait_for_flash_ready(info, FLASH_ERASE_CODE0);
 
 	if (status != OK) {
 		pr_err("flash_erase_page_by_page: ERROR %08X\n",
@@ -776,7 +774,7 @@ int flash_erase_page_by_page(ErasePage keep_cx, Firmware *fw)
   * from memory into the Flash
   * @return OK if success or an error code which specify the type of error
   */
-int start_flash_dma(void)
+int start_flash_dma(struct fts_ts_info *info)
 {
 	int status;
 	u8 cmd[12] = { FLASH_CMD_WRITE_REGISTER, 0x20, 0x00, 0x00,
@@ -786,12 +784,12 @@ int start_flash_dma(void)
 	/* write the command to erase the flash */
 
 	pr_info("Command flash DMA ...\n");
-	if (fts_write(cmd, ARRAY_SIZE(cmd)) < OK) {
+	if (fts_write(info, cmd, ARRAY_SIZE(cmd)) < OK) {
 		pr_err("start_flash_dma: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 
-	status = wait_for_flash_ready(FLASH_DMA_CODE0);
+	status = wait_for_flash_ready(info, FLASH_DMA_CODE0);
 
 	if (status != OK) {
 		pr_err("start_flash_dma: ERROR %08X\n", ERROR_FLASH_NOT_READY);
@@ -814,9 +812,8 @@ int start_flash_dma(void)
   * @param size size of data
   * @return OK if success or an error code which specify the type of error
   */
-int fillFlash(u32 address, u8 *data, int size)
+int fillFlash(struct fts_ts_info *info, u32 address, u8 *data, int size)
 {
-	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int remaining = size, index = 0;
 	int toWrite = 0;
 	int byteBlock = 0;
@@ -878,7 +875,7 @@ int fillFlash(u32 address, u8 *data, int size)
 			 * buff[0], buff[1], buff[2], toWrite, buff[3],
 			 * buff[4], buff[3 + toWrite-2],
 			 * buff[3 + toWrite-1]); */
-			if (fts_write_heap(buff, index + toWrite) < OK) {
+			if (fts_write_heap(info, buff, index + toWrite) < OK) {
 				pr_err("fillFlash: ERROR %08X\n", ERROR_BUS_W);
 				kfree(buff);
 				return ERROR_BUS_W;
@@ -912,14 +909,14 @@ int fillFlash(u32 address, u8 *data, int size)
 		pr_info("DMA Command = %02X , address = %02X %02X, words =  %02X %02X\n",
 			buff[0], buff[8], buff[7], buff[10], buff[9]);
 
-		if (fts_write_heap(buff, index) < OK) {
+		if (fts_write_heap(info, buff, index) < OK) {
 			pr_err("Error during filling Flash! ERROR %08X\n",
 				ERROR_BUS_W);
 			kfree(buff);
 			return ERROR_BUS_W;
 		}
 
-		res = start_flash_dma();
+		res = start_flash_dma(info);
 		if (res < OK) {
 			pr_err("Error during flashing DMA! ERROR %08X\n", res);
 			kfree(buff);
@@ -946,7 +943,8 @@ int fillFlash(u32 address, u8 *data, int size)
   * @return OK if success or an error code which specifies the type of error
   *	encountered
   */
-int flash_burn(Firmware fw, int force_burn, int keep_cx)
+int flash_burn(struct fts_ts_info *info, Firmware fw, int force_burn,
+	       int keep_cx)
 {
 	int res;
 
@@ -990,7 +988,7 @@ start:
 	pr_info("Programming Procedure for flashing started:\n\n");
 
 	pr_info(" 1) SYSTEM RESET:\n");
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < 0) {
 		pr_err("    system reset FAILED!\n");
 		/* If there is no firmware, there is no controller ready event
@@ -1006,7 +1004,7 @@ start:
 
 	pr_info(" 2) HOLD M3 :\n");
 
-	res = hold_m3();
+	res = hold_m3(info);
 	if (res < OK) {
 		pr_err("    hold_m3 FAILED!\n");
 		return res | ERROR_FLASH_BURN_FAILED;
@@ -1014,7 +1012,7 @@ start:
 	pr_info("    hold_m3 COMPLETED!\n\n");
 
 	pr_info("3) ENABLE UVLO AND AUTO POWER DOWN MODE :\n");
-	res = flash_enable_uvlo_autopowerdown();
+	res = flash_enable_uvlo_autopowerdown(info);
 	if (res < OK) {
 		pr_err("    flash_enable_uvlo_autopowerdown FAILED!\n");
 		return res | ERROR_FLASH_BURN_FAILED;
@@ -1022,7 +1020,7 @@ start:
 	pr_err("    flash_enable_uvlo_autopowerdown COMPLETED!\n\n");
 
 	pr_info(" 4) FLASH UNLOCK:\n");
-	res = flash_unlock();
+	res = flash_unlock(info);
 	if (res < OK) {
 		pr_err("   flash unlock FAILED! ERROR %08X\n",
 			 ERROR_FLASH_BURN_FAILED);
@@ -1031,7 +1029,7 @@ start:
 	pr_info("   flash unlock COMPLETED!\n\n");
 
 	pr_info(" 5) FLASH ERASE UNLOCK:\n");
-	res = flash_erase_unlock();
+	res = flash_erase_unlock(info);
 	if (res < 0) {
 		pr_err("   flash unlock FAILED! ERROR %08X\n",
 			 ERROR_FLASH_BURN_FAILED);
@@ -1042,11 +1040,13 @@ start:
 	pr_info(" 6) FLASH ERASE:\n");
 	if (keep_cx > 0) {
 		if (fw.sec2_size != 0 && force_burn == CRC_CX)
-			res = flash_erase_page_by_page(SKIP_PANEL_INIT, &fw);
+			res = flash_erase_page_by_page(info, SKIP_PANEL_INIT,
+						       &fw);
 		else
-			res = flash_erase_page_by_page(SKIP_PANEL_CX_INIT, &fw);
+			res = flash_erase_page_by_page(info, SKIP_PANEL_CX_INIT,
+						       &fw);
 	} else {
-		res = flash_erase_page_by_page(SKIP_PANEL_INIT, &fw);
+		res = flash_erase_page_by_page(info, SKIP_PANEL_INIT, &fw);
 		if (fw.sec2_size == 0)
 			pr_err("WARNING!!! Erasing CX memory but no CX in fw file! touch will not work right after fw update!\n");
 	}
@@ -1059,7 +1059,7 @@ start:
 	pr_info("   flash erase COMPLETED!\n\n");
 
 	pr_info(" 7) LOAD PROGRAM:\n");
-	res = fillFlash(fw.code_start_addr, &fw.data[0], fw.sec0_size);
+	res = fillFlash(info, fw.code_start_addr, &fw.data[0], fw.sec0_size);
 	if (res < OK) {
 		pr_err("   load program ERROR %08X\n",
 			 ERROR_FLASH_BURN_FAILED);
@@ -1068,7 +1068,7 @@ start:
 	pr_info("   load program DONE!\n");
 
 	pr_info(" 8) LOAD CONFIG:\n");
-	res = fillFlash(fw.config_start_addr, &(fw.data[fw.sec0_size]),
+	res = fillFlash(info, fw.config_start_addr, &(fw.data[fw.sec0_size]),
 			fw.sec1_size);
 	if (res < OK) {
 		pr_err("   load config ERROR %08X\n",
@@ -1079,7 +1079,7 @@ start:
 
 	if (fw.sec2_size != 0 && (force_burn == CRC_CX || keep_cx <= 0)) {
 		pr_info(" 8.1) LOAD CX:\n");
-		res = fillFlash(fw.cx_start_addr,
+		res = fillFlash(info, fw.cx_start_addr,
 				&(fw.data[fw.sec0_size + fw.sec1_size]),
 				fw.sec2_size);
 		if (res < OK) {
@@ -1093,7 +1093,7 @@ start:
 	pr_info("   Flash burn COMPLETED!\n\n");
 
 	pr_info(" 9) SYSTEM RESET:\n");
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < 0) {
 		pr_err("    system reset FAILED! ERROR %08X\n",
 			 ERROR_FLASH_BURN_FAILED);
@@ -1102,7 +1102,7 @@ start:
 	pr_info("   system reset COMPLETED!\n\n");
 
 	pr_info(" 10) FINAL CHECK:\n");
-	res = readSysInfo(0);
+	res = readSysInfo(info, 0);
 	if (res < 0) {
 		pr_err("flash_burn: Unable to retrieve Chip INFO! ERROR %08X\n",
 			ERROR_FLASH_BURN_FAILED);

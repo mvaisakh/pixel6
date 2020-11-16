@@ -37,11 +37,11 @@
 
 
 int updateGestureMask(u8 *mask, int size, int en);
-int disableGesture(u8 *mask, int size);
-int enableGesture(u8 *mask, int size);
-int enterGestureMode(int reload);
+int disableGesture(struct fts_ts_info *info, u8 *mask, int size);
+int enableGesture(struct fts_ts_info *info, u8 *mask, int size);
+int enterGestureMode(struct fts_ts_info *info, int reload);
 int isAnyGestureActive(void);
-int readGestureCoords(u8 *event);
+int readGestureCoords(struct fts_ts_info *info, u8 *event);
 int getGestureCoords(u16 **x, u16 **y);
 
 #endif	/* ! _GESTURE_H_ */

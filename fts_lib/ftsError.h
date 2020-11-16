@@ -226,8 +226,8 @@ typedef struct {
 } ErrorList;
 
 int isI2cError(int error);
-int dumpErrorInfo(u8 *outBuf, int size);
-int errorHandler(u8 *event, int size);
+int dumpErrorInfo(struct fts_ts_info *info, u8 *outBuf, int size);
+int errorHandler(struct fts_ts_info *info, u8 *event, int size);
 int addErrorIntoList(u8 *event, int size);
 int getErrorListCount(void);
 int resetErrorList(void);
