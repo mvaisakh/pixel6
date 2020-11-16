@@ -57,6 +57,9 @@ struct exynos_display_mode {
 
 	/* @underrun_param: parameters to calculate underrun_lp_ref when hs_clock changes */
 	const struct exynos_display_underrun_param *underrun_param;
+
+	/* @is_lp_mode: boolean, if true it means this mode is a Low Power mode */
+	bool is_lp_mode;
 };
 
 /**

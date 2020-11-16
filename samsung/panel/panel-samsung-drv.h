@@ -60,6 +60,31 @@ struct exynos_panel_funcs {
 	int (*set_brightness)(struct exynos_panel *exynos_panel, u16 br);
 
 	/**
+	 * @set_lp_mode:
+	 *
+	 * This callback is used to handle command sequences to enter low power modes.
+	 */
+	void (*set_lp_mode)(struct exynos_panel *exynos_panel,
+			    const struct exynos_panel_mode *mode);
+
+	/**
+	 * @set_nolp_mode:
+	 *
+	 * This callback is used to handle command sequences to exit from low power
+	 * modes.
+	 */
+	void (*set_nolp_mode)(struct exynos_panel *exynos_panel,
+			      const struct exynos_panel_mode *mode);
+
+	/**
+	 * @set_binned_lp:
+	 *
+	 * This callback is used to handle additional command sequences for low power
+	 * modes based on different brightness threshold.
+	 */
+	void (*set_binned_lp)(struct exynos_panel *exynos_panel, u16 br);
+
+	/**
 	 * @set_hbm_mode:
 	 *
 	 * This callback is used to implement panel specific logic for high brightness
@@ -97,6 +122,40 @@ struct exynos_panel_funcs {
 			 const struct exynos_panel_mode *mode);
 };
 
+/**
+ * struct exynos_dsi_cmd - information for a dsi command.
+ * @cmd_len:  Length of a dsi command.
+ * @cmd:      Pointer to a dsi command.
+ * @delay_ms: Delay time after executing this dsi command.
+ */
+struct exynos_dsi_cmd {
+	u32 cmd_len;
+	const u8 *cmd;
+	u32 delay_ms;
+};
+
+/**
+ * struct exynos_dsi_cmd_set - a dsi command sequence.
+ * @num_cmd:  Number of dsi commands in this sequence.
+ * @cmds:     Pointer to a dsi command sequence.
+ */
+struct exynos_dsi_cmd_set {
+	const u32 num_cmd;
+	const struct exynos_dsi_cmd *cmds;
+};
+
+/**
+ * struct exynos_binned_lp - information for binned lp mode.
+ * @name:         Name of this binned lp mode.
+ * @bl_threshold: Max brightness supported by this mode
+ * @cmd_set:      A dsi command sequence to enter this mode.
+ */
+struct exynos_binned_lp {
+	const char *name;
+	u32 bl_threshold;
+	struct exynos_dsi_cmd_set cmd_set;
+};
+
 struct exynos_panel_desc {
 	const u8 *dsc_pps;
 	u32 dsc_pps_len;
@@ -108,8 +167,12 @@ struct exynos_panel_desc {
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
 	const struct exynos_panel_mode *modes;
-	const struct exynos_panel_mode *lp_mode;
 	size_t num_modes;
+	/* @lp_mode: provides a low power mode if available, otherwise null */
+	const struct exynos_panel_mode *lp_mode;
+	const struct exynos_dsi_cmd_set *lp_cmd_set;
+	const struct exynos_binned_lp *binned_lp;
+	const size_t num_binned_lp;
 	const struct drm_panel_funcs *panel_func;
 	const struct exynos_panel_funcs *exynos_panel_func;
 };
@@ -186,6 +249,16 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	*end = '\0';
 }
 
+#define EXYNOS_DSI_CMD(cmd, delay) { sizeof(cmd), cmd, delay }
+
+#define BINNED_LP_MODE(mode_name, bl_thr, cmdset)	\
+{							\
+	.name = mode_name,				\
+	.bl_threshold = bl_thr,				\
+	{ .num_cmd = ARRAY_SIZE(cmdset),		\
+	  .cmds = cmdset }				\
+}
+
 #define EXYNOS_DCS_WRITE_SEQ(ctx, seq...) do {				\
 	u8 d[] = { seq };						\
 	int ret;							\
@@ -222,6 +295,10 @@ int exynos_panel_prepare(struct drm_panel *panel);
 void exynos_panel_reset(struct exynos_panel *ctx);
 int exynos_panel_set_power(struct exynos_panel *ctx, bool on);
 int exynos_panel_set_brightness(struct exynos_panel *exynos_panel, u16 br);
+void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
+			       const struct exynos_dsi_cmd_set *cmd_set);
+void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode);
+void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness);
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi);
 int exynos_panel_remove(struct mipi_dsi_device *dsi);

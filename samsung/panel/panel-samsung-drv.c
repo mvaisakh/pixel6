@@ -374,11 +374,68 @@ int exynos_panel_prepare(struct drm_panel *panel)
 }
 EXPORT_SYMBOL(exynos_panel_prepare);
 
+void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
+			       const struct exynos_dsi_cmd_set *cmd_set)
+{
+	int i;
+
+	if (!cmd_set)
+		return;
+
+	for (i = 0; i < cmd_set->num_cmd; i++) {
+		u32 delay_ms = cmd_set->cmds[i].delay_ms;
+
+		exynos_dcs_write(ctx, cmd_set->cmds[i].cmd,
+				cmd_set->cmds[i].cmd_len);
+		if (delay_ms)
+			usleep_range(delay_ms * 1000, delay_ms * 1000 + 10);
+	}
+}
+EXPORT_SYMBOL(exynos_panel_send_cmd_set);
+
+void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode)
+{
+	if (!ctx->enabled)
+		return;
+
+	exynos_panel_send_cmd_set(ctx, ctx->desc->lp_cmd_set);
+
+	dev_info(ctx->dev, "enter %dhz LP mode\n", drm_mode_vrefresh(&pmode->mode));
+}
+EXPORT_SYMBOL(exynos_panel_set_lp_mode);
+
+void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
+{
+	int i;
+	const struct exynos_binned_lp *binned_lp;
+
+	for (i = 0; i < ctx->desc->num_binned_lp; i++) {
+		binned_lp = &ctx->desc->binned_lp[i];
+		if (brightness <= binned_lp->bl_threshold)
+			break;
+	}
+	if (i == ctx->desc->num_binned_lp)
+		return;
+
+	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
+}
+EXPORT_SYMBOL(exynos_panel_set_binned_lp);
+
 int exynos_panel_set_brightness(struct exynos_panel *exynos_panel, u16 br)
 {
 	u16 brightness;
 
+	if (exynos_panel->current_mode->exynos_mode.is_lp_mode) {
+		const struct exynos_panel_funcs *funcs;
+
+		funcs = exynos_panel->desc->exynos_panel_func;
+		if (funcs && funcs->set_binned_lp)
+			funcs->set_binned_lp(exynos_panel, br);
+		return 0;
+	}
+
 	brightness = (br & 0xff) << 8 | br >> 8;
+
 	return exynos_dcs_set_brightness(exynos_panel, brightness);
 }
 EXPORT_SYMBOL(exynos_panel_set_brightness);
@@ -394,9 +451,6 @@ static int exynos_update_status(struct backlight_device *bl)
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
 
-	dev_dbg(ctx->dev, "br: %d, max br: %d\n", brightness,
-		bl->props.max_brightness);
-
 	if (!ctx->enabled || !ctx->initialized) {
 		dev_dbg(ctx->dev, "panel is not enabled\n");
 		return -EPERM;
@@ -405,6 +459,9 @@ static int exynos_update_status(struct backlight_device *bl)
 	/* check if backlight is forced off */
 	if (bl->props.power != FB_BLANK_UNBLANK)
 		brightness = 0;
+
+	dev_info(ctx->dev, "req: %d, br: %d\n", bl->props.brightness,
+		brightness);
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func && exynos_panel_func->set_brightness)
@@ -909,19 +966,19 @@ static int exynos_panel_attach_lp_mode(struct exynos_drm_connector *exynos_conn,
 	struct exynos_drm_connector_properties *p =
 		exynos_drm_connector_get_properties(exynos_conn);
 	struct drm_mode_modeinfo umode;
-        struct drm_property_blob *blob;
+	struct drm_property_blob *blob;
 
-        if (!lp_mode)
-                return -ENOENT;
+	if (!lp_mode)
+		return -ENOENT;
 
-        drm_mode_convert_to_umode(&umode, lp_mode);
-        blob = drm_property_create_blob(exynos_conn->base.dev, sizeof(umode), &umode);
-        if (IS_ERR(blob))
-                return PTR_ERR(blob);
+	drm_mode_convert_to_umode(&umode, lp_mode);
+	blob = drm_property_create_blob(exynos_conn->base.dev, sizeof(umode), &umode);
+	if (IS_ERR(blob))
+		return PTR_ERR(blob);
 
-        drm_object_attach_property(&exynos_conn->base.base, p->lp_mode, blob->base.id);
+	drm_object_attach_property(&exynos_conn->base.base, p->lp_mode, blob->base.id);
 
-        return 0;
+	return 0;
 }
 
 static ssize_t local_hbm_mode_store(struct device *dev,
@@ -1149,6 +1206,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	const struct exynos_panel_mode *pmode = exynos_panel_get_mode(ctx, mode);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	bool need_update_backlight = false;
 
 	if (WARN_ON(!pmode))
 		return;
@@ -1173,9 +1231,23 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 
 	dsi->mode_flags = pmode->exynos_mode.mode_flags;
 
-	if (funcs && funcs->mode_set)
-		funcs->mode_set(ctx, pmode);
+	if (funcs) {
+		const bool was_lp_mode = ctx->current_mode->exynos_mode.is_lp_mode;
+		const bool is_lp_mode = pmode->exynos_mode.is_lp_mode;
+
+		if (is_lp_mode && funcs->set_lp_mode) {
+			funcs->set_lp_mode(ctx, pmode);
+			need_update_backlight = true;
+		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
+			funcs->set_nolp_mode(ctx, pmode);
+			need_update_backlight = true;
+		} else if (funcs->mode_set) {
+			funcs->mode_set(ctx, pmode);
+		}
+	}
 	ctx->current_mode = pmode;
+	if (need_update_backlight)
+		backlight_update_status(ctx->bl);
 }
 
 static void local_hbm_timeout_work(struct work_struct *work)
