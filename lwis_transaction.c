@@ -333,6 +333,11 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	struct hlist_node *tmp;
 	struct lwis_transaction_event_list *it_evt_list;
 
+	if (!client) {
+		pr_err("Client pointer cannot be NULL while flushing transactions.\n");
+		return -ENODEV;
+	}
+
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list,
 			    node) {
@@ -343,8 +348,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   event_list_node);
-			cancel_transaction(transaction, -ECANCELED, NULL);
 			list_del(&transaction->event_list_node);
+			cancel_transaction(transaction, -ECANCELED, NULL);
 		}
 		hash_del(&it_evt_list->node);
 		kfree(it_evt_list);
@@ -364,8 +369,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 			transaction =
 				list_entry(it_tran, struct lwis_transaction,
 					   process_queue_node);
-			cancel_transaction(transaction, -ECANCELED, NULL);
 			list_del(&transaction->process_queue_node);
+			cancel_transaction(transaction, -ECANCELED, NULL);
 		}
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
