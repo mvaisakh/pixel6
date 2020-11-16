@@ -21,6 +21,10 @@
 #define MAX1720x_CC_UPPER_BOUND	110
 #define MAX1720x_CC_LOWER_BOUND	60
 
+#define ALGO_VER_CHECK(algo_ver) ((algo_ver) == MAX1720X_DA_VER_MWA2 || \
+				  (algo_ver) == MAX1720X_DA_VER_NONE)
+
+
 /* registers accessed from the workaround */
 enum {
 	MAX17X0X_REPCAP		= 0x05,
@@ -144,7 +148,7 @@ int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 	int dpacc, dqacc;
 	int err, loops;
 
-	if (ddata->design_capacity <= 0)
+	if (ddata->design_capacity <= 0 || ALGO_VER_CHECK(ddata->algo_ver))
 		return 0;
 
 	err = REGMAP_READ(map, MAX17X0X_FULLCAPNOM, &fullcapnom);
@@ -269,10 +273,20 @@ static u16 max1720x_check_rcomp0(const struct max1720x_drift_data *ddata,
 static u16 max1720x_check_mw_rcomp0(const struct max1720x_drift_data *ddata,
 				    u16 rcomp0)
 {
-	const int ini_rcomp0 = ddata->ini_rcomp0;
+	const int lim_low = ddata->ini_rcomp0 * MAXIM_RCOMP0_LIM_LO;
+	const int lim_high = ddata->ini_rcomp0 * MAXIM_RCOMP0_LIM_HI;
+	const int scale = 100;
+	int value = rcomp0;
 
-	return comp_check(rcomp0, 100, ini_rcomp0 * MAXIM_RCOMP0_LIM_LO,
-			  ini_rcomp0 * MAXIM_RCOMP0_LIM_HI);
+	if ((value * scale) < lim_low) {
+		value = lim_low / scale;
+	} else if ((value * scale) > lim_high) {
+		value = lim_high / scale;
+		if (value > 0xffff)
+			value = 0xffff;
+	}
+
+	return value;
 }
 
 /* 0 no changes, >0 changes */
@@ -285,15 +299,18 @@ static bool max1720x_comp_check(u16 *new_rcomp0, u16 *new_tempco,
 	const int ini_tc_hib = (ddata->ini_tempco >> 8) & 0xff;
 	int tc_hib = (tempco >> 8) & 0xff;
 	int tc_lob = tempco & 0xff;
+	bool fix_rcomp0 = false;
 
 	if (ddata->algo_ver == MAX1720X_DA_VER_ORIG) {
 		*new_rcomp0 = max1720x_check_rcomp0(ddata, rcomp0);
+
+		fix_rcomp0 = (rcomp0 & 0xff) != *new_rcomp0;
 	} else if (ddata->algo_ver == MAX1720X_DA_VER_MWA1) {
 		if (*new_rcomp0 < 0x100)
 			*new_rcomp0 = *new_rcomp0 << 4;
 		*new_rcomp0 = max1720x_check_mw_rcomp0(ddata, *new_rcomp0);
-	} else if (ddata->algo_ver == MAX1720X_DA_VER_MWA2) {
-		*new_rcomp0 = max1720x_check_mw_rcomp0(ddata, rcomp0);
+
+		fix_rcomp0 = rcomp0 != *new_rcomp0;
 	}
 
 	tc_lob = comp_check(tc_lob, 100, ini_tc_lob * MAXIM_TEMPCO_LIM_LO,
@@ -312,7 +329,7 @@ static bool max1720x_comp_check(u16 *new_rcomp0, u16 *new_tempco,
 	*new_tempco = (tc_hib << 8) | (tc_lob);
 
 	/* fix for MW A1+ */
-	return ((rcomp0 & 0xff) != *new_rcomp0) || (tempco != *new_tempco);
+	return fix_rcomp0 || (tempco != *new_tempco);
 }
 
 
@@ -324,10 +341,9 @@ int max1720x_fixup_comp(struct max1720x_drift_data *ddata,
 	u16 new_rcomp0, new_tempco, data[2] = { 0 };
 	int err, loops;
 
-	if (ddata->ini_rcomp0 == -1 || ddata->ini_tempco == -1)
+	if (ddata->ini_rcomp0 == -1 || ddata->ini_tempco == -1 ||
+	    ALGO_VER_CHECK(ddata->algo_ver))
 		return 0;
-	if (ddata->algo_ver == MAX1720X_DA_VER_NONE)
-		return -EINVAL;
 
 	err = regmap_raw_read(map->regmap, MAX17X0X_RCOMP0, data,
 			      sizeof(data));
