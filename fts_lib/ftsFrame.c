@@ -57,11 +57,6 @@ int getChannelsLength(void)
 	int ret;
 	u8 data[2];
 
-	if (data == NULL) {
-		pr_err("getChannelsLength: ERROR %08X\n", ERROR_ALLOC);
-		return ERROR_ALLOC;
-	}
-
 	ret = readConfig(ADDR_CONFIG_SENSE_LEN, data, 2);
 	if (ret < OK) {
 		pr_err("getChannelsLength: ERROR %08X\n", ret);

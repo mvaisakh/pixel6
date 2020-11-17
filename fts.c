@@ -5144,7 +5144,6 @@ static void unregister_panel_bridge(struct drm_bridge *bridge)
 static int fts_get_reg(struct fts_ts_info *info, bool get)
 {
 	int retval;
-	const struct fts_hw_platform_data *bdata = info->board;
 
 	if (!get) {
 		retval = 0;
@@ -5447,7 +5446,6 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	struct of_phandle_args panelmap;
 	struct drm_panel *panel = NULL;
 	struct display_timing timing;
-	const char *name;
 	struct device_node *np = dev->of_node;
 	u32 coords[2];
 
