@@ -34,7 +34,7 @@
 /* Battery Google Part Number */
 #define GBMS_BGPN_LEN	10
 /* Battery device info length */
-#define GBMS_DINF_LEN	32
+#define GBMS_DINF_LEN	16
 /* Battery manufacturer info length */
 #define GBMS_MINF_LEN	30
 /* Gauge Model State Restore */
@@ -55,6 +55,7 @@ enum gbms_tags {
 	GBMS_TAG_BGPN = 0x4247504e,
 	GBMS_TAG_BRES = 0x42524553,
 	GBMS_TAG_BRID = 0x42524944,
+	GBMS_TAG_CLHI = 0x424C4849,
 	GBMS_TAG_CMPC = 0x434d5043,
 	GBMS_TAG_CNHS = 0x434E4853,
 	GBMS_TAG_DINF = 0x44494e46,
@@ -63,6 +64,7 @@ enum gbms_tags {
 	GBMS_TAG_GCFE = 0x47434645,
 	GBMS_TAG_GMSR = 0x474d5352,
 	GBMS_TAG_HIST = 0x48495354,
+	GBMS_TAG_LOTR = 0x4C4F5452,
 	GBMS_TAG_MINF = 0x4d494e46,
 
 	/* User Space Read/Write scratch */
