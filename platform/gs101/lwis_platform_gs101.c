@@ -22,7 +22,7 @@
 #include "lwis_platform.h"
 
 /* Uncomment to let kernel panic when IOMMU hits a page fault. */
-/* TODO: Add error handling to propagate SysMMU errors back to userspace,
+/* TODO: Add error handling to propagate IOMMU errors back to userspace,
  * so we don't need to panic here. */
 #define ENABLE_PAGE_FAULT_PANIC
 
