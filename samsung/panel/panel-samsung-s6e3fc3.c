@@ -77,7 +77,6 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 {
 	struct exynos_panel *ctx;
 	const struct drm_display_mode *mode;
-	int ret;
 
 	ctx = container_of(panel, struct exynos_panel, panel);
 

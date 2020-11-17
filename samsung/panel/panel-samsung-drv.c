@@ -1051,7 +1051,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 	if (ctx->desc && ctx->desc->lp_mode) {
 		ret = exynos_panel_create_lp_mode(connector, ctx->desc->lp_mode);
 		if (ret)
-			dev_err(ctx->dev, "Failed to create lp mode\n", ret);
+			dev_err(ctx->dev, "Failed to create lp mode (%d)\n", ret);
 	}
 
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);

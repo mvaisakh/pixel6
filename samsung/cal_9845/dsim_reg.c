@@ -877,14 +877,6 @@ static void dsim_reg_set_pll_sleep_enable(u32 id, u32 en)
 }
 #endif
 
-/* 0=D-PHY, 1=C-PHY */
-void dsim_reg_set_phy_selection(u32 id, u32 sel)
-{
-	u32 val = sel ? ~0 : 0;
-
-	dsim_write_mask(id, DSIM_CONFIG, val, DSIM_CONFIG_PHY_SELECTION);
-}
-
 static void dsim_reg_set_vporch(u32 id, u32 vbp, u32 vfp)
 {
 	u32 val;
