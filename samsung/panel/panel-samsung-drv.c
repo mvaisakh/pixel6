@@ -271,6 +271,7 @@ static int exynos_panel_parse_dt(struct exynos_panel *ctx)
 		goto err;
 
 	ctx->touch_dev = of_parse_phandle(ctx->dev->of_node, "touch", 0);
+	ctx->is_secondary = of_property_read_bool(ctx->dev->of_node, "is_secondary");
 
 err:
 	return ret;
@@ -501,12 +502,22 @@ static ssize_t panel_extinfo_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", ctx->panel_extinfo);
 }
 
+static ssize_t panel_name_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	const struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", dsi->name);
+}
+
 static DEVICE_ATTR_RO(serial_number);
 static DEVICE_ATTR_RO(panel_extinfo);
+static DEVICE_ATTR_RO(panel_name);
 
 static const struct attribute *panel_attrs[] = {
 	&dev_attr_serial_number.attr,
 	&dev_attr_panel_extinfo.attr,
+	&dev_attr_panel_name.attr,
 	NULL
 };
 
@@ -1130,16 +1141,31 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
+	if (!ctx->is_secondary)
+		ret = sysfs_create_link(&bridge->dev->dev->kobj, &ctx->dev->kobj, "primary-panel");
+	else
+		ret = sysfs_create_link(&bridge->dev->dev->kobj, &ctx->dev->kobj, "secondary-panel");
+
+	if (ret)
+		dev_warn(ctx->dev, "unable to link %s sysfs (%d)\n",
+			(!ctx->is_secondary) ? "primary-panel" : "secondary-panel", ret);
 	return 0;
 }
 
 static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	struct drm_connector *connector = &ctx->exynos_connector.base;
+
+	if (!ctx->is_secondary)
+		sysfs_remove_link(&bridge->dev->dev->kobj, "primary-panel");
+	else
+		sysfs_remove_link(&bridge->dev->dev->kobj, "secondary-panel");
 
 	exynos_debugfs_panel_remove(ctx);
+	sysfs_remove_link(&connector->kdev->kobj, "panel");
 	drm_panel_detach(&ctx->panel);
-	drm_connector_unregister(&ctx->exynos_connector.base);
+	drm_connector_unregister(connector);
 	drm_connector_cleanup(&ctx->exynos_connector.base);
 }
 

@@ -200,6 +200,7 @@ struct exynos_panel {
 
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];
+	bool is_secondary;
 
 	struct device_node *touch_dev;
 
