@@ -29,6 +29,28 @@ enum edgetpu_firmware_status {
 	FW_VALID = 2,
 };
 
+/* Firmware flavors returned via KCI FIRMWARE_INFO command. */
+enum edgetpu_fw_flavor {
+	/* used by host when cannot determine the flavor */
+	FW_FLAVOR_UNKNOWN = 0,
+	/* second-stage bootloader */
+	FW_FLAVOR_BL1 = 1,
+	/* systest app image */
+	FW_FLAVOR_SYSTEST = 2,
+	/* default production app image from DarwiNN team */
+	FW_FLAVOR_PROD_DEFAULT = 3,
+	/* custom image produced by other teams */
+	FW_FLAVOR_CUSTOM = 4,
+};
+
+/* Firmware info filled out via KCI FIRMWARE_INFO command. */
+struct edgetpu_fw_info {
+	uint64_t fw_build_time;		/* BuildData::Timestamp() */
+	uint32_t fw_flavor;		/* enum edgetpu_fw_flavor */
+	uint32_t fw_changelist;		/* BuildData::Changelist() */
+	uint32_t spare[10];
+};
+
 struct edgetpu_firmware_private;
 
 struct edgetpu_firmware {
@@ -121,6 +143,8 @@ struct edgetpu_firmware_handlers {
 	 */
 	int (*prepare_run)(struct edgetpu_firmware *et_fw,
 			   struct edgetpu_firmware_buffer *fw_buf);
+	/* Firmware running, after successful handshake. */
+	void (*launch_complete)(struct edgetpu_firmware *et_fw);
 };
 
 /*
@@ -197,5 +221,11 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 /* Returns the firmware image flavor loaded on the device. */
 enum edgetpu_fw_flavor
 edgetpu_firmware_get_flavor(struct edgetpu_firmware *et_fw);
+
+/* Returns the changelist ID of the image loaded on the device. */
+uint32_t edgetpu_firmware_get_cl(struct edgetpu_firmware *et_fw);
+
+/* Returns the build time of the image in seconds since 1970. */
+uint64_t edgetpu_firmware_get_build_time(struct edgetpu_firmware *et_fw);
 
 #endif /* __EDGETPU_FIRMWARE_H__ */

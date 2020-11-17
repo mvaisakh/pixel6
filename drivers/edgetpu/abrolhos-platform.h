@@ -9,10 +9,14 @@
 
 #include <linux/device.h>
 #include <linux/io.h>
+#include <linux/kernel.h>
 #include <linux/types.h>
 
 #include "edgetpu-internal.h"
 #include "abrolhos-pm.h"
+
+#define to_abrolhos_dev(etdev)                                                 \
+	container_of(etdev, struct edgetpu_platform_dev, edgetpu_dev)
 
 struct edgetpu_platform_pwr {
 	struct mutex policy_lock;

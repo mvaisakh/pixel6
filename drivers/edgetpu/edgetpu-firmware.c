@@ -52,7 +52,7 @@ struct edgetpu_firmware_private {
 	struct edgetpu_firmware_desc fw_desc;
 	struct edgetpu_firmware_desc bl1_fw_desc;
 	enum edgetpu_firmware_status status;
-	enum edgetpu_fw_flavor fw_flavor;
+	struct edgetpu_fw_info fw_info;
 };
 
 void edgetpu_firmware_set_data(struct edgetpu_firmware *et_fw, void *data)
@@ -252,31 +252,40 @@ static char *fw_flavor_str(enum edgetpu_fw_flavor fw_flavor)
 
 static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 {
+	struct edgetpu_dev *etdev = et_fw->etdev;
 	enum edgetpu_fw_flavor fw_flavor;
 	struct edgetpu_firmware_buffer *fw_buf;
-	struct edgetpu_dev *etdev = et_fw->etdev;
 
 	/* Give the firmware some time to initialize */
 	msleep(100);
-	etdev_dbg(etdev, "Detecting firmware flavor...");
-	fw_flavor = edgetpu_kci_fw_flavor(etdev->kci);
+	etdev_dbg(etdev, "Detecting firmware info...");
+	et_fw->p->fw_info.fw_build_time = 0;
+	et_fw->p->fw_info.fw_flavor = FW_FLAVOR_UNKNOWN;
+	et_fw->p->fw_info.fw_changelist = 0;
+	fw_flavor = edgetpu_kci_fw_info(etdev->kci, &et_fw->p->fw_info);
 	if (fw_flavor < 0) {
 		etdev_err(etdev, "firmware handshake failed: %d", fw_flavor);
 		et_fw->p->status = FW_INVALID;
-		et_fw->p->fw_flavor = FW_FLAVOR_UNKNOWN;
+		et_fw->p->fw_info.fw_flavor = FW_FLAVOR_UNKNOWN;
+		et_fw->p->fw_info.fw_changelist = 0;
+		et_fw->p->fw_info.fw_build_time = 0;
 		return fw_flavor;
 	}
 
 	if (fw_flavor != FW_FLAVOR_BL1) {
 		fw_buf = &et_fw->p->fw_desc.buf;
-		etdev_info(etdev, "loaded %s firmware%s",
+		etdev_info(etdev, "loaded %s firmware%s (%u.%u %u)",
 			   fw_flavor_str(fw_flavor),
-			   fw_buf->flags & FW_ONDEV ? " on device" : "");
+			   fw_buf->flags & FW_ONDEV ? " on device" : "",
+			   etdev->fw_version.major_version,
+			   etdev->fw_version.minor_version,
+			   et_fw->p->fw_info.fw_changelist);
 	} else {
 		etdev_dbg(etdev, "loaded stage 2 bootloader");
 	}
 	et_fw->p->status = FW_VALID;
-	et_fw->p->fw_flavor = fw_flavor;
+	/* In case older firmware that doesn't fill out fw_info. */
+	et_fw->p->fw_info.fw_flavor = fw_flavor;
 	/* Hermosa second-stage bootloader doesn't implement log/trace */
 	if (fw_flavor != FW_FLAVOR_BL1) {
 		int ret = edgetpu_telemetry_kci(etdev);
@@ -290,7 +299,19 @@ static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 enum edgetpu_fw_flavor
 edgetpu_firmware_get_flavor(struct edgetpu_firmware *et_fw)
 {
-	return et_fw->p->fw_flavor;
+	return et_fw->p->fw_info.fw_flavor;
+}
+
+uint32_t
+edgetpu_firmware_get_cl(struct edgetpu_firmware *et_fw)
+{
+	return et_fw->p->fw_info.fw_changelist;
+}
+
+uint64_t
+edgetpu_firmware_get_build_time(struct edgetpu_firmware *et_fw)
+{
+	return et_fw->p->fw_info.fw_build_time;
 }
 
 int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
@@ -335,8 +356,11 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	ret = edgetpu_firmware_handshake(et_fw);
 
 	/* Don't start wdt if loaded firmware is second stage bootloader. */
-	if (!ret && !is_bl1_run && et_fw->p->fw_flavor != FW_FLAVOR_BL1)
+	if (!ret && !is_bl1_run && et_fw->p->fw_info.fw_flavor != FW_FLAVOR_BL1)
 		edgetpu_sw_wdt_start(et_fw->etdev);
+
+	if (!ret && !is_bl1_run && handlers && handlers->launch_complete)
+		handlers->launch_complete(et_fw);
 	return ret;
 
 out_unload_new_fw:
@@ -526,14 +550,39 @@ static ssize_t firmware_type_show(
 	if (!et_fw)
 		return -ENODEV;
 	ret = scnprintf(buf, PAGE_SIZE, "%s\n",
-			fw_flavor_str(et_fw->p->fw_flavor));
+			fw_flavor_str(et_fw->p->fw_info.fw_flavor));
 	return ret;
 }
 static DEVICE_ATTR_RO(firmware_type);
 
+static ssize_t firmware_version_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+	int ret;
+
+	if (!et_fw)
+		return -ENODEV;
+
+	if (etdev->fw_version.kci_version == EDGETPU_INVALID_KCI_VERSION)
+		ret = -ENODATA;
+	else
+		ret = scnprintf(buf, PAGE_SIZE, "%u.%u vii=%u kci=%u cl=%u\n",
+				etdev->fw_version.major_version,
+				etdev->fw_version.minor_version,
+				etdev->fw_version.vii_version,
+				etdev->fw_version.kci_version,
+				et_fw->p->fw_info.fw_changelist);
+	return ret;
+}
+static DEVICE_ATTR_RO(firmware_version);
+
 static struct attribute *dev_attrs[] = {
 	&dev_attr_load_firmware.attr,
 	&dev_attr_firmware_type.attr,
+	&dev_attr_firmware_version.attr,
 	NULL,
 };
 

@@ -38,7 +38,7 @@ struct edgetpu_pm {
  * of requests in order to keep the device up and turn it off if the platform
  * supports it.
  *
- * Since these functions are used by the edgetpu-direct and edgetpu-firmware
+ * Since these functions are used by the edgetpu-fs and edgetpu-firmware
  * layers, (which have their own internal locks) no locking is provided here.
  *
  * Callers are responsible for holding any necessary locks.
@@ -62,10 +62,12 @@ int edgetpu_pm_create(struct edgetpu_dev *etdev,
 void edgetpu_pm_destroy(struct edgetpu_dev *etdev);
 
 /*
- * Ensure device is shut down, should be a no-op unless a client was left open
- * while the device is being removed.
+ * When @force is true, ensure device is shut down, regardless of whether there
+ * is a client left open.
+ *
+ * When @force is false, the device is shut down if there is no client open.
  */
-void edgetpu_pm_shutdown(struct edgetpu_dev *etdev);
+void edgetpu_pm_shutdown(struct edgetpu_dev *etdev, bool force);
 
 /* Check if device is powered on. power_up_count is not protected by a lock */
 bool edgetpu_is_powered(struct edgetpu_dev *etdev);

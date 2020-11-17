@@ -513,7 +513,7 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 
 	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
 	abrolhos_pwr_debugfs_dir =
-		debugfs_create_dir("power", edgetpu_dev_debugfs_dir());
+		debugfs_create_dir("power", edgetpu_fs_debugfs_dir());
 	debugfs_create_file("state", 0660, abrolhos_pwr_debugfs_dir,
 			dev, &fops_tpu_pwr_state);
 	debugfs_create_file("vdd_tpu", 0660, abrolhos_pwr_debugfs_dir,

@@ -254,14 +254,14 @@ void edgetpu_unregister_irq(struct edgetpu_dev *etdev, int irq);
 /* Called from core to chip layer when MMU is needed during device init. */
 void edgetpu_setup_mmu(struct edgetpu_dev *etdev);
 
-/* Core -> Device API */
+/* Core -> Device FS API */
 
-int __init edgetpu_dev_init(void);
-void __exit edgetpu_dev_exit(void);
-int edgetpu_dev_add(struct edgetpu_dev *etdev);
-void edgetpu_dev_remove(struct edgetpu_dev *dev);
+int __init edgetpu_fs_init(void);
+void __exit edgetpu_fs_exit(void);
+int edgetpu_fs_add(struct edgetpu_dev *etdev);
+void edgetpu_fs_remove(struct edgetpu_dev *dev);
 /* Get the top-level debugfs directory for the device class */
-struct dentry *edgetpu_dev_debugfs_dir(void);
+struct dentry *edgetpu_fs_debugfs_dir(void);
 
 /* Core/Device -> Chip API */
 

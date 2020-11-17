@@ -243,7 +243,7 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 
 	thermal->dev = dev;
 	thermal->cooling_root =
-		debugfs_create_dir("cooling", edgetpu_dev_debugfs_dir());
+		debugfs_create_dir("cooling", edgetpu_fs_debugfs_dir());
 
 	err = tpu_thermal_cooling_register(thermal, EDGETPU_COOLING_NAME);
 	if (err) {

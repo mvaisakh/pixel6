@@ -231,18 +231,21 @@ static void edgetpu_fw_log(struct edgetpu_dev *etdev,
 		copy_with_wrap(header, buffer, entry.length, queue_size, start);
 		buffer[entry.length] = 0;
 
+		if (entry.code > EDGETPU_FW_DMESG_LOG_LEVEL)
+			continue;
+
 		switch (entry.code) {
-		case 2:
-		case 1:
+		case EDGETPU_FW_LOG_LEVEL_VERBOSE:
+		case EDGETPU_FW_LOG_LEVEL_DEBUG:
 			etdev_dbg_ratelimited(etdev, "%s", buffer);
 			break;
-		case -1:
+		case EDGETPU_FW_LOG_LEVEL_WARN:
 			etdev_warn_ratelimited(etdev, "%s", buffer);
 			break;
-		case -2:
+		case EDGETPU_FW_LOG_LEVEL_ERROR:
 			etdev_err_ratelimited(etdev, "%s", buffer);
 			break;
-		case 0:
+		case EDGETPU_FW_LOG_LEVEL_INFO:
 		default:
 			etdev_info_ratelimited(etdev, "%s", buffer);
 			break;

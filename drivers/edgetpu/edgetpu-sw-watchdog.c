@@ -4,12 +4,16 @@
  *
  * Copyright (C) 2020 Google, Inc.
  */
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-sw-watchdog.h"
+
+static bool wdt_disable;
+module_param(wdt_disable, bool, 0660);
 
 /* Worker to execute action callback handler on watchdog bite. */
 static void sw_wdt_handler_work(struct work_struct *work)
@@ -60,6 +64,7 @@ int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long hrtbeat_ms)
 	etdev_sw_wdt->hrtbeat_jiffs = msecs_to_jiffies(hrtbeat_ms);
 	INIT_DELAYED_WORK(&etdev_sw_wdt->dwork, sw_wdt_work);
 	INIT_WORK(&etdev_sw_wdt->et_action_work.work, sw_wdt_handler_work);
+	etdev_sw_wdt->is_wdt_disabled = wdt_disable;
 	etdev->etdev_sw_wdt = etdev_sw_wdt;
 	return 0;
 }
@@ -72,6 +77,10 @@ int edgetpu_sw_wdt_start(struct edgetpu_dev *etdev)
 		return -EINVAL;
 	if (!etdev_sw_wdt->et_action_work.edgetpu_sw_wdt_handler)
 		etdev_err(etdev, "sw wdt handler not set\n");
+	if (etdev_sw_wdt->is_wdt_disabled) {
+		etdev_dbg(etdev, "sw wdt disabled by module param");
+		return 0;
+	}
 	etdev_dbg(etdev, "sw wdt: started\n");
 	schedule_delayed_work(&etdev_sw_wdt->dwork,
 			      etdev_sw_wdt->hrtbeat_jiffs);

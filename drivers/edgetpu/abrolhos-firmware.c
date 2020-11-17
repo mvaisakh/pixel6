@@ -7,7 +7,6 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/gsa/gsa_tpu.h>
-#include <linux/sizes.h>
 #include <linux/slab.h>
 
 #include "abrolhos-firmware.h"
@@ -17,8 +16,6 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
-
-#define ABROLHOS_FW_HEADER_SIZE		SZ_4K
 
 static int abrolhos_firmware_alloc_buffer(
 		struct edgetpu_firmware *et_fw,
