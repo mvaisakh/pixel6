@@ -56,12 +56,12 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
  *  lwis_ioreg_read: Read single register.
  */
 int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t offset,
-		    uint64_t *value, bool non_blocking, int access_size);
+		    uint64_t *value, int access_size);
 
 /*
  *  lwis_ioreg_write: Write single register.
  */
 int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t offset,
-		     uint64_t value, bool non_blocking, int access_size);
+		     uint64_t value, int access_size);
 
 #endif /* LWIS_IOREG_H_ */
