@@ -27,12 +27,19 @@
 #include <linux/input/heatmap.h>
 #endif
 #include <linux/input/mt.h>
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+#include <linux/input/touch_offload.h>
+#endif
 #include "sec_cmd.h"
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_device.h>
+#include <drm/drm_encoder.h>
+#include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
@@ -55,9 +62,6 @@
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
 #include <linux/input/touch_bus_negotiator.h>
 #endif
-
-/* Workaround b/158866465 */
-#undef CONFIG_DRM
 
 #define SEC_TS_NAME		"sec_ts"
 #define SEC_TS_DEVICE_NAME	"SEC_TS"
@@ -861,7 +865,7 @@ struct sec_ts_data {
 	struct mutex io_mutex;
 	struct mutex eventlock;
 
-	struct notifier_block notifier;
+	struct drm_bridge panel_bridge;
 
 	struct pm_qos_request pm_qos_req;
 
@@ -877,10 +881,15 @@ struct sec_ts_data {
 	ktime_t mf_downtime;
 
 	u8 print_format;
-	u8 frame_type;
+	u8 ms_frame_type;
+	u8 ss_frame_type;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
 	strength_t *heatmap_buff;
+#endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	struct touch_offload_context offload;
 #endif
 
 #ifdef USE_POWER_RESET_WORK
@@ -1131,6 +1140,7 @@ int execute_selftest(struct sec_ts_data *ts, u32 option);
 int execute_p2ptest(struct sec_ts_data *ts);
 int sec_ts_read_raw_data(struct sec_ts_data *ts,
 		struct sec_cmd_data *sec, struct sec_ts_test_mode *mode);
+u8 sec_ts_run_cal_check(struct sec_ts_data *ts);
 
 #if (1)//!defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 int sec_ts_raw_device_init(struct sec_ts_data *ts);

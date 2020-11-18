@@ -40,6 +40,9 @@ static int sec_ts_input_open(struct input_dev *dev);
 static void sec_ts_input_close(struct input_dev *dev);
 #endif
 
+static int register_panel_bridge(struct sec_ts_data *ts);
+static void unregister_panel_bridge(struct drm_bridge *bridge);
+
 int sec_ts_read_information(struct sec_ts_data *ts);
 
 #ifndef I2C_INTERFACE
@@ -1417,7 +1420,7 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 		}
 
 		ret = sec_ts_read(ts,
-			SEC_TS_CMD_MUTU_RAW_TYPE, &ts->frame_type, 1);
+			SEC_TS_CMD_MUTU_RAW_TYPE, &ts->ms_frame_type, 1);
 		if (ret < 0) {
 			input_err(true, &ts->client->dev,
 				"%s: read rawdata type failed\n",
@@ -1426,13 +1429,13 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 		}
 
 		/* Check raw type is TYPE_SIGNAL_DATA */
-		if (ts->frame_type != TYPE_SIGNAL_DATA) {
+		if (ts->ms_frame_type != TYPE_SIGNAL_DATA) {
 			input_info(true, &ts->client->dev,
-				"%s: frame_type change from %#x\n",
-				__func__, ts->frame_type);
+				"%s: ms_frame_type change from %#x\n",
+				__func__, ts->ms_frame_type);
 
 			/* Check raw type is TYPE_INVALID_DATA */
-			if (ts->frame_type != TYPE_INVALID_DATA) {
+			if (ts->ms_frame_type != TYPE_INVALID_DATA) {
 				type = TYPE_INVALID_DATA;
 				ret = sec_ts_write(ts,
 					SEC_TS_CMD_MUTU_RAW_TYPE, &type, 1);
@@ -1442,7 +1445,7 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 						__func__);
 					return false;
 				}
-				ts->frame_type = type;
+				ts->ms_frame_type = type;
 			}
 
 			/* Set raw type to TYPE_SIGNAL_DATA */
@@ -1455,7 +1458,7 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 					__func__);
 				return false;
 			}
-			ts->frame_type = type;
+			ts->ms_frame_type = type;
 
 			/*
 			 * If raw type change, need to wait 50 ms to read data
@@ -1487,6 +1490,11 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 #endif
 
 #ifdef SEC_TS_SUPPORT_CUSTOMLIB
+/* WARNING: touch_offload does not currently support the custom library
+ * interface!
+ * TODO: when custom library support is enabled, ensure that the output is
+ * routed through touch_offload.
+ */
 static void sec_ts_handle_lib_status_event(struct sec_ts_data *ts,
 				struct sec_ts_event_status *p_event_status)
 {
@@ -1594,6 +1602,14 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 		if (ts->coord[t_id].z <= 0)
 			ts->coord[t_id].z = 1;
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+		ts->offload.coords[t_id].x = ts->coord[t_id].x;
+		ts->offload.coords[t_id].y = ts->coord[t_id].y;
+		ts->offload.coords[t_id].major = ts->coord[t_id].major;
+		ts->offload.coords[t_id].minor = ts->coord[t_id].minor;
+		ts->offload.coords[t_id].pressure = ts->coord[t_id].z;
+#endif
+
 		if ((ts->coord[t_id].ttype ==
 		     SEC_TS_TOUCHTYPE_NORMAL) ||
 		    (ts->coord[t_id].ttype ==
@@ -1617,6 +1633,21 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 					(ts->time_released[t_id].tv_sec
 					  - ts->time_pressed[t_id].tv_sec);
 
+				if (ts->touch_count > 0)
+					ts->touch_count--;
+				if (ts->touch_count == 0 ||
+					ts->tid_touch_state == 0) {
+					ts->check_multi = 0;
+				}
+				__clear_bit(t_id, &ts->tid_palm_state);
+				__clear_bit(t_id, &ts->tid_grip_state);
+				__clear_bit(t_id, &ts->tid_touch_state);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+				ts->offload.coords[t_id].status =
+					COORD_STATUS_INACTIVE;
+				if (!ts->offload.offload_running) {
+#endif
 				input_mt_slot(ts->input_dev, t_id);
 				if (ts->plat_data->support_mt_pressure)
 					input_report_abs(ts->input_dev,
@@ -1624,25 +1655,26 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 				input_mt_report_slot_state(ts->input_dev,
 					MT_TOOL_FINGER, 0);
 
-				if (ts->touch_count > 0)
-					ts->touch_count--;
 				if (ts->touch_count == 0 ||
 					ts->tid_touch_state == 0) {
 					input_report_key(ts->input_dev,
 						BTN_TOUCH, 0);
 					input_report_key(ts->input_dev,
 						BTN_TOOL_FINGER, 0);
-					ts->check_multi = 0;
 				}
-				__clear_bit(t_id, &ts->tid_palm_state);
-				__clear_bit(t_id, &ts->tid_grip_state);
-				__clear_bit(t_id, &ts->tid_touch_state);
-
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+				}
+#endif
 			} else if (ts->coord[t_id].action ==
 					SEC_TS_COORDINATE_ACTION_PRESS) {
 				ktime_get_real_ts64(&ts->time_pressed[t_id]);
 
 				ts->touch_count++;
+				if ((ts->touch_count > 4) &&
+					(ts->check_multi == 0)) {
+					ts->check_multi = 1;
+					ts->multi_count++;
+				}
 				ts->all_finger_count++;
 
 				ts->max_z_value = max_t(unsigned int,
@@ -1654,25 +1686,31 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 				ts->sum_z_value +=
 						(unsigned int)ts->coord[t_id].z;
 
-				input_mt_slot(ts->input_dev, t_id);
 				__set_bit(t_id, &ts->tid_touch_state);
-				if (ts->coord[t_id].palm) {
-					input_mt_report_slot_state(
-						ts->input_dev, MT_TOOL_PALM, 1);
+				__clear_bit(t_id, &ts->tid_palm_state);
+				__clear_bit(t_id, &ts->tid_grip_state);
+				if (ts->coord[t_id].palm)
 					__set_bit(t_id, &ts->tid_palm_state);
-					__clear_bit(t_id, &ts->tid_grip_state);
-				} else if (ts->coord[t_id].grip) {
+				else if (ts->coord[t_id].grip)
+					__set_bit(t_id, &ts->tid_grip_state);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+				ts->offload.coords[t_id].status =
+					COORD_STATUS_FINGER;
+				if (!ts->offload.offload_running) {
+#endif
+				input_mt_slot(ts->input_dev, t_id);
+				if (ts->coord[t_id].palm)
 					input_mt_report_slot_state(
 						ts->input_dev, MT_TOOL_PALM, 1);
-					__clear_bit(t_id, &ts->tid_palm_state);
-					__set_bit(t_id, &ts->tid_grip_state);
-				} else {
+				else if (ts->coord[t_id].grip)
+					input_mt_report_slot_state(
+						ts->input_dev, MT_TOOL_PALM, 1);
+				else
 					input_mt_report_slot_state(
 						ts->input_dev,
 						MT_TOOL_FINGER, 1);
-					__clear_bit(t_id, &ts->tid_palm_state);
-					__clear_bit(t_id, &ts->tid_grip_state);
-				}
+
 				input_report_key(ts->input_dev, BTN_TOUCH, 1);
 				input_report_key(ts->input_dev,
 							BTN_TOOL_FINGER, 1);
@@ -1704,48 +1742,62 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 						ABS_MT_PRESSURE,
 						ts->coord[t_id].z);
 
-				if ((ts->touch_count > 4) &&
-					(ts->check_multi == 0)) {
-					ts->check_multi = 1;
-					ts->multi_count++;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 				}
-
+#endif
 			} else if (ts->coord[t_id].action ==
 					SEC_TS_COORDINATE_ACTION_MOVE) {
+
+				ts->coord[t_id].mcount++;
+
 #ifdef SW_GLOVE
 				if ((ts->coord[t_id].ttype ==
 					SEC_TS_TOUCHTYPE_GLOVE) &&
 				    !ts->touchkey_glove_mode_status) {
 					ts->touchkey_glove_mode_status = true;
+				} else if ((ts->coord[t_id].ttype !=
+						SEC_TS_TOUCHTYPE_GLOVE) &&
+					   ts->touchkey_glove_mode_status) {
+					ts->touchkey_glove_mode_status = false;
+				}
+#endif
+				__set_bit(t_id, &ts->tid_touch_state);
+				__clear_bit(t_id, &ts->tid_palm_state);
+				__clear_bit(t_id, &ts->tid_grip_state);
+				if (ts->coord[t_id].palm)
+					__set_bit(t_id, &ts->tid_palm_state);
+				else if (ts->coord[t_id].grip)
+					__set_bit(t_id, &ts->tid_grip_state);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+				ts->offload.coords[t_id].status =
+					COORD_STATUS_FINGER;
+				if (!ts->offload.offload_running) {
+#endif
+#ifdef SW_GLOVE
+				if ((ts->coord[t_id].ttype ==
+					SEC_TS_TOUCHTYPE_GLOVE) &&
+				    !ts->touchkey_glove_mode_status) {
 					input_report_switch(ts->input_dev,
 						SW_GLOVE, 1);
 				} else if ((ts->coord[t_id].ttype !=
 						SEC_TS_TOUCHTYPE_GLOVE) &&
 					   ts->touchkey_glove_mode_status) {
-					ts->touchkey_glove_mode_status = false;
 					input_report_switch(ts->input_dev,
 						SW_GLOVE, 0);
 				}
 #endif
 				input_mt_slot(ts->input_dev, t_id);
-				__set_bit(t_id, &ts->tid_touch_state);
-				if (ts->coord[t_id].palm) {
+				if (ts->coord[t_id].palm)
 					input_mt_report_slot_state(
 						ts->input_dev, MT_TOOL_PALM, 1);
-					__set_bit(t_id, &ts->tid_palm_state);
-					__clear_bit(t_id, &ts->tid_grip_state);
-				} else if (ts->coord[t_id].grip) {
+				else if (ts->coord[t_id].grip)
 					input_mt_report_slot_state(
 						ts->input_dev, MT_TOOL_PALM, 1);
-					__clear_bit(t_id, &ts->tid_palm_state);
-					__set_bit(t_id, &ts->tid_grip_state);
-				} else {
+				else
 					input_mt_report_slot_state(
 						ts->input_dev,
 						MT_TOOL_FINGER, 1);
-					__clear_bit(t_id, &ts->tid_palm_state);
-					__clear_bit(t_id, &ts->tid_grip_state);
-				}
+
 				input_report_key(ts->input_dev, BTN_TOUCH, 1);
 				input_report_key(ts->input_dev,
 							BTN_TOOL_FINGER, 1);
@@ -1776,7 +1828,9 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 					input_report_abs(ts->input_dev,
 							ABS_MT_PRESSURE,
 							ts->coord[t_id].z);
-				ts->coord[t_id].mcount++;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+				}
+#endif
 			} else
 				input_dbg(true, &ts->client->dev,
 					"%s: do not support coordinate action(%d)\n",
@@ -1789,6 +1843,37 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 		input_err(true, &ts->client->dev,
 				"%s: tid(%d) is out of range\n",
 				__func__, t_id);
+
+	if (t_id < MAX_SUPPORT_TOUCH_COUNT + MAX_SUPPORT_HOVER_COUNT) {
+		if (ts->coord[t_id].action == SEC_TS_COORDINATE_ACTION_PRESS) {
+			input_dbg(false, &ts->client->dev,
+				"%s[P] tID:%d x:%d y:%d z:%d major:%d minor:%d tc:%d type:%X\n",
+				ts->dex_name,
+				t_id, ts->coord[t_id].x,
+				ts->coord[t_id].y, ts->coord[t_id].z,
+				ts->coord[t_id].major,
+				ts->coord[t_id].minor,
+				ts->touch_count,
+				ts->coord[t_id].ttype);
+
+		} else if (ts->coord[t_id].action ==
+			   SEC_TS_COORDINATE_ACTION_RELEASE) {
+			input_dbg(false, &ts->client->dev,
+				"%s[R] tID:%d mc:%d tc:%d lx:%d ly:%d v:%02X%02X cal:%02X(%02X) id(%d,%d) p:%d\n",
+				ts->dex_name,
+				t_id, ts->coord[t_id].mcount,
+				ts->touch_count,
+				ts->coord[t_id].x, ts->coord[t_id].y,
+				ts->plat_data->img_version_of_ic[2],
+				ts->plat_data->img_version_of_ic[3],
+				ts->cal_status, ts->nv, ts->tspid_val,
+				ts->tspicid_val,
+				ts->coord[t_id].palm_count);
+
+			ts->coord[t_id].mcount = 0;
+			ts->coord[t_id].palm_count = 0;
+		}
+	}
 }
 
 #ifdef SEC_TS_SUPPORT_CUSTOMLIB
@@ -1852,11 +1937,312 @@ static void sec_ts_handle_gesture_event(struct sec_ts_data *ts,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+
+static void sec_ts_populate_coordinate_channel(struct sec_ts_data *ts,
+					struct touch_offload_frame *frame,
+					int channel)
+{
+	int j;
+
+	struct TouchOffloadDataCoord *dc =
+		(struct TouchOffloadDataCoord *)frame->channel_data[channel];
+	memset(dc, 0, frame->channel_data_size[channel]);
+	dc->header.channel_type = TOUCH_DATA_TYPE_COORD;
+	dc->header.channel_size = TOUCH_OFFLOAD_FRAME_SIZE_COORD;
+
+	for (j = 0; j < MAX_COORDS; j++) {
+		dc->coords[j].x = ts->offload.coords[j].x;
+		dc->coords[j].y = ts->offload.coords[j].y;
+		dc->coords[j].major = ts->offload.coords[j].major;
+		dc->coords[j].minor = ts->offload.coords[j].minor;
+		dc->coords[j].pressure = ts->offload.coords[j].pressure;
+		dc->coords[j].status = ts->offload.coords[j].status;
+	}
+}
+
+static void sec_ts_populate_mutual_channel(struct sec_ts_data *ts,
+					struct touch_offload_frame *frame,
+					int channel)
+{
+	uint32_t frame_index = 0;
+	int32_t x, y;
+	uint16_t heatmap_value;
+	int ret = 0;
+	u8 target_data_type, type;
+	struct TouchOffloadData2d *mutual_strength =
+		(struct TouchOffloadData2d *)frame->channel_data[channel];
+
+	switch (frame->channel_type[channel] & ~TOUCH_SCAN_TYPE_MUTUAL) {
+	case TOUCH_DATA_TYPE_RAW:
+		target_data_type = TYPE_DECODED_DATA;
+		break;
+	case TOUCH_DATA_TYPE_FILTERED:
+		target_data_type = TYPE_REMV_AMB_DATA;
+		break;
+	case TOUCH_DATA_TYPE_STRENGTH:
+		target_data_type = TYPE_SIGNAL_DATA;
+		break;
+	case TOUCH_DATA_TYPE_BASELINE:
+		target_data_type = TYPE_AMBIENT_DATA;
+		break;
+	}
+
+	mutual_strength->tx_size = ts->tx_count;
+	mutual_strength->rx_size = ts->rx_count;
+	mutual_strength->header.channel_type = frame->channel_type[channel];
+	mutual_strength->header.channel_size =
+		TOUCH_OFFLOAD_FRAME_SIZE_2D(mutual_strength->rx_size,
+					    mutual_strength->tx_size);
+
+	ret = sec_ts_read(ts,
+		SEC_TS_CMD_MUTU_RAW_TYPE, &ts->ms_frame_type, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: read rawdata type failed\n",
+			__func__);
+		return;
+	}
+
+	/* Check raw type is correct */
+	if (ts->ms_frame_type != target_data_type) {
+		input_info(true, &ts->client->dev,
+			"%s: ms_frame_type change from %#x\n",
+			__func__, ts->ms_frame_type);
+
+		/* Check raw type is TYPE_INVALID_DATA */
+		if (ts->ms_frame_type != TYPE_INVALID_DATA) {
+			type = TYPE_INVALID_DATA;
+			ret = sec_ts_write(ts,
+				SEC_TS_CMD_MUTU_RAW_TYPE, &type, 1);
+			if (ret < 0) {
+				input_err(true, &ts->client->dev,
+					"%s: recover rawdata type failed\n",
+					__func__);
+				return;
+			}
+			ts->ms_frame_type = type;
+		}
+
+		/* Set the targeted data type */
+		ret = sec_ts_write(ts, SEC_TS_CMD_MUTU_RAW_TYPE,
+			&target_data_type, 1);
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				"%s: Set rawdata type failed\n",
+				__func__);
+			return;
+		}
+		ts->ms_frame_type = target_data_type;
+
+		/*
+		 * If raw type change, need to wait 50 ms to read data
+		 * back. But, we don't wanto to wait here to cause
+		 * overhead. Just drop this and wait for next reading.
+		 */
+
+		return;
+	}
+
+	ret = sec_ts_read_heap(ts, SEC_TS_READ_TOUCH_RAWDATA,
+		(u8 *)ts->heatmap_buff,
+		mutual_strength->header.channel_size);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: Read mutual frame failed\n", __func__);
+		return;
+	}
+
+	for (y = mutual_strength->rx_size - 1; y >= 0; y--) {
+		for (x = mutual_strength->tx_size - 1; x >= 0; x--) {
+			heatmap_value =
+			    ts->heatmap_buff[x * mutual_strength->rx_size + y];
+			((uint16_t *)
+			 mutual_strength->data)[frame_index++] =
+			    be16_to_cpu(heatmap_value);
+		}
+	}
+}
+
+static void sec_ts_populate_self_channel(struct sec_ts_data *ts,
+					struct touch_offload_frame *frame,
+					int channel)
+{
+	uint32_t frame_index = 0;
+	int32_t x, y;
+	uint16_t heatmap_value;
+	int ret = 0;
+	u8 target_data_type, type;
+	struct TouchOffloadData1d *self_strength =
+		(struct TouchOffloadData1d *)frame->channel_data[channel];
+
+	switch (frame->channel_type[channel] & ~TOUCH_SCAN_TYPE_SELF) {
+	case TOUCH_DATA_TYPE_RAW:
+		target_data_type = TYPE_DECODED_DATA;
+		break;
+	case TOUCH_DATA_TYPE_FILTERED:
+		target_data_type = TYPE_REMV_AMB_DATA;
+		break;
+	case TOUCH_DATA_TYPE_STRENGTH:
+		target_data_type = TYPE_SIGNAL_DATA;
+		break;
+	case TOUCH_DATA_TYPE_BASELINE:
+		target_data_type = TYPE_AMBIENT_DATA;
+		break;
+	}
+
+	self_strength->tx_size = ts->tx_count;
+	self_strength->rx_size = ts->rx_count;
+	self_strength->header.channel_type = frame->channel_type[channel];
+	self_strength->header.channel_size =
+		TOUCH_OFFLOAD_FRAME_SIZE_1D(self_strength->rx_size,
+					    self_strength->tx_size);
+
+	ret = sec_ts_read(ts,
+		SEC_TS_CMD_SELF_RAW_TYPE, &ts->ss_frame_type, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: read rawdata type failed\n",
+			__func__);
+		return;
+	}
+
+	/* Check raw type is TYPE_SIGNAL_DATA */
+	if (ts->ss_frame_type != target_data_type) {
+		input_info(true, &ts->client->dev,
+			"%s: ss_frame_type change from %#x\n",
+			__func__, ts->ss_frame_type);
+
+		/* Check raw type is TYPE_INVALID_DATA */
+		if (ts->ss_frame_type != TYPE_INVALID_DATA) {
+			type = TYPE_INVALID_DATA;
+			ret = sec_ts_write(ts,
+				SEC_TS_CMD_SELF_RAW_TYPE, &type, 1);
+			if (ret < 0) {
+				input_err(true, &ts->client->dev,
+					"%s: recover rawdata type failed\n",
+					__func__);
+				return;
+			}
+			ts->ss_frame_type = type;
+		}
+
+		/* Set the targeted data type */
+		ret = sec_ts_write(ts, SEC_TS_CMD_SELF_RAW_TYPE,
+			&target_data_type, 1);
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				"%s: Set rawdata type failed\n",
+				__func__);
+			return;
+		}
+		ts->ss_frame_type = target_data_type;
+
+		/*
+		 * If raw type change, need to wait 50 ms to read data
+		 * back. But, we don't wanto to wait here to cause
+		 * overhead. Just drop this and wait for next reading.
+		 */
+
+		return;
+	}
+
+	ret = sec_ts_read_heap(ts, SEC_TS_READ_TOUCH_SELF_RAWDATA,
+		(u8 *)ts->heatmap_buff,
+		self_strength->header.channel_size);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: Read self frame failed\n", __func__);
+		return;
+	}
+
+	for (x = self_strength->tx_size - 1; x >= 0; x--) {
+		heatmap_value = ts->heatmap_buff[x];
+		((uint16_t *)
+		 self_strength->data)[frame_index++] =
+		    be16_to_cpu(heatmap_value);
+	}
+	for (y = self_strength->rx_size - 1; y >= 0; y--) {
+		heatmap_value = ts->heatmap_buff[self_strength->tx_size + y];
+		((uint16_t *)
+		 self_strength->data)[frame_index++] =
+		    be16_to_cpu(heatmap_value);
+	}
+}
+
+static void sec_ts_populate_frame(struct sec_ts_data *ts,
+				struct touch_offload_frame *frame)
+{
+	static u64 index;
+	int i;
+
+	frame->header.index = index++;
+	frame->header.timestamp = ts->timestamp;
+
+	if (!ts->heatmap_buff) {
+		ts->heatmap_buff = kmalloc(
+			ts->rx_count * ts->rx_count * 2, GFP_KERNEL);
+	}
+
+	/* Populate all channels */
+	for (i = 0; i < frame->num_channels; i++) {
+		if (frame->channel_type[i] == TOUCH_DATA_TYPE_COORD)
+			sec_ts_populate_coordinate_channel(ts, frame, i);
+		else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_MUTUAL) != 0)
+			sec_ts_populate_mutual_channel(ts, frame, i);
+		else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_SELF) != 0)
+			sec_ts_populate_self_channel(ts, frame, i);
+	}
+}
+
+int sec_ts_enable_grip(struct sec_ts_data *ts, bool enable)
+{
+	u8 value = enable ? 1 : 0;
+	int ret;
+	int final_result = 0;
+
+	/* Set grip */
+	ret = ts->sec_ts_write(ts, SEC_TS_CMD_SET_GRIP_DETEC, &value, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			 "%s: SEC_TS_CMD_SET_GRIP_DETEC failed with ret=%d\n",
+			__func__, ret);
+		final_result = ret;
+	}
+
+	/* Set deadzone */
+	value = enable ? 1 : 0;
+	ret = ts->sec_ts_write(ts, SEC_TS_CMD_EDGE_DEADZONE, &value, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			 "%s: SEC_TS_CMD_EDGE_DEADZONE failed with ret=%d\n",
+			__func__, ret);
+		final_result = ret;
+	}
+
+	return final_result;
+}
+
+static void sec_ts_offload_set_running(struct sec_ts_data *ts, bool running)
+{
+	if (ts->offload.offload_running != running) {
+		ts->offload.offload_running = running;
+		if (running) {
+			pr_info("%s: disabling FW grip.\n", __func__);
+			sec_ts_enable_grip(ts, false);
+		} else {
+			pr_info("%s: enabling FW grip.\n", __func__);
+			sec_ts_enable_grip(ts, true);
+		}
+	}
+}
+
+#endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
+
 #define MAX_EVENT_COUNT 32
 static void sec_ts_read_event(struct sec_ts_data *ts)
 {
 	int ret;
-	u8 t_id;
 	u8 event_id;
 	u8 left_event_count;
 	u8 read_event_buff[MAX_EVENT_COUNT][SEC_TS_EVENT_BUFF_SIZE] = { { 0 } };
@@ -1869,6 +2255,9 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	unsigned long last_tid_palm_state = ts->tid_palm_state;
 	unsigned long last_tid_grip_state = ts->tid_grip_state;
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	struct touch_offload_frame *frame = NULL;
 #endif
 
 	if (ts->power_status == SEC_TS_STATE_LPM) {
@@ -1897,7 +2286,7 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 		/* run lpm interrupt handler */
 	}
 
-	ret = t_id = event_id = curr_pos = remain_event_count = 0;
+	ret = event_id = curr_pos = remain_event_count = 0;
 	/* repeat READ_ONE_EVENT until buffer is empty(No event) */
 	ret = sec_ts_read(ts, SEC_TS_READ_ONE_EVENT,
 			  (u8 *)read_event_buff[0], SEC_TS_EVENT_BUFF_SIZE);
@@ -1956,8 +2345,6 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	}
 
 	do {
-		s16 max_force_p = 0;
-
 		event_buff = read_event_buff[curr_pos];
 		event_id = event_buff[0] & 0x3;
 
@@ -2143,49 +2530,44 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 				event_buff[3], event_buff[4], event_buff[5]);
 			break;
 		}
-
-		if (t_id < MAX_SUPPORT_TOUCH_COUNT + MAX_SUPPORT_HOVER_COUNT) {
-			if (ts->coord[t_id].action ==
-			    SEC_TS_COORDINATE_ACTION_PRESS) {
-				input_dbg(false, &ts->client->dev,
-					"%s[P] tID:%d x:%d y:%d z:%d major:%d minor:%d tc:%d type:%X\n",
-					ts->dex_name,
-					t_id, ts->coord[t_id].x,
-					ts->coord[t_id].y, ts->coord[t_id].z,
-					ts->coord[t_id].major,
-					ts->coord[t_id].minor,
-					ts->touch_count,
-					ts->coord[t_id].ttype);
-
-			} else if (ts->coord[t_id].action ==
-				   SEC_TS_COORDINATE_ACTION_RELEASE) {
-				input_dbg(false, &ts->client->dev,
-					"%s[R] tID:%d mc:%d tc:%d lx:%d ly:%d f:%d v:%02X%02X cal:%02X(%02X) id(%d,%d) p:%d P%02XT%04X\n",
-					ts->dex_name,
-					t_id, ts->coord[t_id].mcount,
-					ts->touch_count,
-					ts->coord[t_id].x, ts->coord[t_id].y,
-					max_force_p,
-					ts->plat_data->img_version_of_ic[2],
-					ts->plat_data->img_version_of_ic[3],
-					ts->cal_status, ts->nv, ts->tspid_val,
-					ts->tspicid_val,
-					ts->coord[t_id].palm_count,
-					ts->cal_count, ts->tune_fix_ver);
-
-				ts->coord[t_id].action =
-						SEC_TS_COORDINATE_ACTION_NONE;
-				ts->coord[t_id].mcount = 0;
-				ts->coord[t_id].palm_count = 0;
-				max_force_p = 0;
-			}
-		}
-
 		curr_pos++;
 		remain_event_count--;
 	} while (remain_event_count >= 0);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	if (!ts->offload.offload_running) {
+#endif
+
 	input_sync(ts->input_dev);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	}
+
+	if (processed_pointer_event) {
+		ret = touch_offload_reserve_frame(&ts->offload, &frame);
+		if (ret != 0) {
+			input_dbg(true, &ts->client->dev,
+				  "Could not reserve a frame: ret=%d.\n", ret);
+
+			/* Stop offload when there are no buffers available */
+			sec_ts_offload_set_running(ts, false);
+		} else {
+			sec_ts_offload_set_running(ts, true);
+
+			sec_ts_populate_frame(ts, frame);
+
+			ret = touch_offload_queue_frame(&ts->offload, frame);
+			if (ret != 0) {
+				pr_err("%s: Failed to queue reserved frame: ret=%d.\n",
+				       __func__, ret);
+			}
+		}
+	}
+#endif
+
+	/* TODO: If the mutual strength heatmap was already read into the touch
+	 * offload interface, use it here instead of reading again.
+	 */
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	if (processed_pointer_event) {
 		heatmap_read(&ts->v4l2, ktime_to_ns(ts->timestamp));
@@ -2242,7 +2624,9 @@ static irqreturn_t sec_ts_isr(int irq, void *handle)
 	struct sec_ts_data *ts = (struct sec_ts_data *)handle;
 
 	ts->timestamp = ktime_get();
+#if !IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	/* input_set_timestamp(ts->input_dev, ts->timestamp); */
+#endif
 
 	return IRQ_WAKE_THREAD;
 }
@@ -2280,6 +2664,52 @@ static irqreturn_t sec_ts_irq_thread(int irq, void *ptr)
 
 	return IRQ_HANDLED;
 }
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+static void sec_ts_offload_report(void *handle,
+				  struct TouchOffloadIocReport *report)
+{
+	struct sec_ts_data *ts = (struct sec_ts_data *)handle;
+	bool touch_down = 0;
+	int i;
+
+	input_set_timestamp(ts->input_dev, report->timestamp);
+
+	for (i = 0; i < MAX_COORDS; i++) {
+		if (report->coords[i].status == COORD_STATUS_FINGER) {
+			input_mt_slot(ts->input_dev, i);
+			touch_down = 1;
+			input_report_key(ts->input_dev, BTN_TOUCH,
+					 touch_down);
+			input_mt_report_slot_state(ts->input_dev,
+						   MT_TOOL_FINGER, 1);
+			input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
+					 report->coords[i].x);
+			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
+					 report->coords[i].y);
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
+					 report->coords[i].major);
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MINOR,
+					 report->coords[i].minor);
+			if (ts->plat_data->support_mt_pressure)
+				input_report_abs(ts->input_dev,
+					ABS_MT_PRESSURE,
+					report->coords[i].pressure);
+		} else {
+			input_mt_slot(ts->input_dev, i);
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
+			input_mt_report_slot_state(ts->input_dev,
+						   MT_TOOL_FINGER, 0);
+			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID,
+					 -1);
+		}
+	}
+
+	input_report_key(ts->input_dev, BTN_TOUCH, touch_down);
+
+	input_sync(ts->input_dev);
+}
+#endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
 
 int get_tsp_status(void)
 {
@@ -2621,7 +3051,7 @@ static int sec_ts_parse_dt(struct spi_device *client)
 			return -EINVAL;
 		}
 	} else {
-		input_err(true, dev,
+		input_dbg(true, dev,
 			  "%s: Failed to get tsp-icid gpio\n", __func__);
 	}
 
@@ -2650,8 +3080,9 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	client->irq = gpio_to_irq(pdata->irq_gpio);
 
 	if (of_property_read_u32(np, "sec,irq_type", &pdata->irq_type)) {
-		input_err(true, dev,
-			  "%s: Failed to get irq_type property\n", __func__);
+		input_dbg(true, dev,
+			"%s: no irq_type property, set to default!\n",
+			__func__);
 		pdata->irq_type = IRQF_TRIGGER_LOW | IRQF_ONESHOT;
 	}
 
@@ -2697,7 +3128,7 @@ static int sec_ts_parse_dt(struct spi_device *client)
 		input_info(true, dev, "%s: TSP_ID : %d\n", __func__,
 			   gpio_get_value(pdata->tsp_id));
 	else
-		input_err(true, dev,
+		input_dbg(true, dev,
 			  "%s: Failed to get tsp-id gpio\n", __func__);
 
 	pdata->switch_gpio = of_get_named_gpio(np,
@@ -2758,11 +3189,11 @@ static int sec_ts_parse_dt(struct spi_device *client)
 
 	if (of_property_read_string_index(np, "sec,project_name", 0,
 					  &pdata->project_name))
-		input_err(true, &client->dev,
+		input_dbg(true, &client->dev,
 			"%s: skipped to get project_name property\n", __func__);
-	if (of_property_read_string_index(np, "sec,project_name",
+	if (of_property_read_string_index(np, "sec,model_name",
 					  1, &pdata->model_name))
-		input_err(true, &client->dev,
+		input_dbg(true, &client->dev,
 			  "%s: skipped to get model_name property\n", __func__);
 
 #if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
@@ -2830,14 +3261,14 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	pdata->support_mt_pressure = true;
 
 #ifdef PAT_CONTROL
-	input_err(true, &client->dev,
+	input_info(true, &client->dev,
 		"%s: buffer limit: %d, lcd_id:%06X, bringup:%d, FW:%s(%d), id:%d,%d, pat_function:%d mis_cal:%d dex:%d, gesture:%d\n",
 		__func__, pdata->io_burstmax, lcdtype, pdata->bringup,
 		pdata->firmware_name, count, pdata->tsp_id, pdata->tsp_icid,
 		pdata->pat_function, pdata->mis_cal_check, pdata->support_dex,
 		pdata->support_sidegesture);
 #else
-	input_err(true, &client->dev,
+	input_info(true, &client->dev,
 		  "%s: buffer limit: %d, lcd_id:%06X, bringup:%d, FW:%s(%d), id:%d,%d, dex:%d, gesture:%d\n",
 		  __func__, pdata->io_burstmax, lcdtype, pdata->bringup,
 		  pdata->firmware_name, count, pdata->tsp_id, pdata->tsp_icid,
@@ -3201,7 +3632,6 @@ static void sec_ts_device_init(struct sec_ts_data *ts)
 #endif
 }
 
-/* static struct notifier_block sec_ts_screen_nb; */
 #ifdef USE_CHARGER_WORK
 static struct notifier_block sec_ts_psy_nb;
 #endif
@@ -3505,16 +3935,45 @@ static int sec_ts_probe(struct spi_device *client)
 		goto err_heatmap;
 	}
 
-/* Workaround for b/150324257 */
-#if 0
-	ts->notifier = sec_ts_screen_nb;
-	ret = drm_panel_notifier_register(pdata->panel, &ts->notifier);
-	if (ret < 0) {
-		input_err(true, &ts->client->dev,
-			  "%s: drm_panel_notifier_register failed. ret = 0x%08X\n",
-			  __func__, ret);
-		goto err_register_drm_client;
-	}
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	ts->offload.caps.touch_offload_major_version = 1;
+	ts->offload.caps.touch_offload_minor_version = 0;
+	/* ID equivalent to the 4-byte, little-endian string: '00r3' */
+	ts->offload.caps.device_id =
+	    '3' << 24 | 'r' << 16 | '0' << 8 | '0' << 0;
+	ts->offload.caps.display_width = ts->plat_data->max_x + 1;
+	ts->offload.caps.display_height = ts->plat_data->max_y + 1;
+	ts->offload.caps.tx_size = ts->tx_count;
+	ts->offload.caps.rx_size = ts->rx_count;
+	ts->offload.caps.heatmap_size = HEATMAP_SIZE_FULL;
+#ifdef I2C_INTERFACE
+	ts->offload.caps.bus_type = BUS_TYPE_I2C;
+	ts->offload.caps.bus_speed_hz = 1000000;
+#else
+	ts->offload.caps.bus_type = BUS_TYPE_SPI;
+	ts->offload.caps.bus_speed_hz = client->max_speed_hz;
+#endif
+
+	/* Currently can only reliably read mutual and self strength heatmaps
+	 * each frame. Cannot support other formats due to penalties associated
+	 * with switching data types.
+	 */
+	ts->offload.caps.touch_data_types =
+	    TOUCH_DATA_TYPE_COORD | TOUCH_DATA_TYPE_STRENGTH;
+	ts->offload.caps.touch_scan_types =
+	    TOUCH_SCAN_TYPE_MUTUAL | TOUCH_SCAN_TYPE_SELF;
+
+	ts->offload.caps.continuous_reporting = true;
+	ts->offload.caps.noise_reporting = false;
+	ts->offload.caps.cancel_reporting = false;
+	ts->offload.caps.size_reporting = true;
+	ts->offload.caps.filter_grip = true;
+	ts->offload.caps.filter_palm = true;
+	ts->offload.caps.num_sensitivity_settings = 1;
+
+	ts->offload.hcallback = (void *)ts;
+	ts->offload.report_cb = sec_ts_offload_report;
+	touch_offload_init(&ts->offload);
 #endif
 
 #ifndef CONFIG_SEC_SYSFS
@@ -3556,7 +4015,7 @@ static int sec_ts_probe(struct spi_device *client)
 	if (ret < 0)
 		input_err(true, &ts->client->dev, "psy notifier register failed\n");
 #endif
-	input_err(true, &ts->client->dev, "%s: done\n", __func__);
+	input_info(true, &ts->client->dev, "%s: done\n", __func__);
 	input_log_fix();
 
 	return 0;
@@ -3566,8 +4025,10 @@ static int sec_ts_probe(struct spi_device *client)
  *	sec_ts_fn_remove(ts);
  *	free_irq(client->irq, ts);
  **/
-/* err_register_drm_client: */
-	free_irq(client->irq, ts);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	touch_offload_cleanup(&ts->offload);
+#endif
+
 err_heatmap:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	heatmap_remove(&ts->v4l2);
@@ -3645,6 +4106,8 @@ void sec_ts_unlocked_release_all_finger(struct sec_ts_data *ts)
 
 	for (i = 0; i < MAX_SUPPORT_TOUCH_COUNT; i++) {
 		input_mt_slot(ts->input_dev, i);
+		if (ts->plat_data->support_mt_pressure)
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
 		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER,
 					   false);
 
@@ -3652,7 +4115,6 @@ void sec_ts_unlocked_release_all_finger(struct sec_ts_data *ts)
 			(ts->coord[i].action ==
 			 SEC_TS_COORDINATE_ACTION_MOVE)) {
 
-			ts->coord[i].action = SEC_TS_COORDINATE_ACTION_RELEASE;
 			input_info(true, &ts->client->dev,
 				"%s: [RA] tID:%d mc:%d tc:%d v:%02X%02X cal:%02X(%02X) id(%d,%d) p:%d\n",
 				__func__, i,
@@ -3672,6 +4134,13 @@ void sec_ts_unlocked_release_all_finger(struct sec_ts_data *ts)
 					 ts->time_pressed[i].tv_sec);
 		}
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+		ts->offload.coords[i].status = COORD_STATUS_INACTIVE;
+		ts->offload.coords[i].major = 0;
+		ts->offload.coords[i].minor = 0;
+		ts->offload.coords[i].pressure = 0;
+#endif
+		ts->coord[i].action = SEC_TS_COORDINATE_ACTION_RELEASE;
 		ts->coord[i].mcount = 0;
 		ts->coord[i].palm_count = 0;
 
@@ -3707,73 +4176,9 @@ void sec_ts_unlocked_release_all_finger(struct sec_ts_data *ts)
 
 void sec_ts_locked_release_all_finger(struct sec_ts_data *ts)
 {
-	int i;
-
 	mutex_lock(&ts->eventlock);
-
-	for (i = 0; i < MAX_SUPPORT_TOUCH_COUNT; i++) {
-		input_mt_slot(ts->input_dev, i);
-		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER,
-					   false);
-
-		if ((ts->coord[i].action == SEC_TS_COORDINATE_ACTION_PRESS) ||
-			(ts->coord[i].action ==
-			 SEC_TS_COORDINATE_ACTION_MOVE)) {
-
-			ts->coord[i].action = SEC_TS_COORDINATE_ACTION_RELEASE;
-			input_info(true, &ts->client->dev,
-				"%s: [RA] tID:%d mc: %d tc:%d, v:%02X%02X, cal:%X(%X|%X), id(%d,%d), p:%d\n",
-				__func__, i, ts->coord[i].mcount,
-				ts->touch_count,
-				ts->plat_data->img_version_of_ic[2],
-				ts->plat_data->img_version_of_ic[3],
-				ts->cal_status, ts->nv, ts->cal_count,
-				ts->tspid_val, ts->tspicid_val,
-				ts->coord[i].palm_count);
-
-			ktime_get_real_ts64(&ts->time_released[i]);
-
-			if (ts->time_longest <
-				(ts->time_released[i].tv_sec -
-				 ts->time_pressed[i].tv_sec))
-				ts->time_longest =
-					(ts->time_released[i].tv_sec -
-					 ts->time_pressed[i].tv_sec);
-		}
-
-		ts->coord[i].mcount = 0;
-		ts->coord[i].palm_count = 0;
-
-	}
-
-	input_mt_slot(ts->input_dev, 0);
-
-	input_report_key(ts->input_dev, BTN_TOUCH, false);
-	input_report_key(ts->input_dev, BTN_TOOL_FINGER, false);
-#ifdef SW_GLOVE
-	input_report_switch(ts->input_dev, SW_GLOVE, false);
-#endif
-	ts->touchkey_glove_mode_status = false;
-	ts->touch_count = 0;
-	ts->check_multi = 0;
-	ts->tid_palm_state = 0;
-	ts->tid_grip_state = 0;
-	ts->tid_touch_state = 0;
-	ts->palms_leaved_once = false;
-	ts->grips_leaved_once = false;
-
-#ifdef KEY_SIDE_GESTURE
-	if (ts->plat_data->support_sidegesture) {
-		input_report_key(ts->input_dev, KEY_SIDE_GESTURE, 0);
-		input_report_key(ts->input_dev, KEY_SIDE_GESTURE_LEFT, 0);
-		input_report_key(ts->input_dev, KEY_SIDE_GESTURE_RIGHT, 0);
-	}
-#endif
-	input_report_key(ts->input_dev, KEY_HOMEPAGE, 0);
-	input_sync(ts->input_dev);
-
+	sec_ts_unlocked_release_all_finger(ts);
 	mutex_unlock(&ts->eventlock);
-
 }
 
 #ifdef USE_POWER_RESET_WORK
@@ -3912,6 +4317,12 @@ static void sec_ts_fw_update_work(struct work_struct *work)
 	if (ts->is_fw_corrupted == false)
 		sec_ts_read_init_info(ts);
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FW_UPDATE, false);
+
+	ret = register_panel_bridge(ts);
+	if (ret < 0)
+		input_err(true, &ts->client->dev,
+			  "%s: register_panel_bridge failed. ret = 0x%08X\n",
+			  __func__, ret);
 }
 
 int sec_ts_set_lowpowermode(struct sec_ts_data *ts, u8 mode)
@@ -4071,11 +4482,8 @@ static int sec_ts_remove(struct spi_device *client)
 	/* Force the bus active throughout removal of the client */
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FORCE_ACTIVE, true);
 
-/* Workaround for b/150324257 */
-#if 0
 	/* power_supply_unreg_notifier(&ts->psy_nb); */
-	drm_panel_notifier_unregister(pdata->panel, &ts->notifier);
-#endif
+	unregister_panel_bridge(&ts->panel_bridge);
 
 	cancel_work_sync(&ts->suspend_work);
 	cancel_work_sync(&ts->resume_work);
@@ -4094,6 +4502,10 @@ static int sec_ts_remove(struct spi_device *client)
 	disable_irq_nosync(ts->client->irq);
 	free_irq(ts->client->irq, ts);
 	input_info(true, &ts->client->dev, "%s: irq disabled\n", __func__);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	touch_offload_cleanup(&ts->offload);
+#endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	heatmap_remove(&ts->v4l2);
@@ -4214,7 +4626,7 @@ int sec_ts_start_device(struct sec_ts_data *ts)
 	mutex_lock(&ts->device_mutex);
 
 	if (ts->power_status == SEC_TS_STATE_POWER_ON) {
-		input_err(true, &ts->client->dev,
+		input_info(true, &ts->client->dev,
 			  "%s: already power on\n", __func__);
 		goto out;
 	}
@@ -4314,17 +4726,6 @@ static int sec_ts_pm_suspend(struct device *dev)
 		input_info(true, &ts->client->dev,
 			"%s: bus_refmask 0x%X\n", __func__, ts->bus_refmask);
 
-#ifndef CONFIG_DRM
-	/* Workaround b/158866465 by directly clearing the SCREEN_ON bus
-	 * reference, then waiting a fixed interval for suspend to complete.
-	 * Normally we would block suspend until the display is off, but since
-	 * there's no information about the display state, use PM suspend/resume
-	 * as a substitute.
-	 */
-	pr_err("%s: WORKAROUND FOR b/158866465: TREATING SUSPEND AS SUBSTITUTE FOR DISPLAY CALLBACK!\n",
-	       __func__);
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, false);
-#endif
 	/* Flush work in case a suspend is in progress */
 	flush_workqueue(ts->event_wq);
 
@@ -4347,12 +4748,6 @@ static int sec_ts_pm_resume(struct device *dev)
 
 	if (ts->lowpower_mode)
 		complete_all(&ts->resume_done);
-
-#ifndef CONFIG_DRM
-	pr_err("%s: WORKAROUND FOR b/158866465: TREATING RESUME AS SUBSTITUTE FOR DISPLAY CALLBACK!\n",
-	       __func__);
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
-#endif
 
 	return 0;
 }
@@ -4545,6 +4940,17 @@ static void sec_ts_resume_work(struct work_struct *work)
 		input_err(true, &ts->client->dev,
 			  "%s: failed to write Sense_on.\n", __func__);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	/* Set touch_offload configuration */
+	if (ts->offload.offload_running) {
+		input_info(true, &ts->client->dev,
+			   "applying touch_offload settings.\n");
+
+		if (!ts->offload.config.filter_grip)
+			sec_ts_enable_grip(ts, false);
+	}
+#endif
+
 	enable_irq(ts->client->irq);
 
 	complete_all(&ts->bus_resumed);
@@ -4708,54 +5114,62 @@ int sec_ts_set_bus_ref(struct sec_ts_data *ts, u16 ref, bool enable)
 	return result;
 }
 
-/* Workaround for b/150324257 */
-#if 0
-static int sec_ts_screen_state_chg_callback(struct notifier_block *nb,
-					    unsigned long val, void *data)
+static void panel_bridge_enable(struct drm_bridge *bridge)
 {
-	struct sec_ts_data *ts = container_of(nb, struct sec_ts_data,
-					      notifier);
-	struct drm_panel_notifier *evdata = (struct drm_panel_notifier *)data;
-	unsigned int blank;
+	struct sec_ts_data *ts =
+			container_of(bridge, struct sec_ts_data, panel_bridge);
 
-	input_dbg(true, &ts->client->dev, "%s: enter.\n", __func__);
-
-	if (val != DRM_PANEL_EVENT_BLANK && val != DRM_PANEL_EARLY_EVENT_BLANK)
-		return NOTIFY_DONE;
-
-	if (!ts || !evdata || !evdata->data) {
-		input_err(true, &ts->client->dev,
-			  "%s: Bad screen state change notifier call.\n",
-			  __func__);
-		return NOTIFY_DONE;
-	}
-
-	blank = *((unsigned int *)evdata->data);
-	switch (blank) {
-	case DRM_PANEL_BLANK_POWERDOWN:
-	case DRM_PANEL_BLANK_LP:
-		if (val == DRM_PANEL_EARLY_EVENT_BLANK) {
-			input_dbg(true, &ts->client->dev,
-				  "%s: DRM_PANEL_BLANK_POWERDOWN.\n", __func__);
-			sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, false);
-		}
-		break;
-	case DRM_PANEL_BLANK_UNBLANK:
-		if (val == DRM_PANEL_EVENT_BLANK) {
-			input_dbg(true, &ts->client->dev,
-				  "%s: DRM_PANEL_BLANK_UNBLANK.\n", __func__);
-			sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
-		}
-		break;
-	}
-
-	return NOTIFY_OK;
+	pr_debug("%s\n", __func__);
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
 }
 
-static struct notifier_block sec_ts_screen_nb = {
-	.notifier_call = sec_ts_screen_state_chg_callback,
+static void panel_bridge_disable(struct drm_bridge *bridge)
+{
+	struct sec_ts_data *ts =
+			container_of(bridge, struct sec_ts_data, panel_bridge);
+
+	pr_debug("%s\n", __func__);
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, false);
+}
+
+static const struct drm_bridge_funcs panel_bridge_funcs = {
+	.enable = panel_bridge_enable,
+	.disable = panel_bridge_disable,
 };
+
+static int register_panel_bridge(struct sec_ts_data *ts)
+{
+	pr_debug("%s\n", __func__);
+#ifdef CONFIG_OF
+	ts->panel_bridge.of_node = ts->client->dev.of_node;
 #endif
+	ts->panel_bridge.funcs = &panel_bridge_funcs;
+	drm_bridge_add(&ts->panel_bridge);
+
+	return 0;
+}
+
+static void unregister_panel_bridge(struct drm_bridge *bridge)
+{
+	struct drm_bridge *node;
+
+	pr_debug("%s\n", __func__);
+	drm_bridge_remove(bridge);
+
+	if (!bridge->dev) /* not attached */
+		return;
+
+	drm_modeset_lock(&bridge->dev->mode_config.connection_mutex, NULL);
+	list_for_each_entry(node, &bridge->encoder->bridge_chain, chain_node)
+		if (node == bridge) {
+			if (bridge->funcs->detach)
+				bridge->funcs->detach(bridge);
+			list_del(&bridge->chain_node);
+			break;
+		}
+	drm_modeset_unlock(&bridge->dev->mode_config.connection_mutex);
+	bridge->dev = NULL;
+}
 
 /*
  * power supply callback
@@ -4860,7 +5274,6 @@ static int __init sec_ts_init(void)
 		return -ENODEV;
 	}
 #endif
-	pr_err("%s %s\n", SECLOG, __func__);
 
 #ifdef I2C_INTERFACE
 	return i2c_add_driver(&sec_ts_driver);
