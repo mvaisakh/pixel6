@@ -20,8 +20,7 @@
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
-static void list_transactions(struct lwis_client *client, char *k_buf,
-			      size_t k_buf_size)
+static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[128] = {};
@@ -41,27 +40,23 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 	hash_for_each (client->transaction_list, i, transaction_list, node) {
 		if (list_empty(&transaction_list->list)) {
 			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "No pending transaction for event 0x%llx\n",
-				 transaction_list->event_id);
+				  "No pending transaction for event 0x%llx\n",
+				  transaction_list->event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 			continue;
 		}
 		list_for_each (it_tran, &transaction_list->list) {
-			transaction =
-				list_entry(it_tran, struct lwis_transaction,
-					   event_list_node);
+			transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
 			scnprintf(
 				tmp_buf, sizeof(tmp_buf),
 				"ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx Submitted: %lld\n",
-				transaction->info.id,
-				transaction->info.trigger_event_id,
+				transaction->info.id, transaction->info.trigger_event_id,
 				transaction->info.trigger_event_counter,
 				transaction->info.submission_timestamp_ns);
 			strlcat(k_buf, tmp_buf, k_buf_size);
-			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "  Emit Success: 0x%llx Error: %llx\n",
-				 transaction->info.emit_success_event_id,
-				 transaction->info.emit_error_event_id);
+			scnprintf(tmp_buf, sizeof(tmp_buf), "  Emit Success: 0x%llx Error: %llx\n",
+				  transaction->info.emit_success_event_id,
+				  transaction->info.emit_error_event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 		}
 	}
@@ -72,16 +67,15 @@ static void list_transactions(struct lwis_client *client, char *k_buf,
 		trans_hist = &client->debug_info.transaction_hist[hist_idx];
 		/* Skip uninitialized entries */
 		if (trans_hist->trigger_event_id != 0) {
-			scnprintf(
-				tmp_buf, sizeof(tmp_buf),
-				"[%2d] ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n",
-				i, trans_hist->id, trans_hist->trigger_event_id,
-				trans_hist->trigger_event_counter);
+			scnprintf(tmp_buf, sizeof(tmp_buf),
+				  "[%2d] ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n", i,
+				  trans_hist->id, trans_hist->trigger_event_id,
+				  trans_hist->trigger_event_counter);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "     Emit Success: 0x%llx Error: %llx\n",
-				 trans_hist->emit_success_event_id,
-				 trans_hist->emit_error_event_id);
+				  "     Emit Success: 0x%llx Error: %llx\n",
+				  trans_hist->emit_success_event_id,
+				  trans_hist->emit_error_event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 		}
 		hist_idx++;
@@ -93,8 +87,7 @@ exit:
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 }
 
-static void list_allocated_buffers(struct lwis_client *client, char *k_buf,
-				   size_t k_buf_size)
+static void list_allocated_buffers(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
 	char tmp_buf[64] = {};
 	struct lwis_allocated_buffer *buffer;
@@ -108,14 +101,13 @@ static void list_allocated_buffers(struct lwis_client *client, char *k_buf,
 
 	strlcat(k_buf, "Allocated buffers:\n", k_buf_size);
 	hash_for_each (client->allocated_buffers, i, buffer, node) {
-		scnprintf(tmp_buf, sizeof(tmp_buf), "[%2d] FD: %d Size: %zu\n",
-			  idx++, buffer->fd, buffer->size);
+		scnprintf(tmp_buf, sizeof(tmp_buf), "[%2d] FD: %d Size: %zu\n", idx++, buffer->fd,
+			  buffer->size);
 		strlcat(k_buf, tmp_buf, k_buf_size);
 	}
 }
 
-static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
-				  size_t k_buf_size)
+static void list_enrolled_buffers(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
 	char tmp_buf[128] = {};
 	struct lwis_enrolled_buffer *buffer;
@@ -130,32 +122,29 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf,
 	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
 	hash_for_each (client->enrolled_buffers, i, buffer, node) {
 		scnprintf(tmp_buf, sizeof(tmp_buf),
-			 "[%2d] FD: %d Mode: %s%s Addr:[0x%px ~ 0x%px] Size: %zu\n",
-			 idx++,
-			 buffer->info.fd, buffer->info.dma_read ? "r" : "",
-			 buffer->info.dma_write ? "w" : "",
-			 (void *)buffer->info.dma_vaddr,
-			 (void *)(buffer->info.dma_vaddr + (buffer->dma_buf->size - 1)),
-			 buffer->dma_buf->size);
+			  "[%2d] FD: %d Mode: %s%s Addr:[0x%px ~ 0x%px] Size: %zu\n", idx++,
+			  buffer->info.fd, buffer->info.dma_read ? "r" : "",
+			  buffer->info.dma_write ? "w" : "", (void *)buffer->info.dma_vaddr,
+			  (void *)(buffer->info.dma_vaddr + (buffer->dma_buf->size - 1)),
+			  buffer->dma_buf->size);
 		strlcat(k_buf, tmp_buf, k_buf_size);
 	}
 }
 
-static int generate_device_info(struct lwis_device *lwis_dev, char *buffer,
-				size_t buffer_size)
+static int generate_device_info(struct lwis_device *lwis_dev, char *buffer, size_t buffer_size)
 {
 	if (lwis_dev == NULL) {
 		pr_err("Unknown LWIS device pointer\n");
 		return -EINVAL;
 	}
 	scnprintf(buffer, buffer_size, "%s Device Name: %s ID: %d State: %s\n",
-		 lwis_device_type_to_string(lwis_dev->type), lwis_dev->name,
-		 lwis_dev->id, lwis_dev->enabled ? "Enabled" : "Disabled");
+		  lwis_device_type_to_string(lwis_dev->type), lwis_dev->name, lwis_dev->id,
+		  lwis_dev->enabled ? "Enabled" : "Disabled");
 	return 0;
 }
 
-static int generate_event_states_info(struct lwis_device *lwis_dev,
-				      char *buffer, size_t buffer_size)
+static int generate_event_states_info(struct lwis_device *lwis_dev, char *buffer,
+				      size_t buffer_size)
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[96] = {};
@@ -170,8 +159,7 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 		return -EINVAL;
 	}
 
-	scnprintf(buffer, buffer_size, "=== LWIS EVENT STATES INFO: %s ===\n",
-		 lwis_dev->name);
+	scnprintf(buffer, buffer_size, "=== LWIS EVENT STATES INFO: %s ===\n", lwis_dev->name);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	if (hash_empty(lwis_dev->event_states)) {
@@ -181,9 +169,8 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 	strlcat(buffer, "Enabled Device Events:\n", buffer_size);
 	hash_for_each (lwis_dev->event_states, i, state, node) {
 		if (state->enable_counter > 0) {
-			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "[%2d] ID: 0x%llx Counter: 0x%llx\n", idx++,
-				 state->event_id, state->event_counter);
+			scnprintf(tmp_buf, sizeof(tmp_buf), "[%2d] ID: 0x%llx Counter: 0x%llx\n",
+				  idx++, state->event_id, state->event_counter);
 			strlcat(buffer, tmp_buf, buffer_size);
 			enabled_event_present = true;
 		}
@@ -198,9 +185,9 @@ static int generate_event_states_info(struct lwis_device *lwis_dev,
 		/* Skip uninitialized entries */
 		if (state->event_id != 0) {
 			scnprintf(tmp_buf, sizeof(tmp_buf),
-				 "[%2d] ID: 0x%llx Counter: 0x%llx Timestamp: %lld\n",
-				 i, state->event_id, state->event_counter,
-				 lwis_dev->debug_info.event_hist[idx].timestamp);
+				  "[%2d] ID: 0x%llx Counter: 0x%llx Timestamp: %lld\n", i,
+				  state->event_id, state->event_counter,
+				  lwis_dev->debug_info.event_hist[idx].timestamp);
 			strlcat(buffer, tmp_buf, buffer_size);
 		}
 		idx++;
@@ -214,8 +201,7 @@ exit:
 	return 0;
 }
 
-static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer,
-				     size_t buffer_size)
+static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer, size_t buffer_size)
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[64] = {};
@@ -227,8 +213,7 @@ static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer,
 		return -EINVAL;
 	}
 
-	scnprintf(buffer, buffer_size, "=== LWIS TRANSACTION INFO: %s ===\n",
-		 lwis_dev->name);
+	scnprintf(buffer, buffer_size, "=== LWIS TRANSACTION INFO: %s ===\n", lwis_dev->name);
 
 	if (list_empty(&lwis_dev->clients)) {
 		scnprintf(buffer, buffer_size, "No clients opened\n");
@@ -244,8 +229,7 @@ static int generate_transaction_info(struct lwis_device *lwis_dev, char *buffer,
 	return 0;
 }
 
-static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer,
-				size_t buffer_size)
+static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer, size_t buffer_size)
 {
 	/* Temporary buffer to be concatenated to the main buffer. */
 	char tmp_buf[64] = {};
@@ -257,8 +241,7 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer,
 		return -EINVAL;
 	}
 
-	scnprintf(buffer, buffer_size, "=== LWIS BUFFER INFO: %s ===\n",
-		 lwis_dev->name);
+	scnprintf(buffer, buffer_size, "=== LWIS BUFFER INFO: %s ===\n", lwis_dev->name);
 
 	if (list_empty(&lwis_dev->clients)) {
 		scnprintf(buffer, buffer_size, "No clients opened\n");
@@ -349,8 +332,7 @@ exit:
 /* DebugFS specific functions */
 #ifdef CONFIG_DEBUG_FS
 
-static ssize_t dev_info_read(struct file *fp, char __user *user_buf,
-			     size_t count, loff_t *position)
+static ssize_t dev_info_read(struct file *fp, char __user *user_buf, size_t count, loff_t *position)
 {
 	int ret = 0;
 	/* Buffer to store information */
@@ -364,12 +346,11 @@ static ssize_t dev_info_read(struct file *fp, char __user *user_buf,
 		return ret;
 	}
 
-	return simple_read_from_buffer(user_buf, count, position, buffer,
-				       strlen(buffer));
+	return simple_read_from_buffer(user_buf, count, position, buffer, strlen(buffer));
 }
 
-static ssize_t event_states_read(struct file *fp, char __user *user_buf,
-				 size_t count, loff_t *position)
+static ssize_t event_states_read(struct file *fp, char __user *user_buf, size_t count,
+				 loff_t *position)
 {
 	int ret = 0;
 	/* Buffer to store information */
@@ -382,15 +363,14 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf,
 		dev_err(lwis_dev->dev, "Failed to generate event states info");
 		goto exit;
 	}
-	ret = simple_read_from_buffer(user_buf, count, position, buffer,
-				      strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer, strlen(buffer));
 exit:
 	kfree(buffer);
 	return ret;
 }
 
-static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
-				     size_t count, loff_t *position)
+static ssize_t transaction_info_read(struct file *fp, char __user *user_buf, size_t count,
+				     loff_t *position)
 {
 	int ret = 0;
 	/* Buffer to store information */
@@ -404,15 +384,14 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf,
 		goto exit;
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, position, buffer,
-				      strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer, strlen(buffer));
 exit:
 	kfree(buffer);
 	return ret;
 }
 
-static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
-				size_t count, loff_t *position)
+static ssize_t buffer_info_read(struct file *fp, char __user *user_buf, size_t count,
+				loff_t *position)
 {
 	int ret = 0;
 	/* Buffer to store information */
@@ -426,8 +405,7 @@ static ssize_t buffer_info_read(struct file *fp, char __user *user_buf,
 		goto exit;
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, position, buffer,
-				      strlen(buffer));
+	ret = simple_read_from_buffer(user_buf, count, position, buffer, strlen(buffer));
 exit:
 	kfree(buffer);
 	return ret;
@@ -453,8 +431,7 @@ static struct file_operations buffer_info_fops = {
 	.read = buffer_info_read,
 };
 
-int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
-			      struct dentry *dbg_root)
+int lwis_device_debugfs_setup(struct lwis_device *lwis_dev, struct dentry *dbg_root)
 {
 	struct dentry *dbg_dir;
 	struct dentry *dbg_dev_info_file;
@@ -469,45 +446,39 @@ int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
 
 	dbg_dir = debugfs_create_dir(lwis_dev->name, dbg_root);
 	if (IS_ERR_OR_NULL(dbg_dir)) {
-		dev_err(lwis_dev->dev,
-			"Failed to create DebugFS directory - %ld",
+		dev_err(lwis_dev->dev, "Failed to create DebugFS directory - %ld",
 			PTR_ERR(dbg_dir));
 		return PTR_ERR(dbg_dir);
 	}
 
-	dbg_dev_info_file = debugfs_create_file("dev_info", 0444, dbg_dir,
-						lwis_dev, &dev_info_fops);
+	dbg_dev_info_file =
+		debugfs_create_file("dev_info", 0444, dbg_dir, lwis_dev, &dev_info_fops);
 	if (IS_ERR_OR_NULL(dbg_dev_info_file)) {
-		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS dev_info - %ld",
+		dev_warn(lwis_dev->dev, "Failed to create DebugFS dev_info - %ld",
 			 PTR_ERR(dbg_dev_info_file));
 		dbg_dev_info_file = NULL;
 	}
 
-	dbg_event_file = debugfs_create_file("event_state", 0444, dbg_dir,
-					     lwis_dev, &event_states_fops);
+	dbg_event_file =
+		debugfs_create_file("event_state", 0444, dbg_dir, lwis_dev, &event_states_fops);
 	if (IS_ERR_OR_NULL(dbg_event_file)) {
-		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS event_state - %ld",
+		dev_warn(lwis_dev->dev, "Failed to create DebugFS event_state - %ld",
 			 PTR_ERR(dbg_event_file));
 		dbg_event_file = NULL;
 	}
 
-	dbg_transaction_file =
-		debugfs_create_file("transaction_info", 0444, dbg_dir, lwis_dev,
-				    &transaction_info_fops);
+	dbg_transaction_file = debugfs_create_file("transaction_info", 0444, dbg_dir, lwis_dev,
+						   &transaction_info_fops);
 	if (IS_ERR_OR_NULL(dbg_transaction_file)) {
-		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS transaction_info - %ld",
+		dev_warn(lwis_dev->dev, "Failed to create DebugFS transaction_info - %ld",
 			 PTR_ERR(dbg_transaction_file));
 		dbg_transaction_file = NULL;
 	}
 
-	dbg_buffer_file = debugfs_create_file("buffer_info", 0444, dbg_dir,
-					      lwis_dev, &buffer_info_fops);
+	dbg_buffer_file =
+		debugfs_create_file("buffer_info", 0444, dbg_dir, lwis_dev, &buffer_info_fops);
 	if (IS_ERR_OR_NULL(dbg_buffer_file)) {
-		dev_warn(lwis_dev->dev,
-			 "Failed to create DebugFS buffer_info - %ld",
+		dev_warn(lwis_dev->dev, "Failed to create DebugFS buffer_info - %ld",
 			 PTR_ERR(dbg_buffer_file));
 		dbg_buffer_file = NULL;
 	}
@@ -538,8 +509,7 @@ int lwis_device_debugfs_cleanup(struct lwis_device *lwis_dev)
 
 #else /* CONFIG_DEBUG_FS */
 
-int lwis_device_debugfs_setup(struct lwis_device *lwis_dev,
-			      struct dentry *dbg_root)
+int lwis_device_debugfs_setup(struct lwis_device *lwis_dev, struct dentry *dbg_root)
 {
 	return 0;
 }

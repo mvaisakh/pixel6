@@ -51,23 +51,21 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 	/* Register to bts */
 	lwis_dev->bts_index = bts_get_bwindex(lwis_dev->name);
 	if (lwis_dev->bts_index < 0) {
-		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n",
-			lwis_dev->bts_index);
+		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n", lwis_dev->bts_index);
 		lwis_dev->bts_index = BTS_UNSUPPORTED;
 	}
 
 	return 0;
 }
 
-static int __attribute__((unused))
-lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
+static int __attribute__((unused)) lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 {
 	struct lwis_device *lwis_dev = (struct lwis_device *)param;
 
 	pr_err("############ LWIS IOMMU PAGE FAULT ############\n");
 	pr_err("\n");
-	pr_err("Device: %s IOMMU Page Fault at Address: 0x%px Flag: 0x%08x\n",
-		lwis_dev->name, (void *)fault->event.addr, fault->event.flags);
+	pr_err("Device: %s IOMMU Page Fault at Address: 0x%px Flag: 0x%08x\n", lwis_dev->name,
+	       (void *)fault->event.addr, fault->event.flags);
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
@@ -110,13 +108,10 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 
 	if (lwis_dev->has_iommu) {
 		/* Activate IOMMU for the platform device */
-		ret = iommu_register_device_fault_handler(
-			&lwis_dev->plat_dev->dev,
-			lwis_iommu_fault_handler,
-			lwis_dev);
+		ret = iommu_register_device_fault_handler(&lwis_dev->plat_dev->dev,
+							  lwis_iommu_fault_handler, lwis_dev);
 		if (ret < 0) {
-			pr_err("Failed to register fault handler for the device: %d\n",
-			       ret);
+			pr_err("Failed to register fault handler for the device: %d\n", ret);
 			return ret;
 		}
 	}
@@ -134,8 +129,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 #endif
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
-		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos,
-					       lwis_dev->clock_family);
+		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos, lwis_dev->clock_family);
 		if (ret < 0) {
 			dev_err(lwis_dev->dev, "Failed to enable core clock\n");
 			return ret;
@@ -143,11 +137,9 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	}
 
 	if (lwis_dev->bts_scenario_name) {
-		lwis_dev->bts_scenario =
-			bts_get_scenindex(lwis_dev->bts_scenario_name);
+		lwis_dev->bts_scenario = bts_get_scenindex(lwis_dev->bts_scenario_name);
 		if (!lwis_dev->bts_scenario) {
-			dev_err(lwis_dev->dev,
-				"Failed to get default camera BTS scenario.\n");
+			dev_err(lwis_dev->dev, "Failed to get default camera BTS scenario.\n");
 			return -EINVAL;
 		}
 		bts_add_scenario(lwis_dev->bts_scenario);
@@ -226,8 +218,8 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 		qos_class = PM_QOS_DEVICE_THROUGHPUT;
 		break;
 	default:
-		dev_err(lwis_dev->dev, "%s clk family %d is invalid\n",
-			lwis_dev->name, lwis_dev->clock_family);
+		dev_err(lwis_dev->dev, "%s clk family %d is invalid\n", lwis_dev->name,
+			lwis_dev->clock_family);
 		return -EINVAL;
 	}
 
@@ -237,9 +229,8 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
 		exynos_pm_qos_update_request(qos_req, value);
 	}
 
-	dev_info(lwis_dev->dev,
-		 "Updating clock for clock_family %d, freq to %u\n",
-		 clock_family, value);
+	dev_info(lwis_dev->dev, "Updating clock for clock_family %d, freq to %u\n", clock_family,
+		 value);
 
 	return 0;
 }
@@ -298,16 +289,14 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-int lwis_platform_update_bts(struct lwis_device *lwis_dev,
-			     unsigned int bw_kb_peak, unsigned int bw_kb_read,
-			     unsigned int bw_kb_write)
+int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_peak,
+			     unsigned int bw_kb_read, unsigned int bw_kb_write)
 {
 	int ret = 0;
 	struct bts_bw bts_request;
 
 	if (lwis_dev->bts_index == BTS_UNSUPPORTED) {
-		dev_info(lwis_dev->dev, "%s doesn't support bts\n",
-			 lwis_dev->name);
+		dev_info(lwis_dev->dev, "%s doesn't support bts\n", lwis_dev->name);
 		return ret;
 	}
 
@@ -316,13 +305,10 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev,
 	bts_request.write = bw_kb_write;
 	ret = bts_update_bw(lwis_dev->bts_index, bts_request);
 	if (ret < 0) {
-		dev_err(lwis_dev->dev,
-			"Failed to update bandwidth to bts, ret: %d\n", ret);
+		dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
-		dev_info(
-			lwis_dev->dev,
-			"Updated bandwidth to bts, peak: %u, read: %u, write: %u\n",
-			bw_kb_peak, bw_kb_read, bw_kb_write);
+		dev_info(lwis_dev->dev, "Updated bandwidth to bts, peak: %u, read: %u, write: %u\n",
+			 bw_kb_peak, bw_kb_read, bw_kb_write);
 	}
 	return ret;
 }

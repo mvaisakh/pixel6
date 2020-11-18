@@ -35,8 +35,7 @@
 #define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
 #define STRINGIFY(x) #x
 
-void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
-		       int errno)
+void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, int errno)
 {
 	unsigned int type = IOCTL_TO_ENUM(ioctl_type);
 	static char type_name[32];
@@ -44,28 +43,23 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 
 	switch (type) {
 	case IOCTL_TO_ENUM(LWIS_GET_DEVICE_INFO):
-		strlcpy(type_name, STRINGIFY(LWIS_GET_DEVICE_INFO),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_GET_DEVICE_INFO), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_GET_DEVICE_INFO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_ALLOC):
-		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ALLOC),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ALLOC), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ALLOC);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_FREE):
-		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_FREE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_FREE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_FREE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_ENROLL):
-		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ENROLL),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_ENROLL), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_ENROLL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_BUFFER_DISENROLL):
-		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
@@ -73,14 +67,12 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DEVICE_ENABLE):
-		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_ENABLE);
 		break;
 
 	case IOCTL_TO_ENUM(LWIS_DEVICE_DISABLE):
-		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DEVICE_RESET):
@@ -88,53 +80,43 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_RESET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
-		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_GET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_SET):
-		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_SET),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_SET), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_SET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_DEQUEUE):
-		strlcpy(type_name, STRINGIFY(LWIS_EVENT_DEQUEUE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_DEQUEUE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_DEQUEUE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_SUBSCRIBE):
-		strlcpy(type_name, STRINGIFY(LWIS_EVENT_SUBSCRIBE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_SUBSCRIBE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_SUBSCRIBE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_UNSUBSCRIBE):
-		strlcpy(type_name, STRINGIFY(LWIS_EVENT_UNSUBSCRIBE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_EVENT_UNSUBSCRIBE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_UNSUBSCRIBE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TIME_QUERY):
-		strlcpy(type_name, STRINGIFY(LWIS_TIME_QUERY),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_TIME_QUERY), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TIME_QUERY);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_SUBMIT):
-		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_SUBMIT),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_SUBMIT), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_SUBMIT);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_CANCEL):
-		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_CANCEL), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_CANCEL);
 		break;
 	case IOCTL_TO_ENUM(LWIS_TRANSACTION_REPLACE):
-		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_REPLACE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_TRANSACTION_REPLACE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_TRANSACTION_REPLACE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DPM_CLK_UPDATE):
-		strlcpy(type_name, STRINGIFY(LWIS_DPM_CLK_UPDATE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_DPM_CLK_UPDATE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_CLK_UPDATE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_ECHO):
@@ -142,8 +124,7 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		exp_size = IOCTL_ARG_SIZE(LWIS_ECHO);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DPM_QOS_UPDATE):
-		strlcpy(type_name, STRINGIFY(LWIS_DPM_QOS_UPDATE),
-			sizeof(type_name));
+		strlcpy(type_name, STRINGIFY(LWIS_DPM_QOS_UPDATE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_QOS_UPDATE);
 		break;
 	default:
@@ -152,21 +133,18 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type,
 		break;
 	};
 
-	if (strcmp(type_name, "UNDEFINED") &&
-	    exp_size != IOCTL_ARG_SIZE(ioctl_type)) {
+	if (strcmp(type_name, "UNDEFINED") && exp_size != IOCTL_ARG_SIZE(ioctl_type)) {
 		dev_err_ratelimited(
 			lwis_dev->dev,
 			"Failed to process %s (errno: %d), expecting argument with length of %zu, got length of %d. Mismatch kernel version?\n",
 			type_name, errno, exp_size, IOCTL_ARG_SIZE(ioctl_type));
 	} else {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to process %s (errno: %d)\n",
-				    type_name, errno);
+		dev_err_ratelimited(lwis_dev->dev, "Failed to process %s (errno: %d)\n", type_name,
+				    errno);
 	}
 }
 
-static int ioctl_get_device_info(struct lwis_device *lwis_dev,
-				 struct lwis_device_info *msg)
+static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_device_info *msg)
 {
 	int ret, i;
 	struct lwis_device_info k_info = { .id = lwis_dev->id,
@@ -177,8 +155,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 	if (lwis_dev->clocks) {
 		k_info.num_clks = lwis_dev->clocks->count;
 		for (i = 0; i < lwis_dev->clocks->count; i++) {
-			strlcpy(k_info.clks[i].name,
-				lwis_dev->clocks->clk[i].name,
+			strlcpy(k_info.clks[i].name, lwis_dev->clocks->clk[i].name,
 				LWIS_MAX_NAME_STRING_LEN);
 			k_info.clks[i].clk_index = i;
 			k_info.clks[i].frequency = 0;
@@ -187,16 +164,14 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev,
 
 	ret = copy_to_user((void __user *)msg, &k_info, sizeof(k_info));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy device info to userspace\n");
+		dev_err(lwis_dev->dev, "Failed to copy device info to userspace\n");
 		return ret;
 	}
 
 	return 0;
 }
 
-static int register_read(struct lwis_device *lwis_dev,
-			 struct lwis_io_entry *read_entry,
+static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *read_entry,
 			 struct lwis_io_entry *user_msg)
 {
 	int ret = 0;
@@ -208,33 +183,28 @@ static int register_read(struct lwis_device *lwis_dev,
 		/* Save the userspace buffer address */
 		user_buf = read_entry->rw_batch.buf;
 		/* Allocate read buffer */
-		read_entry->rw_batch.buf =
-			kzalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+		read_entry->rw_batch.buf = kzalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to allocate register read buffer\n");
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Failed to allocate register read buffer\n");
 			return -ENOMEM;
 		}
 	} else if (read_entry->type != LWIS_IO_ENTRY_READ) {
 		/* Type must be either READ or READ_BATCH */
-		dev_err(lwis_dev->dev,
-			"Invalid io_entry type for REGISTER_READ\n");
+		dev_err(lwis_dev->dev, "Invalid io_entry type for REGISTER_READ\n");
 		return -EINVAL;
 	}
 
 	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to read registers\n");
+		dev_err_ratelimited(lwis_dev->dev, "Failed to read registers\n");
 		goto reg_read_exit;
 	}
 
 	if (batch_mode) {
 		/* Copy read data back to userspace */
-		ret = copy_to_user((void __user *)user_buf,
-				   read_entry->rw_batch.buf,
+		ret = copy_to_user((void __user *)user_buf, read_entry->rw_batch.buf,
 				   read_entry->rw_batch.size_in_bytes);
 		if (ret) {
 			dev_err_ratelimited(
@@ -242,8 +212,7 @@ static int register_read(struct lwis_device *lwis_dev,
 				"Failed to copy register read buffer back to userspace\n");
 		}
 	} else {
-		ret = copy_to_user((void __user *)user_msg, read_entry,
-				   sizeof(*read_entry));
+		ret = copy_to_user((void __user *)user_msg, read_entry, sizeof(*read_entry));
 	}
 
 reg_read_exit:
@@ -253,8 +222,7 @@ reg_read_exit:
 	return ret;
 }
 
-static int register_write(struct lwis_device *lwis_dev,
-			  struct lwis_io_entry *write_entry)
+static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *write_entry)
 {
 	int ret = 0;
 	uint8_t *user_buf;
@@ -265,35 +233,30 @@ static int register_write(struct lwis_device *lwis_dev,
 		/* Save the userspace buffer address */
 		user_buf = write_entry->rw_batch.buf;
 		/* Allocate write buffer and copy contents from userspace */
-		write_entry->rw_batch.buf = kzalloc(
-			write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+		write_entry->rw_batch.buf =
+			kzalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to allocate register write buffer\n");
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Failed to allocate register write buffer\n");
 			return -ENOMEM;
 		}
-		ret = copy_from_user(write_entry->rw_batch.buf,
-				     (void __user *)user_buf,
+		ret = copy_from_user(write_entry->rw_batch.buf, (void __user *)user_buf,
 				     write_entry->rw_batch.size_in_bytes);
 		if (ret) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to copy write buffer from userspace\n");
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Failed to copy write buffer from userspace\n");
 			goto reg_write_exit;
 		}
 	} else if (write_entry->type != LWIS_IO_ENTRY_WRITE) {
 		/* Type must be either WRITE or WRITE_BATCH */
-		dev_err(lwis_dev->dev,
-			"Invalid io_entry type for REGISTER_WRITE\n");
+		dev_err(lwis_dev->dev, "Invalid io_entry type for REGISTER_WRITE\n");
 		return -EINVAL;
 	}
 
 	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to write registers\n");
+		dev_err_ratelimited(lwis_dev->dev, "Failed to write registers\n");
 	}
 
 reg_write_exit:
@@ -303,25 +266,21 @@ reg_write_exit:
 	return ret;
 }
 
-static int register_modify(struct lwis_device *lwis_dev,
-			   struct lwis_io_entry *modify_entry)
+static int register_modify(struct lwis_device *lwis_dev, struct lwis_io_entry *modify_entry)
 {
 	int ret = 0;
 
 	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, false,
 					 lwis_dev->native_value_bitwidth);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to read registers for modify\n");
+		dev_err_ratelimited(lwis_dev->dev, "Failed to read registers for modify\n");
 	}
 
 	return ret;
 }
 
-static int copy_io_entries(struct lwis_device *lwis_dev,
-			   struct lwis_io_entries *user_msg,
-			   struct lwis_io_entries *k_msg,
-			   struct lwis_io_entry **k_entries)
+static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries *user_msg,
+			   struct lwis_io_entries *k_msg, struct lwis_io_entry **k_entries)
 {
 	int ret = 0;
 	struct lwis_io_entry *io_entries;
@@ -329,31 +288,26 @@ static int copy_io_entries(struct lwis_device *lwis_dev,
 
 	/* Register io is not supported for the lwis device, return */
 	if (!lwis_dev->vops.register_io) {
-		dev_err(lwis_dev->dev,
-			"Register IO not supported on this LWIS device\n");
+		dev_err(lwis_dev->dev, "Register IO not supported on this LWIS device\n");
 		return -EINVAL;
 	}
 
 	/* Copy io_entries from userspace */
 	ret = copy_from_user(k_msg, (void __user *)user_msg, sizeof(*k_msg));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy io_entries header from userspace.");
+		dev_err(lwis_dev->dev, "Failed to copy io_entries header from userspace.");
 		return ret;
 	}
 	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
 	io_entries = kzalloc(buf_size, GFP_KERNEL);
 	if (!io_entries) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate io_entries buffer\n");
+		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
 		return -ENOMEM;
 	}
-	ret = copy_from_user(io_entries, (void __user *)k_msg->io_entries,
-			     buf_size);
+	ret = copy_from_user(io_entries, (void __user *)k_msg->io_entries, buf_size);
 	if (ret) {
 		kfree(io_entries);
-		dev_err(lwis_dev->dev,
-			"Failed to copy io_entries from userspace.");
+		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.");
 		return ret;
 	}
 	*k_entries = io_entries;
@@ -361,8 +315,7 @@ static int copy_io_entries(struct lwis_device *lwis_dev,
 	return 0;
 }
 
-static int synchronous_process_io_entries(struct lwis_device *lwis_dev,
-					  int num_io_entries,
+static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_io_entries,
 					  struct lwis_io_entry *io_entries,
 					  struct lwis_io_entry *user_msg)
 {
@@ -377,8 +330,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev,
 			break;
 		case LWIS_IO_ENTRY_READ:
 		case LWIS_IO_ENTRY_READ_BATCH:
-			ret = register_read(lwis_dev, &io_entries[i],
-					    user_msg + i);
+			ret = register_read(lwis_dev, &io_entries[i], user_msg + i);
 			break;
 		case LWIS_IO_ENTRY_WRITE:
 		case LWIS_IO_ENTRY_WRITE_BATCH:
@@ -402,8 +354,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev,
 	return 0;
 }
 
-static int ioctl_reg_io(struct lwis_device *lwis_dev,
-			struct lwis_io_entries *user_msg)
+static int ioctl_reg_io(struct lwis_device *lwis_dev, struct lwis_io_entries *user_msg)
 {
 	int ret = 0;
 	struct lwis_io_entries k_msg;
@@ -415,8 +366,8 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev,
 	}
 
 	/* Walk through and execute the entries */
-	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries,
-					     k_entries, k_msg.io_entries);
+	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries, k_entries,
+					     k_msg.io_entries);
 
 reg_io_exit:
 	if (k_entries) {
@@ -435,16 +386,13 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocated lwis_allocated_buffer\n");
+		dev_err(lwis_dev->dev, "Failed to allocated lwis_allocated_buffer\n");
 		return -ENOMEM;
 	}
 
-	ret = copy_from_user((void *)&alloc_info, (void __user *)msg,
-			     sizeof(alloc_info));
+	ret = copy_from_user((void *)&alloc_info, (void __user *)msg, sizeof(alloc_info));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
-			sizeof(alloc_info));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(alloc_info));
 		goto error_alloc;
 	}
 
@@ -454,11 +402,9 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 		goto error_alloc;
 	}
 
-	ret = copy_to_user((void __user *)msg, (void *)&alloc_info,
-			   sizeof(alloc_info));
+	ret = copy_to_user((void __user *)msg, (void *)&alloc_info, sizeof(alloc_info));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
-			sizeof(alloc_info));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(alloc_info));
 		lwis_buffer_free(lwis_client, buffer);
 		goto error_alloc;
 	}
@@ -479,15 +425,13 @@ static int ioctl_buffer_free(struct lwis_client *lwis_client, int __user *msg)
 
 	ret = copy_from_user((void *)&fd, (void __user *)msg, sizeof(fd));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy file descriptor from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy file descriptor from user\n");
 		return -EINVAL;
 	}
 
 	buffer = lwis_client_allocated_buffer_find(lwis_client, fd);
 	if (!buffer) {
-		dev_err(lwis_dev->dev, "Cannot find allocated buffer FD %d\n",
-			fd);
+		dev_err(lwis_dev->dev, "Cannot find allocated buffer FD %d\n", fd);
 		return -ENOENT;
 	}
 
@@ -502,8 +446,7 @@ static int ioctl_buffer_free(struct lwis_client *lwis_client, int __user *msg)
 	return 0;
 }
 
-static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
-			       struct lwis_buffer_info __user *msg)
+static int ioctl_buffer_enroll(struct lwis_client *lwis_client, struct lwis_buffer_info __user *msg)
 {
 	unsigned long ret;
 	struct lwis_enrolled_buffer *buffer;
@@ -511,13 +454,11 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 
 	buffer = kzalloc(sizeof(struct lwis_enrolled_buffer), GFP_KERNEL);
 	if (!buffer) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate lwis_enrolled_buffer struct\n");
+		dev_err(lwis_dev->dev, "Failed to allocate lwis_enrolled_buffer struct\n");
 		return -ENOMEM;
 	}
 
-	ret = copy_from_user((void *)&buffer->info, (void __user *)msg,
-			     sizeof(buffer->info));
+	ret = copy_from_user((void *)&buffer->info, (void __user *)msg, sizeof(buffer->info));
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
 			sizeof(buffer->info));
@@ -533,11 +474,9 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 		return ret;
 	}
 
-	ret = copy_to_user((void __user *)msg, (void *)&buffer->info,
-			   sizeof(buffer->info));
+	ret = copy_to_user((void __user *)msg, (void *)&buffer->info, sizeof(buffer->info));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
-			sizeof(buffer->info));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(buffer->info));
 		lwis_buffer_disenroll(lwis_client, buffer);
 		return -EINVAL;
 	}
@@ -545,34 +484,29 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client,
 	return 0;
 }
 
-static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
-				  uint64_t __user *msg)
+static int ioctl_buffer_disenroll(struct lwis_client *lwis_client, uint64_t __user *msg)
 {
 	unsigned long ret;
 	uint64_t dma_vaddr;
 	struct lwis_enrolled_buffer *buffer;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	ret = copy_from_user((void *)&dma_vaddr, (void __user *)msg,
-			     sizeof(dma_vaddr));
+	ret = copy_from_user((void *)&dma_vaddr, (void __user *)msg, sizeof(dma_vaddr));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy DMA virtual address from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy DMA virtual address from user\n");
 		return -EINVAL;
 	}
 
 	buffer = lwis_client_enrolled_buffer_find(lwis_client, dma_vaddr);
 
 	if (!buffer) {
-		dev_err(lwis_dev->dev, "Failed to find dma buffer for %llx\n",
-			dma_vaddr);
+		dev_err(lwis_dev->dev, "Failed to find dma buffer for %llx\n", dma_vaddr);
 		return -ENOENT;
 	}
 
 	ret = lwis_buffer_disenroll(lwis_client, buffer);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to disenroll dma buffer for %llx\n", dma_vaddr);
+		dev_err(lwis_dev->dev, "Failed to disenroll dma buffer for %llx\n", dma_vaddr);
 		return ret;
 	}
 
@@ -630,15 +564,13 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	/* Flush all periodic io to complete */
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to wait for in-process periodic io to complete\n");
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
 	}
 
 	/* Flush all pending transactions */
 	ret = lwis_transaction_client_flush(lwis_client);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to flush pending transactions\n");
+		dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
 	}
 
 	/* Run cleanup transactions. */
@@ -651,8 +583,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 		mutex_unlock(&lwis_dev->client_lock);
 		return 0;
 	} else if (lwis_dev->enabled <= 0) {
-		dev_err(lwis_dev->dev,
-			"Disabling a device that is already disabled\n");
+		dev_err(lwis_dev->dev, "Disabling a device that is already disabled\n");
 		ret = -EINVAL;
 		goto error_locked;
 	}
@@ -671,18 +602,15 @@ error_locked:
 	return ret;
 }
 
-static int ioctl_echo(struct lwis_device *lwis_dev,
-		      struct lwis_echo __user *msg)
+static int ioctl_echo(struct lwis_device *lwis_dev, struct lwis_echo __user *msg)
 {
 	struct lwis_echo echo_msg;
 	char *buffer;
 	int ret = 0;
 
-	ret = copy_from_user((void *)&echo_msg, (void __user *)msg,
-			     sizeof(echo_msg));
+	ret = copy_from_user((void *)&echo_msg, (void __user *)msg, sizeof(echo_msg));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
-			sizeof(echo_msg));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(echo_msg));
 		return -EINVAL;
 	}
 
@@ -692,15 +620,12 @@ static int ioctl_echo(struct lwis_device *lwis_dev,
 
 	buffer = kzalloc(echo_msg.size + 1, GFP_KERNEL);
 	if (!buffer) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate buffer for echo message\n");
+		dev_err(lwis_dev->dev, "Failed to allocate buffer for echo message\n");
 		return -ENOMEM;
 	}
-	ret = copy_from_user(buffer, (void __user *)echo_msg.msg,
-			     echo_msg.size);
+	ret = copy_from_user(buffer, (void __user *)echo_msg.msg, echo_msg.size);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy %zu bytes echo message from user\n",
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes echo message from user\n",
 			echo_msg.size);
 		return -EINVAL;
 	}
@@ -712,8 +637,7 @@ static int ioctl_echo(struct lwis_device *lwis_dev,
 	return 0;
 }
 
-static int ioctl_device_reset(struct lwis_client *lwis_client,
-			      struct lwis_io_entries *user_msg)
+static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_entries *user_msg)
 {
 	int ret = 0;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
@@ -729,20 +653,18 @@ static int ioctl_device_reset(struct lwis_client *lwis_client,
 	/* Flush all periodic io to complete */
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to wait for in-process periodic io to complete\n");
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
 	}
 
 	/* Flush all pending transactions */
 	ret = lwis_transaction_client_flush(lwis_client);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to flush all pending transactions\n");
+		dev_err(lwis_dev->dev, "Failed to flush all pending transactions\n");
 	}
 
 	/* Perform reset routine defined by the io_entries */
-	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries,
-					     k_entries, k_msg.io_entries);
+	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries, k_entries,
+					     k_msg.io_entries);
 
 	/* Clear event states and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
@@ -766,28 +688,23 @@ static int ioctl_event_control_get(struct lwis_client *lwis_client,
 	struct lwis_event_control control;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	ret = copy_from_user((void *)&control, (void __user *)msg,
-			     sizeof(control));
+	ret = copy_from_user((void *)&control, (void __user *)msg, sizeof(control));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
-			sizeof(control));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(control));
 		return -EINVAL;
 	}
 
-	ret = lwis_client_event_control_get(lwis_client, control.event_id,
-					    &control);
+	ret = lwis_client_event_control_get(lwis_client, control.event_id, &control);
 
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to get event: %lld (err:%ld)\n",
-			control.event_id, ret);
+		dev_err(lwis_dev->dev, "Failed to get event: %lld (err:%ld)\n", control.event_id,
+			ret);
 		return -EINVAL;
 	}
 
-	ret = copy_to_user((void __user *)msg, (void *)&control,
-			   sizeof(control));
+	ret = copy_to_user((void __user *)msg, (void *)&control, sizeof(control));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
-			sizeof(control));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(control));
 		return -EINVAL;
 	}
 
@@ -801,35 +718,29 @@ static int ioctl_event_control_set(struct lwis_client *lwis_client,
 	struct lwis_event_control control;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	ret = copy_from_user((void *)&control, (void __user *)msg,
-			     sizeof(control));
+	ret = copy_from_user((void *)&control, (void __user *)msg, sizeof(control));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
-			sizeof(control));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(control));
 		return -EINVAL;
 	}
 
 	ret = lwis_client_event_control_set(lwis_client, &control);
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed ot set event 0x%llx\n",
-			control.event_id);
+		dev_err(lwis_dev->dev, "Failed ot set event 0x%llx\n", control.event_id);
 	}
 	return ret;
 }
 
-static int ioctl_event_dequeue(struct lwis_client *lwis_client,
-			       struct lwis_event_info __user *msg)
+static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_event_info __user *msg)
 {
 	unsigned long ret, err = 0;
 	struct lwis_event_entry *event;
 	struct lwis_event_info info_user;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	ret = copy_from_user((void *)&info_user, (void __user *)msg,
-			     sizeof(info_user));
+	ret = copy_from_user((void *)&info_user, (void __user *)msg, sizeof(info_user));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
-			sizeof(info_user));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(info_user));
 		return -EINVAL;
 	}
 
@@ -837,8 +748,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	ret = lwis_client_event_peek_front(lwis_client, &event);
 	if (ret) {
 		if (ret != -ENOENT) {
-			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n",
-				ret);
+			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 		}
 		return ret;
 	}
@@ -863,16 +773,13 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 		info_user.payload_buffer = user_buffer;
 
 		/* Here we have a payload and the buffer is big enough */
-		if (event->event_info.payload_size > 0 &&
-		    info_user.payload_buffer) {
+		if (event->event_info.payload_size > 0 && info_user.payload_buffer) {
 			/* Copy over the payload buffer to userspace */
-			ret = copy_to_user(
-				(void __user *)info_user.payload_buffer,
-				(void *)event->event_info.payload_buffer,
-				event->event_info.payload_size);
+			ret = copy_to_user((void __user *)info_user.payload_buffer,
+					   (void *)event->event_info.payload_buffer,
+					   event->event_info.payload_size);
 			if (ret) {
-				dev_err(lwis_dev->dev,
-					"Failed to copy %zu bytes to user\n",
+				dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
 					event->event_info.payload_size);
 				return -EINVAL;
 			}
@@ -886,17 +793,14 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client,
 	if (!err) {
 		ret = lwis_client_event_pop_front(lwis_client, NULL);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n",
-				ret);
+			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 			return ret;
 		}
 	}
 	/* Now let's copy the actual info struct back to user */
-	ret = copy_to_user((void __user *)msg, (void *)&info_user,
-			   sizeof(info_user));
+	ret = copy_to_user((void __user *)msg, (void *)&info_user, sizeof(info_user));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
-			sizeof(info_user));
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(info_user));
 		return -EINVAL;
 	}
 	return err;
@@ -909,8 +813,7 @@ static int ioctl_time_query(struct lwis_client *client, int64_t __user *msg)
 
 	ret = copy_to_user((void __user *)msg, &timestamp, sizeof(timestamp));
 	if (ret) {
-		dev_err(client->lwis_dev->dev,
-			"Failed to copy timestamp to userspace\n");
+		dev_err(client->lwis_dev->dev, "Failed to copy timestamp to userspace\n");
 	}
 
 	return ret;
@@ -939,32 +842,26 @@ static int construct_transaction(struct lwis_client *client,
 	}
 
 	user_transaction = (struct lwis_transaction_info *)msg;
-	ret = copy_from_user((void *)&k_transaction->info,
-			     (void __user *)user_transaction,
+	ret = copy_from_user((void *)&k_transaction->info, (void __user *)user_transaction,
 			     sizeof(struct lwis_transaction_info));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy transaction info from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy transaction info from user\n");
 		goto error_free_transaction;
 	}
 
 	user_entries = k_transaction->info.io_entries;
-	entry_size = k_transaction->info.num_io_entries *
-		     sizeof(struct lwis_io_entry);
+	entry_size = k_transaction->info.num_io_entries * sizeof(struct lwis_io_entry);
 	k_entries = kvzalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate transaction entries\n");
+		dev_err(lwis_dev->dev, "Failed to allocate transaction entries\n");
 		ret = -ENOMEM;
 		goto error_free_transaction;
 	}
 	k_transaction->info.io_entries = k_entries;
 
-	ret = copy_from_user((void *)k_entries, (void __user *)user_entries,
-			     entry_size);
+	ret = copy_from_user((void *)k_entries, (void __user *)user_entries, entry_size);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy transaction entries from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy transaction entries from user\n");
 		goto error_free_entries;
 	}
 
@@ -976,20 +873,17 @@ static int construct_transaction(struct lwis_client *client,
 	for (i = 0; i < k_transaction->info.num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kvzalloc(k_entries[i].rw_batch.size_in_bytes,
-					 GFP_KERNEL);
+			k_buf = kvzalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
-				dev_err_ratelimited(
-					lwis_dev->dev,
-					"Failed to allocate tx write buffer\n");
+				dev_err_ratelimited(lwis_dev->dev,
+						    "Failed to allocate tx write buffer\n");
 				ret = -ENOMEM;
 				goto error_free_buf;
 			}
 			last_buf_alloc_idx = i;
 			k_entries[i].rw_batch.buf = k_buf;
-			ret = copy_from_user(
-				k_buf, (void __user *)user_buf,
-				k_entries[i].rw_batch.size_in_bytes);
+			ret = copy_from_user(k_buf, (void __user *)user_buf,
+					     k_entries[i].rw_batch.size_in_bytes);
 			if (ret) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1019,8 +913,7 @@ static void free_transaction(struct lwis_transaction *transaction)
 	int i;
 
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
-		if (transaction->info.io_entries[i].type ==
-		    LWIS_IO_ENTRY_WRITE_BATCH) {
+		if (transaction->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			kvfree(transaction->info.io_entries[i].rw_batch.buf);
 		}
 	}
@@ -1046,9 +939,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 		k_transaction->info.id = LWIS_ID_INVALID;
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to return info to userspace\n");
+			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
 		free_transaction(k_transaction);
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
@@ -1058,9 +949,8 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 	ret = copy_to_user((void __user *)msg, &k_transaction->info,
 			   sizeof(struct lwis_transaction_info));
 	if (ret) {
-		dev_err_ratelimited(
-			lwis_dev->dev,
-			"Failed to copy transaction results to userspace\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to copy transaction results to userspace\n");
 	}
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
@@ -1086,9 +976,7 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 		k_transaction->info.id = LWIS_ID_INVALID;
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to return info to userspace\n");
+			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
 		free_transaction(k_transaction);
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
@@ -1098,17 +986,15 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 	ret = copy_to_user((void __user *)msg, &k_transaction->info,
 			   sizeof(struct lwis_transaction_info));
 	if (ret) {
-		dev_err_ratelimited(
-			lwis_dev->dev,
-			"Failed to copy transaction results to userspace\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to copy transaction results to userspace\n");
 	}
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 	return ret;
 }
 
-static int ioctl_transaction_cancel(struct lwis_client *client,
-				    int64_t __user *msg)
+static int ioctl_transaction_cancel(struct lwis_client *client, int64_t __user *msg)
 {
 	int ret;
 	int64_t id;
@@ -1116,17 +1002,14 @@ static int ioctl_transaction_cancel(struct lwis_client *client,
 
 	ret = copy_from_user((void *)&id, (void __user *)msg, sizeof(id));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy transaction ID from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy transaction ID from user\n");
 		return ret;
 	}
 
 	ret = lwis_transaction_cancel(client, id);
 	if (ret) {
-		dev_warn_ratelimited(
-			lwis_dev->dev,
-			"Failed to cancel transaction id 0x%llx (%d)\n", id,
-			ret);
+		dev_warn_ratelimited(lwis_dev->dev, "Failed to cancel transaction id 0x%llx (%d)\n",
+				     id, ret);
 		return ret;
 	}
 
@@ -1142,11 +1025,9 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 	struct lwis_device *trigger_device;
 	uint16_t trigger_device_id;
 
-	ret = copy_from_user((void *)&k_subscribe, (void __user *)msg,
-			     sizeof(k_subscribe));
+	ret = copy_from_user((void *)&k_subscribe, (void __user *)msg, sizeof(k_subscribe));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy event subscribe from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy event subscribe from user\n");
 		return ret;
 	}
 
@@ -1157,8 +1038,7 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 	}
 
 	if ((k_subscribe.trigger_event_id & LWIS_TRANSACTION_EVENT_FLAG) ||
-	    (k_subscribe.trigger_event_id &
-	     LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
+	    (k_subscribe.trigger_event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
 		dev_err(lwis_dev->dev, "Not support SW event subscription\n");
 		return -EINVAL;
 	}
@@ -1167,8 +1047,7 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 	trigger_device = lwis_find_dev_by_id(trigger_device_id);
 
 	if (!trigger_device) {
-		dev_err(lwis_dev->dev,
-			"Device id : %d doesn't match to any device\n",
+		dev_err(lwis_dev->dev, "Device id : %d doesn't match to any device\n",
 			trigger_device_id);
 		return -EINVAL;
 	}
@@ -1178,21 +1057,19 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 	 * possible that receiver device subscribe an event before trigger
 	 * device set it up
 	 */
-	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
-		    lwis_dev, k_subscribe.trigger_event_id)) ||
-	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(
-		    client, k_subscribe.trigger_event_id)) ||
-	    IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(
-		    trigger_device, k_subscribe.trigger_event_id))) {
-		dev_err(lwis_dev->dev,
-			"Failed to add event id 0x%llx to trigger/receiver device\n",
+	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(lwis_dev,
+								  k_subscribe.trigger_event_id)) ||
+	    IS_ERR_OR_NULL(
+		    lwis_client_event_state_find_or_create(client, k_subscribe.trigger_event_id)) ||
+	    IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(trigger_device,
+								  k_subscribe.trigger_event_id))) {
+		dev_err(lwis_dev->dev, "Failed to add event id 0x%llx to trigger/receiver device\n",
 			k_subscribe.trigger_event_id);
 
 		return -EINVAL;
 	}
 	ret = lwis_dev->top_dev->subscribe_ops.subscribe_event(
-		lwis_dev->top_dev, k_subscribe.trigger_event_id,
-		trigger_device->id, lwis_dev->id);
+		lwis_dev->top_dev, k_subscribe.trigger_event_id, trigger_device->id, lwis_dev->id);
 	if (ret < 0)
 		dev_err(lwis_dev->dev, "Failed to subscribe event: 0x%llx\n",
 			k_subscribe.trigger_event_id);
@@ -1200,18 +1077,15 @@ static int ioctl_event_subscribe(struct lwis_client *client,
 	return ret;
 }
 
-static int ioctl_event_unsubscribe(struct lwis_client *client,
-				   int64_t __user *msg)
+static int ioctl_event_unsubscribe(struct lwis_client *client, int64_t __user *msg)
 {
 	int ret = 0;
 	int64_t event_id;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	ret = copy_from_user((void *)&event_id, (void __user *)msg,
-			     sizeof(event_id));
+	ret = copy_from_user((void *)&event_id, (void __user *)msg, sizeof(event_id));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy event unsubscribe from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy event unsubscribe from user\n");
 		return ret;
 	}
 
@@ -1221,19 +1095,16 @@ static int ioctl_event_unsubscribe(struct lwis_client *client,
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(
-		lwis_dev->top_dev, event_id, lwis_dev->id);
+	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(lwis_dev->top_dev, event_id,
+								 lwis_dev->id);
 	if (ret < 0)
-		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n",
-			event_id);
+		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n", event_id);
 
 	return ret;
 }
 
-static int prepare_io_entry(struct lwis_client *client,
-			    struct lwis_io_entry *user_entries,
-			    size_t num_io_entries,
-			    struct lwis_io_entry **io_entries)
+static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *user_entries,
+			    size_t num_io_entries, struct lwis_io_entry **io_entries)
 {
 	int i, ret;
 	int last_buf_alloc_idx = 0;
@@ -1246,17 +1117,14 @@ static int prepare_io_entry(struct lwis_client *client,
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
 	k_entries = kzalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
-		dev_err(lwis_dev->dev,
-			"Failed to allocate periodic io entries\n");
+		dev_err(lwis_dev->dev, "Failed to allocate periodic io entries\n");
 		return -ENOMEM;
 	}
 	*io_entries = k_entries;
 
-	ret = copy_from_user((void *)k_entries, (void __user *)user_entries,
-			     entry_size);
+	ret = copy_from_user((void *)k_entries, (void __user *)user_entries, entry_size);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy periodic io entries from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy periodic io entries from user\n");
 		goto error_free_entries;
 	}
 
@@ -1267,8 +1135,7 @@ static int prepare_io_entry(struct lwis_client *client,
 	for (i = 0; i < num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes,
-					GFP_KERNEL);
+			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1278,9 +1145,8 @@ static int prepare_io_entry(struct lwis_client *client,
 			}
 			last_buf_alloc_idx = i;
 			k_entries[i].rw_batch.buf = k_buf;
-			ret = copy_from_user(
-				k_buf, (void __user *)user_buf,
-				k_entries[i].rw_batch.size_in_bytes);
+			ret = copy_from_user(k_buf, (void __user *)user_buf,
+					     k_entries[i].rw_batch.size_in_bytes);
 			if (ret) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1302,8 +1168,7 @@ error_free_entries:
 	return ret;
 }
 
-static int prepare_periodic_io(struct lwis_client *client,
-			       struct lwis_periodic_io_info __user *msg,
+static int prepare_periodic_io(struct lwis_client *client, struct lwis_periodic_io_info __user *msg,
 			       struct lwis_periodic_io **periodic_io)
 {
 	int ret;
@@ -1318,21 +1183,17 @@ static int prepare_periodic_io(struct lwis_client *client,
 	}
 
 	user_periodic_io = (struct lwis_periodic_io_info *)msg;
-	ret = copy_from_user((void *)&k_periodic_io->info,
-			     (void __user *)user_periodic_io,
+	ret = copy_from_user((void *)&k_periodic_io->info, (void __user *)user_periodic_io,
 			     sizeof(struct lwis_periodic_io_info));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy periodic io info from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy periodic io info from user\n");
 		goto error_free_periodic_io;
 	}
 
 	ret = prepare_io_entry(client, k_periodic_io->info.io_entries,
-			       k_periodic_io->info.num_io_entries,
-			       &k_periodic_io->info.io_entries);
+			       k_periodic_io->info.num_io_entries, &k_periodic_io->info.io_entries);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to prepare lwis io entries for periodic io\n");
+		dev_err(lwis_dev->dev, "Failed to prepare lwis io entries for periodic io\n");
 		goto error_free_periodic_io;
 	}
 	*periodic_io = k_periodic_io;
@@ -1359,9 +1220,7 @@ static int ioctl_periodic_io_submit(struct lwis_client *client,
 		k_periodic_io->info.id = LWIS_ID_INVALID;
 		if (copy_to_user((void __user *)msg, &k_periodic_io->info,
 				 sizeof(struct lwis_periodic_io_info))) {
-			dev_err_ratelimited(
-				lwis_dev->dev,
-				"Failed to return info to userspace\n");
+			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
 		lwis_periodic_io_clean(k_periodic_io);
 		return ret;
@@ -1370,17 +1229,15 @@ static int ioctl_periodic_io_submit(struct lwis_client *client,
 	ret = copy_to_user((void __user *)msg, &k_periodic_io->info,
 			   sizeof(struct lwis_periodic_io_info));
 	if (ret) {
-		dev_err_ratelimited(
-			lwis_dev->dev,
-			"Failed to copy periodic io results to userspace\n");
+		dev_err_ratelimited(lwis_dev->dev,
+				    "Failed to copy periodic io results to userspace\n");
 		return ret;
 	}
 
 	return 0;
 }
 
-static int ioctl_periodic_io_cancel(struct lwis_client *client,
-				    int64_t __user *msg)
+static int ioctl_periodic_io_cancel(struct lwis_client *client, int64_t __user *msg)
 {
 	int ret;
 	int64_t id;
@@ -1388,16 +1245,13 @@ static int ioctl_periodic_io_cancel(struct lwis_client *client,
 
 	ret = copy_from_user((void *)&id, (void __user *)msg, sizeof(id));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy periodic io ID from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy periodic io ID from user\n");
 		return ret;
 	}
 
 	ret = lwis_periodic_io_cancel(client, id);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Failed to clear periodic io id 0x%llx\n",
-				    id);
+		dev_err_ratelimited(lwis_dev->dev, "Failed to clear periodic io id 0x%llx\n", id);
 		return ret;
 	}
 
@@ -1414,8 +1268,7 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 	ret = copy_from_user((void *)&k_msg, (void __user *)msg,
 			     sizeof(struct lwis_dpm_clk_settings));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy ioctl message from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
 		return ret;
 	}
 
@@ -1425,18 +1278,15 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 		dev_err(lwis_dev->dev, "Failed to allocate clock settings\n");
 		return -ENOMEM;
 	}
-	ret = copy_from_user(clk_settings, (void __user *)k_msg.settings,
-			     buf_size);
+	ret = copy_from_user(clk_settings, (void __user *)k_msg.settings, buf_size);
 
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy clk settings from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy clk settings from user\n");
 		kfree(clk_settings);
 		return ret;
 	}
 
-	return lwis_dpm_update_clock(lwis_dev, clk_settings,
-				     k_msg.num_settings);
+	return lwis_dpm_update_clock(lwis_dev, clk_settings, k_msg.num_settings);
 }
 
 static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
@@ -1448,16 +1298,14 @@ static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
 	size_t buf_size;
 
 	if (lwis_dev->type != DEVICE_TYPE_DPM) {
-		dev_err(lwis_dev->dev, "not supported device type: %d\n",
-			lwis_dev->type);
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
 		return -EINVAL;
 	}
 
 	ret = copy_from_user((void *)&k_msg, (void __user *)msg,
 			     sizeof(struct lwis_dpm_qos_requirements));
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy ioctl message from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
 		return ret;
 	}
 
@@ -1468,19 +1316,16 @@ static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
 		dev_err(lwis_dev->dev, "Failed to allocate qos settings\n");
 		return -ENOMEM;
 	}
-	ret = copy_from_user(k_qos_settings, (void __user *)k_msg.qos_settings,
-			     buf_size);
+	ret = copy_from_user(k_qos_settings, (void __user *)k_msg.qos_settings, buf_size);
 	if (ret) {
-		dev_err(lwis_dev->dev,
-			"Failed to copy clk settings from user\n");
+		dev_err(lwis_dev->dev, "Failed to copy clk settings from user\n");
 		goto out;
 	}
 
 	for (i = 0; i < k_msg.num_settings; i++) {
 		ret = lwis_dpm_update_qos(lwis_dev, &k_qos_settings[i]);
 		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Failed to apply qos setting, ret: %d\n", ret);
+			dev_err(lwis_dev->dev, "Failed to apply qos setting, ret: %d\n", ret);
 			goto out;
 		}
 	}
@@ -1489,8 +1334,7 @@ out:
 	return ret;
 }
 
-int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
-		       unsigned long param)
+int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsigned long param)
 {
 	int ret = 0;
 	bool device_disabled;
@@ -1501,33 +1345,29 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 	mutex_unlock(&lwis_dev->client_lock);
 	/* Buffer dis/enroll is added here temporarily. Will need a proper
 	   fix to ensure buffer enrollment when device is enabled. */
-	if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled &&
-	    type != LWIS_GET_DEVICE_INFO && type != LWIS_DEVICE_ENABLE &&
-	    type != LWIS_DEVICE_RESET && type != LWIS_EVENT_CONTROL_GET &&
-	    type != LWIS_TIME_QUERY && type != LWIS_EVENT_DEQUEUE &&
-	    type != LWIS_BUFFER_ENROLL && type != LWIS_BUFFER_DISENROLL &&
-	    type != LWIS_BUFFER_FREE && type != LWIS_DPM_QOS_UPDATE) {
+	if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled && type != LWIS_GET_DEVICE_INFO &&
+	    type != LWIS_DEVICE_ENABLE && type != LWIS_DEVICE_RESET &&
+	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
+	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
+	    type != LWIS_BUFFER_DISENROLL && type != LWIS_BUFFER_FREE &&
+	    type != LWIS_DPM_QOS_UPDATE) {
 		ret = -EBADFD;
-		dev_err_ratelimited(lwis_dev->dev,
-				    "Unsupported IOCTL on disabled device.\n");
+		dev_err_ratelimited(lwis_dev->dev, "Unsupported IOCTL on disabled device.\n");
 		return ret;
 	}
 
 	switch (type) {
 	case LWIS_GET_DEVICE_INFO:
-		ret = ioctl_get_device_info(lwis_dev,
-					    (struct lwis_device_info *)param);
+		ret = ioctl_get_device_info(lwis_dev, (struct lwis_device_info *)param);
 		break;
 	case LWIS_BUFFER_ALLOC:
-		ret = ioctl_buffer_alloc(
-			lwis_client, (struct lwis_alloc_buffer_info *)param);
+		ret = ioctl_buffer_alloc(lwis_client, (struct lwis_alloc_buffer_info *)param);
 		break;
 	case LWIS_BUFFER_FREE:
 		ret = ioctl_buffer_free(lwis_client, (int *)param);
 		break;
 	case LWIS_BUFFER_ENROLL:
-		ret = ioctl_buffer_enroll(lwis_client,
-					  (struct lwis_buffer_info *)param);
+		ret = ioctl_buffer_enroll(lwis_client, (struct lwis_buffer_info *)param);
 		break;
 	case LWIS_BUFFER_DISENROLL:
 		ret = ioctl_buffer_disenroll(lwis_client, (uint64_t *)param);
@@ -1545,24 +1385,19 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		ret = ioctl_echo(lwis_dev, (struct lwis_echo *)param);
 		break;
 	case LWIS_DEVICE_RESET:
-		ret = ioctl_device_reset(lwis_client,
-					 (struct lwis_io_entries *)param);
+		ret = ioctl_device_reset(lwis_client, (struct lwis_io_entries *)param);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
-		ret = ioctl_event_control_get(
-			lwis_client, (struct lwis_event_control *)param);
+		ret = ioctl_event_control_get(lwis_client, (struct lwis_event_control *)param);
 		break;
 	case LWIS_EVENT_CONTROL_SET:
-		ret = ioctl_event_control_set(
-			lwis_client, (struct lwis_event_control *)param);
+		ret = ioctl_event_control_set(lwis_client, (struct lwis_event_control *)param);
 		break;
 	case LWIS_EVENT_DEQUEUE:
-		ret = ioctl_event_dequeue(lwis_client,
-					  (struct lwis_event_info *)param);
+		ret = ioctl_event_dequeue(lwis_client, (struct lwis_event_info *)param);
 		break;
 	case LWIS_EVENT_SUBSCRIBE:
-		ret = ioctl_event_subscribe(
-			lwis_client, (struct lwis_event_subscribe *)param);
+		ret = ioctl_event_subscribe(lwis_client, (struct lwis_event_subscribe *)param);
 		break;
 	case LWIS_EVENT_UNSUBSCRIBE:
 		ret = ioctl_event_unsubscribe(lwis_client, (int64_t *)param);
@@ -1571,30 +1406,25 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
 		ret = ioctl_time_query(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_TRANSACTION_SUBMIT:
-		ret = ioctl_transaction_submit(
-			lwis_client, (struct lwis_transaction_info *)param);
+		ret = ioctl_transaction_submit(lwis_client, (struct lwis_transaction_info *)param);
 		break;
 	case LWIS_TRANSACTION_CANCEL:
 		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_TRANSACTION_REPLACE:
-		ret = ioctl_transaction_replace(
-			lwis_client, (struct lwis_transaction_info *)param);
+		ret = ioctl_transaction_replace(lwis_client, (struct lwis_transaction_info *)param);
 		break;
 	case LWIS_PERIODIC_IO_SUBMIT:
-		ret = ioctl_periodic_io_submit(
-			lwis_client, (struct lwis_periodic_io_info *)param);
+		ret = ioctl_periodic_io_submit(lwis_client, (struct lwis_periodic_io_info *)param);
 		break;
 	case LWIS_PERIODIC_IO_CANCEL:
 		ret = ioctl_periodic_io_cancel(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_DPM_CLK_UPDATE:
-		ret = ioctl_dpm_clk_update(
-			lwis_dev, (struct lwis_dpm_clk_settings *)param);
+		ret = ioctl_dpm_clk_update(lwis_dev, (struct lwis_dpm_clk_settings *)param);
 		break;
 	case LWIS_DPM_QOS_UPDATE:
-		ret = ioctl_dpm_qos_update(
-			lwis_dev, (struct lwis_dpm_qos_requirements *)param);
+		ret = ioctl_dpm_qos_update(lwis_dev, (struct lwis_dpm_qos_requirements *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

@@ -25,8 +25,7 @@ void lwis_gpio_list_print(char *name, struct gpio_descs *gpios)
 	} else {
 		pr_info("name: %s, count: %d\n", name, gpios->ndescs);
 		for (i = 0; i < gpios->ndescs; i++) {
-			pr_info("gpio number: %d\n",
-				desc_to_gpio(gpios->desc[i]));
+			pr_info("gpio number: %d\n", desc_to_gpio(gpios->desc[i]));
 		}
 	}
 }
@@ -117,8 +116,7 @@ struct lwis_gpios_list *lwis_gpios_list_alloc(int count)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->gpios_info =
-		kzalloc(count * sizeof(struct lwis_gpios_info), GFP_KERNEL);
+	list->gpios_info = kzalloc(count * sizeof(struct lwis_gpios_info), GFP_KERNEL);
 	if (!list->gpios_info) {
 		pr_err("Failed to allocate lwis_gpios_info instances\n");
 		kfree(list);
@@ -143,8 +141,7 @@ void lwis_gpios_list_free(struct lwis_gpios_list *list)
 	kfree(list);
 }
 
-struct lwis_gpios_info *lwis_gpios_get_info_by_name(
-	struct lwis_gpios_list *list, char *name)
+struct lwis_gpios_info *lwis_gpios_get_info_by_name(struct lwis_gpios_list *list, char *name)
 {
 	int i;
 

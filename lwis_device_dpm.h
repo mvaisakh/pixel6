@@ -26,15 +26,13 @@ struct lwis_dpm_device {
  *  lwis_dpm_update_clock: update specific clock setting on lwis device.
  *  clk_settings needs to be freed at the end of this function.
  */
-int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
-			  struct lwis_clk_setting *clk_settings,
+int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting *clk_settings,
 			  size_t num_settings);
 
 /*
  *  lwis_dpm_update_qos: update qos requirement from dpm client.
  */
-int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
-			struct lwis_qos_setting *qos_setting);
+int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *qos_setting);
 
 int lwis_dpm_device_deinit(void);
 

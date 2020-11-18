@@ -42,8 +42,7 @@ struct lwis_allocated_buffer {
  * Alloc: Yes
  * Returns: 0 on success
  */
-int lwis_buffer_alloc(struct lwis_client *lwis_client,
-		      struct lwis_alloc_buffer_info *alloc_info,
+int lwis_buffer_alloc(struct lwis_client *lwis_client, struct lwis_alloc_buffer_info *alloc_info,
 		      struct lwis_allocated_buffer *buffer);
 
 /*
@@ -53,8 +52,7 @@ int lwis_buffer_alloc(struct lwis_client *lwis_client,
  * Alloc: Free only
  * Returns: 0 on success
  */
-int lwis_buffer_free(struct lwis_client *lwis_client,
-		     struct lwis_allocated_buffer *buffer);
+int lwis_buffer_free(struct lwis_client *lwis_client, struct lwis_allocated_buffer *buffer);
 
 /*
  * lwis_buffer_enroll: Maps the DMA buffer represented by the file descriptor
@@ -65,8 +63,7 @@ int lwis_buffer_free(struct lwis_client *lwis_client,
  * Alloc: Yes
  * Returns: 0 on success
  */
-int lwis_buffer_enroll(struct lwis_client *lwis_client,
-		       struct lwis_enrolled_buffer *buffer);
+int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buffer *buffer);
 
 /*
  * lwis_buffer_disenroll: Unmaps the buffer from IO space and removes the
@@ -76,8 +73,7 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client,
  * Alloc: Yes
  * Returns: 0 on success
  */
-int lwis_buffer_disenroll(struct lwis_client *lwis_client,
-			  struct lwis_enrolled_buffer *buffer);
+int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_buffer *buffer);
 
 /*
  * lwis_client_enrolled_buffer_find: Finds the enrolled buffer based on
@@ -87,9 +83,8 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client,
  * Alloc: Yes
  * Returns: Pointer on success, NULL otherwise
  */
-struct lwis_enrolled_buffer *
-lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
-				 dma_addr_t dma_vaddr);
+struct lwis_enrolled_buffer *lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
+							      dma_addr_t dma_vaddr);
 
 /*
  * lwis_client_enrolled_buffers_clear: Frees all items in
@@ -110,8 +105,8 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client);
  * Alloc: Yes
  * Returns: Pointer on success, NULL otherwise
  */
-struct lwis_allocated_buffer *
-lwis_client_allocated_buffer_find(struct lwis_client *lwis_client, int fd);
+struct lwis_allocated_buffer *lwis_client_allocated_buffer_find(struct lwis_client *lwis_client,
+								int fd);
 
 /*
  * lwis_client_allocated_buffers_clear: Frees all items in

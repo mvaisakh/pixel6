@@ -51,22 +51,19 @@ void lwis_clock_list_free(struct lwis_clock_list *list);
  *  clock rate.
  *  Returns: index number (>= 0) if success, -ve if error
  */
-int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
-		   uint32_t rate);
+int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev, uint32_t rate);
 
 /*
  *  lwis_clock_put_by_idx: Unregister the clock by index.
  *  Returns: 0 if success, -ve if error
  */
-int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index,
-			  struct device *dev);
+int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index, struct device *dev);
 
 /*
  *  lwis_clock_put_by_name: Unregister the clock by name.
  *  Returns: 0 if success, -ve if error
  */
-int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name,
-			   struct device *dev);
+int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name, struct device *dev);
 
 /*
  *  lwis_clock_enable_by_idx: Enable clock by index.

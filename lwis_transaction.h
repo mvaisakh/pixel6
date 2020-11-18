@@ -42,8 +42,7 @@ int lwis_transaction_client_flush(struct lwis_client *client);
 int lwis_transaction_client_cleanup(struct lwis_client *client);
 
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
-				   int64_t event_counter,
-				   struct list_head *pending_events,
+				   int64_t event_counter, struct list_head *pending_events,
 				   bool in_irq);
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 

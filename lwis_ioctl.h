@@ -16,10 +16,8 @@
 /*
  *  lwis_ioctl_handler: Handle all IOCTL commands via the file descriptor.
  */
-int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type,
-		       unsigned long param);
+int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsigned long param);
 
-void lwis_ioctl_pr_err(struct lwis_device *lwis_device, unsigned int ioctl_type,
-		       int errno);
+void lwis_ioctl_pr_err(struct lwis_device *lwis_device, unsigned int ioctl_type, int errno);
 
 #endif /* LWIS_IOCTL_H_ */

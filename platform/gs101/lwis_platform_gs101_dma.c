@@ -33,11 +33,9 @@ struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags)
 }
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
-					struct lwis_enrolled_buffer *lwis_buffer,
-					off_t offset, size_t size,
-					int flags)
+					struct lwis_enrolled_buffer *lwis_buffer, off_t offset,
+					size_t size, int flags)
 {
-
 	return sg_dma_address(lwis_buffer->sg_table->sgl);
 }
 
@@ -47,8 +45,7 @@ dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
  * Keep this function by defult return 0
  */
 int lwis_platform_dma_buffer_unmap(struct lwis_device *lwis_dev,
-				   struct dma_buf_attachment *attachment,
-				   dma_addr_t address)
+				   struct dma_buf_attachment *attachment, dma_addr_t address)
 {
 	return 0;
 }

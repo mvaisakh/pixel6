@@ -21,7 +21,7 @@
 struct lwis_gpios_info {
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	bool is_shared;
-        bool is_pulse;
+	bool is_pulse;
 	struct gpio_descs *gpios;
 };
 
@@ -86,7 +86,6 @@ void lwis_gpios_list_free(struct lwis_gpios_list *list);
  *  Search the lwis_device_gpios_list and return the lwis_gpios_info
  *  if the name is matched
  */
-struct lwis_gpios_info *lwis_gpios_get_info_by_name(
-	struct lwis_gpios_list *list, char *name);
+struct lwis_gpios_info *lwis_gpios_get_info_by_name(struct lwis_gpios_list *list, char *name);
 
 #endif /* LWIS_GPIO_H_ */
