@@ -12,7 +12,10 @@
 #define LWIS_TRANSACTION_H_
 
 #include "lwis_commands.h"
-#include "lwis_device.h"
+
+/* LWIS forward declarations */
+struct lwis_device;
+struct lwis_client;
 
 /* Transaction entry. Each entry belongs to two queues:
  * 1) Event list: Transactions are sorted by event IDs. This is to search for
@@ -25,6 +28,15 @@ struct lwis_transaction {
 	struct lwis_transaction_response_header *resp;
 	struct list_head event_list_node;
 	struct list_head process_queue_node;
+};
+
+/* For debugging purposes, keeps track of the transaction information, as
+ * well as the time it executes and the time it took to execute.
+*/
+struct lwis_transaction_history {
+	struct lwis_transaction_info info;
+	int64_t process_timestamp;
+	int64_t process_duration_ns;
 };
 
 struct lwis_transaction_event_list {

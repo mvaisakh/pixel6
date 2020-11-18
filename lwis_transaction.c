@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
+#include "lwis_device.h"
 #include "lwis_event.h"
 #include "lwis_util.h"
 
@@ -100,10 +101,15 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 }
 
 static void save_transaction_to_history(struct lwis_client *client,
-					struct lwis_transaction_info *trans_info)
+					struct lwis_transaction_info *trans_info,
+					int64_t process_timestamp, int64_t process_duration_ns)
 {
-	client->debug_info.transaction_hist[client->debug_info.cur_transaction_hist_idx] =
+	client->debug_info.transaction_hist[client->debug_info.cur_transaction_hist_idx].info =
 		*trans_info;
+	client->debug_info.transaction_hist[client->debug_info.cur_transaction_hist_idx]
+		.process_timestamp = process_timestamp;
+	client->debug_info.transaction_hist[client->debug_info.cur_transaction_hist_idx]
+		.process_duration_ns = process_duration_ns;
 	client->debug_info.cur_transaction_hist_idx++;
 	if (client->debug_info.cur_transaction_hist_idx >= TRANSACTION_DEBUG_HISTORY_SIZE) {
 		client->debug_info.cur_transaction_hist_idx = 0;
@@ -138,6 +144,8 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	struct lwis_io_result *io_result;
 	const int reg_value_bytewidth = lwis_dev->native_value_bitwidth / 8;
 	uint64_t bias = 0;
+	int64_t process_duration_ns = 0;
+	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
 
 	resp_size = sizeof(struct lwis_transaction_response_header) + resp->results_size_bytes;
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
@@ -196,6 +204,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 		}
 		resp->completion_index = i;
 	}
+	process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
 
 event_push:
 	if (pending_events) {
@@ -211,7 +220,7 @@ event_push:
 			       entry->type);
 		}
 	}
-	save_transaction_to_history(client, info);
+	save_transaction_to_history(client, info, process_timestamp, process_duration_ns);
 	if (info->trigger_event_counter == LWIS_EVENT_COUNTER_EVERY_TIME) {
 		/* Only clean the transaction struct for this iteration. The
                  * I/O entries are not being freed. */

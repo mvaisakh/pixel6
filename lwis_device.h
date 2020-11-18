@@ -30,6 +30,7 @@
 #include "lwis_interrupt.h"
 #include "lwis_phy.h"
 #include "lwis_regulator.h"
+#include "lwis_transaction.h"
 
 #define LWIS_TOP_DEVICE_COMPAT "google,lwis-top-device"
 #define LWIS_I2C_DEVICE_COMPAT "google,lwis-i2c-device"
@@ -140,7 +141,7 @@ struct lwis_device_power_sequence_list {
  */
 #define TRANSACTION_DEBUG_HISTORY_SIZE 8
 struct lwis_client_debug_info {
-	struct lwis_transaction_info transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
+	struct lwis_transaction_history transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
 	int cur_transaction_hist_idx;
 };
 

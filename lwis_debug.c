@@ -29,7 +29,7 @@ static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_
 	struct lwis_transaction_event_list *transaction_list;
 	struct lwis_transaction *transaction;
 	struct list_head *it_tran;
-	struct lwis_transaction_info *trans_hist;
+	struct lwis_transaction_history *trans_hist;
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	if (hash_empty(client->transaction_list)) {
@@ -66,16 +66,21 @@ static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_
 	for (i = 0; i < TRANSACTION_DEBUG_HISTORY_SIZE; ++i) {
 		trans_hist = &client->debug_info.transaction_hist[hist_idx];
 		/* Skip uninitialized entries */
-		if (trans_hist->trigger_event_id != 0) {
+		if (trans_hist->process_timestamp != 0) {
 			scnprintf(tmp_buf, sizeof(tmp_buf),
 				  "[%2d] ID: 0x%llx Trigger Event: 0x%llx Count: 0x%llx\n", i,
-				  trans_hist->id, trans_hist->trigger_event_id,
-				  trans_hist->trigger_event_counter);
+				  trans_hist->info.id, trans_hist->info.trigger_event_id,
+				  trans_hist->info.trigger_event_counter);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 			scnprintf(tmp_buf, sizeof(tmp_buf),
 				  "     Emit Success: 0x%llx Error: %llx\n",
-				  trans_hist->emit_success_event_id,
-				  trans_hist->emit_error_event_id);
+				  trans_hist->info.emit_success_event_id,
+				  trans_hist->info.emit_error_event_id);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+			scnprintf(tmp_buf, sizeof(tmp_buf),
+				  "     Num Entries: %zu Processed @ %lld for %lldns\n",
+				  trans_hist->info.num_io_entries, trans_hist->process_timestamp,
+				  trans_hist->process_duration_ns);
 			strlcat(k_buf, tmp_buf, k_buf_size);
 		}
 		hist_idx++;
@@ -297,7 +302,7 @@ int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;
 	/* Buffer to store information */
-	const size_t buffer_size = 2048;
+	const size_t buffer_size = 10240;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
@@ -374,7 +379,7 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf, siz
 {
 	int ret = 0;
 	/* Buffer to store information */
-	const size_t buffer_size = 2048;
+	const size_t buffer_size = 10240;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
