@@ -31,6 +31,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 				bool non_blocking, int access_size);
 static struct lwis_device_subclass_operations top_vops = {
 	.register_io = lwis_top_register_io,
+	.register_io_barrier = NULL,
 	.device_enable = NULL,
 	.device_disable = NULL,
 	.event_enable = NULL,

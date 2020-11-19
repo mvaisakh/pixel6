@@ -33,9 +33,11 @@ static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				  bool non_blocking, int access_size);
+static int lwis_ioreg_register_io_barrier(struct lwis_device *lwis_dev, bool read, bool write);
 
 static struct lwis_device_subclass_operations ioreg_vops = {
 	.register_io = lwis_ioreg_register_io,
+	.register_io_barrier = lwis_ioreg_register_io_barrier,
 	.device_enable = lwis_ioreg_device_enable,
 	.device_disable = lwis_ioreg_device_disable,
 	.event_enable = NULL,
@@ -64,6 +66,13 @@ static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_e
 {
 	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev, entry, non_blocking,
 				      access_size);
+}
+
+static int lwis_ioreg_register_io_barrier(struct lwis_device *lwis_dev, bool use_read_barrier,
+					  bool use_write_barrier)
+{
+	return lwis_ioreg_set_io_barrier((struct lwis_ioreg_device *)lwis_dev, use_read_barrier,
+					 use_write_barrier);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)

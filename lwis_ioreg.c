@@ -15,6 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
+#include "lwis_device.h"
 #include "lwis_ioreg.h"
 
 static int find_block_idx_by_name(struct lwis_ioreg_list *list, char *name)
@@ -203,22 +204,22 @@ static int ioreg_read_batch_internal(void __iomem *base, uint64_t offset, int va
 	switch (value_bits) {
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
-			*(buf + i) = readb((void __iomem *)(addr + i));
+			*(buf + i) = readb_relaxed((void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
-			*(uint16_t *)(buf + i) = readw((void __iomem *)(addr + i));
+			*(uint16_t *)(buf + i) = readw_relaxed((void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
-			*(uint32_t *)(buf + i) = readl((void __iomem *)(addr + i));
+			*(uint32_t *)(buf + i) = readl_relaxed((void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
-			*(uint64_t *)(buf + i) = readq((void __iomem *)(addr + i));
+			*(uint64_t *)(buf + i) = readq_relaxed((void __iomem *)(addr + i));
 		}
 		break;
 	default:
@@ -243,22 +244,22 @@ static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset, int v
 	switch (value_bits) {
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
-			writeb(*(buf + i), (void __iomem *)(addr + i));
+			writeb_relaxed(*(buf + i), (void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
-			writew(*(uint16_t *)(buf + i), (void __iomem *)(addr + i));
+			writew_relaxed(*(uint16_t *)(buf + i), (void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
-			writel(*(uint32_t *)(buf + i), (void __iomem *)(addr + i));
+			writel_relaxed(*(uint32_t *)(buf + i), (void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
-			writeq(*(uint64_t *)(buf + i), (void __iomem *)(addr + i));
+			writeq_relaxed(*(uint64_t *)(buf + i), (void __iomem *)(addr + i));
 		}
 		break;
 	default:
@@ -273,16 +274,16 @@ static int ioreg_read_internal(void __iomem *base, uint64_t offset, int value_bi
 	void __iomem *addr = (void __iomem *)((uint8_t *)base + offset);
 	switch (value_bits) {
 	case 8:
-		*value = readb(addr);
+		*value = readb_relaxed(addr);
 		break;
 	case 16:
-		*value = readw(addr);
+		*value = readw_relaxed(addr);
 		break;
 	case 32:
-		*value = readl(addr);
+		*value = readl_relaxed(addr);
 		break;
 	case 64:
-		*value = readq(addr);
+		*value = readq_relaxed(addr);
 		break;
 	default:
 		return -EINVAL;
@@ -294,18 +295,19 @@ static int ioreg_read_internal(void __iomem *base, uint64_t offset, int value_bi
 static int ioreg_write_internal(void __iomem *base, uint64_t offset, int value_bits, uint64_t value)
 {
 	void __iomem *addr = (void __iomem *)((uint8_t *)base + offset);
+
 	switch (value_bits) {
 	case 8:
-		writeb((uint8_t)value, addr);
+		writeb_relaxed((uint8_t)value, addr);
 		break;
 	case 16:
-		writew((uint16_t)value, addr);
+		writew_relaxed((uint16_t)value, addr);
 		break;
 	case 32:
-		writel((uint32_t)value, addr);
+		writel_relaxed((uint32_t)value, addr);
 		break;
 	case 64:
-		writeq(value, addr);
+		writeq_relaxed(value, addr);
 		break;
 	default:
 		return -EINVAL;
@@ -368,7 +370,6 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 		if (ret) {
 			goto rw_func_end;
 		}
-
 		ret = ioreg_write_batch_internal(block->base, entry->rw_batch.offset,
 						 ioreg_dev->base_dev.native_value_bitwidth,
 						 entry->rw_batch.size_in_bytes,
@@ -491,4 +492,16 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t of
 		value = (value & value_mask) | (read_value & ~value_mask);
 	}
 	return ioreg_write_internal(block->base, internal_offset, native_value_bitwidth, value);
+}
+
+int lwis_ioreg_set_io_barrier(struct lwis_ioreg_device *ioreg_dev, bool use_read_barrier,
+			      bool use_write_barrier)
+{
+	if (use_read_barrier) {
+		dma_rmb();
+	}
+	if (use_write_barrier) {
+		dma_wmb();
+	}
+	return 0;
 }

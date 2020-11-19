@@ -21,6 +21,7 @@
 
 #include "lwis_device.h"
 #include "lwis_event.h"
+#include "lwis_ioreg.h"
 #include "lwis_util.h"
 
 #define EXPLICIT_EVENT_COUNTER(x)                                                                  \
@@ -138,6 +139,13 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
 	resp->completion_index = -1;
 
+	/* Use write memory barrier at the beginning of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/false,
+						   /*use_write_barrier=*/true);
+	}
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
@@ -191,6 +199,12 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
 
 event_push:
+	/* Use read memory barrier at the end of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/true,
+						   /*use_write_barrier=*/false);
+	}
 	if (pending_events) {
 		lwis_pending_event_push(pending_events,
 					resp->error_code ? info->emit_error_event_id :

@@ -19,6 +19,7 @@
 
 #include "lwis_buffer.h"
 #include "lwis_commands.h"
+#include "lwis_device.h"
 #include "lwis_device_dpm.h"
 #include "lwis_device_i2c.h"
 #include "lwis_device_ioreg.h"
@@ -321,6 +322,13 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 {
 	int ret = 0, i = 0;
 
+	/* Use write memory barrier at the beginning of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/false,
+						   /*use_write_barrier=*/true);
+	}
 	for (i = 0; i < num_io_entries; i++) {
 		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
@@ -340,13 +348,21 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
 			ret = -EINVAL;
-		};
+		}
 		if (ret) {
 			dev_err(lwis_dev->dev, "Register io_entry failed\n");
-			return ret;
+			goto exit;
 		}
 	}
-	return 0;
+exit:
+	/* Use read memory barrier at the end of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/true,
+						   /*use_write_barrier=*/false);
+	}
+	return ret;
 }
 
 static int ioctl_reg_io(struct lwis_device *lwis_dev, struct lwis_io_entries *user_msg)

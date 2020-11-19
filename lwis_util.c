@@ -16,10 +16,16 @@
 int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blocking, int bid,
 				      uint64_t offset, uint64_t value, int access_size)
 {
+	int ret = 0;
 	struct lwis_io_entry entry = {};
 
-	BUG_ON(!lwis_dev);
+	if (!lwis_dev) {
+		pr_err("lwis_device_single_register_write: lwis_dev is NULL\n");
+		return -ENODEV;
+	}
 	if (lwis_dev->vops.register_io == NULL) {
+		dev_err(lwis_dev->dev,
+			"lwis_device_single_register_write: register_io undefined\n");
 		return -EINVAL;
 	}
 
@@ -28,7 +34,17 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blo
 	entry.rw.val = value;
 	entry.rw.bid = bid;
 
-	return lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking, access_size);
+	if (lwis_dev->vops.register_io_barrier) {
+		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/false,
+						   /*use_write_barrier=*/true);
+	}
+	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking, access_size);
+	if (ret) {
+		dev_err(lwis_dev->dev,
+			"Register write bid %d offset 0x%llx value 0x%llx failed: %d", bid, offset,
+			value, ret);
+	}
+	return ret;
 }
 
 int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_blocking, int bid,
@@ -37,8 +53,13 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_bloc
 	int ret = -EINVAL;
 	struct lwis_io_entry entry = {};
 
-	BUG_ON(!lwis_dev);
+	if (!lwis_dev) {
+		pr_err("lwis_device_single_register_read: lwis_dev is NULL\n");
+		return -ENODEV;
+	}
 	if (lwis_dev->vops.register_io == NULL) {
+		dev_err(lwis_dev->dev,
+			"lwis_device_single_register_read: register_io undefined\n");
 		return -EINVAL;
 	}
 
@@ -47,6 +68,10 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_bloc
 	entry.rw.bid = bid;
 
 	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking, access_size);
+	if (lwis_dev->vops.register_io_barrier) {
+		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/true,
+						   /*use_write_barrier=*/false);
+	}
 	if (!ret && value) {
 		*value = entry.rw.val;
 	}
