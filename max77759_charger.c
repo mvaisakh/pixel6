@@ -368,8 +368,8 @@ static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
 {
 	int ret = 0;
 
-	pr_info("%s: mode=%d on=%d sel=%d\n", __func__, mode,
-		data->uc_data.bst_on, data->uc_data.bst_sel);
+	pr_info("%s: mode=%d ext_bst_ctl=%d\n", __func__, mode,
+		data->uc_data.ext_bst_ctl);
 
 	if (data->uc_data.ext_bst_ctl < 0)
 		return 0;
@@ -483,7 +483,9 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 
 			need_stby = true;
 			break;
-
+		case GSU_RAW_MODE:
+			need_stby = true;
+			break;
 		/* no need to transition to stby for these modes */
 		case GSU_MODE_USB_OTG_WLC_RX:
 		case GSU_MODE_USB_OTG_WLC_TX:
@@ -611,6 +613,9 @@ static int max77759_to_usecase(struct max77759_chgr_data *data,
 		break;
 	case GSU_MODE_WLC_TX:
 		break;
+	case GSU_RAW_MODE:
+		/* just write the value to the register */
+		break;
 	default:
 		break;
 	}
@@ -707,12 +712,6 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 	int usecase;
 	u8 mode;
 
-	/* Raw mode, just use it TODO: transition to stby first */
-	if (cb_data->use_raw) {
-		cb_data->reg = cb_data->raw_value;
-		return GSU_RAW_MODE;
-	}
-
 	/* consistency check, TOD: add more */
 	if (cb_data->wlc_tx && cb_data->wlc_on) {
 		pr_err("%s: wlc_tx and wlc_rx\n", __func__);
@@ -763,11 +762,6 @@ static int max77759_set_usecase(struct max77759_chgr_data *data, u8 reg,
 				int use_case)
 {
 	int ret;
-
-	/* raw mode doesn't do any transition: this minimal implementation */
-	if (use_case == GSU_RAW_MODE)
-		return max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_00,
-					  reg);
 
 	/* transition to STBY if requested from the use case. */
 	ret = max77759_to_standby(data, use_case);
@@ -856,22 +850,28 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
 		 reg);
 
-	dev_info(data->dev, "%s: stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
+	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
 		"boost_on=%d, otg_on=%d, uno_on=%d\n", __func__,
-		cb_data.stby_on, cb_data.pps_dc, cb_data.chgr_on,
-		cb_data.buck_on, cb_data.boost_on, cb_data.otg_on,
-		cb_data.uno_on);
+		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
+		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
+		cb_data.otg_on, cb_data.uno_on);
 
-	/* figure out next use case */
-	use_case = max77759_get_usecase(&cb_data);
-	if (use_case < 0) {
-		dev_err(data->dev, "max77759_charger: no valid use case %d\n",
-			 use_case);
-		goto unlock_done;
+	/* just use raw as is*/
+	if (cb_data.use_raw) {
+		cb_data.reg = cb_data.raw_value;
+		use_case = GSU_RAW_MODE;
+	} else {
+		/* figure out next use case if not in raw mode */
+		use_case = max77759_get_usecase(&cb_data);
+		if (use_case < 0) {
+			dev_err(data->dev, "max77759_charger: no valid use case %d\n",
+				use_case);
+			goto unlock_done;
+		}
 	}
 
 	dev_info(data->dev, "%s: use_case=%x->%x reg=%x->%x\n", __func__,
-		 data->use_case, use_case, reg, cb_data.reg);
+		data->use_case, use_case, reg, cb_data.reg);
 
 	/* TODO: state machine that handle transition between states */
 	ret = max77759_set_usecase(data, cb_data.reg, use_case);
@@ -889,10 +889,10 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		reason = "<>";
 
 	ret = gvotable_election_set_result(el, reason,
-					   (void*)(uintptr_t)cb_data.reg);
+					(void*)(uintptr_t)cb_data.reg);
 	if (ret < 0) {
 		dev_err(data->dev, "max77759_charger: cannot update election %d\n",
-			 ret);
+			ret);
 		goto unlock_done;
 	}
 
