@@ -320,10 +320,8 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 					  struct lwis_io_entry *user_msg)
 {
 	int ret = 0, i = 0;
-	uint64_t bias = 0;
 
 	for (i = 0; i < num_io_entries; i++) {
-		lwis_entry_bias(&io_entries[i], bias);
 		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
 			ret = register_modify(lwis_dev, &io_entries[i]);
@@ -335,9 +333,6 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 		case LWIS_IO_ENTRY_WRITE:
 		case LWIS_IO_ENTRY_WRITE_BATCH:
 			ret = register_write(lwis_dev, &io_entries[i]);
-			break;
-		case LWIS_IO_ENTRY_BIAS:
-			bias = io_entries[i].set_bias.bias;
 			break;
 		case LWIS_IO_ENTRY_POLL:
 			ret = lwis_entry_poll(lwis_dev, &io_entries[i]);

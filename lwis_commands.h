@@ -120,7 +120,6 @@ enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_WRITE,
 	LWIS_IO_ENTRY_WRITE_BATCH,
 	LWIS_IO_ENTRY_MODIFY,
-	LWIS_IO_ENTRY_BIAS,
 	LWIS_IO_ENTRY_POLL
 };
 
@@ -146,10 +145,6 @@ struct lwis_io_entry_modify {
 	uint64_t val_mask;
 };
 
-struct lwis_io_entry_set_bias {
-	uint64_t bias;
-};
-
 // For io_entry poll type.
 struct lwis_io_entry_poll {
 	int bid;
@@ -165,7 +160,6 @@ struct lwis_io_entry {
 		struct lwis_io_entry_rw rw;
 		struct lwis_io_entry_rw_batch rw_batch;
 		struct lwis_io_entry_modify mod;
-		struct lwis_io_entry_set_bias set_bias;
 		struct lwis_io_entry_poll poll;
 	};
 };

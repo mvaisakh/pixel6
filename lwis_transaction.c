@@ -60,18 +60,6 @@ static struct lwis_transaction_event_list *event_list_find_or_create(struct lwis
 	return (list == NULL) ? event_list_create(client, event_id) : list;
 }
 
-void lwis_entry_bias(struct lwis_io_entry *entry, uint64_t bias)
-{
-	if (entry->type == LWIS_IO_ENTRY_WRITE || entry->type == LWIS_IO_ENTRY_READ) {
-		entry->rw.offset += bias;
-	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
-		   entry->type == LWIS_IO_ENTRY_READ_BATCH) {
-		entry->rw_batch.offset += bias;
-	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
-		entry->mod.offset += bias;
-	}
-}
-
 int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 {
 	uint64_t val, start;
@@ -143,7 +131,6 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	uint8_t *read_buf;
 	struct lwis_io_result *io_result;
 	const int reg_value_bytewidth = lwis_dev->native_value_bitwidth / 8;
-	uint64_t bias = 0;
 	int64_t process_duration_ns = 0;
 	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
 
@@ -153,7 +140,6 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
-		lwis_entry_bias(entry, bias);
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
@@ -189,8 +175,6 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 				goto event_push;
 			}
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
-		} else if (entry->type == LWIS_IO_ENTRY_BIAS) {
-			bias = entry->set_bias.bias;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
 			ret = lwis_entry_poll(lwis_dev, entry);
 			if (ret) {

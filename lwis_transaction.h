@@ -45,7 +45,6 @@ struct lwis_transaction_event_list {
 	struct hlist_node node;
 };
 
-void lwis_entry_bias(struct lwis_io_entry *entry, uint64_t bias);
 int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry);
 
 int lwis_transaction_init(struct lwis_client *client);

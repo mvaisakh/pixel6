@@ -166,7 +166,6 @@ static int process_io_entries(struct lwis_client *client,
 	uint8_t *read_buf;
 	struct lwis_periodic_io_result *io_result;
 	const int reg_value_bytewidth = lwis_dev->native_value_bitwidth / 8;
-	uint64_t bias = 0;
 	unsigned long flags;
 
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_periodic_io_response_header) +
@@ -174,7 +173,6 @@ static int process_io_entries(struct lwis_client *client,
 
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
-		lwis_entry_bias(entry, bias);
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
@@ -214,8 +212,6 @@ static int process_io_entries(struct lwis_client *client,
 			}
 			read_buf += sizeof(struct lwis_periodic_io_result) +
 				    io_result->io_result.num_value_bytes;
-		} else if (entry->type == LWIS_IO_ENTRY_BIAS) {
-			bias = entry->set_bias.bias;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
 			ret = lwis_entry_poll(lwis_dev, entry);
 			if (ret) {
