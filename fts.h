@@ -81,16 +81,14 @@
 /* If both COMPUTE_INIT_METHOD and PRE_SAVED_METHOD are not defined,
  * driver will be automatically configured as GOLDEN_VALUE_METHOD
  */
-/*#define COMPUTE_INIT_METHOD   Allow to compute init data on phone during
-			      * production
-			      */
-#define SKIP_PRODUCTION_TEST /* Allow to skip Production test */
+#define COMPUTE_INIT_METHOD	/* Allow to compute init data on phone during
+				 * production
+				 */
+#define SKIP_PRODUCTION_TEST	/* Allow to skip Production test */
 
-//#ifndef COMPUTE_INIT_METHOD
-/*#define PRE_SAVED_METHOD  Pre-Saved Method used
-			  * during production
-			  */
-//#endif
+#ifndef COMPUTE_INIT_METHOD
+#define PRE_SAVED_METHOD	/* Pre-Saved Method used during production */
+#endif
 
 /*#define FW_H_FILE*/			/* include the FW data as header file */
 #ifdef FW_H_FILE
