@@ -108,6 +108,8 @@ struct max77759_chgr_data {
 	atomic_t sysuvlo1_cnt;
 	atomic_t sysuvlo2_cnt;
 
+	atomic_t insel_cnt;
+
 	struct mutex io_lock;
 	bool resume_complete;
 	bool init_complete;
@@ -2058,6 +2060,41 @@ static int sys_uvlo2_set(void *d, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%x\n");
 
+
+/* write to INPUT_MASK_CLR in to re-enable detection */
+static int max77759_chgr_input_mask_clear(struct max77759_chgr_data *data)
+{
+	u8 value;
+	int ret;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_10, &value);
+	if (ret < 0)
+		return -ENODEV;
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_10,
+				 _chg_cnfg_10_input_mask_clr_set(value, 1));
+	if (ret < 0)
+		pr_err("%s: cannot clear input_mask ret=%d\n", __func__, ret);
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_10,
+				 _chg_cnfg_10_input_mask_clr_set(value, 0));
+	if (ret < 0)
+		pr_err("%s: cannot reset input_mask ret=%d\n", __func__, ret);
+
+	return ret;
+}
+
+
+static int input_mask_clear_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+
+	return max77759_chgr_input_mask_clear(data);
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(input_mask_clear_fops, NULL, input_mask_clear_set, "%llu\n");
+
+
 static int dbg_init_fs(struct max77759_chgr_data *data)
 {
 	int ret;
@@ -2080,6 +2117,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 				&data->sysuvlo1_cnt);
 	debugfs_create_atomic_t("sysuvlo2_cnt", 0644, data->de,
 				&data->sysuvlo2_cnt);
+	debugfs_create_atomic_t("insel_cnt", 0644, data->de,
+				&data->insel_cnt);
 
 	debugfs_create_file("vdroop2_ok", 0400, data->de, data,
 			    &vdroop2_ok_fops);
@@ -2091,6 +2130,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 			    &sys_uvlo1_fops);
 	debugfs_create_file("sys_uvlo2", 0600, data->de, data,
 			    &sys_uvlo2_fops);
+	debugfs_create_file("input_mask_clear", 0600, data->de, data,
+			    &input_mask_clear_fops);
 
 	return 0;
 }
@@ -2116,12 +2157,14 @@ static u8 max77759_int_mask[MAX77759_CHG_INT_COUNT] = {
 	  MAX77759_CHG_INT_MASK_WCIN_M |
 	  MAX77759_CHG_INT_MASK_CHG_M |
 	  MAX77759_CHG_INT_MASK_BAT_M),
-	~(MAX77759_CHG_INT2_MASK_SYS_UVLO1_M |
+	(u8)~(MAX77759_CHG_INT2_MASK_INSEL_M |
+	  MAX77759_CHG_INT2_MASK_SYS_UVLO1_M |
 	  MAX77759_CHG_INT2_MASK_SYS_UVLO2_M |
 	  MAX77759_CHG_INT2_MASK_CHG_STA_CV_M |
 	  MAX77759_CHG_INT2_MASK_CHG_STA_TO_M |
 	  MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M),
 };
+
 
 static irqreturn_t max77759_chgr_irq(int irq, void *client)
 {
@@ -2134,16 +2177,26 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 			     sizeof(chg_int));
 	if (ret < 0)
 		return IRQ_NONE;
+
+	if ((chg_int[0] & ~max77759_int_mask[0]) == 0 &&
+	    (chg_int[1] & ~max77759_int_mask[1]) == 0)
+		return IRQ_NONE;
+
 	ret = max77759_writen(data->regmap, MAX77759_CHG_INT, chg_int,
 			      sizeof(chg_int));
 	if (ret < 0)
 		return IRQ_NONE;
 
-	pr_debug("INT : %x %x\n", chg_int[0], chg_int[1]);
+	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M) {
+		ret = max77759_chgr_input_mask_clear(data);
+		if (ret < 0)
+			pr_info("INT : %x %x : clear=%d\n",
+				chg_int[0], chg_int[1], ret);
+		else
+			atomic_inc(&data->insel_cnt);
+	}
 
-	if ((chg_int[0] & ~max77759_int_mask[0]) == 0 &&
-	    (chg_int[1] & ~max77759_int_mask[1]) == 0)
-		return IRQ_NONE;
+	pr_debug("INT : %x %x\n", chg_int[0], chg_int[1]);
 
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I)
 		atomic_inc(&data->sysuvlo1_cnt);
@@ -2181,7 +2234,6 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 	/* wireless input is changed */
 	if (data->wcin_psy && (chg_int[0] & MAX77759_CHG_INT_MASK_WCIN_M))
 		power_supply_changed(data->wcin_psy);
-
 
 	/* someting else is changed */
 	broadcast = (chg_int[0] & MAX77759_CHG_INT_MASK_CHG_M) |
@@ -2280,6 +2332,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	mutex_init(&data->io_lock);
 	atomic_set(&data->sysuvlo1_cnt, 0);
 	atomic_set(&data->sysuvlo2_cnt, 0);
+	atomic_set(&data->insel_cnt, 0);
 	i2c_set_clientdata(client, data);
 
 	ret = of_property_read_string(dev->of_node, "max77759,psy-name",
