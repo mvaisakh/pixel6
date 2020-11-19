@@ -45,7 +45,7 @@ static struct lwis_transaction_event_list *event_list_create(struct lwis_client 
 	struct lwis_transaction_event_list *event_list =
 		kzalloc(sizeof(struct lwis_transaction_event_list), GFP_ATOMIC);
 	if (!event_list) {
-		pr_err("Cannot allocate new event list\n");
+		dev_err(client->lwis_dev->dev, "Cannot allocate new event list\n");
 		return NULL;
 	}
 	event_list->event_id = event_id;
@@ -70,11 +70,12 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 	val = ~entry->poll.val;
 	start = ktime_to_ms(lwis_get_time());
 	while (val != entry->poll.val) {
-		ret = lwis_device_single_register_read(lwis_dev, false, entry->poll.bid,
-						       entry->poll.offset, &val,
+		ret = lwis_device_single_register_read(lwis_dev, /*non_blocking=*/false,
+						       entry->poll.bid, entry->poll.offset, &val,
 						       lwis_dev->native_value_bitwidth);
 		if (ret) {
-			pr_err_ratelimited("Failed to read registers\n");
+			dev_err(lwis_dev->dev, "Failed to read registers: block %d offset 0x%llx\n",
+				entry->poll.bid, entry->poll.offset);
 			return ret;
 		}
 		if ((val & entry->poll.mask) == (entry->poll.val & entry->poll.mask)) {
@@ -190,7 +191,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 				goto event_push;
 			}
 		} else {
-			pr_err_ratelimited("Unrecognized io_entry command\n");
+			dev_err(lwis_dev->dev, "Unrecognized io_entry command\n");
 			resp->error_code = -EINVAL;
 			goto event_push;
 		}
@@ -213,9 +214,9 @@ event_push:
 	} else {
 		/* No pending events indicates it's cleanup io_entries. */
 		if (resp->error_code) {
-			pr_err("Device %s clean-up fails with error code %d, transaction %llu, io_entries[%d], entry_type %d",
-			       lwis_dev->name, resp->error_code, transaction->info.id, i,
-			       entry->type);
+			dev_err(lwis_dev->dev,
+				"Clean-up fails with error code %d, transaction %llu, io_entries[%d], entry_type %d",
+				resp->error_code, transaction->info.id, i, entry->type);
 		}
 	}
 	save_transaction_to_history(client, info, process_timestamp, process_duration_ns);
@@ -294,7 +295,8 @@ int lwis_transaction_clear(struct lwis_client *client)
 
 	ret = lwis_transaction_client_flush(client);
 	if (ret) {
-		pr_err("Failed to wait for all in-process transactions to complete\n");
+		dev_err(client->lwis_dev->dev,
+			"Failed to wait for all in-process transactions to complete (%d)\n", ret);
 		return ret;
 	}
 	if (client->transaction_wq) {
@@ -339,7 +341,7 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* This shouldn't happen after drain_workqueue, but check anyway. */
 	if (!list_empty(&client->transaction_process_queue)) {
-		pr_warn("Still transaction entries in process queue\n");
+		dev_warn(client->lwis_dev->dev, "Still transaction entries in process queue\n");
 		list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
 			transaction =
 				list_entry(it_tran, struct lwis_transaction, process_queue_node);
@@ -439,7 +441,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 		    lwis_device_event_state_find_or_create(lwis_dev, info->emit_error_event_id)) ||
 	    IS_ERR_OR_NULL(
 		    lwis_client_event_state_find_or_create(client, info->emit_error_event_id))) {
-		pr_err_ratelimited("Cannot create sw events for transaction");
+		dev_err(lwis_dev->dev, "Cannot create sw events for transaction");
 		return -EINVAL;
 	}
 
@@ -478,7 +480,7 @@ static int prepare_response_locked(struct lwis_client *client, struct lwis_trans
 	 * holding onto a spinlock. */
 	transaction->resp = kzalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
-		pr_err_ratelimited("Cannot allocate transaction response\n");
+		dev_err(client->lwis_dev->dev, "Cannot allocate transaction response\n");
 		return -ENOMEM;
 	}
 	transaction->resp->id = info->id;
@@ -504,7 +506,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 		/* Trigger by event. */
 		event_list = event_list_find_or_create(client, info->trigger_event_id);
 		if (!event_list) {
-			pr_err_ratelimited("Cannot create transaction event list\n");
+			dev_err(client->lwis_dev->dev, "Cannot create transaction event list\n");
 			kfree(transaction->resp);
 			return -EINVAL;
 		}
