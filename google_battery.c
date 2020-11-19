@@ -591,7 +591,7 @@ static void dump_ssoc_state(struct batt_ssoc_state *ssoc_state,
 
 	scnprintf(ssoc_state->ssoc_state_cstr,
 		  sizeof(ssoc_state->ssoc_state_cstr),
-		  "SSOC: l=%d%% gdf=%d.%02d uic=%d.%02d rl=%d.%02d ct=%d curve:%s rls=%d",
+		  "SSOC: l=%d%% gdf=%d.%02d uic=%d.%02d rl=%d.%02d ct=%d curve:%s rls=%d bd_cnt=%d",
 		  ssoc_get_capacity(ssoc_state),
 		  qnum_toint(ssoc_state->ssoc_gdf),
 		  qnum_fracdgt(ssoc_state->ssoc_gdf),
@@ -601,7 +601,8 @@ static void dump_ssoc_state(struct batt_ssoc_state *ssoc_state,
 		  qnum_fracdgt(ssoc_state->ssoc_rl),
 		  ssoc_state->ssoc_curve_type,
 		  ssoc_uicurve_cstr(buff, sizeof(buff), ssoc_state->ssoc_curve),
-		  ssoc_state->rl_status);
+		  ssoc_state->rl_status,
+		  ssoc_state->bd_trickle_cnt);
 
 	logbuffer_log(log, "%s", ssoc_state->ssoc_state_cstr);
 	pr_debug("%s\n", ssoc_state->ssoc_state_cstr);
@@ -746,6 +747,15 @@ static bool batt_rl_enter(struct batt_ssoc_state *ssoc_state,
 	 */
 	if (rl_current == rl_status || rl_current == BATT_RL_STATUS_DISCHARGE)
 		return false;
+
+	/* bd_trickle_cnt -1 if the rl_status change does not happen at 100% */
+	if (rl_current == BATT_RL_STATUS_RECHARGE &&
+	    rl_status == BATT_RL_STATUS_DISCHARGE) {
+		if (ssoc_get_real(ssoc_state) != SSOC_FULL) {
+			if (ssoc_state->bd_trickle_cnt > 0)
+				ssoc_state->bd_trickle_cnt--;
+		}
+	}
 
 	/*
 	 * NOTE: rl_status transition from *->DISCHARGE on charger FULL (during
