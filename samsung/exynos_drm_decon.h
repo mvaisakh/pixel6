@@ -351,7 +351,6 @@ struct decon_device {
 	bool itmon_notified;
 #endif
 
-	bool busy;
 	wait_queue_head_t framedone_wait;
 };
 

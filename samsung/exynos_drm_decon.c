@@ -1016,13 +1016,11 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 
 	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND) {
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, decon->id, decon);
-		decon->busy = false;
 		wake_up_interruptible_all(&decon->framedone_wait);
 		decon_debug(decon, "%s: frame done\n", __func__);
 	}
 
 	if (irq_sts_reg & DPU_FRAME_START_INT_PEND) {
-		decon->busy = true;
 		complete(&decon->framestart_done);
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
 		decon_debug(decon, "%s: frame start\n", __func__);
