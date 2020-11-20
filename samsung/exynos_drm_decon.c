@@ -1020,12 +1020,6 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 		decon_debug(decon, "%s: frame done\n", __func__);
 	}
 
-	if (irq_sts_reg & DPU_FRAME_START_INT_PEND) {
-		complete(&decon->framestart_done);
-		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
-		decon_debug(decon, "%s: frame start\n", __func__);
-	}
-
 	if (ext_irq & DPU_RESOURCE_CONFLICT_INT_PEND)
 		decon_debug(decon, "%s: resource conflict\n", __func__);
 
@@ -1033,6 +1027,30 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 		decon_err(decon, "%s: timeout irq occurs\n", __func__);
 		decon_dump(decon);
 		WARN_ON(1);
+	}
+
+irq_end:
+	spin_unlock(&decon->slock);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t decon_fs_irq_handler(int irq, void *dev_data)
+{
+	struct decon_device *decon = dev_data;
+	u32 pending_irq;
+
+	spin_lock(&decon->slock);
+	if (decon->state != DECON_STATE_ON)
+		goto irq_end;
+
+	pending_irq = decon_reg_get_fs_interrupt_and_clear(decon->id);
+
+	if (pending_irq & DPU_FRAME_START_INT_PEND) {
+		complete(&decon->framestart_done);
+		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
+		decon_debug(decon, "%s: frame start\n", __func__);
+		if (decon->config.mode.op_mode == DECON_VIDEO_MODE)
+			drm_crtc_handle_vblank(&decon->crtc->base);
 	}
 
 irq_end:
@@ -1305,7 +1323,7 @@ static int decon_register_irqs(struct decon_device *decon)
 
 	/* 1: FRAME START */
 	decon->irq_fs = of_irq_get_byname(np, "frame_start");
-	ret = devm_request_irq(dev, decon->irq_fs, decon_irq_handler,
+	ret = devm_request_irq(dev, decon->irq_fs, decon_fs_irq_handler,
 			0, pdev->name, decon);
 	if (ret) {
 		decon_err(decon, "failed to install FRAME START irq\n");

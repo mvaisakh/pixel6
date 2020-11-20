@@ -2112,9 +2112,6 @@ int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq)
 	reg_id = DECON_INT_PEND;
 	val = decon_read(id, reg_id);
 
-	if (val & INT_PEND_FRAME_START)
-		decon_write(id, reg_id, INT_PEND_FRAME_START);
-
 	if (val & INT_PEND_FRAME_DONE)
 		decon_write(id, reg_id, INT_PEND_FRAME_DONE);
 
@@ -2133,6 +2130,17 @@ int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq)
 		if (val1 & INT_EN_TIME_OUT)
 			decon_write(id, reg_id, INT_EN_TIME_OUT);
 	}
+
+	return val;
+}
+
+int decon_reg_get_fs_interrupt_and_clear(u32 id)
+{
+	u32 val;
+
+	val = decon_read(id, DECON_INT_PEND);
+	if (val & INT_PEND_FRAME_START)
+		decon_write(id, DECON_INT_PEND, INT_PEND_FRAME_START);
 
 	return val;
 }

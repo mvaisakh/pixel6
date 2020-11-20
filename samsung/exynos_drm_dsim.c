@@ -1207,7 +1207,6 @@ static void dsim_underrun_info(struct dsim_device *dsim)
 static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 {
 	struct dsim_device *dsim = dev_id;
-	struct drm_crtc *crtc = dsim->encoder.crtc;
 	const struct decon_device *decon = dsim_get_decon(dsim);
 	unsigned int int_src;
 
@@ -1253,12 +1252,6 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 		if (decon)
 			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
 		DPU_ATRACE_INT("DPU_UNDERRUN", 0);
-	}
-
-	if (int_src & DSIM_INTSRC_VT_STATUS) {
-		dsim_debug(dsim, "vt_status irq occurs\n");
-		if ((dsim->config.mode == DSIM_VIDEO_MODE) && crtc)
-			drm_crtc_handle_vblank(crtc);
 	}
 
 	spin_unlock(&dsim->slock);
