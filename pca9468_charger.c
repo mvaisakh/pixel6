@@ -282,6 +282,11 @@ enum {
 #define VOUT_STEP	5000 	/* 5mV(5000uV) LSB, Range(0V ~ 5.115V) */
 #define NTCV_STEP	2346 	/* 2.346mV(2346uV) LSB, Range(0V ~ 2.4V) */
 #define ADC_IIN_OFFSET	900000	/* 900mA */
+#define NTC_CURVE_THRESHOLD	185
+#define NTC_CURVE_1_BASE	960
+#define NTC_CURVE_1_SHIFT	2
+#define NTC_CURVE_2_BASE	730
+#define NTC_CURVE_2_SHIFT	3
 
 /* adc_gain bit[7:4] of reg 0x31 - 2's complement */
 static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
@@ -1061,7 +1066,13 @@ static int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
 
 		raw_adc = ((reg_data[1] & PCA9468_BIT_ADC_NTCV9_4) << 4) |
 			  ((reg_data[0] & PCA9468_BIT_ADC_NTCV3_0) >> 4);
-		conv_adc = raw_adc * NTCV_STEP;	 /* unit - uV */
+
+		/* Temp = (rawadc < 185)? (960-rawadc/4) : (730-rawadc/8) */
+		/* unit: 0.1 degree C */
+		if (raw_adc < NTC_CURVE_THRESHOLD)
+			conv_adc = NTC_CURVE_1_BASE - ((raw_adc * 10) >> NTC_CURVE_1_SHIFT);
+		else
+			conv_adc = NTC_CURVE_2_BASE - ((raw_adc * 10) >> NTC_CURVE_2_SHIFT);
 		break;
 
 	default:
