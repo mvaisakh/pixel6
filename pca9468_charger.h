@@ -27,6 +27,11 @@ struct pca9468_platform_data {
 	 *	2 - 4:1 charging mode
 	 */
 	unsigned int	chg_mode;
+
+#ifdef CONFIG_THERMAL
+	struct thermal_zone_device *usb_tzd;
+	const char *usb_tz_name;
+#endif
 };
 
 #endif

@@ -25,6 +25,7 @@
 #include <linux/regmap.h>
 #include <linux/rtc.h>
 #include <linux/debugfs.h>
+#include <linux/thermal.h>
 #include "gbms_power_supply.h"
 #include "pca9468_charger.h"
 
@@ -4993,6 +4994,19 @@ static int of_pca9468_dt(struct device *dev,
 	}
 	pr_info("%s: pca9468,chg_mode is %u\n", __func__, pdata->chg_mode);
 
+#ifdef CONFIG_THERMAL
+	/* USBC thermal zone */
+	ret = of_property_read_string(np_pca9468, "google,usb-port-tz-name",
+				      &pdata->usb_tz_name);
+	if (ret) {
+		pr_info("%s: google,usb-port-tz-name is Empty\n", __func__);
+		pdata->usb_tz_name = NULL;
+	} else {
+		pr_info("%s: google,usb-port-tz-name is %s\n", __func__,
+			pdata->usb_tz_name);
+	}
+#endif
+
 	return 0;
 }
 #else
@@ -5002,6 +5016,23 @@ static int of_pca9468_dt(struct device *dev,
 	return 0;
 }
 #endif /* CONFIG_OF */
+
+#ifdef CONFIG_THERMAL
+static int pca9468_usb_tz_read_temp(struct thermal_zone_device *tzd, int *temp)
+{
+	struct pca9468_charger *pca9468 = tzd->devdata;
+
+	if (!pca9468)
+		return -ENODEV;
+	*temp = pca9468_read_adc(pca9468, ADCCH_NTC);
+
+	return 0;
+}
+
+static struct thermal_zone_device_ops pca9468_usb_tzd_ops = {
+	.get_temp = pca9468_usb_tz_read_temp,
+};
+#endif
 
 static int read_reg(void *data, u64 *val)
 {
@@ -5226,6 +5257,22 @@ static int pca9468_probe(struct i2c_client *client,
 	}
 #endif
 
+#ifdef CONFIG_THERMAL
+	if (pdata->usb_tz_name) {
+		pdata->usb_tzd =
+			thermal_zone_device_register(pdata->usb_tz_name, 0, 0,
+						     pca9468_chg,
+						     &pca9468_usb_tzd_ops,
+						     NULL, 0, 0);
+		if (IS_ERR(pdata->usb_tzd)) {
+			dev_err(dev, "Couldn't register usb connector thermal zone ret=%d\n",
+				PTR_ERR(pdata->usb_tzd));
+			ret = PTR_ERR(pdata->usb_tzd);
+			goto error;
+		}
+	}
+#endif
+
 	pr_info("pca9468: probe_done\n");
 	pr_debug("%s: =========END=========\n", __func__);
 	return 0;
@@ -5255,6 +5302,11 @@ static int pca9468_remove(struct i2c_client *client)
 	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
 #ifdef CONFIG_DC_STEP_CHARGING
 	pca9468_step_chg_deinit();
+#endif
+
+#ifdef CONFIG_THERMAL
+	if (pca9468_chg->pdata->usb_tz_name)
+		thermal_zone_device_unregister(pca9468_chg->pdata->usb_tzd);
 #endif
 	return 0;
 }
