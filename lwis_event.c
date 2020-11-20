@@ -588,13 +588,15 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	unsigned long flags;
 	bool has_subscriber;
 
-	device_event_state = lwis_device_event_state_find(lwis_dev, event_id);
-	if (IS_ERR_OR_NULL(device_event_state)) {
-		pr_err("Device event state not found %llx\n", event_id);
-		return -EINVAL;
-	}
 	/* Lock and disable to prevent event_states from changing */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
+
+	device_event_state = lwis_device_event_state_find_locked(lwis_dev, event_id);
+	if (IS_ERR_OR_NULL(device_event_state)) {
+		pr_err("Device event state not found %llx\n", event_id);
+		spin_unlock_irqrestore(&lwis_dev->lock, flags);
+		return -EINVAL;
+	}
 
 	/* Increment the event counter */
 	device_event_state->event_counter++;
@@ -605,16 +607,16 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	/* Saves this event to history buffer */
 	save_device_event_state_to_history_locked(lwis_dev, device_event_state, timestamp);
 
+	has_subscriber = (device_event_state->subscriber_count > 0);
+
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	/* Emit event to subscriber via top device */
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	has_subscriber = (device_event_state->subscriber_count > 0);
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-	if (has_subscriber)
+	if (has_subscriber) {
 		lwis_dev->top_dev->subscribe_ops.notify_event_subscriber(
 			lwis_dev->top_dev, event_id, event_counter, timestamp, in_irq);
+	}
 
 	/* Run internal handler if any */
 	if (lwis_dev->vops.event_emitted) {
