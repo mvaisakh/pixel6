@@ -419,6 +419,12 @@ static int max77759_find_fg(struct max77729_pmic_data *data)
 	return 0;
 }
 
+#define NTC_CURVE_THRESHOLD	185
+#define NTC_CURVE_1_BASE	960
+#define NTC_CURVE_1_SHIFT	2
+#define NTC_CURVE_2_BASE	730
+#define NTC_CURVE_2_SHIFT	3
+
 static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 			     unsigned int *value)
 {
@@ -465,8 +471,20 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 	ret = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_AIN0, &ain0);
 	pr_debug("%s: AIN0=%d (%d)\n", __func__, ain0, ret);
 
-	/* AIN0 is ratiometric on THM, 0xffff = 100%, lsb is 2^-16 */
-	*value = (100000 * (unsigned long)(ain0)) / (0x10000 - ain0);
+	if (mux == THMIO_MUX_USB_TEMP) {
+		/* convert form 1.8V to 2.4V and get higher 10 bits */
+		const unsigned int conv_adc = ((ain0 * 1800) / 2400) >> 6;
+
+		/* Temp = (rawadc < 185)? (960-rawadc/4) : (730-rawadc/8) */
+		/* unit: 0.1 degree C */
+		if (conv_adc < NTC_CURVE_THRESHOLD)
+			*value = NTC_CURVE_1_BASE - ((conv_adc * 10) >> NTC_CURVE_1_SHIFT);
+		else
+			*value = NTC_CURVE_2_BASE  - ((conv_adc * 10) >> NTC_CURVE_2_SHIFT);
+	} else {
+		/* AIN0 is ratiometric on THM, 0xffff = 100%, lsb is 2^-16 */
+		*value = (100000 * (unsigned long)ain0) / (0x10000 - ain0);
+	}
 
 	/* restore THMIO_MUX */
 	tmp = max77729_pmic_wr8(data, MAX77759_PMIC_CONTROL_FG, pmic_ctrl);

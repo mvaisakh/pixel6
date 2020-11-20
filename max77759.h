@@ -68,5 +68,6 @@ static inline int max77759_read_batt_id(struct i2c_client *client,
 #define THMIO_MUX_USB_TEMP	1
 #define THMIO_MUX_BATT_ID	2
 
+int max77759_read_usb_temp(struct i2c_client *client, int *temp);
 
 #endif
