@@ -25,9 +25,12 @@
 /* DIGITAL CHIP INFO */
 #undef ALIX
 
+#define ALIX_DCHIP_ID_0			0x36	/* /< LSB chip ID for FTM5 */
+#define ALIX_DCHIP_ID_1			0x48	/* /< MSB chip ID for FTM5 */
+
 #ifdef ALIX
-#define DCHIP_ID_0			0x36	/* /< LSB chip ID for FTM5 */
-#define DCHIP_ID_1			0x48	/* /< MSB chip ID for FTM5 */
+#define DCHIP_ID_0		ALIX_DCHIP_ID_0	/* /< LSB chip ID for FTM5 */
+#define DCHIP_ID_1		ALIX_DCHIP_ID_1	/* /< MSB chip ID for FTM5 */
 #else
 #define DCHIP_ID_0			0x36	/* /< LSB chip ID for FTM5 */
 #define DCHIP_ID_1			0x39	/* /< MSB chip ID for FTM5 */

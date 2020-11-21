@@ -5454,7 +5454,13 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		       DCHIP_ID_0, DCHIP_ID_1);
 		bdata->dchip_id[0] = DCHIP_ID_0;
 		bdata->dchip_id[1] = DCHIP_ID_1;
-	}
+		bdata->flash_chunk = FLASH_CHUNK;
+	} else if (bdata->dchip_id[0] == ALIX_DCHIP_ID_0 &&
+		   bdata->dchip_id[1] == ALIX_DCHIP_ID_1)
+		bdata->flash_chunk = (32 * 1024);
+	else
+		bdata->flash_chunk = (64 * 1024);
+	pr_info("Flash chunk = %d\n", bdata->flash_chunk);
 
 	if (of_property_read_bool(np, "st,panel_map")) {
 		for (index = 0 ;; index++) {

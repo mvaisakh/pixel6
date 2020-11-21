@@ -283,6 +283,8 @@ struct fts_disp_extinfo {
   */
 struct fts_hw_platform_data {
 	u8 dchip_id[2];	/* DCHIPID_ID_0 and DCHIPID_ID_1 in ftsHardware.h */
+	int flash_chunk; /* Max number of bytes that the DMA can burn on flash
+			  * in one shot in FTI */
 	int (*power) (bool on);
 	int switch_gpio;/* (optional) I2C switch */
 	int irq_gpio;	/* /< number of the gpio associated to the interrupt pin

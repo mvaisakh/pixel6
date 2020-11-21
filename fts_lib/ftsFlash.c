@@ -258,8 +258,10 @@ int wait_for_flash_ready(u8 type)
   */
 int hold_m3(void)
 {
+	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int ret;
 	u8 cmd[1] = { 0x01 };
+	u64 address = 0x0;
 
 	pr_info("Command m3 hold...\n");
 	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
@@ -294,25 +296,21 @@ int hold_m3(void)
 			return ret;
 		}
 
-#ifdef ALIX
-		cmd[0] = 0x70;
+		if (info->board->dchip_id[0] == ALIX_DCHIP_ID_0 &&
+		    info->board->dchip_id[1] == ALIX_DCHIP_ID_1) {
+			cmd[0] = 0x70;
+			address = ADDR_GPIO_CONFIG_REG3;
+		} else {
+			cmd[0] = 0x07;
+			address = ADDR_GPIO_CONFIG_REG2;
+		}
 		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-				    ADDR_GPIO_CONFIG_REG3, cmd, 1);
+				    address, cmd, 1);
 		if (ret < OK) {
 			pr_err("%s: can not set gpio config ERROR %08X\n",
 				__func__, ret);
 			return ret;
 		}
-#else
-		cmd[0] = 0x07;
-		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-				    ADDR_GPIO_CONFIG_REG2, cmd, 1);
-		if (ret < OK) {
-			pr_err("%s: can not set gpio config ERROR %08X\n",
-				__func__, ret);
-			return ret;
-		}
-#endif
 
 		cmd[0] = 0x30;
 		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
@@ -818,6 +816,7 @@ int start_flash_dma(void)
   */
 int fillFlash(u32 address, u8 *data, int size)
 {
+	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	int remaining = size, index = 0;
 	int toWrite = 0;
 	int byteBlock = 0;
@@ -837,30 +836,30 @@ int fillFlash(u32 address, u8 *data, int size)
 		byteBlock = 0;
 		addr = 0x00100000;
 
-		while (byteBlock < FLASH_CHUNK && remaining > 0) {
+		while (byteBlock < info->board->flash_chunk && remaining > 0) {
 			index = 0;
 			if (remaining >= DMA_CHUNK) {
-				if ((byteBlock + DMA_CHUNK) <= FLASH_CHUNK) {
+				if ((byteBlock + DMA_CHUNK) <= info->board->flash_chunk) {
 					/* pr_err("fillFlash: 1\n"); */
 					toWrite = DMA_CHUNK;
 					remaining -= DMA_CHUNK;
 					byteBlock += DMA_CHUNK;
 				} else {
 					/* pr_err("fillFlash: 2\n); */
-					delta = FLASH_CHUNK - byteBlock;
+					delta = info->board->flash_chunk - byteBlock;
 					toWrite = delta;
 					remaining -= delta;
 					byteBlock += delta;
 				}
 			} else {
-				if ((byteBlock + remaining) <= FLASH_CHUNK) {
+				if ((byteBlock + remaining) <= info->board->flash_chunk) {
 					/* pr_err("fillFlash: 3\n"); */
 					toWrite = remaining;
 					byteBlock += remaining;
 					remaining = 0;
 				} else {
 					/* pr_err("fillFlash: 4\n"); */
-					delta = FLASH_CHUNK - byteBlock;
+					delta = info->board->flash_chunk - byteBlock;
 					toWrite = delta;
 					remaining -= delta;
 					byteBlock += delta;
@@ -903,7 +902,7 @@ int fillFlash(u32 address, u8 *data, int size)
 		buff[index++] = 0x00;
 		buff[index++] = 0x00;
 
-		addr = address + ((wheel * FLASH_CHUNK) / 4);
+		addr = address + ((wheel * info->board->flash_chunk) / 4);
 		buff[index++] = (u8)((addr & 0x000000FF));
 		buff[index++] = (u8)((addr & 0x0000FF00) >> 8);
 		buff[index++] = (u8)(byteBlock & 0x000000FF);
