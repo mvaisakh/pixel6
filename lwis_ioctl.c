@@ -76,7 +76,7 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, in
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
 		break;
 	case IOCTL_TO_ENUM(LWIS_DEVICE_RESET):
-		strcpy(type_name, STRINGIFY(LWIS_DEVICE_RESET));
+		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_RESET), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_RESET);
 		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
