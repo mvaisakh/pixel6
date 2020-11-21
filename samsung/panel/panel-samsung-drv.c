@@ -1273,6 +1273,23 @@ static struct attribute *bl_device_attrs[] = {
 };
 ATTRIBUTE_GROUPS(bl_device);
 
+static int exynos_panel_attach_brightness_capability(struct exynos_drm_connector *exynos_conn,
+				const struct brightness_capability *brt_capability)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_conn);
+	struct drm_property_blob *blob;
+
+	blob = drm_property_create_blob(exynos_conn->base.dev,
+				 sizeof(struct brightness_capability),
+				 brt_capability);
+	if (IS_ERR(blob))
+		return PTR_ERR(blob);
+	drm_object_attach_property(&exynos_conn->base.base, p->brightness_capability, blob->base.id);
+
+	return 0;
+}
+
 static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
 					enum exynos_panel_state panel_state)
 {
@@ -1329,6 +1346,15 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->max_luminance, desc->max_luminance);
 	drm_object_attach_property(obj, p->max_avg_luminance, desc->max_avg_luminance);
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
+	drm_object_attach_property(obj, p->brightness_level, 0);
+	drm_object_attach_property(obj, p->hbm_on, 0);
+
+	if (desc->brt_capability) {
+		ret = exynos_panel_attach_brightness_capability(&ctx->exynos_connector,
+				desc->brt_capability);
+		if (ret)
+			dev_err(ctx->dev, "Failed to attach brightness capability (%d)\n", ret);
+	}
 
 	if (desc->lp_mode) {
 		ret = exynos_panel_attach_lp_mode(&ctx->exynos_connector, &desc->lp_mode->mode);

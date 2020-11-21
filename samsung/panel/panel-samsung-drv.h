@@ -176,6 +176,7 @@ struct exynos_panel_desc {
 	u32 min_luminance;
 	u32 max_brightness;
 	u32 dft_brightness; /* default brightness */
+	const struct brightness_capability *brt_capability;
 	const u32 *bl_range;
 	u32 bl_num_ranges;
 	const struct exynos_panel_mode *modes;

@@ -12,6 +12,7 @@
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_connector.h>
+#include <drm/samsung_drm.h>
 
 struct exynos_drm_connector;
 
@@ -21,6 +22,9 @@ struct exynos_drm_connector_properties {
 	struct drm_property *min_luminance;
 	struct drm_property *hdr_formats;
 	struct drm_property *lp_mode;
+	struct drm_property *hbm_on;
+	struct drm_property *brightness_capability;
+	struct drm_property *brightness_level;
 };
 
 struct exynos_display_dsc {
