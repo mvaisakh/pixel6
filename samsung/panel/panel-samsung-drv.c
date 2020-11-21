@@ -601,10 +601,58 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 		   desc->min_luminance, desc->max_luminance,
 		   desc->max_avg_luminance);
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
+	drm_printf(p, "\thbm_on: %s\n", ctx->hbm_mode ? "true" : "false");
+}
+
+static int exynos_panel_connector_get_property(
+				   struct exynos_drm_connector *exynos_connector,
+				   const struct exynos_drm_connector_state *exynos_state,
+				   struct drm_property *property,
+				   uint64_t *val)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+
+	if (property == p->brightness_level) {
+		*val = exynos_state->brightness_level;
+		dev_dbg(ctx->dev, "%s: brt(%llu)\n", __func__, *val);
+	} else if (property == p->hbm_on) {
+		*val = exynos_state->hbm_on;
+		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	} else
+		return -EINVAL;
+
+	return 0;
+}
+
+static int exynos_panel_connector_set_property(
+				   struct exynos_drm_connector *exynos_connector,
+				   struct exynos_drm_connector_state *exynos_state,
+				   struct drm_property *property,
+				   uint64_t val)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+
+	if (property == p->brightness_level) {
+		exynos_state->brightness_level = val;
+		dev_dbg(ctx->dev, "%s: brt(%u)\n", __func__, exynos_state->brightness_level);
+	} else if (property == p->hbm_on) {
+		exynos_state->hbm_on = val;
+		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__,
+			 exynos_state->hbm_on ? "true" : "false");
+	} else
+		return -EINVAL;
+
+	return 0;
 }
 
 static const struct exynos_drm_connector_funcs exynos_panel_connector_funcs = {
 	.atomic_print_state = exynos_panel_connector_print_state,
+	.atomic_get_property = exynos_panel_connector_get_property,
+	.atomic_set_property = exynos_panel_connector_set_property,
 };
 
 static int exynos_drm_connector_modes(struct drm_connector *connector)

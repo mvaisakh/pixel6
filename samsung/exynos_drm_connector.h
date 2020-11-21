@@ -78,6 +78,12 @@ struct exynos_drm_connector_state {
 
 	/* @seamless_possible: this is set if the current mode switch can be done seamlessly */
 	bool seamless_possible;
+
+	/* @brightness_level: panel brightness level */
+	unsigned int brightness_level;
+
+	/* @hbm_on: hbm_on indicator */
+	bool hbm_on;
 };
 
 #define to_exynos_connector_state(connector_state) \
