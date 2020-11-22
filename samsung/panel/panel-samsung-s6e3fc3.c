@@ -100,6 +100,9 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x27, 0xF2); /* FQ_CON_GLOBAL */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x00); /* FQ_CON_0 */
 
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x0B, 0x8F); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0x8F, 0x2B); /* IRC setting */
+
 	/* Local HBM circle location setting */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF1, 0x5A, 0x5A); /* TEST_KEY_ON_F1 */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para */
