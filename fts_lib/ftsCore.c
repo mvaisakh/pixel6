@@ -32,22 +32,6 @@
 #include "ftsTool.h"
 #include "ftsFrame.h"
 
-/** @addtogroup system_info
-  * @{
-  */
-SysInfo systemInfo;	/* Global System Info variable, accessible in all the
-			 * driver */
-/** @}*/
-
-static int reset_gpio = GPIO_NOT_DEFINED;/* /< gpio number of the rest pin,
-					  * the value is  GPIO_NOT_DEFINED
-					  * if the reset pin is not connected */
-static int system_reseted_up;	/* /< flag checked during resume to understand
-				 * if there was a system reset
-				 * and restore the proper state */
-static int system_reseted_down; /* /< flag checked during suspend to understand
-				 * if there was a system reset
-				 *  and restore the proper state */
 
 /**
   * Initialize core variables of the library.
@@ -62,9 +46,8 @@ int initCore(struct fts_ts_info *info)
 
 	pr_info("%s: Initialization of the Core...\n", __func__);
 	ret |= openChannel(info->client);
-	ret |= resetErrorList();
-	ret |= initTestToDo();
-	setResetGpio(info->board->reset_gpio);
+	ret |= resetErrorList(info);
+	ret |= initTestToDo(info);
 	if (ret < OK)
 		pr_err("%s: Initialization Core ERROR %08X!\n",
 			 __func__, ret);
@@ -72,17 +55,6 @@ int initCore(struct fts_ts_info *info)
 		pr_info("%s: Initialization Finished!\n",
 			 __func__);
 	return ret;
-}
-
-/**
-  * Set the reset_gpio variable with the actual gpio number of the board link to
-  * the reset pin
-  * @param gpio gpio number link to the reset pin of the IC
-  */
-void setResetGpio(int gpio)
-{
-	reset_gpio = gpio;
-	pr_info("setResetGpio: reset_gpio = %d\n", reset_gpio);
 }
 
 /**
@@ -103,20 +75,20 @@ int fts_system_reset(struct fts_ts_info *info)
 
 	pr_info("System resetting...\n");
 	for (i = 0; i < RETRY_SYSTEM_RESET && res < 0; i++) {
-		resetErrorList();
+		resetErrorList(info);
 		fts_enableInterrupt(info, false);
 		/* disable interrupt before resetting to be able to get boot
 		 * events */
 
-		if (reset_gpio == GPIO_NOT_DEFINED)
+		if (info->board->reset_gpio == GPIO_NOT_DEFINED)
 			res = fts_writeU8UX(info, FTS_CMD_HW_REG_W,
 					    ADDR_SIZE_HW_REG,
 					    ADDR_SYSTEM_RESET, data, ARRAY_SIZE(
 						    data));
 		else {
-			gpio_set_value(reset_gpio, 0);
+			gpio_set_value(info->board->reset_gpio, 0);
 			msleep(10);
-			gpio_set_value(reset_gpio, 1);
+			gpio_set_value(info->board->reset_gpio, 1);
 			res = OK;
 		}
 		if (res < OK)
@@ -135,8 +107,8 @@ int fts_system_reset(struct fts_ts_info *info)
 		return res | ERROR_SYSTEM_RESET_FAIL;
 	} else {
 		pr_debug("System reset DONE!\n");
-		system_reseted_down = 1;
-		system_reseted_up = 1;
+		info->system_reseted_down = 1;
+		info->system_reseted_up = 1;
 		return OK;
 	}
 }
@@ -145,18 +117,18 @@ int fts_system_reset(struct fts_ts_info *info)
   * Return the value of system_resetted_down.
   * @return the flag value: 0 if not set, 1 if set
   */
-int isSystemResettedDown(void)
+bool isSystemResettedDown(struct fts_ts_info *info)
 {
-	return system_reseted_down;
+	return info->system_reseted_down;
 }
 
 /**
   * Return the value of system_resetted_up.
   * @return the flag value: 0 if not set, 1 if set
   */
-int isSystemResettedUp(void)
+bool isSystemResettedUp(struct fts_ts_info *info)
 {
-	return system_reseted_up;
+	return info->system_reseted_up;
 }
 
 
@@ -164,18 +136,18 @@ int isSystemResettedUp(void)
   * Set the value of system_reseted_down flag
   * @param val value to write in the flag
   */
-void setSystemResetedDown(int val)
+void setSystemResetedDown(struct fts_ts_info *info, bool val)
 {
-	system_reseted_down = val;
+	info->system_reseted_down = val;
 }
 
 /**
   * Set the value of system_reseted_up flag
   * @param val value to write in the flag
   */
-void setSystemResetedUp(int val)
+void setSystemResetedUp(struct fts_ts_info *info, bool val)
 {
-	system_reseted_up = val;
+	info->system_reseted_up = val;
 }
 
 
@@ -253,8 +225,8 @@ int pollForEvent(struct fts_ts_info *info, int *event_to_search,
 			if (readData[0] == EVT_ID_CONTROLLER_READY &&
 			    event_to_search[0] != EVT_ID_CONTROLLER_READY) {
 				pr_err("pollForEvent: Unmanned Controller Ready Event! Setting reset flags...\n");
-				setSystemResetedUp(1);
-				setSystemResetedDown(1);
+				setSystemResetedUp(info, 1);
+				setSystemResetedDown(info, 1);
 			}
 		}
 
@@ -526,28 +498,28 @@ int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size)
   * data from memory, other value if another error occurred
   * @return OK if success or an error code which specify the type of error
   */
-int defaultSysInfo(int i2cError)
+int defaultSysInfo(struct fts_ts_info *info, int i2cError)
 {
 	int i;
 
 	pr_info("Setting default System Info...\n");
 
 	if (i2cError == 1) {
-		systemInfo.u16_fwVer = 0xFFFF;
-		systemInfo.u16_cfgProjectId = 0xFFFF;
+		info->systemInfo.u16_fwVer = 0xFFFF;
+		info->systemInfo.u16_cfgProjectId = 0xFFFF;
 		for (i = 0; i < RELEASE_INFO_SIZE; i++)
-			systemInfo.u8_releaseInfo[i] = 0xFF;
-		systemInfo.u16_cxVer = 0xFFFF;
+			info->systemInfo.u8_releaseInfo[i] = 0xFF;
+		info->systemInfo.u16_cxVer = 0xFFFF;
 	} else {
-		systemInfo.u16_fwVer = 0x0000;
-		systemInfo.u16_cfgProjectId = 0x0000;
+		info->systemInfo.u16_fwVer = 0x0000;
+		info->systemInfo.u16_cfgProjectId = 0x0000;
 		for (i = 0; i < RELEASE_INFO_SIZE; i++)
-			systemInfo.u8_releaseInfo[i] = 0x00;
-		systemInfo.u16_cxVer = 0x0000;
+			info->systemInfo.u8_releaseInfo[i] = 0x00;
+		info->systemInfo.u16_cxVer = 0x0000;
 	}
 
-	systemInfo.u8_scrRxLen = 0;
-	systemInfo.u8_scrTxLen = 0;
+	info->systemInfo.u8_scrRxLen = 0;
+	info->systemInfo.u8_scrTxLen = 0;
 
 	pr_info("default System Info DONE!\n");
 	return OK;
@@ -566,6 +538,7 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	u8 sett = LOAD_SYS_INFO;
 	u8 data[SYS_INFO_SIZE] = { 0 };
 	char temp[256] = { 0 };
+	SysInfo systemInfo;
 
 	if (request == 1) {
 		pr_info("%s: Requesting System Info...\n", __func__);
@@ -812,6 +785,8 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	u8ToU16(&data[index], &systemInfo.u16_ssDetBaselineAddr);
 	index += 2;
 
+	memcpy(&info->systemInfo, &systemInfo, sizeof(systemInfo));
+
 	pr_info("Parsed %d bytes!\n", index);
 
 
@@ -826,7 +801,7 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	return OK;
 
 FAIL:
-	defaultSysInfo(isI2cError(ret));
+	defaultSysInfo(info, isI2cError(ret));
 	return ret;
 }
 /** @}*/
@@ -951,11 +926,11 @@ int fts_crc_check(struct fts_ts_info *info)
 	pr_info("%s: Verifying if Config CRC Error...\n", __func__);
 	res = fts_system_reset(info);
 	if (res >= OK) {
-		res = pollForErrorType(error_to_search, 2);
+		res = pollForErrorType(info, error_to_search, 2);
 		if (res < OK) {
 			pr_info("%s: No Config CRC Error Found!\n", __func__);
 			pr_info("%s: Verifying if Cx CRC Error...\n", __func__);
-			res = pollForErrorType(&error_to_search[2], 4);
+			res = pollForErrorType(info, &error_to_search[2], 4);
 			if (res < OK) {
 				pr_info("%s: No Cx CRC Error Found!\n",
 					__func__);

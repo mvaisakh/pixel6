@@ -33,8 +33,6 @@
 #include "ftsCompensation.h"
 
 
-static ErrorList errors;/* /< private variable which implement the Error List */
-
 /**
   * Check if an error code is related to an I2C failure
   * @param error error code to check
@@ -141,7 +139,7 @@ int errorHandler(struct fts_ts_info *info, u8 *event, int size)
 	if (info != NULL && event != NULL && size > 1 &&
 	    event[0] == EVT_ID_ERROR) {
 		pr_debug("errorHandler: Starting handling...\n");
-		addErrorIntoList(event, size);
+		addErrorIntoList(info, event, size);
 		switch (event[1]) {	/* TODO: write an error log for
 					 * undefined command subtype 0xBA */
 		case EVT_TYPE_ERROR_ESD:	/* esd */
@@ -220,26 +218,27 @@ int errorHandler(struct fts_ts_info *info, u8 *event, int size)
   * @param size size of event
   * @return OK
   */
-int addErrorIntoList(u8 *event, int size)
+int addErrorIntoList(struct fts_ts_info *info, u8 *event, int size)
 {
 	int i = 0;
 
 	pr_debug("Adding error in to ErrorList...\n");
 
-	memcpy(&errors.list[errors.last_index * FIFO_EVENT_SIZE], event, size);
+	memcpy(&info->errors.list[info->errors.last_index * FIFO_EVENT_SIZE],
+	       event, size);
 	i = FIFO_EVENT_SIZE - size;
 	if (i > 0) {
 		pr_info("Filling last %d bytes of the event with zero...\n", i);
-		memset(&errors.list[errors.last_index * FIFO_EVENT_SIZE + size],
-		       0, i);
+		memset(&info->errors.list[info->errors.last_index *
+					  FIFO_EVENT_SIZE + size], 0, i);
 	}
 	pr_debug("Adding error in to ErrorList... FINISHED!\n");
 
-	errors.count += 1;
-	if (errors.count > FIFO_DEPTH)
+	info->errors.count += 1;
+	if (info->errors.count > FIFO_DEPTH)
 		pr_err("ErrorList is going in overflow... the first %d event(s) were override!\n",
-			errors.count - FIFO_DEPTH);
-	errors.last_index = (errors.last_index + 1) % FIFO_DEPTH;
+			info->errors.count - FIFO_DEPTH);
+	info->errors.last_index = (info->errors.last_index + 1) % FIFO_DEPTH;
 
 	return OK;
 }
@@ -248,11 +247,11 @@ int addErrorIntoList(u8 *event, int size)
   * Reset the Error List setting the count and last_index to 0.
   * @return OK
   */
-int resetErrorList(void)
+int resetErrorList(struct fts_ts_info *info)
 {
-	errors.count = 0;
-	errors.last_index = 0;
-	memset(errors.list, 0, FIFO_DEPTH * FIFO_EVENT_SIZE);
+	info->errors.count = 0;
+	info->errors.last_index = 0;
+	memset(info->errors.list, 0, FIFO_DEPTH * FIFO_EVENT_SIZE);
 	/* if count is not considered is better reset also the list in order to
 	 * avoid to read data previously copied into the list */
 	return OK;
@@ -262,12 +261,12 @@ int resetErrorList(void)
   * Get the number of error events copied into the Error List
   * @return the number of error events into the Error List
   */
-int getErrorListCount(void)
+int getErrorListCount(struct fts_ts_info *info)
 {
-	if (errors.count > FIFO_DEPTH)
+	if (info->errors.count > FIFO_DEPTH)
 		return FIFO_DEPTH;
 	else
-		return errors.count;
+		return info->errors.count;
 }
 
 /* in case of success return the index of the event found */
@@ -281,17 +280,18 @@ int getErrorListCount(void)
   * @return a value >=0 if the event is found which represent the index of
   * the Error List where the event is located otherwise an error code
   */
-int pollErrorList(int *event_to_search, int event_bytes)
+int pollErrorList(struct fts_ts_info *info, int *event_to_search,
+		  int event_bytes)
 {
 	int i = 0, j = 0, find = 0;
-	int count = getErrorListCount();
+	int count = getErrorListCount(info);
 
 	pr_debug("Starting to poll ErrorList...\n");
 	while (find != 1 && i < count) {
 		find = 1;
 		for (j = 0; j < event_bytes; j++) {
 			if ((event_to_search[i] != -1) &&
-			    ((int)errors.list[i * FIFO_EVENT_SIZE + j] !=
+			    ((int)info->errors.list[i * FIFO_EVENT_SIZE + j] !=
 			     event_to_search[i])) {
 				find = 0;
 				break;
@@ -318,16 +318,17 @@ int pollErrorList(int *event_to_search, int event_bytes)
   * @param size size of list
   * @return error type found if success or ERROR_TIMEOUT
   */
-int pollForErrorType(u8 *list, int size)
+int pollForErrorType(struct fts_ts_info *info, u8 *list, int size)
 {
 	int i = 0, j = 0, find = 0;
-	int count = getErrorListCount();
+	int count = getErrorListCount(info);
 
 	pr_info("%s: Starting to poll ErrorList... count = %d\n",
 		__func__, count);
 	while (find != 1 && i < count) {
 		for (j = 0; j < size; j++) {
-			if (list[j] == errors.list[i * FIFO_EVENT_SIZE + 1]) {
+			if (list[j] == info->errors.list[i * FIFO_EVENT_SIZE
+							 + 1]) {
 				find = 1;
 				break;
 			}

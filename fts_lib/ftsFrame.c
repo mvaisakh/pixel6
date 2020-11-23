@@ -41,13 +41,6 @@
 #include <linux/ctype.h>
 
 
-
-
-
-extern SysInfo systemInfo;	/* /< forward declaration of the global variable
-				  * of containing System Info Data */
-
-
 /**
   * Read the channels lengths from the config memory
   * @return OK if success or an error code which specify the type of error
@@ -64,11 +57,11 @@ int getChannelsLength(struct fts_ts_info *info)
 		return ret;
 	}
 
-	systemInfo.u8_scrRxLen = (int)data[0];
-	systemInfo.u8_scrTxLen = (int)data[1];
+	info->systemInfo.u8_scrRxLen = (int)data[0];
+	info->systemInfo.u8_scrTxLen = (int)data[1];
 
 	pr_info("Force_len = %d   Sense_Len = %d\n",
-		 systemInfo.u8_scrTxLen, systemInfo.u8_scrRxLen);
+		 info->systemInfo.u8_scrTxLen, info->systemInfo.u8_scrRxLen);
 
 	return OK;
 }
@@ -116,9 +109,9 @@ int getFrameData(struct fts_ts_info *info, u16 address, int size, short *frame)
   */
 int getSenseLen(struct fts_ts_info *info)
 {
-	if (systemInfo.u8_scrRxLen == 0)
+	if (info->systemInfo.u8_scrRxLen == 0)
 		getChannelsLength(info);
-	return systemInfo.u8_scrRxLen;
+	return info->systemInfo.u8_scrRxLen;
 }
 
 /**
@@ -127,9 +120,9 @@ int getSenseLen(struct fts_ts_info *info)
   */
 int getForceLen(struct fts_ts_info *info)
 {
-	if (systemInfo.u8_scrTxLen == 0)
+	if (info->systemInfo.u8_scrTxLen == 0)
 		getChannelsLength(info);
-	return systemInfo.u8_scrTxLen;
+	return info->systemInfo.u8_scrTxLen;
 }
 
 
@@ -148,6 +141,8 @@ int getMSFrame3(struct fts_ts_info *info, MSFrameType type,
 {
 	u16 offset;
 	int ret, force_len, sense_len;
+	SysInfo systemInfo;
+	memcpy(&systemInfo, &info->systemInfo, sizeof(systemInfo));
 
 	force_len = getForceLen(info);
 	sense_len = getSenseLen(info);
@@ -268,6 +263,8 @@ int getSSFrame3(struct fts_ts_info *info, SSFrameType type, SelfSenseFrame *fram
 {
 	u16 offset_force, offset_sense;
 	int ret;
+	SysInfo systemInfo;
+	memcpy(&systemInfo, &info->systemInfo, sizeof(systemInfo));
 
 	frame->force_data = NULL;
 	frame->sense_data = NULL;

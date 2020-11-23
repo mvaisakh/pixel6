@@ -378,7 +378,7 @@ static int fts_writeFwCmd_internal(struct fts_ts_info *info, u8 *cmd,
 
 	if (info->client == NULL)
 		return ERROR_BUS_O;
-	resetErrorList();
+	resetErrorList(info);
 	while (retry < I2C_RETRY && (ret < OK || ret2 < OK)) {
 #ifdef I2C_INTERFACE
 		ret = i2c_transfer(info->client->adapter, I2CMsg, 1);

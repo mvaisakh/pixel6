@@ -101,35 +101,16 @@
 #define TYPE_B_PROTOCOL
 #endif
 
-
-extern SysInfo systemInfo;
-extern TestToDo tests;
 #ifdef GESTURE_MODE
 extern struct mutex gestureMask_mutex;
 #endif
 
-char fts_ts_phys[64];	/* /< buffer which store the input device name
-			  *	assigned by the kernel */
-
-static u32 typeOfCommand[CMD_STR_LEN] = { 0 };	/* /< buffer used to store the
-						  * command sent from the MP
-						  * device file node */
-static int numberParameters;	/* /< number of parameter passed through the MP
-				  * device file node */
-#ifdef USE_ONE_FILE_NODE
-static int feature_feasibility = ERROR_OP_NOT_ALLOW;
-#endif
 #ifdef GESTURE_MODE
 static u8 mask[GESTURE_MASK_SIZE + 2];
 extern u16 gesture_coordinates_x[GESTURE_MAX_COORDS_PAIRS_REPORT];
 extern u16 gesture_coordinates_y[GESTURE_MAX_COORDS_PAIRS_REPORT];
 extern int gesture_coords_reported;
 extern struct mutex gestureMask_mutex;
-#endif
-
-#ifdef PHONE_KEY
-static u8 key_mask;	/* /< store the last update of the key mask
-				  * published by the IC */
 #endif
 
 static int fts_init_sensing(struct fts_ts_info *info);
@@ -279,15 +260,16 @@ static ssize_t appid_show(struct device *dev, struct device_attribute *attr,
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "REL: %s\n",
 			     printHex("",
-				      systemInfo.u8_releaseInfo,
+				      info->systemInfo.u8_releaseInfo,
 				      EXTERNAL_RELEASE_INFO_SIZE,
 				      temp,
 				      sizeof(temp)));
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "FW: %04X\nCFG: %04X\nAFE: %02X\nProject: %04X\n",
-			     systemInfo.u16_fwVer, systemInfo.u16_cfgVer,
-			     systemInfo.u8_cfgAfeVer,
-			     systemInfo.u16_cfgProjectId);
+			     info->systemInfo.u16_fwVer,
+			     info->systemInfo.u16_cfgVer,
+			     info->systemInfo.u8_cfgAfeVer,
+			     info->systemInfo.u16_cfgProjectId);
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "FW file: %s\n", info->board->fw_name);
 
@@ -306,7 +288,7 @@ static ssize_t appid_show(struct device *dev, struct device_attribute *attr,
 
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "\nMPFlag: %02X\n",
-			     systemInfo.u8_mpFlag);
+			     info->systemInfo.u8_mpFlag);
 
 	return written;
 }
@@ -357,7 +339,7 @@ static ssize_t fw_file_test_show(struct device *dev,
 	else
 		pr_info("%s, size = %d bytes\n",
 			 printHex("EXT Release = ",
-				  systemInfo.u8_releaseInfo,
+				  info->systemInfo.u8_releaseInfo,
 				  EXTERNAL_RELEASE_INFO_SIZE,
 				  temp,
 				  sizeof(temp)),
@@ -712,10 +694,10 @@ static ssize_t feature_enable_store(struct device *dev,
 						temp, ERROR_OP_NOT_ALLOW);
 					res = ERROR_OP_NOT_ALLOW;
 				}
-				feature_feasibility = res;
+				info->feature_feasibility = res;
 			}
-			if (feature_feasibility >= OK)
-				feature_feasibility = fts_mode_handler(info, 1);
+			if (info->feature_feasibility >= OK)
+				info->feature_feasibility = fts_mode_handler(info, 1);
 			else
 				pr_err("%s: Call echo XX 00/01 > feature_enable with a correct feature value (XX)! ERROR %08X\n",
 					__func__, res);
@@ -735,15 +717,15 @@ static ssize_t feature_enable_show(struct device *dev,
 {
 	int count = 0;
 
-	if (feature_feasibility < OK)
+	if (info->feature_feasibility < OK)
 		pr_err("%s: Call before echo XX 00/01 > feature_enable with a correct feature value (XX)! ERROR %08X\n",
-			__func__, feature_feasibility);
+			__func__, info->feature_feasibility);
 
 	count += scnprintf(buf + count,
 			   PAGE_SIZE - count, "{ %08X }\n",
-			   feature_feasibility);
+			   info->feature_feasibility);
 
-	feature_feasibility = ERROR_OP_NOT_ALLOW;
+	info->feature_feasibility = ERROR_OP_NOT_ALLOW;
 	return count;
 }
 
@@ -1780,7 +1762,7 @@ static ssize_t stm_fts_cmd_store(struct device *dev,
 		goto out;
 	}
 
-	memset(typeOfCommand, 0, sizeof(typeOfCommand));
+	memset(info->typeOfCommand, 0, sizeof(info->typeOfCommand));
 
 	temp_buf = kstrdup(buf, GFP_KERNEL);
 	if (!temp_buf) {
@@ -1834,9 +1816,9 @@ static ssize_t stm_fts_cmd_store(struct device *dev,
 		}
 
 		/* found a valid cmd/args */
-		typeOfCommand[n] = result;
+		info->typeOfCommand[n] = result;
 		pr_info("%s: typeOfCommand[%d]=%02X\n",
-			__func__, n, typeOfCommand[n]);
+			__func__, n, info->typeOfCommand[n]);
 
 		n++;
 	}
@@ -1846,8 +1828,8 @@ static ssize_t stm_fts_cmd_store(struct device *dev,
 		retval = -EINVAL;
 	}
 
-	numberParameters = n;
-	pr_info("%s: Number of Parameters = %d\n", __func__, numberParameters);
+	info->numberParameters = n;
+	pr_info("%s: Number of Parameters = %d\n", __func__, info->numberParameters);
 
 	kfree(temp_buf);
 
@@ -1895,7 +1877,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 		return 0;
 	}
 
-	if (numberParameters >= 1) {
+	if (info->numberParameters >= 1) {
 		res = fts_enableInterrupt(info, false);
 		if (res < 0) {
 			pr_err("fts_enableInterrupt: ERROR %08X\n", res);
@@ -1903,12 +1885,12 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			goto END;
 		}
 
-		switch (typeOfCommand[0]) {
+		switch (info->typeOfCommand[0]) {
 		/*ITO TEST*/
 		case 0x01:
 			frameMS.node_data = NULL;
-			res = production_test_ito(info, limits_file, &tests,
-				&frameMS, ito_max_val);
+			res = production_test_ito(info, limits_file,
+						  &frameMS, ito_max_val);
 			/* report MS raw frame only if was successfully
 			 * acquired */
 			if (frameMS.node_data != NULL) {
@@ -1920,7 +1902,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 
 		/*PRODUCTION TEST*/
 		case 0x02:
-			if (systemInfo.u8_cfgAfeVer != systemInfo.u8_cxAfeVer) {
+			if (info->systemInfo.u8_cfgAfeVer !=
+				info->systemInfo.u8_cxAfeVer) {
 				res = ERROR_OP_NOT_ALLOW;
 				pr_err("Miss match in CX version! MP test not allowed with wrong CX memory! ERROR %08X\n",
 					res);
@@ -1931,14 +1914,15 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 
 		case 0x00:
 #ifndef COMPUTE_INIT_METHOD
-			if (systemInfo.u8_cfgAfeVer != systemInfo.u8_cxAfeVer) {
+			if (info->systemInfo.u8_cfgAfeVer !=
+				info->systemInfo.u8_cxAfeVer) {
 				res = ERROR_OP_NOT_ALLOW;
 				pr_err("Miss match in CX version! MP test not allowed with wrong CX memory! ERROR %08X\n",
 					res);
 				break;
 			}
 #else
-			if (systemInfo.u8_mpFlag != MP_FLAG_FACTORY) {
+			if (info->systemInfo.u8_mpFlag != MP_FLAG_FACTORY) {
 				init_type = SPECIAL_FULL_PANEL_INIT;
 				pr_info("Select Full Panel Init!\n");
 			} else {
@@ -1947,15 +1931,14 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			}
 #endif
 			res = production_test_main(info, limits_file, 1,
-						   init_type, &tests,
-						   MP_FLAG_FACTORY);
+						   init_type, MP_FLAG_FACTORY);
 			break;
 
 		/*read mutual raw*/
 		case 0x13:
 			pr_info("Get 1 MS Frame\n");
-			if (numberParameters >= 2 &&
-				typeOfCommand[1] == LOCKED_LP_ACTIVE)
+			if (info->numberParameters >= 2 &&
+				info->typeOfCommand[1] == LOCKED_LP_ACTIVE)
 				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_ACTIVE);
 			else
 				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
@@ -1963,8 +1946,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			/* Skip sensing off when typeOfCommand[2]=0x01
 			 * to avoid sense on force cal after reading raw data
 			 */
-			if (!(numberParameters >= 3 &&
-				typeOfCommand[2] == 0x01)) {
+			if (!(info->numberParameters >= 3 &&
+				info->typeOfCommand[2] == 0x01)) {
 				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 				msleep(WAIT_AFTER_SENSEOFF);
 				/* Delete the events related to some touch
@@ -2009,8 +1992,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 		/*read self raw*/
 		case 0x15:
 			pr_info("Get 1 SS Frame\n");
-			if (numberParameters >= 2 &&
-				typeOfCommand[1] == LOCKED_LP_DETECT)
+			if (info->numberParameters >= 2 &&
+				info->typeOfCommand[1] == LOCKED_LP_DETECT)
 				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_LP_DETECT);
 			else
 				setScanMode(info, SCAN_MODE_LOCKED, LOCKED_ACTIVE);
@@ -2018,8 +2001,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			/* Skip sensing off when typeOfCommand[2]=0x01
 			 * to avoid sense on force cal after reading raw data
 			 */
-			if (!(numberParameters >= 3 &&
-				typeOfCommand[2] == 0x01)) {
+			if (!(info->numberParameters >= 3 &&
+				info->typeOfCommand[2] == 0x01)) {
 				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 				msleep(WAIT_AFTER_SENSEOFF);
 				flushFIFO(info);
@@ -2029,8 +2012,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				 * FIFO)
 				 */
 			}
-			if (numberParameters >= 2 &&
-				typeOfCommand[1] == LOCKED_LP_DETECT)
+			if (info->numberParameters >= 2 &&
+				info->typeOfCommand[1] == LOCKED_LP_DETECT)
 #ifdef READ_FILTERED_RAW
 				res = getSSFrame3(info, SS_DETECT_FILTER,
 						  &frameSS);
@@ -2146,8 +2129,8 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			/* Skip sensing off when typeOfCommand[1]=0x01
 			 * to avoid sense on force cal after reading raw data
 			 */
-			if (!(numberParameters >= 2 &&
-				typeOfCommand[1] == 0x01)) {
+			if (!(info->numberParameters >= 2 &&
+				info->typeOfCommand[1] == 0x01)) {
 				setScanMode(info, SCAN_MODE_ACTIVE, 0xFF);
 				msleep(WAIT_FOR_FRESH_FRAMES);
 				setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
@@ -2182,38 +2165,34 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 			res = fts_system_reset(info);
 			if (res >= OK)
 				res = production_test_ms_raw(info,
-							     limits_file, 1,
-							     &tests);
+							     limits_file, 1);
 			break;
 
 		case 0x04:	/* MS CX DATA TEST */
 			res = fts_system_reset(info);
 			if (res >= OK)
 				res = production_test_ms_cx(info,
-							    limits_file, 1,
-							    &tests);
+							    limits_file, 1);
 			break;
 
 		case 0x05:	/* SS RAW DATA TEST */
 			res = fts_system_reset(info);
 			if (res >= OK)
 				res = production_test_ss_raw(info,
-							     limits_file, 1,
-							     &tests);
+							     limits_file, 1);
 			break;
 
 		case 0x06:	/* SS IX CX DATA TEST */
 			res = fts_system_reset(info);
 			if (res >= OK)
 				res = production_test_ss_ix_cx(info,
-							       limits_file, 1,
-							       &tests);
+							       limits_file, 1);
 			break;
 
 
 		case 0xF0:
 		case 0xF1:	/* TOUCH ENABLE/DISABLE */
-			doClean = (int)(typeOfCommand[0] & 0x01);
+			doClean = (int)(info->typeOfCommand[0] & 0x01);
 			res = cleanUp(info, doClean);
 			break;
 
@@ -2224,7 +2203,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 		}
 
 		doClean = fts_mode_handler(info, 1);
-		if (typeOfCommand[0] != 0xF0)
+		if (info->typeOfCommand[0] != 0xF0)
 			doClean |= fts_enableInterrupt(info, true);
 		if (doClean < 0)
 			pr_err("%s: ERROR %08X\n", __func__,
@@ -2243,7 +2222,7 @@ END:
 
 	if (res >= OK || report) {
 		/*all the other cases are already fine printing only the res.*/
-		switch (typeOfCommand[0]) {
+		switch (info->typeOfCommand[0]) {
 		case 0x01:
 		case 0x13:
 		case 0x17:
@@ -2258,7 +2237,7 @@ END:
 			index += scnprintf(all_strbuff + index, size - index,
 					   "%3d",
 					   (u8)frameMS.header.sense_node);
-			if (typeOfCommand[0] == 0x01) {
+			if (info->typeOfCommand[0] == 0x01) {
 				index += scnprintf(all_strbuff + index,
 						size - index, " %d ",
 						ito_max_val[0]);
@@ -2274,7 +2253,7 @@ END:
 			index += scnprintf(all_strbuff + index,
 					   size - index, "%02X",
 					   (u8)frameMS.header.sense_node);
-			if (typeOfCommand[0] == 0x01) {
+			if (info->typeOfCommand[0] == 0x01) {
 				index += scnprintf(all_strbuff + index,
 						size - index,
 						"%02X%02X",
@@ -2473,11 +2452,11 @@ END:
 	}
 
 	index += scnprintf(all_strbuff + index, size - index, " }\n");
-	numberParameters = 0;
+	info->numberParameters = 0;
 	/* need to reset the number of parameters in order to wait the
-	  * next command, comment if you want to repeat the last command sent
-	  * just doing a cat */
-	/* pr_err("numberParameters = %d\n", numberParameters); */
+	 * next command, comment if you want to repeat the last command sent
+	 * just doing a cat */
+	/* pr_err("numberParameters = %d\n", info->numberParameters); */
 
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, false);
 	mutex_unlock(&info->diag_cmd_lock);
@@ -2501,8 +2480,7 @@ static ssize_t autotune_store(struct device *dev,
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, true);
 
 	ret = production_test_main(info, info->board->limits_name, 1,
-				   SPECIAL_FULL_PANEL_INIT, &tests,
-				   MP_FLAG_BOOT);
+				   SPECIAL_FULL_PANEL_INIT, MP_FLAG_BOOT);
 
 	cleanUp(info, true);
 
@@ -3165,8 +3143,8 @@ static bool fts_controller_ready_event_handler(struct fts_ts_info *info,
 		__func__, event[0], event[1], event[2], event[3], event[4],
 		event[5], event[6], event[7]);
 	release_all_touches(info);
-	setSystemResetedUp(1);
-	setSystemResetedDown(1);
+	setSystemResetedUp(info, 1);
+	setSystemResetedDown(info, 1);
 	error = fts_mode_handler(info, 0);
 	if (error < OK)
 		pr_err("%s Cannot restore the device status ERROR %08X\n",
@@ -3561,24 +3539,24 @@ static void fts_key_event_handler(struct fts_ts_info *info,
 		/* event[2] contain the bitmask of the keys that are actually
 		 * pressed */
 
-		if ((event[2] & FTS_KEY_0) == 0 && (key_mask & FTS_KEY_0) > 0) {
+		if ((event[2] & FTS_KEY_0) == 0 && (info->key_mask & FTS_KEY_0) > 0) {
 			pr_info("%s: Button HOME pressed and released!\n",
 				__func__);
 			fts_input_report_key(info, KEY_HOMEPAGE);
 		}
 
-		if ((event[2] & FTS_KEY_1) == 0 && (key_mask & FTS_KEY_1) > 0) {
+		if ((event[2] & FTS_KEY_1) == 0 && (info->key_mask & FTS_KEY_1) > 0) {
 			pr_info("%s: Button Back pressed and released!\n",
 				__func__);
 			fts_input_report_key(info, KEY_BACK);
 		}
 
-		if ((event[2] & FTS_KEY_2) == 0 && (key_mask & FTS_KEY_2) > 0) {
+		if ((event[2] & FTS_KEY_2) == 0 && (info->key_mask & FTS_KEY_2) > 0) {
 			pr_info("%s: Button Menu pressed!\n", __func__);
 			fts_input_report_key(info, KEY_MENU);
 		}
 
-		key_mask = event[2];
+		info->key_mask = event[2];
 	} else
 		pr_err("%s: Invalid event passed as argument!\n", __func__);
 }
@@ -4040,14 +4018,14 @@ static void fts_populate_mutual_channel(struct fts_ts_info *info,
 		data_type = MS_BASELINE;
 		break;
 	}
-	mutual_strength->tx_size = getForceLen();
-	mutual_strength->rx_size = getSenseLen();
+	mutual_strength->tx_size = getForceLen(info);
+	mutual_strength->rx_size = getSenseLen(info);
 	mutual_strength->header.channel_type = frame->channel_type[channel];
 	mutual_strength->header.channel_size =
 		TOUCH_OFFLOAD_FRAME_SIZE_2D(mutual_strength->rx_size,
 					    mutual_strength->tx_size);
 
-	result = getMSFrame3(data_type, &ms_frame);
+	result = getMSFrame3(info, data_type, &ms_frame);
 	if (result <= 0) {
 		pr_err("getMSFrame3 failed with result=0x%08X.\n", result);
 	} else {
@@ -4090,8 +4068,8 @@ static void fts_populate_self_channel(struct fts_ts_info *info,
 	uint32_t data_type = 0;
 	struct TouchOffloadData1d *self_strength =
 		(struct TouchOffloadData1d *)frame->channel_data[channel];
-	self_strength->tx_size = getForceLen();
-	self_strength->rx_size = getSenseLen();
+	self_strength->tx_size = getForceLen(info);
+	self_strength->rx_size = getSenseLen(info);
 	self_strength->header.channel_type = frame->channel_type[channel];
 	self_strength->header.channel_size =
 		TOUCH_OFFLOAD_FRAME_SIZE_1D(self_strength->rx_size,
@@ -4111,7 +4089,7 @@ static void fts_populate_self_channel(struct fts_ts_info *info,
 		data_type = SS_BASELINE;
 		break;
 	}
-	result = getSSFrame3(data_type, &ss_frame);
+	result = getSSFrame3(info, data_type, &ss_frame);
 	if (result <= 0) {
 		pr_err("getSSFrame3 failed with result=0x%08X.\n", result);
 	} else {
@@ -4624,10 +4602,10 @@ static int fts_fw_update(struct fts_ts_info *info)
 				pr_info("%s: force PI config version: %04X",
 					__func__,
 					info->board->force_pi_cfg_ver[index]);
-				if(systemInfo.u16_cfgVer ==
+				if(info->systemInfo.u16_cfgVer ==
 					info->board->force_pi_cfg_ver[index]) {
 					pr_info("%s System config version %04X, do panel init",
-					__func__, systemInfo.u16_cfgVer);
+					__func__, info->systemInfo.u16_cfgVer);
 					init_type = SPECIAL_PANEL_INIT;
 				}
 			}
@@ -4667,14 +4645,14 @@ static int fts_fw_update(struct fts_ts_info *info)
 	pr_info("%s: Verifying if CX CRC Error...\n", __func__);
 	ret = fts_system_reset(info);
 	if (ret >= OK) {
-		ret = pollForErrorType(error_to_search, 4);
+		ret = pollForErrorType(info, error_to_search, 4);
 		if (ret < OK) {
 			pr_info("%s: No Cx CRC Error Found!\n", __func__);
 			pr_info("%s: Verifying if Panel CRC Error...\n",
 				__func__);
 			error_to_search[0] = EVT_TYPE_ERROR_CRC_PANEL_HEAD;
 			error_to_search[1] = EVT_TYPE_ERROR_CRC_PANEL;
-			ret = pollForErrorType(error_to_search, 2);
+			ret = pollForErrorType(info, error_to_search, 2);
 			if (ret < OK) {
 				pr_info("%s: No Panel CRC Error Found!\n",
 					__func__);
@@ -4709,23 +4687,27 @@ static int fts_fw_update(struct fts_ts_info *info)
 
 	if (init_type != SPECIAL_FULL_PANEL_INIT) {
 #if defined(PRE_SAVED_METHOD) || defined(COMPUTE_INIT_METHOD)
-		if ((systemInfo.u8_cfgAfeVer != systemInfo.u8_cxAfeVer)
+		if ((info->systemInfo.u8_cfgAfeVer !=
+			info->systemInfo.u8_cxAfeVer)
 #ifdef COMPUTE_INIT_METHOD
-			|| ((systemInfo.u8_mpFlag != MP_FLAG_BOOT) &&
-				(systemInfo.u8_mpFlag != MP_FLAG_FACTORY))
+			|| ((info->systemInfo.u8_mpFlag != MP_FLAG_BOOT) &&
+				(info->systemInfo.u8_mpFlag !=
+					MP_FLAG_FACTORY))
 #endif
 			) {
 			init_type = SPECIAL_FULL_PANEL_INIT;
 			pr_err("%s: Different CX AFE Ver: %02X != %02X or invalid MpFlag = %02X... Execute FULL Panel Init!\n",
-				__func__, systemInfo.u8_cfgAfeVer,
-				systemInfo.u8_cxAfeVer, systemInfo.u8_mpFlag);
+				__func__, info->systemInfo.u8_cfgAfeVer,
+				info->systemInfo.u8_cxAfeVer,
+				info->systemInfo.u8_mpFlag);
 		} else
 #endif
-		if (systemInfo.u8_cfgAfeVer != systemInfo.u8_panelCfgAfeVer) {
+		if (info->systemInfo.u8_cfgAfeVer !=
+			info->systemInfo.u8_panelCfgAfeVer) {
 			init_type = SPECIAL_PANEL_INIT;
 			pr_err("%s: Different Panel AFE Ver: %02X != %02X... Execute Panel Init!\n",
-				__func__, systemInfo.u8_cfgAfeVer,
-				systemInfo.u8_panelCfgAfeVer);
+				__func__, info->systemInfo.u8_cfgAfeVer,
+				info->systemInfo.u8_panelCfgAfeVer);
 		}
 	}
 
@@ -4819,7 +4801,7 @@ static int fts_chip_initialization(struct fts_ts_info *info, int init_type)
 			save_golden_ms_raw(info);
 #else
 		ret2 = production_test_main(info, limits_file, 1, init_type,
-			&tests, MP_FLAG_BOOT);
+					    MP_FLAG_BOOT);
 #endif
 		if (ret2 == OK)
 			break;
@@ -4931,7 +4913,7 @@ static int fts_init(struct fts_ts_info *info)
 	} else {
 		if (error == (ERROR_TIMEOUT | ERROR_SYSTEM_RESET_FAIL)) {
 			pr_err("Setting default Sys INFO!\n");
-			error = defaultSysInfo(0);
+			error = defaultSysInfo(info, 0);
 		} else {
 			error = readSysInfo(info, 0);	/* system reset OK */
 			if (error < OK) {
@@ -5012,8 +4994,8 @@ int fts_chip_powercycle(struct fts_ts_info *info)
 
 	pr_info("%s: Power Cycle Finished! ERROR CODE = %08x\n",
 		__func__, error);
-	setSystemResetedUp(1);
-	setSystemResetedDown(1);
+	setSystemResetedUp(info, 1);
+	setSystemResetedDown(info, 1);
 	return error;
 }
 
@@ -5095,7 +5077,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		if (info->gesture_enabled == 1) {
 			pr_info("%s: enter in gesture mode !\n",
 				 __func__);
-			res = enterGestureMode(info, isSystemResettedDown());
+			res = enterGestureMode(info, isSystemResettedDown(info));
 			if (res >= OK) {
 				enable_irq_wake(info->client->irq);
 				fromIDtoMask(FEAT_SEL_GESTURE,
@@ -5108,7 +5090,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		}
 #endif
 
-		setSystemResetedDown(0);
+		setSystemResetedDown(info, 0);
 		break;
 
 	case 1:	/* screen up */
@@ -5116,7 +5098,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 
 #ifdef GLOVE_MODE
 		if ((info->glove_enabled == FEAT_ENABLE &&
-		     isSystemResettedUp()) || force == 1) {
+		     isSystemResettedUp(info)) || force == 1) {
 			pr_info("%s: Glove Mode setting...\n", __func__);
 			settings[0] = info->glove_enabled;
 			/* required to satisfy also the disable case */
@@ -5138,7 +5120,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 
 #ifdef COVER_MODE
 		if ((info->cover_enabled == FEAT_ENABLE &&
-		     isSystemResettedUp()) || force == 1) {
+		     isSystemResettedUp(info)) || force == 1) {
 			pr_info("%s: Cover Mode setting...\n", __func__);
 			settings[0] = info->cover_enabled;
 			ret = setFeatures(info, FEAT_SEL_COVER, settings, 1);
@@ -5156,7 +5138,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		}
 #endif
 #ifdef CHARGER_MODE
-		if ((info->charger_enabled > 0 && isSystemResettedUp()) ||
+		if ((info->charger_enabled > 0 && isSystemResettedUp(info)) ||
 		    force == 1) {
 			pr_info("%s: Charger Mode setting...\n", __func__);
 
@@ -5182,7 +5164,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 
 #ifdef GRIP_MODE
 		if ((info->grip_enabled == FEAT_ENABLE &&
-		     isSystemResettedUp()) || force == 1) {
+		     isSystemResettedUp(info)) || force == 1) {
 			pr_info("%s: Grip Mode setting...\n", __func__);
 			settings[0] = info->grip_enabled;
 			ret = setFeatures(info, FEAT_SEL_GRIP, settings, 1);
@@ -5213,7 +5195,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		MODE_ACTIVE(info->mode, settings[0]);
 
 
-		setSystemResetedUp(0);
+		setSystemResetedUp(info, 0);
 		break;
 
 	default:
@@ -6074,9 +6056,9 @@ static int fts_probe(struct spi_device *client)
 	}
 	info->input_dev->dev.parent = &client->dev;
 	info->input_dev->name = FTS_TS_DRV_NAME;
-	scnprintf(fts_ts_phys, sizeof(fts_ts_phys), "%s/input0",
+	scnprintf(info->fts_ts_phys, sizeof(info->fts_ts_phys), "%s/input0",
 		 info->input_dev->name);
-	info->input_dev->phys = fts_ts_phys;
+	info->input_dev->phys = info->fts_ts_phys;
 	info->input_dev->id.bustype = bus_type;
 	info->input_dev->id.vendor = 0x0001;
 	info->input_dev->id.product = 0x0002;
@@ -6252,8 +6234,8 @@ static int fts_probe(struct spi_device *client)
 	info->offload.caps.device_id = info->board->offload_id;
 	info->offload.caps.display_width = info->board->x_axis_max;
 	info->offload.caps.display_height = info->board->y_axis_max;
-	info->offload.caps.tx_size = getForceLen();
-	info->offload.caps.rx_size = getSenseLen();
+	info->offload.caps.tx_size = getForceLen(info);
+	info->offload.caps.rx_size = getSenseLen(info);
 	info->offload.caps.bus_type = BUS_TYPE_SPI;
 	info->offload.caps.bus_speed_hz = 10000000;
 	info->offload.caps.heatmap_size = HEATMAP_SIZE_FULL;

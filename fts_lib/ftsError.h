@@ -209,28 +209,14 @@
 
 /** @}*/	/* end of error_commands section */
 
-/**
-  * Struct which store an ordered list of the errors events encountered during
-  *the polling of a FIFO.
-  * The max number of error events that can be stored is equal to FIFO_DEPTH
-  */
-typedef struct {
-	u8 list[FIFO_DEPTH * FIFO_EVENT_SIZE];	/* /< byte array which contains
-						 * the series of error events
-						 * encountered from the last
-						 * reset of the list. */
-	int count;	/* /< number of error events stored in the list */
-	int last_index;	/* /< index of the list where will be stored the next
-			 * error event. Subtract -1 to have the index of the
-			 * last error event! */
-} ErrorList;
 
 int isI2cError(int error);
 int dumpErrorInfo(struct fts_ts_info *info, u8 *outBuf, int size);
 int errorHandler(struct fts_ts_info *info, u8 *event, int size);
-int addErrorIntoList(u8 *event, int size);
-int getErrorListCount(void);
-int resetErrorList(void);
-int pollErrorList(int *event_to_search, int event_bytes);
-int pollForErrorType(u8 *list, int size);
+int addErrorIntoList(struct fts_ts_info *info, u8 *event, int size);
+int getErrorListCount(struct fts_ts_info *info);
+int resetErrorList(struct fts_ts_info *info);
+int pollErrorList(struct fts_ts_info *info, int *event_to_search,
+		  int event_bytes);
+int pollForErrorType(struct fts_ts_info *info, u8 *list, int size);
 #endif

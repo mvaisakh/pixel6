@@ -52,10 +52,6 @@
 #endif
 
 
-extern SysInfo systemInfo;	/* /< forward declaration of the global variable
-				 * of containing System Info Data */
-
-
 /**
   * Retrieve the actual FW data from the system (bin file or header file)
   * @param pathToFile name of FW file to load or "NULL" if the FW data should be
@@ -489,7 +485,7 @@ int parseBinFile(struct fts_ts_info *info, u8 *fw_data, int fw_size,
 
 		else {
 			pr_err("parseBinFile: Initialize cx_ver to default value!\n");
-			fwData->cx_ver = systemInfo.u16_cxVer;
+			fwData->cx_ver = info->systemInfo.u16_cxVer;
 		}
 
 		pr_info("parseBinFile: CX Version = %04X\n", fwData->cx_ver);
@@ -947,6 +943,8 @@ int flash_burn(struct fts_ts_info *info, Firmware fw, int force_burn,
 	       int keep_cx)
 {
 	int res;
+	SysInfo systemInfo;
+	memcpy(&systemInfo, &info->systemInfo, sizeof(systemInfo));
 
 	if (!force_burn) {
 		/* Compare firmware, config, and CX versions */
