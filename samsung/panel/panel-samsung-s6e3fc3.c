@@ -39,6 +39,40 @@ static const unsigned char PPS_SETTING[] = {
 #define S6E3FC3_WRCTRLD_HBM_BIT        0xC0
 #define S6E3FC3_WRCTRLD_LOCAL_HBM_BIT  0x10
 
+static const u8 aod_on_50nit[] = { 0x53, 0x24 };
+static const u8 aod_on_10nit[] = { 0x53, 0x25 };
+static const u8 display_off[] = { 0x28 };
+static const u8 display_on[] = { 0x29 };
+
+static const struct exynos_dsi_cmd s6e3fc3_lp_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 0),
+};
+
+static const struct exynos_dsi_cmd_set s6e3fc3_lp_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3fc3_lp_cmds),
+	.cmds = s6e3fc3_lp_cmds
+};
+
+static const struct exynos_dsi_cmd s6e3fc3_lp_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 0)
+};
+
+static const struct exynos_dsi_cmd s6e3fc3_lp_low_cmds[] = {
+	EXYNOS_DSI_CMD(aod_on_10nit, 17),
+	EXYNOS_DSI_CMD(display_on, 0)
+};
+
+static const struct exynos_dsi_cmd s6e3fc3_lp_high_cmds[] = {
+	EXYNOS_DSI_CMD(aod_on_50nit, 17),
+	EXYNOS_DSI_CMD(display_on, 0)
+};
+
+static const struct exynos_binned_lp s6e3fc3_binned_lp[] = {
+	BINNED_LP_MODE("off",     0, s6e3fc3_lp_off_cmds),
+	BINNED_LP_MODE("low",    80, s6e3fc3_lp_low_cmds),
+	BINNED_LP_MODE("high", 2047, s6e3fc3_lp_high_cmds)
+};
+
 static void s6e3fc3_change_frequency(struct exynos_panel *ctx,
 				     unsigned int vrefresh)
 {
@@ -71,6 +105,19 @@ static void s6e3fc3_write_display_mode(struct exynos_panel *ctx,
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 
 	/* TODO: need to perform gamma updates */
+}
+
+static void s6e3fc3_set_nolp_mode(struct exynos_panel *ctx,
+				  const struct exynos_panel_mode *pmode)
+{
+	if (!ctx->enabled)
+		return;
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, display_off);
+	s6e3fc3_write_display_mode(ctx, &pmode->mode);
+	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
+
+	dev_info(ctx->dev, "exit LP mode\n");
 }
 
 static int s6e3fc3_enable(struct drm_panel *panel)
@@ -124,11 +171,15 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x9D, 0x01); /* PPS_DSC_EN */
 
 	s6e3fc3_write_display_mode(ctx, mode); /* dimming and HBM */
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x51, 0x02, 0x58); /* brightness level */
-
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
 
 	ctx->enabled = true;
+
+	if (pmode->exynos_mode.is_lp_mode)
+		exynos_panel_set_lp_mode(ctx, pmode);
+	else
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
+
+	backlight_update_status(ctx->bl);
 
 	return 0;
 }
@@ -233,6 +284,38 @@ static const struct exynos_panel_mode s6e3fc3_modes[] = {
 	},
 };
 
+static const struct exynos_panel_mode s6e3fc3_lp_mode = {
+	.mode = {
+		/* 1080x2400 @ 30Hz */
+		.name = "1080x2400x30",
+		.clock = 84249,
+		.hdisplay = 1080,
+		.hsync_start = 1080 + 32, // add hfp
+		.hsync_end = 1080 + 32 + 12, // add hsa
+		.htotal = 1080 + 32 + 12 + 26, // add hbp
+		.vdisplay = 2400,
+		.vsync_start = 2400 + 12, // add vfp
+		.vsync_end = 2400 + 12 + 4, // add vsa
+		.vtotal = 2400 + 12 + 4 + 26, // add vbp
+		.flags = 0,
+		.type = DRM_MODE_TYPE_DRIVER,
+		.width_mm = 67,
+		.height_mm = 148,
+	},
+	.exynos_mode = {
+		.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
+		.vblank_usec = 120,
+		.bpc = 8,
+		.dsc = {
+			.enabled = true,
+			.dsc_count = 2,
+			.slice_count = 2,
+			.slice_height = 48,
+		},
+		.is_lp_mode = true,
+	}
+};
+
 static const struct drm_panel_funcs s6e3fc3_drm_funcs = {
 	.disable = exynos_panel_disable,
 	.unprepare = exynos_panel_unprepare,
@@ -243,6 +326,9 @@ static const struct drm_panel_funcs s6e3fc3_drm_funcs = {
 
 static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.set_brightness = exynos_panel_set_brightness,
+	.set_lp_mode = exynos_panel_set_lp_mode,
+	.set_nolp_mode = s6e3fc3_set_nolp_mode,
+	.set_binned_lp = exynos_panel_set_binned_lp,
 	.set_hbm_mode = s6e3fc3_set_hbm_mode,
 	.set_local_hbm_mode = s6e3fc3_set_local_hbm_mode,
 	.is_mode_seamless = s6e3fc3_is_mode_seamless,
@@ -262,6 +348,10 @@ const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.min_luminance = 5,
 	.modes = s6e3fc3_modes,
 	.num_modes = ARRAY_SIZE(s6e3fc3_modes),
+	.lp_mode = &s6e3fc3_lp_mode,
+	.lp_cmd_set = &s6e3fc3_lp_cmd_set,
+	.binned_lp = s6e3fc3_binned_lp,
+	.num_binned_lp = ARRAY_SIZE(s6e3fc3_binned_lp),
 	.panel_func = &s6e3fc3_drm_funcs,
 	.exynos_panel_func = &s6e3fc3_exynos_funcs,
 };
