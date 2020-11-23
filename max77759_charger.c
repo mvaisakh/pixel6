@@ -95,6 +95,7 @@ struct max77759_chgr_data {
 	atomic_t batoilo_cnt;
 
 	atomic_t insel_cnt;
+	bool insel_clear;	/* when set, irq clears CHGINSEL_MASK */
 
 	struct mutex io_lock;
 	bool resume_complete;
@@ -2315,8 +2316,9 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 				&data->sysuvlo2_cnt);
 	debugfs_create_atomic_t("batoilo_cnt", 0644, data->de,
 				&data->batoilo_cnt);
-	debugfs_create_atomic_t("insel_cnt", 0644, data->de,
-				&data->insel_cnt);
+
+	debugfs_create_atomic_t("insel_cnt", 0644, data->de, &data->insel_cnt);
+	debugfs_create_bool("insel_clear", 0644, data->de, &data->insel_clear);
 
 	debugfs_create_file("vdroop2_ok", 0400, data->de, data,
 			    &vdroop2_ok_fops);
@@ -2450,9 +2452,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 	pr_debug("INT : %02x %02x\n", chg_int[0], chg_int[1]);
 
-	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M) {
-		pr_debug("%s: INSEL\n", __func__);
-
+	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M && data->insel_clear) {
 		ret = max77759_chgr_input_mask_clear(data);
 		if (ret < 0)
 			pr_info("INT : %x %x : clear=%d\n",
