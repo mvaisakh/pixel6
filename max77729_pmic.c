@@ -471,7 +471,7 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 	ret = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_AIN0, &ain0);
 	pr_debug("%s: AIN0=%d (%d)\n", __func__, ain0, ret);
 
-	if (mux == THMIO_MUX_USB_TEMP) {
+	if ((mux == THMIO_MUX_USB_TEMP) || (mux == THMIO_MUX_BATT_PACK)) {
 		/* convert form 1.8V to 2.4V and get higher 10 bits */
 		const unsigned int conv_adc = ((ain0 * 1800) / 2400) >> 6;
 
@@ -497,6 +497,28 @@ restore_fg:
 
 	return ret;
 }
+
+/* THMIO_MUX=0 in CONTROL_FG (0x51) */
+int max77759_read_batt_conn(struct i2c_client *client, int *temp)
+{
+	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	unsigned int val;
+	int ret;
+
+	mutex_lock(&data->io_lock);
+	ret = max77759_find_fg(data);
+	if (ret == 0)
+		ret = max77759_read_thm(data, THMIO_MUX_BATT_PACK, &val);
+	mutex_unlock(&data->io_lock);
+
+	if (ret == 0) {
+		/* TODO: b/160737498 convert voltage to temperature */
+		*temp = val;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(max77759_read_batt_conn);
 
 /* THMIO_MUX=1 in CONTROL_FG (0x51) */
 int max77759_read_usb_temp(struct i2c_client *client, int *temp)
@@ -590,6 +612,25 @@ static int debug_batt_id_get(void *d, u64 *val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, debug_batt_id_get, NULL, "%llu\n");
 
+static int debug_batt_thm_conn_get(void *d, u64 *val)
+{
+	struct max77729_pmic_data *data = d;
+	unsigned int batt_conn;
+	int ret;
+
+	mutex_lock(&data->io_lock);
+	ret = max77759_find_fg(data);
+		if (ret == 0)
+			ret = max77759_read_thm(data, THMIO_MUX_BATT_PACK, &batt_conn);
+	mutex_unlock(&data->io_lock);
+
+	if (ret == 0)
+		*val = batt_conn;
+
+	return ret;
+}
+DEFINE_SIMPLE_ATTRIBUTE(debug_batt_thm_conn_fops, debug_batt_thm_conn_get, NULL, "%llu\n");
+
 static int max77759_pmic_storage_iter(int index, gbms_tag_t *tag, void *ptr)
 {
 	if (index < 0 || index > (GBMS_TAG_RRS7 - GBMS_TAG_RRS0))
@@ -677,6 +718,8 @@ static int dbg_init_fs(struct max77729_pmic_data *data)
 
 	debugfs_create_file("batt_id", 0400, data->de, data,
 			    &debug_batt_id_fops);
+	debugfs_create_file("batt_thm_conn", 0400, data->de, data,
+			    &debug_batt_thm_conn_fops);
 
 	return 0;
 }
