@@ -2293,9 +2293,6 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	if (ret < 0) {
 		input_err(true, &ts->client->dev,
 			  "%s: read one event failed\n", __func__);
-#ifdef USE_POR_AFTER_SPI_RETRY
-		schedule_work(&ts->reset_work.work);
-#endif
 		return;
 	}
 
@@ -2392,13 +2389,6 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 							&ts->client->dev,
 							"STATUS: noise mode change to %x\n",
 							status_data_1);
-						/* Workaround for b/150324257 : Touch is
-						 * unresponive after screen off/on
-						 */
-						#ifdef USE_POWER_RESET_WORK
-						if (status_data_1)
-							schedule_work(&ts->reset_work.work);
-						#endif
 						break;
 
 					case SEC_TS_EVENT_STATUS_ID_GRIP:
