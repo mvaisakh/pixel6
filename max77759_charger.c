@@ -459,15 +459,15 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			break;
 		case GSU_MODE_USB_OTG: 	/* From 5. USB OTG to 8. standby */
 
-
 			if (use_case == GSU_MODE_USB_OTG_FRS)
 				break;
 
 			/* missing setting EXT_BST_EN in MW (TCPM) */
-
-			ret = max77759_ext_mode(data, 0);
+			ret = max77759_ls_mode(data, 0);
+			if (ret == 0)
+				ret = max77759_ext_mode(data, 0);
 			if (ret < 0) {
-				dev_err(data->dev, "cannot turn off ext (%d)\n",
+				dev_err(data->dev, "cannot turn off switches (%d)\n",
 					ret);
 				return -EIO;
 			}
