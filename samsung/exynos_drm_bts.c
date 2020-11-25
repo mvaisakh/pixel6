@@ -14,9 +14,8 @@
 #if defined(CONFIG_SOC_GS101)
 #include <soc/google/exynos-devfreq.h>
 #include <dt-bindings/soc/google/gs101-devfreq.h>
-#endif
-#if defined(CONFIG_CAL_IF)
-#include <soc/samsung/cal-if.h>
+#include <soc/google/cal-if.h>
+#include <dt-bindings/clock/gs101.h>
 #endif
 #if defined(CONFIG_SOC_EXYNOS9610)
 #include <dt-bindings/clock/exynos9610.h>
@@ -704,6 +703,9 @@ static void dpu_bts_init(struct decon_device *decon)
 	memset(bts_idx_name, 0, MAX_IDX_NAME_SIZE);
 	snprintf(bts_idx_name, MAX_IDX_NAME_SIZE, "DECON%d", decon->id);
 	decon->bts.bw_idx = bts_get_bwindex(bts_idx_name);
+
+	decon->bts.dvfs_max_disp_freq =
+			(u32)cal_dfs_get_max_freq(ACPM_DVFS_DISP);
 
 	for (i = 0; i < MAX_DECON_CNT; i++)
 		decon->bts.ch_bw[decon->id][i] = 0;

@@ -397,6 +397,9 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 		exynos_crtc_state->color_mode = val;
 	} else if (property == exynos_crtc->props.force_bpc) {
 		exynos_crtc_state->force_bpc = val;
+	} else if (property == exynos_crtc->props.ppc ||
+			property == exynos_crtc->props.max_disp_freq) {
+		return 0;
 	} else if (property == exynos_crtc->props.cgc_lut) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_lut, val,
@@ -436,12 +439,17 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct exynos_drm_crtc_state *exynos_crtc_state;
+	struct decon_device *decon = exynos_crtc->ctx;
 
 	exynos_crtc_state =
 		to_exynos_crtc_state((struct drm_crtc_state *)state);
 
 	if (property == exynos_crtc->props.color_mode)
 		*val = exynos_crtc_state->color_mode;
+	else if (property == exynos_crtc->props.ppc)
+		*val = decon->bts.ppc;
+	else if (property == exynos_crtc->props.max_disp_freq)
+		*val = decon->bts.dvfs_max_disp_freq;
 	else if (property == exynos_crtc->props.force_bpc)
 		*val = exynos_crtc_state->force_bpc;
 	else if (property == exynos_crtc->props.cgc_lut)
@@ -585,6 +593,21 @@ static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
 	return 0;
 }
 
+static int exynos_drm_crtc_create_range(struct drm_crtc *crtc, const char *name,
+		struct drm_property **prop)
+{
+	struct drm_property *p;
+
+	p = drm_property_create_range(crtc->dev, 0, name, 0, UINT_MAX);
+	if (!p)
+		return -ENOMEM;
+
+	drm_object_attach_property(&crtc->base, p, 0);
+	*prop = p;
+
+	return 0;
+}
+
 struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 					struct drm_plane *plane,
 					enum exynos_drm_output_type type,
@@ -620,6 +643,13 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 
 	ret = exynos_drm_crtc_create_force_bpc_property(exynos_crtc);
 	if (ret)
+		goto err_crtc;
+
+	if (exynos_drm_crtc_create_range(crtc, "ppc", &exynos_crtc->props.ppc))
+		goto err_crtc;
+
+	if (exynos_drm_crtc_create_range(crtc, "max_disp_freq",
+				&exynos_crtc->props.max_disp_freq))
 		goto err_crtc;
 
 	if (decon->dqe) {

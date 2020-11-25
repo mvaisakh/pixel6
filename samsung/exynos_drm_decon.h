@@ -126,6 +126,7 @@ struct dpu_bts {
 	u32 prev_total_bw;
 	u32 max_disp_freq;
 	u32 prev_max_disp_freq;
+	u32 dvfs_max_disp_freq;
 	u64 ppc;
 	u32 ppc_rotator;
 	u32 ppc_scaler;
