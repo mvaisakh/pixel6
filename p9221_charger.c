@@ -2562,6 +2562,38 @@ static ssize_t rtx_err_show(struct device *dev,
 
 static DEVICE_ATTR_RO(rtx_err);
 
+static ssize_t ext_ben_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	int value;
+
+	if (charger->pdata->ext_ben_gpio < 0)
+		return -ENODEV;
+
+	value = gpio_direction_output(charger->pdata->ext_ben_gpio, 0);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
+}
+
+static ssize_t ext_ben_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	if (charger->pdata->ext_ben_gpio < 0)
+		return -ENODEV;
+
+	gpio_set_value(charger->pdata->ext_ben_gpio, buf[0] != '0');
+
+	return count;
+}
+static DEVICE_ATTR_RW(ext_ben);
+
 static ssize_t rtx_sw_show(struct device *dev,
 			   struct device_attribute *attr,
 			   char *buf)
@@ -2867,6 +2899,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_aicl_icl_ua.attr,
 	&dev_attr_operating_freq.attr,
 	&dev_attr_ptmc_id.attr,
+	&dev_attr_ext_ben.attr,
 	NULL
 };
 
