@@ -136,6 +136,16 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
+	/* TODO(b/173493818): We currently see some stability issue on specific device
+	 * and sensor due to INT clock vote to 100 MHz. Set the minimum INT requirement
+	 * to 200Mhz for now.
+	 */
+	ret = lwis_platform_update_qos(lwis_dev, 200000, CLOCK_FAMILY_INT);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to initial INT clock\n");
+		return ret;
+	}
+
 	if (lwis_dev->bts_scenario_name) {
 		lwis_dev->bts_scenario = bts_get_scenindex(lwis_dev->bts_scenario_name);
 		if (!lwis_dev->bts_scenario) {
