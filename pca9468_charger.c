@@ -5276,9 +5276,9 @@ static int pca9468_probe(struct i2c_client *client,
 						     &pca9468_usb_tzd_ops,
 						     NULL, 0, 0);
 		if (IS_ERR(pdata->usb_tzd)) {
-			dev_err(dev, "Couldn't register usb connector thermal zone ret=%d\n",
-				PTR_ERR(pdata->usb_tzd));
 			ret = PTR_ERR(pdata->usb_tzd);
+			dev_err(dev, "Couldn't register usb connector thermal zone ret=%d\n",
+				ret);
 			goto error;
 		}
 	}
