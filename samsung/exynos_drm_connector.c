@@ -143,9 +143,11 @@ bool is_exynos_drm_connector(const struct drm_connector *connector)
 int exynos_drm_connector_init(struct drm_device *dev,
 			      struct exynos_drm_connector *exynos_connector,
 			      const struct exynos_drm_connector_funcs *funcs,
+			      const struct exynos_drm_connector_helper_funcs *helper_funcs,
 			      int connector_type)
 {
 	exynos_connector->funcs = funcs;
+	exynos_connector->helper_private = helper_funcs;
 
 	return drm_connector_init(dev, &exynos_connector->base,
 				 &exynos_drm_connector_funcs,

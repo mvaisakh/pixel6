@@ -102,9 +102,16 @@ struct exynos_drm_connector_funcs {
 				   uint64_t *val);
 };
 
+struct exynos_drm_connector_helper_funcs {
+	void (*atomic_commit)(struct exynos_drm_connector *exynos_connector,
+			      struct exynos_drm_connector_state *exynos_old_state,
+			      struct exynos_drm_connector_state *exynos_new_state);
+};
+
 struct exynos_drm_connector {
 	struct drm_connector base;
 	const struct exynos_drm_connector_funcs *funcs;
+	const struct exynos_drm_connector_helper_funcs *helper_private;
 };
 
 #define to_exynos_connector(connector) \
@@ -114,6 +121,7 @@ bool is_exynos_drm_connector(const struct drm_connector *connector);
 int exynos_drm_connector_init(struct drm_device *dev,
 			      struct exynos_drm_connector *exynos_connector,
 			      const struct exynos_drm_connector_funcs *funcs,
+			      const struct exynos_drm_connector_helper_funcs *helper_funcs,
 			      int connector_type);
 int exynos_drm_connector_create_properties(struct drm_device *dev);
 struct exynos_drm_connector_properties *

@@ -499,6 +499,7 @@ static int exynos_update_status(struct backlight_device *bl)
 	struct exynos_panel *ctx = bl_get_data(bl);
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
+	struct drm_connector_state *conn_state;
 	u32 bl_range = 0;
 
 	if (!ctx->enabled || !ctx->initialized) {
@@ -512,6 +513,14 @@ static int exynos_update_status(struct backlight_device *bl)
 
 	dev_info(ctx->dev, "req: %d, br: %d\n", bl->props.brightness,
 		brightness);
+
+	/* TODO(b/175121444): add drm_modeset_lock() to protect brightness sync */
+	conn_state = ctx->exynos_connector.base.state;
+	if (conn_state) {
+		struct exynos_drm_connector_state *exynos_connector_state =
+			to_exynos_connector_state(conn_state);
+		exynos_connector_state->brightness_level = bl->props.brightness;
+	}
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func && exynos_panel_func->set_brightness)
@@ -653,6 +662,30 @@ static const struct exynos_drm_connector_funcs exynos_panel_connector_funcs = {
 	.atomic_print_state = exynos_panel_connector_print_state,
 	.atomic_get_property = exynos_panel_connector_get_property,
 	.atomic_set_property = exynos_panel_connector_set_property,
+};
+
+static void exynos_panel_connector_atomic_commit(
+				struct exynos_drm_connector *exynos_connector,
+			    struct exynos_drm_connector_state *exynos_old_state,
+			    struct exynos_drm_connector_state *exynos_new_state)
+{
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+	const struct exynos_panel_funcs *exynos_panel_func;
+
+	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		ctx->bl->props.brightness = exynos_new_state->brightness_level;
+		backlight_update_status(ctx->bl);
+	}
+
+	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
+		exynos_panel_func = ctx->desc->exynos_panel_func;
+		if (exynos_panel_func && exynos_panel_func->set_hbm_mode)
+			exynos_panel_func->set_hbm_mode(ctx, exynos_new_state->hbm_on);
+	}
+}
+
+static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
+	.atomic_commit = exynos_panel_connector_atomic_commit,
 };
 
 static int exynos_drm_connector_modes(struct drm_connector *connector)
@@ -1423,6 +1456,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	ret = exynos_drm_connector_init(dev, &ctx->exynos_connector,
 					&exynos_panel_connector_funcs,
+					&exynos_panel_connector_helper_funcs,
 					DRM_MODE_CONNECTOR_DSI);
 	if (ret) {
 		dev_err(ctx->dev, "failed to initialize connector with drm\n");
