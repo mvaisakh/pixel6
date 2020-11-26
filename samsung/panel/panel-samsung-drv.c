@@ -171,11 +171,11 @@ static int exynos_panel_read_extinfo(struct exynos_panel *ctx)
 
 static int exynos_panel_init(struct exynos_panel *ctx)
 {
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	int ret;
 
 	if (ctx->initialized)
 		return 0;
-
 
 	ret = exynos_panel_read_id(ctx);
 	if (ret)
@@ -184,6 +184,9 @@ static int exynos_panel_init(struct exynos_panel *ctx)
 	ret = exynos_panel_read_extinfo(ctx);
 	if (!ret)
 		ctx->initialized = true;
+
+	if (funcs && funcs->panel_init)
+		funcs->panel_init(ctx);
 
 	return ret;
 }
@@ -1711,19 +1714,15 @@ static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.mode_set = exynos_panel_bridge_mode_set,
 };
 
-int exynos_panel_probe(struct mipi_dsi_device *dsi)
+int exynos_panel_common_init(struct mipi_dsi_device *dsi,
+				struct exynos_panel *ctx)
 {
 	static atomic_t panel_index = ATOMIC_INIT(-1);
 	struct device *dev = &dsi->dev;
-	struct exynos_panel *ctx;
 	int ret = 0;
 	char name[32];
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int i;
-
-	ctx = devm_kzalloc(dev, sizeof(struct exynos_panel), GFP_KERNEL);
-	if (!ctx)
-		return -ENOMEM;
 
 	dev_dbg(dev, "%s +\n", __func__);
 
@@ -1801,6 +1800,18 @@ err_panel:
 	dev_err(ctx->dev, "failed to probe samsung panel driver(%d)\n", ret);
 
 	return ret;
+}
+EXPORT_SYMBOL(exynos_panel_common_init);
+
+int exynos_panel_probe(struct mipi_dsi_device *dsi)
+{
+	struct exynos_panel *ctx;
+
+	ctx = devm_kzalloc(&dsi->dev, sizeof(struct exynos_panel), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	return exynos_panel_common_init(dsi, ctx);
 }
 EXPORT_SYMBOL(exynos_panel_probe);
 

@@ -130,6 +130,14 @@ struct exynos_panel_funcs {
 	 */
 	void (*mode_set)(struct exynos_panel *exynos_panel,
 			 const struct exynos_panel_mode *mode);
+
+	/**
+	 * @panel_init:
+	 *
+	 * This callback is used to do one time initialization for any panel
+	 * specific functions.
+	 */
+	void (*panel_init)(struct exynos_panel *exynos_panel);
 };
 
 /**
@@ -333,6 +341,8 @@ void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
 			       const struct exynos_dsi_cmd_set *cmd_set);
 void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode);
 void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness);
+int exynos_panel_common_init(struct mipi_dsi_device *dsi,
+				struct exynos_panel *ctx);
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi);
 int exynos_panel_remove(struct mipi_dsi_device *dsi);
