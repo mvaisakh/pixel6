@@ -2032,7 +2032,7 @@ static int sys_uvlo1_set(void *d, u64 val)
 	return ret;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo1_fops, sys_uvlo1_get, sys_uvlo1_set, "0x%x\n");
+DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo1_fops, sys_uvlo1_get, sys_uvlo1_set, "0x%llx\n");
 
 static int sys_uvlo2_get(void *d, u64 *val)
 {
@@ -2058,7 +2058,7 @@ static int sys_uvlo2_set(void *d, u64 val)
 	return ret;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%x\n");
+DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%llx\n");
 
 
 /* write to INPUT_MASK_CLR in to re-enable detection */
