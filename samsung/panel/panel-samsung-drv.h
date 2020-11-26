@@ -330,6 +330,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 		dev_err(ctx->dev, "failed to write cmd(%d)\n", ret);	\
 } while (0)
 
+#define for_each_display_mode(i, mode, ctx)			\
+	for (i = 0, mode = &ctx->desc->modes[i].mode;		\
+		i < ctx->desc->num_modes; i++,			\
+		mode = &ctx->desc->modes[i].mode)		\
+
 int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
 int exynos_panel_disable(struct drm_panel *panel);
 int exynos_panel_unprepare(struct drm_panel *panel);
