@@ -1034,7 +1034,7 @@ static int p9221_get_property(struct power_supply *psy,
 		if (!ret) {
 			ret = charger->chip_get_die_temp(charger, &val->intval);
 			if (!ret)
-				val->intval = P9221_C_TO_MILLIC(val->intval);
+				val->intval = P9221_MILLIC_TO_DECIC(val->intval);
 		}
 
 		if (ret)
