@@ -5901,6 +5901,13 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	}
 #endif
 
+	bdata->proc_dir_name = NULL;
+	of_property_read_string(np, "st,proc_dir_name",
+				&bdata->proc_dir_name);
+	if(!bdata->proc_dir_name)
+		bdata->proc_dir_name = "fts";
+	pr_info("proc_dir_name = %s\n", bdata->proc_dir_name);
+
 	return OK;
 }
 

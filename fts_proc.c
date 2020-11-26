@@ -3673,7 +3673,8 @@ int fts_proc_init(struct fts_ts_info *info)
 
 	int retval = 0;
 
-	info->fts_dir = proc_mkdir_data("fts", 0555, NULL, info);
+	info->fts_dir = proc_mkdir_data(info->board->proc_dir_name, 0555,
+					NULL, info);
 	if (info->fts_dir == NULL) {	/* directory creation failed */
 		retval = -ENOMEM;
 		goto out;

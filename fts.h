@@ -295,6 +295,7 @@ struct fts_hw_platform_data {
 	int disp_rate_gpio; /* disp_rate gpio: LOW=60Hz, HIGH=90Hz */
 	const char *fw_name;
 	const char *limits_name;
+	const char *proc_dir_name;
 	bool sensor_inverted;
 	int x_axis_max;
 	int y_axis_max;
