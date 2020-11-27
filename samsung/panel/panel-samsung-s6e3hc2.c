@@ -797,6 +797,42 @@ static void s6e3hc2_panel_init(struct exynos_panel *ctx)
 		kthread_queue_work(&spanel->worker, &spanel->gamma_work);
 }
 
+static void s6e3hc2_print_gamma(struct seq_file *seq,
+				const struct drm_display_mode *mode)
+{
+	struct exynos_panel *ctx = seq->private;
+	struct s6e3hc2_panel *spanel = to_spanel(ctx);
+	struct s6e3hc2_panel_data *priv_data;
+	struct s6e3hc2_mode_data *mdata =
+			s6e3hc2_get_mode_data(ctx, mode);
+	int i, j;
+
+	if (unlikely(!spanel->gamma_ready)) {
+		seq_puts(seq, "s6e3hc2 panel data not ready\n");
+		return;
+	}
+
+	if (unlikely(!mdata || !mdata->sdata)) {
+		seq_puts(seq, "s6e3hc2 mode data not ready\n");
+		return;
+	}
+
+	priv_data = mdata->sdata;
+	for (i = 0; i < S6E3HC2_NUM_GAMMA_TABLES; i++) {
+		const size_t len = s6e3hc2_gamma_tables[i].len;
+		const u8 cmd = s6e3hc2_gamma_tables[i].cmd;
+		const u8 *buf = priv_data->gamma_data[i] + 1;
+
+		seq_printf(seq, "0x%02X:", cmd);
+		for (j = 0; j < len; j++) {
+			if (j && (j % 8) == 0)
+				seq_puts(seq, "\n     ");
+			seq_printf(seq, " %02X", buf[j]);
+		}
+		seq_puts(seq, "\n");
+	}
+}
+
 static void s6e3hc2_gamma_work(struct kthread_work *work)
 {
 	struct s6e3hc2_panel *spanel =
@@ -999,6 +1035,7 @@ static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.is_mode_seamless = s6e3hc2_is_mode_seamless,
 	.mode_set = s6e3hc2_mode_set,
 	.panel_init = s6e3hc2_panel_init,
+	.print_gamma = s6e3hc2_print_gamma,
 };
 
 const struct brightness_capability s6e3hc2_brightness_capability = {

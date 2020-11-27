@@ -138,6 +138,18 @@ struct exynos_panel_funcs {
 	 * specific functions.
 	 */
 	void (*panel_init)(struct exynos_panel *exynos_panel);
+
+	/**
+	 * @print_gamma:
+	 *
+	 * This callback is used to print the hex dump of gamma address/data
+	 * for the provided mode.
+	 *
+	 * The expected format:
+	 * [gamma address]: [gamma data...]
+	 */
+	void (*print_gamma)(struct seq_file *seq,
+			    const struct drm_display_mode *mode);
 };
 
 /**

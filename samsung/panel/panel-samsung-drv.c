@@ -850,6 +850,37 @@ static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 };
 
 #ifdef CONFIG_DEBUG_FS
+
+static int panel_gamma_show(struct seq_file *m, void *data)
+{
+	struct exynos_panel *ctx = m->private;
+	const struct exynos_panel_funcs *funcs;
+	const struct drm_display_mode *mode;
+	int i;
+
+	funcs = ctx->desc->exynos_panel_func;
+	for_each_display_mode(i, mode, ctx) {
+		seq_printf(m, "\n=== %dhz Mode Gamma ===\n", drm_mode_vrefresh(mode));
+		funcs->print_gamma(m, mode);
+	}
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(panel_gamma);
+
+static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+	if (!funcs)
+		return -EINVAL;
+
+	if (funcs->print_gamma)
+		debugfs_create_file("gamma", 0600, parent, ctx, &panel_gamma_fops);
+
+	return 0;
+}
+
 static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
 				     const void *data, size_t len)
 {
@@ -1066,6 +1097,11 @@ static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
 	ctx->debugfs_entry = NULL;
 }
 #else
+static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	return 0;
+}
+
 static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 			 struct dentry *parent)
 {
@@ -1535,6 +1571,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
 	exynos_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->debugfs_entry);
+	panel_debugfs_add(ctx, ctx->debugfs_entry);
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
