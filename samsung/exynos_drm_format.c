@@ -217,7 +217,29 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.num_planes = 4,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_YUV420,
-	},
+	}, {
+		.name = "NV12_AFBC",
+		.fmt = DRM_FORMAT_YUV420_8BIT,
+		.dma_fmt = IDMA_IMG_FORMAT_NV12,
+		.dpp_fmt = DPP_IMG_FORMAT_YUV420_8P,
+		.bpp = 12,
+		.padding = 0,
+		.bpc = 8,
+		.num_planes = 1,
+		.len_alpha = 0,
+		.cs = DPU_COLORSPACE_YUV420,
+        }, {
+		.name = "P010_AFBC",
+		.fmt = DRM_FORMAT_YUV420_10BIT,
+		.dma_fmt = IDMA_IMG_FORMAT_YUV420_P010,
+		.dpp_fmt = DPP_IMG_FORMAT_YUV420_P010,
+		.bpp = 15,
+		.padding = 0,
+		.bpc = 10,
+		.num_planes = 1,
+		.len_alpha = 0,
+		.cs = DPU_COLORSPACE_YUV420,
+        },
 };
 
 const struct dpu_fmt *dpu_find_fmt_info(u32 fmt)

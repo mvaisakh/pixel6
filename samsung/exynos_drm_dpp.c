@@ -94,6 +94,8 @@ static const uint32_t dpp_vg_formats[] = {
 	DRM_FORMAT_NV16,
 	DRM_FORMAT_NV61,
 	DRM_FORMAT_P010,
+	DRM_FORMAT_YUV420_8BIT,
+	DRM_FORMAT_YUV420_10BIT,
 };
 
 const struct dpp_restriction dpp_drv_data = {
