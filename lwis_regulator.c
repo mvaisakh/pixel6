@@ -28,8 +28,7 @@ struct lwis_regulator_list *lwis_regulator_list_alloc(int num_regs)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->reg =
-		kzalloc(num_regs * sizeof(struct lwis_regulator), GFP_KERNEL);
+	list->reg = kzalloc(num_regs * sizeof(struct lwis_regulator), GFP_KERNEL);
 	if (!list->reg) {
 		kfree(list);
 		return ERR_PTR(-ENOMEM);
@@ -53,8 +52,8 @@ void lwis_regulator_list_free(struct lwis_regulator_list *list)
 	kfree(list);
 }
 
-int lwis_regulator_get(struct lwis_regulator_list *list, char *name,
-		       int voltage, struct device *dev)
+int lwis_regulator_get(struct lwis_regulator_list *list, char *name, int voltage,
+		       struct device *dev)
 {
 	struct regulator *reg;
 	int i;
@@ -144,11 +143,10 @@ int lwis_regulator_enable_by_idx(struct lwis_regulator_list *list, int index)
 
 	lwis_reg = &list->reg[index];
 	if (lwis_reg->voltage > 0) {
-		ret = regulator_set_voltage(lwis_reg->reg, lwis_reg->voltage,
-					    lwis_reg->voltage);
+		ret = regulator_set_voltage(lwis_reg->reg, lwis_reg->voltage, lwis_reg->voltage);
 		if (ret) {
-			pr_err("Failed to set regulator %s voltage to %d\n",
-			       lwis_reg->name, lwis_reg->voltage);
+			pr_err("Failed to set regulator %s voltage to %d\n", lwis_reg->name,
+			       lwis_reg->voltage);
 			return ret;
 		}
 	}
@@ -183,8 +181,7 @@ int lwis_regulator_enable_all(struct lwis_regulator_list *list)
 	for (i = 0; i < list->count; ++i) {
 		ret = lwis_regulator_enable_by_idx(list, i);
 		if (ret) {
-			pr_err("Error enabling regulator %s\n",
-			       list->reg[i].name);
+			pr_err("Error enabling regulator %s\n", list->reg[i].name);
 			return ret;
 		}
 	}
@@ -228,8 +225,7 @@ int lwis_regulator_disable_all(struct lwis_regulator_list *list)
 	for (i = 0; i < list->count; ++i) {
 		ret = lwis_regulator_disable_by_idx(list, i);
 		if (ret) {
-			pr_err("Error disabling regulator %s\n",
-			       list->reg[i].name);
+			pr_err("Error disabling regulator %s\n", list->reg[i].name);
 			return ret;
 		}
 	}
@@ -242,7 +238,7 @@ void lwis_regulator_print(struct lwis_regulator_list *list)
 	int i;
 
 	for (i = 0; i < list->count; ++i) {
-		pr_info("%s: reg: %s voltage: %d\n", __func__,
-			list->reg[i].name, list->reg[i].voltage);
+		pr_info("%s: reg: %s voltage: %d\n", __func__, list->reg[i].name,
+			list->reg[i].voltage);
 	}
 }

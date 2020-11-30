@@ -12,6 +12,28 @@
 #define LWIS_GPIO_H_
 
 #include <linux/gpio/consumer.h>
+#include "lwis_commands.h"
+
+/*
+ * struct lwis_gpios_info
+ * This structure is to store the gpios information
+ */
+struct lwis_gpios_info {
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	bool is_shared;
+	bool is_pulse;
+	struct gpio_descs *gpios;
+};
+
+/*
+ * struct lwis_gpios_list
+ * This structure is to store the gpios that have been acquired
+ */
+struct lwis_gpios_list {
+	struct lwis_gpios_info *gpios_info;
+	/* Count of gpios info */
+	int count;
+};
 
 /*
  *  LWIS GPIO Interface Functions
@@ -47,5 +69,23 @@ int lwis_gpio_list_set_output_value_raw(struct gpio_descs *gpios, int value);
  *  Set all the GPIO pins in the list to input.
  */
 int lwis_gpio_list_set_input(struct gpio_descs *gpios);
+
+/*
+ *  Allocate an instance of the lwis_gpios_info and initialize
+ *  the data structures according to the number of lwis_gpios_info
+ *  specified.
+ */
+struct lwis_gpios_list *lwis_gpios_list_alloc(int count);
+
+/*
+ *  Deallocate the lwis_gpios_list structure.
+ */
+void lwis_gpios_list_free(struct lwis_gpios_list *list);
+
+/*
+ *  Search the lwis_device_gpios_list and return the lwis_gpios_info
+ *  if the name is matched
+ */
+struct lwis_gpios_info *lwis_gpios_get_info_by_name(struct lwis_gpios_list *list, char *name);
 
 #endif /* LWIS_GPIO_H_ */

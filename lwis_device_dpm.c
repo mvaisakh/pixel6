@@ -39,15 +39,12 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 /*
  *  lwis_dpm_update_qos: update qos requirement for lwis device.
  */
-int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
-			struct lwis_qos_setting *qos_setting)
+int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *qos_setting)
 {
 	int ret = 0;
-	struct lwis_device *target_dev =
-		lwis_find_dev_by_id(qos_setting->device_id);
+	struct lwis_device *target_dev = lwis_find_dev_by_id(qos_setting->device_id);
 	if (!target_dev) {
-		dev_err(lwis_dev->dev, "Can't find device by id: %d\n",
-			qos_setting->device_id);
+		dev_err(lwis_dev->dev, "Can't find device by id: %d\n", qos_setting->device_id);
 		return -ENOENT;
 	}
 
@@ -60,22 +57,18 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 		 * and set clock family to CLOCK_FAMILY_MIF for bts bandwidth
 		 * update.
 		 */
-		ret = lwis_platform_update_bts(target_dev,
-					       qos_setting->frequency_hz / 8,
+		ret = lwis_platform_update_bts(target_dev, qos_setting->frequency_hz / 8,
 					       qos_setting->frequency_hz / 2,
 					       qos_setting->frequency_hz / 2);
 		if (ret < 0) {
-			dev_err(lwis_dev->dev,
-				"Failed to update bandwidth to bts, ret: %d\n",
-				ret);
+			dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 		}
 		break;
 	case CLOCK_FAMILY_TNR:
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
 		/* convert value to KHz */
-		ret = lwis_platform_update_qos(target_dev,
-					       qos_setting->frequency_hz / 1000,
+		ret = lwis_platform_update_qos(target_dev, qos_setting->frequency_hz / 1000,
 					       qos_setting->clock_family);
 		if (ret) {
 			dev_err(lwis_dev->dev,
@@ -84,8 +77,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 		}
 		break;
 	default:
-		dev_err(lwis_dev->dev, "Invalid clock family %d\n",
-			qos_setting->clock_family);
+		dev_err(lwis_dev->dev, "Invalid clock family %d\n", qos_setting->clock_family);
 		ret = -EINVAL;
 	}
 
@@ -95,8 +87,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev,
 /*
  *  lwis_dpm_update_clock: update specific clock settings to lwis device.
  */
-int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
-			  struct lwis_clk_setting *clk_settings,
+int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting *clk_settings,
 			  size_t num_settings)
 {
 	int ret = 0, i, clk_index;
@@ -115,25 +106,20 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev,
 			continue;
 
 		if (clk_index >= lwis_dev->clocks->count) {
-			dev_err(lwis_dev->dev, "%s clk index %d is invalid\n",
-				lwis_dev->name, clk_index);
+			dev_err(lwis_dev->dev, "%s clk index %d is invalid\n", lwis_dev->name,
+				clk_index);
 			ret = -EINVAL;
 			goto out;
 		}
-		ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk,
-				   clk_settings[i].frequency);
+		ret = clk_set_rate(lwis_dev->clocks->clk[clk_index].clk, clk_settings[i].frequency);
 		if (ret) {
-			dev_err(lwis_dev->dev,
-				"Error updating clock %s freq: %u\n",
-				lwis_dev->clocks->clk[clk_index].name,
-				clk_settings[i].frequency);
+			dev_err(lwis_dev->dev, "Error updating clock %s freq: %u\n",
+				lwis_dev->clocks->clk[clk_index].name, clk_settings[i].frequency);
 			goto out;
 		}
 
-		dev_info(lwis_dev->dev,
-			 "Update %s freq from %u to %u, clock read back: %lu\n",
-			 lwis_dev->clocks->clk[clk_index].name, old_clk,
-			 clk_settings[i].frequency,
+		dev_info(lwis_dev->dev, "Update %s freq from %u to %u, clock read back: %lu\n",
+			 lwis_dev->clocks->clk[clk_index].name, old_clk, clk_settings[i].frequency,
 			 clk_get_rate(lwis_dev->clocks->clk[clk_index].clk));
 	}
 out:

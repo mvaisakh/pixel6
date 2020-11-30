@@ -94,8 +94,7 @@ int lwis_phy_get(struct lwis_phy_list *list, char *name, struct device *dev)
 	return index;
 }
 
-int lwis_phy_put_by_idx(struct lwis_phy_list *list, int index,
-			struct device *dev)
+int lwis_phy_put_by_idx(struct lwis_phy_list *list, int index, struct device *dev)
 {
 	if (!list || index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -111,8 +110,7 @@ int lwis_phy_put_by_idx(struct lwis_phy_list *list, int index,
 	return 0;
 }
 
-int lwis_phy_put_by_name(struct lwis_phy_list *list, char *name,
-			 struct device *dev)
+int lwis_phy_put_by_name(struct lwis_phy_list *list, char *name, struct device *dev)
 {
 	int i;
 
@@ -136,8 +134,7 @@ int lwis_phy_put_by_name(struct lwis_phy_list *list, char *name,
 	return -EINVAL;
 }
 
-int lwis_phy_set_power_by_idx(struct lwis_phy_list *list, int index,
-			      bool power_on)
+int lwis_phy_set_power_by_idx(struct lwis_phy_list *list, int index, bool power_on)
 {
 	if (!list || index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -150,8 +147,7 @@ int lwis_phy_set_power_by_idx(struct lwis_phy_list *list, int index,
 	return phy_power_off(list->phy[index].phy);
 }
 
-int lwis_phy_set_power_by_name(struct lwis_phy_list *list, char *name,
-			       bool power_on)
+int lwis_phy_set_power_by_name(struct lwis_phy_list *list, char *name, bool power_on)
 {
 	int i;
 

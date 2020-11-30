@@ -31,8 +31,7 @@
 
 static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev);
-static int lwis_ioreg_register_io(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
+static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				  bool non_blocking, int access_size);
 
 static struct lwis_device_subclass_operations ioreg_vops = {
@@ -60,12 +59,11 @@ static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-static int lwis_ioreg_register_io(struct lwis_device *lwis_dev,
-				  struct lwis_io_entry *entry,
+static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				  bool non_blocking, int access_size)
 {
-	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev,
-				      entry, non_blocking, access_size);
+	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev, entry, non_blocking,
+				      access_size);
 }
 
 static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
@@ -76,8 +74,7 @@ static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
 	/* Parse device tree for device configurations */
 	ret = lwis_ioreg_device_parse_dt(ioreg_dev);
 	if (ret) {
-		dev_err(ioreg_dev->base_dev.dev,
-			"Failed to parse device tree\n");
+		dev_err(ioreg_dev->base_dev.dev, "Failed to parse device tree\n");
 	}
 #else
 	/* Non-device-tree init: Save for future implementation */
@@ -113,8 +110,7 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	/* Call IOREG device specific setup function */
 	ret = lwis_ioreg_device_setup(ioreg_dev);
 	if (ret) {
-		dev_err(ioreg_dev->base_dev.dev,
-			"Error in IOREG device initialization\n");
+		dev_err(ioreg_dev->base_dev.dev, "Error in IOREG device initialization\n");
 		goto error_probe;
 	}
 

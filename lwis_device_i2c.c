@@ -34,9 +34,8 @@
 
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
-static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
-				struct lwis_io_entry *entry, bool non_blocking,
-				int access_size);
+static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
+				bool non_blocking, int access_size);
 
 static struct lwis_device_subclass_operations i2c_vops = {
 	.register_io = lwis_i2c_register_io,
@@ -73,19 +72,20 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 	int ret;
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
-	/* Disable the I2C bus */
-	ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
-	if (ret) {
-		dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
-		return ret;
+	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
+		/* Disable the I2C bus */
+		ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
+			return ret;
+		}
 	}
 
 	return 0;
 }
 
-static int lwis_i2c_register_io(struct lwis_device *lwis_dev,
-				struct lwis_io_entry *entry, bool non_blocking,
-				int access_size)
+static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
+				bool non_blocking, int access_size)
 {
 	/* I2C does not currently support non-blocking calls at all */
 	if (non_blocking) {
@@ -137,16 +137,14 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	   and use it here */
 	if (IS_ERR_OR_NULL(i2c_dev->client)) {
 		struct device *idev;
-		idev = device_find_child(&i2c_dev->adapter->dev,
-					 &i2c_dev->address,
+		idev = device_find_child(&i2c_dev->adapter->dev, &i2c_dev->address,
 					 lwis_i2c_addr_matcher);
 		i2c_dev->client = i2c_verify_client(idev);
 	}
 
 	/* Still getting error in obtaining client, return error */
 	if (IS_ERR_OR_NULL(i2c_dev->client)) {
-		dev_err(i2c_dev->base_dev.dev,
-			"Failed to create or find i2c device\n");
+		dev_err(i2c_dev->base_dev.dev, "Failed to create or find i2c device\n");
 		return -EINVAL;
 	}
 
@@ -157,8 +155,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	/* TODO: Need to figure out why this is parent's parent */
 	pinctrl = devm_pinctrl_get(dev->parent->parent);
 	if (IS_ERR(pinctrl)) {
-		dev_err(i2c_dev->base_dev.dev,
-			"Cannot instantiate pinctrl instance (%lu)\n",
+		dev_err(i2c_dev->base_dev.dev, "Cannot instantiate pinctrl instance (%lu)\n",
 			PTR_ERR(pinctrl));
 		return PTR_ERR(pinctrl);
 	}
@@ -171,16 +168,14 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 		/* Default option also missing, return error */
 		if (IS_ERR(state)) {
 			dev_err(i2c_dev->base_dev.dev,
-				"Pinctrl states {%s, %s, %s} not found (%lu)\n",
-				I2C_OFF_STRING, I2C_ON_STRING,
-				I2C_DEFAULT_STATE_STRING, PTR_ERR(state));
+				"Pinctrl states {%s, %s, %s} not found (%lu)\n", I2C_OFF_STRING,
+				I2C_ON_STRING, I2C_DEFAULT_STATE_STRING, PTR_ERR(state));
 			return PTR_ERR(state);
 		}
 		/* on_i2c or off_i2c not found, fall back to default */
 		dev_warn(i2c_dev->base_dev.dev,
-			 "pinctrl state %s or %s not found, fall back to %s\n",
-			 I2C_OFF_STRING, I2C_ON_STRING,
-			 I2C_DEFAULT_STATE_STRING);
+			 "pinctrl state %s or %s not found, fall back to %s\n", I2C_OFF_STRING,
+			 I2C_ON_STRING, I2C_DEFAULT_STATE_STRING);
 		i2c_dev->pinctrl_default_state_only = true;
 	}
 	i2c_dev->state_pinctrl = pinctrl;
@@ -214,8 +209,7 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	/* Call I2C device specific setup function */
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
-		dev_err(i2c_dev->base_dev.dev,
-			"Error in i2c device initialization\n");
+		dev_err(i2c_dev->base_dev.dev, "Error in i2c device initialization\n");
 		goto error_probe;
 	}
 

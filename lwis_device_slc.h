@@ -10,11 +10,10 @@
 #ifndef LWIS_DEVICE_SLC_H_
 #define LWIS_DEVICE_SLC_H_
 
-
 #include "lwis_device.h"
 #include <soc/google/pt.h>
 
-#define NUM_PT 5
+#define NUM_PT 6
 
 struct slc_partition {
 	int id;
@@ -36,8 +35,7 @@ struct lwis_slc_device {
 
 int lwis_slc_device_deinit(void);
 
-int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
-			  struct lwis_alloc_buffer_info *alloc_info);
+int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer_info *alloc_info);
 
 int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd);
 

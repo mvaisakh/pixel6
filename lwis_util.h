@@ -33,10 +33,8 @@ struct lwis_device;
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_write(struct lwis_device *lwis_dev,
-				      bool non_blocking, int bid,
-				      uint64_t offset, uint64_t value,
-				      int access_size);
+int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blocking, int bid,
+				      uint64_t offset, uint64_t value, int access_size);
 
 /*
  * lwis_device_single_register_read: A utility function that allows you to
@@ -51,10 +49,8 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev,
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_read(struct lwis_device *lwis_dev,
-				     bool non_blocking, int bid,
-				     uint64_t offset, uint64_t *value,
-				     int access_size);
+int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_blocking, int bid,
+				     uint64_t offset, uint64_t *value, int access_size);
 
 /*
  * lwis_device_type_to_string: Converts the LWIS device type into a human-

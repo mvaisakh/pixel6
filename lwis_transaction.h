@@ -12,7 +12,10 @@
 #define LWIS_TRANSACTION_H_
 
 #include "lwis_commands.h"
-#include "lwis_device.h"
+
+/* LWIS forward declarations */
+struct lwis_device;
+struct lwis_client;
 
 /* Transaction entry. Each entry belongs to two queues:
  * 1) Event list: Transactions are sorted by event IDs. This is to search for
@@ -27,13 +30,21 @@ struct lwis_transaction {
 	struct list_head process_queue_node;
 };
 
+/* For debugging purposes, keeps track of the transaction information, as
+ * well as the time it executes and the time it took to execute.
+*/
+struct lwis_transaction_history {
+	struct lwis_transaction_info info;
+	int64_t process_timestamp;
+	int64_t process_duration_ns;
+};
+
 struct lwis_transaction_event_list {
 	int64_t event_id;
 	struct list_head list;
 	struct hlist_node node;
 };
 
-void lwis_entry_bias(struct lwis_io_entry *entry, uint64_t bias);
 int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry);
 
 int lwis_transaction_init(struct lwis_client *client);
@@ -42,8 +53,7 @@ int lwis_transaction_client_flush(struct lwis_client *client);
 int lwis_transaction_client_cleanup(struct lwis_client *client);
 
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
-				   int64_t event_counter,
-				   struct list_head *pending_events,
+				   int64_t event_counter, struct list_head *pending_events,
 				   bool in_irq);
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 

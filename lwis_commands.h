@@ -120,7 +120,6 @@ enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_WRITE,
 	LWIS_IO_ENTRY_WRITE_BATCH,
 	LWIS_IO_ENTRY_MODIFY,
-	LWIS_IO_ENTRY_BIAS,
 	LWIS_IO_ENTRY_POLL
 };
 
@@ -146,10 +145,6 @@ struct lwis_io_entry_modify {
 	uint64_t val_mask;
 };
 
-struct lwis_io_entry_set_bias {
-	uint64_t bias;
-};
-
 // For io_entry poll type.
 struct lwis_io_entry_poll {
 	int bid;
@@ -165,7 +160,6 @@ struct lwis_io_entry {
 		struct lwis_io_entry_rw rw;
 		struct lwis_io_entry_rw_batch rw_batch;
 		struct lwis_io_entry_modify mod;
-		struct lwis_io_entry_set_bias set_bias;
 		struct lwis_io_entry_poll poll;
 	};
 };
@@ -266,7 +260,7 @@ struct lwis_event_subscribe {
 struct lwis_periodic_io_info {
 	// Input
 	int batch_size;
-	int64_t period_ms;
+	int64_t period_ns;
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	int64_t emit_success_event_id;
@@ -329,29 +323,21 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_ECHO _IOWR(LWIS_IOC_TYPE, 12, struct lwis_echo)
 #define LWIS_DEVICE_RESET _IOWR(LWIS_IOC_TYPE, 13, struct lwis_io_entries)
 
-#define LWIS_EVENT_CONTROL_GET                                                 \
-	_IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
-#define LWIS_EVENT_CONTROL_SET                                                 \
-	_IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
+#define LWIS_EVENT_CONTROL_GET _IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
+#define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
-#define LWIS_EVENT_SUBSCRIBE                                                   \
-	_IOW(LWIS_IOC_TYPE, 23, struct lwis_event_subscribe)
+#define LWIS_EVENT_SUBSCRIBE _IOW(LWIS_IOC_TYPE, 23, struct lwis_event_subscribe)
 #define LWIS_EVENT_UNSUBSCRIBE _IOW(LWIS_IOC_TYPE, 24, int64_t)
 
-#define LWIS_TRANSACTION_SUBMIT                                                \
-	_IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
+#define LWIS_TRANSACTION_SUBMIT _IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
 #define LWIS_TRANSACTION_CANCEL _IOWR(LWIS_IOC_TYPE, 31, int64_t)
-#define LWIS_TRANSACTION_REPLACE                                               \
-	_IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
+#define LWIS_TRANSACTION_REPLACE _IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
 
-#define LWIS_PERIODIC_IO_SUBMIT                                                \
-	_IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
+#define LWIS_PERIODIC_IO_SUBMIT _IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
 #define LWIS_PERIODIC_IO_CANCEL _IOWR(LWIS_IOC_TYPE, 41, int64_t)
 
-#define LWIS_DPM_CLK_UPDATE                                                    \
-	_IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
-#define LWIS_DPM_QOS_UPDATE                                                    \
-	_IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
+#define LWIS_DPM_CLK_UPDATE _IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
+#define LWIS_DPM_QOS_UPDATE _IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
 
 #ifdef __cplusplus
 } /* extern "C" */

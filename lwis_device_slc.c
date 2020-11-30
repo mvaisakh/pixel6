@@ -60,7 +60,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 	int i = 0;
 	int ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
-	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 2048, 3072 };
+	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 1024, 2048, 3072 };
 
 	if (!lwis_dev) {
 		pr_err("LWIS device cannot be NULL\n");
@@ -110,11 +110,9 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < NUM_PT; i++) {
 		if (slc_dev->pt[i].partition_id != PT_PTID_INVALID) {
-			dev_err(slc_dev->base_dev.dev,
-				"Closing partition id %d at device shutdown",
-				slc_dev->pt[i].id);
-			pt_client_disable(slc_dev->partition_handle,
-					  slc_dev->pt[i].id);
+			dev_info(slc_dev->base_dev.dev,
+				 "Closing partition id %d at device shutdown", slc_dev->pt[i].id);
+			pt_client_disable(slc_dev->partition_handle, slc_dev->pt[i].id);
 			slc_dev->pt[i].partition_id = PT_PTID_INVALID;
 		}
 	}
@@ -122,8 +120,7 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
-			  struct lwis_alloc_buffer_info *alloc_info)
+int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer_info *alloc_info)
 {
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
 	int i = 0, fd_or_err = -1;
@@ -146,33 +143,28 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev,
 	for (i = 0; i < NUM_PT; i++) {
 		if (slc_dev->pt[i].partition_id == PT_PTID_INVALID &&
 		    slc_dev->pt[i].size_kb >= SIZE_TO_KB(alloc_info->size)) {
-			slc_dev->pt[i].partition_id = pt_client_enable(
-				slc_dev->partition_handle, slc_dev->pt[i].id);
+			slc_dev->pt[i].partition_id =
+				pt_client_enable(slc_dev->partition_handle, slc_dev->pt[i].id);
 			if (slc_dev->pt[i].partition_id != PT_PTID_INVALID) {
-				fd_or_err = anon_inode_getfd("slc_pt_file",
-							     &pt_file_ops,
-							     &slc_dev->pt[i],
-							     O_CLOEXEC);
+				fd_or_err = anon_inode_getfd("slc_pt_file", &pt_file_ops,
+							     &slc_dev->pt[i], O_CLOEXEC);
 				if (fd_or_err < 0) {
 					dev_err(lwis_dev->dev,
 						"Failed to create a new file instance for the partition\n");
 					return fd_or_err;
 				}
 				alloc_info->dma_fd = fd_or_err;
-				alloc_info->partition_id =
-					slc_dev->pt[i].partition_id;
+				alloc_info->partition_id = slc_dev->pt[i].partition_id;
 				return 0;
 			} else {
 				slc_dev->pt[i].partition_id = PT_PTID_INVALID;
-				dev_err(lwis_dev->dev,
-					"Failed to enable partition id %d\n",
+				dev_err(lwis_dev->dev, "Failed to enable partition id %d\n",
 					slc_dev->pt[i].id);
 				return -EPROTO;
 			}
 		}
 	}
-	dev_err(lwis_dev->dev,
-		"Failed to find valid partition, largest size supported is %zuKB\n",
+	dev_err(lwis_dev->dev, "Failed to find valid partition, largest size supported is %zuKB\n",
 		slc_dev->pt[NUM_PT - 1].size_kb);
 	return -EINVAL;
 }

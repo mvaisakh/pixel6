@@ -30,6 +30,7 @@
 #include "lwis_interrupt.h"
 #include "lwis_phy.h"
 #include "lwis_regulator.h"
+#include "lwis_transaction.h"
 
 #define LWIS_TOP_DEVICE_COMPAT "google,lwis-top-device"
 #define LWIS_I2C_DEVICE_COMPAT "google,lwis-i2c-device"
@@ -75,9 +76,8 @@ struct lwis_core {
 struct lwis_device_subclass_operations {
 	/* Called by lwis_device when device register needs to be read/written
 	 */
-	int (*register_io)(struct lwis_device *lwis_dev,
-			   struct lwis_io_entry *entry, bool non_blocking,
-			   int access_size);
+	int (*register_io)(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
+			   bool non_blocking, int access_size);
 	/* called by lwis_device when enabling the device */
 	int (*device_enable)(struct lwis_device *lwis_dev);
 	/* called by lwis_device when disabling the device */
@@ -85,16 +85,14 @@ struct lwis_device_subclass_operations {
 	/* Called by lwis_device any time a particular event_id needs to be
 	 * enabled or disabled by the device
 	 */
-	int (*event_enable)(struct lwis_device *lwis_dev, int64_t event_id,
-			    bool enabled);
+	int (*event_enable)(struct lwis_device *lwis_dev, int64_t event_id, bool enabled);
 	/* Called by lwis_device any time flags are updated */
-	int (*event_flags_updated)(struct lwis_device *lwis_dev,
-				   int64_t event_id, uint64_t old_flags,
-				   uint64_t new_flags);
+	int (*event_flags_updated)(struct lwis_device *lwis_dev, int64_t event_id,
+				   uint64_t old_flags, uint64_t new_flags);
 	/* Called by lwis_device any time an event is emitted
 	 * Called with lwis_dev->lock locked and IRQs disabled */
-	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id,
-			     void **payload_ptrptr, size_t *payload_size_ptr);
+	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id, void **payload_ptrptr,
+			     size_t *payload_size_ptr);
 };
 
 /*
@@ -104,19 +102,15 @@ struct lwis_device_subclass_operations {
  */
 struct lwis_event_subscribe_operations {
 	/* Subscribe an event for receiver device */
-	int (*subscribe_event)(struct lwis_device *lwis_dev,
-			       int64_t trigger_event_id, int trigger_device_id,
-			       int receiver_device_id);
+	int (*subscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
+			       int trigger_device_id, int receiver_device_id);
 	/* Unsubscribe an event for receiver device */
-	int (*unsubscribe_event)(struct lwis_device *lwis_dev,
-				 int64_t trigger_event_id,
+	int (*unsubscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 				 int receiver_device_id);
 	/* Notify subscriber when an event is happening */
-	void (*notify_event_subscriber)(struct lwis_device *lwis_dev,
-					int64_t trigger_event_id,
+	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
-					int64_t trigger_event_timestamp,
-					bool in_irq);
+					int64_t trigger_event_timestamp, bool in_irq);
 	/* Clean up event subscription hash table when unloading top device */
 	void (*release)(struct lwis_device *lwis_dev);
 };
@@ -128,7 +122,7 @@ struct lwis_event_subscribe_operations {
 struct lwis_device_power_sequence_info {
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	char type[LWIS_MAX_NAME_STRING_LEN];
-	int delay;
+	int delay_us;
 };
 
 /*
@@ -147,8 +141,7 @@ struct lwis_device_power_sequence_list {
  */
 #define TRANSACTION_DEBUG_HISTORY_SIZE 8
 struct lwis_client_debug_info {
-	struct lwis_transaction_info
-		transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
+	struct lwis_transaction_history transaction_hist[TRANSACTION_DEBUG_HISTORY_SIZE];
 	int cur_transaction_hist_idx;
 };
 
@@ -158,7 +151,7 @@ struct lwis_client_debug_info {
  */
 #define EVENT_DEBUG_HISTORY_SIZE 16
 struct lwis_device_debug_info {
-	struct lwis_device_event_state event_hist[EVENT_DEBUG_HISTORY_SIZE];
+	struct lwis_device_event_state_history event_hist[EVENT_DEBUG_HISTORY_SIZE];
 	int cur_event_hist_idx;
 };
 
@@ -241,6 +234,8 @@ struct lwis_device {
 	bool power_down_seqs_present;
 	/* Power down sequence information */
 	struct lwis_device_power_sequence_list *power_down_sequence;
+	/* GPIOs list */
+	struct lwis_gpios_list *gpios_list;
 };
 
 /*
@@ -297,8 +292,7 @@ struct lwis_client {
  *  lwis_base_probe: Common probe function that will be used for all types
  *  of devices.
  */
-int lwis_base_probe(struct lwis_device *lwis_dev,
-		    struct platform_device *plat_dev);
+int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_dev);
 
 /*
  * Find LWIS top device
@@ -309,6 +303,12 @@ struct lwis_device *lwis_find_top_dev(void);
  * Find LWIS device by id
  */
 struct lwis_device *lwis_find_dev_by_id(int dev_id);
+
+/*
+ * Check i2c device is still in use:
+ * Check if there is any other device using the same I2C bus.
+ */
+bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev);
 
 /*
  * Power up a LWIS device, should be called when lwis_dev->enabled is 0

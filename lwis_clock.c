@@ -53,8 +53,7 @@ void lwis_clock_list_free(struct lwis_clock_list *list)
 	kfree(list);
 }
 
-int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
-		   uint32_t rate)
+int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev, uint32_t rate)
 {
 	struct clk *clk;
 	int i;
@@ -95,8 +94,7 @@ int lwis_clock_get(struct lwis_clock_list *list, char *name, struct device *dev,
 	return index;
 }
 
-int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index,
-			  struct device *dev)
+int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index, struct device *dev)
 {
 	if (!dev || !list || index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -112,8 +110,7 @@ int lwis_clock_put_by_idx(struct lwis_clock_list *list, int index,
 	return 0;
 }
 
-int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name,
-			   struct device *dev)
+int lwis_clock_put_by_name(struct lwis_clock_list *list, char *name, struct device *dev)
 {
 	int i;
 
@@ -239,7 +236,6 @@ void lwis_clock_print(struct lwis_clock_list *list)
 {
 	int i;
 	for (i = 0; i < list->count; ++i) {
-		pr_info("%s: %s: rate: %d\n", __func__, list->clk[i].name,
-			list->clk[i].rate);
+		pr_info("%s: %s: rate: %d\n", __func__, list->clk[i].name, list->clk[i].rate);
 	}
 }
