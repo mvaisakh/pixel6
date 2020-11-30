@@ -71,7 +71,8 @@
 #define LOG_BUFFER_ENTRY_SIZE	256
 
 /* Initial data of history cycle count */
-#define HCC_DEFAULT_DELTA_CYCLE_CNT	25
+#define HCC_DEFAULT_DELTA_CYCLE_CNT	10
+#define HCC_DELAY_INIT_MS	30000
 
 /* Interval value used when health is settings disabled when not running */
 #define CHG_DEADLINE_SETTING -1
@@ -221,6 +222,7 @@ struct batt_drv {
 
 	struct delayed_work init_work;
 	struct delayed_work batt_work;
+	struct delayed_work init_hist_work;
 
 	struct wakeup_source *msc_ws;
 	struct wakeup_source *batt_ws;
@@ -320,6 +322,7 @@ struct batt_drv {
 	enum batt_lfcollect_status blf_state;
 	int hist_delta_cycle_cnt;
 	int hist_data_max_cnt;
+	int hist_data_saved_cnt;
 	void *hist_data;
 
 	/* Battery device info */
@@ -4744,22 +4747,22 @@ batt_check_pairing_state(struct batt_drv *batt_drv)
 }
 
 /*  TODO: handle history collection, use storage */
-static void *batt_hist_init_data(struct device *dev)
+static int batt_hist_data_collect(void *h, int idx)
 {
-	return NULL;
-}
+	int cnt;
 
-/*  TODO: handle history collection, use storage */
-static int batt_hist_data_collect(void *h, int idx, int cycle_cnt,
-			   struct power_supply *fg_psy)
-{
-	return -ENODEV;
+	cnt = gbms_storage_read(GBMS_TAG_CLHI, h, 0);
+	if (cnt > 0)
+		cnt = gbms_storage_write_data(GBMS_TAG_HIST, h, cnt, idx);
+
+	return cnt;
 }
 
 /* TODO: handle history collection, use storage */
 static void batt_hist_free_data(void *p)
 {
-
+	if (p)
+		kfree(p);
 }
 
 /* battery history data collection */
@@ -4773,17 +4776,22 @@ static int batt_history_data_work(struct batt_drv *batt_drv)
 	if (cycle_cnt < 0)
 		return -EIO;
 
+	if (cycle_cnt <= batt_drv->hist_data_saved_cnt)
+		return 0;
+
 	idx = cycle_cnt / batt_drv->hist_delta_cycle_cnt;
 
 	/* check if the cycle_cnt is valid */
 	if (idx >= batt_drv->hist_data_max_cnt)
 		return -ENOENT;
 
-	/* TODO: too many arguments, redesign API affter specs */
-	ret = batt_hist_data_collect(batt_drv->hist_data, cycle_cnt, idx,
-				     batt_drv->fg_psy);
+	ret = batt_hist_data_collect(batt_drv->hist_data, idx);
 	if (ret < 0)
-		pr_debug("Data collection failure %d\n", ret);
+		return ret;
+
+	batt_drv->hist_data_saved_cnt = cycle_cnt;
+	pr_debug("MSC_HIST Update data with cnt:%d\n", cycle_cnt);
+
 
 	return 0;
 }
@@ -4971,29 +4979,13 @@ reschedule:
 	if (notify_psy_changed)
 		power_supply_changed(batt_drv->psy);
 
-	/* collect lifetime and write to storage */
-	if (batt_drv->blf_state == BATT_LFCOLLECT_ENABLED) {
-		int cnt;
-
-		/* gbms_storage will return -EPROBE_DEFER during init */
-		cnt = gbms_storage_read_data(GBMS_TAG_HIST, NULL, 0, 0);
-		if (cnt == -EPROBE_DEFER) {
-			/* wait until storage is up */
-		} else if (cnt < 0) {
-			batt_drv->blf_state =  BATT_LFCOLLECT_NOT_AVAILABLE;
-		} else {
-			batt_drv->blf_state = BATT_LFCOLLECT_COLLECT;
-			batt_drv->hist_data_max_cnt = cnt;
-		}
-	}
-
 	if (batt_drv->blf_state == BATT_LFCOLLECT_COLLECT) {
 		ret = batt_history_data_work(batt_drv);
 		if (ret == -ENOENT) {
 			batt_drv->blf_state = BATT_LFCOLLECT_NOT_AVAILABLE;
-			pr_info("Battery data collection disabled\n");
+			pr_info("MSC_HIST Battery data collection disabled\n");
 		}  else if (ret < 0) {
-			pr_debug("cannot collect battery data %d\n", ret);
+			pr_debug("MSC_HIST cannot collect battery data %d\n", ret);
 		}
 	}
 
@@ -5461,6 +5453,40 @@ static struct power_supply_desc gbatt_psy_desc = {
 };
 
 /* ------------------------------------------------------------------------ */
+#define BATT_ONE_HIST_LEN	12
+static void google_battery_init_hist_work(struct work_struct *work)
+{
+	struct batt_drv *batt_drv = container_of(work, struct batt_drv,
+						 init_hist_work.work);
+	int cnt;
+
+	/* gbms_storage will return -EPROBE_DEFER during init */
+	cnt = gbms_storage_read_data(GBMS_TAG_HIST, NULL, 0, 0);
+	if (cnt == -EPROBE_DEFER) {
+		/* wait until storage is up */
+		schedule_delayed_work(&batt_drv->init_hist_work,
+				      msecs_to_jiffies(BATT_DELAY_INIT_MS));
+		return;
+	}
+
+	if (cnt <= 0) {
+		batt_drv->blf_state = BATT_LFCOLLECT_NOT_AVAILABLE;
+		pr_err("MSC_HIST collect history data not available (%d)\n", cnt);
+		return;
+	}
+
+	batt_drv->hist_data = kzalloc(BATT_ONE_HIST_LEN, GFP_KERNEL);
+	if (!batt_drv->hist_data) {
+		batt_drv->blf_state = BATT_LFCOLLECT_DISABLED;
+	} else {
+		batt_drv->blf_state = BATT_LFCOLLECT_COLLECT;
+		batt_drv->hist_data_max_cnt = cnt;
+		batt_drv->hist_data_saved_cnt = -1;
+	}
+
+	pr_info("MSC_HIST init_hist_work done, state:%d, cnt:%d",
+		 batt_drv->blf_state, cnt);
+}
 
 static void google_battery_init_work(struct work_struct *work)
 {
@@ -5468,7 +5494,6 @@ static void google_battery_init_work(struct work_struct *work)
 						 init_work.work);
 	struct device_node *node = batt_drv->device->of_node;
 	struct power_supply *fg_psy = batt_drv->fg_psy;
-	bool has_eeprom;
 	int ret = 0;
 
 	batt_rl_reset(batt_drv);
@@ -5653,32 +5678,26 @@ static void google_battery_init_work(struct work_struct *work)
 	if (batt_drv->disable_votes)
 		pr_info("battery votes disabled\n");
 
-	/* TODO: split pairing and collect, not all EEPROMS support it */
-	has_eeprom = of_property_read_bool(node, "google,eeprom-inside");
-	if (has_eeprom) {
+	/* pairing battery vs. device */
+	if (of_property_read_bool(node, "google,eeprom-pairing"))
 		batt_drv->pairing_state = BATT_PAIRING_ENABLED;
-		batt_drv->blf_state = BATT_LFCOLLECT_ENABLED;
-	} else {
+	else
 		batt_drv->pairing_state = BATT_PAIRING_DISABLED;
-	}
 
-	/* TODO: use delta cycle count to enable collecting history */
+	/* use delta cycle count to adjust collecting period */
 	ret = of_property_read_u32(batt_drv->device->of_node,
 					"google,history-delta-cycle-count",
 					&batt_drv->hist_delta_cycle_cnt);
 	if (ret < 0)
 		batt_drv->hist_delta_cycle_cnt = HCC_DEFAULT_DELTA_CYCLE_CNT;
-	else
+
+	/* use delta cycle count to enable collecting history */
+	if (batt_drv->hist_delta_cycle_cnt)
 		batt_drv->blf_state = BATT_LFCOLLECT_ENABLED;
 
-	/* TODO: use delta cycle count to enable collecting history */
-	if (batt_drv->blf_state == BATT_LFCOLLECT_ENABLED) {
-		batt_drv->hist_data = batt_hist_init_data(batt_drv->device);
-		if (!batt_drv->hist_data) {
-			batt_drv->blf_state = BATT_LFCOLLECT_DISABLED;
-			pr_err("Cannot collect history data\n");
-		}
-	}
+	if (batt_drv->blf_state == BATT_LFCOLLECT_ENABLED)
+		schedule_delayed_work(&batt_drv->init_hist_work,
+				      msecs_to_jiffies(HCC_DELAY_INIT_MS));
 
 	/* google_battery expose history via a standard device */
 	batt_drv->history = gbms_storage_create_device("battery_history",
@@ -5745,6 +5764,7 @@ static int google_battery_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&batt_drv->init_work, google_battery_init_work);
 	INIT_DELAYED_WORK(&batt_drv->batt_work, google_battery_work);
+	INIT_DELAYED_WORK(&batt_drv->init_hist_work, google_battery_init_hist_work);
 	platform_set_drvdata(pdev, batt_drv);
 
 	psy_cfg.drv_data = batt_drv;
