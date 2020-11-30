@@ -364,6 +364,7 @@ struct p9221_charger_platform_data {
 	int				slct_gpio;
 	int				slct_value;
 	int				ben_gpio;
+	int                             ext_ben_gpio;
 	int				switch_gpio;
 	int				boost_gpio;
 	int				max_vout_mv;

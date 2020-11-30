@@ -20,9 +20,26 @@
 #include <misc/logbuffer.h>
 #include "max77759_maxq.h"
 #include "max77759_regs.h"
+#include "gbms_storage.h"
+
+#define MAX_GPIO_TRIG_RISING			0
+#define MAX_GPIO_TRIG_FALLING			1
+
+#define MAX_GPIO5_TRIG_MASK			BIT(0)
+#define MAX_GPIO5_TRIG(x)			((x) << 0)
+#define MAX_GPIO6_TRIG_MASK			BIT(1)
+#define MAX_GPIO6_TRIG(x)			((x) << 1)
 
 #define PAYLOAD_REQUEST_LENGTH_BYTES		33
 #define PAYLOAD_RESPONSE_LENGTH_BYTES		3
+#define OPCODE_GPIO_TRIGGER_READ		0x21
+#define OPCODE_GPIO_TRIGGER_R_REQ_LEN		1
+#define OPCODE_GPIO_TRIGGER_R_RES_LEN		2
+#define OPCODE_GPIO_TRIGGER_R_RES_OFFSET	1
+#define OPCODE_GPIO_TRIGGER_WRITE		0x22
+#define OPCODE_GPIO_TRIGGER_W_REQ_LEN           2
+#define OPCODE_GPIO_TRIGGER_W_REQ_OFFSET        1
+#define OPCODE_GPIO_TRIGGER_W_RES_LEN           1
 #define OPCODE_GPIO_CONTROL_READ		0x23
 #define OPCODE_GPIO_CONTROL_R_REQ_LEN		1
 #define OPCODE_GPIO_CONTROL_R_RES_LEN		2
@@ -32,12 +49,22 @@
 #define OPCODE_GPIO_CONTROL_W_REQ_OFFSET	1
 #define OPCODE_GPIO_CONTROL_W_RES_LEN		1
 #define OPCODE_CHECK_CC_AND_SBU			0x85
-#define	OPCODE_CHECK_CC_AND_SBU_REQ_LEN		9
+#define OPCODE_CHECK_CC_AND_SBU_REQ_LEN		9
 #define OPCODE_CHECK_CC_AND_SBU_RES_LEN		5
+#define OPCODE_USER_SPACE_MAX_ADDR		31
+#define OPCODE_USER_SPACE_MAX_LEN		30
+#define OPCODE_USER_SPACE_READ			0x81
+#define OPCODE_USER_SPACE_R_REQ_LEN		3
+#define OPCODE_USER_SPACE_R_RES_LEN		32
+#define OPCODE_USER_SPACE_WRITE			0x82
+#define OPCODE_USER_SPACE_W_REQ_LEN		32
+#define OPCODE_USER_SPACE_W_RES_LEN		32
 #define MAXQ_AP_DATAOUT0			0x81
 #define MAXQ_AP_DATAOUT32			0xA1
 #define MAXQ_AP_DATAIN0				0xB1
 #define MAXQ_REPLY_TIMEOUT_MS			50
+
+#define LOG_BUFFER_SIZE   256
 
 struct max77759_maxq {
 	struct completion reply_done;
@@ -55,6 +82,13 @@ struct max77759_maxq {
 	struct mutex maxq_lock;
 	u8 request_opcode;
 	bool poll;
+};
+
+enum write_userspace_offset {
+	ADDR_OPCODE,
+	START_ADDR,
+	DATA_LEN,
+	DATA_START
 };
 
 enum request_payload_offset {
@@ -182,6 +216,140 @@ req_unlock:
 	return ret;
 }
 
+static void maxq_log_array(struct max77759_maxq *maxq, char *title,
+			   u8 *data, int length)
+{
+	char buf[LOG_BUFFER_SIZE];
+	int i, len = 0;
+
+	for (i = 0; i < length; i++) {
+		len += scnprintf(&buf[len], LOG_BUFFER_SIZE - len,
+				 "%#x ", data[i]);
+
+		if (len >= LOG_BUFFER_SIZE)
+			break;
+        }
+
+	logbuffer_log(maxq->log, "%s: %s", title, buf);
+
+}
+
+static int maxq_user_space_read(struct max77759_maxq *maxq, u8 *data)
+{
+	int ret, i;
+	u8 request[OPCODE_USER_SPACE_R_REQ_LEN];
+	u8 response[OPCODE_USER_SPACE_R_RES_LEN];
+
+	request[ADDR_OPCODE] = OPCODE_USER_SPACE_READ;
+	request[START_ADDR] = data[0];
+	request[DATA_LEN] = data[1];
+
+	if (request[START_ADDR] > OPCODE_USER_SPACE_MAX_ADDR)
+		return -EINVAL;
+
+	if (request[DATA_LEN] > OPCODE_USER_SPACE_MAX_LEN)
+		return -EINVAL;
+
+	logbuffer_log(maxq->log, "MAXQ user space read opcode:%#x, start:%#x, length:%#x",
+				request[ADDR_OPCODE], request[START_ADDR], request[DATA_LEN]);
+	ret = maxq_issue_opcode_command(maxq, request,
+					OPCODE_USER_SPACE_R_REQ_LEN,
+					response,
+					OPCODE_USER_SPACE_R_RES_LEN);
+
+	if (ret < 0)
+		return ret;
+
+	for (i = DATA_START; i < DATA_START + request[DATA_LEN]; i++)
+		data[i - DATA_START] = response[i];
+
+	maxq_log_array(maxq, "MAXQ user space read result",
+					&response[DATA_START], request[DATA_LEN]);
+
+	return ret;
+}
+
+static int maxq_user_space_write(struct max77759_maxq *maxq, u8 *data)
+{
+	int ret, i;
+	u8 request[OPCODE_USER_SPACE_W_REQ_LEN];
+	u8 response[OPCODE_USER_SPACE_W_RES_LEN];
+
+	request[ADDR_OPCODE] = OPCODE_USER_SPACE_WRITE;
+	request[START_ADDR] = data[0];
+	request[DATA_LEN] = data[1];
+
+	if (request[START_ADDR] > OPCODE_USER_SPACE_MAX_ADDR)
+		return -EINVAL;
+
+	if (request[DATA_LEN] > OPCODE_USER_SPACE_MAX_LEN)
+		return -EINVAL;
+
+	logbuffer_log(maxq->log, "MAXQ user space write opcode:%#x, start:%#x, length:%#x",
+				request[ADDR_OPCODE], request[START_ADDR], request[DATA_LEN]);
+
+	for (i = DATA_START; i < DATA_START + request[DATA_LEN]; i++)
+		request[i] = data[i - 1];
+
+	ret = maxq_issue_opcode_command(maxq, request,
+					OPCODE_USER_SPACE_W_REQ_LEN,
+					response,
+					OPCODE_USER_SPACE_W_RES_LEN);
+
+	if (ret < 0)
+		return ret;
+
+	maxq_log_array(maxq, "MAXQ user space write data",
+					&response[DATA_START], request[DATA_LEN]);
+
+	return ret;
+}
+
+static int maxq_storage_read(gbms_tag_t tag, void *buff, size_t size,
+				 void *ptr)
+{
+	int ret;
+	struct max77759_maxq *maxq = ptr;
+
+	switch (tag) {
+	case GBMS_TAG_RS32:
+		if (size && size > OPCODE_USER_SPACE_R_RES_LEN)
+			return -EINVAL;
+		ret = maxq_user_space_read(maxq, buff);
+		break;
+	default:
+		ret = -ENOENT;
+		break;
+	}
+
+	return ret;
+}
+
+static int maxq_storage_write(gbms_tag_t tag, const void *buff, size_t size,
+				  void *ptr)
+{
+	int ret;
+	struct max77759_maxq *maxq = ptr;
+
+	switch (tag) {
+	case GBMS_TAG_RS32:
+		if (size && size > OPCODE_USER_SPACE_W_RES_LEN)
+			return -EINVAL;
+		ret = maxq_user_space_write(maxq, (void *)buff);
+		break;
+	default:
+		ret = -ENOENT;
+		break;
+	}
+
+	return ret;
+}
+
+static struct gbms_storage_desc maxq_storage_dsc = {
+	.read = maxq_storage_read,
+	.write = maxq_storage_write,
+};
+
 void maxq_irq(struct max77759_maxq *maxq)
 {
 	mutex_lock(&maxq->req_lock);
@@ -264,10 +432,86 @@ int maxq_gpio_control_write(struct max77759_maxq *maxq, u8 gpio)
 }
 EXPORT_SYMBOL_GPL(maxq_gpio_control_write);
 
+int maxq_gpio_trigger_read(struct max77759_maxq *maxq, u8 gpio, bool *trigger_falling)
+{
+	int ret;
+	u8 request = OPCODE_GPIO_TRIGGER_READ;
+	u8 response[OPCODE_GPIO_TRIGGER_R_RES_LEN];
+
+	/* Only GPIO5 and GPIO6 supported */
+	if (gpio != 5 && gpio != 6) {
+		logbuffer_log(maxq->log, "MAXQ gpio trigger read invalid gpio %d", gpio);
+		return -EINVAL;
+	}
+
+	logbuffer_log(maxq->log, "MAXQ gpio trigger read opcode:%#x", request);
+	ret = maxq_issue_opcode_command(maxq, &request,
+					OPCODE_GPIO_TRIGGER_R_REQ_LEN,
+					response,
+					OPCODE_GPIO_TRIGGER_R_RES_LEN);
+	if (!ret) {
+		*trigger_falling = response[OPCODE_GPIO_TRIGGER_R_RES_OFFSET] & ((gpio == 5) ?
+			MAX_GPIO5_TRIG_MASK : MAX_GPIO6_TRIG_MASK);
+		logbuffer_log(maxq->log, "MAXQ GPIO%d TRIGGER:%s", gpio,
+			      *trigger_falling ? "falling" : "rising");
+	} else {
+		logbuffer_log(maxq->log, "MAXQ GPIO%d TRIGGER read failed", gpio);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxq_gpio_trigger_read);
+
+int maxq_gpio_trigger_write(struct max77759_maxq *maxq, u8 gpio, bool trigger_falling)
+{
+	int ret;
+	u8 request[OPCODE_GPIO_TRIGGER_W_REQ_LEN], response[OPCODE_GPIO_TRIGGER_W_RES_LEN];
+	u8 trigger_val;
+	bool trigger_falling_other;
+
+	/* Only GPIO5 and GPIO6 supported */
+	if (gpio != 5 && gpio != 6) {
+		logbuffer_log(maxq->log, "MAXQ gpio trigger read invalid gpio %d", gpio);
+		return -EINVAL;
+	}
+
+	/* Read the other GPIO */
+	ret = maxq_gpio_trigger_read(maxq, gpio == 5 ? 6 : 5, &trigger_falling_other);
+	if (ret < 0)
+		return ret;
+
+	/* Compose trigger write val */
+	if (gpio == 5) {
+		trigger_val = MAX_GPIO6_TRIG(trigger_falling_other ? MAX_GPIO_TRIG_FALLING :
+					     MAX_GPIO_TRIG_RISING);
+		trigger_val |= MAX_GPIO5_TRIG(trigger_falling ? MAX_GPIO_TRIG_FALLING :
+					      MAX_GPIO_TRIG_RISING);
+	} else {
+		trigger_val = MAX_GPIO5_TRIG(trigger_falling_other ? MAX_GPIO_TRIG_FALLING :
+					     MAX_GPIO_TRIG_RISING);
+		trigger_val |= MAX_GPIO6_TRIG(trigger_falling ? MAX_GPIO_TRIG_FALLING :
+					      MAX_GPIO_TRIG_RISING);
+	}
+
+	request[REQUEST_OPCODE] = OPCODE_GPIO_TRIGGER_WRITE;
+	request[OPCODE_GPIO_TRIGGER_W_REQ_OFFSET] = trigger_val;
+	logbuffer_log(maxq->log, "MAXQ gpio trigger write opcode:%#x val:%#x",
+		      request[REQUEST_OPCODE],
+		      request[OPCODE_GPIO_TRIGGER_W_REQ_OFFSET]);
+	ret = maxq_issue_opcode_command(maxq, request,
+					OPCODE_GPIO_TRIGGER_W_REQ_LEN,
+					response,
+					OPCODE_GPIO_TRIGGER_W_RES_LEN);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxq_gpio_trigger_write);
+
 struct max77759_maxq *maxq_init(struct device *dev, struct regmap *regmap,
 				bool poll)
 {
 	struct max77759_maxq *maxq;
+	int ret;
 
 	maxq = devm_kzalloc(dev, sizeof(*maxq), GFP_KERNEL);
 	if (IS_ERR_OR_NULL(maxq))
@@ -284,6 +528,12 @@ struct max77759_maxq *maxq_init(struct device *dev, struct regmap *regmap,
 	mutex_init(&maxq->maxq_lock);
 	mutex_init(&maxq->req_lock);
 	maxq->poll = poll;
+
+	ret = gbms_storage_register(&maxq_storage_dsc,
+				    "max77759_maxq", maxq);
+	if (ret < 0)
+		dev_err(dev, "MAXQ gbms_storage_register failed, ret:%d\n", ret);
+
 	maxq->init_done = true;
 
 	logbuffer_log(maxq->log, "MAXQ: probe done");

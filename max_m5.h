@@ -129,6 +129,9 @@ int max_m5_model_read_state(struct max_m5_data *m5_data);
 /* load model to gauge */
 int max_m5_load_gauge_model(struct max_m5_data *m5_data);
 
+int max_m5_fixup_outliers(struct max1720x_drift_data *ddata,
+			  struct max_m5_data *m5_data);
+
 ssize_t max_m5_model_state_cstr(char *buf, int max,
 				struct max_m5_data *m5_data);
 int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
@@ -136,7 +139,6 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 int max_m5_fg_model_sscan(struct max_m5_data *m5_data, const char *buf,
 			  int max);
 int max_m5_fg_model_cstr(char *buf, int max, const struct max_m5_data *m5_data);
-
 
 /*
  *

@@ -29,6 +29,8 @@
 #include "max_m5.h"
 #include "max77759.h"
 #include "max77759_maxq.h"
+#include "max20339.h"
+#include "gbms_storage.h"
 
 enum max77729_pmic_register {
 	MAX77729_PMIC_ID         = 0x00,
@@ -85,10 +87,15 @@ enum max77729_pmic_register {
 #define MAX77759_PMIC_TOPSYS_INT_MASK_DEFAULT \
 		(MAX77759_PMIC_TOPSYS_INT_MASK_TSHDN_INT_M)
 
+#define MAX77759_REV_A0		0x1
+#define MAX77759_STORAGE_SIZE	16
+#define MAX77759_STORAGE_BASE	(MAX77759_PMIC_AP_DATAOUT0 + MAX77759_STORAGE_SIZE)
+
 struct max77729_pmic_data {
 	struct device        *dev;
 	struct regmap        *regmap;
 	uint8_t pmic_id;
+	uint8_t rev_id;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip     gpio;
@@ -96,12 +103,16 @@ struct max77729_pmic_data {
 	struct max77759_maxq *maxq;
 
 	struct i2c_client *fg_i2c_client;
+	struct i2c_client *pmic_i2c_client;
+	void *ovp_client_data;
 	struct mutex io_lock;
 	int batt_id;
 
 	atomic_t sysuvlo_cnt;
 	atomic_t sysovlo_cnt;
 	struct dentry *de;
+
+	struct delayed_work storage_init_work;
 };
 
 static bool max77729_pmic_is_reg(struct device *dev, unsigned int reg)
@@ -125,6 +136,8 @@ static bool max77729_pmic_is_reg(struct device *dev, unsigned int reg)
 		break;
 	case MAX77759_PMIC_DEVICE_ID:
 	case MAX77759_PMIC_DEVICE_REV:
+	case MAX77759_PMIC_FW_REV:
+	case MAX77759_PMIC_FW_SUB_REV:
 	case MAX77759_PMIC_UIC_INT1...MAX77759_PMIC_UIC_INT4_M:
 	case MAX77759_PMIC_AP_DATAOUT0...MAX77759_PMIC_AP_DATAIN32:
 	case MAX77759_PMIC_UIC_SWRST:
@@ -223,6 +236,45 @@ int max777x9_pmic_reg_update(struct i2c_client *client,
 }
 EXPORT_SYMBOL_GPL(max777x9_pmic_reg_update);
 
+static int get_ovp_client_data(struct max77729_pmic_data *data)
+{
+	struct i2c_client *ovp_i2c_client;
+	struct device_node *ovp_dn, *dn;
+	struct i2c_client *client = data->pmic_i2c_client;
+	u32 handle;
+
+	dn = dev_of_node(&client->dev);
+	if (IS_ERR_OR_NULL(dn)) {
+		dev_err(&client->dev, "of node not found\n");
+		return -EINVAL;
+	}
+
+	if (!of_property_read_u32(dn, "max20339,ovp", &handle)) {
+		ovp_dn = of_find_node_by_phandle(handle);
+	} else {
+		dev_err(&client->dev, "ovp device node not found\n");
+		return -EINVAL;
+	}
+
+	if (IS_ERR_OR_NULL(ovp_dn)) {
+		dev_err(&client->dev, "ovp device node not found !");
+		return -EAGAIN;
+	}
+
+	ovp_i2c_client = of_find_i2c_device_by_node(ovp_dn);
+	if (IS_ERR_OR_NULL(ovp_i2c_client)) {
+		dev_err(&client->dev, "ovp_i2c_client not found !");
+		return -EAGAIN;
+	}
+
+	data->ovp_client_data = i2c_get_clientdata(ovp_i2c_client);
+	if (IS_ERR_OR_NULL(data->ovp_client_data)) {
+		dev_err(&client->dev, "ovp_client_data not found !");
+		return -EAGAIN;
+	}
+
+	return 0;
+}
 
 /* this interrupt is read to clear, in max77759 it should be write to clear */
 static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
@@ -261,6 +313,18 @@ static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
 			maxq_irq(data->maxq);
 			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
 					  MAX77759_PMIC_UIC_INT1_APCMDRESI);
+		}
+
+		/* GPIO6 mapped to OVP */
+		if (uic_int[0] & MAX77759_PMIC_UIC_INT1_GPIO6I) {
+			if (!data->ovp_client_data)
+				get_ovp_client_data(data);
+
+			if (data->ovp_client_data)
+				max20339_irq(data->ovp_client_data);
+
+			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
+					  MAX77759_PMIC_UIC_INT1_GPIO6I);
 		}
 	}
 
@@ -303,8 +367,8 @@ static int max777x9_pmic_set_irqmask(struct max77729_pmic_data *data)
 	int ret;
 
 	if (data->pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
-		const uint8_t uic_mask[] = {0x7f, 0xff, 0xff, 0xff};
-		uint8_t reg;
+		const u8 uic_mask[] = {0x7d, 0xff, 0xff, 0xff};
+		u8 reg;
 
 		ret = max77729_pmic_rd8(data, MAX77759_PMIC_INTSRC,
 					&reg);
@@ -323,7 +387,8 @@ static int max777x9_pmic_set_irqmask(struct max77729_pmic_data *data)
 					MAX77759_PMIC_TOPSYS_INT_MASK_MASK,
 					MAX77759_PMIC_TOPSYS_INT_MASK_DEFAULT);
 		ret |= max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
-					 MAX77759_PMIC_UIC_INT1_APCMDRESI);
+					 MAX77759_PMIC_UIC_INT1_APCMDRESI |
+					 MAX77759_PMIC_UIC_INT1_GPIO6I);
 		ret |= max77729_pmic_writen(data, MAX77759_PMIC_UIC_INT1_M,
 					    uic_mask, sizeof(uic_mask));
 	} else {
@@ -353,6 +418,12 @@ static int max77759_find_fg(struct max77729_pmic_data *data)
 
 	return 0;
 }
+
+#define NTC_CURVE_THRESHOLD	185
+#define NTC_CURVE_1_BASE	960
+#define NTC_CURVE_1_SHIFT	2
+#define NTC_CURVE_2_BASE	730
+#define NTC_CURVE_2_SHIFT	3
 
 static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 			     unsigned int *value)
@@ -400,8 +471,20 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 	ret = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_AIN0, &ain0);
 	pr_debug("%s: AIN0=%d (%d)\n", __func__, ain0, ret);
 
-	/* AIN0 is ratiometric on THM, 0xffff = 100%, lsb is 2^-16 */
-	*value = (100000 * (unsigned long)(ain0)) / (0x10000 - ain0);
+	if ((mux == THMIO_MUX_USB_TEMP) || (mux == THMIO_MUX_BATT_PACK)) {
+		/* convert form 1.8V to 2.4V and get higher 10 bits */
+		const unsigned int conv_adc = ((ain0 * 1800) / 2400) >> 6;
+
+		/* Temp = (rawadc < 185)? (960-rawadc/4) : (730-rawadc/8) */
+		/* unit: 0.1 degree C */
+		if (conv_adc < NTC_CURVE_THRESHOLD)
+			*value = NTC_CURVE_1_BASE - ((conv_adc * 10) >> NTC_CURVE_1_SHIFT);
+		else
+			*value = NTC_CURVE_2_BASE  - ((conv_adc * 10) >> NTC_CURVE_2_SHIFT);
+	} else {
+		/* AIN0 is ratiometric on THM, 0xffff = 100%, lsb is 2^-16 */
+		*value = (100000 * (unsigned long)ain0) / (0x10000 - ain0);
+	}
 
 	/* restore THMIO_MUX */
 	tmp = max77729_pmic_wr8(data, MAX77759_PMIC_CONTROL_FG, pmic_ctrl);
@@ -414,6 +497,28 @@ restore_fg:
 
 	return ret;
 }
+
+/* THMIO_MUX=0 in CONTROL_FG (0x51) */
+int max77759_read_batt_conn(struct i2c_client *client, int *temp)
+{
+	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	unsigned int val;
+	int ret;
+
+	mutex_lock(&data->io_lock);
+	ret = max77759_find_fg(data);
+	if (ret == 0)
+		ret = max77759_read_thm(data, THMIO_MUX_BATT_PACK, &val);
+	mutex_unlock(&data->io_lock);
+
+	if (ret == 0) {
+		/* TODO: b/160737498 convert voltage to temperature */
+		*temp = val;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(max77759_read_batt_conn);
 
 /* THMIO_MUX=1 in CONTROL_FG (0x51) */
 int max77759_read_usb_temp(struct i2c_client *client, int *temp)
@@ -507,6 +612,99 @@ static int debug_batt_id_get(void *d, u64 *val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, debug_batt_id_get, NULL, "%llu\n");
 
+static int debug_batt_thm_conn_get(void *d, u64 *val)
+{
+	struct max77729_pmic_data *data = d;
+	unsigned int batt_conn;
+	int ret;
+
+	mutex_lock(&data->io_lock);
+	ret = max77759_find_fg(data);
+		if (ret == 0)
+			ret = max77759_read_thm(data, THMIO_MUX_BATT_PACK, &batt_conn);
+	mutex_unlock(&data->io_lock);
+
+	if (ret == 0)
+		*val = batt_conn;
+
+	return ret;
+}
+DEFINE_SIMPLE_ATTRIBUTE(debug_batt_thm_conn_fops, debug_batt_thm_conn_get, NULL, "%llu\n");
+
+static int max77759_pmic_storage_iter(int index, gbms_tag_t *tag, void *ptr)
+{
+	if (index < 0 || index > (GBMS_TAG_RRS7 - GBMS_TAG_RRS0))
+		return -ENOENT;
+
+	*tag = GBMS_TAG_RRS0 + index;
+	return 0;
+}
+
+static int max77759_pmic_storage_read(gbms_tag_t tag, void *buff, size_t size, void *ptr)
+{
+	const int base = MAX77759_STORAGE_BASE + tag - GBMS_TAG_RRS0;
+	struct max77729_pmic_data *data = ptr;
+	int ret;
+
+	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
+		return -ENOENT;
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
+		return -ERANGE;
+
+	ret = max77729_pmic_readn(data, base, buff, size);
+	if (ret < 0)
+		ret = -EIO;
+	return ret;
+}
+
+static int max77759_pmic_storage_write(gbms_tag_t tag, const void *buff, size_t size, void *ptr)
+{
+	const int base = MAX77759_STORAGE_BASE + tag - GBMS_TAG_RRS0;
+	struct max77729_pmic_data *data = ptr;
+	int ret;
+
+	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
+		return -ENOENT;
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
+		return -ERANGE;
+
+	ret = max77729_pmic_writen(data, base, buff, size);
+	if (ret < 0)
+		ret = -EIO;
+	return ret;
+}
+
+static struct gbms_storage_desc max77759_pmic_storage_dsc = {
+	.iter = max77759_pmic_storage_iter,
+	.read = max77759_pmic_storage_read,
+	.write = max77759_pmic_storage_write,
+};
+
+#define STORAGE_INIT_DELAY_MS	100
+#define STORAGE_INIT_MAX_RETRY	3
+static void max777x9_pmic_storage_init_work(struct work_struct *work)
+{
+	struct max77729_pmic_data *data = container_of(work, struct max77729_pmic_data,
+						       storage_init_work.work);
+	static int retry_cnt;
+	int ret = 0;
+
+	ret = gbms_storage_register(&max77759_pmic_storage_dsc,
+				    "max777x9_pmic_storage", data);
+
+	if (ret == 0) {
+		pr_info("register storage done\n");
+	} else if (retry_cnt >= STORAGE_INIT_MAX_RETRY) {
+		pr_info("register storage:%d retry_cnt=%d, stop retry.\n", ret, retry_cnt);
+	} else {
+		schedule_delayed_work(&data->storage_init_work,
+				      msecs_to_jiffies(STORAGE_INIT_DELAY_MS));
+		retry_cnt++;
+	}
+
+	return;
+}
+
 static int dbg_init_fs(struct max77729_pmic_data *data)
 {
 	data->de = debugfs_create_dir("max77729_pmic", 0);
@@ -520,6 +718,8 @@ static int dbg_init_fs(struct max77729_pmic_data *data)
 
 	debugfs_create_file("batt_id", 0400, data->de, data,
 			    &debug_batt_id_fops);
+	debugfs_create_file("batt_thm_conn", 0400, data->de, data,
+			    &debug_batt_thm_conn_fops);
 
 	return 0;
 }
@@ -712,6 +912,9 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	atomic_set(&data->sysuvlo_cnt, 0);
 	atomic_set(&data->sysovlo_cnt, 0);
 	i2c_set_clientdata(client, data);
+	data->pmic_i2c_client = client;
+
+	INIT_DELAYED_WORK(&data->storage_init_work, max777x9_pmic_storage_init_work);
 
 	data->regmap = devm_regmap_init_i2c(client, &max777x9_pmic_regmap_cfg);
 	if (IS_ERR(data->regmap)) {
@@ -758,6 +961,22 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		}
 	}
 
+	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
+		u8 rev_reg;
+		int rc = 0;
+
+		rc = max77729_pmic_rd8(data, MAX77759_PMIC_PMIC_REVISION, &rev_reg);
+		if (rc < 0) {
+			dev_err(dev, "Failed to read revision\n");
+			data->rev_id = 0;
+		} else {
+			data->rev_id = _pmic_pmic_revision_rev_get(rev_reg);
+		}
+
+		if (data->rev_id == MAX77759_REV_A0)
+			schedule_delayed_work(&data->storage_init_work, 0);
+	}
+
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
 		/* Setup GPIO controller */
@@ -781,10 +1000,20 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		ret = devm_gpiochip_add_data(dev, &data->gpio, data);
 		if (ret)
 			dev_err(dev, "Failed to initialize gpio chip\n");
+
+		/* Configure GPIO6 as falling interrupt to detect OVP interrupts */
+		maxq_gpio_trigger_write(data->maxq, 6, true);
+
+		/* Enable GPIO6 as interrupt */
+		max77759_gpio_direction_input(&data->gpio, MAX77759_GPIO6_OFF);
+
+		get_ovp_client_data(data);
+		if (data->ovp_client_data)
+			max20339_irq(data->ovp_client_data);
 	}
 #endif
 
-	dev_info(dev, "probe_done pmic_id = %x\n", pmic_id);
+	dev_info(dev, "probe_done pmic_id = %x, rev_id= %x\n", pmic_id, data->rev_id);
 	return ret;
 }
 

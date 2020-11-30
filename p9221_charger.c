@@ -62,16 +62,6 @@ DECLARE_CRC8_TABLE(p9221_crc8_table);
 static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
 static void p9221_icl_ramp_start(struct p9221_charger_data *charger);
 
-/*
- * TODO(168282168): Was P9221R5_OVSET_REG, what happened to this?
- * raw_data &= P9221R5_OVSET_MASK;
- *		*val = p9221_ov_set_lut[raw_data];
- * 		break;
- */
-static const u32 p9221_ov_set_lut[] = {
-	17000000, 20000000, 15000000, 13000000,
-	11000000, 11000000, 11000000, 11000000};
-
 static char *align_status_str[] = {
 	"...", "M2C", "OK", "-1"
 };
@@ -3649,6 +3639,15 @@ static int p9221_parse_dt(struct device *dev,
 	if (ret >= 0)
 		dev_info(dev, "ben gpio:%d\n", pdata->ben_gpio);
 
+	ret = of_get_named_gpio(node, "idt,gpio_extben", 0);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+	pdata->ext_ben_gpio = ret;
+	if (ret >= 0) {
+		ret = gpio_request(pdata->ext_ben_gpio, "wc_ref");
+		dev_info(dev, "ext ben gpio:%d, ret=%d\n", pdata->ext_ben_gpio, ret);
+	}
+
 	ret = of_get_named_gpio(node, "idt,gpio_switch", 0);
 	if (ret == -EPROBE_DEFER)
 		return ret;
@@ -3889,7 +3888,7 @@ static enum power_supply_property p9221_props[] = {
 
 static const struct power_supply_desc p9221_psy_desc = {
 	.name = "wireless",
-	.type = POWER_SUPPLY_TYPE_WIRELESS,
+	.type = POWER_SUPPLY_TYPE_WIRELESS_EXT,
 	.properties = p9221_props,
 	.num_properties = ARRAY_SIZE(p9221_props),
 	.get_property = p9221_get_property,
@@ -4036,6 +4035,9 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	if (charger->pdata->switch_gpio >= 0)
 		gpio_direction_output(charger->pdata->switch_gpio, 0);
+
+	if (charger->pdata->ext_ben_gpio >= 0)
+		gpio_direction_output(charger->pdata->ext_ben_gpio, 0);
 
 	/* Default to R5+ */
 	charger->cust_id = 5;

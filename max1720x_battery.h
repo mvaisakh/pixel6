@@ -20,6 +20,7 @@
 
 #include <linux/device.h>
 #include <linux/regmap.h>
+#include <linux/math64.h>
 
 #define MAX1720X_GAUGE_TYPE	0
 #define MAX1730X_GAUGE_TYPE	1
@@ -29,6 +30,12 @@ static inline int reg_to_micro_amp_h(s16 val, u16 rsense)
 {
 	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */
 	return div_s64((s64) val * 500000, rsense);
+}
+
+static inline s16 micro_amp_h_to_reg(int val, u16 rsense)
+{
+	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */
+	return div_s64((s64)val * rsense, 500000);
 }
 
 static inline int reg_to_micro_volt(u16 val)
@@ -232,5 +239,41 @@ static inline int max1720x_regmap_writeverify(const struct max17x0x_regmap *map,
 
 #define REGMAP_WRITE_VERIFY(regmap, what, value) \
 	max1720x_regmap_writeverify(regmap, what, value, #what)
+
+enum max1720x_drift_algo_version {
+	MAX1720X_DA_VER_NONE = -1,	/* MW RC2 */
+	MAX1720X_DA_VER_ORIG = 0,	/* MW A0, max1720x */
+	MAX1720X_DA_VER_MWA1 = 1,	/* MW A1 RC1 */
+	MAX1720X_DA_VER_MWA2 = 2,	/* MW A2 RC1 */
+};
+
+#define max1720x_check_drift_enabled(dd) \
+		((dd)->algo_ver >= MAX1720X_DA_VER_ORIG)
+#define max1720x_check_drift_on_soc(dd) \
+		((dd)->algo_ver == MAX1720X_DA_VER_MWA1)
+#define max1720x_check_drift_delay(dd) \
+		((dd)->algo_ver == MAX1720X_DA_VER_MWA1 ? 351 : 0)
+
+/* fix to capacity estimation */
+struct max1720x_drift_data {
+	u16 rsense;
+	enum max1720x_drift_algo_version algo_ver;
+
+	u16 design_capacity;
+	int cycle_band;
+	int cycle_fade;
+	int cycle_stable;
+	int ini_rcomp0;
+	int ini_tempco;
+	int ini_filtercfg;
+};
+
+extern int max1720x_fixup_comp(struct max1720x_drift_data *ddata,
+			       struct max17x0x_regmap *map,
+			       int plugged);
+extern int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
+				struct max17x0x_regmap *map,
+				int cycle_count,
+				int plugged);
 
 #endif

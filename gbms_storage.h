@@ -35,8 +35,8 @@
 #define GBMS_BGPN_LEN	10
 /* Battery device info length */
 #define GBMS_DINF_LEN	32
-/* Battery device info length */
-#define GBMS_MINF_LEN	32
+/* Battery manufacturer info length */
+#define GBMS_MINF_LEN	30
 /* Gauge Model State Restore */
 #define GBMS_GMSR_LEN	22
 
@@ -55,12 +55,17 @@ enum gbms_tags {
 	GBMS_TAG_BGPN = 0x4247504e,
 	GBMS_TAG_BRES = 0x42524553,
 	GBMS_TAG_BRID = 0x42524944,
+	GBMS_TAG_CMPC = 0x434d5043,
 	GBMS_TAG_DINF = 0x44494e46,
 	GBMS_TAG_DSNM = 0x44534e4d,
+	GBMS_TAG_DXAC = 0x44584143,
 	GBMS_TAG_GCFE = 0x47434645,
 	GBMS_TAG_GMSR = 0x474d5352,
 	GBMS_TAG_HIST = 0x48495354,
 	GBMS_TAG_MINF = 0x4d494e46,
+
+	/* User Space Read/Write scratch */
+	GBMS_TAG_RS32 = 0x52533332,
 
 	/* Reboot scratch */
 	GBMS_TAG_RRS0 = 0x52525330,

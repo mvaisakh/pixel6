@@ -51,6 +51,12 @@
 #define TEMP_BUCKET_SIZE 5		/* unit is 0.1 degree C */
 #define NB_CYCLE_BUCKETS 4
 
+/* capacity drift */
+#define BATTERY_DEFAULT_CYCLE_STABLE	0
+#define BATTERY_DEFAULT_CYCLE_FADE	0
+#define BATTERY_DEFAULT_CYCLE_BAND	10
+#define BATTERY_MAX_CYCLE_BAND		20
+
 #define HISTORY_DEVICENAME "maxfg_history"
 
 #include "max1720x.h"
@@ -112,7 +118,6 @@ struct max1720x_history {
 	u16 *history;
 };
 
-
 struct max1720x_chip {
 	struct device *dev;
 	bool irq_shared;
@@ -170,7 +175,7 @@ struct max1720x_chip {
 	int previous_qh;
 	int current_capacity;
 	int prev_charge_status;
-	char serial_number[25];
+	char serial_number[30];
 	bool offmode_charger;
 	s32 convgcfg_hysteresis;
 	int nb_convgcfg;
@@ -186,6 +191,10 @@ struct max1720x_chip {
 	unsigned long icnt;
 	int zero_irq;
 
+	/* fix capacity drift */
+	struct max1720x_drift_data drift_data;
+	int comp_update_count;
+	int dxacc_update_count;
 
 	/* Capacity Estimation */
 	struct gbatt_capacity_estimation cap_estimate;
@@ -817,8 +826,8 @@ static ssize_t max1720x_model_show_state(struct device *dev,
 }
 
 /*
- * force is true when changing the model via debug props
- * call holding model_lock
+ * force is true when changing the model via debug props.
+ * NOTE: call holding model_lock
  */
 static void max1720x_model_reload(struct max1720x_chip *chip, bool force)
 {
@@ -860,7 +869,7 @@ static ssize_t max1720x_model_set_state(struct device *dev,
 	/* overwrite with userland, will commit at cycle count */
 	ret = max_m5_model_state_sscan(chip->model_data, buf, count);
 	if (ret == 0) {
-		/* force model state */
+		/* force model state (valid) */
 		chip->model_state_valid = true;
 		max1720x_model_reload(chip, true);
 	}
@@ -1185,6 +1194,11 @@ static void max1720x_handle_update_nconvgcfg(struct max1720x_chip *chip,
 static int max1720x_get_cycle_count_offset(const struct max1720x_chip *chip)
 {
 	int offset = 0;
+
+	/*
+	 * uses history on devices that have it (max1720x), use EEPROM
+	 * in others. it might be written in terms of storage.
+	 */
 
 	return offset;
 }
@@ -1746,6 +1760,48 @@ static int max1720x_get_property(struct power_supply *psy,
 	return err;
 }
 
+static void max1720x_fixup_capacity(struct max1720x_chip *chip, int plugged)
+{
+	struct max1720x_drift_data *ddata = &chip->drift_data;
+	int ret, cycle_count;
+	u16 data16;
+
+	/* do not execute when POR is set */
+	ret = REGMAP_READ(&chip->regmap, MAX1720X_STATUS, &data16);
+	if (ret < 0 || data16 & MAX1720X_STATUS_POR)
+		return;
+
+	/* capacity outliers: fix rcomp0, tempco */
+	ret = max1720x_fixup_comp(ddata, &chip->regmap, plugged);
+	if (ret > 0) {
+		chip->comp_update_count += 1;
+
+		data16 = chip->comp_update_count;
+		ret = gbms_storage_write(GBMS_TAG_CMPC, &data16, sizeof(data16));
+		if (ret < 0)
+			dev_err(chip->dev, "update comp stats (%d)\n", ret);
+	}
+
+	cycle_count = max1720x_get_cycle_count(chip);
+	if (cycle_count < 0) {
+		dev_err(chip->dev, "cannot read cycle_count (%d)\n",
+			cycle_count);
+		return;
+	}
+
+	/* capacity outliers: fix capacity */
+	ret = max1720x_fixup_dxacc(ddata, &chip->regmap, cycle_count, plugged);
+	if (ret > 0) {
+		chip->dxacc_update_count += 1;
+
+		data16 = chip->dxacc_update_count;
+		ret = gbms_storage_write(GBMS_TAG_DXAC, &data16, sizeof(data16));
+		if (ret < 0)
+			dev_err(chip->dev, "update cap stats (%d)\n", ret);
+	}
+
+}
+
 static int max1720x_set_property(struct power_supply *psy,
 				 enum power_supply_property psp,
 				 const union power_supply_propval *val)
@@ -1753,6 +1809,7 @@ static int max1720x_set_property(struct power_supply *psy,
 	struct max1720x_chip *chip = (struct max1720x_chip *)
 					power_supply_get_drvdata(psy);
 	struct gbatt_capacity_estimation *ce = &chip->cap_estimate;
+	int delay_ms = 0;
 	int rc = 0;
 
 	pm_runtime_get_sync(chip->dev);
@@ -1764,6 +1821,7 @@ static int max1720x_set_property(struct power_supply *psy,
 
 	switch (psp) {
 	case GBMS_PROP_BATT_CE_CTRL:
+
 		mutex_lock(&ce->batt_ce_lock);
 		if (val->intval) {
 
@@ -1773,9 +1831,6 @@ static int max1720x_set_property(struct power_supply *psy,
 			}
 
 		} else if (ce->cable_in) {
-			/* check cycle count and save state if needed */
-			mod_delayed_work(system_wq, &chip->model_work, 0);
-
 			if (ce->estimate_state == ESTIMATE_PENDING)
 				cancel_delayed_work_sync(&ce->settle_timer);
 
@@ -1785,6 +1840,12 @@ static int max1720x_set_property(struct power_supply *psy,
 			ce->cable_in = false;
 		}
 		mutex_unlock(&ce->batt_ce_lock);
+
+
+		/* check cycle count, save state, check drift if needed */
+		delay_ms = max1720x_check_drift_delay(&chip->drift_data);
+		mod_delayed_work(system_wq, &chip->model_work, delay_ms);
+
 		break;
 	default:
 		return -EINVAL;
@@ -2059,8 +2120,15 @@ static irqreturn_t max1720x_fg_irq_thread_fn(int irq, void *obj)
 	/* NOTE: should always clear everything even if we lose state */
 	REGMAP_WRITE(&chip->regmap, MAX1720X_STATUS, fg_status_clr);
 
-	if (storm && (fg_status & MAX1720X_STATUS_DSOCI)) {
-		pr_debug("Force power_supply_change in storm\n");
+	/* SOC interrupts need to go through all the time */
+	if (fg_status & MAX1720X_STATUS_DSOCI) {
+		const bool plugged = chip->cap_estimate.cable_in;
+
+		if (max1720x_check_drift_on_soc(&chip->drift_data))
+			max1720x_fixup_capacity(chip, plugged);
+
+		if (storm)
+			pr_debug("Force power_supply_change in storm\n");
 		storm = false;
 	}
 
@@ -2114,30 +2182,38 @@ static int max1720x_read_batt_id(int *batt_id, const struct max1720x_chip *chip)
 	return 0;
 }
 
-static struct device_node *max1720x_find_batt_node(struct device *dev,
-						   int batt_id)
+static struct device_node *max1720x_find_batt_node(struct max1720x_chip *chip)
 {
-	int ret;
-	u32 batt_id_range = 20, batt_id_kohm;
-	struct device_node *node = dev->of_node;
+	const int batt_id = chip->batt_id;
+	const struct device *dev = chip->dev;
+	const int algo_ver = chip->drift_data.algo_ver;
 	struct device_node *config_node, *child_node;
+	u32 batt_id_range = 20, algo = 0, batt_id_kohm;
+	int ret;
 
-	ret = of_property_read_u32(node, "maxim,batt-id-range-pct",
-				   &batt_id_range);
-	if (ret && ret == -EINVAL)
-		dev_warn(dev, "failed to read maxim,batt-id-range-pct\n");
-
-	config_node = of_find_node_by_name(node, "maxim,config");
+	config_node = of_find_node_by_name(dev->of_node, "maxim,config");
 	if (!config_node) {
 		dev_warn(dev, "Failed to find maxim,config setting\n");
 		return NULL;
 	}
 
+	ret = of_property_read_u32(dev->of_node, "maxim,batt-id-range-pct",
+				   &batt_id_range);
+	if (ret && ret == -EINVAL)
+		dev_warn(dev, "failed to read maxim,batt-id-range-pct\n");
+
 	for_each_child_of_node(config_node, child_node) {
+		ret = of_property_read_u32(child_node, "maxim,fg-algo", &algo);
+		if (ret < 0)
+			algo = 0;
+		if (algo_ver != algo)
+			continue;
+
 		ret = of_property_read_u32(child_node, "maxim,batt-id-kohm",
 					   &batt_id_kohm);
 		if (ret != 0)
 			continue;
+
 		if (!batt_id_range && batt_id == batt_id_kohm)
 			return child_node;
 		if ((batt_id < (batt_id_kohm * (100 + batt_id_range) / 100)) &&
@@ -2611,8 +2687,7 @@ static int max1720x_init_model(struct max1720x_chip *chip)
 
 	/* ->batt_id negative for no lookup */
 	if (chip->batt_id >= 0) {
-		chip->batt_node = max1720x_find_batt_node(chip->dev,
-							  chip->batt_id);
+		chip->batt_node = max1720x_find_batt_node(chip);
 		pr_debug("node found=%d for ID=%d\n", !!chip->batt_node,
 			 chip->batt_id);
 	}
@@ -2820,16 +2895,11 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 	if (IS_ERR_OR_NULL(de))
 		return -ENOENT;
 
-	debugfs_create_file("irq_none_cnt", 0644, de,
-				chip, &irq_none_cnt_fops);
-	debugfs_create_file("nvram_por", 0440, de,
-				chip, &debug_nvram_por_fops);
-	debugfs_create_file("fg_reset", 0400, de,
-				chip, &debug_fg_reset_fops);
-	debugfs_create_file("ce_start", 0400, de,
-				chip, &debug_ce_start_fops);
-	debugfs_create_file("batt_id", 0600, de,
-				chip, &debug_batt_id_fops);
+	debugfs_create_file("irq_none_cnt", 0644, de, chip, &irq_none_cnt_fops);
+	debugfs_create_file("nvram_por", 0440, de, chip, &debug_nvram_por_fops);
+	debugfs_create_file("fg_reset", 0400, de, chip, &debug_fg_reset_fops);
+	debugfs_create_file("ce_start", 0400, de, chip, &debug_ce_start_fops);
+	debugfs_create_file("batt_id", 0600, de, chip, &debug_batt_id_fops);
 
 	if (chip->regmap.reglog)
 		debugfs_create_file("regmap_writes", 0440, de,
@@ -2844,6 +2914,9 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 	if (chip->gauge_type == MAX_M5_GAUGE_TYPE)
 		debugfs_create_file("fg_model", 0440, de, chip,
 				    &debug_m5_custom_model_fops);
+
+	/* capacity drift fixup, one of MAX1720X_DA_VER_* */
+	debugfs_create_u32("algo_ver", 0644, de, &chip->drift_data.algo_ver);
 
 	return 0;
 }
@@ -3063,6 +3136,13 @@ static int max1720x_model_load(struct max1720x_chip *chip)
 		return -EAGAIN;
 	}
 
+	/* fix capacity outliers algo */
+	ret = max_m5_fixup_outliers(&chip->drift_data, chip->model_data);
+	if (ret < 0)
+		dev_err(chip->dev, "%s: error fixing drift data rc=%d\n",
+			__func__, ret);
+
+
 	chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
 	chip->model_state_valid = true;
 
@@ -3106,6 +3186,11 @@ static void max1720x_model_work(struct work_struct *work)
 		}
 	}
 
+	/* b/171741751, fix capacity drift (if POR is cleared) */
+	if (max1720x_check_drift_enabled(&chip->drift_data))
+		max1720x_fixup_capacity(chip, chip->cap_estimate.cable_in);
+
+	/* save model data */
 	if (cycle_count > chip->model_next_update) {
 
 		pr_debug("%s: cycle_count=%d next_update=%ld\n", __func__,
@@ -3131,6 +3216,135 @@ static void max1720x_model_work(struct work_struct *work)
 
 	mutex_unlock(&chip->model_lock);
 }
+
+static int read_chip_property_u32(const struct max1720x_chip *chip,
+				  char *property, u32 *data32)
+{
+	int ret;
+
+	if (chip->batt_node) {
+		ret = of_property_read_u32(chip->batt_node, property, data32);
+		if (ret == 0)
+			return ret;
+	}
+
+	return of_property_read_u32(chip->dev->of_node, property, data32);
+}
+
+/* capacity outliers, capacity drift */
+static int max17201_init_fix_capacity(struct max1720x_chip *chip)
+{
+	struct max1720x_drift_data *ddata = &chip->drift_data;
+	u32 data32 = 0;
+	u16 data16;
+	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_CMPC, &data16, sizeof(data16));
+	if (ret == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	if (ret == 0)
+		chip->comp_update_count = data16;
+	else
+		chip->comp_update_count = 0;
+
+	ret = gbms_storage_read(GBMS_TAG_DXAC, &data16, sizeof(data16));
+	if (ret == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	if (ret == 0)
+		chip->dxacc_update_count = data16;
+	else
+		chip->dxacc_update_count = 0;
+
+	/* device dependent values */
+	ddata->rsense = chip->RSense;
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,capacity-design",
+				   &data32);
+	if (ret < 0) {
+		ddata->design_capacity = -1;
+	} else if (data32 != 0) {
+		ddata->design_capacity = data32;
+	} else if (chip->regmap_nvram.regmap) {
+		/*
+		 * TODO: read design capacity from NVRAM if available
+		 * ret = REGMAP_READ(&chip->regmap_nvram, MAX1720X_NDESIGNCAP,
+		 *		  &ddata->design_capacity);
+		 */
+		ret = REGMAP_READ(&chip->regmap, MAX1720X_DESIGNCAP,
+				  &ddata->design_capacity);
+		if (ret < 0)
+			return -EPROBE_DEFER;
+
+		/* add retries? */
+	}
+
+	/*
+	 * chemistry dependent codes:
+	 * NOTE: ->batt_node is initialized in *_handle_dt_shadow_config
+	 */
+	ret = read_chip_property_u32(chip, "maxim,capacity-rcomp0", &data32);
+	if (ret < 0)
+		ddata->ini_rcomp0 = -1;
+	else
+		ddata->ini_rcomp0 = data32;
+
+	ret = read_chip_property_u32(chip, "maxim,capacity-tempco", &data32);
+	if (ret < 0)
+		ddata->ini_tempco = -1;
+	else
+		ddata->ini_tempco = data32;
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,capacity-stable",
+				   &data32);
+	if (ret < 0)
+		ddata->cycle_stable = BATTERY_DEFAULT_CYCLE_STABLE;
+	else
+		ddata->cycle_stable = data32;
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,capacity-fade",
+				   &data32);
+	if (ret < 0)
+		ddata->cycle_fade = BATTERY_DEFAULT_CYCLE_FADE;
+	else
+		ddata->cycle_fade = data32;
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,capacity-band",
+				   &data32);
+	if (ret < 0) {
+		ddata->cycle_band = BATTERY_DEFAULT_CYCLE_BAND;
+	} else {
+		ddata->cycle_band = data32;
+		if (ddata->cycle_band > BATTERY_MAX_CYCLE_BAND)
+			ddata->cycle_band = BATTERY_MAX_CYCLE_BAND;
+	}
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,algo-version",
+				   &data32);
+	if (ret < 0)
+		ddata->algo_ver = MAX1720X_DA_VER_ORIG;
+	else if (data32 < MAX1720X_DA_VER_NONE || data32 > MAX1720X_DA_VER_MWA2)
+		ddata->algo_ver = MAX1720X_DA_VER_NONE;
+	else
+		ddata->algo_ver = MAX1720X_DA_VER_NONE;
+
+	dev_info(chip->dev, "ver=%d rsns=%d cnts=%d,%d dc=%d cap_sta=%d cap_fad=%d rcomp0=0x%x tempco=0x%x\n",
+		ddata->algo_ver, ddata->rsense,
+		chip->comp_update_count, chip->dxacc_update_count,
+		ddata->design_capacity, ddata->cycle_stable, ddata->cycle_fade,
+		ddata->ini_rcomp0, ddata->ini_tempco);
+
+	ret = read_chip_property_u32(chip, "maxim,capacity-filtercfg", &data32);
+	if (ret < 0)
+		ddata->ini_filtercfg = -1;
+	else
+		ddata->ini_filtercfg = data32;
+
+	if (ddata->ini_filtercfg)
+		dev_info(chip->dev, "ini_filtercfg=0x%x\n", ddata->ini_filtercfg);
+
+	return 0;
+}
+
 
 static int max1720x_init_chip(struct max1720x_chip *chip)
 {
@@ -3184,7 +3398,7 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 						chip->gauge_type);
 		if (ret == 0)
 			ret = max17x0x_cache_load(&chip->nRAM_por,
-							&chip->regmap_nvram);
+						  &chip->regmap_nvram);
 		if (ret < 0) {
 			dev_err(chip->dev, "POR: Failed to backup config\n");
 			return -EPROBE_DEFER;
@@ -3280,6 +3494,12 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 
 		/* POR for M5 is handled in the irq_thread() */
 	}
+
+	/* Fix capacity drift b/134500876 */
+	ret = max17201_init_fix_capacity(chip);
+	if (ret < 0)
+		dev_err(chip->dev, "Failed to initialize capacity fix (%d)\n",
+			ret);
 
 	max1720x_restore_battery_qh_capacity(chip);
 
@@ -3639,7 +3859,8 @@ static int max17x0x_storage_iter(int index, gbms_tag_t *tag, void *ptr)
 {
 	struct max1720x_chip *chip = (struct max1720x_chip *)ptr;
 	static gbms_tag_t keys[] = {GBMS_TAG_SNUM, GBMS_TAG_BCNT,
-				    GBMS_TAG_RAVG, GBMS_TAG_RFCN};
+				    GBMS_TAG_RAVG, GBMS_TAG_RFCN,
+				    GBMS_TAG_CMPC, GBMS_TAG_DXAC};
 	const int count = ARRAY_SIZE(keys);
 
 
@@ -3699,6 +3920,13 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 			*(u16 *)buff = -1;
 		return 0;
 
+	case GBMS_TAG_DXAC:
+/*	MAX17201_DXACC_UPDATE_CNT = MAX1720X_NTALRTTH, */
+	case GBMS_TAG_CMPC:
+/*	MAX17201_COMP_UPDATE_CNT = MAX1720X_NVALRTTH, */
+		reg = NULL;
+		break;
+
 	default:
 		reg = NULL;
 		break;
@@ -3742,6 +3970,13 @@ static int max17x0x_storage_write(gbms_tag_t tag, const void *buff, size_t size,
 			return -ERANGE;
 		return batt_res_registers(chip, false, SEL_RES_FILTER_COUNT,
 					  (u16 *)buff);
+
+	case GBMS_TAG_DXAC:
+/*	MAX17201_DXACC_UPDATE_CNT = MAX1720X_NTALRTTH, */
+	case GBMS_TAG_CMPC:
+/*	MAX17201_COMP_UPDATE_CNT = MAX1720X_NVALRTTH, */
+		reg = NULL;
+		break;
 
 	default:
 		reg = NULL;
@@ -3833,6 +4068,12 @@ static void max17x0x_read_serial_number(struct max1720x_chip *chip)
 	char buff[32] = {0};
 	int ret;
 
+	ret = gbms_storage_read(GBMS_TAG_MINF, buff, GBMS_MINF_LEN);
+	if (ret >= 0) {
+		strncpy(chip->serial_number, buff, ret);
+		return;
+	}
+
 	ret = gbms_storage_read(GBMS_TAG_SNUM, buff, sizeof(buff));
 	if (ret < 0) {
 		/* do nothing */
@@ -3862,6 +4103,7 @@ static void max1720x_init_work(struct work_struct *work)
 
 	if (chip->gauge_type != -1) {
 
+		/* TODO: move to max1720x1 */
 		if (chip->regmap_nvram.regmap) {
 			ret = gbms_storage_register(&max17x0x_storage_dsc,
 						    "maxfg_sr", chip);
@@ -3869,6 +4111,7 @@ static void max1720x_init_work(struct work_struct *work)
 				ret = 0;
 		}
 
+		/* these don't require nvm storage */
 		ret = gbms_storage_register(&max17x0x_prop_dsc, "maxfg", chip);
 		if (ret == -EBUSY)
 			ret = 0;

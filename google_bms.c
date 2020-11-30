@@ -366,7 +366,7 @@ uint8_t gbms_gen_chg_flags(int chg_status, int chg_type)
 	}
 	if (chg_type == POWER_SUPPLY_CHARGE_TYPE_FAST)
 		flags |= GBMS_CS_FLAG_CC;
-	if (chg_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
+	if (chg_type == POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT)
 		flags |= GBMS_CS_FLAG_CV;
 
 	return flags;
@@ -455,7 +455,7 @@ EXPORT_SYMBOL_GPL(gbms_cycle_count_cstr_bc);
 /* parse the result of gbms_cycle_count_cstr_bc() back to array */
 int gbms_cycle_count_sscan_bc(u16 *ccount, int bcnt, const char *buff)
 {
-	int i, val[bcnt];
+	int i, val[10];
 
 	/* sscanf has 10 fixed conversions */
 	if (bcnt != 10)

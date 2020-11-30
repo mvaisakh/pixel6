@@ -25,6 +25,7 @@
 #include <linux/regmap.h>
 #include <linux/rtc.h>
 #include <linux/debugfs.h>
+#include <linux/thermal.h>
 #include "gbms_power_supply.h"
 #include "pca9468_charger.h"
 
@@ -281,6 +282,11 @@ enum {
 #define VOUT_STEP	5000 	/* 5mV(5000uV) LSB, Range(0V ~ 5.115V) */
 #define NTCV_STEP	2346 	/* 2.346mV(2346uV) LSB, Range(0V ~ 2.4V) */
 #define ADC_IIN_OFFSET	900000	/* 900mA */
+#define NTC_CURVE_THRESHOLD	185
+#define NTC_CURVE_1_BASE	960
+#define NTC_CURVE_1_SHIFT	2
+#define NTC_CURVE_2_BASE	730
+#define NTC_CURVE_2_SHIFT	3
 
 /* adc_gain bit[7:4] of reg 0x31 - 2's complement */
 static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
@@ -1060,7 +1066,13 @@ static int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
 
 		raw_adc = ((reg_data[1] & PCA9468_BIT_ADC_NTCV9_4) << 4) |
 			  ((reg_data[0] & PCA9468_BIT_ADC_NTCV3_0) >> 4);
-		conv_adc = raw_adc * NTCV_STEP;	 /* unit - uV */
+
+		/* Temp = (rawadc < 185)? (960-rawadc/4) : (730-rawadc/8) */
+		/* unit: 0.1 degree C */
+		if (raw_adc < NTC_CURVE_THRESHOLD)
+			conv_adc = NTC_CURVE_1_BASE - ((raw_adc * 10) >> NTC_CURVE_1_SHIFT);
+		else
+			conv_adc = NTC_CURVE_2_BASE - ((raw_adc * 10) >> NTC_CURVE_2_SHIFT);
 		break;
 
 	default:
@@ -3861,7 +3873,7 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 
 	/*
 	 * TODO: determine if we need to use the wireless power supply
-	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS) {
+	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS_EXT) {
 	 *	pca9468->ta_type = TA_TYPE_WIRELESS;
 	 *	pr_info("%s: The current power supply type is WC,
 	 * 		ta_type=%d\n", __func__, pca9468->ta_type);
@@ -4624,7 +4636,7 @@ static int pca9468_get_charge_type(struct pca9468_charger *pca9468)
 		return POWER_SUPPLY_CHARGE_TYPE_FAST;
 	case DC_STATE_START_CV:
 	case DC_STATE_CV_MODE:
-		return POWER_SUPPLY_CHARGE_TYPE_TAPER;
+		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
 	case DC_STATE_CHARGING_DONE:
 		break;
 	}
@@ -4993,6 +5005,19 @@ static int of_pca9468_dt(struct device *dev,
 	}
 	pr_info("%s: pca9468,chg_mode is %u\n", __func__, pdata->chg_mode);
 
+#ifdef CONFIG_THERMAL
+	/* USBC thermal zone */
+	ret = of_property_read_string(np_pca9468, "google,usb-port-tz-name",
+				      &pdata->usb_tz_name);
+	if (ret) {
+		pr_info("%s: google,usb-port-tz-name is Empty\n", __func__);
+		pdata->usb_tz_name = NULL;
+	} else {
+		pr_info("%s: google,usb-port-tz-name is %s\n", __func__,
+			pdata->usb_tz_name);
+	}
+#endif
+
 	return 0;
 }
 #else
@@ -5002,6 +5027,23 @@ static int of_pca9468_dt(struct device *dev,
 	return 0;
 }
 #endif /* CONFIG_OF */
+
+#ifdef CONFIG_THERMAL
+static int pca9468_usb_tz_read_temp(struct thermal_zone_device *tzd, int *temp)
+{
+	struct pca9468_charger *pca9468 = tzd->devdata;
+
+	if (!pca9468)
+		return -ENODEV;
+	*temp = pca9468_read_adc(pca9468, ADCCH_NTC);
+
+	return 0;
+}
+
+static struct thermal_zone_device_ops pca9468_usb_tzd_ops = {
+	.get_temp = pca9468_usb_tz_read_temp,
+};
+#endif
 
 static int read_reg(void *data, u64 *val)
 {
@@ -5226,6 +5268,22 @@ static int pca9468_probe(struct i2c_client *client,
 	}
 #endif
 
+#ifdef CONFIG_THERMAL
+	if (pdata->usb_tz_name) {
+		pdata->usb_tzd =
+			thermal_zone_device_register(pdata->usb_tz_name, 0, 0,
+						     pca9468_chg,
+						     &pca9468_usb_tzd_ops,
+						     NULL, 0, 0);
+		if (IS_ERR(pdata->usb_tzd)) {
+			ret = PTR_ERR(pdata->usb_tzd);
+			dev_err(dev, "Couldn't register usb connector thermal zone ret=%d\n",
+				ret);
+			goto error;
+		}
+	}
+#endif
+
 	pr_info("pca9468: probe_done\n");
 	pr_debug("%s: =========END=========\n", __func__);
 	return 0;
@@ -5255,6 +5313,11 @@ static int pca9468_remove(struct i2c_client *client)
 	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
 #ifdef CONFIG_DC_STEP_CHARGING
 	pca9468_step_chg_deinit();
+#endif
+
+#ifdef CONFIG_THERMAL
+	if (pca9468_chg->pdata->usb_tz_name)
+		thermal_zone_device_unregister(pca9468_chg->pdata->usb_tzd);
 #endif
 	return 0;
 }

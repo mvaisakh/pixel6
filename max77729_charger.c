@@ -740,11 +740,11 @@ static int max77729_get_charge_type(struct max77729_chgr_data *data, int *type)
 		*type = POWER_SUPPLY_CHARGE_TYPE_FAST;
 		break;
 	case CHGR_DTLS_FAST_CHARGE_CONST_VOLTAGE_MODE:
-		*type = POWER_SUPPLY_CHARGE_TYPE_TAPER;
+		*type = POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
 		break;
 	/* This is really DONE, */
 	case CHGR_DTLS_TOP_OFF_MODE:
-		*type = POWER_SUPPLY_CHARGE_TYPE_TAPER;
+		*type = POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
 		break;
 	case CHGR_DTLS_DONE_MODE:
 		*type = POWER_SUPPLY_CHARGE_TYPE_NONE;

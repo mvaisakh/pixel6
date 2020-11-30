@@ -551,7 +551,7 @@ static int max77729_uic_storage_read(gbms_tag_t tag, void *buff, size_t size,
 
 	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
 		return -ENOENT;
-	if (tag + size > GBMS_TAG_RRS7)
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
 		return -ERANGE;
 
 	ret = max77729_uic_read(data->regmap, base, buff, size);
@@ -569,7 +569,7 @@ static int max77729_uic_storage_write(gbms_tag_t tag, const void *buff,
 
 	if (tag < GBMS_TAG_RRS0 || tag > GBMS_TAG_RRS7)
 		return -ENOENT;
-	if (tag + size > GBMS_TAG_RRS7)
+	if ((tag + size - 1) > GBMS_TAG_RRS7)
 		return -ERANGE;
 
 	ret = max77729_uic_write(data->regmap, base, buff, size);
