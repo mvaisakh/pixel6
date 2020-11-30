@@ -525,6 +525,20 @@ static const char * const cs35l41_pcm_sftramp_text[] =  {
 static SOC_ENUM_SINGLE_DECL(pcm_sft_ramp,
 			    CS35L41_AMP_DIG_VOL_CTRL, 0,
 			    cs35l41_pcm_sftramp_text);
+static const char * const cs35l41_boost_current_limit_text[] = {
+	"0.80A", "0.85A", "0.90A", "0.95A", "1.00A", "1.05A", "1.10A", "1.15A",
+	"1.20A", "1.25A", "1.30A", "1.35A", "1.40A", "1.45A", "1.50A", "1.55A",
+	"1.60A", "1.65A", "1.70A", "1.75A", "1.80A", "1.85A", "1.90A", "1.95A",
+	"2.00A", "2.05A", "2.10A", "2.15A", "2.20A", "2.25A", "2.30A", "2.35A",
+	"2.40A", "2.45A", "2.50A", "2.55A", "2.60A", "2.65A", "2.70A", "2.75A",
+	"2.80A", "2.85A", "2.90A", "2.95A", "3.00A", "3.05A", "3.10A", "3.15A",
+	"3.20A", "3.25A", "3.30A", "3.35A", "3.40A", "3.45A", "3.50A", "3.55A",
+	"3.60A", "3.65A", "3.70A", "3.75A", "3.80A", "3.85A", "3.90A", "3.95A",
+	"4.00A", "4.05A", "4.10A", "4.15A", "4.20A", "4.25A", "4.30A", "4.35A",
+	"4.40A", "4.45A", "4.50A"};
+static SOC_ENUM_SINGLE_DECL(current_limit, CS35L41_BSTCVRT_PEAK_CUR,
+				CS35L41_BST_IPK_SHIFT,
+				cs35l41_boost_current_limit_text);
 static int cs35l41_reload_tuning_get(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
 {
@@ -1162,6 +1176,7 @@ static const struct snd_kcontrol_new cs35l41_aud_controls[] = {
 	SOC_SINGLE_RANGE("ASPRX2 Slot Position", CS35L41_SP_FRAME_RX_SLOT, 8,
 			 0, 7, 0),
 	SOC_ENUM("PCM Soft Ramp", pcm_sft_ramp),
+	SOC_ENUM("Boost Peak Current Limit", current_limit),
 	SOC_SINGLE_EXT("DSP Booted", SND_SOC_NOPM, 0, 1, 0,
 			cs35l41_halo_booted_get, cs35l41_halo_booted_put),
 	SOC_SINGLE_EXT("CCM Reset", CS35L41_DSP1_CCM_CORE_CTRL, 0, 1, 0,
