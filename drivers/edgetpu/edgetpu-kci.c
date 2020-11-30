@@ -666,19 +666,52 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
-enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci)
+enum edgetpu_fw_flavor edgetpu_kci_fw_info(
+	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info)
 {
+	struct edgetpu_dev *etdev = kci->mailbox->etdev;
 	struct edgetpu_command_element cmd = {
-		.code = KCI_CODE_FIRMWARE_FLAVOR,
+		.code = KCI_CODE_FIRMWARE_INFO,
+		.dma = {
+			.address = 0,
+			.size = 0,
+		},
 	};
+	/* TODO(b/136208139): remove when old fw no longer in use */
+	struct edgetpu_command_element cmd_compat = {
+		.code = KCI_CODE_FIRMWARE_FLAVOR_COMPAT,
+	};
+	dma_addr_t dma_addr;
+	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
 	struct edgetpu_kci_response_element resp;
 	enum edgetpu_fw_flavor flavor = FW_FLAVOR_UNKNOWN;
 	int kciret;
 
+	dma_addr = dma_map_single(etdev->dev, fw_info, sizeof(*fw_info),
+				  DMA_FROM_DEVICE);
+	/* If any map failure still try handshake without full fw_info */
+	if (dma_mapping_error(etdev->dev, dma_addr)) {
+		etdev_warn(etdev, "%s: failed to DMA map fw info buffer",
+			  __func__);
+	} else {
+		cmd.dma.address =
+			edgetpu_mmu_tpu_map(etdev, dma_addr, sizeof(*fw_info),
+					    DMA_FROM_DEVICE,
+					    EDGETPU_CONTEXT_KCI, flags);
+		if (!cmd.dma.address)
+			etdev_warn(etdev,
+				   "%s: failed to map fw info buffer to TPU",
+				   __func__);
+		else
+			cmd.dma.size = sizeof(*fw_info);
+	}
+
 	kciret = edgetpu_kci_send_cmd_return_resp(kci, &cmd, &resp);
+	if (kciret == KCI_ERROR_UNIMPLEMENTED)
+		kciret = edgetpu_kci_send_cmd_return_resp(kci, &cmd_compat,
+							  &resp);
 	if (kciret == KCI_ERROR_UNIMPLEMENTED) {
-		etdev_dbg(kci->mailbox->etdev,
-			  "old firmware does not report flavor\n");
+		etdev_dbg(etdev, "old firmware does not report flavor\n");
 	} else if (kciret == KCI_ERROR_OK) {
 		switch (resp.retval) {
 		case FW_FLAVOR_BL1:
@@ -688,19 +721,23 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci)
 			flavor = resp.retval;
 			break;
 		default:
-			etdev_dbg(kci->mailbox->etdev,
-				  "unrecognized fw flavor 0x%x\n",
+			etdev_dbg(etdev, "unrecognized fw flavor 0x%x\n",
 				  resp.retval);
 		}
 	} else {
-		etdev_dbg(kci->mailbox->etdev,
-			  "firmware flavor query returns %d\n", kciret);
+		etdev_dbg(etdev, "firmware flavor query returns %d\n", kciret);
 		if (kciret < 0)
 			flavor = kciret;
 		else
 			flavor = -EIO;
 	}
 
+	if (cmd.dma.address)
+		edgetpu_mmu_tpu_unmap(etdev, cmd.dma.address,
+				      sizeof(*fw_info), EDGETPU_CONTEXT_KCI);
+	if (!dma_mapping_error(etdev->dev, dma_addr))
+		dma_unmap_single(etdev->dev, dma_addr, sizeof(*fw_info),
+				 DMA_FROM_DEVICE);
 	return flavor;
 }
 
@@ -731,6 +768,34 @@ int edgetpu_kci_shutdown(struct edgetpu_kci *kci)
 {
 	struct edgetpu_command_element cmd = {
 		.code = KCI_CODE_SHUTDOWN,
+	};
+
+	if (!kci)
+		return -ENODEV;
+	return edgetpu_kci_send_cmd(kci, &cmd);
+}
+
+int edgetpu_kci_open_device(struct edgetpu_kci *kci, u8 mailbox_id)
+{
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_OPEN_DEVICE,
+		.dma = {
+			.flags = mailbox_id,
+		},
+	};
+
+	if (!kci)
+		return -ENODEV;
+	return edgetpu_kci_send_cmd(kci, &cmd);
+}
+
+int edgetpu_kci_close_device(struct edgetpu_kci *kci, u8 mailbox_id)
+{
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_CLOSE_DEVICE,
+		.dma = {
+			.flags = mailbox_id,
+		},
 	};
 
 	if (!kci)

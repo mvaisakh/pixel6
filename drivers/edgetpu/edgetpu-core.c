@@ -222,9 +222,9 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	mutex_init(&etdev->state_lock);
 	etdev->state = ETDEV_STATE_NOFW;
 
-	ret = edgetpu_dev_add(etdev);
+	ret = edgetpu_fs_add(etdev);
 	if (ret) {
-		dev_err(etdev->dev, "%s: edgetpu_dev_add returns %d\n",
+		dev_err(etdev->dev, "%s: edgetpu_fs_add returns %d\n",
 			etdev->dev_name, ret);
 		return ret;
 	}
@@ -281,7 +281,7 @@ detach_mmu:
 	edgetpu_mmu_detach(etdev);
 remove_dev:
 	edgetpu_mark_probe_fail(etdev);
-	edgetpu_dev_remove(etdev);
+	edgetpu_fs_remove(etdev);
 	return ret;
 }
 
@@ -290,7 +290,7 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 	edgetpu_chip_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_mmu_detach(etdev);
-	edgetpu_dev_remove(etdev);
+	edgetpu_fs_remove(etdev);
 }
 
 struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
@@ -366,7 +366,7 @@ int __init edgetpu_init(void)
 {
 	int ret;
 
-	ret = edgetpu_dev_init();
+	ret = edgetpu_fs_init();
 	if (ret)
 		return ret;
 	edgetpu_mcp_init();
@@ -376,5 +376,5 @@ int __init edgetpu_init(void)
 void __exit edgetpu_exit(void)
 {
 	edgetpu_mcp_exit();
-	edgetpu_dev_exit();
+	edgetpu_fs_exit();
 }

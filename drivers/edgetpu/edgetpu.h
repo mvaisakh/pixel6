@@ -128,18 +128,6 @@ struct edgetpu_event_register {
 #define EDGETPU_SET_EVENTFD_COMPAT \
 	_IOR(EDGETPU_IOCTL_BASE, 5, struct edgetpu_event_register)
 
-/* TODO(b/167151866): remove this structure and EDGETPU_CREATE_GROUP_COMPAT */
-struct edgetpu_mailbox_attr_compat {
-	__u32 cmd_queue_size    : 10; /* size of cmd queue in KB */
-	__u32 resp_queue_size   : 10; /* size of response queue in KB */
-	__u32 priority          :  4; /* mailbox service priority */
-	__u32 cmdq_tail_doorbell:  1; /* auto doorbell on cmd queue tail move */
-};
-
-/* Create a new device group with the caller as the master. */
-#define EDGETPU_CREATE_GROUP_COMPAT \
-	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr_compat)
-
 struct edgetpu_mailbox_attr {
 	/*
 	 * There are limitations on these size fields, see the error cases in
@@ -165,9 +153,6 @@ struct edgetpu_mailbox_attr {
  */
 #define EDGETPU_CREATE_GROUP \
 	_IOW(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
-
-#define EDGETPU_CREATE_GROUP_COMPAT_2 \
-	_IOR(EDGETPU_IOCTL_BASE, 6, struct edgetpu_mailbox_attr)
 
 /* Join the calling fd to the device group of the supplied fd. */
 #define EDGETPU_JOIN_GROUP \
@@ -499,5 +484,25 @@ struct edgetpu_sync_fence_status {
  * Acquire the wakelock for this client, ensures firmware keeps running.
  */
 #define EDGETPU_ACQUIRE_WAKE_LOCK	_IO(EDGETPU_IOCTL_BASE, 26)
+
+struct edgetpu_fw_version {
+	__u32 major_version; /* Returned firmware major version number */
+	__u32 minor_version; /* Returned firmware minor version number */
+	__u32 vii_version; /* Returned firmware VII version number */
+	__u32 kci_version; /* Returned firmware KCI version number */
+};
+
+/*
+ * Query the version information of the firmware currently loaded.
+ *
+ * When there is an attempt to load firmware, its version numbers are recorded
+ * by the kernel and will be returned on the following EDGETPU_FIRMWARE_VERSION
+ * calls. If the latest firmware attempted to load didn't exist or had an
+ * invalid header, this call returns -ENODEV.
+ *
+ * Returns 0 on success, -errno on error.
+ */
+#define EDGETPU_FIRMWARE_VERSION \
+	_IOR(EDGETPU_IOCTL_BASE, 27, struct edgetpu_fw_version)
 
 #endif /* __EDGETPU_H__ */

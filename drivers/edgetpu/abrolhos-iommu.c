@@ -524,6 +524,6 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
 	iommu_unmap(domain, tpu_addr, size);
 }
 
-void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev)
+void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev, bool use_dev_dram)
 {
 }

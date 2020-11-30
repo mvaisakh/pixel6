@@ -16,6 +16,7 @@
 #include <linux/types.h>
 #include <linux/wait.h>
 
+#include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
 
@@ -76,11 +77,6 @@ struct edgetpu_vii_response_element {
 	u64 retval;
 } __packed;
 
-/* TODO(b/167151866): remove these two constants */
-/* KCI and VII command elements are the same size */
-#define EDGETPU_SIZEOF_VII_CMD_ELEMENT sizeof(struct edgetpu_command_element)
-#define EDGETPU_SIZEOF_VII_RESP_ELEMENT sizeof(struct edgetpu_vii_response_element)
-
 /*
  * Definition of code in command elements.
  * Code for KCI is a 16-bit unsigned integer.
@@ -92,8 +88,12 @@ enum edgetpu_kci_code {
 	KCI_CODE_JOIN_GROUP = 3,
 	KCI_CODE_LEAVE_GROUP = 4,
 	KCI_CODE_MAP_TRACE_BUFFER = 5,
-	KCI_CODE_FIRMWARE_FLAVOR = 6,
+	/* TODO(b/136208139): remove when old fw no longer in use */
+	KCI_CODE_FIRMWARE_FLAVOR_COMPAT = 6,
 	KCI_CODE_SHUTDOWN = 7,
+	KCI_CODE_OPEN_DEVICE = 9,
+	KCI_CODE_CLOSE_DEVICE = 10,
+	KCI_CODE_FIRMWARE_INFO = 11,
 };
 
 /*
@@ -118,20 +118,6 @@ enum edgetpu_kci_error {
 	KCI_ERROR_UNAVAILABLE = 14,
 	KCI_ERROR_DATA_LOSS = 15,
 	KCI_ERROR_UNAUTHENTICATED = 16,
-};
-
-/* Firmware flavors returned via KCI from firmware image. */
-enum edgetpu_fw_flavor {
-	/* used by host when cannot determine the flavor */
-	FW_FLAVOR_UNKNOWN = 0,
-	/* second-stage bootloader */
-	FW_FLAVOR_BL1 = 1,
-	/* systest app image */
-	FW_FLAVOR_SYSTEST = 2,
-	/* default production app image from DarwiNN team */
-	FW_FLAVOR_PROD_DEFAULT = 3,
-	/* custom image produced by other teams */
-	FW_FLAVOR_CUSTOM = 4,
 };
 
 struct edgetpu_kci_wait_list {
@@ -244,14 +230,18 @@ int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 int edgetpu_kci_ack(struct edgetpu_kci *kci);
 
 /*
- * Sends a FIRMWARE_FLAVOR command and expects a response indicating what
- * edgetpu_fw_flavor type is running.  Also serves as an initial handshake
- * with firmware at load time.
+ * Sends a FIRMWARE_INFO command and expects a response with a
+ * edgetpu_fw_info struct filled out, including what firmware type is running,
+ * along with build CL and time.
+ * Also serves as an initial handshake with firmware at load time.
+ *
+ * @fw_info: a struct edgetpu_fw_info to be filled out by fw
  *
  * Returns >=0 edgetpu_fw_flavor when response received from firmware,
  *         <0 on error communicating with firmware (typically -ETIMEDOUT).
  */
-enum edgetpu_fw_flavor edgetpu_kci_fw_flavor(struct edgetpu_kci *kci);
+enum edgetpu_fw_flavor edgetpu_kci_fw_info(
+	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info);
 
 /*
  * Sends the "Map Log Buffer" command and waits for remote response.
@@ -285,5 +275,11 @@ void edgetpu_kci_mappings_show(struct edgetpu_dev *etdev, struct seq_file *s);
 
 /* Send shutdown request to firmware */
 int edgetpu_kci_shutdown(struct edgetpu_kci *kci);
+
+/* Inform the firmware to prepare to serve the VII with @mailbox_id. */
+int edgetpu_kci_open_device(struct edgetpu_kci *kci, u8 mailbox_id);
+
+/* Inform the firmware the VII with @mailbox_id is closed. */
+int edgetpu_kci_close_device(struct edgetpu_kci *kci, u8 mailbox_id);
 
 #endif /* __EDGETPU_KCI_H__ */

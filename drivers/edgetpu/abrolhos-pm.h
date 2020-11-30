@@ -16,8 +16,10 @@
 
 #else
 
+static unsigned long exynos_acpm_rate;
 static inline int exynos_acpm_set_rate(unsigned int id, unsigned long rate)
 {
+	exynos_acpm_rate = rate;
 	return 0;
 }
 static inline int exynos_acpm_set_init_freq(unsigned int dfs_id,
@@ -28,7 +30,7 @@ static inline int exynos_acpm_set_init_freq(unsigned int dfs_id,
 static inline unsigned long exynos_acpm_get_rate(unsigned int id,
 						 unsigned long dbg_val)
 {
-	return 0;
+	return exynos_acpm_rate;
 }
 static inline int exynos_acpm_set_policy(unsigned int id, unsigned long policy)
 {

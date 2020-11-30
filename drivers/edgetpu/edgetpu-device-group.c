@@ -95,8 +95,18 @@ static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
+	u8 mailbox_id = group->vii.mailbox->mailbox_id;
+	int ret = edgetpu_kci_close_device(group->etdev->kci, mailbox_id);
+
+	/*
+	 * This should only happen when the FW hasn't driven this KCI, log once
+	 * to prevent log storm.
+	 */
+	if (ret)
+		etdev_warn_once(group->etdev, "Close device failed with %d",
+				ret);
 	return;
-#else
+#else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
 	struct edgetpu_async_ctx *ctx = edgetpu_async_alloc_ctx();
@@ -125,7 +135,7 @@ static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 out_free:
 	edgetpu_async_free_ctx(ctx);
 	kfree(params);
-#endif
+#endif /* CONFIG_ABROLHOS */
 }
 
 /*
@@ -137,8 +147,18 @@ static int
 edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
+	u8 mailbox_id = group->vii.mailbox->mailbox_id;
+	int ret = edgetpu_kci_open_device(group->etdev->kci, mailbox_id);
+
+	/*
+	 * This should only happen when the FW hasn't driven this KCI, log once
+	 * to prevent log storm.
+	 */
+	if (ret)
+		etdev_warn_once(group->etdev, "Open device failed with %d",
+				ret);
 	return 0;
-#else
+#else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
 	struct edgetpu_async_ctx *ctx = edgetpu_async_alloc_ctx();
@@ -204,7 +224,7 @@ out_free:
 	edgetpu_async_free_ctx(ctx);
 	kfree(params);
 	return ret;
-#endif
+#endif /* CONFIG_ABROLHOS */
 }
 
 /*
@@ -888,15 +908,18 @@ static void edgetpu_host_map_show(struct edgetpu_mapping *map,
 }
 
 /*
- * Pins the user-space address @host_addr and returns the pinned pages.
+ * Pins the user-space address @arg->host_address and returns the pinned pages.
  * @pnum_pages is set to the number of pages.
  *
  * Returns -errno if failed on pinning @size bytes.
  */
-static struct page **edgetpu_pin_user_pages(
-	struct edgetpu_device_group *group, u64 host_addr, u64 size,
-	enum dma_data_direction dir, uint *pnum_pages)
+static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
+					    struct edgetpu_map_ioctl *arg,
+					    uint *pnum_pages)
 {
+	u64 host_addr = arg->host_address;
+	u64 size = arg->size;
+	const enum dma_data_direction dir = arg->flags & EDGETPU_MAP_DIR_MASK;
 	uint num_pages;
 	ulong offset;
 	struct edgetpu_dev *etdev = group->etdev;
@@ -953,21 +976,16 @@ error:
  */
 static struct edgetpu_host_map *
 alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
-			    u64 size, edgetpu_map_flag_t flags)
+			    u64 size, edgetpu_map_flag_t flags,
+			    struct page **pages, uint num_pages)
 {
-	uint num_pages = 0;
 	struct edgetpu_dev *etdev = group->etdev;
-	struct page **pages;
 	struct edgetpu_host_map *hmap;
 	const enum dma_data_direction dir = flags & EDGETPU_MAP_DIR_MASK;
 	int n;
 	struct sg_table *sgt;
 	int i;
 	int ret;
-
-	pages = edgetpu_pin_user_pages(group, host_addr, size, dir, &num_pages);
-	if (IS_ERR(pages))
-		return (void *)pages;
 
 	hmap = kzalloc(sizeof(*hmap), GFP_KERNEL);
 	if (!hmap) {
@@ -1012,7 +1030,6 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 		}
 	}
 
-	kfree(pages);
 	return hmap;
 
 error_free_sgt:
@@ -1027,7 +1044,6 @@ error_free_sgt:
 error:
 	for (i = 0; i < num_pages; i++)
 		put_page(pages[i]);
-	kfree(pages);
 	if (hmap) {
 		edgetpu_device_group_put(hmap->map.priv);
 		kfree(hmap->sg_tables);
@@ -1105,6 +1121,8 @@ static int group_sync_host_map(struct edgetpu_device_group *group,
 int edgetpu_device_group_map(struct edgetpu_device_group *group,
 			     struct edgetpu_map_ioctl *arg)
 {
+	uint num_pages = 0;
+	struct page **pages;
 	int ret = -EINVAL;
 	u64 host_addr = arg->host_address;
 	u64 size = arg->size;
@@ -1114,6 +1132,11 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 	struct edgetpu_dev *etdev;
 	enum edgetpu_context_id context_id = edgetpu_group_context_id(group);
 	const u32 mmu_flags = map_to_mmu_flags(flags) | EDGETPU_MMU_HOST;
+
+	/* Pin user pages before holding any lock. */
+	pages = edgetpu_pin_user_pages(group, arg, &num_pages);
+	if (IS_ERR(pages))
+		return PTR_ERR(pages);
 
 	mutex_lock(&group->lock);
 	if (!edgetpu_device_group_is_finalized(group)) {
@@ -1127,7 +1150,8 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 		}
 	}
 
-	hmap = alloc_mapping_from_useraddr(group, host_addr, size, flags);
+	hmap = alloc_mapping_from_useraddr(group, host_addr, size, flags, pages,
+					   num_pages);
 	if (IS_ERR(hmap)) {
 		ret = PTR_ERR(hmap);
 		goto error_unlock_group;
@@ -1175,6 +1199,7 @@ error_release_map:
 
 error_unlock_group:
 	mutex_unlock(&group->lock);
+	kfree(pages);
 	return ret;
 }
 

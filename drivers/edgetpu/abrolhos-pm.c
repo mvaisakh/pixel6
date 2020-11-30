@@ -20,6 +20,8 @@
 #include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
 
+#include "edgetpu-pm.c"
+
 /* Default power state: the lowest power state that keeps firmware running */
 static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
 
@@ -370,6 +372,8 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 					 abrolhos_get_initial_pwr_state(dev));
 	enum edgetpu_firmware_status firmware_status;
 
+	etdev_info(etpm->etdev, "Powering up\n");
+
 	if (ret)
 		return ret;
 
@@ -395,7 +399,8 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 	firmware_status = edgetpu_firmware_status_locked(etdev);
 	if (firmware_status == FW_LOADING)
-		goto out;
+		return 0;
+
 	/* attempt firmware run */
 	mutex_lock(&etdev->state_lock);
 	if (etdev->state == ETDEV_STATE_FWLOADING) {
@@ -424,11 +429,39 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	else
 		etdev->state = ETDEV_STATE_GOOD; /* f/w handshake success */
 	mutex_unlock(&etdev->state_lock);
-out:
+
 	if (ret)
 		abrolhos_power_down(etpm);
 
 	return ret;
+}
+
+static void
+abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
+			      struct edgetpu_platform_dev *edgetpu_pdev)
+{
+	if (!edgetpu_pchannel_power_down(etdev, false))
+		return;
+
+	etdev_warn(etdev, "Firmware shutdown request failed!\n");
+	etdev_warn(etdev, "Attempting firmware restart\n");
+
+	if (!edgetpu_firmware_restart_locked(etdev) &&
+	    !edgetpu_pchannel_power_down(etdev, false))
+		return;
+
+	etdev_warn(etdev, "Forcing shutdown through power policy\n");
+	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
+	pm_runtime_put_sync(etdev->dev);
+	/*
+	 * TODO: experiment on hardware to verify if this delay
+	 * is needed, what is a good value or an alternative way
+	 * to make sure the power policy request turned the
+	 * device off.
+	 */
+	msleep(100);
+	pm_runtime_get_sync(etdev->dev);
+	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_ACTIVE_OD);
 }
 
 static void abrolhos_power_down(struct edgetpu_pm *etpm)
@@ -437,13 +470,8 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 		etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
 	u64 val;
 	int res;
-	int curr_state;
 
-	curr_state = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
-
-	/* We don't need to do anything if the block is already off */
-	if (curr_state == TPU_OFF)
-		return;
+	etdev_info(etpm->etdev, "Powering down\n");
 
 	if (abrolhos_pwr_state_get(etpm->etdev->dev, &val)) {
 		etdev_warn(etpm->etdev, "Failed to read current power state\n");
@@ -454,26 +482,13 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 			  "Device already off, skipping shutdown\n");
 		return;
 	}
+
 	if (etpm->etdev->kci &&
 	    edgetpu_firmware_status_locked(etpm->etdev) == FW_VALID) {
-		res = edgetpu_kci_shutdown(etpm->etdev->kci);
-		if (res) {
-			etdev_warn(etpm->etdev,
-				   "Firmware shutdown request failed!\n");
-			etdev_warn(
-				etpm->etdev,
-				"Doing forced shutdown through power policy\n");
-			abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
-			/*
-			 * TODO: experiment on hardware to verify if this delay
-			 * is needed, what is a good value or an alternative way
-			 * to make sure the power policy request turned the
-			 * device off.
-			 */
-			msleep(100);
-			abrolhos_pwr_policy_set(edgetpu_pdev, TPU_ACTIVE_OD);
-		}
+		abrolhos_pm_shutdown_firmware(etpm->etdev, edgetpu_pdev);
+		cancel_work_sync(&etpm->etdev->kci->work);
 	}
+
 	res = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
 	if (res < 0)
 		etdev_warn(etpm->etdev, "GSA shutdown request failed (%d)\n",
@@ -498,7 +513,7 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 
 	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
 	abrolhos_pwr_debugfs_dir =
-		debugfs_create_dir("power", edgetpu_dev_debugfs_dir());
+		debugfs_create_dir("power", edgetpu_fs_debugfs_dir());
 	debugfs_create_file("state", 0660, abrolhos_pwr_debugfs_dir,
 			dev, &fops_tpu_pwr_state);
 	debugfs_create_file("vdd_tpu", 0660, abrolhos_pwr_debugfs_dir,

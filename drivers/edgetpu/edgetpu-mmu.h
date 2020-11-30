@@ -208,7 +208,10 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev,
 /*
  * Hints the MMU to use edgetpu_device_dram_alloc() for allocating MMU page
  * tables.
+ *
+ * @use_dev_dram: true = use device DRAM for MMU data structures
+ *                false = use host DRAM for MMU data structures
  */
-void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev);
+void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev, bool use_dev_dram);
 
 #endif /* __EDGETPU_MMU_H__ */

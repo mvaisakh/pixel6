@@ -403,8 +403,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 
 out:
 	dev_dbg(dev, "Probe finished, powering down\n");
-	/* Turn the device off until a client request is received */
-	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
+	/* Turn the device off unless a client request is already received. */
+	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, false);
 
 	return ret;
 out_fw_destroy:
@@ -414,8 +414,7 @@ out_tel_exit:
 out_cleanup_fw:
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
 	dev_dbg(dev, "Probe finished with error %d, powering down\n", ret);
-	/* Turn the device off until a client request is received */
-	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev);
+	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, true);
 	return ret;
 }
 
@@ -435,7 +434,7 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
 	edgetpu_device_remove(etdev);
 	edgetpu_pm_put(etdev->pm);
-	edgetpu_pm_shutdown(etdev);
+	edgetpu_pm_shutdown(etdev, true);
 	abrolhos_pm_destroy(etdev);
 	return 0;
 }

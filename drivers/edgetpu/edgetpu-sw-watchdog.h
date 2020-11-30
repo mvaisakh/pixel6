@@ -30,6 +30,8 @@ struct edgetpu_sw_wdt {
 	unsigned long hrtbeat_jiffs;
 	/* work information for watchdog bite. */
 	struct edgetpu_sw_wdt_action_work et_action_work;
+	/* flag to mark that watchdog is disabled. */
+	bool is_wdt_disabled;
 };
 
 int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long hrtbeat_ms);

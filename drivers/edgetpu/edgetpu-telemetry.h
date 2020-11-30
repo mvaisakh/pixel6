@@ -16,6 +16,15 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 
+/* Log level codes used by edgetpu firmware */
+#define EDGETPU_FW_LOG_LEVEL_VERBOSE (2)
+#define EDGETPU_FW_LOG_LEVEL_DEBUG (1)
+#define EDGETPU_FW_LOG_LEVEL_INFO (0)
+#define EDGETPU_FW_LOG_LEVEL_WARN (-1)
+#define EDGETPU_FW_LOG_LEVEL_ERROR (-2)
+
+#define EDGETPU_FW_DMESG_LOG_LEVEL (EDGETPU_FW_LOG_LEVEL_ERROR)
+
 #define EDGETPU_TELEMETRY_BUFFER_SIZE (16 * 4096)
 /* assumes buffer size is power of 2 */
 #define EDGETPU_TELEMETRY_WRAP_BIT EDGETPU_TELEMETRY_BUFFER_SIZE
