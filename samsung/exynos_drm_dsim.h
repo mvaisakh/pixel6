@@ -37,8 +37,6 @@ struct dsim_pll_features {
 	u64 foptimum;
 	u64 fout_min, fout_max;
 	u64 fvco_min, fvco_max;
-	/* TODO (longling) move te_idle/te_var to drm_display_mode private */
-	u32 te_idle, te_var;
 	u32 p_min, p_max;
 	u32 m_min, m_max;
 	u32 s_min, s_max;

@@ -461,16 +461,6 @@ static struct dsim_pll_features *dsim_of_get_pll_features(
 	pll_features->fvco_min = range64[0];
 	pll_features->fvco_max = range64[1];
 
-	if (of_property_read_u32(np, "te-idle", &pll_features->te_idle) < 0) {
-		dsim_err(dsim, "%s failed to get te-idle\n", __func__);
-		goto read_node_fail;
-	}
-
-	if (of_property_read_u32(np, "te-var", &pll_features->te_var) < 0) {
-		dsim_err(dsim, "%s failed to get te-var\n", __func__);
-		goto read_node_fail;
-	}
-
 	if (of_property_read_u32_array(np, "p-range", range32, 2) < 0) {
 		dsim_err(dsim, "%s failed to get p-range\n", __func__);
 		goto read_node_fail;
@@ -503,8 +493,6 @@ static struct dsim_pll_features *dsim_of_get_pll_features(
 		  pll_features->fout_min, pll_features->fout_max);
 	dsim_debug(dsim, "pll features: vco (%llu, %llu)\n",
 		  pll_features->fvco_min, pll_features->fout_max);
-	dsim_debug(dsim, "te idle %u, te var %u\n", pll_features->te_idle,
-		  pll_features->te_var);
 	dsim_debug(dsim, "pll limits: p(%u, %u), m(%u, %u), s(%u, %u), k(%u)\n",
 		  pll_features->p_min, pll_features->p_max,
 		  pll_features->m_min, pll_features->m_max,
@@ -613,6 +601,15 @@ static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 	p_timing->hbp = vm.hback_porch;
 	p_timing->hsa = vm.hsync_len;
 	p_timing->vrefresh = drm_mode_vrefresh(mode);
+	if (exynos_mode->underrun_param) {
+		p_timing->max_vrefresh = exynos_mode->underrun_param->max_vrefresh;
+		p_timing->te_idle_us = exynos_mode->underrun_param->te_idle_us;
+		p_timing->te_var = exynos_mode->underrun_param->te_var;
+	} else {
+		p_timing->max_vrefresh = p_timing->vrefresh;
+		pr_warn("%s: underrun_param for mode " DRM_MODE_FMT
+			" not specified", __func__, DRM_MODE_ARG(mode));
+	}
 
 	/* TODO: This hard coded information will be defined in device tree */
 	config->mres_mode = 0;
@@ -1560,7 +1557,6 @@ static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun,
 			      uint32_t hs_clock_mhz)
 {
-	const struct dsim_pll_features *pll_features = dsim->pll_params->features;
 	const struct dsim_reg_config *config = &dsim->config;
 	uint32_t lanes = config->data_lane_cnt;
 	uint32_t number_of_transfer;
@@ -1580,8 +1576,8 @@ static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun
 
 	/* max time to transfer one frame, in the unit of nanosecond */
 	max_frame_time = NSEC_PER_SEC * 100 /
-		(config->p_timing.vrefresh * (100 + pll_features->te_var)) -
-		NSEC_PER_USEC * pll_features->te_idle;
+		(config->p_timing.max_vrefresh * (100 + config->p_timing.te_var)) -
+		NSEC_PER_USEC * config->p_timing.te_idle_us;
 	/* one frame pixel data (bytes) */
 	frame_data = number_of_transfer * w_threshold * config->bpp / 8;
 	/* packet header (bytes) */
@@ -1598,8 +1594,7 @@ static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun
 
 	max_lp_time = max_frame_time - min_frame_transfer_time;
 	/* underrun unit is 100 wclk, round up */
-	*underrun = (uint32_t)
-			DIV_ROUND_UP(max_lp_time * wclk / NSEC_PER_SEC, 100);
+	*underrun = (uint32_t) DIV_ROUND_UP(max_lp_time * wclk / NSEC_PER_SEC, 100);
 
 	return 0;
 }
