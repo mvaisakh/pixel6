@@ -26,6 +26,7 @@
 
 #include <decon_cal.h>
 
+#include "exynos_drm_connector.h"
 #include "exynos_drm_dqe.h"
 
 #define MAX_CRTC	3
@@ -206,7 +207,7 @@ struct exynos_drm_plane_config {
  */
 struct exynos_drm_crtc;
 struct exynos_drm_crtc_ops {
-	void (*enable)(struct exynos_drm_crtc *crtc);
+	void (*enable)(struct exynos_drm_crtc *crtc, struct drm_crtc_state *old_state);
 	void (*disable)(struct exynos_drm_crtc *crtc);
 	int (*enable_vblank)(struct exynos_drm_crtc *crtc);
 	void (*disable_vblank)(struct exynos_drm_crtc *crtc);
@@ -316,6 +317,7 @@ struct exynos_drm_private {
 	spinlock_t		lock;
 	wait_queue_head_t	wait;
 
+	struct exynos_drm_connector_properties connector_props;
 	struct drm_private_obj	obj;
 };
 

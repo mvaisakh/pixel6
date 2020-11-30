@@ -664,7 +664,7 @@ static void dpu_bts_init(struct decon_device *decon)
 	exynos_pm_qos_add_request(&decon->bts.disp_qos,
 					PM_QOS_DISPLAY_THROUGHPUT, 0);
 
-	for (i = 0; i < MAX_WIN_PER_DECON; ++i) { /* dma type order */
+	for (i = 0; i < decon->dpp_cnt; ++i) { /* dma type order */
 		decon->bts.bw[i].ch_num = decon->dpp[DPU_DMA2CH(i)]->port;
 		DPU_INFO_BTS("IDMA_TYPE(%d) CH(%d) Port(%d)\n", i,
 				DPU_DMA2CH(i), decon->bts.bw[i].ch_num);

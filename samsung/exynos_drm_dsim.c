@@ -48,6 +48,9 @@
 
 #include <regs-dsim.h>
 
+#include <trace/dpu_trace.h>
+
+#include "exynos_drm_connector.h"
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_decon.h"
 #include "exynos_drm_dsim.h"
@@ -458,16 +461,6 @@ static struct dsim_pll_features *dsim_of_get_pll_features(
 	pll_features->fvco_min = range64[0];
 	pll_features->fvco_max = range64[1];
 
-	if (of_property_read_u32(np, "te-idle", &pll_features->te_idle) < 0) {
-		dsim_err(dsim, "%s failed to get te-idle\n", __func__);
-		goto read_node_fail;
-	}
-
-	if (of_property_read_u32(np, "te-var", &pll_features->te_var) < 0) {
-		dsim_err(dsim, "%s failed to get te-var\n", __func__);
-		goto read_node_fail;
-	}
-
 	if (of_property_read_u32_array(np, "p-range", range32, 2) < 0) {
 		dsim_err(dsim, "%s failed to get p-range\n", __func__);
 		goto read_node_fail;
@@ -500,8 +493,6 @@ static struct dsim_pll_features *dsim_of_get_pll_features(
 		  pll_features->fout_min, pll_features->fout_max);
 	dsim_debug(dsim, "pll features: vco (%llu, %llu)\n",
 		  pll_features->fvco_min, pll_features->fout_max);
-	dsim_debug(dsim, "te idle %u, te var %u\n", pll_features->te_idle,
-		  pll_features->te_var);
 	dsim_debug(dsim, "pll limits: p(%u, %u), m(%u, %u), s(%u, %u), k(%u)\n",
 		  pll_features->p_min, pll_features->p_max,
 		  pll_features->m_min, pll_features->m_max,
@@ -592,9 +583,9 @@ getnode_fail:
 }
 
 static void dsim_update_config_for_mode(struct dsim_reg_config *config,
-					const struct drm_display_mode *mode)
+					const struct drm_display_mode *mode,
+					const struct exynos_display_mode *exynos_mode)
 {
-	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
 	struct dpu_panel_timing *p_timing = &config->p_timing;
 	struct videomode vm;
 
@@ -610,21 +601,27 @@ static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 	p_timing->hbp = vm.hback_porch;
 	p_timing->hsa = vm.hsync_len;
 	p_timing->vrefresh = drm_mode_vrefresh(mode);
+	if (exynos_mode->underrun_param) {
+		p_timing->max_vrefresh = exynos_mode->underrun_param->max_vrefresh;
+		p_timing->te_idle_us = exynos_mode->underrun_param->te_idle_us;
+		p_timing->te_var = exynos_mode->underrun_param->te_var;
+	} else {
+		p_timing->max_vrefresh = p_timing->vrefresh;
+		pr_warn("%s: underrun_param for mode " DRM_MODE_FMT
+			" not specified", __func__, DRM_MODE_ARG(mode));
+	}
 
 	/* TODO: This hard coded information will be defined in device tree */
 	config->mres_mode = 0;
-
-	if (!mode_priv)
-		return;
-
-	config->mode = (mode_priv->mode_flags & MIPI_DSI_MODE_VIDEO) ?
+	config->mode = (exynos_mode->mode_flags & MIPI_DSI_MODE_VIDEO) ?
 				DSIM_VIDEO_MODE : DSIM_COMMAND_MODE;
+	config->bpp = exynos_mode->bpc * 3;
 
-	config->dsc.enabled = mode_priv->dsc.enabled;
+	config->dsc.enabled = exynos_mode->dsc.enabled;
 	if (config->dsc.enabled) {
-		config->dsc.dsc_count = mode_priv->dsc.dsc_count;
-		config->dsc.slice_count = mode_priv->dsc.slice_count;
-		config->dsc.slice_height = mode_priv->dsc.slice_height;
+		config->dsc.dsc_count = exynos_mode->dsc.dsc_count;
+		config->dsc.slice_count = exynos_mode->dsc.slice_count;
+		config->dsc.slice_height = exynos_mode->dsc.slice_height;
 		config->dsc.slice_width = DIV_ROUND_UP(
 				config->p_timing.hactive,
 				config->dsc.slice_count);
@@ -632,14 +629,16 @@ static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 }
 
 static void dsim_set_display_mode(struct dsim_device *dsim,
-				  const struct drm_display_mode *mode)
+				  const struct drm_display_mode *mode,
+				  const struct exynos_display_mode *exynos_mode)
 {
 	if (!dsim->dsi_device)
 		return;
 
+	mutex_lock(&dsim->state_lock);
 	dsim->config.data_lane_cnt = dsim->dsi_device->lanes;
 
-	dsim_update_config_for_mode(&dsim->config, mode);
+	dsim_update_config_for_mode(&dsim->config, mode, exynos_mode);
 
 	dsim_set_clock_mode(dsim, mode);
 
@@ -650,15 +649,17 @@ static void dsim_set_display_mode(struct dsim_device *dsim,
 			dsim->config.dsc.slice_count,
 			dsim->config.dsc.slice_width,
 			dsim->config.dsc.slice_height);
+	mutex_unlock(&dsim->state_lock);
 }
 
-static void dsim_mode_set(struct drm_encoder *encoder,
-				struct drm_display_mode *mode,
-				struct drm_display_mode *adjusted_mode)
+static void dsim_atomic_mode_set(struct drm_encoder *encoder, struct drm_crtc_state *crtc_state,
+				 struct drm_connector_state *conn_state)
 {
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
+	const struct exynos_drm_connector_state *exynos_conn_state =
+		to_exynos_connector_state(conn_state);
 
-	dsim_set_display_mode(dsim, adjusted_mode);
+	dsim_set_display_mode(dsim, &crtc_state->adjusted_mode, &exynos_conn_state->exynos_mode);
 }
 
 static enum drm_mode_status dsim_mode_valid(struct drm_encoder *encoder,
@@ -678,7 +679,8 @@ static enum drm_mode_status dsim_mode_valid(struct drm_encoder *encoder,
  * need to change dsim configuration.
  */
 static bool dsim_mode_is_seamless(const struct dsim_device *dsim,
-				  const struct drm_display_mode *mode)
+				  const struct drm_display_mode *mode,
+				  const struct exynos_display_mode *exynos_mode)
 {
 	struct dsim_reg_config new_config = dsim->config;
 
@@ -687,7 +689,7 @@ static bool dsim_mode_is_seamless(const struct dsim_device *dsim,
 		return false;
 	}
 
-	dsim_update_config_for_mode(&new_config, mode);
+	dsim_update_config_for_mode(&new_config, mode, exynos_mode);
 	if (dsim->config.mode != new_config.mode) {
 		dsim_debug(dsim, "op mode change not allowed seamlessly\n");
 		return false;
@@ -703,25 +705,27 @@ static bool dsim_mode_is_seamless(const struct dsim_device *dsim,
 
 static int dsim_atomic_check(struct drm_encoder *encoder,
 			     struct drm_crtc_state *crtc_state,
-			     struct drm_connector_state *state)
+			     struct drm_connector_state *connector_state)
 {
 	struct drm_display_mode *mode;
 	const struct dsim_device *dsim = encoder_to_dsim(encoder);
-	const struct exynos_display_mode *mode_priv;
+	struct exynos_drm_connector_state *exynos_conn_state;
 
 	if (crtc_state->mode_changed) {
-		mode = &crtc_state->adjusted_mode;
-		mode_priv = drm_mode_to_exynos(mode);
-		if (!mode_priv) {
-			dsim_warn(dsim, "%s: mode %s is not supported\n",
-				  __func__, mode->name);
+		if (!is_exynos_drm_connector(connector_state->connector)) {
+			dsim_warn(dsim, "%s: mode set is only supported w/exynos connector\n",
+				  __func__);
 			return -EINVAL;
 		}
 
-		if (exynos_drm_mode_is_seamless(mode) && !dsim_mode_is_seamless(dsim, mode)) {
+		exynos_conn_state = to_exynos_connector_state(connector_state);
+		mode = &crtc_state->adjusted_mode;
+
+		if (exynos_conn_state->seamless_possible &&
+		    !dsim_mode_is_seamless(dsim, mode, &exynos_conn_state->exynos_mode)) {
 			dsim_warn(dsim, "%s: seamless mode switch not supported for %s\n",
 				  __func__, mode->name);
-			mode->private_flags &= ~EXYNOS_DISPLAY_MODE_FLAG_SEAMLESS;
+			exynos_conn_state->seamless_possible = false;
 		}
 	}
 
@@ -730,7 +734,7 @@ static int dsim_atomic_check(struct drm_encoder *encoder,
 
 static const struct drm_encoder_helper_funcs dsim_encoder_helper_funcs = {
 	.mode_valid = dsim_mode_valid,
-	.mode_set = dsim_mode_set,
+	.atomic_mode_set = dsim_atomic_mode_set,
 	.enable = dsim_enable,
 	.disable = dsim_disable,
 	.atomic_check = dsim_atomic_check,
@@ -967,9 +971,11 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 	}
 
 	if (int_src & DSIM_INTSRC_UNDER_RUN) {
+		DPU_ATRACE_INT("DPU_UNDERRUN", 1);
 		dsim_underrun_info(dsim);
 		if (decon)
 			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
+		DPU_ATRACE_INT("DPU_UNDERRUN", 0);
 	}
 
 	if (int_src & DSIM_INTSRC_VT_STATUS) {
@@ -1482,17 +1488,6 @@ static const struct mipi_dsi_host_ops dsim_host_ops = {
 	.transfer = dsim_host_transfer,
 };
 
-static const struct drm_display_mode *dsim_get_current_mode(
-						const struct dsim_device *dsim)
-{
-	struct drm_crtc *crtc = dsim->encoder.crtc;
-
-	if (crtc && crtc->state)
-		return &crtc->state->adjusted_mode;
-
-	return NULL;
-}
-
 static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 			 struct stdphy_pms *pms, unsigned int hs_clock_mhz)
 {
@@ -1559,12 +1554,11 @@ static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 	return 0;
 }
 
-static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
-			      const struct drm_display_mode *mode,
-			      uint32_t lanes, uint32_t *underrun,
+static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun,
 			      uint32_t hs_clock_mhz)
 {
-	uint32_t bpp;
+	const struct dsim_reg_config *config = &dsim->config;
+	uint32_t lanes = config->data_lane_cnt;
 	uint32_t number_of_transfer;
 	uint32_t w_threshold;
 	uint64_t wclk;
@@ -1574,25 +1568,18 @@ static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
 	uint64_t min_frame_transfer_time;
 	uint64_t max_lp_time;
 
-	const struct exynos_display_mode *mode_priv = drm_mode_to_exynos(mode);
-
-	if (!mode_priv) {
-		/* dsc, bpc are needed for underrun calculation */
-		return -ENODEV;
-	}
-
-	bpp = mode_priv->bpc * 3;
-	number_of_transfer = mode->vdisplay;
-	w_threshold = (mode_priv->dsc.enabled ?
-		       mode->hdisplay / 3 : mode->hdisplay);
+	number_of_transfer = config->p_timing.vactive;
+	w_threshold = config->p_timing.hactive;
+	if (config->dsc.enabled)
+		w_threshold /= 3;
 	wclk = (uint64_t) hs_clock_mhz * 1000000 / 16;
 
 	/* max time to transfer one frame, in the unit of nanosecond */
 	max_frame_time = NSEC_PER_SEC * 100 /
-		(drm_mode_vrefresh(mode) * (100 + pll_features->te_var)) -
-		NSEC_PER_USEC * pll_features->te_idle;
+		(config->p_timing.max_vrefresh * (100 + config->p_timing.te_var)) -
+		NSEC_PER_USEC * config->p_timing.te_idle_us;
 	/* one frame pixel data (bytes) */
-	frame_data = number_of_transfer * w_threshold * bpp / 8;
+	frame_data = number_of_transfer * w_threshold * config->bpp / 8;
 	/* packet header (bytes) */
 	packet_header = number_of_transfer * 7;
 	/* minimum time to transfer one frame, in nanosecond */
@@ -1607,8 +1594,7 @@ static int dsim_calc_underrun(struct dsim_pll_features *pll_features,
 
 	max_lp_time = max_frame_time - min_frame_transfer_time;
 	/* underrun unit is 100 wclk, round up */
-	*underrun = (uint32_t)
-			DIV_ROUND_UP(max_lp_time * wclk / NSEC_PER_SEC, 100);
+	*underrun = (uint32_t) DIV_ROUND_UP(max_lp_time * wclk / NSEC_PER_SEC, 100);
 
 	return 0;
 }
@@ -1617,7 +1603,6 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 {
 	int ret;
 	struct stdphy_pms pms;
-	const struct drm_display_mode *mode;
 	uint32_t lp_underrun = 0;
 	struct dsim_pll_param *pll_param;
 
@@ -1631,18 +1616,8 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 		return -EINVAL;
 	}
 
-	drm_modeset_lock(&dsim->encoder.dev->mode_config.connection_mutex,
-			 NULL);
 	mutex_lock(&dsim->state_lock);
-	mode = dsim_get_current_mode(dsim);
-	if (!mode) {
-		ret = -ENODEV;
-		goto out;
-	}
-
-	ret = dsim_calc_underrun(dsim->pll_params->features, mode,
-				 dsim->config.data_lane_cnt, &lp_underrun,
-				 hs_clock);
+	ret = dsim_calc_underrun(dsim, &lp_underrun, hs_clock);
 	if (ret < 0) {
 		dsim_err(dsim, "Failed to update underrun\n");
 		goto out;
@@ -1678,7 +1653,6 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 
 out:
 	mutex_unlock(&dsim->state_lock);
-	drm_modeset_unlock(&dsim->encoder.dev->mode_config.connection_mutex);
 
 	return ret;
 }

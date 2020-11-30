@@ -14,6 +14,7 @@ exynos-drm-$(CONFIG_SOC_GS101) += cal_9845/hdr_reg.o
 
 exynos-drm-y += exynos_drm_drv.o
 exynos-drm-y += exynos_drm_crtc.o
+exynos-drm-y += exynos_drm_connector.o
 exynos-drm-y += exynos_drm_fb.o
 exynos-drm-y += exynos_drm_format.o
 exynos-drm-y += exynos_drm_gem.o

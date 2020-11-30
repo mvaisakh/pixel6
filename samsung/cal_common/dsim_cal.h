@@ -162,6 +162,7 @@ struct dsim_reg_config {
 	struct exynos_dsc	dsc;
 	unsigned int		mres_mode;
 	unsigned int		cmd_underrun_cnt[MAX_RES_NUMBER];
+	unsigned int		bpp;
 };
 
 void dsim_regs_desc_init(void __iomem *reg_base, const char *name,

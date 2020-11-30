@@ -578,6 +578,9 @@ static int exynos_drm_bind(struct device *dev)
 
 	exynos_drm_mode_config_init(drm);
 
+	/* create properties ahead of binding to make them available to all drivers */
+	exynos_drm_connector_create_properties(drm);
+
 	priv_state = kzalloc(sizeof(*priv_state), GFP_KERNEL);
 	if (!priv_state) {
 		ret = -ENOMEM;

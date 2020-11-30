@@ -431,7 +431,7 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 			}
 
 			decon->bts.ops->update_bw(decon, true);
-			DPU_EVENT_LOG(DPU_EVT_DECON_RSC_OCCUPANCY, 0, NULL);
+			DPU_EVENT_LOG(DPU_EVT_DECON_RSC_OCCUPANCY, decon->id, NULL);
 		}
 
 		if (!new_crtc_state->active && new_crtc_state->active_changed)
