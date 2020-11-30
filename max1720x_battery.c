@@ -118,6 +118,24 @@ struct max1720x_history {
 	u16 *history;
 };
 
+#pragma pack(1)
+struct max17x0x_eeprom_history {
+	u16 tempco;
+	u16 rcomp0;
+	u8 timerh;
+	unsigned fullcapnom:10;
+	unsigned fullcaprep:10;
+	unsigned mixsoc:6;
+	unsigned vfsoc:6;
+	unsigned maxvolt:4;
+	unsigned minvolt:4;
+	unsigned maxtemp:4;
+	unsigned mintemp:4;
+	unsigned maxchgcurr:4;
+	unsigned maxdischgcurr:4;
+};
+#pragma pack()
+
 struct max1720x_chip {
 	struct device *dev;
 	bool irq_shared;
@@ -4330,6 +4348,67 @@ static int max17x0x_storage_info(gbms_tag_t tag, size_t *addr, size_t *count,
 	return 0;
 }
 
+#define REG_HALF_HIGH(reg)     ((reg >> 8) & 0x00FF)
+#define REG_HALF_LOW(reg)      (reg & 0x00FF)
+static int max17x0x_collect_history_data(void *buff, size_t size,
+					 struct max1720x_chip *chip)
+{
+	struct max17x0x_eeprom_history hist = { 0 };
+	u16 data, designcap;
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_TEMPCO, &data) == 0)
+		hist.tempco = data;
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_RCOMP0, &data) == 0)
+		hist.rcomp0 = data;
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_TIMERH, &data) == 0) {
+		/* Convert LSB from 3.2hours(192min) to 5days(7200min) */
+		hist.timerh = data * 192 / 7200;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_DESIGNCAP, &designcap) == 0) {
+		/* multiply by 100 to convert from mAh to %, LSB 0.125% */
+		if (REGMAP_READ(&chip->regmap, MAX1720X_FULLCAPNOM, &data) == 0)
+			hist.fullcapnom = data * 800 / designcap;
+		if (REGMAP_READ(&chip->regmap, MAX1720X_FULLCAPREP, &data) == 0)
+			hist.fullcaprep = data * 800 / designcap;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_MIXSOC, &data) == 0) {
+		/* Convert LSB from 1% to 2% */
+		hist.mixsoc = REG_HALF_HIGH(data) / 2;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_VFSOC, &data) == 0) {
+		/* Convert LSB from 1% to 2% */
+		hist.vfsoc = REG_HALF_HIGH(data) / 2;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_MAXMINVOLT, &data) == 0) {
+		/* LSB is 20mV, store values from 4.2V min */
+		hist.maxvolt = (REG_HALF_HIGH(data) * 20 - 4200) / 20;
+		/* Convert LSB from 20mV to 10mV, store values from 2.5V min */
+		hist.minvolt = (REG_HALF_LOW(data) * 20 - 2500) / 10;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_MAXMINTEMP, &data) == 0) {
+		/* Convert LSB from 1degC to 3degC, store values from 25degC min */
+		hist.maxtemp = (REG_HALF_HIGH(data) - 25) / 3;
+		/* Convert LSB from 1degC to 3degC, store values from -20degC min */
+		hist.mintemp = (REG_HALF_LOW(data) + 20) / 3;
+	}
+
+	if (REGMAP_READ(&chip->regmap, MAX1720X_MAXMINCURR, &data) == 0) {
+		/* Convert LSB from 0.08A to 0.5A */
+		hist.maxchgcurr = REG_HALF_HIGH(data) * 8 / 50;
+		hist.maxdischgcurr = REG_HALF_LOW(data) * 8 / 50;
+	}
+
+	memcpy(buff, &hist, sizeof(hist));
+	return (size_t)sizeof(hist);
+}
+
 /*
  * The standard device call this with !data && !size && index=0 on start and
  * !data && !size && index<0 on stop. The call on start free and reload the
@@ -4566,7 +4645,8 @@ static struct gbms_storage_desc max17x0x_storage_dsc = {
 
 static int max17x0x_prop_iter(int index, gbms_tag_t *tag, void *ptr)
 {
-	static gbms_tag_t keys[] = {GBMS_TAG_BRES, GBMS_TAG_GCFE};
+	static gbms_tag_t keys[] = {GBMS_TAG_BRES, GBMS_TAG_GCFE,
+				    GBMS_TAG_CLHI};
 	const int count = ARRAY_SIZE(keys);
 
 	if (index >= 0 && index < count) {
@@ -4607,6 +4687,10 @@ static int max17x0x_prop_read(gbms_tag_t tag, void *buff, size_t size,
 			return ret;
 
 		*(u16 *)buff = ret & 0xffff;
+		break;
+
+	case GBMS_TAG_CLHI:
+		ret = max17x0x_collect_history_data(buff, size, chip);
 		break;
 
 	default:
