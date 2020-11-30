@@ -289,6 +289,12 @@ static bool s6e3hc2_is_mode_seamless(const struct exynos_panel *ctx,
 	return drm_mode_equal_no_clocks(&ctx->current_mode->mode, &pmode->mode);
 }
 
+static const struct exynos_display_underrun_param wqhd_underrun_param = {
+	.te_idle_us = 1000,
+	.te_var = 1,
+	.max_vrefresh = 90,
+};
+
 static const struct exynos_panel_mode s6e3hc2_wqhd_modes[] = {
 	{
 		/* 1440x3040 @ 60Hz */
@@ -316,6 +322,7 @@ static const struct exynos_panel_mode s6e3hc2_wqhd_modes[] = {
 				.slice_count = 2,
 				.slice_height = 40,
 			},
+			.underrun_param = &wqhd_underrun_param,
 		},
 	},
 	{
@@ -344,8 +351,15 @@ static const struct exynos_panel_mode s6e3hc2_wqhd_modes[] = {
 				.slice_count = 2,
 				.slice_height = 40,
 			},
+			.underrun_param = &wqhd_underrun_param,
 		},
 	}
+};
+
+static const struct exynos_display_underrun_param fhd_underrun_param = {
+	.te_idle_us = 1000,
+	.te_var = 1,
+	.max_vrefresh = 90,
 };
 
 static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
@@ -375,6 +389,7 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 				.slice_count = 2,
 				.slice_height = 65,
 			},
+			.underrun_param = &fhd_underrun_param,
 		},
 	},
 	{
@@ -403,6 +418,7 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 				.slice_count = 2,
 				.slice_height = 65,
 			},
+			.underrun_param = &fhd_underrun_param,
 		},
 	},
 };

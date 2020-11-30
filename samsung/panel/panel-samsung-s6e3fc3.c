@@ -225,6 +225,12 @@ static bool s6e3fc3_is_mode_seamless(const struct exynos_panel *ctx,
 	return drm_mode_equal_no_clocks(&ctx->current_mode->mode, &pmode->mode);
 }
 
+static const struct exynos_display_underrun_param underrun_param = {
+	.te_idle_us = 1000,
+	.te_var = 1,
+	.max_vrefresh = 90,
+};
+
 static const struct exynos_panel_mode s6e3fc3_modes[] = {
 	{
 		/* 1080x2400 @ 60Hz */
@@ -252,6 +258,7 @@ static const struct exynos_panel_mode s6e3fc3_modes[] = {
 				.slice_count = 2,
 				.slice_height = 48,
 			},
+			.underrun_param = &underrun_param,
 		},
 	},
 	{
@@ -280,6 +287,7 @@ static const struct exynos_panel_mode s6e3fc3_modes[] = {
 				.slice_count = 2,
 				.slice_height = 48,
 			},
+			.underrun_param = &underrun_param,
 		},
 	},
 };
@@ -312,6 +320,7 @@ static const struct exynos_panel_mode s6e3fc3_lp_mode = {
 			.slice_count = 2,
 			.slice_height = 48,
 		},
+		.underrun_param = &underrun_param,
 		.is_lp_mode = true,
 	}
 };
