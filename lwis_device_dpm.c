@@ -68,7 +68,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
 		/* convert value to KHz */
-		ret = lwis_platform_update_qos(target_dev, qos_setting->frequency_hz / 1000,
+		ret = lwis_platform_update_qos(target_dev, (int)(qos_setting->frequency_hz / 1000),
 					       qos_setting->clock_family);
 		if (ret) {
 			dev_err(lwis_dev->dev,
