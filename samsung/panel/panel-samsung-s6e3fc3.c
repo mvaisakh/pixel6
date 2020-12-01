@@ -9,6 +9,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <drm/drm_vblank.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <video/mipi_display.h>
@@ -208,6 +209,9 @@ static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool local_hbm_en)
 {
+	struct drm_mode_config *config;
+	struct drm_crtc *crtc = NULL;
+
 	if (exynos_panel->local_hbm.enabled == local_hbm_en)
 		return;
 
@@ -215,8 +219,16 @@ static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 	exynos_panel->local_hbm.enabled = local_hbm_en;
 	s6e3fc3_write_display_mode(exynos_panel, &exynos_panel->current_mode->mode);
 	mutex_unlock(&exynos_panel->local_hbm.lock);
-	/* TODO: need to wait two drm_crtc_wait_one_vblank() */
 
+	config = &exynos_panel->exynos_connector.base.dev->mode_config;
+	drm_modeset_lock(&config->connection_mutex, NULL);
+	if (exynos_panel->exynos_connector.base.state)
+		crtc = exynos_panel->exynos_connector.base.state->crtc;
+	drm_modeset_unlock(&config->connection_mutex);
+	if (crtc) {
+		drm_crtc_wait_one_vblank(crtc);
+		drm_crtc_wait_one_vblank(crtc);
+	}
 }
 
 static void s6e3fc3_mode_set(struct exynos_panel *ctx,
