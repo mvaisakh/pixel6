@@ -588,6 +588,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	lwis_transaction_client_cleanup(lwis_client);
 
 	mutex_lock(&lwis_dev->client_lock);
+	lwis_client_event_states_clear(lwis_client);
 	if (lwis_dev->enabled > 1) {
 		lwis_dev->enabled--;
 		lwis_client->is_enabled = false;
@@ -604,6 +605,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 		dev_err(lwis_dev->dev, "Failed to power down device\n");
 		goto error_locked;
 	}
+	lwis_device_event_states_clear_locked(lwis_dev);
 
 	lwis_dev->enabled--;
 	lwis_client->is_enabled = false;
