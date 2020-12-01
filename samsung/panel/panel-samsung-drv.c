@@ -46,6 +46,8 @@ static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
 
 static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
 					enum exynos_panel_state panel_state);
+static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
+					   const char **out_buf);
 
 static inline bool in_tui(struct exynos_panel *ctx)
 {
@@ -617,14 +619,48 @@ static ssize_t panel_name_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", dsi->name);
 }
 
+static ssize_t gamma_store(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	const struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	const struct exynos_panel_funcs *funcs;
+	size_t len, ret;
+	char *input_buf;
+	const char *out_buf;
+
+	if (!ctx->enabled || !ctx->initialized)
+		return -EPERM;
+
+	funcs = ctx->desc->exynos_panel_func;
+	if (!funcs || !funcs->gamma_store)
+		return -EOPNOTSUPP;
+
+	input_buf = kstrndup(buf, count, GFP_KERNEL);
+	if (!input_buf)
+		return -ENOMEM;
+
+	len = exynos_panel_parse_byte_buf(input_buf, count, &out_buf);
+	kfree(input_buf);
+	if (len <= 0)
+		return len;
+
+	ret = funcs->gamma_store(ctx, out_buf, len);
+	kfree(out_buf);
+
+	return ret ? : count;
+}
+
 static DEVICE_ATTR_RO(serial_number);
 static DEVICE_ATTR_RO(panel_extinfo);
 static DEVICE_ATTR_RO(panel_name);
+static DEVICE_ATTR_WO(gamma);
 
 static const struct attribute *panel_attrs[] = {
 	&dev_attr_serial_number.attr,
 	&dev_attr_panel_extinfo.attr,
 	&dev_attr_panel_name.attr,
+	&dev_attr_gamma.attr,
 	NULL
 };
 
@@ -957,6 +993,27 @@ static ssize_t parse_byte_buf(u8 *out, size_t len, char *src)
 	return rc ? : i;
 }
 
+static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
+					   const char **out_buf)
+{
+	size_t len = (input_len + 1) / 2;
+	size_t rc;
+	char *out;
+
+	out = kzalloc(len, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	rc = parse_byte_buf(out, len, input_str);
+	if (rc <= 0) {
+		kfree(out);
+		return rc;
+	}
+
+	*out_buf = out;
+
+	return rc;
+}
 
 struct exynos_dsi_reg_data {
 	struct mipi_dsi_device *dsi;

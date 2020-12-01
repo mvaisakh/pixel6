@@ -150,6 +150,28 @@ struct exynos_panel_funcs {
 	 */
 	void (*print_gamma)(struct seq_file *seq,
 			    const struct drm_display_mode *mode);
+
+	/**
+	 * @gamma_store:
+	 *
+	 * This callback is used to store the user-provided gamma table.
+	 * The user-provided table should include FPS, register, register
+	 * data size and gamma data.
+	 *
+	 * The expected format:
+	 * [FPS1]
+	 * [register1]
+	 * [register1 data size]
+	 * [gamma data]
+	 * [register2]
+	 * [register2 data size]
+	 * [gamma data]
+	 * [FPS2]
+	 * [register1]
+	 * .....
+	 */
+	ssize_t (*gamma_store)(struct exynos_panel *exynos_panel,
+			       const char *buf, size_t len);
 };
 
 /**
