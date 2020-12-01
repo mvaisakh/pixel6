@@ -61,7 +61,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 	int i = 0;
 	int ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
-	static size_t pt_size_kb[NUM_PT] = { 512, 768, 1024, 1024, 2048, 3072 };
+	static size_t pt_size_kb[NUM_PT] = { 512, 1024, 1024, 1024, 2048, 3072 };
 
 	if (!lwis_dev) {
 		pr_err("LWIS device cannot be NULL\n");
