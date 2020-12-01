@@ -34,6 +34,12 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting 
  */
 int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *qos_setting);
 
+/*
+ *  lwis_dpm_read_clock: read current IP core clock for given lwis device.
+ *  The unit is hz.
+ */
+uint32_t lwis_dpm_read_clock(struct lwis_device *lwis_dev);
+
 int lwis_dpm_device_deinit(void);
 
 #endif /* LWIS_DPM_DEVICE_H_ */

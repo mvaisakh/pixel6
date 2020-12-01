@@ -210,3 +210,15 @@ int lwis_dpm_device_deinit(void)
 	platform_driver_unregister(&lwis_driver);
 	return 0;
 }
+
+uint32_t lwis_dpm_read_clock(struct lwis_device *lwis_dev)
+{
+	uint32_t clock = 0;
+
+	if (!lwis_dev->clocks) {
+		dev_err(lwis_dev->dev, "%s clock not defined", lwis_dev->name);
+		return -ENODEV;
+	}
+	clock = clk_get_rate(lwis_dev->clocks->clk[0].clk);
+	return clock;
+}
