@@ -1375,7 +1375,7 @@ static int max77759_wcin_prop_is_writeable(struct power_supply *psy,
 
 static const struct power_supply_desc max77759_wcin_psy_desc = {
 	.name = "dc",
-	.type = POWER_SUPPLY_TYPE_WIRELESS_EXT,
+	.type = POWER_SUPPLY_TYPE_WIRELESS,
 	.properties = max77759_wcin_props,
 	.num_properties = ARRAY_SIZE(max77759_wcin_props),
 	.get_property = max77759_wcin_get_prop,

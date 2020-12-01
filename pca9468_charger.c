@@ -3873,7 +3873,7 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 
 	/*
 	 * TODO: determine if we need to use the wireless power supply
-	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS_EXT) {
+	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS) {
 	 *	pca9468->ta_type = TA_TYPE_WIRELESS;
 	 *	pr_info("%s: The current power supply type is WC,
 	 * 		ta_type=%d\n", __func__, pca9468->ta_type);
