@@ -481,8 +481,11 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 				new_crtc_state);
 
 		if (new_crtc_state->active || new_crtc_state->active_changed) {
-			hibernation_block_exit(decon->hibernation);
+			const bool was_hibernating = hibernation_block_exit(decon->hibernation);
+
 			hibernation_crtc_mask |= drm_crtc_mask(crtc);
+			if (was_hibernating)
+				WARN_ON(drm_atomic_add_affected_planes(old_state, crtc));
 		}
 
 		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {

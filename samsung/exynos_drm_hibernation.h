@@ -28,7 +28,7 @@ struct writeback_device;
 
 struct exynos_hibernation_funcs {
 	void (*enter)(struct exynos_hibernation *hiber);
-	void (*exit)(struct exynos_hibernation *hiber);
+	int (*exit)(struct exynos_hibernation *hiber);
 	bool (*check)(struct exynos_hibernation *hiber);
 };
 
@@ -57,7 +57,7 @@ static inline void hibernation_block(struct exynos_hibernation *hiber)
 
 	atomic_inc(&hiber->block_cnt);
 }
-void hibernation_block_exit(struct exynos_hibernation *hiber);
+bool hibernation_block_exit(struct exynos_hibernation *hiber);
 
 static inline void hibernation_unblock(struct exynos_hibernation *hiber)
 {
