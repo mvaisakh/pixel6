@@ -495,8 +495,9 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev, int64_t event_
 		}
 
 		/* Reset hw event counter if hw event has been disabled */
-		if (!event_enabled)
+		if (!event_enabled) {
 			state->event_counter = 0;
+		}
 	}
 
 	/* Reset sw event counter when it's going to disable */

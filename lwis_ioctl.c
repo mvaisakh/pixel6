@@ -1095,6 +1095,8 @@ static int ioctl_event_unsubscribe(struct lwis_client *client, int64_t __user *m
 	int ret = 0;
 	int64_t event_id;
 	struct lwis_device *lwis_dev = client->lwis_dev;
+	struct lwis_device_event_state* event_state;
+	unsigned long flags;
 
 	ret = copy_from_user((void *)&event_id, (void __user *)msg, sizeof(event_id));
 	if (ret) {
@@ -1110,8 +1112,17 @@ static int ioctl_event_unsubscribe(struct lwis_client *client, int64_t __user *m
 
 	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(lwis_dev->top_dev, event_id,
 								 lwis_dev->id);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n", event_id);
+	}
+
+	/* Reset event counter */
+	event_state = lwis_device_event_state_find(lwis_dev, event_id);
+	if (event_state) {
+		spin_lock_irqsave(&lwis_dev->lock, flags);
+		event_state->event_counter = 0;
+		spin_unlock_irqrestore(&lwis_dev->lock, flags);
+	}
 
 	return ret;
 }
