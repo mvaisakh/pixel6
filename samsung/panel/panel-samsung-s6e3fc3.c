@@ -367,12 +367,44 @@ static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.mode_set = s6e3fc3_mode_set,
 };
 
+const struct brightness_capability s6e3fc3_brightness_capability = {
+	.normal = {
+		.nits = {
+			.min = 2,
+			.max = 500,
+		},
+		.level = {
+			.min = 4,
+			.max = 2047,
+		},
+		.percentage = {
+			.min = 0,
+			.max = 80,
+		},
+	},
+	.hbm = {
+		.nits = {
+			.min = 550,
+			.max = 800,
+		},
+		.level = {
+			.min = 2389,
+			.max = 4095,
+		},
+		.percentage = {
+			.min = 80,
+			.max = 100,
+		},
+	},
+};
+
 const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.dsc_pps = PPS_SETTING,
 	.dsc_pps_len = ARRAY_SIZE(PPS_SETTING),
 	.data_lane_cnt = 4,
 	.max_brightness = 2047,
 	.dft_brightness = 1023,
+	.brt_capability = &s6e3fc3_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
 	.hdr_formats = BIT(2),
 	.max_luminance = 5400000,
