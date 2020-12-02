@@ -203,6 +203,7 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 	},
 };
 
+#define CALI_GAMMA_HEADER_SIZE	3
 #define S6E3HC2_GAMMA_BAND_LEN 45
 
 /**
@@ -242,7 +243,8 @@ struct s6e3hc2_panel {
 	struct kthread_worker worker;
 	struct task_struct *thread;
 	struct kthread_work gamma_work;
-	bool gamma_ready;
+	bool native_gamma_ready;
+	u8 num_of_cali_gamma;
 };
 
 #define to_spanel(ctx) \
@@ -564,7 +566,7 @@ static int s6e3hc2_gamma_read_tables(struct exynos_panel *ctx)
 	const struct drm_display_mode *mode;
 	int i, rc = 0;
 
-	if (spanel->gamma_ready)
+	if (spanel->native_gamma_ready)
 		return 0;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
@@ -583,7 +585,7 @@ static int s6e3hc2_gamma_read_tables(struct exynos_panel *ctx)
 		goto abort;
 	}
 
-	spanel->gamma_ready = true;
+	spanel->native_gamma_ready = true;
 abort:
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 
@@ -704,7 +706,7 @@ static void s6e3hc2_common_post_enable(struct exynos_panel *ctx)
 	backlight_update_status(ctx->bl);
 
 	kthread_flush_work(&spanel->gamma_work);
-	if (!spanel->gamma_ready)
+	if (!spanel->native_gamma_ready)
 		kthread_queue_work(&spanel->worker, &spanel->gamma_work);
 }
 
@@ -793,7 +795,7 @@ static void s6e3hc2_panel_init(struct exynos_panel *ctx)
 	if (!ctx->enabled)
 		return;
 
-	if (!spanel->gamma_ready)
+	if (!spanel->native_gamma_ready)
 		kthread_queue_work(&spanel->worker, &spanel->gamma_work);
 }
 
@@ -807,7 +809,7 @@ static void s6e3hc2_print_gamma(struct seq_file *seq,
 			s6e3hc2_get_mode_data(ctx, mode);
 	int i, j;
 
-	if (unlikely(!spanel->gamma_ready)) {
+	if (unlikely(!spanel->native_gamma_ready)) {
 		seq_puts(seq, "s6e3hc2 panel data not ready\n");
 		return;
 	}
@@ -831,6 +833,139 @@ static void s6e3hc2_print_gamma(struct seq_file *seq,
 		}
 		seq_puts(seq, "\n");
 	}
+}
+
+static int parse_payload_len(const u8 *payload, size_t len, size_t *out_size)
+{
+	size_t payload_len;
+
+	if (!out_size || len <= CALI_GAMMA_HEADER_SIZE)
+		return -EINVAL;
+
+	*out_size = payload_len = (payload[1] << 8) + payload[2];
+
+	return payload_len &&
+		(payload_len + CALI_GAMMA_HEADER_SIZE <= len) ? 0 : -EINVAL;
+}
+
+/* ID (1 byte) | payload size (2 bytes) | payload */
+static int s6e3hc2_check_gamma_payload(const u8 *src, size_t len)
+{
+	size_t total_len = 0;
+	int num_payload = 0;
+
+	if (!src)
+		return -EINVAL;
+
+	while (len > total_len) {
+		const u8 *payload = src + total_len;
+		size_t payload_len;
+		int rc;
+
+		rc = parse_payload_len(payload, len - total_len, &payload_len);
+		if (rc)
+			return -EINVAL;
+
+		total_len += CALI_GAMMA_HEADER_SIZE + payload_len;
+		num_payload++;
+	}
+
+	return num_payload;
+}
+
+static int s6e3hc2_overwrite_gamma_bands(struct exynos_panel *ctx, u8 **gamma_data,
+					 const u8 *src, size_t len)
+{
+	int i, num_of_reg;
+	size_t payload_len, read_len = 0;
+
+	if (!gamma_data || !src)
+		return -EINVAL;
+
+	num_of_reg = s6e3hc2_check_gamma_payload(src, len);
+	if (num_of_reg != (S6E3HC2_NUM_GAMMA_TABLES - 1)) {
+		dev_err(ctx->dev, "Invalid gamma bands\n");
+		return -EINVAL;
+	}
+
+	/* reg (1 byte) | band size (2 bytes) | band */
+	for (i = 0; i < num_of_reg; i++) {
+		const struct s6e3hc2_gamma_info *gamma_info =
+			&s6e3hc2_gamma_tables[i];
+		const u8 *payload = src + read_len;
+		const u8 cmd = *payload;
+		u8 *tmp_buf = gamma_data[i] + sizeof(cmd)
+				+ gamma_info->prefix_len;
+
+		parse_payload_len(payload, len - read_len, &payload_len);
+		if (gamma_info->cmd != cmd ||
+		    payload_len != (gamma_info->len - gamma_info->prefix_len)) {
+			dev_err(ctx->dev, "Failed to overwrite 0x%02X reg\n", cmd);
+			return -EINVAL;
+		}
+
+		memcpy(tmp_buf, payload + CALI_GAMMA_HEADER_SIZE, payload_len);
+		read_len = CALI_GAMMA_HEADER_SIZE + payload_len;
+	}
+
+	return 0;
+}
+
+static ssize_t s6e3hc2_overwrite_gamma_data(struct exynos_panel *ctx,
+					    const char *buf, size_t len)
+{
+	struct s6e3hc2_panel *spanel = to_spanel(ctx);
+	const u8 *payload;
+	u8 **old_gamma_data;
+	size_t payload_len;
+	int rc = 0, num_of_fps;
+	u8 cali_fps, count;
+	const struct exynos_panel_mode *pmode;
+
+	payload = buf;
+
+	if (unlikely(!payload))
+		return -EINVAL;
+
+	num_of_fps = s6e3hc2_check_gamma_payload(payload, len);
+	if (num_of_fps <= 0) {
+		dev_err(ctx->dev, "Invalid gamma data\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * 60Hz's gamma table and 90Hz's gamma table are the same size,
+	 * so we won't recalculate payload_len.
+	 */
+	parse_payload_len(payload, len, &payload_len);
+
+	/* FPS (1 byte) | gamma size (2 bytes) | gamma */
+	for (count = 0; count < num_of_fps; count++) {
+		cali_fps = *payload;
+		rc = find_gamma_data_for_refresh_rate(ctx,
+					cali_fps, &old_gamma_data);
+		if (rc) {
+			dev_err(ctx->dev, "Not support %ufps, err %d\n", cali_fps, rc);
+			return rc;
+		}
+		payload += CALI_GAMMA_HEADER_SIZE;
+		rc = s6e3hc2_overwrite_gamma_bands(ctx, old_gamma_data,
+							payload, payload_len);
+		if (rc) {
+			dev_err(ctx->dev, "Failed to overwrite gamma\n");
+			return rc;
+		}
+		payload += payload_len;
+	}
+
+	spanel->num_of_cali_gamma = count;
+
+	pmode = ctx->current_mode;
+	s6e3hc2_perform_switch(ctx, &pmode->mode);
+
+	dev_dbg(ctx->dev, "Finished overwriting gamma\n");
+
+	return rc;
 }
 
 static void s6e3hc2_gamma_work(struct kthread_work *work)
@@ -1036,6 +1171,7 @@ static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.mode_set = s6e3hc2_mode_set,
 	.panel_init = s6e3hc2_panel_init,
 	.print_gamma = s6e3hc2_print_gamma,
+	.gamma_store = s6e3hc2_overwrite_gamma_data,
 };
 
 const struct brightness_capability s6e3hc2_brightness_capability = {
