@@ -47,6 +47,7 @@
 #define DEFAULT_BATT_UPDATE_INTERVAL		30000
 #define DEFAULT_BATT_DRV_RL_SOC_THRESHOLD	97
 #define DEFAULT_BD_TRICKLE_RL_SOC_THRESHOLD	90
+#define DEFAULT_BD_TRICKLE_RESET_SEC		(5 * 60)
 #define DEFAULT_HIGH_TEMP_UPDATE_THRESHOLD	550
 
 #define MSC_ERROR_UPDATE_INTERVAL		5000
@@ -142,6 +143,7 @@ struct batt_ssoc_state {
 	ktime_t rl_last_update;
 
 	/* connected or disconnected */
+	ktime_t disconnect_time;
 	int buck_enabled;
 
 	/* recharge logic */
@@ -153,6 +155,7 @@ struct batt_ssoc_state {
 	int bd_trickle_recharge_soc;
 	int bd_trickle_cnt;
 	bool bd_trickle_dry_run;
+	u32 bd_trickle_reset_sec;
 
 	/* buff */
 	char ssoc_state_cstr[SSOC_STATE_BUF_SZ];
@@ -894,10 +897,7 @@ static int ssoc_init(struct batt_ssoc_state *ssoc_state,
  */
 static void batt_rl_reset(struct batt_drv *batt_drv)
 {
-	struct batt_ssoc_state *ssoc_state = &batt_drv->ssoc_state;
-
-	ssoc_state->rl_status = BATT_RL_STATUS_NONE;
-	ssoc_state->bd_trickle_cnt = 0;
+	batt_drv->ssoc_state.rl_status = BATT_RL_STATUS_NONE;
 }
 
 /*
@@ -2546,6 +2546,31 @@ static int ssoc_get_delta(struct batt_drv *batt_drv)
 	return overheat ? 0 : qnum_fromint(batt_drv->ssoc_state.ssoc_delta);
 }
 
+/* TODO: handle the whole state buck_enable state */
+static void ssoc_change_state(struct batt_ssoc_state *ssoc_state, bool ben)
+{
+	const ktime_t now = get_boot_sec();
+
+	if (!ben) {
+		ssoc_state->disconnect_time = now;
+	} else if (ssoc_state->disconnect_time) {
+		const u32 trickle_reset = ssoc_state->bd_trickle_reset_sec;
+		const long long elap = now - ssoc_state->disconnect_time;
+
+		if (trickle_reset && elap > trickle_reset)
+			ssoc_state->bd_trickle_cnt = 0;
+
+		pr_debug("MSC_BD: bd_trickle_cnt=%d dsc_time=%lld elap=%lld\n",
+			 ssoc_state->bd_trickle_cnt,
+			 ssoc_state->disconnect_time,
+			 elap);
+
+		ssoc_state->disconnect_time = 0;
+	}
+
+	ssoc_state->buck_enabled = ben;
+}
+
 /* called holding chg_lock */
 static int batt_chg_logic(struct batt_drv *batt_drv)
 {
@@ -2594,7 +2619,8 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 		if (err < 0)
 			pr_err("Cannot set the BATT_CE_CTRL.\n");
 
-		batt_drv->ssoc_state.buck_enabled = 0;
+		/* TODO: move earlier and include the change to the curve */
+		ssoc_change_state(&batt_drv->ssoc_state, 0);
 		changed = true;
 
 		goto msc_logic_done;
@@ -2630,7 +2656,8 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 		mod_delayed_work(system_wq, &batt_drv->batt_work,
 				 BATT_WORK_FAST_RETRY_MS);
 
-		batt_drv->ssoc_state.buck_enabled = 1;
+		/* TODO: move earlier and include the change to the curve */
+		ssoc_change_state(&batt_drv->ssoc_state, 1);
 		changed = true;
 	}
 
@@ -3978,6 +4005,38 @@ static ssize_t set_bd_trickle_dry_run(struct device *dev,
 static DEVICE_ATTR(bd_trickle_dry_run, 0660,
 		   show_bd_trickle_dry_run, set_bd_trickle_dry_run);
 
+static ssize_t show_bd_trickle_reset_sec(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 batt_drv->ssoc_state.bd_trickle_reset_sec);
+}
+
+static ssize_t set_bd_trickle_reset_sec(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+	unsigned int val;
+	int ret = 0;
+
+	ret = kstrtouint(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	batt_drv->ssoc_state.bd_trickle_reset_sec = val;
+
+	return count;
+}
+
+static DEVICE_ATTR(bd_trickle_reset_sec, 0660,
+		   show_bd_trickle_reset_sec, set_bd_trickle_reset_sec);
+
 static ssize_t batt_show_time_to_ac(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
@@ -4137,6 +4196,10 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_bd_trickle_dry_run);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create bd_trickle_dry_run\n");
+
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_bd_trickle_reset_sec);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create bd_trickle_reset_sec\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_pairing_state);
 	if (ret)
@@ -5134,6 +5197,12 @@ static void google_battery_init_work(struct work_struct *work)
 				DEFAULT_BD_TRICKLE_RL_SOC_THRESHOLD;
 
 	batt_drv->ssoc_state.bd_trickle_dry_run = false;
+
+	ret = of_property_read_u32(node, "google,bd-trickle-reset-sec",
+				   &batt_drv->ssoc_state.bd_trickle_reset_sec);
+	if (ret < 0)
+		batt_drv->ssoc_state.bd_trickle_reset_sec =
+				DEFAULT_BD_TRICKLE_RESET_SEC;
 
 	ret = of_property_read_u32(node, "google,ssoc-delta",
 				   &batt_drv->ssoc_state.ssoc_delta);
