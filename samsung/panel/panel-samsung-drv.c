@@ -107,6 +107,7 @@ static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
 static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 {
 	struct device *dev = ctx->dev;
+	struct regulator *reg;
 
 	ctx->vddi = devm_regulator_get(dev, "vddi");
 	if (IS_ERR(ctx->vddi)) {
@@ -118,6 +119,12 @@ static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 	if (IS_ERR(ctx->vci)) {
 		dev_warn(ctx->dev, "failed to get panel vci.\n");
 		return -EPROBE_DEFER;
+	}
+
+	reg = devm_regulator_get_optional(dev, "vddd");
+	if (!PTR_ERR_OR_ZERO(reg)) {
+		pr_info("panel vddd found\n");
+		ctx->vddd = reg;
 	}
 
 	return 0;
@@ -224,6 +231,14 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 			usleep_range(5000, 6000);
 		}
 
+		if (ctx->vddd) {
+			ret = regulator_enable(ctx->vddd);
+			if (ret) {
+				dev_err(ctx->dev, "vddd enable failed\n");
+				return ret;
+			}
+		}
+
 		if (ctx->vci) {
 			ret = regulator_enable(ctx->vci);
 			if (ret) {
@@ -235,6 +250,14 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 		gpiod_set_value(ctx->reset_gpio, 0);
 		if (ctx->enable_gpio)
 			gpiod_set_value(ctx->enable_gpio, 0);
+
+		if (ctx->vddd) {
+			ret = regulator_disable(ctx->vddd);
+			if (ret) {
+				dev_err(ctx->dev, "vddd disable failed\n");
+				return ret;
+			}
+		}
 
 		if (ctx->vddi) {
 			ret = regulator_disable(ctx->vddi);
