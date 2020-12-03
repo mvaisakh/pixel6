@@ -4463,6 +4463,7 @@ static int sec_ts_remove(struct spi_device *client)
 	struct sec_ts_data *ts = spi_get_drvdata(client);
 #endif
 	/* const struct sec_ts_plat_data *pdata = ts->plat_data; */
+	bool fw_update_cancelled = false;
 
 	input_info(true, &ts->client->dev, "%s\n", __func__);
 
@@ -4473,7 +4474,6 @@ static int sec_ts_remove(struct spi_device *client)
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FORCE_ACTIVE, true);
 
 	/* power_supply_unreg_notifier(&ts->psy_nb); */
-	unregister_panel_bridge(&ts->panel_bridge);
 
 	cancel_work_sync(&ts->suspend_work);
 	cancel_work_sync(&ts->resume_work);
@@ -4483,11 +4483,13 @@ static int sec_ts_remove(struct spi_device *client)
 	destroy_workqueue(ts->event_wq);
 
 #ifdef SEC_TS_FW_UPDATE_ON_PROBE
-	cancel_work_sync(&ts->fw_update_work);
+	fw_update_cancelled = cancel_work_sync(&ts->fw_update_work);
 #else
-	cancel_delayed_work_sync(&ts->fw_update_work);
+	fw_update_cancelled = cancel_delayed_work_sync(&ts->fw_update_work);
 	destroy_workqueue(ts->fw_update_wq);
 #endif
+	if (!fw_update_cancelled)
+		unregister_panel_bridge(&ts->panel_bridge);
 
 	disable_irq_nosync(ts->client->irq);
 	free_irq(ts->client->irq, ts);
