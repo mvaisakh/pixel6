@@ -368,7 +368,8 @@ static void __dpp_enable(struct dpp_device *dpp)
 	dpp_debug(dpp, "enabled\n");
 }
 
-#if defined(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
+#if IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
+
 static int set_protection(struct dpp_device *dpp, uint64_t modifier)
 {
 	bool protection;
