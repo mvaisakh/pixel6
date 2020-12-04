@@ -21,7 +21,7 @@
 #include <drm/drm_fourcc.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_vblank.h>
-#include <drm/samsung_drm.h>
+#include <drm/drm.h>
 
 #include <dqe_cal.h>
 
@@ -34,11 +34,22 @@ static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 					  struct drm_crtc_state *old_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct exynos_drm_crtc_state *exynos_state;
+	struct decon_device *decon = exynos_crtc->ctx;
+	struct exynos_partial *partial = decon->partial;
 
 	drm_crtc_vblank_on(crtc);
 
 	if (exynos_crtc->ops->enable)
 		exynos_crtc->ops->enable(exynos_crtc, old_state);
+
+	exynos_state = to_exynos_crtc_state(crtc->state);
+	if (partial && exynos_state->partial) {
+		exynos_state->partial_region.x1 = 0;
+		exynos_state->partial_region.y1 = 0;
+		exynos_state->partial_region.x2 = decon->config.image_width;
+		exynos_state->partial_region.y2 = decon->config.image_height;
+	}
 }
 
 static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -174,9 +185,16 @@ static void exynos_crtc_atomic_begin(struct drm_crtc *crtc,
 				     struct drm_crtc_state *old_crtc_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct exynos_drm_crtc_state *exynos_state;
+	struct decon_device *decon = exynos_crtc->ctx;
+	struct exynos_partial *partial = decon->partial;
 
 	if (exynos_crtc->ops->atomic_begin)
 		exynos_crtc->ops->atomic_begin(exynos_crtc);
+
+	exynos_state = to_exynos_crtc_state(crtc->state);
+	if (partial && exynos_state->partial)
+		exynos_partial_prepare(partial, exynos_state);
 }
 
 static void exynos_crtc_atomic_flush(struct drm_crtc *crtc,
@@ -300,6 +318,7 @@ static void exynos_drm_crtc_destroy_state(struct drm_crtc *crtc,
 	drm_property_blob_put(exynos_crtc_state->gamma_matrix);
 	drm_property_blob_put(exynos_crtc_state->histogram_roi);
 	drm_property_blob_put(exynos_crtc_state->histogram_weights);
+	drm_property_blob_put(exynos_crtc_state->partial);
 	__drm_atomic_helper_crtc_destroy_state(state);
 	kfree(exynos_crtc_state);
 }
@@ -355,6 +374,9 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 
 	if (copy->histogram_weights)
 		drm_property_blob_get(copy->histogram_weights);
+
+	if (copy->partial)
+		drm_property_blob_get(copy->partial);
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
@@ -450,6 +472,11 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->histogram_weights, val,
 				sizeof(struct histogram_weights), -1);
+	} else if (property == exynos_crtc->props.partial) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->partial, val,
+				sizeof(struct drm_clip_rect), -1);
+		return ret;
 	} else {
 		return -EINVAL;
 	}
@@ -502,6 +529,9 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 	else if (property == exynos_crtc->props.histogram_weights)
 		*val = (exynos_crtc_state->histogram_weights) ?
 			exynos_crtc_state->histogram_weights->base.id : 0;
+	else if (property == exynos_crtc->props.partial)
+		*val = (exynos_crtc_state->partial) ?
+			exynos_crtc_state->partial->base.id : 0;
 	else
 		return -EINVAL;
 
@@ -515,6 +545,10 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(state);
 	const struct decon_device *decon = exynos_crtc->ctx;
 	const struct decon_config *cfg = &decon->config;
+	struct exynos_drm_crtc_state *exynos_state;
+	struct drm_clip_rect *partial_region;
+
+	exynos_state = container_of(state, struct exynos_drm_crtc_state, base);
 
 	drm_printf(p, "\treserved_win_mask=0x%x\n", exynos_crtc_state->reserved_win_mask);
 	drm_printf(p, "\tDecon #%d (state:%d)\n", decon->id, decon->state);
@@ -530,6 +564,17 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 				cfg->te_from);
 	}
 	drm_printf(p, "\t\tbpc=%d\n", cfg->out_bpc);
+
+	if (exynos_state->partial) {
+		partial_region =
+			(struct drm_clip_rect *)exynos_state->partial->data;
+		drm_printf(p, "\t\tpartial region[%d %d %d %d]\n",
+				partial_region->x1, partial_region->y1,
+				partial_region->x2 - partial_region->x1,
+				partial_region->y2 - partial_region->y1);
+	} else {
+		drm_printf(p, "\t\tno partial region request\n");
+	}
 }
 
 static int exynos_drm_crtc_late_register(struct drm_crtc *crtc)
@@ -683,6 +728,23 @@ static int exynos_drm_crtc_create_histogram_properties(
 	return 0;
 }
 
+static int
+exynos_drm_crtc_create_partial_property(struct exynos_drm_crtc *exynos_crtc)
+{
+	struct drm_crtc *crtc = &exynos_crtc->base;
+	struct drm_property *prop;
+
+	prop = drm_property_create(crtc->dev, DRM_MODE_PROP_BLOB,
+			"partial_region", 0);
+	if (!prop)
+		return -ENOMEM;
+
+	drm_object_attach_property(&crtc->base, prop, 0);
+	exynos_crtc->props.partial = prop;
+
+	return 0;
+}
+
 struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 					struct drm_plane *plane,
 					enum exynos_drm_output_type type,
@@ -762,6 +824,12 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 			goto err_crtc;
 
 		ret = exynos_drm_crtc_create_histogram_properties(exynos_crtc);
+		if (ret)
+			goto err_crtc;
+	}
+
+	if (decon->partial) {
+		ret = exynos_drm_crtc_create_partial_property(exynos_crtc);
 		if (ret)
 			goto err_crtc;
 	}

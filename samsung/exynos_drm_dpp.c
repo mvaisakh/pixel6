@@ -282,10 +282,10 @@ static void dpp_convert_plane_state_to_config(struct dpp_params_info *config,
 	config->src.f_w = fb->width;
 	config->src.f_h = fb->height;
 
-	config->dst.x = state->crtc.x;
-	config->dst.y = state->crtc.y;
-	config->dst.w = state->crtc.w;
-	config->dst.h = state->crtc.h;
+	config->dst.x = state->base.crtc_x;
+	config->dst.y = state->base.crtc_y;
+	config->dst.w = state->base.crtc_w;
+	config->dst.h = state->base.crtc_h;
 	config->dst.f_w = mode->hdisplay;
 	config->dst.f_h = mode->vdisplay;
 	config->rot = 0;

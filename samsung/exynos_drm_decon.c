@@ -499,9 +499,12 @@ static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
 	if (is_colormap)
 		win_info.colormap = exynos_plane_state->colormap;
 
-	win_info.start_pos = win_start_pos(exynos_plane_state->crtc.x, exynos_plane_state->crtc.y);
-	win_info.end_pos = win_end_pos(exynos_plane_state->crtc.x, exynos_plane_state->crtc.y,
-			exynos_plane_state->crtc.w, exynos_plane_state->crtc.h);
+	win_info.start_pos = win_start_pos(exynos_plane_state->base.crtc_x,
+					exynos_plane_state->base.crtc_y);
+	win_info.end_pos = win_end_pos(exynos_plane_state->base.crtc_x,
+					exynos_plane_state->base.crtc_y,
+					exynos_plane_state->base.crtc_w,
+					exynos_plane_state->base.crtc_h);
 	win_info.start_time = 0;
 
 	win_info.ch = dpp->id; /* DPP's id is DPP channel number */
@@ -565,6 +568,8 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	struct exynos_drm_crtc_state *old_exynos_crtc_state =
 					to_exynos_crtc_state(old_crtc_state);
 	struct exynos_dqe *dqe = decon->dqe;
+	struct exynos_partial *partial = decon->partial;
+	u32 width, height;
 	unsigned long flags;
 
 	decon_debug(decon, "%s +\n", __func__);
@@ -614,10 +619,22 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 			new_exynos_crtc_state->in_bpc, decon->config.out_bpc,
 			new_exynos_crtc_state->force_bpc);
 
-	if (dqe)
+	if (dqe) {
+		if (partial && new_exynos_crtc_state->partial) {
+			width = drm_rect_width(
+					&new_exynos_crtc_state->partial_region);
+			height = drm_rect_height(
+					&new_exynos_crtc_state->partial_region);
+		} else {
+			width = decon->config.image_width;
+			height = decon->config.image_height;
+		}
 		exynos_dqe_update(dqe, &new_exynos_crtc_state->dqe,
-				decon->config.image_width,
-				decon->config.image_height);
+				width, height);
+	}
+
+	if (partial && new_exynos_crtc_state->partial)
+		exynos_partial_update(partial, new_exynos_crtc_state);
 
 	decon_reg_all_win_shadow_update_req(decon->id);
 
@@ -847,6 +864,8 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 	}
 
 	decon_info(decon, "%s +\n", __func__);
+
+	exynos_partial_initialize(decon->partial);
 
 	/* avoid power enable if we were previously in bypass to keep vote balanced */
 	if (old_exynos_crtc_state->bypass)
@@ -1537,6 +1556,8 @@ static int decon_probe(struct platform_device *pdev)
 	decon->hibernation = exynos_hibernation_register(decon);
 
 	decon->dqe = exynos_dqe_register(decon);
+
+	decon->partial = exynos_partial_register(decon);
 
 	ret = component_add(dev, &decon_component_ops);
 	if (ret)

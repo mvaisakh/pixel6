@@ -154,6 +154,8 @@ static int exynos_hibernation_exit(struct exynos_hibernation *hiber)
 		hiber->wb = NULL;
 	}
 
+	exynos_partial_restore(decon->partial);
+
 	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_OUT, decon->id, NULL);
 	DPU_ATRACE_END("exynos_hibernation_exit");
 

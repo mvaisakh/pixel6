@@ -40,6 +40,7 @@
 #include "exynos_drm_fb.h"
 #include "exynos_drm_hibernation.h"
 #include "exynos_drm_writeback.h"
+#include "exynos_drm_partial.h"
 
 enum decon_state {
 	DECON_STATE_INIT = 0,
@@ -362,6 +363,7 @@ struct decon_device {
 	wait_queue_head_t framedone_wait;
 
 	bool keep_unmask;
+	struct exynos_partial *partial;
 };
 
 extern struct dpu_bts_ops dpu_bts_control;

@@ -250,6 +250,9 @@ struct exynos_drm_crtc_state {
 	 */
 	u8 bypass : 1;
 	unsigned int reserved_win_mask;
+	struct drm_rect partial_region;
+	struct drm_property_blob *partial;
+	bool need_partial_update;
 };
 
 static inline struct exynos_drm_crtc_state *
@@ -286,6 +289,7 @@ struct exynos_drm_crtc {
 		struct drm_property *histogram_roi;
 		struct drm_property *histogram_weights;
 		struct drm_property *histogram_threshold;
+		struct drm_property *partial;
 	} props;
 };
 
