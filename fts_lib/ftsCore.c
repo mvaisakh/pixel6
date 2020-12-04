@@ -44,15 +44,15 @@ int initCore(struct fts_ts_info *info)
 {
 	int ret = OK;
 
-	pr_info("%s: Initialization of the Core...\n", __func__);
+	dev_info(info->dev, "%s: Initialization of the Core...\n", __func__);
 	ret |= openChannel(info->client);
 	ret |= resetErrorList(info);
 	ret |= initTestToDo(info);
 	if (ret < OK)
-		pr_err("%s: Initialization Core ERROR %08X!\n",
+		dev_err(info->dev, "%s: Initialization Core ERROR %08X!\n",
 			 __func__, ret);
 	else
-		pr_info("%s: Initialization Finished!\n",
+		dev_info(info->dev, "%s: Initialization Finished!\n",
 			 __func__);
 	return ret;
 }
@@ -73,7 +73,7 @@ int fts_system_reset(struct fts_ts_info *info)
 
 	event_to_search = (int)EVT_ID_CONTROLLER_READY;
 
-	pr_info("System resetting...\n");
+	dev_info(info->dev, "System resetting...\n");
 	for (i = 0; i < RETRY_SYSTEM_RESET && res < 0; i++) {
 		resetErrorList(info);
 		fts_enableInterrupt(info, false);
@@ -92,21 +92,21 @@ int fts_system_reset(struct fts_ts_info *info)
 			res = OK;
 		}
 		if (res < OK)
-			pr_err("fts_system_reset: ERROR %08X\n", ERROR_BUS_W);
+			dev_err(info->dev, "fts_system_reset: ERROR %08X\n", ERROR_BUS_W);
 		else {
 			res = pollForEvent(info, &event_to_search, 1, readData,
 					   GENERAL_TIMEOUT);
 			if (res < OK)
-				pr_err("fts_system_reset: ERROR %08X\n", res);
+				dev_err(info->dev, "fts_system_reset: ERROR %08X\n", res);
 		}
 	}
 
 	if (res < OK) {
-		pr_err("fts_system_reset...failed after 3 attempts: ERROR %08X\n",
+		dev_err(info->dev, "fts_system_reset...failed after 3 attempts: ERROR %08X\n",
 			(res | ERROR_SYSTEM_RESET_FAIL));
 		return res | ERROR_SYSTEM_RESET_FAIL;
 	} else {
-		pr_debug("System reset DONE!\n");
+		dev_dbg(info->dev, "System reset DONE!\n");
 		info->system_reseted_down = 1;
 		info->system_reseted_up = 1;
 		return OK;
@@ -199,7 +199,7 @@ int pollForEvent(struct fts_ts_info *info, int *event_to_search,
 			continue;
 		} else if (readData[0] == EVT_ID_ERROR) {
 			/* Log of errors */
-			pr_err("%s\n",
+			dev_err(info->dev, "%s\n",
 				 printHex("ERROR EVENT = ",
 					  readData,
 					  FIFO_EVENT_SIZE,
@@ -210,12 +210,12 @@ int pollForEvent(struct fts_ts_info *info, int *event_to_search,
 			err_handling = errorHandler(info, readData, FIFO_EVENT_SIZE);
 			if ((err_handling & 0xF0FF0000) ==
 			    ERROR_HANDLER_STOP_PROC) {
-				pr_err("pollForEvent: forced to be stopped! ERROR %08X\n",
+				dev_err(info->dev, "pollForEvent: forced to be stopped! ERROR %08X\n",
 					err_handling);
 				return err_handling;
 			}
 		} else {
-			pr_info("%s\n",
+			dev_info(info->dev, "%s\n",
 				 printHex("READ EVENT = ", readData,
 					  FIFO_EVENT_SIZE,
 					  temp,
@@ -224,7 +224,7 @@ int pollForEvent(struct fts_ts_info *info, int *event_to_search,
 
 			if (readData[0] == EVT_ID_CONTROLLER_READY &&
 			    event_to_search[0] != EVT_ID_CONTROLLER_READY) {
-				pr_err("pollForEvent: Unmanned Controller Ready Event! Setting reset flags...\n");
+				dev_err(info->dev, "pollForEvent: Unmanned Controller Ready Event! Setting reset flags...\n");
 				setSystemResetedUp(info, 1);
 				setSystemResetedDown(info, 1);
 			}
@@ -242,21 +242,21 @@ int pollForEvent(struct fts_ts_info *info, int *event_to_search,
 	}
 	stopStopWatch(&clock);
 	if ((retry >= time_to_count) && find != 1) {
-		pr_err("pollForEvent: ERROR %08X\n", ERROR_TIMEOUT);
+		dev_err(info->dev, "pollForEvent: ERROR %08X\n", ERROR_TIMEOUT);
 		return ERROR_TIMEOUT;
 	} else if (find == 1) {
-		pr_info("%s\n",
+		dev_info(info->dev, "%s\n",
 			 printHex("FOUND EVENT = ",
 				  readData,
 				  FIFO_EVENT_SIZE,
 				  temp,
 				  sizeof(temp)));
 		memset(temp, 0, 128);
-		pr_debug("Event found in %d ms (%d iterations)! Number of errors found = %d\n",
+		dev_dbg(info->dev, "Event found in %d ms (%d iterations)! Number of errors found = %d\n",
 			elapsedMillisecond(&clock), retry, count_err);
 		return count_err;
 	} else {
-		pr_err("pollForEvent: ERROR %08X\n", ERROR_BUS_R);
+		dev_err(info->dev, "pollForEvent: ERROR %08X\n", ERROR_BUS_R);
 		return ERROR_BUS_R;
 	}
 }
@@ -278,7 +278,7 @@ int checkEcho(struct fts_ts_info *info, u8 *cmd, int size)
 
 
 	if (size < 1) {
-		pr_err("checkEcho: Error Size = %d not valid!\n", size);
+		dev_err(info->dev, "checkEcho: Error Size = %d not valid!\n", size);
 		return ERROR_OP_NOT_ALLOW;
 	} else {
 		if ((size + 4) > FIFO_EVENT_SIZE)
@@ -310,16 +310,16 @@ int checkEcho(struct fts_ts_info *info, u8 *cmd, int size)
 			ret = pollForEvent(info, event_to_search, size + 2,
 				   readData, TIEMOUT_ECHO);
 		if (ret < OK) {
-			pr_err("checkEcho: Echo Event not found! ERROR %08X\n",
+			dev_err(info->dev, "checkEcho: Echo Event not found! ERROR %08X\n",
 				ret);
 			return ret | ERROR_CHECK_ECHO_FAIL;
 		} else if (ret > OK) {
-			pr_err("checkEcho: Echo Event found but with some error events before! num_error = %d\n",
+			dev_err(info->dev, "checkEcho: Echo Event found but with some error events before! num_error = %d\n",
 				ret);
 			return ERROR_CHECK_ECHO_FAIL;
 		}
 
-		pr_info("ECHO OK!\n");
+		dev_info(info->dev, "ECHO OK!\n");
 		return ret;
 	}
 }
@@ -342,7 +342,7 @@ int setScanMode(struct fts_ts_info *info, u8 mode, u8 settings)
 	u8 cmd1[7] = {0xFA, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00};
 	int ret, size = 3;
 
-	pr_debug("%s: Setting scan mode: mode = %02X settings = %02X !\n",
+	dev_dbg(info->dev, "%s: Setting scan mode: mode = %02X settings = %02X !\n",
 		__func__, mode, settings);
 	if (mode == SCAN_MODE_LOW_POWER)
 		size = 2;
@@ -352,11 +352,11 @@ int setScanMode(struct fts_ts_info *info, u8 mode, u8 settings)
 	/* use write instead of writeFw because can be called while the
 	 * interrupt are enabled */
 	if (ret < OK) {
-		pr_err("%s: write failed...ERROR %08X !\n",
+		dev_err(info->dev, "%s: write failed...ERROR %08X !\n",
 			 __func__, ret);
 		return ret | ERROR_SET_SCAN_MODE_FAIL;
 	}
-	pr_debug("%s: Setting scan mode OK!\n", __func__);
+	dev_dbg(info->dev, "%s: Setting scan mode OK!\n", __func__);
 	return OK;
 }
 /** @}*/
@@ -393,7 +393,7 @@ int setFeatures(struct fts_ts_info *info, u8 feat, u8 *settings, int size)
 		return ERROR_ALLOC;
         }
 
-	pr_info("%s: Setting feature: feat = %02X !\n", __func__, feat);
+	dev_info(info->dev, "%s: Setting feature: feat = %02X !\n", __func__, feat);
 	cmd[0] = FTS_CMD_FEATURE;
 	cmd[1] = feat;
 	for (i = 0; i < size; i++) {
@@ -401,19 +401,19 @@ int setFeatures(struct fts_ts_info *info, u8 feat, u8 *settings, int size)
 		index += scnprintf(buff + index, buff_len - index,
 					"%02X ", settings[i]);
 	}
-	pr_info("%s: Settings = %s\n", __func__, buff);
+	dev_info(info->dev, "%s: Settings = %s\n", __func__, buff);
 	ret = fts_write(info, cmd1, 7);
 	if(ret >= OK)
 		ret = fts_write(info, cmd, 2 + size);
 	/* use write instead of writeFw because can be called while the
 	 * interrupts are enabled */
 	if (ret < OK) {
-		pr_err("%s: write failed...ERROR %08X !\n", __func__, ret);
+		dev_err(info->dev, "%s: write failed...ERROR %08X !\n", __func__, ret);
 		kfree(buff);
 		kfree(cmd);
 		return ret | ERROR_SET_FEATURE_FAIL;
 	}
-	pr_info("%s: Setting feature OK!\n", __func__);
+	dev_info(info->dev, "%s: Setting feature OK!\n", __func__);
 	kfree(cmd);
 	kfree(buff);
 	return OK;
@@ -458,9 +458,9 @@ int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size)
 		index += scnprintf(buff + index, buff_len - index,
 					"%02X ", sett[ret]);
 	}
-	pr_info("%s: Command = %02X %02X %s\n", __func__, cmd[0],
+	dev_info(info->dev, "%s: Command = %02X %02X %s\n", __func__, cmd[0],
 		 cmd[1], buff);
-	pr_info("%s: Writing Sys command...\n", __func__);
+	dev_info(info->dev, "%s: Writing Sys command...\n", __func__);
 	if (sys_cmd != SYS_CMD_LOAD_DATA) {
 		ret = fts_write(info, cmd1, 7);
 		if(ret >= OK)
@@ -470,7 +470,7 @@ int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size)
 		if (size >= 1)
 			ret = requestSyncFrame(info, sett[0]);
 		else {
-			pr_err("%s: No setting argument! ERROR %08X\n",
+			dev_err(info->dev, "%s: No setting argument! ERROR %08X\n",
 				__func__, ERROR_OP_NOT_ALLOW);
 			kfree(cmd);
 			kfree(buff);
@@ -478,9 +478,9 @@ int writeSysCmd(struct fts_ts_info *info, u8 sys_cmd, u8 *sett, int size)
 		}
 	}
 	if (ret < OK)
-		pr_err("%s: ERROR %08X\n", __func__, ret);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ret);
 	else
-		pr_info("%s: FINISHED!\n", __func__);
+		dev_info(info->dev, "%s: FINISHED!\n", __func__);
 
 	kfree(cmd);
 	kfree(buff);
@@ -502,7 +502,7 @@ int defaultSysInfo(struct fts_ts_info *info, int i2cError)
 {
 	int i;
 
-	pr_info("Setting default System Info...\n");
+	dev_info(info->dev, "Setting default System Info...\n");
 
 	if (i2cError == 1) {
 		info->systemInfo.u16_fwVer = 0xFFFF;
@@ -521,7 +521,7 @@ int defaultSysInfo(struct fts_ts_info *info, int i2cError)
 	info->systemInfo.u8_scrRxLen = 0;
 	info->systemInfo.u8_scrTxLen = 0;
 
-	pr_info("default System Info DONE!\n");
+	dev_info(info->dev, "default System Info DONE!\n");
 	return OK;
 }
 
@@ -541,30 +541,30 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	SysInfo systemInfo;
 
 	if (request == 1) {
-		pr_info("%s: Requesting System Info...\n", __func__);
+		dev_info(info->dev, "%s: Requesting System Info...\n", __func__);
 
 		ret = writeSysCmd(info, SYS_CMD_LOAD_DATA, &sett, 1);
 		if (ret < OK) {
-			pr_err("%s: error while writing the sys cmd ERROR %08X\n",
+			dev_err(info->dev, "%s: error while writing the sys cmd ERROR %08X\n",
 				__func__, ret);
 			goto FAIL;
 		}
 	}
 
-	pr_info("%s: Reading System Info...\n", __func__);
+	dev_info(info->dev, "%s: Reading System Info...\n", __func__);
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
 				ADDR_FRAMEBUFFER, data, SYS_INFO_SIZE,
 				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading the system data ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading the system data ERROR %08X\n",
 			__func__, ret);
 		goto FAIL;
 	}
 
-	pr_info("%s: Parsing System Info...\n", __func__);
+	dev_info(info->dev, "%s: Parsing System Info...\n", __func__);
 
 	if (data[0] != HEADER_SIGNATURE) {
-		pr_err("%s: The Header Signature is wrong!  sign: %02X != %02X ERROR %08X\n",
+		dev_err(info->dev, "%s: The Header Signature is wrong!  sign: %02X != %02X ERROR %08X\n",
 			__func__, data[0], HEADER_SIGNATURE,
 			ERROR_WRONG_DATA_SIGN);
 		ret = ERROR_WRONG_DATA_SIGN;
@@ -573,7 +573,7 @@ int readSysInfo(struct fts_ts_info *info, int request)
 
 
 	if (data[1] != LOAD_SYS_INFO) {
-		pr_err("%s: The Data ID is wrong!  ids: %02X != %02X ERROR %08X\n",
+		dev_err(info->dev, "%s: The Data ID is wrong!  ids: %02X != %02X ERROR %08X\n",
 			__func__, data[3], LOAD_SYS_INFO,
 			ERROR_DIFF_DATA_TYPE);
 		ret = ERROR_DIFF_DATA_TYPE;
@@ -595,52 +595,52 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	index += 2;
 	u8ToU16(&data[index], &systemInfo.u16_fwVer);
 	index += 2;
-	pr_info("FW VER = %04X\n", systemInfo.u16_fwVer);
+	dev_info(info->dev, "FW VER = %04X\n", systemInfo.u16_fwVer);
 	u8ToU16(&data[index], &systemInfo.u16_svnRev);
 	index += 2;
-	pr_info("SVN REV = %04X\n", systemInfo.u16_svnRev);
+	dev_info(info->dev, "SVN REV = %04X\n", systemInfo.u16_svnRev);
 	u8ToU16(&data[index], &systemInfo.u16_cfgVer);
 	index += 2;
-	pr_info("CONFIG VER = %04X\n", systemInfo.u16_cfgVer);
+	dev_info(info->dev, "CONFIG VER = %04X\n", systemInfo.u16_cfgVer);
 	u8ToU16(&data[index], &systemInfo.u16_cfgProjectId);
 	index += 2;
-	pr_info("CONFIG PROJECT ID = %04X\n", systemInfo.u16_cfgProjectId);
+	dev_info(info->dev, "CONFIG PROJECT ID = %04X\n", systemInfo.u16_cfgProjectId);
 	u8ToU16(&data[index], &systemInfo.u16_cxVer);
 	index += 2;
-	pr_info("CX VER = %04X\n", systemInfo.u16_cxVer);
+	dev_info(info->dev, "CX VER = %04X\n", systemInfo.u16_cxVer);
 	u8ToU16(&data[index], &systemInfo.u16_cxProjectId);
 	index += 2;
-	pr_info("CX PROJECT ID = %04X\n", systemInfo.u16_cxProjectId);
+	dev_info(info->dev, "CX PROJECT ID = %04X\n", systemInfo.u16_cxProjectId);
 	systemInfo.u8_cfgAfeVer = data[index++];
 	systemInfo.u8_cxAfeVer =  data[index++];
 	systemInfo.u8_panelCfgAfeVer = data[index++];
-	pr_info("AFE VER: CFG = %02X - CX = %02X - PANEL = %02X\n",
+	dev_info(info->dev, "AFE VER: CFG = %02X - CX = %02X - PANEL = %02X\n",
 		 systemInfo.u8_cfgAfeVer, systemInfo.u8_cxAfeVer,
 		 systemInfo.u8_panelCfgAfeVer);
 	systemInfo.u8_protocol = data[index++];
-	pr_info("Protocol = %02X\n", systemInfo.u8_protocol);
+	dev_info(info->dev, "Protocol = %02X\n", systemInfo.u8_protocol);
 	/* index+= 1; */
 	/* skip reserved area */
 
-	/* pr_err("Die Info =  "); */
+	/* dev_err(info->dev, "Die Info =  "); */
 	for (i = 0; i < DIE_INFO_SIZE; i++)
 		systemInfo.u8_dieInfo[i] = data[index++];
 
-	/* pr_err("\n"); */
-	pr_info("%s\n",
+	/* dev_err(info->dev, "\n"); */
+	dev_info(info->dev, "%s\n",
 		 printHex("Die Info =  ",
 			  systemInfo.u8_dieInfo,
 			  DIE_INFO_SIZE, temp, sizeof(temp)));
 	memset(temp, 0, 256);
 
 
-	/* pr_err("Release Info =  "); */
+	/* dev_err(info->dev, "Release Info =  "); */
 	for (i = 0; i < RELEASE_INFO_SIZE; i++)
 		systemInfo.u8_releaseInfo[i] = data[index++];
 
-	/* pr_err("\n"); */
+	/* dev_err(info->dev, "\n"); */
 
-	pr_info("%s\n",
+	dev_info(info->dev, "%s\n",
 		 printHex("Release Info =  ",
 			  systemInfo.u8_releaseInfo,
 			  RELEASE_INFO_SIZE,
@@ -656,12 +656,12 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	index += 4;	/* skip reserved area */
 
 	systemInfo.u8_mpFlag = data[index++];
-	pr_info("MP FLAG = %02X\n", systemInfo.u8_mpFlag);
+	dev_info(info->dev, "MP FLAG = %02X\n", systemInfo.u8_mpFlag);
 
 	index += 3 + 4; /* +3 remaining from mp flag address */
 
 	systemInfo.u8_ssDetScanSet = data[index];
-	pr_info("SS Detect Scan Select = %d\n",
+	dev_info(info->dev, "SS Detect Scan Select = %d\n",
 		 systemInfo.u8_ssDetScanSet);
 	index += 4;
 
@@ -669,20 +669,20 @@ int readSysInfo(struct fts_ts_info *info, int request)
 	index += 2;
 	u8ToU16(&data[index], &systemInfo.u16_scrResY);
 	index += 2;
-	pr_info("Screen Resolution = %d x %d\n",
+	dev_info(info->dev, "Screen Resolution = %d x %d\n",
 		 systemInfo.u16_scrResX, systemInfo.u16_scrResY);
 	systemInfo.u8_scrTxLen = data[index++];
-	pr_info("TX Len = %d\n", systemInfo.u8_scrTxLen);
+	dev_info(info->dev, "TX Len = %d\n", systemInfo.u8_scrTxLen);
 	systemInfo.u8_scrRxLen = data[index++];
-	pr_info("RX Len = %d\n", systemInfo.u8_scrRxLen);
+	dev_info(info->dev, "RX Len = %d\n", systemInfo.u8_scrRxLen);
 	systemInfo.u8_keyLen = data[index++];
-	pr_info("Key Len = %d\n", systemInfo.u8_keyLen);
+	dev_info(info->dev, "Key Len = %d\n", systemInfo.u8_keyLen);
 	systemInfo.u8_forceLen = data[index++];
-	pr_info("Force Len = %d\n", systemInfo.u8_forceLen);
+	dev_info(info->dev, "Force Len = %d\n", systemInfo.u8_forceLen);
 	index += 8;
 
 	u8ToU32(&data[index], &systemInfo.u32_productionTimestamp);
-	pr_info("Production Timestamp = %08X\n",
+	dev_info(info->dev, "Production Timestamp = %08X\n",
 	systemInfo.u32_productionTimestamp);
 
 	index += 32;	/* skip reserved area */
@@ -787,17 +787,17 @@ int readSysInfo(struct fts_ts_info *info, int request)
 
 	memcpy(&info->systemInfo, &systemInfo, sizeof(systemInfo));
 
-	pr_info("Parsed %d bytes!\n", index);
+	dev_info(info->dev, "Parsed %d bytes!\n", index);
 
 
 	if (index != SYS_INFO_SIZE) {
-		pr_err("%s: index = %d different from %d ERROR %08X\n",
+		dev_err(info->dev, "%s: index = %d different from %d ERROR %08X\n",
 			__func__, index, SYS_INFO_SIZE,
 			ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
-	pr_info("System Info Read DONE!\n");
+	dev_info(info->dev, "System Info Read DONE!\n");
 	return OK;
 
 FAIL:
@@ -819,17 +819,17 @@ int readConfig(struct fts_ts_info *info, u16 offset, u8 *outBuf, int len)
 	int ret;
 	u64 final_address = offset + ADDR_CONFIG_OFFSET;
 
-	pr_info("%s: Starting to read config memory at %llx ...\n",
+	dev_info(info->dev, "%s: Starting to read config memory at %llx ...\n",
 		__func__, final_address);
 	ret = fts_writeReadU8UX(info, FTS_CMD_CONFIG_R, BITS_16, final_address,
 				outBuf, len, DUMMY_CONFIG);
 	if (ret < OK) {
-		pr_err("%s: Impossible to read Config Memory... ERROR %08X!\n",
+		dev_err(info->dev, "%s: Impossible to read Config Memory... ERROR %08X!\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("%s: Read config memory FINISHED!\n", __func__);
+	dev_info(info->dev, "%s: Read config memory FINISHED!\n", __func__);
 	return OK;
 }
 
@@ -845,17 +845,17 @@ int writeConfig(struct fts_ts_info *info, u16 offset, u8 *data, int len)
 	int ret;
 	u64 final_address = offset + ADDR_CONFIG_OFFSET;
 
-	pr_info("%s: Starting to write config memory at %llx ...\n",
+	dev_info(info->dev, "%s: Starting to write config memory at %llx ...\n",
 		__func__, final_address);
 	ret = fts_writeU8UX(info, FTS_CMD_CONFIG_W, BITS_16, final_address, data,
 			    len);
 	if (ret < OK) {
-		pr_err("%s: Impossible to write Config Memory... ERROR %08X!\n",
+		dev_err(info->dev, "%s: Impossible to write Config Memory... ERROR %08X!\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("%s: Write config memory FINISHED!\n", __func__);
+	dev_info(info->dev, "%s: Write config memory FINISHED!\n", __func__);
 	return OK;
 }
 
@@ -868,7 +868,7 @@ int fts_enableInterrupt(struct fts_ts_info *info, bool enable)
 	unsigned long flag;
 
 	if (info->client == NULL) {
-		pr_err("Cannot get client irq. Error = %08X\n",
+		dev_err(info->dev, "Cannot get client irq. Error = %08X\n",
 			ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
@@ -876,15 +876,15 @@ int fts_enableInterrupt(struct fts_ts_info *info, bool enable)
 	spin_lock_irqsave(&info->fts_int, flag);
 
 	if (enable == info->irq_enabled)
-		pr_debug("Interrupt is already set (enable = %d).\n", enable);
+		dev_dbg(info->dev, "Interrupt is already set (enable = %d).\n", enable);
 	else {
 		info->irq_enabled = enable;
 		if (enable) {
 			enable_irq(info->client->irq);
-			pr_debug("Interrupt enabled.\n");
+			dev_dbg(info->dev, "Interrupt enabled.\n");
 		} else {
 			disable_irq_nosync(info->client->irq);
-			pr_debug("Interrupt disabled.\n");
+			dev_dbg(info->dev, "Interrupt disabled.\n");
 		}
 	}
 
@@ -913,40 +913,40 @@ int fts_crc_check(struct fts_ts_info *info)
 				&val, 1, DUMMY_HW_REG);
 	/* read 2 bytes because the first one is a dummy byte! */
 	if (res < OK) {
-		pr_err("%s Cannot read crc status ERROR %08X\n", __func__, res);
+		dev_err(info->dev, "%s Cannot read crc status ERROR %08X\n", __func__, res);
 		return res;
 	}
 
 	crc_status = val & CRC_MASK;
 	if (crc_status != OK) {	/* CRC error if crc_status!=0 */
-		pr_err("%s CRC ERROR = %02X\n", __func__, crc_status);
+		dev_err(info->dev, "%s CRC ERROR = %02X\n", __func__, crc_status);
 		return CRC_CODE;
 	}
 
-	pr_info("%s: Verifying if Config CRC Error...\n", __func__);
+	dev_info(info->dev, "%s: Verifying if Config CRC Error...\n", __func__);
 	res = fts_system_reset(info);
 	if (res >= OK) {
 		res = pollForErrorType(info, error_to_search, 2);
 		if (res < OK) {
-			pr_info("%s: No Config CRC Error Found!\n", __func__);
-			pr_info("%s: Verifying if Cx CRC Error...\n", __func__);
+			dev_info(info->dev, "%s: No Config CRC Error Found!\n", __func__);
+			dev_info(info->dev, "%s: Verifying if Cx CRC Error...\n", __func__);
 			res = pollForErrorType(info, &error_to_search[2], 4);
 			if (res < OK) {
-				pr_info("%s: No Cx CRC Error Found!\n",
+				dev_info(info->dev, "%s: No Cx CRC Error Found!\n",
 					__func__);
 				return OK;
 			} else {
-				pr_err("%s: Cx CRC Error found! CRC ERROR = %02X\n",
+				dev_err(info->dev, "%s: Cx CRC Error found! CRC ERROR = %02X\n",
 					__func__, res);
 				return CRC_CX;
 			}
 		} else {
-			pr_err("%s: Config CRC Error found! CRC ERROR = %02X\n",
+			dev_err(info->dev, "%s: Config CRC Error found! CRC ERROR = %02X\n",
 				__func__, res);
 			return CRC_CONFIG;
 		}
 	} else {
-		pr_err("%s: Error while executing system reset! ERROR %08X\n",
+		dev_err(info->dev, "%s: Error while executing system reset! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
@@ -969,16 +969,16 @@ int requestSyncFrame(struct fts_ts_info *info, u8 type)
 	int count, new_count;
 	u8 cmd[7] = {0xFA, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-	pr_info("%s: Starting to get a sync frame...\n", __func__);
+	dev_info(info->dev, "%s: Starting to get a sync frame...\n", __func__);
 
 	while (retry2 < RETRY_MAX_REQU_DATA) {
-		pr_info("%s: Reading count...\n", __func__);
+		dev_info(info->dev, "%s: Reading count...\n", __func__);
 
 		ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
 					ADDR_FRAMEBUFFER, readData, DATA_HEADER,
 					DUMMY_FRAMEBUFFER);
 		if (ret < OK) {
-			pr_err("%s: Error while reading count! ERROR %08X\n",
+			dev_err(info->dev, "%s: Error while reading count! ERROR %08X\n",
 				__func__, ret | ERROR_REQU_DATA);
 			ret |= ERROR_REQU_DATA;
 			retry2++;
@@ -986,20 +986,20 @@ int requestSyncFrame(struct fts_ts_info *info, u8 type)
 		}
 
 		if (readData[0] != HEADER_SIGNATURE)
-			pr_err("%s: Invalid Signature while reading count! ERROR %08X\n",
+			dev_err(info->dev, "%s: Invalid Signature while reading count! ERROR %08X\n",
 				__func__, ret | ERROR_REQU_DATA);
 
 		count = (readData[3] << 8) | readData[2];
 		new_count = count;
-		pr_info("%s: Base count = %d\n", __func__, count);
+		dev_info(info->dev, "%s: Base count = %d\n", __func__, count);
 
-		pr_info("%s: Requesting frame %02X  attempt = %d\n",
+		dev_info(info->dev, "%s: Requesting frame %02X  attempt = %d\n",
 			__func__,  type, retry2 + 1);
 		ret = fts_write(info, cmd, 7);
 		if(ret >= OK)
 			ret = fts_write(info, request, ARRAY_SIZE(request));
 		if (ret >= OK) {
-			pr_info("%s: Polling for new count...\n", __func__);
+			dev_info(info->dev, "%s: Polling for new count...\n", __func__);
 			time_to_count = TIMEOUT_REQU_DATA / TIMEOUT_RESOLUTION;
 			while (count == new_count && retry < time_to_count) {
 				ret = fts_writeReadU8UX(info,
@@ -1015,26 +1015,26 @@ int requestSyncFrame(struct fts_ts_info *info, u8 type)
 					new_count = ((readData[3] << 8) |
 						     readData[2]);
 				else
-					pr_err("%s: invalid Signature or can not read count... ERROR %08X\n",
+					dev_err(info->dev, "%s: invalid Signature or can not read count... ERROR %08X\n",
 						__func__, ret);
 				retry++;
 				mdelay(TIMEOUT_RESOLUTION);
 			}
 
 			if (count == new_count) {
-				pr_err("%s: New count not received! ERROR %08X\n",
+				dev_err(info->dev, "%s: New count not received! ERROR %08X\n",
 					__func__,
 					ERROR_TIMEOUT | ERROR_REQU_DATA);
 				ret = ERROR_TIMEOUT | ERROR_REQU_DATA;
 			} else {
-				pr_info("%s: New count found! count = %d! Frame ready!\n",
+				dev_info(info->dev, "%s: New count found! count = %d! Frame ready!\n",
 					__func__, new_count);
 				return OK;
 			}
 		}
 		retry2++;
 	}
-	pr_err("%s: Request Data failed! ERROR %08X\n", __func__, ret);
+	dev_err(info->dev, "%s: Request Data failed! ERROR %08X\n", __func__, ret);
 	return ret;
 }
 
@@ -1050,13 +1050,13 @@ int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 	u8 temp[2] = { 0 };
 	u16 t_cycle;
 
-	pr_info("%s: Setting the scanning frequency to %uHz...\n",
+	dev_info(info->dev, "%s: Setting the scanning frequency to %uHz...\n",
 		__func__, freq);
 
 	/* read MRN register */
 	res = readConfig(info, ADDR_CONFIG_MRN, temp, 1);
 	if (res < OK) {
-		pr_err("%s: error while reading mrn count! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading mrn count! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
@@ -1065,7 +1065,7 @@ int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 	temp[0] &= (~0x03);
 	res = writeConfig(info, ADDR_CONFIG_MRN, temp, 1);
 	if (res < OK) {
-		pr_err("%s: error while writing mrn count! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while writing mrn count! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
@@ -1074,7 +1074,7 @@ int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 	/* read T cycle */
 	res = readConfig(info, ADDR_CONFIG_T_CYCLE, temp, 2);
 	if (res < OK) {
-		pr_err("%s: error while reading T cycle! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading T cycle! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
@@ -1085,21 +1085,21 @@ int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 	  * scan_freq = 30Mhz/(2*(T_cycle+R_cycle)) */
 	temp[0] = (30000000) / (freq * 2) - t_cycle;
 	/* write R cycle in Config Area */
-	pr_info("%s: T cycle  = %d (0x%04X) => R0 cycle = %d (0x%02X)\n",
+	dev_info(info->dev, "%s: T cycle  = %d (0x%04X) => R0 cycle = %d (0x%02X)\n",
 		__func__, t_cycle, t_cycle, temp[0], temp[0]);
 	res = writeConfig(info, ADDR_CONFIG_R0_CYCLE, temp, 1);
 	if (res < OK) {
-		pr_err("%s: error while writing R0 cycle! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while writing R0 cycle! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
 
-	pr_info("%s: Saving Config into the flash ...\n", __func__);
+	dev_info(info->dev, "%s: Saving Config into the flash ...\n", __func__);
 	/* save config */
 	temp[0] = SAVE_FW_CONF;
 	res = writeSysCmd(info, SYS_CMD_SAVE_FLASH, temp, 1);
 	if (res < OK) {
-		pr_err("%s: error while saving config into the flash! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while saving config into the flash! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
@@ -1107,12 +1107,12 @@ int setActiveScanFrequency(struct fts_ts_info *info, u32 freq)
 	/* system reset */
 	res = fts_system_reset(info);
 	if (res < OK) {
-		pr_err("%s: error at system reset! ERROR %08X\n",
+		dev_err(info->dev, "%s: error at system reset! ERROR %08X\n",
 			__func__, res);
 		return res;
 	}
 
-	pr_info("%s: Setting the scanning frequency FINISHED!\n", __func__);
+	dev_info(info->dev, "%s: Setting the scanning frequency FINISHED!\n", __func__);
 	return OK;
 }
 
@@ -1140,7 +1140,7 @@ int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
 	if (temp == NULL)
                 return ERROR_ALLOC;
 
-	pr_info("%s: Starting to write Host Data Memory\n", __func__);
+	dev_info(info->dev, "%s: Starting to write Host Data Memory\n", __func__);
 
 	temp[0] = 0x5A;
 	temp[1] = type;
@@ -1151,13 +1151,13 @@ int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
 
 	memcpy(&temp[16], data, size);
 
-	pr_info("%s: Write Host Data Memory in buffer...\n", __func__);
+	dev_info(info->dev, "%s: Write Host Data Memory in buffer...\n", __func__);
 	res = fts_writeU8UX(info, FTS_CMD_FRAMEBUFFER_W, BITS_16,
 			    ADDR_FRAMEBUFFER, temp, size +
 			    SYNCFRAME_DATA_HEADER);
 
 	if (res < OK) {
-		pr_err("%s: error while writing the buffer! ERROR %08X\n",
+		dev_err(info->dev, "%s: error while writing the buffer! ERROR %08X\n",
 			__func__, res);
 		kfree(temp);
 		return res;
@@ -1165,10 +1165,10 @@ int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
 
 	/* save host data memory into the flash */
 	if (save == 1) {
-		pr_info("%s: Trigger writing into the flash...\n", __func__);
+		dev_info(info->dev, "%s: Trigger writing into the flash...\n", __func__);
 		res = writeSysCmd(info, SYS_CMD_SPECIAL, &sett, 1);
 		if (res < OK) {
-			pr_err("%s: error while writing into the flash! ERROR %08X\n",
+			dev_err(info->dev, "%s: error while writing into the flash! ERROR %08X\n",
 				__func__, res);
 			kfree(temp);
 			return res;
@@ -1176,7 +1176,7 @@ int writeHostDataMemory(struct fts_ts_info *info, u8 type, u8 *data,
 	}
 
 
-	pr_info("%s: write Host Data Memory FINISHED!\n", __func__);
+	dev_info(info->dev, "%s: write Host Data Memory FINISHED!\n", __func__);
 	kfree(temp);
 	return OK;
 }
@@ -1191,24 +1191,24 @@ int saveMpFlag(struct fts_ts_info *info, u8 mpflag)
 	int ret = OK;
 	u8 panelCfg = SAVE_PANEL_CONF;
 
-	pr_info("%s: Saving MP Flag = %02X\n", __func__, mpflag);
+	dev_info(info->dev, "%s: Saving MP Flag = %02X\n", __func__, mpflag);
 	ret |= writeSysCmd(info, SYS_CMD_MP_FLAG, &mpflag, 1);
 	if (ret < OK)
-		pr_err("%s: Error while writing MP flag on ram... ERROR %08X\n",
+		dev_err(info->dev, "%s: Error while writing MP flag on ram... ERROR %08X\n",
 			__func__, ret);
 
 	ret |= writeSysCmd(info, SYS_CMD_SAVE_FLASH, &panelCfg, 1);
 	if (ret < OK)
-		pr_err("%s: Error while saving MP flag on flash... ERROR %08X\n",
+		dev_err(info->dev, "%s: Error while saving MP flag on flash... ERROR %08X\n",
 			__func__, ret);
 
 	ret |= readSysInfo(info, 1);
 	if (ret < OK) {
-		pr_err("%s: Error while refreshing SysInfo... ERROR %08X\n",
+		dev_err(info->dev, "%s: Error while refreshing SysInfo... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("%s: Saving MP Flag OK!\n", __func__);
+	dev_info(info->dev, "%s: Saving MP Flag OK!\n", __func__);
 	return OK;
 }

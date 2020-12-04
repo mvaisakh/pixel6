@@ -51,23 +51,23 @@ int requestHDMDownload(struct fts_ts_info *info, u8 type)
 	int ret = ERROR_OP_NOT_ALLOW;
 	int retry = 0;
 
-	pr_info("%s: Requesting HDM download...\n", __func__);
+	dev_info(info->dev, "%s: Requesting HDM download...\n", __func__);
 	while (retry < RETRY_FW_HDM_DOWNLOAD) {
 		ret = writeSysCmd(info, SYS_CMD_LOAD_DATA,  &type, 1);
 		/* send request to load in memory the Compensation Data */
 		if (ret < OK) {
-			pr_err("%s: failed at %d attemp!\n",
+			dev_err(info->dev, "%s: failed at %d attemp!\n",
 				 __func__, retry + 1);
 			retry += 1;
 		} else {
-			pr_info("%s: Request HDM Download FINISHED!\n",
+			dev_info(info->dev, "%s: Request HDM Download FINISHED!\n",
 				__func__);
 			return OK;
 		}
 	}
 
 	ret |= ERROR_REQU_HDM_DOWNLOAD;
-	pr_err("%s: Requesting HDM Download... ERROR %08X\n",
+	dev_err(info->dev, "%s: Requesting HDM Download... ERROR %08X\n",
 		 __func__, ret);
 
 	return ret;
@@ -94,15 +94,15 @@ int readHDMHeader(struct fts_ts_info *info, u8 type, DataHeader *header,
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, offset,
 				data, HDM_DATA_HEADER, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {	/* i2c function have already a retry mechanism */
-		pr_err("%s: error while reading HDM data header ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading HDM data header ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("Read HDM Data Header done!\n");
+	dev_info(info->dev, "Read HDM Data Header done!\n");
 
 	if (data[0] != HEADER_SIGNATURE) {
-		pr_err("%s: The Header Signature was wrong! %02X != %02X ERROR %08X\n",
+		dev_err(info->dev, "%s: The Header Signature was wrong! %02X != %02X ERROR %08X\n",
 			__func__, data[0], HEADER_SIGNATURE,
 			ERROR_WRONG_DATA_SIGN);
 		return ERROR_WRONG_DATA_SIGN;
@@ -110,12 +110,12 @@ int readHDMHeader(struct fts_ts_info *info, u8 type, DataHeader *header,
 
 
 	if (data[1] != type) {
-		pr_err("%s: Wrong type found! %02X!=%02X ERROR %08X\n",
+		dev_err(info->dev, "%s: Wrong type found! %02X!=%02X ERROR %08X\n",
 			__func__, data[1], type, ERROR_DIFF_DATA_TYPE);
 		return ERROR_DIFF_DATA_TYPE;
 	}
 
-	pr_info("Type = %02X of Compensation data OK!\n", type);
+	dev_info(info->dev, "Type = %02X of Compensation data OK!\n", type);
 
 	header->type = type;
 
@@ -139,23 +139,23 @@ static int readMutualSenseGlobalData(struct fts_ts_info *info, u64 *address,
 	u8 data[COMP_DATA_GLOBAL];
 	int ret;
 
-	pr_info("Address for Global data= %llx\n", *address);
+	dev_info(info->dev, "Address for Global data= %llx\n", *address);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, *address,
 				data, COMP_DATA_GLOBAL, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading info data ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading info data ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
-	pr_info("Global data Read !\n");
+	dev_info(info->dev, "Global data Read !\n");
 
 	global->header.force_node = data[0];
 	global->header.sense_node = data[1];
 	global->cx1 = data[2];
 	/* all other bytes are reserved atm */
 
-	pr_info("force_len = %d sense_len = %d CX1 = %d\n",
+	dev_info(info->dev, "force_len = %d sense_len = %d CX1 = %d\n",
 		 global->header.force_node, global->header.sense_node,
 		 global->cx1);
 
@@ -178,28 +178,28 @@ static int readMutualSenseNodeData(struct fts_ts_info *info, u64 address,
 	int ret;
 	int size = node->header.force_node * node->header.sense_node;
 
-	pr_info("Address for Node data = %llx\n", address);
+	dev_info(info->dev, "Address for Node data = %llx\n", address);
 
 	node->node_data = (i8 *)kmalloc(size * (sizeof(i8)), GFP_KERNEL);
 
 	if (node->node_data == NULL) {
-		pr_err("%s: can not allocate node_data... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate node_data... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		return ERROR_ALLOC;
 	}
 
-	pr_info("Node Data to read %d bytes\n", size);
+	dev_info(info->dev, "Node Data to read %d bytes\n", size);
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address,
 				node->node_data, size, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading node data ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading node data ERROR %08X\n",
 			__func__, ret);
 		kfree(node->node_data);
 		return ret;
 	}
 	node->node_data_size = size;
 
-	pr_info("Read node data OK!\n");
+	dev_info(info->dev, "Read node data OK!\n");
 
 	return size;
 }
@@ -223,32 +223,32 @@ int readMutualSenseCompensationData(struct fts_ts_info *info, u8 type,
 
 	if (!(type == LOAD_CX_MS_TOUCH || type == LOAD_CX_MS_LOW_POWER ||
 	      type == LOAD_CX_MS_KEY || type == LOAD_CX_MS_FORCE)) {
-		pr_err("%s: Choose a MS type of compensation data ERROR %08X\n",
+		dev_err(info->dev, "%s: Choose a MS type of compensation data ERROR %08X\n",
 			__func__, ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
 	ret = requestHDMDownload(info, type);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ret);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ret);
 		return ret;
 	}
 
 	ret = readHDMHeader(info, type, &(data->header), &address);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_HDM_DATA_HEADER);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_HDM_DATA_HEADER);
 		return ret | ERROR_HDM_DATA_HEADER;
 	}
 
 	ret = readMutualSenseGlobalData(info, &address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
 		return ret | ERROR_COMP_DATA_GLOBAL;
 	}
 
 	ret = readMutualSenseNodeData(info, address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
 		return ret | ERROR_COMP_DATA_NODE;
 	}
 
@@ -269,16 +269,16 @@ static int readSelfSenseGlobalData(struct fts_ts_info *info, u64 *address, SelfS
 	int ret;
 	u8 data[COMP_DATA_GLOBAL];
 
-	pr_info("Address for Global data= %llx\n", *address);
+	dev_info(info->dev, "Address for Global data= %llx\n", *address);
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, *address,
 				data, COMP_DATA_GLOBAL, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading the data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading the data... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("Global data Read !\n");
+	dev_info(info->dev, "Global data Read !\n");
 
 
 	global->header.force_node = data[0];
@@ -292,10 +292,10 @@ static int readSelfSenseGlobalData(struct fts_ts_info *info, u64 *address, SelfS
 	global->f_ix0 = data[8];
 	global->s_ix0 = data[9];
 
-	pr_info("force_len = %d sense_len = %d  f_ix1 = %d   s_ix1 = %d   f_cx1 = %d   s_cx1 = %d\n",
+	dev_info(info->dev, "force_len = %d sense_len = %d  f_ix1 = %d   s_ix1 = %d   f_cx1 = %d   s_cx1 = %d\n",
 		global->header.force_node, global->header.sense_node,
 		global->f_ix1, global->s_ix1, global->f_cx1, global->s_cx1);
-	pr_info("max_n = %d   s_max_n = %d f_ix0 = %d  s_ix0 = %d\n",
+	dev_info(info->dev, "max_n = %d   s_max_n = %d f_ix0 = %d  s_ix0 = %d\n",
 		global->f_max_n, global->s_max_n, global->f_ix0,
 		global->s_ix0);
 
@@ -322,7 +322,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	int ret;
 
 	if (size <= 0) {
-		pr_err("%s: Invalid  SS data length!\n", __func__);
+		dev_err(info->dev, "%s: Invalid  SS data length!\n", __func__);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
@@ -333,7 +333,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->ix2_fm = (u8 *)kmalloc(node->header.force_node * (sizeof(u8)),
 				     GFP_KERNEL);
 	if (node->ix2_fm == NULL) {
-		pr_err("%s: can not allocate memory for ix2_fm... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for ix2_fm... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(data);
 		return ERROR_ALLOC;
@@ -342,7 +342,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->cx2_fm = (i8 *)kmalloc(node->header.force_node * (sizeof(i8)),
 				     GFP_KERNEL);
 	if (node->cx2_fm == NULL) {
-		pr_err("%s: can not allocate memory for cx2_fm ... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for cx2_fm ... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix2_fm);
 		kfree(data);
@@ -351,7 +351,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->ix2_sn = (u8 *)kmalloc(node->header.sense_node * (sizeof(u8)),
 				     GFP_KERNEL);
 	if (node->ix2_sn == NULL) {
-		pr_err("%s: can not allocate memory for ix2_sn ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for ix2_sn ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix2_fm);
 		kfree(node->cx2_fm);
@@ -361,7 +361,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->cx2_sn = (i8 *)kmalloc(node->header.sense_node * (sizeof(i8)),
 				     GFP_KERNEL);
 	if (node->cx2_sn == NULL) {
-		pr_err("%s: can not allocate memory for cx2_sn ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for cx2_sn ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix2_fm);
 		kfree(node->cx2_fm);
@@ -371,14 +371,14 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	}
 
 
-	pr_info("Address for Node data = %llx\n", address);
+	dev_info(info->dev, "Address for Node data = %llx\n", address);
 
-	pr_info("Node Data to read %d bytes\n", size);
+	dev_info(info->dev, "Node Data to read %d bytes\n", size);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address,
 				data, size, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data... ERROR %08X\n",
 			__func__, ret);
 		kfree(node->ix2_fm);
 		kfree(node->cx2_fm);
@@ -388,7 +388,7 @@ static int readSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 		return ret;
 	}
 
-	pr_info("Read node data ok!\n");
+	dev_info(info->dev, "Read node data ok!\n");
 
 	memcpy(node->ix2_fm, data, node->header.force_node);
 	memcpy(node->ix2_sn, &data[node->header.force_node],
@@ -426,34 +426,34 @@ int readSelfSenseCompensationData(struct fts_ts_info *info, u8 type,
 
 	if (!(type == LOAD_CX_SS_TOUCH || type == LOAD_CX_SS_TOUCH_IDLE ||
 	      type == LOAD_CX_SS_KEY || type == LOAD_CX_SS_FORCE)) {
-		pr_err("%s: Choose a SS type of compensation data ERROR %08X\n",
+		dev_err(info->dev, "%s: Choose a SS type of compensation data ERROR %08X\n",
 			__func__, ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
 	ret = requestHDMDownload(info, type);
 	if (ret < 0) {
-		pr_err("%s: error while requesting data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while requesting data... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
 	ret = readHDMHeader(info, type, &(data->header), &address);
 	if (ret < 0) {
-		pr_err("%s: error while reading data header... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data header... ERROR %08X\n",
 			__func__, ERROR_HDM_DATA_HEADER);
 		return ret | ERROR_HDM_DATA_HEADER;
 	}
 
 	ret = readSelfSenseGlobalData(info, &address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
 		return ret | ERROR_COMP_DATA_GLOBAL;
 	}
 
 	ret = readSelfSenseNodeData(info, address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
 		return ret | ERROR_COMP_DATA_NODE;
 	}
 
@@ -475,22 +475,22 @@ static int readTotMutualSenseGlobalData(struct fts_ts_info *info, u64 *address,
 	int ret;
 	u8 data[COMP_DATA_GLOBAL];
 
-	pr_info("Address for Global data= %llx\n", *address);
+	dev_info(info->dev, "Address for Global data= %llx\n", *address);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, *address,
 				data, COMP_DATA_GLOBAL, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading info data ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading info data ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
-	pr_info("Global data Read !\n");
+	dev_info(info->dev, "Global data Read !\n");
 
 	global->header.force_node = data[0];
 	global->header.sense_node = data[1];
 	/* all other bytes are reserved atm */
 
-	pr_info("force_len = %d sense_len = %d\n",
+	dev_info(info->dev, "force_len = %d sense_len = %d\n",
 		global->header.force_node, global->header.sense_node);
 
 	*address += COMP_DATA_GLOBAL;
@@ -515,7 +515,7 @@ static int readTotMutualSenseNodeData(struct fts_ts_info *info, u64 address,
 	u8 *data;
 
 	if (size <= 0) {
-		pr_err("%s: Invalid MS data length!\n", __func__);
+		dev_err(info->dev, "%s: Invalid MS data length!\n", __func__);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
@@ -523,23 +523,23 @@ static int readTotMutualSenseNodeData(struct fts_ts_info *info, u64 address,
 	if (data == NULL)
 		return ERROR_ALLOC;
 
-	pr_info("Address for Node data = %llx\n", address);
+	dev_info(info->dev, "Address for Node data = %llx\n", address);
 
 	node->node_data = (short *)kmalloc(size * (sizeof(short)), GFP_KERNEL);
 
 	if (node->node_data == NULL) {
-		pr_err("%s: can not allocate node_data... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate node_data... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(data);
 		return ERROR_ALLOC;
 	}
 
-	pr_info("Node Data to read %d bytes\n", size);
+	dev_info(info->dev, "Node Data to read %d bytes\n", size);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address, data,
 				toRead, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading node data ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading node data ERROR %08X\n",
 			__func__, ret);
 		kfree(node->node_data);
 		kfree(data);
@@ -551,7 +551,7 @@ static int readTotMutualSenseNodeData(struct fts_ts_info *info, u64 address,
 		node->node_data[i] = ((short)data[i * 2 + 1]) << 8 |
 				      data[i * 2];
 
-	pr_info("Read node data OK!\n");
+	dev_info(info->dev, "Read node data OK!\n");
 
 	kfree(data);
 	return size;
@@ -578,32 +578,32 @@ int readTotMutualSenseCompensationData(struct fts_ts_info *info, u8 type,
 	      LOAD_PANEL_CX_TOT_MS_LOW_POWER ||
 	      type == LOAD_PANEL_CX_TOT_MS_KEY ||
 	      type == LOAD_PANEL_CX_TOT_MS_FORCE)) {
-		pr_err("%s: Choose a TOT MS type of compensation data ERROR %08X\n",
+		dev_err(info->dev, "%s: Choose a TOT MS type of compensation data ERROR %08X\n",
 			__func__, ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
 	ret = requestHDMDownload(info, type);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ret);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ret);
 		return ret;
 	}
 
 	ret = readHDMHeader(info, type, &(data->header), &address);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_HDM_DATA_HEADER);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_HDM_DATA_HEADER);
 		return ret | ERROR_HDM_DATA_HEADER;
 	}
 
 	ret = readTotMutualSenseGlobalData(info, &address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
 		return ret | ERROR_COMP_DATA_GLOBAL;
 	}
 
 	ret = readTotMutualSenseNodeData(info, address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
 		return ret | ERROR_COMP_DATA_NODE;
 	}
 
@@ -625,23 +625,23 @@ static int readTotSelfSenseGlobalData(struct fts_ts_info *info, u64 *address,
 	int ret;
 	u8 data[COMP_DATA_GLOBAL];
 
-	pr_info("Address for Global data= %llx\n", *address);
+	dev_info(info->dev, "Address for Global data= %llx\n", *address);
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, *address,
 				data, COMP_DATA_GLOBAL, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading the data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading the data... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("Global data Read !\n");
+	dev_info(info->dev, "Global data Read !\n");
 
 
 	global->header.force_node = data[0];
 	global->header.sense_node = data[1];
 
 
-	pr_info("force_len = %d sense_len = %d\n",
+	dev_info(info->dev, "force_len = %d sense_len = %d\n",
 		global->header.force_node, global->header.sense_node);
 
 
@@ -668,7 +668,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	int ret, i, j = 0;
 
 	if (size <= 0) {
-		pr_err("%s: Invalid Tot SS data length!\n", __func__);
+		dev_err(info->dev, "%s: Invalid Tot SS data length!\n", __func__);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
@@ -679,7 +679,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->ix_fm = (u16 *)kmalloc(node->header.force_node * (sizeof(u16)),
 				     GFP_KERNEL);
 	if (node->ix_fm == NULL) {
-		pr_err("%s: can not allocate memory for ix2_fm... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for ix2_fm... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(data);
 		return ERROR_ALLOC;
@@ -688,7 +688,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->cx_fm = (short *)kmalloc(node->header.force_node *
 				       (sizeof(short)), GFP_KERNEL);
 	if (node->cx_fm == NULL) {
-		pr_err("%s: can not allocate memory for cx2_fm ... ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for cx2_fm ... ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix_fm);
 		kfree(data);
@@ -697,7 +697,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->ix_sn = (u16 *)kmalloc(node->header.sense_node * (sizeof(u16)),
 				     GFP_KERNEL);
 	if (node->ix_sn == NULL) {
-		pr_err("%s: can not allocate memory for ix2_sn ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for ix2_sn ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix_fm);
 		kfree(node->cx_fm);
@@ -707,7 +707,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	node->cx_sn = (short *)kmalloc(node->header.sense_node *
 				       (sizeof(short)), GFP_KERNEL);
 	if (node->cx_sn == NULL) {
-		pr_err("%s: can not allocate memory for cx2_sn ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for cx2_sn ERROR %08X",
 			__func__, ERROR_ALLOC);
 		kfree(node->ix_fm);
 		kfree(node->cx_fm);
@@ -717,14 +717,14 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	}
 
 
-	pr_info("Address for Node data = %llx\n", address);
+	dev_info(info->dev, "Address for Node data = %llx\n", address);
 
-	pr_info("Node Data to read %d bytes\n", size);
+	dev_info(info->dev, "Node Data to read %d bytes\n", size);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address,
 				data, toRead, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data... ERROR %08X\n",
 			__func__, ret);
 		kfree(node->ix_fm);
 		kfree(node->cx_fm);
@@ -734,7 +734,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 		return ret;
 	}
 
-	pr_info("Read node data ok!\n");
+	dev_info(info->dev, "Read node data ok!\n");
 
 	j = 0;
 	for (i = 0; i < node->header.force_node; i++) {
@@ -758,7 +758,7 @@ static int readTotSelfSenseNodeData(struct fts_ts_info *info, u64 address,
 	}
 
 	if (j != toRead)
-		pr_err("%s: parsed a wrong number of bytes %d!=%d\n",
+		dev_err(info->dev, "%s: parsed a wrong number of bytes %d!=%d\n",
 			__func__, j, toRead);
 
 	kfree(data);
@@ -789,34 +789,34 @@ int readTotSelfSenseCompensationData(struct fts_ts_info *info, u8 type,
 	      LOAD_PANEL_CX_TOT_SS_TOUCH_IDLE || type ==
 	      LOAD_PANEL_CX_TOT_SS_KEY ||
 	      type == LOAD_PANEL_CX_TOT_SS_FORCE)) {
-		pr_err("%s: Choose a TOT SS type of compensation data ERROR %08X\n",
+		dev_err(info->dev, "%s: Choose a TOT SS type of compensation data ERROR %08X\n",
 			__func__, ERROR_OP_NOT_ALLOW);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
 	ret = requestHDMDownload(info, type);
 	if (ret < 0) {
-		pr_err("%s: error while requesting data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while requesting data... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
 	ret = readHDMHeader(info, type, &(data->header), &address);
 	if (ret < 0) {
-		pr_err("%s: error while reading data header... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data header... ERROR %08X\n",
 			__func__, ERROR_HDM_DATA_HEADER);
 		return ret | ERROR_HDM_DATA_HEADER;
 	}
 
 	ret = readTotSelfSenseGlobalData(info, &address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_GLOBAL);
 		return ret | ERROR_COMP_DATA_GLOBAL;
 	}
 
 	ret = readTotSelfSenseNodeData(info, address, data);
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
 		return ret | ERROR_COMP_DATA_NODE;
 	}
 
@@ -847,15 +847,15 @@ static int readSensitivityCoeffHeader(struct fts_ts_info *info, u8 type,
 				data, SYNCFRAME_DATA_HEADER,
 				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {	/* i2c function have already a retry mechanism */
-		pr_err("%s: error while reading data header ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data header ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
 
-	pr_info("Read Data Header done!\n");
+	dev_info(info->dev, "Read Data Header done!\n");
 
 	if (data[0] != HEADER_SIGNATURE) {
-		pr_err("%s: The Header Signature was wrong! %02X != %02X ERROR %08X\n",
+		dev_err(info->dev, "%s: The Header Signature was wrong! %02X != %02X ERROR %08X\n",
 			__func__, data[0], HEADER_SIGNATURE,
 			ERROR_WRONG_DATA_SIGN);
 		return ERROR_WRONG_DATA_SIGN;
@@ -863,24 +863,24 @@ static int readSensitivityCoeffHeader(struct fts_ts_info *info, u8 type,
 
 
 	if (data[1] != type) {
-		pr_err("%s: Wrong type found! %02X!=%02X ERROR %08X\n",
+		dev_err(info->dev, "%s: Wrong type found! %02X!=%02X ERROR %08X\n",
 			__func__, data[1], type, ERROR_DIFF_DATA_TYPE);
 		return ERROR_DIFF_DATA_TYPE;
 	}
 
-	pr_info("Type = %02X of Compensation data OK!\n", type);
+	dev_info(info->dev, "Type = %02X of Compensation data OK!\n", type);
 
 	msHeader->type = type;
 	ssHeader->type = type;
 
 	msHeader->force_node = data[5];
 	msHeader->sense_node = data[6];
-	pr_info("MS Force Len = %d Sense Len = %d\n",
+	dev_info(info->dev, "MS Force Len = %d Sense Len = %d\n",
 		msHeader->force_node, msHeader->sense_node);
 
 	ssHeader->force_node = data[7];
 	ssHeader->sense_node = data[8];
-	pr_info("SS Force Len = %d Sense Len = %d\n",
+	dev_info(info->dev, "SS Force Len = %d Sense Len = %d\n",
 		ssHeader->force_node, ssHeader->sense_node);
 
 	*address = offset + SYNCFRAME_DATA_HEADER;
@@ -909,7 +909,7 @@ static int readSensitivityCoeffNodeData(struct fts_ts_info *info, u64 address,
 	int ret;
 
 	if (size <= 0) {
-		pr_err("%s:Invalid SS coeff. length!\n", __func__);
+		dev_err(info->dev, "%s:Invalid SS coeff. length!\n", __func__);
 		return ERROR_OP_NOT_ALLOW;
 	}
 
@@ -932,7 +932,7 @@ static int readSensitivityCoeffNodeData(struct fts_ts_info *info, u64 address,
 	    ssCoeff->ss_force_coeff == NULL ||
 	    ssCoeff->ss_sense_coeff == NULL) {
 
-		pr_err("%s: can not allocate memory for coeff ERROR %08X",
+		dev_err(info->dev, "%s: can not allocate memory for coeff ERROR %08X",
 			__func__, ERROR_ALLOC);
 
 		kfree(msCoeff->ms_coeff);
@@ -948,14 +948,14 @@ static int readSensitivityCoeffNodeData(struct fts_ts_info *info, u64 address,
 		return ERROR_ALLOC;
 	}
 
-	pr_info("Address for Node data = %llx\n", address);
+	dev_info(info->dev, "Address for Node data = %llx\n", address);
 
-	pr_info("Node Data to read %d bytes\n", size);
+	dev_info(info->dev, "Node Data to read %d bytes\n", size);
 
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address, data,
 				size, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("%s: error while reading data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data... ERROR %08X\n",
 			__func__, ret);
 		kfree(msCoeff->ms_coeff);
 		msCoeff->ms_coeff = NULL;
@@ -967,7 +967,7 @@ static int readSensitivityCoeffNodeData(struct fts_ts_info *info, u64 address,
 		return ret;
 	}
 
-	pr_info("Read node data ok!\n");
+	dev_info(info->dev, "Read node data ok!\n");
 
 	memcpy(msCoeff->ms_coeff, data, msCoeff->node_data_size);
 	memcpy(ssCoeff->ss_force_coeff, &data[msCoeff->node_data_size],
@@ -1004,7 +1004,7 @@ int readSensitivityCoefficientsData(struct fts_ts_info *info,
 
 	ret = requestHDMDownload(info, LOAD_SENS_CAL_COEFF);
 	if (ret < OK) {
-		pr_err("%s: error while requesting data... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while requesting data... ERROR %08X\n",
 			__func__, ret);
 		return ret;
 	}
@@ -1013,14 +1013,14 @@ int readSensitivityCoefficientsData(struct fts_ts_info *info,
 					 &(msCoeff->header), &(ssCoeff->header),
 					 &address);
 	if (ret < OK) {
-		pr_err("%s: error while reading data header... ERROR %08X\n",
+		dev_err(info->dev, "%s: error while reading data header... ERROR %08X\n",
 			__func__, ERROR_HDM_DATA_HEADER);
 		return ret | ERROR_HDM_DATA_HEADER;
 	}
 
 	ret = readSensitivityCoeffNodeData(info, address, msCoeff, ssCoeff);
 	if (ret < OK) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_COMP_DATA_NODE);
 		return ret | ERROR_COMP_DATA_NODE;
 	}
 
@@ -1043,44 +1043,44 @@ static int readGoldenMutualData(struct fts_ts_info *info,
 	pgmData->data_size = 0;
 	pgmData->data 	   = NULL;
 
-	pr_info("Address for Golden Mutual hdr = %llx\n", address);
+	dev_info(info->dev, "Address for Golden Mutual hdr = %llx\n", address);
 
 	/* read 12 byte Golden Mutual header */
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
 				address, (u8 *)&(pgmData->hdr),
 				GM_DATA_HEADER, DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("error while reading Golden Mutual hdr... ERROR %08X\n",
+		dev_err(info->dev, "error while reading Golden Mutual hdr... ERROR %08X\n",
 			ret);
 		goto out;
 	}
 
-	pr_info("ms_force_len = %u ms_sense_len = %u\n",
+	dev_info(info->dev, "ms_force_len = %u ms_sense_len = %u\n",
 		 pgmData->hdr.ms_f_len, pgmData->hdr.ms_s_len);
-	pr_info("ss_force_len = %u ss_sense_len = %u\n",
+	dev_info(info->dev, "ss_force_len = %u ss_sense_len = %u\n",
 		 pgmData->hdr.ss_f_len, pgmData->hdr.ss_s_len);
- 	pr_info("ms_key_len = %u \n", pgmData->hdr.ms_k_len);
+ 	dev_info(info->dev, "ms_key_len = %u \n", pgmData->hdr.ms_k_len);
 
 	size = pgmData->hdr.ms_f_len * pgmData->hdr.ms_s_len;
 
 	pgmData->data = kzalloc(size * sizeof(s16), GFP_KERNEL);
 	if (pgmData->data == NULL) {
 		ret = ERROR_ALLOC;
-		pr_err("Unable to allocate memory for GM raw data. ERR %08X",
+		dev_err(info->dev, "Unable to allocate memory for GM raw data. ERR %08X",
 			ret);
 		goto out;
 	}
 
 	/* go past both HDM and GM header to read the data */
 	address += GM_DATA_HEADER;
-	pr_info("Address for Golden Mutual data = %llx\n", address);
+	dev_info(info->dev, "Address for Golden Mutual data = %llx\n", address);
 
 	//read the data buffer.
 	ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16, address,
 				(u8 *)pgmData->data, size * sizeof(s16),
 				DUMMY_FRAMEBUFFER);
 	if (ret < OK) {
-		pr_err("error while reading Golden Mutual data... ERROR %08X\n", ret);
+		dev_err(info->dev, "error while reading Golden Mutual data... ERROR %08X\n", ret);
 		kfree(pgmData->data);
 		pgmData->data = NULL;
 		goto out;
@@ -1088,7 +1088,7 @@ static int readGoldenMutualData(struct fts_ts_info *info,
 
 	pgmData->data_size = size;
 
-	pr_info("Read data ok!\n");
+	dev_info(info->dev, "Read data ok!\n");
 
 	for (i = 0; i < size; i++)
 		le16_to_cpus(&pgmData->data[i]);
@@ -1113,7 +1113,7 @@ int readGoldenMutualRawData(struct fts_ts_info *info,
 
 	ret = requestHDMDownload(info, LOAD_GOLDEN_MUTUAL_RAW);
 	if (ret < 0) {
-		pr_err("error while requesting HDM Download... ERROR %08X\n",
+		dev_err(info->dev, "error while requesting HDM Download... ERROR %08X\n",
 			ret);
 		goto out;
 	}
@@ -1121,7 +1121,7 @@ int readGoldenMutualRawData(struct fts_ts_info *info,
 	ret = readHDMHeader(info, LOAD_GOLDEN_MUTUAL_RAW,
 			&pgmData->hdm_hdr, &address);
 	if (ret < 0) {
-		pr_err("error reading HDM header... ERROR %08X\n",
+		dev_err(info->dev, "error reading HDM header... ERROR %08X\n",
 			ERROR_HDM_DATA_HEADER);
 		ret |= ERROR_HDM_DATA_HEADER;
 		goto out;
@@ -1129,7 +1129,7 @@ int readGoldenMutualRawData(struct fts_ts_info *info,
 
 	ret = readGoldenMutualData(info, pgmData, address);
 	if (ret < 0) {
-		pr_err("error reading Golden Mutual data... ERROR %08X\n",
+		dev_err(info->dev, "error reading Golden Mutual data... ERROR %08X\n",
 			ERROR_GOLDEN_MUTUAL_DATA);
 		ret |= ERROR_GOLDEN_MUTUAL_DATA;
 		goto out;

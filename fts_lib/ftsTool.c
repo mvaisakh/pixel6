@@ -81,11 +81,11 @@ int flushFIFO(struct fts_ts_info *info)
 
 	ret = writeSysCmd(info, SYS_CMD_SPECIAL, &sett, 1);	/* flush the FIFO */
 	if (ret < OK) {
-		pr_err("flushFIFO: ERROR %08X\n", ret);
+		dev_err(info->dev, "flushFIFO: ERROR %08X\n", ret);
 		return ret;
 	}
 
-	pr_info("FIFO flushed!\n");
+	dev_info(info->dev, "FIFO flushed!\n");
 	return OK;
 }
 
@@ -286,11 +286,11 @@ int senseOn(struct fts_ts_info *info)
 
 	ret = setScanMode(info, SCAN_MODE_ACTIVE, 0xFF);	/* enable all */
 	if (ret < OK) {
-		pr_err("senseOn: ERROR %08X\n", ret);
+		dev_err(info->dev, "senseOn: ERROR %08X\n", ret);
 		return ret;
 	}
 
-	pr_info("senseOn: SENSE ON\n");
+	dev_info(info->dev, "senseOn: SENSE ON\n");
 	return OK;
 }
 
@@ -304,11 +304,11 @@ int senseOff(struct fts_ts_info *info)
 
 	ret = setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 	if (ret < OK) {
-		pr_err("senseOff: ERROR %08X\n", ret);
+		dev_err(info->dev, "senseOff: ERROR %08X\n", ret);
 		return ret;
 	}
 
-	pr_info("senseOff: SENSE OFF\n");
+	dev_info(info->dev, "senseOff: SENSE OFF\n");
 	return OK;
 }
 
@@ -324,16 +324,16 @@ int cleanUp(struct fts_ts_info *info, int enableTouch)
 {
 	int res;
 
-	pr_info("cleanUp: system reset...\n");
+	dev_info(info->dev, "cleanUp: system reset...\n");
 	res = fts_system_reset(info);
 	if (res < OK)
 		return res;
 	if (enableTouch) {
-		pr_info("cleanUp: enabling touches...\n");
+		dev_info(info->dev, "cleanUp: enabling touches...\n");
 		res = senseOn(info);	/* already enable everything */
 		if (res < OK)
 			return res;
-		pr_info("cleanUp: enabling interrupts...\n");
+		dev_info(info->dev, "cleanUp: enabling interrupts...\n");
 		res = fts_enableInterrupt(info, true);
 		if (res < OK)
 			return res;

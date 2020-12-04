@@ -461,32 +461,32 @@ static void *fts_seq_start(struct seq_file *s, loff_t *pos)
 {
 	struct fts_ts_info *info = PDE_DATA(file_inode(s->file));
 
-	pr_info("%s: Entering start(), pos = %lld limit = %d printed = %d\n",
+	dev_info(info->dev, "%s: Entering start(), pos = %lld limit = %d printed = %d\n",
 		__func__, *pos, info->limit, info->printed);
 
 	if (info->driver_test_buff == NULL && *pos == 0) {
 		int size = 13 * sizeof(u8);
 
-		pr_info("%s: No data to print!\n", __func__);
+		dev_info(info->dev, "%s: No data to print!\n", __func__);
 		info->driver_test_buff = (u8 *)kmalloc(size, GFP_KERNEL);
 		info->limit = scnprintf(info->driver_test_buff,
 				  size,
 				  "{ %08X }\n", ERROR_OP_NOT_ALLOW);
-		/* pr_err("%s: len = %d driver_test_buff = %s\n",
+		/* dev_err(info->dev, "%s: len = %d driver_test_buff = %s\n",
 		 * __func__, info->limit, info->driver_test_buff); */
 	} else {
 		if (*pos != 0)
 			*pos += info->chunk - 1;
 
 		if (*pos >= info->limit)
-			/* pr_err("%s: Apparently, we're done.\n", __func__); */
+			/* dev_err(info->dev, "%s: Apparently, we're done.\n", __func__); */
 			return NULL;
 	}
 
 	info->chunk = CHUNK_PROC;
 	if (info->limit - *pos < CHUNK_PROC)
 		info->chunk = info->limit - *pos;
-	/* pr_err("%s: In start(),
+	/* dev_err(info->dev, "%s: In start(),
 	 *	updated pos = %Ld limit = %d printed = %d chunk = %d\n",
 	 *	__func__, *pos, info->limit, info->printed, info->chunk); */
 	memset(info->buf_chunk, 0, CHUNK_PROC);
@@ -505,7 +505,7 @@ static int fts_seq_show(struct seq_file *s, void *v)
 {
 	struct fts_ts_info *info = PDE_DATA(file_inode(s->file));
 
-	/* pr_err("%s: In show()\n", __func__); */
+	/* dev_err(info->dev, "%s: In show()\n", __func__); */
 	seq_write(s, (u8 *)v, info->chunk);
 	info->printed += info->chunk;
 	return 0;
@@ -525,12 +525,12 @@ static void *fts_seq_next(struct seq_file *s, void *v, loff_t *pos)
 	struct fts_ts_info *info = PDE_DATA(file_inode(s->file));
 
 	/* int* val_ptr; */
-	/* pr_err("%s: In next(), v = %X, pos = %Ld.\n", __func__,
+	/* dev_err(info->dev, "%s: In next(), v = %X, pos = %Ld.\n", __func__,
 	 * v, *pos); */
 	(*pos) += info->chunk;/* increase my position counter */
 	info->chunk = CHUNK_PROC;
 
-	/* pr_err("%s: In next(),
+	/* dev_err(info->dev, "%s: In next(),
 	 *	updated pos = %Ld limit = %d printed = %d\n",
 	 *	__func__, *pos, info->limit, info->printed); */
 	if (*pos >= info->limit)	/* are we done? */
@@ -556,22 +556,22 @@ static void fts_seq_stop(struct seq_file *s, void *v)
 {
 	struct fts_ts_info *info = PDE_DATA(file_inode(s->file));
 
-	/* pr_err("%s: Entering stop().\n", __func__); */
+	/* dev_err(info->dev, "%s: Entering stop().\n", __func__); */
 
 	if (v) {
-		/* pr_err("%s: v is %X.\n", __func__, v); */
+		/* dev_err(info->dev, "%s: v is %X.\n", __func__, v); */
 	} else {
-		/* pr_err("%s: v is null.\n", __func__); */
+		/* dev_err(info->dev, "%s: v is null.\n", __func__); */
 		info->limit = 0;
 		info->chunk = 0;
 		info->printed = 0;
 		if (info->driver_test_buff != NULL) {
-		/* pr_err("%s: Freeing and clearing driver_test_buff.\n",
+		/* dev_err(info->dev, "%s: Freeing and clearing driver_test_buff.\n",
 		 *   __func__); */
 			kfree(info->driver_test_buff);
 			info->driver_test_buff = NULL;
 		} else {
-		/* pr_err("%s: driver_test_buff is already null.\n",
+		/* dev_err(info->dev, "%s: driver_test_buff is already null.\n",
 		 *   __func__); */
 		}
 	}
@@ -601,20 +601,20 @@ static int fts_driver_test_open(struct inode *inode, struct file *file)
 	struct fts_ts_info *info = PDE_DATA(inode);
 
 	if (!info) {
-		pr_err("%s: Unable to access driver data\n", __func__);
+		dev_err(info->dev, "%s: Unable to access driver data\n", __func__);
 		retval = -ENODEV;
 		goto exit;
 	}
 
 	if (!mutex_trylock(&info->diag_cmd_lock)) {
-		pr_err("%s: Blocking concurrent access\n", __func__);
+		dev_err(info->dev, "%s: Blocking concurrent access\n", __func__);
 		retval = -EBUSY;
 		goto exit;
 	}
 
 	/* Allowing only a single process to open diag procfs node */
 	if (info->diag_node_open == true) {
-		pr_err("%s: Blocking multiple open\n", __func__);
+		dev_err(info->dev, "%s: Blocking multiple open\n", __func__);
 		retval = -EBUSY;
 		goto unlock;
 	}
@@ -645,7 +645,7 @@ static int fts_driver_test_release(struct inode *inode, struct file *file)
 	if (info)
 		mutex_lock(&info->diag_cmd_lock);
 	else
-		pr_err("%s: Unable to access driver data\n", __func__);
+		dev_err(info->dev, "%s: Unable to access driver data\n", __func__);
 
 	retval = seq_release(inode, file);
 
@@ -722,7 +722,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	const char *limits_file = info->board->limits_name;
 
 	if (!info) {
-		pr_err("%s: Unable to access driver data\n", __func__);
+		dev_err(info->dev, "%s: Unable to access driver data\n", __func__);
 		count =  -ENODEV;
 		goto exit;
 	}
@@ -733,7 +733,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 	if (fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, true) < 0) {
 		res = ERROR_BUS_WR;
-		pr_err("%s: bus is not accessible.\n", __func__);
+		dev_err(info->dev, "%s: bus is not accessible.\n", __func__);
 		if (info->driver_test_buff)
 			info->limit = scnprintf(info->driver_test_buff, size,
 						"{ %08X }\n", res);
@@ -766,7 +766,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	}
 
 	/*for(temp = 0; temp<count; temp++){
-	  *      pr_err("p[%d] = %02X\n", temp, p[temp]);
+	  *      dev_err(info->dev, "p[%d] = %02X\n", temp, p[temp]);
 	  * }*/
 	if (access_ok(buf, count) < OK ||
 	    copy_from_user(pbuf, buf, count) != 0) {
@@ -778,25 +778,25 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	cmd = (u8 *)kmalloc_array(maxNum_cmd, sizeof(u8), GFP_KERNEL);
 	if (cmd == NULL) {
 		res = ERROR_ALLOC;
-		pr_err("%s: Impossible allocate memory... ERROR %08X!\n",
+		dev_err(info->dev, "%s: Impossible allocate memory... ERROR %08X!\n",
 			__func__, res);
 		goto ERROR;
 	}
 
 	p = pbuf;
 	if (count > MESSAGE_MIN_HEADER_SIZE - 1 && p[0] == MESSAGE_START_BYTE) {
-		pr_info("Enter in Byte Mode!\n");
+		dev_info(info->dev, "Enter in Byte Mode!\n");
 		byte_call = 1;
 		info->mess.msg_size = (p[1] << 8) | p[2];
 		info->mess.counter = (p[3] << 8) | p[4];
 		info->mess.action = (p[5] << 8) | p[6];
-		pr_info("Message received: size = %d, counter_id = %d, action = %04X\n",
+		dev_info(info->dev, "Message received: size = %d, counter_id = %d, action = %04X\n",
 			info->mess.msg_size, info->mess.counter,
 			info->mess.action);
 		size = MESSAGE_MIN_HEADER_SIZE + 2;	/* +2 error code */
 		if (count < info->mess.msg_size || p[count - 2] !=
 						   MESSAGE_END_BYTE) {
-			pr_err("number of byte received or end byte wrong! msg_size = %d != %zu, last_byte = %02X != %02X ... ERROR %08X\n",
+			dev_err(info->dev, "number of byte received or end byte wrong! msg_size = %d != %zu, last_byte = %02X != %02X ... ERROR %08X\n",
 				info->mess.msg_size, count, p[count - 1],
 				MESSAGE_END_BYTE, ERROR_OP_NOT_ALLOW);
 			res = ERROR_OP_NOT_ALLOW;
@@ -860,7 +860,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				break;
 
 			default:
-				pr_err("Invalid Action = %d ... ERROR %08X\n",
+				dev_err(info->dev, "Invalid Action = %d ... ERROR %08X\n",
 					info->mess.action, ERROR_OP_NOT_ALLOW);
 				res = ERROR_OP_NOT_ALLOW;
 				goto END;
@@ -906,7 +906,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			}
 
 			if (token_len != 2) {
-				pr_err("bad len. len=%zu\n", token_len);
+				dev_err(info->dev, "bad len. len=%zu\n", token_len);
 				res = ERROR_OP_NOT_ALLOW;
 				goto ERROR;
 			}
@@ -915,14 +915,14 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				/* Conversion failed due to bad input.
 				 * Discard the entire buffer.
 				 */
-				pr_err("bad input\n");
+				dev_err(info->dev, "bad input\n");
 				res = ERROR_OP_NOT_ALLOW;
 				goto ERROR;
 			}
 
 			/* found a valid cmd/args */
 			cmd[numberParam] = funcToTest[numberParam] = result;
-			pr_info("functionToTest[%d] = %02X cmd[%d] = %02X\n",
+			dev_info(info->dev, "functionToTest[%d] = %02X cmd[%d] = %02X\n",
 				numberParam, funcToTest[numberParam],
 				numberParam, cmd[numberParam]);
 			numberParam++;
@@ -935,7 +935,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 		}
 
 		if (numberParam == 0) {
-			pr_err("Found invalid cmd/arg\n");
+			dev_err(info->dev, "Found invalid cmd/arg\n");
 			res = ERROR_OP_NOT_ALLOW;
 			goto END;
 		}
@@ -944,13 +944,13 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	fw.data = NULL;
 	lim.data = NULL;
 
-	pr_info("Number of Parameters = %d\n", numberParam);
+	dev_info(info->dev, "Number of Parameters = %d\n", numberParam);
 
 	/* elaborate input */
 	if (numberParam >= 1) {
 		switch (funcToTest[0]) {
 		case CMD_VERSION_BYTE:
-			pr_info("%s: Get Version Byte\n", __func__);
+			dev_info(info->dev, "%s: Get Version Byte\n", __func__);
 			byteToRead = 2;
 			info->mess.dummy = 0;
 			readData = (u8 *)kmalloc(byteToRead * sizeof(u8),
@@ -959,12 +959,12 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (readData != NULL) {
 				readData[0] = (u8)(FTS_TS_DRV_VER >> 24);
 				readData[1] = (u8)(FTS_TS_DRV_VER >> 16);
-				pr_info("%s: Version = %02X%02X\n",
+				dev_info(info->dev, "%s: Version = %02X%02X\n",
 					 __func__, readData[0], readData[1]);
 				res = OK;
 			} else {
 				res = ERROR_ALLOC;
-				pr_err("%s: Impossible allocate memory... ERROR %08X\n",
+				dev_err(info->dev, "%s: Impossible allocate memory... ERROR %08X\n",
 					__func__, res);
 			}
 			break;
@@ -1065,7 +1065,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					info->mess.dummy = 1;
 
 				u8ToU16_be(&cmd[numberParam - 3], &byteToRead);
-				pr_info("bytesToRead = %d\n",
+				dev_info(info->dev, "bytesToRead = %d\n",
 					byteToRead + info->mess.dummy);
 
 				readData = (u8 *)kmalloc((byteToRead +
@@ -1076,7 +1076,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					readData, byteToRead + info->mess.dummy);
 				size += (byteToRead * sizeof(u8));
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1089,7 +1089,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 				res = fts_write_heap(info, &cmd[1], temp);
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1114,7 +1114,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						    byteToRead + info->mess.dummy);
 				size += (byteToRead * sizeof(u8));
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1135,7 +1135,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						readData, byteToRead);
 				size += (byteToRead * sizeof(u8));
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1148,17 +1148,17 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (numberParam >= 4) {
 				if (cmd[2] <= sizeof(u64)) {
 					u8ToU64_be(&cmd[3], &addr, cmd[2]);
-					pr_info("addr = %llx\n", addr);
+					dev_info(info->dev, "addr = %llx\n", addr);
 					res = fts_writeU8UX(info, cmd[1],
 						cmd[2], addr,
 						&cmd[3 + cmd[2]],
 						(numberParam - cmd[2] - 3));
 				} else {
-					pr_err("Wrong address size!\n");
+					dev_err(info->dev, "Wrong address size!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1177,7 +1177,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					readData = (u8 *)kmalloc(byteToRead *
 								 sizeof(u8),
 								 GFP_KERNEL);
-					pr_info("addr = %llx byteToRead = %d\n",
+					dev_info(info->dev, "addr = %llx byteToRead = %d\n",
 						addr, byteToRead);
 					res = fts_writeReadU8UX(info, cmd[1],
 							cmd[2], addr, readData,
@@ -1185,11 +1185,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 							cmd[numberParam - 1]);
 					size += (byteToRead * sizeof(u8));
 				} else {
-					pr_err("Wrong address size!\n");
+					dev_err(info->dev, "Wrong address size!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1204,7 +1204,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					u8ToU64_be(&cmd[5], &addr, cmd[2] +
 						   cmd[4]);
 
-					pr_info("addr = %llx\n", addr);
+					dev_info(info->dev, "addr = %llx\n", addr);
 					res = fts_writeU8UXthenWriteU8UX(info,
 						cmd[1], cmd[2], cmd[3],
 						cmd[4], addr,
@@ -1212,11 +1212,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						(numberParam - cmd[2]
 							- cmd[4] - 5));
 				} else {
-					pr_err("Wrong address size!\n");
+					dev_err(info->dev, "Wrong address size!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1231,7 +1231,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				if ((cmd[2] + cmd[4]) <= sizeof(u64)) {
 					u8ToU64_be(&cmd[5], &addr, cmd[2] +
 						   cmd[4]);
-					pr_info("%s: cmd[5] = %02X, addr =  %llx\n",
+					dev_info(info->dev, "%s: cmd[5] = %02X, addr =  %llx\n",
 						__func__, cmd[5], addr);
 					u8ToU16_be(&cmd[numberParam - 3],
 						   &byteToRead);
@@ -1246,11 +1246,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						cmd[numberParam - 1]);
 					size += (byteToRead * sizeof(u8));
 				} else {
-					pr_err("Wrong total address size!\n");
+					dev_err(info->dev, "Wrong total address size!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 
@@ -1260,11 +1260,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			/* need to pass: bin_output */
 			if (numberParam >= 2) {
 				info->bin_output = cmd[1];
-				pr_info("Setting Scriptless output mode: %d\n",
+				dev_info(info->dev, "Setting Scriptless output mode: %d\n",
 					info->bin_output);
 				res = OK;
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1278,11 +1278,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 								&cmd[1],
 								temp);
 				} else {
-					pr_err("Wrong parameters!\n");
+					dev_err(info->dev, "Wrong parameters!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1295,7 +1295,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				else
 					res = fts_enableInterrupt(info, false);
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1305,7 +1305,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (numberParam >= 3)
 				res = setScanMode(info, cmd[1], cmd[2]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1315,7 +1315,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (numberParam == 2)
 				res = saveMpFlag(info, cmd[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1337,7 +1337,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						 readData, byteToRead);
 				size += (byteToRead * sizeof(u8));
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1369,11 +1369,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					size += (FIFO_EVENT_SIZE * sizeof(u8));
 					byteToRead = FIFO_EVENT_SIZE;
 				} else {
-					pr_err("Wrong parameters!\n");
+					dev_err(info->dev, "Wrong parameters!\n");
 					res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1387,7 +1387,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (numberParam == 2)	/* need to pass: doRequest */
 				res = readSysInfo(info, funcToTest[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 
@@ -1397,7 +1397,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			if (numberParam == 2)	/* need to pass: enableTouch */
 				res = cleanUp(info, funcToTest[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 
@@ -1426,7 +1426,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 		case CMD_GETMSFRAME:
 			if (numberParam == 2) {
-				pr_info("Get 1 MS Frame\n");
+				dev_info(info->dev, "Get 1 MS Frame\n");
 				/* setScanMode(SCAN_MODE_ACTIVE, 0xFF);
 				 * mdelay(WAIT_FOR_FRESH_FRAMES);
 				 * setScanMode(SCAN_MODE_ACTIVE, 0x00);
@@ -1439,11 +1439,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = getMSFrame3(info, (MSFrameType)cmd[1],
 						  &frameMS);
 				if (res < 0)
-					pr_err("Error while taking the MS frame... ERROR %08X\n",
+					dev_err(info->dev, "Error while taking the MS frame... ERROR %08X\n",
 						res);
 
 				else {
-					pr_info("The frame size is %d words\n",
+					dev_info(info->dev, "The frame size is %d words\n",
 						res);
 					size += (res * sizeof(short) + 2);
 					/* +2 to add force and sense channels
@@ -1461,7 +1461,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						frameMS.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1470,7 +1470,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 		/*read self raw*/
 		case CMD_GETSSFRAME:
 			if (numberParam == 2) {
-				/* pr_info("Get 1 SS Frame\n"); */
+				/* dev_info(info->dev, "Get 1 SS Frame\n"); */
 				/* flushFIFO(); //delete the events related to
 				 * some touch (allow to call this function while
 				 * touching the screen without having a flooding
@@ -1484,11 +1484,11 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						  &frameSS);
 
 				if (res < OK)
-					pr_err("Error while taking the SS frame... ERROR %08X\n",
+					dev_err(info->dev, "Error while taking the SS frame... ERROR %08X\n",
 						res);
 
 				else {
-					pr_info("The frame size is %d words\n",
+					dev_info(info->dev, "The frame size is %d words\n",
 						res);
 					size += (res * sizeof(short) + 2);
 					/* +2 to add force and sense channels
@@ -1512,7 +1512,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						frameSS.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1522,15 +1522,15 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			 * one of LOAD_SYNC_FRAME_X)
 			 */
 			if (numberParam == 2) {
-				pr_info("Reading Sync Frame...\n");
+				dev_info(info->dev, "Reading Sync Frame...\n");
 				res = getSyncFrame(info, cmd[1], &frameMS,
 						   &frameSS);
 				if (res < OK)
-					pr_err("Error while taking the Sync Frame frame... ERROR %08X\n",
+					dev_err(info->dev, "Error while taking the Sync Frame frame... ERROR %08X\n",
 						res);
 
 				else {
-					pr_info("The total frames size is %d words\n",
+					dev_info(info->dev, "The total frames size is %d words\n",
 						 res);
 					size += (res * sizeof(short) + 4);
 					/* +4 to add force and sense channels
@@ -1564,49 +1564,49 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						frameSS.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_REQCOMPDATA:	/* request comp data */
 			if (numberParam == 2) {
-				pr_info("Requesting Compensation Data\n");
+				dev_info(info->dev, "Requesting Compensation Data\n");
 				res = requestHDMDownload(info, cmd[1]);
 
 				if (res < OK)
-					pr_err("Error requesting compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error requesting compensation data ERROR %08X\n",
 						res);
 				else
-					pr_info("Requesting Compensation Data Finished!\n");
+					dev_info(info->dev, "Requesting Compensation Data Finished!\n");
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_READCOMPDATAHEAD:	/* read comp data header */
 			if (numberParam == 2) {
-				pr_info("Requesting Compensation Data\n");
+				dev_info(info->dev, "Requesting Compensation Data\n");
 				res = requestHDMDownload(info, cmd[1]);
 				if (res < OK)
-					pr_err("Error requesting compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error requesting compensation data ERROR %08X\n",
 						res);
 				else {
-					pr_info("Requesting Compensation Data Finished!\n");
+					dev_info(info->dev, "Requesting Compensation Data Finished!\n");
 					res = readHDMHeader(info,
 						(u8)funcToTest[1],
 						&dataHead, &address);
 					if (res < OK)
-						pr_err("Read Compensation Data Header ERROR %08X\n",
+						dev_err(info->dev, "Read Compensation Data Header ERROR %08X\n",
 							res);
 					else {
-						pr_info("Read Compensation Data Header OK!\n");
+						dev_info(info->dev, "Read Compensation Data Header OK!\n");
 						size += (1 * sizeof(u8));
 					}
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1614,16 +1614,16 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 		case CMD_READMSCOMPDATA:/* read mutual comp data */
 			if (numberParam == 2) {
-				pr_info("Get MS Compensation Data\n");
+				dev_info(info->dev, "Get MS Compensation Data\n");
 				res = readMutualSenseCompensationData(info,
 							      cmd[1],
 							      &compData);
 
 				if (res < OK)
-					pr_err("Error reading MS compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error reading MS compensation data ERROR %08X\n",
 						res);
 				else {
-					pr_info("MS Compensation Data Reading Finished!\n");
+					dev_info(info->dev, "MS Compensation Data Reading Finished!\n");
 					size = ((compData.node_data_size + 10) *
 						sizeof(i8));
 					print_frame_i8("MS Data (Cx2) =",
@@ -1635,22 +1635,22 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						compData.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_READSSCOMPDATA:
 			if (numberParam == 2) {	/* read self comp data */
-				pr_info("Get SS Compensation Data...\n");
+				dev_info(info->dev, "Get SS Compensation Data...\n");
 				res = readSelfSenseCompensationData(info,
 								    cmd[1],
 								    &comData);
 				if (res < OK)
-					pr_err("Error reading SS compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error reading SS compensation data ERROR %08X\n",
 						res);
 				else {
-					pr_info("SS Compensation Data Reading Finished!\n");
+					dev_info(info->dev, "SS Compensation Data Reading Finished!\n");
 					size = ((comData.header.force_node +
 						 comData.header.sense_node) *
 						2 + 15) *
@@ -1685,27 +1685,27 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						comData.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_READGOLDENMUTUAL:
 			if (numberParam != 1) {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 				break;
 			}
 
-			pr_info("Get Golden Mutual Raw data\n");
+			dev_info(info->dev, "Get Golden Mutual Raw data\n");
 
 			res = readGoldenMutualRawData(info, &gmRawData);
 			if (res < OK) {
-				pr_err("Err reading GM data %08X\n", res);
+				dev_err(info->dev, "Err reading GM data %08X\n", res);
 				break;
 			}
 
-			pr_info("GM data reading Finished!\n");
+			dev_info(info->dev, "GM data reading Finished!\n");
 
 			size = (6 + gmRawData.data_size) * sizeof(u16);
 
@@ -1720,16 +1720,16 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 		case CMD_READTOTMSCOMPDATA:	/* read mutual comp data */
 			if (numberParam == 2) {
-				pr_info("Get TOT MS Compensation Data\n");
+				dev_info(info->dev, "Get TOT MS Compensation Data\n");
 				res = readTotMutualSenseCompensationData(info,
 								cmd[1],
 								&totCompData);
 
 				if (res < OK)
-					pr_err("Error reading TOT MS compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error reading TOT MS compensation data ERROR %08X\n",
 						res);
 				else {
-					pr_info("TOT MS Compensation Data Reading Finished!\n");
+					dev_info(info->dev, "TOT MS Compensation Data Reading Finished!\n");
 					size = (totCompData.node_data_size *
 						sizeof(short) + 9);
 					print_frame_short("MS Data (TOT Cx) =",
@@ -1741,22 +1741,22 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					  totCompData.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_READTOTSSCOMPDATA:
 			if (numberParam == 2) {	/* read self comp data */
-				pr_info("Get TOT SS Compensation Data...\n");
+				dev_info(info->dev, "Get TOT SS Compensation Data...\n");
 				res = readTotSelfSenseCompensationData(info,
 								cmd[1],
 								&totComData);
 				if (res < OK)
-					pr_err("Error reading TOT SS compensation data ERROR %08X\n",
+					dev_err(info->dev, "Error reading TOT SS compensation data ERROR %08X\n",
 						res);
 				else {
-					pr_info("TOT SS Compensation Data Reading Finished!\n");
+					dev_info(info->dev, "TOT SS Compensation Data Reading Finished!\n");
 					size = ((totComData.header.force_node +
 						 totComData.header.sense_node) *
 						2 *
@@ -1793,21 +1793,21 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						totComData.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_READSENSCOEFF:
 			/* read MS and SS Sensitivity Coefficients */
-			pr_info("Get Sensitivity Calibration Coefficients...\n");
+			dev_info(info->dev, "Get Sensitivity Calibration Coefficients...\n");
 			res = readSensitivityCoefficientsData(info, &msCoeff,
 							      &ssCoeff);
 			if (res < OK)
-				pr_err("Error reading Sensitivity Calibration Coefficients ERROR %08X\n",
+				dev_err(info->dev, "Error reading Sensitivity Calibration Coefficients ERROR %08X\n",
 					res);
 			else {
-				pr_info("Sensitivity Calibration Coefficients Reading Finished!\n");
+				dev_info(info->dev, "Sensitivity Calibration Coefficients Reading Finished!\n");
 				size += (((msCoeff.node_data_size) +
 					  ssCoeff.header.force_node +
 					  ssCoeff.header.sense_node) *
@@ -1844,43 +1844,43 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 		case CMD_FLASHUNLOCK:
 			res = flash_unlock(info);
 			if (res < OK)
-				pr_err("Impossible Unlock Flash ERROR %08X\n",
+				dev_err(info->dev, "Impossible Unlock Flash ERROR %08X\n",
 					res);
 			else
-				pr_info("Flash Unlock OK!\n");
+				dev_info(info->dev, "Flash Unlock OK!\n");
 			break;
 
 		case CMD_READFWFILE:
 			if (numberParam == 2) {	/* read fw file */
-				pr_info("Reading FW File...\n");
+				dev_info(info->dev, "Reading FW File...\n");
 				res = readFwFile(info, info->board->fw_name,
 						 &fw, funcToTest[1]);
 				if (res < OK)
-					pr_err("Error reading FW File ERROR %08X\n",
+					dev_err(info->dev, "Error reading FW File ERROR %08X\n",
 						res);
 				else
-					pr_info("Read FW File Finished!\n");
+					dev_info(info->dev, "Read FW File Finished!\n");
 				kfree(fw.data);
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
 
 		case CMD_FLASHPROCEDURE:
 			if (numberParam == 3) {	/* flashing procedure */
-				pr_info("Starting Flashing Procedure...\n");
+				dev_info(info->dev, "Starting Flashing Procedure...\n");
 				res = flashProcedure(info,
 						     info->board->fw_name,
 						     cmd[1],
 						     cmd[2]);
 				if (res < OK)
-					pr_err("Error during flash procedure ERROR %08X\n",
+					dev_err(info->dev, "Error during flash procedure ERROR %08X\n",
 						res);
 				else
-					pr_info("Flash Procedure Finished!\n");
+					dev_info(info->dev, "Flash Procedure Finished!\n");
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1888,33 +1888,33 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 		case CMD_FLASHERASEUNLOCK:
 			res = flash_erase_unlock(info);
 			if (res < OK)
-				pr_err("Error during flash erase unlock... ERROR %08X\n",
+				dev_err(info->dev, "Error during flash erase unlock... ERROR %08X\n",
 					res);
 			else
-				pr_info("Flash Erase Unlock Finished!\n");
+				dev_info(info->dev, "Flash Erase Unlock Finished!\n");
 			break;
 
 		case CMD_FLASHERASEPAGE:
 			if (numberParam == 2) {	/* need to pass: keep_cx */
-				pr_info("Reading FW File...\n");
+				dev_info(info->dev, "Reading FW File...\n");
 				res = readFwFile(info, info->board->fw_name,
 						 &fw, funcToTest[1]);
 				if (res < OK)
-					pr_err("Error reading FW File ERROR"
+					dev_err(info->dev, "Error reading FW File ERROR"
 						"%08X\n", res);
 				else
-					pr_info("Read FW File Finished!\n");
-				pr_info("Starting Flashing Page Erase...\n");
+					dev_info(info->dev, "Read FW File Finished!\n");
+				dev_info(info->dev, "Starting Flashing Page Erase...\n");
 				res = flash_erase_page_by_page(info, cmd[1],
 							       &fw);
 				if (res < OK)
-					pr_err("Error during flash page erase... ERROR %08X\n",
+					dev_err(info->dev, "Error during flash page erase... ERROR %08X\n",
 						res);
 				else
-					pr_info("Flash Page Erase Finished!\n");
+					dev_info(info->dev, "Flash Page Erase Finished!\n");
 				kfree(fw.data);
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1939,7 +1939,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 								     cmd[1]);
 
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1951,7 +1951,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = production_test_ms_raw(info, limits_file,
 							     cmd[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1961,7 +1961,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = production_test_ms_cx(info, limits_file,
 							    cmd[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1971,7 +1971,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = production_test_ss_raw(info, limits_file,
 							     cmd[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -1982,7 +1982,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 							       limits_file,
 							       cmd[1]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2006,7 +2006,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 							   cmd[2],
 							   cmd[3]);
 			else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2039,7 +2039,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 								 * first 4 bytes
 								 * the size */
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2060,14 +2060,14 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				fileSize = lim.size;
 
 				if (fileSize > addr) {
-					pr_err("Limits dimension expected by Host is less than actual size: expected = %d, real = %d\n",
+					dev_err(info->dev, "Limits dimension expected by Host is less than actual size: expected = %d, real = %d\n",
 						byteToRead, fileSize);
 					res = ERROR_OP_NOT_ALLOW;
 				}
 
 				size += (addr * sizeof(u8));
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2090,7 +2090,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 								 * first 4 bytes
 								 * the size */
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2104,7 +2104,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				res = getFWdata(info, info->board->fw_name,
 						&readData, &fileSize);
 				if (fileSize > addr) {
-					pr_err("FW dimension expected by Host is less than actual size: expected = %d, real = %d\n",
+					dev_err(info->dev, "FW dimension expected by Host is less than actual size: expected = %d, real = %d\n",
 						byteToRead, fileSize);
 					res = ERROR_OP_NOT_ALLOW;
 				}
@@ -2119,7 +2119,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 								 * padded to
 								 * zero */
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2138,7 +2138,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						 sizeof(u8), GFP_KERNEL);
 			if (info->driver_test_buff == NULL || readData == NULL) {
 				res = ERROR_ALLOC;
-				pr_err("Impossible allocate memory for buffers! ERROR %08X!\n",
+				dev_err(info->dev, "Impossible allocate memory for buffers! ERROR %08X!\n",
 					res);
 				goto END;
 			}
@@ -2152,7 +2152,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						(u8 *)&temp, 2,
 						DUMMY_HW_REG);
 			if (res < OK) {
-				pr_err("Error during I2C test: ERROR %08X!\n",
+				dev_err(info->dev, "Error during I2C test: ERROR %08X!\n",
 					res);
 				j = scnprintf(&info->driver_test_buff[index],
 					      fileSize - index, "ERROR %08X\n",
@@ -2163,7 +2163,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			}
 
 			temp &= 0xFFFF;
-			pr_info("Chip ID = %04X!\n", temp);
+			dev_info(info->dev, "Chip ID = %04X!\n", temp);
 			j = scnprintf(&info->driver_test_buff[index],
 				      fileSize - index,
 				      "DATA = %04X, expected = %02X%02X\n",
@@ -2172,7 +2172,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			index += j;
 			if (temp != ((info->board->dchip_id[1] << 8) |
 				     info->board->dchip_id[0])) {
-				pr_err("Wrong CHIP ID, Diagnostic failed!\n");
+				dev_err(info->dev, "Wrong CHIP ID, Diagnostic failed!\n");
 				res = ERROR_OP_NOT_ALLOW;
 				goto END_DIAGNOSTIC;
 			}
@@ -2187,14 +2187,14 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				      fileSize - index,
 				      "2) FW running: Sensing On...");
 			index += j;
-			pr_info("Sensing On!\n");
+			dev_info(info->dev, "Sensing On!\n");
 			readData[0] = FTS_CMD_SCAN_MODE;
 			readData[1] = SCAN_MODE_ACTIVE;
 			readData[2] = 0x1;
 			fts_write_heap(info, readData, 3);
 			res = checkEcho(info, readData, 3);
 			if (res < OK) {
-				pr_err("No Echo received.. ERROR %08X !\n",
+				dev_err(info->dev, "No Echo received.. ERROR %08X !\n",
 					res);
 				j = scnprintf(&info->driver_test_buff[index],
 					      fileSize - index,
@@ -2203,20 +2203,20 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 				index += j;
 				goto END_DIAGNOSTIC;
 			} else {
-				pr_info("Echo FOUND... OK!\n");
+				dev_info(info->dev, "Echo FOUND... OK!\n");
 				j = scnprintf(&info->driver_test_buff[index],
 					      fileSize - index,
 					      "Echo FOUND... OK!\n");
 				index += j;
 			}
 
-			pr_info("Reading Frames...!\n");
+			dev_info(info->dev, "Reading Frames...!\n");
 			j = scnprintf(&info->driver_test_buff[index],
 				      fileSize - index,
 				      "3) Read Frames:\n");
 			index += j;
 			for (temp = 0; temp < DIAGNOSTIC_NUM_FRAME; temp++) {
-				pr_info("Iteration n. %d...\n", temp + 1);
+				dev_info(info->dev, "Iteration n. %d...\n", temp + 1);
 				j = scnprintf(&info->driver_test_buff[index],
 					      fileSize - index,
 					      "Iteration n. %d...\n",
@@ -2376,7 +2376,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			}
 
 
-			pr_info("Reading error info...\n");
+			dev_info(info->dev, "Reading error info...\n");
 			j = scnprintf(&info->driver_test_buff[index],
 				      fileSize - index,
 				      "4) FW INFO DUMP: ");
@@ -2388,14 +2388,14 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			 * previous reading of frames and write the correct
 			 * result */
 			if (temp < OK) {
-				pr_err("Error during dump: ERROR %08X!\n",
+				dev_err(info->dev, "Error during dump: ERROR %08X!\n",
 					res);
 				j = scnprintf(&info->driver_test_buff[index],
 					      fileSize - index, "ERROR %08X\n",
 					      temp);
 				index += j;
 			} else {
-				pr_info("DUMP OK!\n");
+				dev_info(info->dev, "DUMP OK!\n");
 				for (temp = 0; temp < ERROR_DUMP_ROW_SIZE *
 				     ERROR_DUMP_COL_SIZE; temp++) {
 					if (temp % ERROR_DUMP_COL_SIZE == 0) {
@@ -2446,19 +2446,19 @@ END_DIAGNOSTIC:
 			res = writeSysCmd(info, SYS_CMD_FORCE_CAL, cmd, 2);
 			res |= fts_enableInterrupt(info, true);
 			if (res < OK)
-				pr_err("can not trigger Force Cal! ERROR %08X\n",
+				dev_err(info->dev, "can not trigger Force Cal! ERROR %08X\n",
 					res);
 			else
-				pr_info("MS and SS force cal triggered!\n");
+				dev_info(info->dev, "MS and SS force cal triggered!\n");
 			break;
 
 		case CMD_BASELINE_ADAPTATION:
 			/* need to pass: enable */
 			if (numberParam == 2) {
 				if (cmd[1] == 0x01)
-					pr_info("Enabling Baseline adaptation...\n");
+					dev_info(info->dev, "Enabling Baseline adaptation...\n");
 				else {
-					pr_info("Disabling Baseline adaptation...\n");
+					dev_info(info->dev, "Disabling Baseline adaptation...\n");
 					cmd[1] = 0x00;	/* set to zero to
 							 * disable baseline
 							 * adaptation */
@@ -2467,12 +2467,12 @@ END_DIAGNOSTIC:
 				res = writeConfig(info, ADDR_CONFIG_AUTOCAL, &cmd[1],
 						  1);
 				if (res < OK)
-					pr_err("Baseline adaptation operation FAILED! ERROR %08X\n",
+					dev_err(info->dev, "Baseline adaptation operation FAILED! ERROR %08X\n",
 						res);
 				else
-					pr_info("Baseline adaptation operation OK!\n");
+					dev_info(info->dev, "Baseline adaptation operation OK!\n");
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2480,22 +2480,22 @@ END_DIAGNOSTIC:
 		case CMD_FREQ_HOP:
 			/* need to pass: enable */
 			if (numberParam == 2) {
-				pr_info("Reading MNM register...\n");
+				dev_info(info->dev, "Reading MNM register...\n");
 				res = readConfig(info, ADDR_CONFIG_MNM,
 						 &cmd[2], 1);
 				if (res < OK) {
-					pr_err("Reading MNM register... ERROR %08X!\n",
+					dev_err(info->dev, "Reading MNM register... ERROR %08X!\n",
 						res);
 					break;
 				}
 
 				if (cmd[1] == 0x01) {
-					pr_info("Enabling Frequency Hopping... %02X => %02X\n",
+					dev_info(info->dev, "Enabling Frequency Hopping... %02X => %02X\n",
 						cmd[2], cmd[2] | 0x01);
 					cmd[2] |= 0x01;	/* set bit 0 to enable
 							 * Frequency Hopping */
 				} else {
-					pr_info("Disabling Frequency Hopping... %02X => %02X\n",
+					dev_info(info->dev, "Disabling Frequency Hopping... %02X => %02X\n",
 						cmd[2], cmd[2] & (~0x01));
 					cmd[2] &= (~0x01);	/* reset bit 0
 								 * to disable
@@ -2505,12 +2505,12 @@ END_DIAGNOSTIC:
 
 				res = writeConfig(info, ADDR_CONFIG_MNM, &cmd[2], 1);
 				if (res < OK)
-					pr_err("Frequency Hopping operation FAILED! ERROR %08X\n",
+					dev_err(info->dev, "Frequency Hopping operation FAILED! ERROR %08X\n",
 						res);
 				else
-					pr_info("Frequency Hopping operation OK!\n");
+					dev_info(info->dev, "Frequency Hopping operation OK!\n");
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2520,15 +2520,15 @@ END_DIAGNOSTIC:
 			 * LOAD_SYNC_FRAME_STRENGTH or LOAD_SYNC_FRAME_BASELINE)
 			 * */
 			if (numberParam == 2) {
-				pr_info("Reading Sync Frame...\n");
+				dev_info(info->dev, "Reading Sync Frame...\n");
 				res = getSyncFrame(info, cmd[1], &frameMS,
 						   &frameSS);
 				if (res < OK)
-					pr_err("Error while taking the Sync Frame frame... ERROR %08X\n",
+					dev_err(info->dev, "Error while taking the Sync Frame frame... ERROR %08X\n",
 						res);
 
 				else {
-					pr_info("The total frames size is %d words\n",
+					dev_info(info->dev, "The total frames size is %d words\n",
 						res);
 					size += (res * sizeof(short) + 4);
 					/* +4 to add force and sense channels
@@ -2561,7 +2561,7 @@ END_DIAGNOSTIC:
 						frameSS.header.sense_node);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2571,14 +2571,14 @@ END_DIAGNOSTIC:
 			if (numberParam == 5) {
 				res = fts_enableInterrupt(info, false);
 				if (res >= OK) {
-					pr_info("Setting Scan Freq...\n");
+					dev_info(info->dev, "Setting Scan Freq...\n");
 					u8ToU32_be(&cmd[1], &fileSize);
 					/* fileSize is used just as container
 					 * variable, sorry for the name! */
 
 					res = setActiveScanFrequency(info, fileSize);
 					if (res < OK)
-						pr_err("Error while setting the scan frequency... ERROR %08X\n",
+						dev_err(info->dev, "Error while setting the scan frequency... ERROR %08X\n",
 							res);
 					else {
 						/* setActiveScan Frequency leave
@@ -2595,12 +2595,12 @@ END_DIAGNOSTIC:
 						res |= fts_enableInterrupt(
 								info,
 								true);
-						pr_info("Setting Scan Freq... res = %08X\n",
+						dev_info(info->dev, "Setting Scan Freq... res = %08X\n",
 							res);
 					}
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 
@@ -2616,10 +2616,10 @@ END_DIAGNOSTIC:
 
 				res = tp_sensitivity_mode(info, cmd[1], cmd[2]);
 				if (res < OK)
-					pr_err("Error while setting TP Sens mode... ERROR %08X\n",
+					dev_err(info->dev, "Error while setting TP Sens mode... ERROR %08X\n",
 						res);
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2639,14 +2639,14 @@ END_DIAGNOSTIC:
 					 * mode
 					 */
 					if (res < OK)
-						pr_err("Error while setting TP Sens scan mode... ERROR %08X\n",
+						dev_err(info->dev, "Error while setting TP Sens scan mode... ERROR %08X\n",
 						res);
 				} else {
-					pr_err("Wrong parameter!\n");
+					dev_err(info->dev, "Wrong parameter!\n");
 					 res = ERROR_OP_NOT_ALLOW;
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 
@@ -2660,7 +2660,7 @@ END_DIAGNOSTIC:
 				else
 					temp = SENS_TEST_PERC_TARGET_PRECAL;
 
-				pr_info("Setting target = %d and percentage = %d\n",
+				dev_info(info->dev, "Setting target = %d and percentage = %d\n",
 					(cmd[1] << 8 | cmd[2]), temp);
 
 				res = tp_sensitivity_test_pre_cal_ss(info,
@@ -2669,7 +2669,7 @@ END_DIAGNOSTIC:
 									cmd[2]),
 							      temp);
 				if (res < OK)
-					pr_err("Error while setting the scan frequency... ERROR %08X\n",
+					dev_err(info->dev, "Error while setting the scan frequency... ERROR %08X\n",
 						res);
 
 				if ((frameSS.force_data != NULL) &&
@@ -2682,7 +2682,7 @@ END_DIAGNOSTIC:
 					res &= (~0x80000000);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2696,7 +2696,7 @@ END_DIAGNOSTIC:
 				else
 					temp = SENS_TEST_PERC_TARGET_PRECAL;
 
-				pr_info("Setting target = %d and percentage = %d\n",
+				dev_info(info->dev, "Setting target = %d and percentage = %d\n",
 					(cmd[1] << 8 | cmd[2]), temp);
 
 				res = tp_sensitivity_test_pre_cal_ms(info,
@@ -2705,11 +2705,11 @@ END_DIAGNOSTIC:
 									cmd[2]),
 							      temp);
 				if (res < OK)
-					pr_err("Error during TP Sensitivity Precal ... ERROR %08X\n",
+					dev_err(info->dev, "Error during TP Sensitivity Precal ... ERROR %08X\n",
 						res);
 
 				if (cmd[3] != 0) {
-					pr_info("Computing gains with target = %d and saveGain = %d\n",
+					dev_info(info->dev, "Computing gains with target = %d and saveGain = %d\n",
 						(cmd[1] << 8 | cmd[2]), 0);
 					temp = tp_sensitivity_compute_gains(
 						info,
@@ -2717,7 +2717,7 @@ END_DIAGNOSTIC:
 							   cmd[2]),
 						0);
 					if (temp < OK)
-						pr_err("Error during TP Sensitivity Calibration... ERROR %08X\n",
+						dev_err(info->dev, "Error during TP Sensitivity Calibration... ERROR %08X\n",
 							temp);
 					res |= temp;
 				}
@@ -2730,7 +2730,7 @@ END_DIAGNOSTIC:
 					res &= (~0x80000000);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2748,7 +2748,7 @@ END_DIAGNOSTIC:
 				} else
 					temp = -1;
 
-				pr_info("Setting target = %d and percentage = %d\n",
+				dev_info(info->dev, "Setting target = %d and percentage = %d\n",
 					(cmd[1] << 8 | cmd[2]), temp);
 
 				res = tp_sensitivity_test_post_cal_ms(info,
@@ -2760,7 +2760,7 @@ END_DIAGNOSTIC:
 							      &meanNorm,
 							      &meanEdge);
 				if (res < OK)
-					pr_err("Error during TP Sensitivity Post Cal ... ERROR %08X\n",
+					dev_err(info->dev, "Error during TP Sensitivity Post Cal ... ERROR %08X\n",
 						res);
 
 				/* processing for a proper printing on the shell
@@ -2779,7 +2779,7 @@ END_DIAGNOSTIC:
 					res &= (~0x80000000);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2791,7 +2791,7 @@ END_DIAGNOSTIC:
 				res =  tp_sensitivity_test_std_ms(info, cmd[1],
 								  &frameMS);
 				if (res < OK)
-					pr_err("Error during TP Sensitivity STD... ERROR %08X\n",
+					dev_err(info->dev, "Error during TP Sensitivity STD... ERROR %08X\n",
 						res);
 
 				/* processing for a proper printing on the shell
@@ -2805,7 +2805,7 @@ END_DIAGNOSTIC:
 					res &= (~0x80000000);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2814,10 +2814,10 @@ END_DIAGNOSTIC:
 			/* Single parameter indicates force touch state */
 			if (numberParam == 2) {
 				if (cmd[1] > 1) {
-					pr_err("Parameter should be 1 or 0\n");
+					dev_err(info->dev, "Parameter should be 1 or 0\n");
 					res = ERROR_OP_NOT_ALLOW;
 				} else {
-					pr_info("FTS_BUS_REF_FORCE_ACTIVE: %s\n",
+					dev_info(info->dev, "FTS_BUS_REF_FORCE_ACTIVE: %s\n",
 						cmd[1] ? "ON" : "OFF");
 					fts_set_bus_ref(info,
 						FTS_BUS_REF_FORCE_ACTIVE,
@@ -2829,7 +2829,7 @@ END_DIAGNOSTIC:
 						__pm_relax(info->wakesrc);
 				}
 			} else {
-				pr_err("Wrong number of parameters!\n");
+				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
 			}
 			break;
@@ -2840,17 +2840,17 @@ END_DIAGNOSTIC:
 				res = pollForErrorType(info, error_to_search,
 						       2);
 				if (res < OK) {
-					pr_err("No info block corruption!\n");
+					dev_err(info->dev, "No info block corruption!\n");
 					res = OK;
 				} else {
-					pr_info("Info block errors found!\n");
+					dev_info(info->dev, "Info block errors found!\n");
 					res = ERROR_INFO_BLOCK;
 				}
 			}
 			break;
 
 		default:
-			pr_err("COMMAND ID NOT VALID!!!\n");
+			dev_err(info->dev, "COMMAND ID NOT VALID!!!\n");
 			res = ERROR_OP_NOT_ALLOW;
 			break;
 		}
@@ -2860,18 +2860,18 @@ END_DIAGNOSTIC:
 		 * can be used for testing procedure and between one step and
 		 * another the interrupt wan to be kept disabled
 		 * if (res2 < 0) {
-		 *      pr_err("stm_driver_test_show: ERROR %08X\n",
+		 *      dev_err(info->dev, "stm_driver_test_show: ERROR %08X\n",
 		 * (res2 | ERROR_ENABLE_INTER));
 		 * }*/
 	} else {
-		pr_err("NO COMMAND SPECIFIED!!! do: 'echo [cmd_code] [args] > stm_fts_cmd' before looking for result!\n");
+		dev_err(info->dev, "NO COMMAND SPECIFIED!!! do: 'echo [cmd_code] [args] > stm_fts_cmd' before looking for result!\n");
 		res = ERROR_OP_NOT_ALLOW;
 	}
 
 END:	/* here start the reporting phase, assembling the data to send in the
 	 * file node */
 	if (info->driver_test_buff != NULL) {
-		pr_info("Consecutive echo on the file node, free the buffer with the previous result\n");
+		dev_info(info->dev, "Consecutive echo on the file node, free the buffer with the previous result\n");
 		kfree(info->driver_test_buff);
 	}
 
@@ -2890,11 +2890,11 @@ END:	/* here start the reporting phase, assembling the data to send in the
 			size += 1;	/* add \n */
 	}
 
-	pr_info("Size = %d\n", size);
+	dev_info(info->dev, "Size = %d\n", size);
 	info->driver_test_buff = (u8 *)kzalloc(size, GFP_KERNEL);
-	pr_info("Finish to allocate memory!\n");
+	dev_info(info->dev, "Finish to allocate memory!\n");
 	if (info->driver_test_buff == NULL) {
-		pr_err("Unable to allocate driver_test_buff! ERROR %08X\n",
+		dev_err(info->dev, "Unable to allocate driver_test_buff! ERROR %08X\n",
 			ERROR_ALLOC);
 		goto ERROR;
 	}
@@ -2917,32 +2917,32 @@ END:	/* here start the reporting phase, assembling the data to send in the
 			case CMD_WRITEU8UXTHENWRITEREADU8UX:
 			case CMD_READCONFIG:
 			case CMD_POLLFOREVENT:
-				/* pr_err("Data = "); */
+				/* dev_err(info->dev, "Data = "); */
 				if (info->mess.dummy == 1)
 					j = 1;
 				else
 					j = 0;
 				for (; j < byteToRead + info->mess.dummy; j++) {
-					/* pr_err("%02X ", readData[j]); */
+					/* dev_err(info->dev, "%02X ", readData[j]); */
 					index += scnprintf(
 						    &info->driver_test_buff[index],
 						    size - index,
 						    "%02X", readData[j]);
 					/* this approach is much more faster */
 				}
-				/* pr_err("\n"); */
+				/* dev_err(info->dev, "\n"); */
 				break;
 			case CMD_GETFWFILE:
 			case CMD_GETLIMITSFILE:
-				pr_info("Start To parse!\n");
+				dev_info(info->dev, "Start To parse!\n");
 				for (j = 0; j < fileSize; j++) {
-					/* pr_err("%02X ", readData[j]); */
+					/* dev_err(info->dev, "%02X ", readData[j]); */
 					index += scnprintf(
 						    &info->driver_test_buff[index],
 						    size - index,
 						    "%02X", readData[j]);
 				}
-				pr_info("Finish to parse!\n");
+				dev_info(info->dev, "Finish to parse!\n");
 				break;
 			case CMD_GETFORCELEN:
 			case CMD_GETSENSELEN:
@@ -3590,7 +3590,7 @@ END:	/* here start the reporting phase, assembling the data to send in the
 					memcpy(&info->driver_test_buff[index],
 					       readData, fileSize);
 				else
-					pr_err("readData = NULL... returning junk data!");
+					dev_err(info->dev, "readData = NULL... returning junk data!");
 				index += addr;	/* in this case the byte to read
 						 * are stored in addr because it
 						 * is a u64 end byte need to be
@@ -3622,7 +3622,7 @@ END:	/* here start the reporting phase, assembling the data to send in the
 		index += scnprintf(&info->driver_test_buff[index],
 				  size - index, "%c\n", MESSAGE_END_BYTE);
 		/*for(j=0; j<size; j++){
-		  *      pr_err("%c", info->driver_test_buff[j]);
+		  *      dev_err(info->dev, "%c", info->driver_test_buff[j]);
 		  * }*/
 		info->limit = size;
 		info->printed = 0;
@@ -3632,7 +3632,7 @@ ERROR:
 			 * wait the next command, comment if you want to repeat
 			 * the last command sent just doing a cat */
 
-	/* pr_err(0,"numberParameters = %d\n", numberParam); */
+	/* dev_err(info->dev, 0,"numberParameters = %d\n", numberParam); */
 
 	kfree(readData);
 	kfree(cmd);
@@ -3684,9 +3684,9 @@ int fts_proc_init(struct fts_ts_info *info)
 				 &fts_driver_test_ops, info);
 
 	if (entry)
-		pr_info("%s: proc entry CREATED!\n", __func__);
+		dev_info(info->dev, "%s: proc entry CREATED!\n", __func__);
 	else {
-		pr_err("%s: error creating proc entry!\n", __func__);
+		dev_err(info->dev, "%s: error creating proc entry!\n", __func__);
 		retval = -ENOMEM;
 		goto badfile;
 	}

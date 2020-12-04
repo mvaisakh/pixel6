@@ -57,16 +57,19 @@ int openChannel(void *clt)
 {
 #ifdef I2C_INTERFACE
 	I2CSAD = ((struct i2c_client *)clt)->addr;
-	pr_info("openChannel: SAD: %02X\n", I2CSAD);
+	dev_info(&((struct i2c_client *)clt)->dev, "openChannel: SAD: %02X\n",
+		I2CSAD);
 #else
-	pr_info("%s: spi_master: flags = %04X !\n", __func__,
+	dev_info(&((struct spi_device *)clt)->dev,
+		"%s: spi_master: flags = %04X !\n", __func__,
 		 ((struct spi_device *)clt)->master->flags);
-	pr_info("%s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
+	dev_info(&((struct spi_device *)clt)->dev,
+		"%s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
 		__func__, ((struct spi_device *)clt)->max_speed_hz,
 		((struct spi_device *)clt)->chip_select,
 		((struct spi_device *)clt)->bits_per_word,
 		((struct spi_device *)clt)->mode);
-	pr_info("openChannel: completed!\n");
+	dev_info(&((struct spi_device *)clt)->dev, "openChannel: completed!\n");
 #endif
 	return OK;
 }
@@ -108,7 +111,7 @@ static int fts_read_internal(struct fts_ts_info *info, u8 *outBuf,
 #endif
 
 	if (dma_safe == false && byteToRead > sizeof(info->io_read_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -145,10 +148,10 @@ static int fts_read_internal(struct fts_ts_info *info, u8 *outBuf,
 		retry++;
 		if (ret < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_R);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_R);
 		return ERROR_BUS_R;
 	}
 
@@ -183,7 +186,7 @@ static int fts_writeRead_internal(struct fts_ts_info *info, u8 *cmd,
 
 	if (dma_safe == false && (cmdLength > sizeof(info->io_write_buf) ||
 	    byteToRead > sizeof(info->io_read_buf))) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -246,7 +249,7 @@ static int fts_writeRead_internal(struct fts_ts_info *info, u8 *cmd,
 			mdelay(I2C_WAIT_BEFORE_RETRY);
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
 
@@ -276,7 +279,7 @@ static int fts_write_internal(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 #endif
 
 	if (dma_safe == false && cmdLength > sizeof(info->io_write_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -318,10 +321,10 @@ static int fts_write_internal(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 		retry++;
 		if (ret < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_W);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 	return OK;
@@ -347,7 +350,7 @@ static int fts_writeFwCmd_internal(struct fts_ts_info *info, u8 *cmd,
 #endif
 
 	if (dma_safe == false && cmdLength > sizeof(info->io_write_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -390,14 +393,14 @@ static int fts_writeFwCmd_internal(struct fts_ts_info *info, u8 *cmd,
 			ret2 = checkEcho(info, cmd, cmdLength);
 		if (ret < OK || ret2 < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
+		dev_err(info->dev, "fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 	if (ret2 < OK) {
-		pr_err("fts_writeFwCmd: check echo ERROR %08X\n", ret2);
+		dev_err(info->dev, "fts_writeFwCmd: check echo ERROR %08X\n", ret2);
 		return ret2;
 	}
 	return OK;
@@ -435,7 +438,7 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 	if (dma_safe == false && (writeCmdLength > sizeof(info->io_write_buf) ||
 	    readCmdLength > sizeof(info->io_extra_write_buf) ||
 	    byteToRead > sizeof(info->io_read_buf))) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -511,7 +514,7 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 	}
 
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
 
@@ -614,12 +617,12 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 			}
 
 			finalCmd[0] = cmd;
-			pr_debug("%s: addrSize = %d\n", __func__, addrSize);
+			dev_dbg(info->dev, "%s: addrSize = %d\n", __func__, addrSize);
 			for (i = 0; i < addrSize; i++) {
 				finalCmd[i + 1] = (u8)((address >> ((addrSize -
 								     1 - i) *
 								    8)) & 0xFF);
-				pr_debug("%s: cmd[%d] = %02X\n",
+				dev_dbg(info->dev, "%s: cmd[%d] = %02X\n",
 					 __func__, i + 1, finalCmd[i + 1]);
 			}
 
@@ -627,7 +630,7 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 
 			if (fts_write_heap(info, finalCmd, 1 + addrSize +
 					   toWrite) < OK) {
-				pr_err(" %s: ERROR %08X\n",
+				dev_err(info->dev, " %s: ERROR %08X\n",
 					 __func__, ERROR_BUS_W);
 				return ERROR_BUS_W;
 			}
@@ -637,7 +640,7 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 			data += toWrite;
 		}
 	} else
-		pr_err("%s: address size bigger than max allowed %lu... ERROR %08X\n",
+		dev_err(info->dev, "%s: address size bigger than max allowed %lu... ERROR %08X\n",
 			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
 
 	return OK;
@@ -685,7 +688,7 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 		if (hasDummyByte == 1) {
 			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
 					       buff, toRead + 1) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
@@ -693,7 +696,7 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 		} else {
 			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
 					       buff, toRead) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
@@ -760,14 +763,14 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 		memcpy(&finalCmd2[addrSize2 + 1], data, toWrite);
 
 		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
-			pr_err("%s: first write error... ERROR %08X\n",
+			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
 
 		if (fts_write_heap(info, finalCmd2, 1 + addrSize2 + toWrite)
 				   < OK) {
-			pr_err("%s: second write error... ERROR %08X\n",
+			dev_err(info->dev, "%s: second write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
@@ -836,7 +839,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 							       i) * 8)) & 0xFF);
 
 		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
-			pr_err("%s: first write error... ERROR %08X\n",
+			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
@@ -844,7 +847,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 		if (hasDummyByte == 1) {
 			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
 					       buff, toRead + 1) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
@@ -852,7 +855,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 		} else {
 			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
 					       buff, toRead) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
