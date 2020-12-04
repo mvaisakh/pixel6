@@ -112,8 +112,7 @@ static inline u32 win_end_pos(int x, int y,  u32 xres, u32 yres)
 
 static inline bool is_tui(const struct drm_crtc_state *crtc_state)
 {
-	if (crtc_state && (crtc_state->adjusted_mode.private_flags &
-				EXYNOS_DISPLAY_MODE_FLAG_TUI))
+	if (crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI))
 		return true;
 
 	return false;

@@ -56,8 +56,7 @@ static inline bool in_tui(struct exynos_panel *ctx)
 		const struct drm_crtc_state *crtc_state =
 						conn_state->crtc->state;
 
-		if (crtc_state && (crtc_state->adjusted_mode.private_flags &
-				 EXYNOS_DISPLAY_MODE_FLAG_TUI))
+		if (crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI))
 			return true;
 	}
 

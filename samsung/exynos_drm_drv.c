@@ -291,7 +291,7 @@ int exynos_atomic_enter_tui(void)
 		if (!crtc->state || !crtc->state->enable)
 			continue;
 
-		drm_mode_copy(&tui_mode, &crtc->state->adjusted_mode);
+		drm_mode_copy(&tui_mode, &crtc->state->mode);
 		tui_mode.private_flags |= EXYNOS_DISPLAY_MODE_FLAG_TUI;
 
 		crtc_state = drm_atomic_get_crtc_state(state, crtc);
@@ -373,7 +373,7 @@ int exynos_atomic_exit_tui(void)
 		if (!new_crtc_state->enable)
 			continue;
 
-		drm_mode_copy(&tui_mode, &new_crtc_state->adjusted_mode);
+		drm_mode_copy(&tui_mode, &new_crtc_state->mode);
 		tui_mode.private_flags |= EXYNOS_DISPLAY_MODE_FLAG_TUI;
 
 		ret = drm_atomic_set_mode_for_crtc(new_crtc_state, &tui_mode);
@@ -397,15 +397,14 @@ int exynos_atomic_exit_tui(void)
 
 		crtc_state = crtc->state;
 
-		if (crtc_state->adjusted_mode.private_flags &
-				EXYNOS_DISPLAY_MODE_FLAG_TUI) {
+		if (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI) {
 			drm_mode_copy(&tui_mode, &crtc_state->adjusted_mode);
 			tui_mode.private_flags &= ~EXYNOS_DISPLAY_MODE_FLAG_TUI;
-		}
 
-		ret = drm_atomic_set_mode_for_crtc(crtc_state, &tui_mode);
-		if (ret != 0)
-			goto err;
+			ret = drm_atomic_set_mode_for_crtc(crtc_state, &tui_mode);
+			if (ret != 0)
+				goto err;
+		}
 	}
 
 err:
