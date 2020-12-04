@@ -7,6 +7,7 @@
 #ifndef __EDGETPU_INTERNAL_H__
 #define __EDGETPU_INTERNAL_H__
 
+#include <linux/atomic.h>
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
 #include <linux/device.h>
@@ -173,9 +174,10 @@ struct edgetpu_dev {
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */
 	struct edgetpu_sw_wdt *etdev_sw_wdt;	/* software watchdog */
-	u64 mcp_serial_num;	/* multichip serial number */
 	/* version read from the firmware binary file */
 	struct edgetpu_fw_version fw_version;
+	atomic_t job_count;	/* times joined to a device group */
+	struct edgetpu_coherent_mem debug_dump_mem;	/* debug dump memory */
 };
 
 extern const struct file_operations edgetpu_fops;
@@ -251,9 +253,6 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev);
 int edgetpu_register_irq(struct edgetpu_dev *etdev, int irq);
 void edgetpu_unregister_irq(struct edgetpu_dev *etdev, int irq);
 
-/* Called from core to chip layer when MMU is needed during device init. */
-void edgetpu_setup_mmu(struct edgetpu_dev *etdev);
-
 /* Core -> Device FS API */
 
 int __init edgetpu_fs_init(void);
@@ -263,7 +262,7 @@ void edgetpu_fs_remove(struct edgetpu_dev *dev);
 /* Get the top-level debugfs directory for the device class */
 struct dentry *edgetpu_fs_debugfs_dir(void);
 
-/* Core/Device -> Chip API */
+/* Core/Device/FS -> Chip API */
 
 /* Chip-specific init/exit */
 void edgetpu_chip_init(struct edgetpu_dev *etdev);
@@ -271,6 +270,12 @@ void edgetpu_chip_exit(struct edgetpu_dev *etdev);
 
 /* IRQ handler */
 irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg);
+
+/* Called from core to chip layer when MMU is needed during device init. */
+void edgetpu_setup_mmu(struct edgetpu_dev *etdev);
+
+/* Read TPU timestamp */
+u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev);
 
 /* Device -> Core API */
 

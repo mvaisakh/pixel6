@@ -21,6 +21,7 @@
 #include <linux/types.h>
 
 #include "edgetpu-config.h"
+#include "edgetpu-debug-dump.h"
 #include "edgetpu-device-group.h"
 #include "edgetpu-dram.h"
 #include "edgetpu-internal.h"
@@ -253,10 +254,6 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		goto detach_mmu;
 	}
 
-	ret = edgetpu_mcp_verify_membership(etdev);
-	if (ret)
-		etdev_warn(etdev, "edgetpu MCP info invalid");
-
 	ret = edgetpu_kci_init(etdev->mailbox_manager, etdev->kci);
 	if (ret) {
 		etdev_err(etdev, "edgetpu_kci_init returns %d\n", ret);
@@ -270,6 +267,10 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 			  ret);
 		goto remove_kci;
 	}
+
+	ret = edgetpu_debug_dump_init(etdev);
+	if (ret)
+		etdev_warn(etdev, "debug dump init fail: %d", ret);
 
 	edgetpu_chip_init(etdev);
 	return 0;
@@ -288,6 +289,7 @@ remove_dev:
 void edgetpu_device_remove(struct edgetpu_dev *etdev)
 {
 	edgetpu_chip_exit(etdev);
+	edgetpu_debug_dump_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_mmu_detach(etdev);
 	edgetpu_fs_remove(etdev);
@@ -311,6 +313,7 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	mutex_init(&client->wakelock.lock);
 	/* Initialize client wakelock state to "acquired" */
 	client->wakelock.req_count = 1;
+	/* equivalent to edgetpu_client_get() */
 	refcount_set(&client->count, 1);
 	return client;
 }
@@ -343,6 +346,7 @@ void edgetpu_client_remove(struct edgetpu_client *client)
 	 */
 	if (client->group)
 		edgetpu_device_group_leave(client);
+	edgetpu_client_put(client);
 }
 
 int edgetpu_register_irq(struct edgetpu_dev *etdev, int irq)

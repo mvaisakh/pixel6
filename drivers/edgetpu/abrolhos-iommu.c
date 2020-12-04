@@ -13,6 +13,7 @@
 #include <linux/types.h>
 #include <linux/version.h>
 
+#include "abrolhos-platform.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mapping.h"
 #include "edgetpu-mmu.h"
@@ -128,6 +129,7 @@ static void edgetpu_init_etdomain(struct edgetpu_dev *etdev,
 /* mmu_info is unused and NULL for IOMMU version, let IOMMU API supply info */
 int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
+	struct edgetpu_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	struct edgetpu_iommu *etiommu;
 	struct iommu_domain *domain;
 	int i, ret;
@@ -202,6 +204,25 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	if (ret)
 		etdev_warn(etdev, "Failed to register fault handler! (%d)\n",
 			   ret);
+
+	if (!edgetpu_pdev->csr_iova)
+		return 0;
+
+	etdev_dbg(etdev, "Mapping device CSRs: %llX -> %llX (%lu bytes)\n",
+		  edgetpu_pdev->csr_iova, edgetpu_pdev->csr_paddr,
+		  edgetpu_pdev->csr_size);
+
+	/* Add an IOMMU translation for the CSR region */
+	ret = edgetpu_mmu_add_translation(etdev, edgetpu_pdev->csr_iova,
+					  edgetpu_pdev->csr_paddr,
+					  edgetpu_pdev->csr_size,
+					  IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV,
+					  EDGETPU_CONTEXT_KCI);
+	if (ret) {
+		etdev_err(etdev, "Unable to map device CSRs into IOMMU\n");
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -212,11 +233,20 @@ void edgetpu_mmu_reset(struct edgetpu_dev *etdev)
 
 void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 {
+	struct edgetpu_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	int i, ret;
 
 	if (!etiommu)
 		return;
+
+	if (edgetpu_pdev->csr_iova) {
+		edgetpu_mmu_remove_translation(&edgetpu_pdev->edgetpu_dev,
+					       edgetpu_pdev->csr_iova,
+					       edgetpu_pdev->csr_size,
+					       EDGETPU_CONTEXT_KCI);
+	}
+	edgetpu_pdev->csr_iova = 0;
 
 	ret = edgetpu_unregister_iommu_device_fault_handler(etdev);
 	if (ret)

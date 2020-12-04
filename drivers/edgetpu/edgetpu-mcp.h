@@ -78,13 +78,6 @@ void edgetpu_mcp_remove_etdev(struct edgetpu_dev *etdev);
 void edgetpu_mcp_probe_fail(struct edgetpu_dev *etdev);
 
 /*
- * Verify that the etdev belongs to the correct MCP.
- *
- * Returns 0 on success, -errno otherwise.
- */
-int edgetpu_mcp_verify_membership(struct edgetpu_dev *etdev);
-
-/*
  * Invokes @callback with each (currently) registered MCP.
  *
  * If @stop_on_err is true, this function stops when @callback returned non-zero
@@ -136,11 +129,6 @@ static inline void edgetpu_mcp_init(void)
 
 static inline void edgetpu_mcp_exit(void)
 {
-}
-
-static inline int edgetpu_mcp_verify_membership(struct edgetpu_dev *etdev)
-{
-	return 0;
 }
 
 #endif /* EDGETPU_HAS_MCP */

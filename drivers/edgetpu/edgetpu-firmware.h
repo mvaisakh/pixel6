@@ -31,6 +31,8 @@ enum edgetpu_firmware_status {
 
 /* Firmware flavors returned via KCI FIRMWARE_INFO command. */
 enum edgetpu_fw_flavor {
+	/* unused value for extending enum storage type */
+	FW_FLAVOR_ERROR = -1,
 	/* used by host when cannot determine the flavor */
 	FW_FLAVOR_UNKNOWN = 0,
 	/* second-stage bootloader */
@@ -217,6 +219,10 @@ int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev);
 int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 				const char *name,
 				enum edgetpu_firmware_flags flags);
+
+/* Returns the current firmware image name. */
+ssize_t edgetpu_firmware_get_name(struct edgetpu_dev *etdev, char *buf,
+				  size_t buflen);
 
 /* Returns the firmware image flavor loaded on the device. */
 enum edgetpu_fw_flavor

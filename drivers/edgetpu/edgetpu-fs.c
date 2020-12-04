@@ -527,6 +527,25 @@ static int edgetpu_ioctl_fw_version(struct edgetpu_dev *etdev,
 	return 0;
 }
 
+static int edgetpu_ioctl_tpu_timestamp(struct edgetpu_client *client,
+				       __u64 __user *argp)
+{
+	u64 timestamp;
+	int ret = 0;
+
+	mutex_lock(&client->wakelock.lock);
+	if (!client->wakelock.req_count) {
+		mutex_unlock(&client->wakelock.lock);
+		ret = -EAGAIN;
+	} else {
+		timestamp = edgetpu_chip_tpu_timestamp(client->etdev);
+		mutex_unlock(&client->wakelock.lock);
+		if (copy_to_user(argp, &timestamp, sizeof(*argp)))
+			ret = -EFAULT;
+	}
+	return ret;
+}
+
 static bool edgetpu_ioctl_check_permissions(struct file *file, uint cmd)
 {
 	return file->f_mode & FMODE_WRITE;
@@ -609,65 +628,54 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 		ret = edgetpu_ioctl_map_buffer(client, argp);
 		break;
 	case EDGETPU_UNMAP_BUFFER:
-	case EDGETPU_UNMAP_BUFFER_COMPAT:
 		ret = edgetpu_ioctl_unmap_buffer(client, argp);
 		break;
 	case EDGETPU_SET_EVENTFD:
-	case EDGETPU_SET_EVENTFD_COMPAT:
 		ret = edgetpu_ioctl_set_eventfd(client, argp);
 		break;
 	case EDGETPU_CREATE_GROUP:
 		ret = edgetpu_ioctl_create_group(client, argp);
 		break;
 	case EDGETPU_JOIN_GROUP:
-	case EDGETPU_JOIN_GROUP_COMPAT:
 		ret = edgetpu_ioctl_join_group(client, (u64)argp);
 		break;
 	case EDGETPU_FINALIZE_GROUP:
 		ret = edgetpu_ioctl_finalize_group(client);
 		break;
 	case EDGETPU_SET_PERDIE_EVENTFD:
-	case EDGETPU_SET_PERDIE_EVENTFD_COMPAT:
 		ret = edgetpu_ioctl_set_perdie_eventfd(client->etdev, argp);
 		break;
 	case EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT:
 		ret = edgetpu_ioctl_allocate_device_buffer_compat(client, argp);
 		break;
 	case EDGETPU_UNSET_EVENT:
-	case EDGETPU_UNSET_EVENT_COMPAT:
 		ret = edgetpu_ioctl_unset_eventfd(client, arg);
 		break;
 	case EDGETPU_UNSET_PERDIE_EVENT:
-	case EDGETPU_UNSET_PERDIE_EVENT_COMPAT:
 		ret = edgetpu_ioctl_unset_perdie_eventfd(client->etdev, arg);
 		break;
 	case EDGETPU_SYNC_BUFFER:
-	case EDGETPU_SYNC_BUFFER_COMPAT:
 		ret = edgetpu_ioctl_sync_buffer(client, argp);
 		break;
 	case EDGETPU_MAP_DMABUF:
 		ret = edgetpu_ioctl_map_dmabuf(client, argp);
 		break;
 	case EDGETPU_UNMAP_DMABUF:
-	case EDGETPU_UNMAP_DMABUF_COMPAT:
 		ret = edgetpu_ioctl_unmap_dmabuf(client, argp);
 		break;
 	case EDGETPU_ALLOCATE_DEVICE_BUFFER:
-	case EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT_2:
 		ret = edgetpu_ioctl_allocate_device_buffer(client, (u64)argp);
 		break;
 	case EDGETPU_CREATE_SYNC_FENCE:
 		ret = edgetpu_ioctl_sync_fence_create(argp);
 		break;
 	case EDGETPU_SIGNAL_SYNC_FENCE:
-	case EDGETPU_SIGNAL_SYNC_FENCE_COMPAT:
 		ret = edgetpu_ioctl_sync_fence_signal(argp);
 		break;
 	case EDGETPU_MAP_BULK_DMABUF:
 		ret = edgetpu_ioctl_map_bulk_dmabuf(client, argp);
 		break;
 	case EDGETPU_UNMAP_BULK_DMABUF:
-	case EDGETPU_UNMAP_BULK_DMABUF_COMPAT:
 		ret = edgetpu_ioctl_unmap_bulk_dmabuf(client, argp);
 		break;
 	case EDGETPU_SYNC_FENCE_STATUS:
@@ -681,6 +689,9 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_FIRMWARE_VERSION:
 		ret = edgetpu_ioctl_fw_version(client->etdev, argp);
+		break;
+	case EDGETPU_GET_TPU_TIMESTAMP:
+		ret = edgetpu_ioctl_tpu_timestamp(client, argp);
 		break;
 	default:
 		return -ENOTTY; /* unknown command */

@@ -10,6 +10,7 @@
 #include <asm/pgtable_types.h>
 #include <asm/set_memory.h>
 #endif
+#include <linux/bits.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
@@ -720,12 +721,24 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 {
 	int i;
 	struct edgetpu_device_group *group;
+	u32 mailbox_ids = 0;
 
 	mutex_lock(&etdev->groups_lock);
 	for (i = 0; i < EDGETPU_NGROUPS; i++) {
 		group = etdev->groups[i];
-		if (group)
+		if (group) {
 			edgetpu_mailbox_reinit_vii(group);
+			if (edgetpu_device_group_is_finalized(group))
+				mailbox_ids |=
+					BIT(group->vii.mailbox->mailbox_id);
+		}
 	}
 	mutex_unlock(&etdev->groups_lock);
+	/*
+	 * If unfortunately groups are disbanded before we send this KCI, the
+	 * firmware side would be incorrectly informed that some mailboxes are
+	 * in use while actually not - but this shouldn't be harmful.
+	 */
+	if (mailbox_ids)
+		edgetpu_kci_open_device(etdev->kci, mailbox_ids);
 }

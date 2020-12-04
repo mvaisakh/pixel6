@@ -152,16 +152,7 @@ static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
 		goto out_unmap;
 	}
 
-	dev_dbg(dev, "Mapping device CSRs: %X -> %X (%d bytes)\n", csr_iova,
-		csr_phys, csr_size);
-	/* Add an IOMMU translation for the Mailbox CSRs */
-	err = edgetpu_mmu_add_translation(etdev, csr_iova, csr_phys, csr_size,
-					  IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV,
-					  EDGETPU_CONTEXT_KCI);
-	if (err) {
-		dev_err(dev, "Unable to map device CSRs into IOMMU\n");
-		goto out_unmap;
-	}
+	etpdev->csr_paddr = csr_phys;
 	etpdev->csr_iova = csr_iova;
 	etpdev->csr_size = csr_size;
 	return 0;
@@ -175,14 +166,6 @@ static void edgetpu_platform_cleanup_fw_region(
 	struct edgetpu_platform_dev *etpdev)
 {
 	gsa_unload_tpu_fw_image(etpdev->gsa_dev);
-
-	if (etpdev->csr_iova) {
-		edgetpu_mmu_remove_translation(&etpdev->edgetpu_dev,
-					       etpdev->csr_iova,
-					       etpdev->csr_size,
-					       EDGETPU_CONTEXT_KCI);
-	}
-	etpdev->csr_iova = 0;
 
 	if (!etpdev->shared_mem_vaddr)
 		return;
@@ -324,55 +307,11 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	edgetpu_pdev->edgetpu_dev.mcp_id = -1;
-	edgetpu_pdev->edgetpu_dev.mcp_die_index = 0;
-	edgetpu_pdev->irq = platform_get_irq(pdev, 0);
-	ret = edgetpu_device_add(&edgetpu_pdev->edgetpu_dev, &regs);
-
-	if (!ret && edgetpu_pdev->irq >= 0)
-		ret = edgetpu_register_irq(&edgetpu_pdev->edgetpu_dev,
-					   edgetpu_pdev->irq);
-
-	if (ret) {
-		dev_err(dev, "%s edgetpu setup failed: %d\n", DRIVER_NAME,
-			ret);
-		goto out;
-	}
-
-	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
-		 edgetpu_pdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
-
 	ret = edgetpu_platform_setup_fw_region(edgetpu_pdev);
 	if (ret) {
 		dev_err(dev, "%s setup fw regions failed: %d\n", DRIVER_NAME,
 			ret);
-		goto out;
-	}
-
-	ret = abrolhos_parse_ssmt(edgetpu_pdev);
-	if (ret)
-		dev_warn(
-			dev,
-			"SSMT setup failed (%d). Context isolation not enforced\n",
-			ret);
-
-	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
-				   &edgetpu_pdev->log_mem);
-	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
-				   &edgetpu_pdev->trace_mem);
-
-	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev,
-				     &edgetpu_pdev->log_mem,
-				     &edgetpu_pdev->trace_mem);
-	if (ret)
-		goto out_cleanup_fw;
-
-	ret = abrolhos_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
-	if (ret) {
-		dev_err(dev,
-			"%s initialize firmware downloader failed: %d\n",
-			DRIVER_NAME, ret);
-		goto out_tel_exit;
+		goto out_shutdown;
 	}
 
 	ret = edgetpu_iremap_pool_create(
@@ -393,7 +332,48 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		dev_err(dev,
 			"%s failed to initialize remapped memory pool: %d\n",
 			DRIVER_NAME, ret);
-		goto out_fw_destroy;
+		goto out_cleanup_fw;
+	}
+
+	edgetpu_pdev->edgetpu_dev.mcp_id = -1;
+	edgetpu_pdev->edgetpu_dev.mcp_die_index = 0;
+	edgetpu_pdev->irq = platform_get_irq(pdev, 0);
+	ret = edgetpu_device_add(&edgetpu_pdev->edgetpu_dev, &regs);
+
+	if (!ret && edgetpu_pdev->irq >= 0)
+		ret = edgetpu_register_irq(&edgetpu_pdev->edgetpu_dev,
+					   edgetpu_pdev->irq);
+
+	if (ret) {
+		dev_err(dev, "%s edgetpu setup failed: %d\n", DRIVER_NAME,
+			ret);
+		goto out_destroy_iremap;
+	}
+
+	ret = abrolhos_parse_ssmt(edgetpu_pdev);
+	if (ret)
+		dev_warn(
+			dev,
+			"SSMT setup failed (%d). Context isolation not enforced\n",
+			ret);
+
+	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
+				   &edgetpu_pdev->log_mem);
+	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
+				   &edgetpu_pdev->trace_mem);
+
+	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev,
+				     &edgetpu_pdev->log_mem,
+				     &edgetpu_pdev->trace_mem);
+	if (ret)
+		goto out_remove_device;
+
+	ret = abrolhos_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
+	if (ret) {
+		dev_err(dev,
+			"%s initialize firmware downloader failed: %d\n",
+			DRIVER_NAME, ret);
+		goto out_tel_exit;
 	}
 
 	dev_dbg(dev, "Creating thermal device\n");
@@ -401,18 +381,23 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 
 	edgetpu_sscd_init(&edgetpu_pdev->edgetpu_dev);
 
-out:
+	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
+		 edgetpu_pdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
+
 	dev_dbg(dev, "Probe finished, powering down\n");
 	/* Turn the device off unless a client request is already received. */
 	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, false);
 
 	return ret;
-out_fw_destroy:
-	abrolhos_edgetpu_firmware_destroy(&edgetpu_pdev->edgetpu_dev);
 out_tel_exit:
 	edgetpu_telemetry_exit(&edgetpu_pdev->edgetpu_dev);
+out_remove_device:
+	edgetpu_device_remove(&edgetpu_pdev->edgetpu_dev);
+out_destroy_iremap:
+	edgetpu_iremap_pool_destroy(&edgetpu_pdev->edgetpu_dev);
 out_cleanup_fw:
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
+out_shutdown:
 	dev_dbg(dev, "Probe finished with error %d, powering down\n", ret);
 	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, true);
 	return ret;
@@ -430,9 +415,9 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 
 	edgetpu_pm_get(etdev->pm);
 	edgetpu_telemetry_exit(etdev);
+	edgetpu_device_remove(etdev);
 	edgetpu_iremap_pool_destroy(etdev);
 	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
-	edgetpu_device_remove(etdev);
 	edgetpu_pm_put(etdev->pm);
 	edgetpu_pm_shutdown(etdev, true);
 	abrolhos_pm_destroy(etdev);
