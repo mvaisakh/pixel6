@@ -679,9 +679,10 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries, k_entries,
 					     k_msg.io_entries);
 
-	/* Clear event states and transactions for this client */
+	/* Clear event states, event queue and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
 	lwis_client_event_states_clear(lwis_client);
+	lwis_client_event_queue_clear(lwis_client);
 	mutex_unlock(&lwis_dev->client_lock);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
