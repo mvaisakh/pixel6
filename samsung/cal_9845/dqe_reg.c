@@ -17,7 +17,12 @@
 
 #include "regs-dqe.h"
 
-#define DISP_DITHER_OFFSET_B0	0x400
+#define DITHER_OFFSET_B0       0x400 /* CGC and disp dither */
+#define MATRIX_OFFSET_B0       0x800 /* linear and gamma matrix */
+#define DEGAMMA_LUT_OFFSET_B0  0x800
+#define CGC_CON_OFFSET_B0      0x800
+#define REGAMMA_LUT_OFFSET_B0  0x400
+#define HIST_OFFSET_B0         0x400
 
 struct cal_regs_dqe {
 	struct cal_regs_desc desc;
@@ -35,11 +40,32 @@ static struct cal_regs_dqe regs_dqe;
 #define dqe_write_relaxed(offset, val)		\
 		cal_write_relaxed((&regs_dqe.desc), offset, val)
 
-#define dither_offset(ver)	(ver > DQE_V1 ? DISP_DITHER_OFFSET_B0 : 0)
-#define dither_read(offset)		\
-	dqe_read(offset + dither_offset(regs_dqe.version))
-#define dither_write(offset, val)	\
-	dqe_write(offset + dither_offset(regs_dqe.version), val)
+#define dither_offset	(regs_dqe.version > DQE_V1 ? DITHER_OFFSET_B0 : 0)
+#define dither_read(offset)		dqe_read(offset + dither_offset)
+#define dither_write(offset, val)	dqe_write(offset + dither_offset, val)
+
+#define matrix_offset	(regs_dqe.version > DQE_V1 ? MATRIX_OFFSET_B0 : 0)
+#define matrix_write(offset, val)	dqe_write(offset + matrix_offset, val)
+#define matrix_read_mask(offset, mask)	\
+	dqe_read_mask(offset + matrix_offset, mask)
+
+#define degamma_offset	(regs_dqe.version > DQE_V1 ? DEGAMMA_LUT_OFFSET_B0 : 0)
+#define degamma_read(offset)		dqe_read(offset + degamma_offset)
+#define degamma_write(offset, val)	dqe_write(offset + degamma_offset, val)
+
+#define cgc_offset	(regs_dqe.version > DQE_V1 ? CGC_CON_OFFSET_B0 : 0)
+#define cgc_read_mask(offset, mask)	dqe_read_mask(offset + cgc_offset, mask)
+#define cgc_write_mask(offset, val, mask)	\
+	dqe_write_mask(offset + cgc_offset, val, mask)
+
+#define regamma_offset	(regs_dqe.version > DQE_V1 ? REGAMMA_LUT_OFFSET_B0 : 0)
+#define regamma_read(offset)		dqe_read(offset + regamma_offset)
+#define regamma_write(offset, val)	dqe_write(offset + regamma_offset, val)
+
+#define hist_offset	(regs_dqe.version > DQE_V1 ? HIST_OFFSET_B0 : 0)
+#define hist_read(offset)		dqe_read(offset + hist_offset)
+#define hist_read_mask(offset, mask)	\
+	dqe_read_mask(offset + hist_offset, mask)
 
 void
 dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver)
@@ -86,15 +112,15 @@ void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s +\n", __func__);
 
 	if (!lut) {
-		dqe_write(DQE0_DEGAMMA_CON, 0);
+		degamma_write(DQE0_DEGAMMA_CON, 0);
 		return;
 	}
 
-	dqe_write(DQE0_DEGAMMA_CON, DEGAMMA_EN);
+	degamma_write(DQE0_DEGAMMA_CON, DEGAMMA_EN);
 	for (i = 0; i < DIV_ROUND_UP(DEGAMMA_LUT_SIZE, 2); ++i) {
 		val = DEGAMMA_LUT_H(lut[i * 2 + 1].red) |
 			DEGAMMA_LUT_L(lut[i * 2].red);
-		dqe_write(DQE0_DEGAMMALUT(i), val);
+		degamma_write(DQE0_DEGAMMALUT(i), val);
 
 		cal_log_debug(0, "[%d] 0x%x\n", i, val);
 	}
@@ -109,7 +135,7 @@ void dqe_reg_set_cgc_lut(const struct cgc_lut *lut)
 	cal_log_debug(0, "%s +\n", __func__);
 
 	if (!lut) {
-		dqe_write_mask(DQE0_CGC_CON, 0, CGC_EN);
+		cgc_write_mask(DQE0_CGC_CON, 0, CGC_EN);
 		return;
 	}
 
@@ -119,7 +145,7 @@ void dqe_reg_set_cgc_lut(const struct cgc_lut *lut)
 		dqe_write_relaxed(DQE0_CGC_LUT_B(i), lut->b_values[i]);
 	}
 
-	dqe_write_mask(DQE0_CGC_CON, ~0, CGC_EN);
+	cgc_write_mask(DQE0_CGC_CON, ~0, CGC_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -132,32 +158,32 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 	cal_log_debug(0, "%s +\n", __func__);
 
 	if (!lut) {
-		dqe_write(DQE0_REGAMMA_CON, 0);
+		regamma_write(DQE0_REGAMMA_CON, 0);
 		return;
 	}
 
-	dqe_write(DQE0_REGAMMA_CON, REGAMMA_EN);
+	regamma_write(DQE0_REGAMMA_CON, REGAMMA_EN);
 	for (i = 0; i < DIV_ROUND_UP(REGAMMA_LUT_SIZE, 2); ++i) {
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].red) |
 				REGAMMA_LUT_L(lut[i * 2].red);
-		dqe_write(DQE0_REGAMMALUT_R(i), val);
+		regamma_write(DQE0_REGAMMALUT_R(i), val);
 		cal_log_debug(0, "[%d]   red: 0x%x\n", i, val);
 
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].green) |
 				REGAMMA_LUT_L(lut[i * 2].green);
-		dqe_write(DQE0_REGAMMALUT_G(i), val);
+		regamma_write(DQE0_REGAMMALUT_G(i), val);
 		cal_log_debug(0, "[%d] green: 0x%x\n", i, val);
 
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].blue) |
 				REGAMMA_LUT_L(lut[i * 2].blue);
-		dqe_write(DQE0_REGAMMALUT_B(i), val);
+		regamma_write(DQE0_REGAMMALUT_B(i), val);
 		cal_log_debug(0, "[%d]  blue: 0x%x\n", i, val);
 	}
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
 
-static void dqe_reg_print_lut(u32 start, u32 count)
+static void dqe_reg_print_lut(u32 start, u32 count, const u32 offset)
 {
 	u32 val;
 	int i;
@@ -166,7 +192,7 @@ static void dqe_reg_print_lut(u32 start, u32 count)
 	const char *end = buf + sizeof(buf);
 
 	for (i = 0; i < DIV_ROUND_UP(count, 2); ++i) {
-		val = dqe_read(start + i * 4);
+		val = dqe_read(start + i * 4 + offset);
 
 		p += scnprintf(p, end - p, "[%4d]%4x ", i * 2, GET_LUT_L(val));
 
@@ -188,58 +214,64 @@ void dqe_reg_print_hist(void)
 {
 	u32 val;
 
-	val = dqe_read(DQE0_HIST);
+	val = hist_read(DQE0_HIST);
 	cal_log_info(0, "DQE: histogram EN(%d) ROI_ON(%d) LUMA_SEL(%d)\n",
 			cal_mask(val, HIST_EN), cal_mask(val, HIST_ROI_ON),
 			cal_mask(val, HIST_LUMA_SEL));
 
-	val = dqe_read(DQE0_HIST_SIZE);
+	val = hist_read(DQE0_HIST_SIZE);
 	cal_log_info(0, "image size: %d x %d\n", cal_mask(val, HIST_HSIZE_MASK),
 			cal_mask(val, HIST_VSIZE_MASK));
 
-	val = dqe_read(DQE0_HIST_START);
+	val = hist_read(DQE0_HIST_START);
 	cal_log_info(0, "ROI position start x,y(%d,%d)\n",
 			cal_mask(val, HIST_START_X_MASK),
 			cal_mask(val, HIST_START_Y_MASK));
 
-	val = dqe_read(DQE0_HIST_WEIGHT_0);
+	val = hist_read(DQE0_HIST_WEIGHT_0);
 	cal_log_info(0, "weight red(%d) green(%d) blue(%d)\n",
 			cal_mask(val, HIST_WEIGHT_R_MASK),
 			cal_mask(val, HIST_WEIGHT_G_MASK),
-			dqe_read_mask(DQE0_HIST_WEIGHT_1, HIST_WEIGHT_B_MASK));
+			hist_read_mask(DQE0_HIST_WEIGHT_1, HIST_WEIGHT_B_MASK));
 
 	cal_log_info(0, "threshold: %d\n",
-			dqe_read_mask(DQE0_HIST_THRESH, HIST_THRESHOLD_MASK));
+			hist_read_mask(DQE0_HIST_THRESH, HIST_THRESHOLD_MASK));
 
-	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE);
+	dqe_reg_print_lut(DQE0_HIST_BIN(0), HIST_BIN_SIZE, hist_offset);
 }
 
 void dqe_reg_print_gamma_matrix(void)
 {
+	const u32 offset = matrix_offset;
+
 	cal_log_info(0, "DQE: gamma matrix %s\n",
-			dqe_read_mask(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN) ?
-			"on" : "off");
+			matrix_read_mask(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN)
+			? "on" : "off");
 
 	cal_log_info(0, "COEFFS:\n");
-	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_COEFF(0), GAMMA_MATRIX_COEFFS_CNT);
+	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_COEFF(0), GAMMA_MATRIX_COEFFS_CNT,
+			offset);
 
 	cal_log_info(0, "OFFSETS:\n");
-	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_OFFSET0, GAMMA_MATRIX_OFFSETS_CNT);
+	dqe_reg_print_lut(DQE0_GAMMA_MATRIX_OFFSET0, GAMMA_MATRIX_OFFSETS_CNT,
+			offset);
 }
 
 void dqe_reg_print_linear_matrix(void)
 {
+	const u32 offset = matrix_offset;
+
 	cal_log_info(0, "DQE: linear matrix %s\n",
-			dqe_read_mask(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN)
+			matrix_read_mask(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN)
 			? "on" : "off");
 
 	cal_log_info(0, "COEFFS:\n");
 	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_COEFF(0),
-			LINEAR_MATRIX_COEFFS_CNT);
+			LINEAR_MATRIX_COEFFS_CNT, offset);
 
 	cal_log_info(0, "OFFSETS:\n");
 	dqe_reg_print_lut(DQE0_LINEAR_MATRIX_OFFSET0,
-			LINEAR_MATRIX_OFFSETS_CNT);
+			LINEAR_MATRIX_OFFSETS_CNT, offset);
 }
 
 void dqe_reg_set_cgc_dither(struct dither_config *config)
@@ -287,20 +319,20 @@ void dqe_reg_print_degamma_lut(void)
 {
 	u32 val;
 
-	val = dqe_read(DQE0_DEGAMMA_CON);
+	val = degamma_read(DQE0_DEGAMMA_CON);
 	cal_log_info(0, "DQE: degamma %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
-	dqe_reg_print_lut(DQE0_DEGAMMALUT(0), DEGAMMA_LUT_SIZE);
+	dqe_reg_print_lut(DQE0_DEGAMMALUT(0), DEGAMMA_LUT_SIZE, degamma_offset);
 }
 
 void dqe_reg_print_cgc_lut(u32 count)
 {
 	u32 val;
 
-	val = dqe_read_mask(DQE0_CGC_CON, CGC_EN);
+	val = cgc_read_mask(DQE0_CGC_CON, CGC_EN);
 	cal_log_info(0, "DQE: cgc %s\n", val ? "on" : "off");
 
 	if (!val)
@@ -310,33 +342,34 @@ void dqe_reg_print_cgc_lut(u32 count)
 		count = CGC_LUT_SIZE;
 
 	cal_log_info(0, "[Red]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_R(0), count);
+	dqe_reg_print_lut(DQE0_CGC_LUT_R(0), count, 0);
 
 	cal_log_info(0, "[Green]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_G(0), count);
+	dqe_reg_print_lut(DQE0_CGC_LUT_G(0), count, 0);
 
 	cal_log_info(0, "[Blue]\n");
-	dqe_reg_print_lut(DQE0_CGC_LUT_B(0), count);
+	dqe_reg_print_lut(DQE0_CGC_LUT_B(0), count, 0);
 }
 
 void dqe_reg_print_regamma_lut(void)
 {
 	u32 val;
+	const u32 offset = regamma_offset;
 
-	val = dqe_read(DQE0_REGAMMA_CON);
+	val = regamma_read(DQE0_REGAMMA_CON);
 	cal_log_info(0, "DQE: regamma %s\n", val ? "on" : "off");
 
 	if (!val)
 		return;
 
 	cal_log_info(0, "[Red]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_R(0), REGAMMA_LUT_SIZE);
+	dqe_reg_print_lut(DQE0_REGAMMALUT_R(0), REGAMMA_LUT_SIZE, offset);
 
 	cal_log_info(0, "[Green]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_G(0), REGAMMA_LUT_SIZE);
+	dqe_reg_print_lut(DQE0_REGAMMALUT_G(0), REGAMMA_LUT_SIZE, offset);
 
 	cal_log_info(0, "[Blue]\n");
-	dqe_reg_print_lut(DQE0_REGAMMALUT_B(0), REGAMMA_LUT_SIZE);
+	dqe_reg_print_lut(DQE0_REGAMMALUT_B(0), REGAMMA_LUT_SIZE, offset);
 }
 
 void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
@@ -347,7 +380,7 @@ void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
 	cal_log_debug(0, "%s +\n", __func__);
 
 	if (!lm) {
-		dqe_write(DQE0_LINEAR_MATRIX_CON, 0);
+		matrix_write(DQE0_LINEAR_MATRIX_CON, 0);
 		return;
 	}
 
@@ -358,16 +391,16 @@ void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
 		else
 			val = LINEAR_MATRIX_COEFF_H(lm->coeffs[i * 2 + 1]) |
 				LINEAR_MATRIX_COEFF_L(lm->coeffs[i * 2]);
-		dqe_write(DQE0_LINEAR_MATRIX_COEFF(i), val);
+		matrix_write(DQE0_LINEAR_MATRIX_COEFF(i), val);
 	}
 
-	dqe_write(DQE0_LINEAR_MATRIX_OFFSET0,
+	matrix_write(DQE0_LINEAR_MATRIX_OFFSET0,
 			LINEAR_MATRIX_OFFSET_1(lm->offsets[1]) |
 			LINEAR_MATRIX_OFFSET_0(lm->offsets[0]));
-	dqe_write(DQE0_LINEAR_MATRIX_OFFSET1,
+	matrix_write(DQE0_LINEAR_MATRIX_OFFSET1,
 			LINEAR_MATRIX_OFFSET_2(lm->offsets[2]));
 
-	dqe_write(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN);
+	matrix_write(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -380,7 +413,7 @@ void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
 	cal_log_debug(0, "%s +\n", __func__);
 
 	if (!matrix) {
-		dqe_write(DQE0_GAMMA_MATRIX_CON, 0);
+		matrix_write(DQE0_GAMMA_MATRIX_CON, 0);
 		return;
 	}
 
@@ -391,16 +424,16 @@ void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
 		else
 			val = GAMMA_MATRIX_COEFF_H(matrix->coeffs[i * 2 + 1]) |
 				GAMMA_MATRIX_COEFF_L(matrix->coeffs[i * 2]);
-		dqe_write(DQE0_GAMMA_MATRIX_COEFF(i), val);
+		matrix_write(DQE0_GAMMA_MATRIX_COEFF(i), val);
 	}
 
-	dqe_write(DQE0_GAMMA_MATRIX_OFFSET0,
+	matrix_write(DQE0_GAMMA_MATRIX_OFFSET0,
 			GAMMA_MATRIX_OFFSET_1(matrix->offsets[1]) |
 			GAMMA_MATRIX_OFFSET_0(matrix->offsets[0]));
-	dqe_write(DQE0_GAMMA_MATRIX_OFFSET1,
+	matrix_write(DQE0_GAMMA_MATRIX_OFFSET1,
 			GAMMA_MATRIX_OFFSET_2(matrix->offsets[2]));
 
-	dqe_write(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN);
+	matrix_write(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
