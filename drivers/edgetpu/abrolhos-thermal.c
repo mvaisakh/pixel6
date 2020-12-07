@@ -98,6 +98,9 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 			return ret;
 		}
 		cooling->cooling_state = state_original;
+	} else {
+		mutex_unlock(&cooling->lock);
+		return -EALREADY;
 	}
 
 	mutex_unlock(&cooling->lock);
