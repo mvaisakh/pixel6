@@ -636,6 +636,15 @@ static ssize_t gamma_store(struct device *dev, struct device_attribute *attr,
 	if (!funcs || !funcs->gamma_store)
 		return -EOPNOTSUPP;
 
+	if (!strncmp(buf, DEFAULT_GAMMA_STR, strlen(DEFAULT_GAMMA_STR))) {
+		if (!funcs->restore_native_gamma)
+			return -EOPNOTSUPP;
+		else
+			ret = funcs->restore_native_gamma(ctx);
+
+		return ret ? : count;
+	}
+
 	input_buf = kstrndup(buf, count, GFP_KERNEL);
 	if (!input_buf)
 		return -ENOMEM;

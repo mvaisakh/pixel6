@@ -40,6 +40,8 @@
 #define BL_STATE_STANDBY	BL_CORE_FBBLANK
 #define BL_STATE_LP		BIT(30) /* backlight is in LP mode */
 
+#define DEFAULT_GAMMA_STR	"default"
+
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
 	PANEL_STATE_LP,
@@ -172,6 +174,14 @@ struct exynos_panel_funcs {
 	 */
 	ssize_t (*gamma_store)(struct exynos_panel *exynos_panel,
 			       const char *buf, size_t len);
+
+	/**
+	 * @restore_native_gamma
+	 *
+	 * This callback is used to replace current gamma table by the
+	 * original gamma.
+	 */
+	ssize_t (*restore_native_gamma)(struct exynos_panel *exynos_panel);
 };
 
 /**

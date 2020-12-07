@@ -230,6 +230,7 @@ const struct s6e3hc2_gamma_info {
 
 struct s6e3hc2_panel_data {
 	u8 *gamma_data[S6E3HC2_NUM_GAMMA_TABLES];
+	u8 *native_gamma_data[S6E3HC2_NUM_GAMMA_TABLES];
 };
 
 struct s6e3hc2_mode_data {
@@ -403,9 +404,9 @@ static int s6e3hc2_gamma_read_flash(struct exynos_panel *ctx,
 static int s6e3hc2_gamma_alloc_mode_memory(struct s6e3hc2_mode_data *mdata)
 {
 	struct s6e3hc2_panel_data *priv_data;
-	size_t offset, total_size;
+	size_t offset, native_offset, total_size;
 	int i;
-	u8 *buf;
+	u8 *buf, *native_buf;
 
 	if (mdata->sdata)
 		return 0;
@@ -417,6 +418,10 @@ static int s6e3hc2_gamma_alloc_mode_memory(struct s6e3hc2_mode_data *mdata)
 	/* add an extra byte for cmd */
 	total_size += S6E3HC2_NUM_GAMMA_TABLES;
 
+	/* hold native gamma */
+	native_offset = total_size;
+	total_size *= 2;
+
 	priv_data = kmalloc(total_size, GFP_KERNEL);
 	if (!priv_data)
 		return -ENOMEM;
@@ -424,11 +429,13 @@ static int s6e3hc2_gamma_alloc_mode_memory(struct s6e3hc2_mode_data *mdata)
 	/* use remaining data at the end of buffer */
 	buf = (u8 *)(priv_data);
 	offset = sizeof(*priv_data);
+	native_buf = buf + native_offset;
 
 	for (i = 0; i < S6E3HC2_NUM_GAMMA_TABLES; i++) {
 		const size_t len = s6e3hc2_gamma_tables[i].len;
 
 		priv_data->gamma_data[i] = buf + offset;
+		priv_data->native_gamma_data[i] = native_buf + offset;
 		/* reserve extra byte to hold cmd */
 		offset += len + 1;
 	}
@@ -560,6 +567,19 @@ static int s6e3hc2_gamma_set_prefixes(struct exynos_panel *ctx)
 	return rc;
 }
 
+static int s6e3hc2_copy_gamma_table(u8 **dest_gamma, u8 **src_gamma)
+{
+	int i;
+
+	for (i = 0; i < S6E3HC2_NUM_GAMMA_TABLES; i++) {
+		const size_t len = s6e3hc2_gamma_tables[i].len;
+
+		memcpy(dest_gamma[i], src_gamma[i], len * sizeof(**src_gamma));
+	}
+
+	return 0;
+}
+
 static int s6e3hc2_gamma_read_tables(struct exynos_panel *ctx)
 {
 	struct s6e3hc2_panel *spanel = to_spanel(ctx);
@@ -583,6 +603,15 @@ static int s6e3hc2_gamma_read_tables(struct exynos_panel *ctx)
 	if (rc) {
 		dev_err(ctx->dev, "Unable to set gamma prefix\n");
 		goto abort;
+	}
+
+	for_each_display_mode(i, mode, ctx) {
+		struct s6e3hc2_mode_data *mdata = s6e3hc2_get_mode_data(ctx, mode);
+		struct s6e3hc2_panel_data *priv_data = mdata->sdata;
+		u8 **gamma_data = priv_data->gamma_data;
+		u8 **native_gamma_data = priv_data->native_gamma_data;
+
+		s6e3hc2_copy_gamma_table(native_gamma_data, gamma_data);
 	}
 
 	spanel->native_gamma_ready = true;
@@ -835,6 +864,26 @@ static void s6e3hc2_print_gamma(struct seq_file *seq,
 	}
 }
 
+static int s6e3hc2_restore_gamma_data(struct exynos_panel *ctx)
+{
+	struct s6e3hc2_panel *spanel = to_spanel(ctx);
+	const struct drm_display_mode *mode;
+	int i;
+
+	for_each_display_mode(i, mode, ctx) {
+		struct s6e3hc2_mode_data *mdata = s6e3hc2_get_mode_data(ctx, mode);
+		struct s6e3hc2_panel_data *priv_data = mdata->sdata;
+		u8 **gamma_data = priv_data->gamma_data;
+		u8 **native_gamma_data = priv_data->native_gamma_data;
+
+		s6e3hc2_copy_gamma_table(gamma_data, native_gamma_data);
+	}
+
+	spanel->num_of_cali_gamma = 0;
+
+	return 0;
+}
+
 static int parse_payload_len(const u8 *payload, size_t len, size_t *out_size)
 {
 	size_t payload_len;
@@ -916,10 +965,9 @@ static ssize_t s6e3hc2_overwrite_gamma_data(struct exynos_panel *ctx,
 {
 	struct s6e3hc2_panel *spanel = to_spanel(ctx);
 	const u8 *payload;
-	u8 **old_gamma_data;
+	u8 **old_gamma_data, count;
 	size_t payload_len;
 	int rc = 0, num_of_fps;
-	u8 cali_fps, count;
 	const struct exynos_panel_mode *pmode;
 
 	payload = buf;
@@ -941,31 +989,52 @@ static ssize_t s6e3hc2_overwrite_gamma_data(struct exynos_panel *ctx,
 
 	/* FPS (1 byte) | gamma size (2 bytes) | gamma */
 	for (count = 0; count < num_of_fps; count++) {
-		cali_fps = *payload;
+		const u8 cali_fps = *payload;
 		rc = find_gamma_data_for_refresh_rate(ctx,
 					cali_fps, &old_gamma_data);
 		if (rc) {
 			dev_err(ctx->dev, "Not support %ufps, err %d\n", cali_fps, rc);
-			return rc;
+			break;
 		}
 		payload += CALI_GAMMA_HEADER_SIZE;
 		rc = s6e3hc2_overwrite_gamma_bands(ctx, old_gamma_data,
 							payload, payload_len);
 		if (rc) {
 			dev_err(ctx->dev, "Failed to overwrite gamma\n");
-			return rc;
+			break;
 		}
 		payload += payload_len;
 	}
 
-	spanel->num_of_cali_gamma = count;
+	if (rc) {
+		s6e3hc2_restore_gamma_data(ctx);
+	} else {
+		pmode = ctx->current_mode;
+		s6e3hc2_perform_switch(ctx, &pmode->mode);
+		spanel->num_of_cali_gamma = count;
+
+		dev_dbg(ctx->dev, "Finished overwriting gamma\n");
+	}
+
+	return rc;
+}
+
+static ssize_t s6e3hc2_restore_native_gamma(struct exynos_panel *ctx)
+{
+	struct s6e3hc2_panel *spanel = to_spanel(ctx);
+	const struct exynos_panel_mode *pmode;
+
+	if (!spanel->num_of_cali_gamma)
+		return -EINVAL;
+
+	s6e3hc2_restore_gamma_data(ctx);
 
 	pmode = ctx->current_mode;
 	s6e3hc2_perform_switch(ctx, &pmode->mode);
 
-	dev_dbg(ctx->dev, "Finished overwriting gamma\n");
+	dev_dbg(ctx->dev, "Finished restore gamma\n");
 
-	return rc;
+	return 0;
 }
 
 static void s6e3hc2_gamma_work(struct kthread_work *work)
@@ -1172,6 +1241,7 @@ static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.panel_init = s6e3hc2_panel_init,
 	.print_gamma = s6e3hc2_print_gamma,
 	.gamma_store = s6e3hc2_overwrite_gamma_data,
+	.restore_native_gamma = s6e3hc2_restore_native_gamma,
 };
 
 const struct brightness_capability s6e3hc2_brightness_capability = {
