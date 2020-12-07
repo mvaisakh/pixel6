@@ -2235,6 +2235,8 @@ void __decon_dump(u32 id, struct decon_regs *regs, bool dsc_en)
 					SHADOW_OFFSET, 0x88);
 		}
 	}
+
+	dqe_dump();
 }
 
 u32 decon_reg_get_rsc_ch(u32 id)

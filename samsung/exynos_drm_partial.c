@@ -327,6 +327,7 @@ static void exynos_partial_set_size(struct exynos_partial *partial,
 	struct dsim_reg_config dsim_config;
 	bool in_slice[MAX_DSC_SLICE_CNT];
 	bool dsc_en;
+	u32 partial_w, partial_h;
 
 	if (!decon)
 		return;
@@ -336,23 +337,29 @@ static void exynos_partial_set_size(struct exynos_partial *partial,
 		return;
 
 	dsc_en = dsim->config.dsc.enabled;
+	partial_w = drm_rect_width(partial_r);
+	partial_h = drm_rect_height(partial_r);
 
 	memcpy(&dsim_config, &dsim->config, sizeof(struct dsim_reg_config));
-	dsim_config.p_timing.hactive = drm_rect_width(partial_r);
-	dsim_config.p_timing.vactive = drm_rect_height(partial_r);
-	dsim_config.p_timing.hfp += ((dsim->config.p_timing.hactive -
-				drm_rect_width(partial_r)) / (dsc_en ? 3 : 1));
-	dsim_config.p_timing.vfp += (dsim->config.p_timing.vactive -
-				drm_rect_height(partial_r));
+	dsim_config.p_timing.hactive = partial_w;
+	dsim_config.p_timing.vactive = partial_h;
+	dsim_config.p_timing.hfp +=
+		((dsim->config.p_timing.hactive - partial_w) / (dsc_en ? 3 : 1));
+	dsim_config.p_timing.vfp += (dsim->config.p_timing.vactive - partial_h);
 	dsim_reg_set_partial_update(dsim->id, &dsim_config);
 
 	exynos_partial_find_included_slice(&decon->config.dsc, partial_r,
 				in_slice);
 	decon_reg_set_partial_update(decon->id, &decon->config, in_slice,
-			drm_rect_width(partial_r), drm_rect_height(partial_r));
+			partial_w, partial_h);
+
+	if (decon->dqe) {
+		dqe_reg_set_size(partial_w, partial_h);
+		decon_reg_update_req_dqe(decon->id);
+	}
 
 	pr_debug("partial[%dx%d] vporch[%d %d %d] hporch[%d %d %d]\n",
-			drm_rect_width(partial_r), drm_rect_height(partial_r),
+			partial_w, partial_h,
 			dsim_config.p_timing.vbp, dsim_config.p_timing.vfp,
 			dsim_config.p_timing.vsa, dsim_config.p_timing.hbp,
 			dsim_config.p_timing.hfp, dsim_config.p_timing.hsa);

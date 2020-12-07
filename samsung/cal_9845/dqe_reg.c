@@ -129,11 +129,10 @@ static void dqe_reg_set_atc_ibsi(u32 width, u32 height)
 /* exposed to driver layer for DQE CAL APIs */
 void dqe_reg_init(u32 width, u32 height)
 {
-	cal_log_debug(0, "%s +\n", __func__);
 	dqe_reg_set_img_size(width, height);
 	dqe_reg_set_full_img_size(width, height);
 	dqe_reg_set_atc_ibsi(width, height);
-	cal_log_debug(0, "%s -\n", __func__);
+	cal_log_debug(0, "size(%ux%u)\n", width, height);
 }
 
 void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut)
@@ -628,4 +627,25 @@ void dqe_reg_get_histogram_bins(struct histogram_bins *bins)
 	}
 
 	rmb();
+}
+
+void dqe_reg_set_size(u32 width, u32 height)
+{
+	u32 val;
+
+	dqe_reg_set_img_size(width, height);
+	dqe_reg_set_full_img_size(width, height);
+
+	val = DQE_PARTIAL_START_Y(0) | DQE_PARTIAL_START_X(0);
+	dqe_write(DQE0_TOP_PARTIAL_START, val);
+	val = DQE_PARTIAL_SAME(0) | DQE_PARTIAL_UPDATE_EN(0);
+	dqe_write(DQE0_TOP_PARTIAL_CON, val);
+}
+
+void dqe_dump(void)
+{
+	void __iomem *dqe_regs = regs_dqe.desc.regs;
+
+	cal_log_info(0, "\n=== DQE SFR ===\n");
+	dpu_print_hex_dump(dqe_regs, dqe_regs, 0x20);
 }

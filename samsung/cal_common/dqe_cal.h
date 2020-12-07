@@ -97,4 +97,6 @@ void dqe_reg_set_histogram_weights(struct histogram_weights *weights);
 void dqe_reg_set_histogram_threshold(u32 threshold);
 void dqe_reg_set_histogram(enum histogram_state state);
 void dqe_reg_get_histogram_bins(struct histogram_bins *bins);
+void dqe_reg_set_size(u32 width, u32 height);
+void dqe_dump(void);
 #endif /* __SAMSUNG_DQE_CAL_H__ */
