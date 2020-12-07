@@ -236,6 +236,12 @@ static void exynos_partial_reconfig_coords(struct exynos_partial *partial,
 		origin_dst = drm_plane_state_dest(plane->state);
 
 		pr_debug("original coordinates:\n");
+		if (!drm_rect_intersect(&origin_dst, partial_r)) {
+			plane->state->visible = false;
+			continue;
+		}
+		origin_dst = drm_plane_state_dest(plane->state);
+
 		exynos_plane_print_info(plane->state);
 
 		/* reconfigure destination coordinates */

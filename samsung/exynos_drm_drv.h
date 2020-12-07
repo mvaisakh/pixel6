@@ -250,6 +250,7 @@ struct exynos_drm_crtc_state {
 	 */
 	u8 bypass : 1;
 	unsigned int reserved_win_mask;
+	unsigned int visible_win_mask;
 	struct drm_rect partial_region;
 	struct drm_property_blob *partial;
 	bool need_partial_update;

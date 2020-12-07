@@ -159,6 +159,36 @@ static int exynos_atomic_check_windows(struct drm_device *dev, struct drm_atomic
 		}
 	}
 
+	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
+		struct exynos_drm_crtc_state *new_exynos_crtc_state =
+			to_exynos_crtc_state(new_crtc_state);
+		const unsigned long reserved_win_mask =
+			new_exynos_crtc_state->reserved_win_mask;
+		unsigned long visible_zpos = 0;
+		struct drm_plane *plane;
+		const struct drm_plane_state *plane_state;
+		unsigned int pmask, bit;
+
+		new_exynos_crtc_state->visible_win_mask = 0;
+
+		if (!new_crtc_state->plane_mask)
+			continue;
+
+		drm_atomic_crtc_state_for_each_plane_state(plane, plane_state,
+				new_crtc_state)
+			if (plane_state->visible)
+				visible_zpos |= BIT(plane_state->normalized_zpos);
+
+		pmask = 1;
+		for_each_set_bit(bit, &reserved_win_mask, MAX_WIN_PER_DECON) {
+			if (pmask & visible_zpos)
+				new_exynos_crtc_state->visible_win_mask |= BIT(bit);
+			pmask <<= 1;
+		}
+		pr_debug("%s: visible_win_mask(0x%x)\n", __func__,
+				new_exynos_crtc_state->visible_win_mask);
+	}
+
 	if (freed_win_mask) {
 		exynos_priv_state = exynos_drm_get_priv_state(state);
 		if (IS_ERR(exynos_priv_state))
@@ -197,11 +227,11 @@ int exynos_atomic_check(struct drm_device *dev,
 	if (ret)
 		return ret;
 
-	ret = exynos_atomic_check_windows(dev, state);
+	ret = drm_atomic_helper_check_planes(dev, state);
 	if (ret)
 		return ret;
 
-	ret = drm_atomic_helper_check_planes(dev, state);
+	ret = exynos_atomic_check_windows(dev, state);
 	if (ret)
 		return ret;
 

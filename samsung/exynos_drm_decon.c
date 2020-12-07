@@ -428,7 +428,7 @@ static int decon_get_win_id(const struct drm_crtc_state *crtc_state, int zpos)
 static bool decon_is_win_used(const struct drm_crtc_state *crtc_state, int win_id)
 {
 	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
-	const unsigned long win_mask = exynos_crtc_state->reserved_win_mask;
+	const unsigned long win_mask = exynos_crtc_state->visible_win_mask;
 
 	if (win_id > MAX_WIN_PER_DECON)
 		return false;
