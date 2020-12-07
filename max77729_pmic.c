@@ -922,6 +922,16 @@ static int max77729_pmic_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
+	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
+		const int poll_en = of_property_read_bool(dev->of_node,
+							  "goog,maxq-poll");
+		data->maxq = maxq_init(dev, data->regmap, poll_en);
+		if (IS_ERR_OR_NULL(data->maxq)) {
+			dev_err(dev, "Maxq init failed!\n");
+			ret = PTR_ERR(data->maxq);
+		}
+	}
+
 	irq_gpio = of_get_named_gpio(dev->of_node, "max777x9,irq-gpio", 0);
 	if (irq_gpio < 0) {
 		dev_err(dev, "irq is not defined\n");
@@ -950,16 +960,6 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	ret = dbg_init_fs(data);
 	if (ret < 0)
 		dev_err(dev, "Failed to initialize debug fs\n");
-
-	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
-		const int poll_en = of_property_read_bool(dev->of_node,
-							  "goog,maxq-poll");
-		data->maxq = maxq_init(dev, data->regmap, poll_en);
-		if (IS_ERR_OR_NULL(data->maxq)) {
-			dev_err(dev, "Maxq init failed!\n");
-			ret = PTR_ERR(data->maxq);
-		}
-	}
 
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
 		u8 rev_reg;
