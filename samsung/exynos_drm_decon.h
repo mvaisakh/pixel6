@@ -214,6 +214,11 @@ enum dpu_event_type {
 	DPU_EVT_BTS_CALC_BW,
 	DPU_EVT_BTS_UPDATE_BW,
 
+	DPU_EVT_PARTIAL_INIT,
+	DPU_EVT_PARTIAL_PREPARE,
+	DPU_EVT_PARTIAL_UPDATE,
+	DPU_EVT_PARTIAL_RESTORE,
+
 	DPU_EVT_DSIM_CRC,
 	DPU_EVT_DSIM_ECC,
 
@@ -278,6 +283,16 @@ struct dpu_log_freqs {
 	unsigned long disp_freq;
 };
 
+struct dpu_log_partial {
+	u32 min_w;
+	u32 min_h;
+	struct drm_rect prev;
+	struct drm_rect req;
+	struct drm_rect adj;
+	bool need_partial_update;
+	bool reconfigure;
+};
+
 struct dpu_log_bts_event {
 	struct dpu_log_freqs freqs;
 	unsigned int value;
@@ -297,6 +312,7 @@ struct dpu_log {
 		struct dpu_log_crtc_info crtc_info;
 		struct dpu_log_freqs freqs;
 		struct dpu_log_bts_event bts_event;
+		struct dpu_log_partial partial;
 		unsigned int value;
 	} data;
 };

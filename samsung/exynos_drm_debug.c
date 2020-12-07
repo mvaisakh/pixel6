@@ -82,6 +82,7 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	struct dpp_device *dpp = NULL;
 	struct dpu_log *log;
 	struct drm_crtc_state *crtc_state;
+	struct exynos_partial *partial;
 	unsigned long flags;
 	int idx;
 	bool skip_excessive = true;
@@ -184,6 +185,19 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	case DPU_EVT_DSIM_UNDERRUN:
 		dpu_event_save_freqs(&log->data.bts_event.freqs);
 		log->data.bts_event.value = decon->d.underrun_cnt;
+		break;
+	case DPU_EVT_PARTIAL_INIT:
+		partial = priv;
+		log->data.partial.min_w = partial->min_w;
+		log->data.partial.min_h = partial->min_h;
+		break;
+	case DPU_EVT_PARTIAL_PREPARE:
+		memcpy(&log->data.partial, priv, sizeof(struct dpu_log_partial));
+		break;
+	case DPU_EVT_PARTIAL_RESTORE:
+		partial = priv;
+		memcpy(&log->data.partial.prev, &partial->prev_partial_region,
+				sizeof(struct drm_rect));
 		break;
 	case DPU_EVT_DSIM_CRC:
 		log->data.value = decon->d.crc_cnt;
@@ -358,6 +372,21 @@ static int dpu_print_log_freqs(char *buf, int len, struct dpu_log_freqs *freqs)
 			freqs->mif_freq, freqs->int_freq, freqs->disp_freq);
 }
 
+static int dpu_print_log_partial(char *buf, int len, struct dpu_log_partial *p)
+{
+	len += scnprintf(buf + len, LOG_BUF_SIZE - len,
+			"\treq[%d %d %d %d] adj[%d %d %d %d] prev[%d %d %d %d]",
+			p->req.x1, p->req.y1,
+			drm_rect_width(&p->req), drm_rect_height(&p->req),
+			p->adj.x1, p->adj.y1,
+			drm_rect_width(&p->adj), drm_rect_height(&p->adj),
+			p->prev.x1, p->prev.y1,
+			drm_rect_width(&p->prev), drm_rect_height(&p->prev));
+	return scnprintf(buf + len, LOG_BUF_SIZE - len,
+			" update(%d) reconfig(%d)",
+			p->need_partial_update, p->reconfigure);
+}
+
 static const char *get_event_name(enum dpu_event_type type)
 {
 	static const char events[][32] = {
@@ -379,7 +408,9 @@ static const char *get_event_name(enum dpu_event_type type)
 		"REQ_CRTC_INFO_OLD",		"REQ_CRTC_INFO_NEW",
 		"FRAMESTART_TIMEOUT",
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
-		"BTS_UPDATE_BW",		"DSIM_CRC",
+		"BTS_UPDATE_BW",		"PARTIAL_INIT",
+		"PARTIAL_PREPARE",		"PARTIAL_UPDATE",
+		"PARTIAL_PESTORE",		"DSIM_CRC",
 		"DSIM_ECC",			"VBLANK_ENABLE",
 		"VBLANK_DISABLE",		"DIMMING_START",
 		"DIMMING_END",
@@ -494,6 +525,24 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 			scnprintf(buf + len, sizeof(buf) - len,
 					"\tunderrun count(%u)",
 					log->data.bts_event.value);
+			break;
+		case DPU_EVT_PARTIAL_INIT:
+			scnprintf(buf + len, sizeof(buf) - len,
+					"\tminimum rect size[%dx%d]",
+					log->data.partial.min_w,
+					log->data.partial.min_h);
+			break;
+		case DPU_EVT_PARTIAL_PREPARE:
+			len += dpu_print_log_partial(buf, len,
+					&log->data.partial);
+			break;
+		case DPU_EVT_PARTIAL_RESTORE:
+			scnprintf(buf + len, sizeof(buf) - len,
+				"\t[%d %d %d %d]",
+				log->data.partial.prev.x1,
+				log->data.partial.prev.y1,
+				drm_rect_width(&log->data.partial.prev),
+				drm_rect_height(&log->data.partial.prev));
 			break;
 		case DPU_EVT_DSIM_CRC:
 			scnprintf(buf + len, sizeof(buf) - len,

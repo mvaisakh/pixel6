@@ -20,8 +20,9 @@ struct exynos_partial;
 
 struct exynos_partial_funcs {
 	int (*init)(struct exynos_partial *partial);
-	int (*adjust_partial_region)(struct exynos_partial *partial,
-			struct exynos_drm_crtc_state *exynos_crtc_state);
+	struct drm_rect *(*adjust_partial_region)(struct exynos_partial *partial,
+			struct exynos_drm_crtc_state *exynos_crtc_state,
+			struct drm_rect *req);
 	void (*check)(struct exynos_partial *partial,
 			struct exynos_drm_crtc_state *exynos_crtc_state);
 	void (*reconfig_coords)(struct exynos_partial *partial,
