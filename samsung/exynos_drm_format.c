@@ -28,7 +28,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 8,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -40,7 +39,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 8,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -52,7 +50,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 8,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -64,7 +61,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 8,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -76,7 +72,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 8,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -88,7 +83,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 8,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -100,7 +94,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 8,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -112,7 +105,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 8,
 		.bpc = 8,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -124,7 +116,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = (u8)DPU_UNDEF_BITS_DEPTH,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -136,7 +127,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = (u8)DPU_UNDEF_BITS_DEPTH,
 		.num_planes = 1,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -148,7 +138,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 10,
 		.num_planes = 1,
-		.num_meta_planes = 1,
 		.len_alpha = 2,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -160,7 +149,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 10,
 		.num_planes = 1,
-		.num_meta_planes = 1,
 		.len_alpha = 2,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -172,7 +160,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 10,
 		.num_planes = 1,
-		.num_meta_planes = 1,
 		.len_alpha = 2,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -184,7 +171,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 10,
 		.num_planes = 1,
-		.num_meta_planes = 1,
 		.len_alpha = 2,
 		.cs = DPU_COLORSPACE_RGB,
 	}, {
@@ -196,7 +182,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 2,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_YUV420,
 	}, {
@@ -208,7 +193,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 8,
 		.num_planes = 2,
-		.num_meta_planes = 0,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_YUV420,
 	}, {
@@ -220,7 +204,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 9,
 		.bpc = 10,
 		.num_planes = 2,
-		.num_meta_planes = 1,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_YUV420,
 	}, {
@@ -232,7 +215,6 @@ static const struct dpu_fmt dpu_formats_list[] = {
 		.padding = 0,
 		.bpc = 10,
 		.num_planes = 4,
-		.num_meta_planes = 1,
 		.len_alpha = 0,
 		.cs = DPU_COLORSPACE_YUV420,
 	},
