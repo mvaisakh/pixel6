@@ -3135,7 +3135,7 @@ static int max1720x_set_next_update(struct max1720x_chip *chip)
 		chip->model_next_update = (cycle_count + (1 << 6)) &
 					  ~((1 << 6) - 1);
 
-	pr_debug("%s: cycle_count=%d next_update=%ld rc=%d\n",
+	pr_debug("%s: cycle_count=%d next_update=%d rc=%d\n",
 			__func__, cycle_count, chip->model_next_update,
 			rc);
 
