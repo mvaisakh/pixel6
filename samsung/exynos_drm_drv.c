@@ -528,6 +528,16 @@ err:
 	return ret;
 }
 
+static ssize_t tui_status_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	const struct exynos_drm_private *private = drm_to_exynos_dev(drm_dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", private->tui_enabled ? 1 : 0);
+}
+static DEVICE_ATTR_RO(tui_status);
+
 int exynos_atomic_enter_tui(void)
 {
 	int i, ret = 0;
@@ -626,9 +636,12 @@ int exynos_atomic_enter_tui(void)
 	}
 
 	ret = drm_atomic_commit(state);
-
-	if (!ret)
+	if (!ret) {
 		private->tui_enabled = true;
+		/* send TUI status changing event to userspace */
+		sysfs_notify(&dev->dev->kobj, NULL, "tui_status");
+	}
+
 err:
 	drm_atomic_state_put(state);
 
@@ -675,6 +688,8 @@ int exynos_atomic_exit_tui(void)
 	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx, 0, ret);
 
 	private->tui_enabled = false;
+	/* send TUI status changing event to userspace */
+	sysfs_notify(&dev->dev->kobj, NULL, "tui_status");
 
 	ret = drm_atomic_helper_commit_duplicated_state(state, &ctx);
 	if (ret < 0)
@@ -920,8 +935,11 @@ static int exynos_drm_bind(struct device *dev)
 	ret = drm_dev_register(drm, 0);
 	if (ret < 0)
 		goto err_cleanup_poll;
-	return 0;
 
+	/* create sysfs node for TUI status */
+	device_create_file(dev, &dev_attr_tui_status);
+
+	return 0;
 
 err_cleanup_poll:
 	drm_kms_helper_poll_fini(drm);
@@ -939,6 +957,9 @@ static void exynos_drm_unbind(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
 	struct exynos_drm_private *private = drm_to_exynos_dev(drm);
+
+	/* destroy sysfs node for TUI status */
+	device_remove_file(dev, &dev_attr_tui_status);
 
 	drm_dev_unregister(drm);
 
