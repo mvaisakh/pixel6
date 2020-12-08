@@ -31,7 +31,6 @@
 #include "exynos_drm_drv.h"
 #include "exynos_drm_dsim.h"
 #include "exynos_drm_fb.h"
-#include "exynos_drm_fbdev.h"
 #include "exynos_drm_gem.h"
 #include "exynos_drm_plane.h"
 #include "exynos_drm_writeback.h"
@@ -548,10 +547,6 @@ static void exynos_drm_postclose(struct drm_device *dev, struct drm_file *file)
 	file->driver_priv = NULL;
 }
 
-static void exynos_drm_lastclose(struct drm_device *dev)
-{
-	exynos_drm_fbdev_restore_mode(dev);
-}
 
 static const struct drm_ioctl_desc exynos_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_REQUEST, histogram_request_ioctl, 0),
@@ -573,7 +568,6 @@ static struct drm_driver exynos_drm_driver = {
 	.driver_features	   = DRIVER_MODESET | DRIVER_ATOMIC |
 				     DRIVER_RENDER | DRIVER_GEM,
 	.open			   = exynos_drm_open,
-	.lastclose		   = exynos_drm_lastclose,
 	.postclose		   = exynos_drm_postclose,
 	.gem_free_object_unlocked  = exynos_drm_gem_free_object,
 	.gem_vm_ops		   = &exynos_drm_gem_vm_ops,
@@ -757,19 +751,13 @@ static int exynos_drm_bind(struct device *dev)
 	/* init kms poll for handling hpd */
 	drm_kms_helper_poll_init(drm);
 
-	ret = exynos_drm_fbdev_init(drm);
-	if (ret)
-		goto err_cleanup_poll;
-
 	/* register the DRM device */
 	ret = drm_dev_register(drm, 0);
 	if (ret < 0)
-		goto err_cleanup_fbdev;
-
+		goto err_cleanup_poll;
 	return 0;
 
-err_cleanup_fbdev:
-	exynos_drm_fbdev_fini(drm);
+
 err_cleanup_poll:
 	drm_kms_helper_poll_fini(drm);
 err_unbind_all:
@@ -794,7 +782,6 @@ static void exynos_drm_unbind(struct device *dev)
 
 	drm_atomic_private_obj_fini(&private->obj);
 
-	exynos_drm_fbdev_fini(drm);
 	drm_kms_helper_poll_fini(drm);
 
 	component_unbind_all(drm->dev, drm);
@@ -919,11 +906,6 @@ fail:
 static int exynos_drm_init(void)
 {
 	int ret;
-
-	if (enable_fbdev_display) {
-		pr_info("DRM/KMS not selected\n");
-		return -EINVAL;
-	}
 
 	ret = exynos_drm_register_devices();
 	if (ret)

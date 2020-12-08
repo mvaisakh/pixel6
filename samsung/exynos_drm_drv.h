@@ -36,11 +36,6 @@
 
 #define DEFAULT_WIN	0
 
-#if !defined(MODULE) && defined(CONFIG_EXYNOS_DPU30)
-extern bool enable_fbdev_display;
-#else
-#define enable_fbdev_display 0
-#endif
 
 #define to_exynos_crtc(x)	container_of(x, struct exynos_drm_crtc, base)
 #define to_exynos_plane(x)	container_of(x, struct exynos_drm_plane, base)
@@ -331,10 +326,8 @@ to_exynos_priv_state(const struct drm_private_state *state)
  * @wait: wait an atomic commit to finish
  */
 struct exynos_drm_private {
-	struct drm_fb_helper *fb_helper;
 	struct drm_atomic_state *suspend_state;
 	struct device *iommu_client;
-	struct device *dma_dev;
 	void *mapping;
 
 	bool tui_enabled;
@@ -348,12 +341,6 @@ struct exynos_drm_private {
 	struct drm_private_obj	obj;
 };
 
-static inline struct device *to_dma_dev(struct drm_device *dev)
-{
-	struct exynos_drm_private *priv = dev->dev_private;
-
-	return priv->dma_dev;
-}
 
 #ifdef CONFIG_DRM_EXYNOS_DPI
 struct drm_encoder *exynos_dpi_probe(struct device *dev);
