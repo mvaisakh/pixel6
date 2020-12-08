@@ -1134,7 +1134,7 @@ err:
 
 static void dsim_underrun_info(struct dsim_device *dsim)
 {
-	dsim_info(dsim, "underrun irq occurs: MIF(%lu), INT(%lu), DISP(%lu)\n",
+	printk_ratelimited("underrun irq occurs: MIF(%lu), INT(%lu), DISP(%lu)\n",
 			exynos_devfreq_get_domain_freq(DEVFREQ_MIF),
 			exynos_devfreq_get_domain_freq(DEVFREQ_INT),
 			exynos_devfreq_get_domain_freq(DEVFREQ_DISP));
