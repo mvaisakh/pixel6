@@ -865,7 +865,8 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 
 	decon_info(decon, "%s +\n", __func__);
 
-	exynos_partial_initialize(decon->partial);
+	if (decon->partial)
+		exynos_partial_initialize(decon->partial);
 
 	/* avoid power enable if we were previously in bypass to keep vote balanced */
 	if (old_exynos_crtc_state->bypass)
