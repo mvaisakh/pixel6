@@ -62,7 +62,7 @@
   */
 typedef struct {
 	struct timespec64 start;	/* /< store the starting time */
-	struct timespec64 end;	/* /< store the finishing time */
+	struct timespec64 end;		/* /< store the finishing time */
 } StopWatch;
 
 

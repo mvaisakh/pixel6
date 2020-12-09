@@ -36,6 +36,9 @@
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 #include <linux/input/heatmap.h>
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+#include <linux/input/touch_offload.h>
+#endif
 #include <linux/pm_qos.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_device.h>
@@ -295,12 +298,17 @@ struct fts_hw_platform_data {
 	int y_axis_max;
 	bool auto_fw_update;
 	bool separate_save_golden_ms_raw_cmd;
+	bool sensor_inverted_x;
+	bool sensor_inverted_y;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	bool heatmap_mode_full_init;
 #endif
 	struct drm_panel *panel;
 	u32 initial_panel_index;
 	u32 *force_pi_cfg_ver;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	u32 offload_id;
+#endif
 };
 
 /* Bits for the bus reference mask */
@@ -413,6 +421,12 @@ struct fts_ts_info {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
 #endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	struct touch_offload_context offload;
+	struct delayed_work offload_resume_work;
+#endif
+
 	struct delayed_work fwu_work;	/* Work for fw update */
 	struct workqueue_struct *fwu_workqueue;	/* Fw update work queue */
 	event_dispatch_handler_t *event_dispatch_table;	/* Dispatch table */
