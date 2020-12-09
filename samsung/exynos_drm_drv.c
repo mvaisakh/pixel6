@@ -49,7 +49,8 @@ EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
 
 static struct exynos_drm_priv_state *exynos_drm_get_priv_state(struct drm_atomic_state *state)
 {
-	struct exynos_drm_private *priv = state->dev->dev_private;
+	struct exynos_drm_private *priv = drm_to_exynos_dev(state->dev);
+
 	struct drm_private_state *priv_state;
 
 	priv_state = drm_atomic_get_private_obj_state(state, &priv->obj);
@@ -180,7 +181,7 @@ static int exynos_atomic_check_windows(struct drm_device *dev, struct drm_atomic
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
-	const struct exynos_drm_private *private = dev->dev_private;
+	const struct exynos_drm_private *private = drm_to_exynos_dev(dev);
 	int ret;
 
 	if (private->tui_enabled) {
@@ -385,8 +386,8 @@ int exynos_atomic_enter_tui(void)
 	struct drm_crtc *crtc;
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
-	struct exynos_drm_private *private = dev->dev_private;
 	u32 tui_crtc_mask = 0;
+	struct exynos_drm_private *private = drm_to_exynos_dev(dev);
 
 	pr_debug("%s +\n", __func__);
 
@@ -490,7 +491,7 @@ int exynos_atomic_exit_tui(void)
 	struct drm_atomic_state *state;
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct drm_modeset_acquire_ctx ctx;
-	struct exynos_drm_private *private = dev->dev_private;
+	struct exynos_drm_private *private = drm_to_exynos_dev(dev);
 
 	pr_debug("%s +\n", __func__);
 
@@ -667,25 +668,23 @@ static int exynos_drm_bind(struct device *dev)
 	u32 encoder_mask = 0;
 	int ret;
 
-	drm = drm_dev_alloc(&exynos_drm_driver, dev);
-	if (IS_ERR(drm))
-		return PTR_ERR(drm);
-
-	private = kzalloc(sizeof(struct exynos_drm_private), GFP_KERNEL);
-	if (!private) {
-		ret = -ENOMEM;
-		goto err_free_drm;
+	private = devm_drm_dev_alloc(dev, &exynos_drm_driver, struct exynos_drm_private, drm);
+	if (IS_ERR(private)) {
+		dev_err(dev, "[" DRM_NAME ":%s] devm_drm_dev_alloc failed: %li\n",
+			__func__, PTR_ERR(private));
+		return PTR_ERR(private);
 	}
+
+	drm = &private->drm;
 
 	init_waitqueue_head(&private->wait);
 	spin_lock_init(&private->lock);
 
 	dev_set_drvdata(dev, drm);
-	drm->dev_private = (void *)private;
 
-	ret = drm_mode_config_init(drm);
+	ret = drmm_mode_config_init(drm);
 	if (ret)
-		goto err_free_drm;
+		return ret;
 
 	exynos_drm_mode_config_init(drm);
 
@@ -695,7 +694,7 @@ static int exynos_drm_bind(struct device *dev)
 	priv_state = kzalloc(sizeof(*priv_state), GFP_KERNEL);
 	if (!priv_state) {
 		ret = -ENOMEM;
-		goto err_mode_config_cleanup;
+		goto err_free_drm;
 	}
 
 	priv_state->available_win_mask = BIT(MAX_WIN_PER_DECON) - 1;
@@ -704,7 +703,7 @@ static int exynos_drm_bind(struct device *dev)
 				    &exynos_priv_state_funcs);
 
 	/* Try to bind all sub drivers. */
-	ret = component_bind_all(drm->dev, drm);
+	ret = component_bind_all(dev, drm);
 	if (ret)
 		goto err_priv_state_cleanup;
 
@@ -761,14 +760,11 @@ static int exynos_drm_bind(struct device *dev)
 err_cleanup_poll:
 	drm_kms_helper_poll_fini(drm);
 err_unbind_all:
-	component_unbind_all(drm->dev, drm);
+	component_unbind_all(dev, drm);
 err_priv_state_cleanup:
 	drm_atomic_private_obj_fini(&private->obj);
-err_mode_config_cleanup:
-	drm_mode_config_cleanup(drm);
 err_free_drm:
 	drm_dev_put(drm);
-	kfree(private);
 
 	return ret;
 }
@@ -776,7 +772,7 @@ err_free_drm:
 static void exynos_drm_unbind(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct exynos_drm_private *private = drm->dev_private;
+	struct exynos_drm_private *private = drm_to_exynos_dev(drm);
 
 	drm_dev_unregister(drm);
 
@@ -784,12 +780,7 @@ static void exynos_drm_unbind(struct device *dev)
 
 	drm_kms_helper_poll_fini(drm);
 
-	component_unbind_all(drm->dev, drm);
-	drm_mode_config_cleanup(drm);
-
-	kfree(drm->dev_private);
-	drm->dev_private = NULL;
-	dev_set_drvdata(dev, NULL);
+	component_unbind_all(dev, drm);
 
 	drm_dev_put(drm);
 }

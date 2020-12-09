@@ -170,7 +170,7 @@ int exynos_drm_gem_dumb_create(struct drm_file *file_priv,
 struct drm_gem_object *exynos_drm_gem_prime_import(struct drm_device *dev,
 						   struct dma_buf *dma_buf)
 {
-	struct exynos_drm_private *priv = dev->dev_private;
+	struct exynos_drm_private *priv = drm_to_exynos_dev(dev);
 
 	return drm_gem_prime_import_dev(dev, dma_buf, priv->iommu_client);
 }

@@ -23,7 +23,7 @@
 static inline struct exynos_drm_connector_properties *
 dev_get_exynos_connector_properties(struct drm_device *dev)
 {
-	struct exynos_drm_private *priv = dev->dev_private;
+	struct exynos_drm_private *priv = drm_to_exynos_dev(dev);
 
 	return &priv->connector_props;
 }

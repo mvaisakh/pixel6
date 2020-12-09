@@ -326,10 +326,10 @@ to_exynos_priv_state(const struct drm_private_state *state)
  * @wait: wait an atomic commit to finish
  */
 struct exynos_drm_private {
+	struct drm_device drm;
 	struct drm_atomic_state *suspend_state;
 	struct device *iommu_client;
 	void *mapping;
-
 	bool tui_enabled;
 
 	/* for atomic commit */
@@ -341,6 +341,7 @@ struct exynos_drm_private {
 	struct drm_private_obj	obj;
 };
 
+#define drm_to_exynos_dev(dev) container_of(dev, struct exynos_drm_private, drm)
 
 #ifdef CONFIG_DRM_EXYNOS_DPI
 struct drm_encoder *exynos_dpi_probe(struct device *dev);
