@@ -91,7 +91,15 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	mutex_lock(&cooling->lock);
 	pwr_state = state_mapping[state_original];
 	if (state_original != cooling->cooling_state) {
+		/*
+		 * TODO (b/174799481):
+		 * Skipping thermal throttling for now.
+		 * Re-enable it once fix is implemented.
+		 */
+#if 0
 		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, pwr_state);
+#endif
+		ret = 0;
 		if (ret) {
 			dev_err(dev, "error setting tpu policy: %d\n", ret);
 			mutex_unlock(&cooling->lock);

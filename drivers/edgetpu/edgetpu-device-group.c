@@ -346,6 +346,7 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 	edgetpu_group_clear_events(group);
 	if (edgetpu_device_group_is_finalized(group)) {
 		edgetpu_device_group_kci_leave(group);
+		edgetpu_usr_release_group(group);
 		edgetpu_group_remove_remote_dram(group);
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 		edgetpu_p2p_mailbox_release(group);
@@ -353,6 +354,8 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 		group_release_members(group);
 	}
 	edgetpu_mailbox_remove_vii(&group->vii);
+	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+	edgetpu_mmu_free_domain(group->etdev, group->etdomain);
 	group->status = EDGETPU_DEVICE_GROUP_DISBANDED;
 }
 
@@ -594,13 +597,14 @@ void edgetpu_device_group_leave(struct edgetpu_client *client)
 	mutex_unlock(&client->etdev->state_lock);
 }
 
-struct edgetpu_device_group *edgetpu_device_group_alloc(
-		struct edgetpu_client *client,
-		const struct edgetpu_mailbox_attr *attr)
+struct edgetpu_device_group *
+edgetpu_device_group_alloc(struct edgetpu_client *client,
+			   const struct edgetpu_mailbox_attr *attr)
 {
 	static uint cur_workload_id;
 	int ret;
 	struct edgetpu_device_group *group;
+	struct edgetpu_iommu_domain *etdomain;
 
 	mutex_lock(&client->etdev->state_lock);
 	if (client->etdev->state != ETDEV_STATE_GOOD) {
@@ -641,10 +645,22 @@ struct edgetpu_device_group *edgetpu_device_group_alloc(
 		goto error_put_group;
 	}
 
+	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
+	if (!etdomain) {
+		ret = -ENOMEM;
+		goto error_put_group;
+	}
+	ret = edgetpu_mmu_attach_domain(group->etdev, etdomain);
+	if (ret) {
+		edgetpu_mmu_free_domain(group->etdev, etdomain);
+		goto error_put_group;
+	}
+	group->etdomain = etdomain;
 	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
 	if (ret) {
 		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
 			  __func__, group->workload_id, ret);
+		/* this also performs domain detach / free */
 		edgetpu_device_group_leave_locked(client);
 		goto error_put_group;
 	}

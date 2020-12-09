@@ -219,6 +219,7 @@ static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
 int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
 {
 	int ret;
+	int tries = EDGETPU_PCHANNEL_STATE_CHANGE_RETRIES;
 	u32 val;
 
 	etdev_dbg(etdev, "Starting p-channel power down\n");
@@ -228,18 +229,18 @@ int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
 		etdev_err(etdev, "request power down routing failed\n");
 		return ret;
 	}
-	/*
-	 * wait some time for f/w to execute power down and for TPU CPU to enter
-	 * wfi.
-	 */
-	if (!wait_on_pactive)
-		msleep(200);
-	else
+	if (wait_on_pactive) {
 		/* wait for PACTIVE[1] goes low. */
 		ret = etdev_poll_power_state(etdev, val, (val & PACTIVE) == 0);
+		tries = 1;
+	}
 	if (ret)
 		return ret;
-	ret = pchannel_state_change_request(etdev, STATE_SHUTDOWN);
+	do {
+		ret = pchannel_state_change_request(etdev, STATE_SHUTDOWN);
+		tries--;
+	} while (ret && tries);
+
 	return ret;
 }
 

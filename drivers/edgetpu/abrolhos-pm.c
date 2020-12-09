@@ -440,16 +440,17 @@ static void
 abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
 			      struct edgetpu_platform_dev *edgetpu_pdev)
 {
-	if (!edgetpu_pchannel_power_down(etdev, true))
+	if (!edgetpu_pchannel_power_down(etdev, false))
 		return;
 
 	etdev_warn(etdev, "Firmware shutdown request failed!\n");
 	etdev_warn(etdev, "Attempting firmware restart\n");
 
 	if (!edgetpu_firmware_restart_locked(etdev) &&
-	    !edgetpu_pchannel_power_down(etdev, true))
+	    !edgetpu_pchannel_power_down(etdev, false))
 		return;
 
+	cancel_work_sync(&etdev->kci->work);
 	etdev_warn(etdev, "Forcing shutdown through power policy\n");
 	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
 	pm_runtime_put_sync(etdev->dev);

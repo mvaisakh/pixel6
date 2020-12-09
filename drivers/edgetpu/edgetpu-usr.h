@@ -20,12 +20,22 @@
  */
 void edgetpu_usr_init_group(struct edgetpu_device_group *group);
 
+/*
+ * Stop the USR ring for all devices in @group.
+ * Caller holds @group->lock.
+ */
+void edgetpu_usr_release_group(struct edgetpu_device_group *group);
+
 #else /* !EDGETPU_HAS_VN */
 
 static inline void edgetpu_usr_init_group(struct edgetpu_device_group *group)
 {
 }
 
+static inline void
+edgetpu_usr_release_group(struct edgetpu_device_group *group)
+{
+}
 #endif /* EDGETPU_HAS_VN */
 
 #endif /* __EDGETPU_USR_H__ */

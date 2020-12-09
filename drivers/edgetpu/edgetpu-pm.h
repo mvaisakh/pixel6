@@ -13,6 +13,7 @@
 #define STATE_SHUTDOWN					1
 #define STATE_RUN					0
 #define EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT		15	/* 15us */
+#define EDGETPU_PCHANNEL_STATE_CHANGE_RETRIES		10
 
 struct edgetpu_pm_private;
 struct edgetpu_pm;
