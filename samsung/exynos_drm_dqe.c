@@ -11,6 +11,9 @@
 
 #include <linux/of_address.h>
 #include <linux/device.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_modeset_lock.h>
+#include <drm/drm_atomic_helper.h>
 
 #include <dqe_cal.h>
 #include <decon_cal.h>
@@ -283,7 +286,50 @@ DQE_ATC_ATTR_U8_RW(threshold_3);
 DQE_ATC_ATTR_U16_RW(gain_limit);
 DQE_ATC_ATTR_U8_RW(lt_calc_ab_shift);
 
+static ssize_t force_update_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct exynos_dqe *dqe = dev_get_drvdata(dev);
+	struct decon_device *decon = dqe->decon;
+	struct drm_crtc *crtc = &decon->crtc->base;
+	struct drm_device *drm_dev = decon->drm_dev;
+	struct drm_atomic_state *state;
+	struct drm_crtc_state *crtc_state;
+	struct drm_modeset_acquire_ctx ctx;
+	int ret = 0;
+
+	dqe->force_atc_config.dirty = true;
+
+	state = drm_atomic_state_alloc(drm_dev);
+	if (!state)
+		return -ENOMEM;
+	drm_modeset_acquire_init(&ctx, 0);
+	state->acquire_ctx = &ctx;
+retry:
+
+	crtc_state = drm_atomic_get_crtc_state(state, crtc);
+	if (IS_ERR(crtc_state)) {
+		ret = PTR_ERR(crtc_state);
+		goto out;
+	}
+	ret = drm_atomic_commit(state);
+out:
+	if (ret == -EDEADLK) {
+		drm_atomic_state_clear(state);
+		ret = drm_modeset_backoff(&ctx);
+		if (!ret)
+			goto retry;
+	}
+	drm_atomic_state_put(state);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
+	return ret ? : count;
+}
+static DEVICE_ATTR_WO(force_update);
+
 static struct attribute *atc_attrs[] = {
+	&dev_attr_force_update.attr,
 	&dev_attr_en.attr,
 	&dev_attr_lt.attr,
 	&dev_attr_ns.attr,
