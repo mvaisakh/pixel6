@@ -268,6 +268,7 @@ static void decon_update_config(struct decon_config *config,
 	config->mode.op_mode = is_vid_mode ? DECON_VIDEO_MODE : DECON_COMMAND_MODE;
 
 	config->out_bpc = exynos_mode->bpc;
+	config->vblank_usec = exynos_mode->vblank_usec;
 }
 
 static bool decon_is_seamless_possible(const struct decon_device *decon,
@@ -679,7 +680,7 @@ static void decon_mode_set(struct exynos_drm_crtc *crtc,
 	decon_mode_update_bts(decon, adjusted_mode);
 }
 
-#if defined(CONFIG_EXYNOS_BTS)
+#if IS_ENABLED(CONFIG_EXYNOS_BTS)
 static void decon_seamless_mode_bts_update(struct decon_device *decon,
 					   const struct drm_display_mode *mode)
 {
