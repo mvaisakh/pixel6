@@ -726,8 +726,10 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 #ifdef CONFIG_DEBUG_FS
 static int dphy_diag_text_show(struct seq_file *m, void *p)
 {
-      seq_printf(m, "%s\n", m->private);
-      return 0;
+	char *text = m->private;
+
+	seq_printf(m, "%s\n", text);
+	return 0;
 }
 
 DEFINE_SHOW_ATTRIBUTE(dphy_diag_text);
