@@ -20,6 +20,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_plane.h>
 #include <drm/drm_property.h>
+#include <drm/drm_file.h>
 #include <drm/samsung_drm.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
@@ -243,6 +244,8 @@ struct exynos_drm_crtc_state {
 	struct drm_property_blob *cgc_dither;
 	struct drm_property_blob *linear_matrix;
 	struct drm_property_blob *gamma_matrix;
+	struct drm_property_blob *histogram_roi;
+	struct drm_property_blob *histogram_weights;
 	enum exynos_drm_writeback_type wb_type;
 	u8 seamless_mode_changed : 1;
 	unsigned int reserved_win_mask;
@@ -279,11 +282,19 @@ struct exynos_drm_crtc {
 		struct drm_property *linear_matrix;
 		struct drm_property *gamma_matrix;
 		struct drm_property *dqe_enabled;
+		struct drm_property *histogram_roi;
+		struct drm_property *histogram_weights;
+		struct drm_property *histogram_threshold;
 	} props;
 };
 
 struct drm_exynos_file_private {
 	u32 dummy;
+};
+
+struct exynos_drm_pending_histogram_event {
+	struct drm_pending_event base;
+	struct exynos_drm_histogram_event event;
 };
 
 struct exynos_drm_priv_state {
