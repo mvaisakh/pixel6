@@ -544,6 +544,7 @@ enum p9382_rtx_err {
 #define P9221_HZ_TO_KHZ(khz) ((khz) / 1000)
 #define P9221_C_TO_MILLIC(c) ((c) * 1000)
 #define P9221_MILLIC_TO_C(mc) ((mc) / 1000)
+#define P9221_MILLIC_TO_DECIC(mc) ((mc) / 100)
 #define P9412_MW_TO_HW(mw) (((mw) * 2) / 1000) /* mw -> 0.5 W units */
 #define P9412_HW_TO_MW(hw) (((hw) / 2) * 1000) /* 0.5 W units -> mw */
 
