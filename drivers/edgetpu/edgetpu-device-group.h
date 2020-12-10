@@ -20,6 +20,7 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-mapping.h"
+#include "edgetpu-mmu.h"
 #include "edgetpu.h"
 
 /* entry of edgetpu_device_group#clients */
@@ -70,6 +71,8 @@ struct edgetpu_device_group {
 	enum edgetpu_device_group_status status;
 	struct edgetpu_dev *etdev;	/* the device opened by the leader */
 	struct edgetpu_vii vii;		/* VII mailbox */
+	/* The IOMMU domain being associated to this group */
+	struct edgetpu_iommu_domain *etdomain;
 	/* matrix of P2P mailboxes */
 	struct edgetpu_p2p_mailbox **p2p_mailbox_matrix;
 	/* protects clients, n_clients, status, and vii */
@@ -142,9 +145,9 @@ void edgetpu_device_group_put(struct edgetpu_device_group *group);
  * Returns allocated group, or a negative errno on error.
  * Returns -EINVAL if the client already belongs to a group.
  */
-struct edgetpu_device_group *edgetpu_device_group_alloc(
-		struct edgetpu_client *client,
-		const struct edgetpu_mailbox_attr *attr);
+struct edgetpu_device_group *
+edgetpu_device_group_alloc(struct edgetpu_client *client,
+			   const struct edgetpu_mailbox_attr *attr);
 
 /*
  * Adds a client to the device group.

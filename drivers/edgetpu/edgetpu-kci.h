@@ -91,6 +91,7 @@ enum edgetpu_kci_code {
 	/* TODO(b/136208139): remove when old fw no longer in use */
 	KCI_CODE_FIRMWARE_FLAVOR_COMPAT = 6,
 	KCI_CODE_SHUTDOWN = 7,
+	KCI_CODE_GET_DEBUG_DUMP = 8,
 	KCI_CODE_OPEN_DEVICE = 9,
 	KCI_CODE_CLOSE_DEVICE = 10,
 	KCI_CODE_FIRMWARE_INFO = 11,
@@ -135,12 +136,12 @@ struct edgetpu_kci {
 	u64 cur_seq;
 	struct edgetpu_command_element *cmd_queue;
 	struct mutex cmd_queue_lock;	/* protects cmd_queue */
-	tpu_addr_t cmd_queue_tpu_addr;  /* TPU device address for cmd queue */
-	dma_addr_t cmd_queue_dma_addr;  /* DMA address for cmd queue */
+	/* Command queue buffer */
+	struct edgetpu_coherent_mem cmd_queue_mem;
 	struct edgetpu_kci_response_element *resp_queue;
 	spinlock_t resp_queue_lock;	/* protects resp_queue */
-	tpu_addr_t resp_queue_tpu_addr; /* TPU device address for resp queue */
-	dma_addr_t resp_queue_dma_addr; /* DMA address for resp queue */
+	/* Response queue buffer */
+	struct edgetpu_coherent_mem resp_queue_mem;
 	/* queue for waiting for the response doorbell to be rung */
 	wait_queue_head_t resp_doorbell_waitq;
 	/* add to this list if a command needs to wait for a response */
@@ -276,10 +277,14 @@ void edgetpu_kci_mappings_show(struct edgetpu_dev *etdev, struct seq_file *s);
 /* Send shutdown request to firmware */
 int edgetpu_kci_shutdown(struct edgetpu_kci *kci);
 
-/* Inform the firmware to prepare to serve the VII with @mailbox_id. */
-int edgetpu_kci_open_device(struct edgetpu_kci *kci, u8 mailbox_id);
+/* Request dump of inaccessible segments from firmware */
+int edgetpu_kci_get_debug_dump(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
+			       size_t size);
 
-/* Inform the firmware the VII with @mailbox_id is closed. */
-int edgetpu_kci_close_device(struct edgetpu_kci *kci, u8 mailbox_id);
+/* Inform the firmware to prepare to serve the VII of @mailbox_ids. */
+int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_ids);
+
+/* Inform the firmware the VII with @mailbox_ids are closed. */
+int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids);
 
 #endif /* __EDGETPU_KCI_H__ */

@@ -14,6 +14,11 @@
 #include "edgetpu-internal.h"
 #include "edgetpu.h"
 
+/* TODO(b/153947157): remove this */
+#if IS_ENABLED(CONFIG_EDGETPU_TEST)
+#include <linux/iommu-ext.h>
+#endif
+
 #define IS_MIRRORED(flag) (!((flag) & EDGETPU_MAP_NONMIRRORED))
 
 /* flags for MMU operations */
@@ -28,6 +33,11 @@
 #define EDGETPU_MMU_HOST	(0 << 2)
 #define EDGETPU_MMU_DEVICE	(1 << 2)
 #define EDGETPU_MMU_DMABUF	(2 << 2)
+
+struct edgetpu_iommu_domain {
+	uint pasid;
+	struct iommu_domain *iommu_domain;
+};
 
 /*
  * Return the DMA direction to use for the host DMA API call to map a buffer.
@@ -213,5 +223,39 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev,
  *                false = use host DRAM for MMU data structures
  */
 void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev, bool use_dev_dram);
+
+/*
+ * Allocates a IOMMU domain.
+ *
+ * The newly allocated domain would have @pasid equal IOMMU_PASID_INVALID, use
+ * edgetpu_mmu_attach_domain() to acquire a valid PASID.
+ *
+ * If the chipset doesn't need to drive the domain AUX feature, a valid
+ * pointer shall be returned with @etdomain->pasid == IOMMU_PASID_INVALID.
+ *
+ * Returns NULL on error.
+ */
+struct edgetpu_iommu_domain *
+edgetpu_mmu_alloc_domain(struct edgetpu_dev *etdev);
+
+/* Frees the domain previously allocated by edgetpu_mmu_alloc_domain(). */
+void edgetpu_mmu_free_domain(struct edgetpu_dev *etdev,
+			     struct edgetpu_iommu_domain *etdomain);
+
+/*
+ * Attaches the domain to the MMU device.
+ *
+ * If the chipset doesn't need to drive the domain AUX feature, this function
+ * should return 0 without setting @etdomain->pasid.
+ *
+ * When success, 0 is returned and @etdomain->pasid is set.
+ * Returns -errno on error.
+ */
+int edgetpu_mmu_attach_domain(struct edgetpu_dev *etdev,
+			      struct edgetpu_iommu_domain *etdomain);
+
+/* Detaches the domain from the MMU device. */
+void edgetpu_mmu_detach_domain(struct edgetpu_dev *etdev,
+			       struct edgetpu_iommu_domain *etdomain);
 
 #endif /* __EDGETPU_MMU_H__ */

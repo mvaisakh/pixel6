@@ -10,6 +10,7 @@
 #include <asm/pgtable_types.h>
 #include <asm/set_memory.h>
 #endif
+#include <linux/bits.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
@@ -209,34 +210,37 @@ void edgetpu_mailbox_set_priority(struct edgetpu_mailbox *mailbox, u32 priority)
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, priority, priority);
 }
 
-/*
- * Requests an available mailbox for VII.
- *
- * -EBUSY is returned if there is no mailbox available.
- */
-struct edgetpu_mailbox *edgetpu_mailbox_vii_add(
-		struct edgetpu_mailbox_manager *mgr)
+struct edgetpu_mailbox *
+edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id)
 {
-	uint i;
 	struct edgetpu_mailbox *mailbox = NULL;
 	unsigned long flags;
 
 	write_lock_irqsave(&mgr->mailboxes_lock, flags);
-	/* Skip the mailboxes preserved for KCI */
-	for (i = mgr->vii_index_from; i < mgr->vii_index_to; i++) {
-		if (!mgr->mailboxes[i]) {
-			mailbox = edgetpu_mailbox_create_locked(mgr, i);
-			if (IS_ERR(mailbox))
-				goto out;
-			mgr->mailboxes[i] = mailbox;
-			break;
+	if (id == 0) {
+		uint i;
+
+		for (i = mgr->vii_index_from; i < mgr->vii_index_to; i++) {
+			if (!mgr->mailboxes[i]) {
+				id = i;
+				break;
+			}
 		}
+	} else {
+		/* no mailbox available - returns busy */
+		if (id < mgr->vii_index_from || id >= mgr->vii_index_to ||
+		    mgr->mailboxes[id])
+			id = 0;
 	}
 
 	/* no empty slot found */
-	if (!mailbox)
+	if (id == 0) {
 		mailbox = ERR_PTR(-EBUSY);
-out:
+	} else {
+		mailbox = edgetpu_mailbox_create_locked(mgr, id);
+		if (!IS_ERR(mailbox))
+			mgr->mailboxes[id] = mailbox;
+	}
 	write_unlock_irqrestore(&mgr->mailboxes_lock, flags);
 	return mailbox;
 }
@@ -396,9 +400,13 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 {
 	int cmd_queue_size, resp_queue_size;
 	struct edgetpu_mailbox_manager *mgr = group->etdev->mailbox_manager;
-	struct edgetpu_mailbox *mailbox = edgetpu_mailbox_vii_add(mgr);
+	struct edgetpu_mailbox *mailbox;
 	int ret;
 
+	if (!group->etdomain || group->etdomain->pasid == IOMMU_PASID_INVALID)
+		mailbox = edgetpu_mailbox_vii_add(mgr, 0);
+	else
+		mailbox = edgetpu_mailbox_vii_add(mgr, group->etdomain->pasid);
 	if (IS_ERR(mailbox))
 		return PTR_ERR(mailbox);
 
@@ -720,12 +728,24 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 {
 	int i;
 	struct edgetpu_device_group *group;
+	u32 mailbox_ids = 0;
 
 	mutex_lock(&etdev->groups_lock);
 	for (i = 0; i < EDGETPU_NGROUPS; i++) {
 		group = etdev->groups[i];
-		if (group)
+		if (group) {
 			edgetpu_mailbox_reinit_vii(group);
+			if (edgetpu_device_group_is_finalized(group))
+				mailbox_ids |=
+					BIT(group->vii.mailbox->mailbox_id);
+		}
 	}
 	mutex_unlock(&etdev->groups_lock);
+	/*
+	 * If unfortunately groups are disbanded before we send this KCI, the
+	 * firmware side would be incorrectly informed that some mailboxes are
+	 * in use while actually not - but this shouldn't be harmful.
+	 */
+	if (mailbox_ids)
+		edgetpu_kci_open_device(etdev->kci, mailbox_ids);
 }

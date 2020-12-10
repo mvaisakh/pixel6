@@ -5,6 +5,8 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
+#include <linux/atomic.h>
+#include <linux/bits.h>
 #include <linux/dma-direction.h>
 #include <linux/dma-mapping.h>
 #include <linux/eventfd.h>
@@ -96,7 +98,7 @@ static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
 	u8 mailbox_id = group->vii.mailbox->mailbox_id;
-	int ret = edgetpu_kci_close_device(group->etdev->kci, mailbox_id);
+	int ret = edgetpu_kci_close_device(group->etdev->kci, BIT(mailbox_id));
 
 	/*
 	 * This should only happen when the FW hasn't driven this KCI, log once
@@ -148,7 +150,7 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
 	u8 mailbox_id = group->vii.mailbox->mailbox_id;
-	int ret = edgetpu_kci_open_device(group->etdev->kci, mailbox_id);
+	int ret = edgetpu_kci_open_device(group->etdev->kci, BIT(mailbox_id));
 
 	/*
 	 * This should only happen when the FW hasn't driven this KCI, log once
@@ -157,6 +159,7 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 	if (ret)
 		etdev_warn_once(group->etdev, "Open device failed with %d",
 				ret);
+	atomic_inc(&group->etdev->job_count);
 	return 0;
 #else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
@@ -190,6 +193,7 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 			(edgetpu_async_job_t)edgetpu_kci_join_group_worker);
 		if (ret)
 			goto out_free;
+		atomic_inc(&etdev->job_count);
 	}
 	ret = edgetpu_async_wait(ctx);
 	if (ret)
@@ -203,16 +207,18 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 
 out_leave:
 	for_each_async_ret(ctx, val, i) {
-		if (val == 0)
+		if (val == 0) {
 			edgetpu_async_add_job(
 				ctx_for_leave, &params[i],
 				(edgetpu_async_job_t)
 					edgetpu_kci_leave_group_worker);
-
-		else if (val > 0)
+			etdev = edgetpu_device_group_nth_etdev(group, i);
+			atomic_dec(&etdev->job_count);
+		} else if (val > 0) {
 			ret = -EBADMSG;
-		else
+		} else {
 			ret = val;
+		}
 	}
 	val = edgetpu_async_wait(ctx_for_leave);
 	/* ENOMEM */
@@ -340,6 +346,7 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 	edgetpu_group_clear_events(group);
 	if (edgetpu_device_group_is_finalized(group)) {
 		edgetpu_device_group_kci_leave(group);
+		edgetpu_usr_release_group(group);
 		edgetpu_group_remove_remote_dram(group);
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 		edgetpu_p2p_mailbox_release(group);
@@ -347,6 +354,8 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 		group_release_members(group);
 	}
 	edgetpu_mailbox_remove_vii(&group->vii);
+	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+	edgetpu_mmu_free_domain(group->etdev, group->etdomain);
 	group->status = EDGETPU_DEVICE_GROUP_DISBANDED;
 }
 
@@ -579,19 +588,23 @@ out:
 void edgetpu_device_group_leave(struct edgetpu_client *client)
 {
 	mutex_lock(&client->etdev->state_lock);
-	WARN_ON_ONCE(client->etdev->state != ETDEV_STATE_GOOD &&
-		     client->etdev->state != ETDEV_STATE_FWLOADING);
-	edgetpu_device_group_leave_locked(client);
+	/*
+	 * The only chance that the state is not GOOD here is the wdt timeout
+	 * action is working. Let that worker perform the group leaving.
+	 */
+	if (client->etdev->state == ETDEV_STATE_GOOD)
+		edgetpu_device_group_leave_locked(client);
 	mutex_unlock(&client->etdev->state_lock);
 }
 
-struct edgetpu_device_group *edgetpu_device_group_alloc(
-		struct edgetpu_client *client,
-		const struct edgetpu_mailbox_attr *attr)
+struct edgetpu_device_group *
+edgetpu_device_group_alloc(struct edgetpu_client *client,
+			   const struct edgetpu_mailbox_attr *attr)
 {
 	static uint cur_workload_id;
 	int ret;
 	struct edgetpu_device_group *group;
+	struct edgetpu_iommu_domain *etdomain;
 
 	mutex_lock(&client->etdev->state_lock);
 	if (client->etdev->state != ETDEV_STATE_GOOD) {
@@ -632,10 +645,22 @@ struct edgetpu_device_group *edgetpu_device_group_alloc(
 		goto error_put_group;
 	}
 
+	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
+	if (!etdomain) {
+		ret = -ENOMEM;
+		goto error_put_group;
+	}
+	ret = edgetpu_mmu_attach_domain(group->etdev, etdomain);
+	if (ret) {
+		edgetpu_mmu_free_domain(group->etdev, etdomain);
+		goto error_put_group;
+	}
+	group->etdomain = etdomain;
 	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
 	if (ret) {
 		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
 			  __func__, group->workload_id, ret);
+		/* this also performs domain detach / free */
 		edgetpu_device_group_leave_locked(client);
 		goto error_put_group;
 	}

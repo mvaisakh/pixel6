@@ -51,6 +51,11 @@
 #define EDGETPU_REMAPPED_DATA_ADDR                                        \
 	(EDGETPU_INSTRUCTION_REMAP_BASE + EDGETPU_REMAPPED_DATA_OFFSET)
 
+/*
+ * Size of memory for FW accessible debug dump segments
+ */
+#define EDGETPU_DEBUG_DUMP_MEM_SIZE 0x40000
+
 #include "config-mailbox.h"
 #include "config-tpu-cpu.h"
 #include "csrs.h"

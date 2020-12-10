@@ -12,7 +12,7 @@ endif
 
 edgetpu-fw-objs := edgetpu-firmware.o edgetpu-firmware-util.o edgetpu-shared-fw.o
 edgetpu-objs	:= edgetpu-mailbox.o edgetpu-kci.o edgetpu-telemetry.o edgetpu-mapping.o edgetpu-dmabuf.o edgetpu-async.o edgetpu-iremap-pool.o edgetpu-sw-watchdog.o $(edgetpu-fw-objs)
-abrolhos-y	:= abrolhos-device.o abrolhos-device-group.o abrolhos-fs.o abrolhos-core.o abrolhos-platform.o abrolhos-iommu.o abrolhos-firmware.o abrolhos-thermal.o abrolhos-pm.o $(edgetpu-objs)
+abrolhos-y	:= abrolhos-device.o abrolhos-device-group.o abrolhos-fs.o abrolhos-core.o abrolhos-platform.o abrolhos-iommu.o abrolhos-firmware.o abrolhos-thermal.o abrolhos-pm.o abrolhos-debug-dump.o $(edgetpu-objs)
 CFLAGS_abrolhos-fs.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-core.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-device.o := -DCONFIG_ABROLHOS=1
@@ -22,3 +22,4 @@ CFLAGS_abrolhos-platform.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-pm.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-thermal.o := -DCONFIG_ABROLHOS=1
 CFLAGS_abrolhos-iommu.o := -DCONFIG_ABROLHOS=1
+CFLAGS_abrolhos-debug-dump.o := -DCONFIG_ABROLHOS=1

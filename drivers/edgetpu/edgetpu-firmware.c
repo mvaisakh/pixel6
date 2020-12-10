@@ -256,8 +256,6 @@ static int edgetpu_firmware_handshake(struct edgetpu_firmware *et_fw)
 	enum edgetpu_fw_flavor fw_flavor;
 	struct edgetpu_firmware_buffer *fw_buf;
 
-	/* Give the firmware some time to initialize */
-	msleep(100);
 	etdev_dbg(etdev, "Detecting firmware info...");
 	et_fw->p->fw_info.fw_build_time = 0;
 	et_fw->p->fw_info.fw_flavor = FW_FLAVOR_UNKNOWN;
@@ -489,11 +487,9 @@ int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
 	return ret;
 }
 
-static ssize_t load_firmware_show(
-		struct device *dev, struct device_attribute *attr,
-		char *buf)
+ssize_t edgetpu_firmware_get_name(struct edgetpu_dev *etdev, char *buf,
+				  size_t buflen)
 {
-	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 	int ret;
 	const char *fw_name;
@@ -504,11 +500,20 @@ static ssize_t load_firmware_show(
 	mutex_lock(&et_fw->p->fw_desc_lock);
 	fw_name = et_fw->p->fw_desc.buf.name;
 	if (fw_name)
-		ret = scnprintf(buf, PAGE_SIZE, "%s\n", fw_name);
+		ret = scnprintf(buf, buflen, "%s\n", fw_name);
 	else
 		ret = -ENODATA;
 	mutex_unlock(&et_fw->p->fw_desc_lock);
 	return ret;
+}
+
+static ssize_t load_firmware_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	return edgetpu_firmware_get_name(etdev, buf, PAGE_SIZE);
 }
 
 static ssize_t load_firmware_store(
@@ -611,6 +616,13 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 	etdev->state = ETDEV_STATE_FWLOADING;
 	mutex_unlock(&etdev->state_lock);
 
+	/*
+	 * We don't hold etdev->groups_lock here because
+	 *   1. All group operations should be protected by "state GOOD" and
+	 *   2. to prevent LOCKDEP from reporting deadlock with
+	 *      edgetpu_device_group_add_locked, which nested holds group->lock
+	 *      then etdev->groups_lock.
+	 */
 	for (i = 0; i < EDGETPU_NGROUPS; i++) {
 		group = etdev->groups[i];
 		if (!group)

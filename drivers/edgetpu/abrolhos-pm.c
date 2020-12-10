@@ -450,6 +450,7 @@ abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
 	    !edgetpu_pchannel_power_down(etdev, false))
 		return;
 
+	cancel_work_sync(&etdev->kci->work);
 	etdev_warn(etdev, "Forcing shutdown through power policy\n");
 	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
 	pm_runtime_put_sync(etdev->dev);

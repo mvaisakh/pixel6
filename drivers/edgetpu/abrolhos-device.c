@@ -8,6 +8,7 @@
 #include <linux/irqreturn.h>
 
 #include "edgetpu-config.h"
+#include "edgetpu-debug-dump.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
 #include "abrolhos-platform.h"
@@ -70,8 +71,14 @@ irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg)
 	struct edgetpu_dev *etdev = arg;
 
 	edgetpu_telemetry_irq_handler(etdev);
+	edgetpu_debug_dump_resp_handler(etdev);
 
 	return abrolhos_mailbox_handle_irq(etdev->mailbox_manager);
+}
+
+u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev)
+{
+	return edgetpu_dev_read_64(etdev, EDGETPU_REG_CPUNS_TIMESTAMP);
 }
 
 void edgetpu_chip_init(struct edgetpu_dev *etdev)

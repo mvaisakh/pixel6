@@ -201,8 +201,15 @@ void edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
 
 /* utility functions for VII */
 
-struct edgetpu_mailbox *edgetpu_mailbox_vii_add(
-		struct edgetpu_mailbox_manager *mgr);
+/*
+ * Request the mailbox with mailbox_id equals @id.
+ * @id = 0 means there is no preference, @mgr will return a spare mailbox.
+ *
+ * -EBUSY is returned if the requested @id is used or there is no mailbox
+ * available.
+ */
+struct edgetpu_mailbox *
+edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id);
 int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 			     struct edgetpu_device_group *group,
 			     const struct edgetpu_mailbox_attr *attr);
