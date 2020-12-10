@@ -16,6 +16,7 @@
 #include <linux/workqueue.h>
 
 #include "lwis_event.h"
+#include "lwis_ioreg.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
@@ -171,6 +172,14 @@ static int process_io_entries(struct lwis_client *client,
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_periodic_io_response_header) +
 		   periodic_io->batch_count * (resp->results_size_bytes / info->batch_size);
 
+	/* Use write memory barrier at the beginning of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/false,
+						   /*use_write_barrier=*/true);
+	}
+
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
@@ -228,6 +237,12 @@ static int process_io_entries(struct lwis_client *client,
 	resp->batch_size = periodic_io->batch_count;
 
 event_push:
+	/* Use read memory barrier at the beginning of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/true,
+						   /*use_write_barrier=*/false);
+	}
 	resp_size = sizeof(struct lwis_periodic_io_response_header) +
 		    periodic_io->batch_count * (resp->results_size_bytes / info->batch_size);
 	/* Always remove the process_queue_node from the client

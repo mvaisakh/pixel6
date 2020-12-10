@@ -19,6 +19,7 @@
 
 #include "lwis_buffer.h"
 #include "lwis_commands.h"
+#include "lwis_device.h"
 #include "lwis_device_dpm.h"
 #include "lwis_device_i2c.h"
 #include "lwis_device_ioreg.h"
@@ -126,6 +127,10 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, in
 	case IOCTL_TO_ENUM(LWIS_DPM_QOS_UPDATE):
 		strlcpy(type_name, STRINGIFY(LWIS_DPM_QOS_UPDATE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_QOS_UPDATE);
+		break;
+	case IOCTL_TO_ENUM(LWIS_DPM_GET_CLOCK):
+		strlcpy(type_name, STRINGIFY(LWIS_DPM_GET_CLOCK), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_GET_CLOCK);
 		break;
 	default:
 		strlcpy(type_name, "UNDEFINED", sizeof(type_name));
@@ -321,6 +326,13 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 {
 	int ret = 0, i = 0;
 
+	/* Use write memory barrier at the beginning of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/false,
+						   /*use_write_barrier=*/true);
+	}
 	for (i = 0; i < num_io_entries; i++) {
 		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
@@ -340,13 +352,21 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
 			ret = -EINVAL;
-		};
+		}
 		if (ret) {
 			dev_err(lwis_dev->dev, "Register io_entry failed\n");
-			return ret;
+			goto exit;
 		}
 	}
-	return 0;
+exit:
+	/* Use read memory barrier at the end of I/O entries if the access protocol
+	 * allows it */
+	if (lwis_dev->vops.register_io_barrier != NULL) {
+		lwis_dev->vops.register_io_barrier(lwis_dev,
+						   /*use_read_barrier=*/true,
+						   /*use_write_barrier=*/false);
+	}
+	return ret;
 }
 
 static int ioctl_reg_io(struct lwis_device *lwis_dev, struct lwis_io_entries *user_msg)
@@ -572,6 +592,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	lwis_transaction_client_cleanup(lwis_client);
 
 	mutex_lock(&lwis_dev->client_lock);
+	lwis_client_event_states_clear(lwis_client);
 	if (lwis_dev->enabled > 1) {
 		lwis_dev->enabled--;
 		lwis_client->is_enabled = false;
@@ -588,6 +609,7 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 		dev_err(lwis_dev->dev, "Failed to power down device\n");
 		goto error_locked;
 	}
+	lwis_device_event_states_clear_locked(lwis_dev);
 
 	lwis_dev->enabled--;
 	lwis_client->is_enabled = false;
@@ -661,9 +683,10 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries, k_entries,
 					     k_msg.io_entries);
 
-	/* Clear event states and transactions for this client */
+	/* Clear event states, event queue and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
 	lwis_client_event_states_clear(lwis_client);
+	lwis_client_event_queue_clear(lwis_client);
 	mutex_unlock(&lwis_dev->client_lock);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -1077,6 +1100,8 @@ static int ioctl_event_unsubscribe(struct lwis_client *client, int64_t __user *m
 	int ret = 0;
 	int64_t event_id;
 	struct lwis_device *lwis_dev = client->lwis_dev;
+	struct lwis_device_event_state* event_state;
+	unsigned long flags;
 
 	ret = copy_from_user((void *)&event_id, (void __user *)msg, sizeof(event_id));
 	if (ret) {
@@ -1092,8 +1117,17 @@ static int ioctl_event_unsubscribe(struct lwis_client *client, int64_t __user *m
 
 	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(lwis_dev->top_dev, event_id,
 								 lwis_dev->id);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n", event_id);
+	}
+
+	/* Reset event counter */
+	event_state = lwis_device_event_state_find(lwis_dev, event_id);
+	if (event_state) {
+		spin_lock_irqsave(&lwis_dev->lock, flags);
+		event_state->event_counter = 0;
+		spin_unlock_irqrestore(&lwis_dev->lock, flags);
+	}
 
 	return ret;
 }
@@ -1329,6 +1363,39 @@ out:
 	return ret;
 }
 
+static int ioctl_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_qos_setting __user *msg)
+{
+	struct lwis_qos_setting current_setting;
+	struct lwis_device *target_device;
+	int ret;
+
+	if (lwis_dev->type != DEVICE_TYPE_DPM) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = copy_from_user((void *)&current_setting, (void __user *)msg,
+		sizeof(struct lwis_qos_setting));
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "failed to copy from user\n");
+		goto out;
+	}
+
+	target_device = lwis_find_dev_by_id(current_setting.device_id);
+	if (!target_device) {
+		dev_err(lwis_dev->dev, "could not find lwis device by id %d\n",
+			current_setting.device_id);
+		ret = -ENODEV;
+		goto out;
+	}
+	current_setting.frequency_hz = (int64_t)lwis_dpm_read_clock(target_device);
+	ret = copy_to_user((void __user *)msg, &current_setting, sizeof(struct lwis_qos_setting));
+
+out:
+	return ret;
+}
+
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsigned long param)
 {
 	int ret = 0;
@@ -1345,7 +1412,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
 	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
 	    type != LWIS_BUFFER_DISENROLL && type != LWIS_BUFFER_FREE &&
-	    type != LWIS_DPM_QOS_UPDATE) {
+	    type != LWIS_DPM_QOS_UPDATE && type != LWIS_DPM_GET_CLOCK) {
 		ret = -EBADFD;
 		dev_err_ratelimited(lwis_dev->dev, "Unsupported IOCTL on disabled device.\n");
 		return ret;
@@ -1420,6 +1487,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		break;
 	case LWIS_DPM_QOS_UPDATE:
 		ret = ioctl_dpm_qos_update(lwis_dev, (struct lwis_dpm_qos_requirements *)param);
+		break;
+	case LWIS_DPM_GET_CLOCK:
+		ret = ioctl_dpm_get_clock(lwis_dev, (struct lwis_qos_setting *)param);
 		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");

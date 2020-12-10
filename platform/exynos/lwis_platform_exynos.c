@@ -84,8 +84,8 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 {
 	int ret;
 	struct lwis_platform *platform;
-	const uint32_t core_clock_qos = 67000;
-	const uint32_t hpg_qos = 1;
+	const int core_clock_qos = 67000;
+	const int hpg_qos = 1;
 
 	BUG_ON(!lwis_dev);
 	platform = lwis_dev->platform;
@@ -164,7 +164,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	return ret;
 }
 
-int lwis_platform_update_qos(struct lwis_device *lwis_dev, uint32_t value,
+int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
 			     enum lwis_clock_family clock_family)
 {
 	struct lwis_platform *platform;

@@ -23,6 +23,7 @@
 
 static struct lwis_device_subclass_operations dpm_vops = {
 	.register_io = NULL,
+	.register_io_barrier = NULL,
 	.device_enable = NULL,
 	.device_disable = NULL,
 	.event_enable = NULL,
@@ -68,7 +69,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	case CLOCK_FAMILY_CAM:
 	case CLOCK_FAMILY_INTCAM:
 		/* convert value to KHz */
-		ret = lwis_platform_update_qos(target_dev, qos_setting->frequency_hz / 1000,
+		ret = lwis_platform_update_qos(target_dev, (int)(qos_setting->frequency_hz / 1000),
 					       qos_setting->clock_family);
 		if (ret) {
 			dev_err(lwis_dev->dev,
@@ -208,4 +209,16 @@ int lwis_dpm_device_deinit(void)
 {
 	platform_driver_unregister(&lwis_driver);
 	return 0;
+}
+
+uint32_t lwis_dpm_read_clock(struct lwis_device *lwis_dev)
+{
+	uint32_t clock = 0;
+
+	if (!lwis_dev->clocks) {
+		dev_err(lwis_dev->dev, "%s clock not defined", lwis_dev->name);
+		return -ENODEV;
+	}
+	clock = clk_get_rate(lwis_dev->clocks->clk[0].clk);
+	return clock;
 }

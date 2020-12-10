@@ -31,6 +31,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 				bool non_blocking, int access_size);
 static struct lwis_device_subclass_operations top_vops = {
 	.register_io = lwis_top_register_io,
+	.register_io_barrier = NULL,
 	.device_enable = NULL,
 	.device_disable = NULL,
 	.event_enable = NULL,
@@ -130,7 +131,20 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 {
 	struct lwis_top_device *lwis_top_dev = (struct lwis_top_device *)lwis_dev;
 	struct lwis_event_subscribe_info *p;
+	struct lwis_trigger_event_info *pending_event, *n;
+	unsigned long flags;
 
+	/* Clear pending events */
+	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
+	list_for_each_entry_safe (pending_event, n, &lwis_top_dev->emitted_event_list, node) {
+		if (pending_event->trigger_event_id == trigger_event_id) {
+			list_del(&pending_event->node);
+			kfree(pending_event);
+		}
+	}
+	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
+
+	/* Remove event from hash table */
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
 	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node, trigger_event_id) {
 		if (p->event_id == trigger_event_id && p->receiver_dev->id == receiver_device_id) {
