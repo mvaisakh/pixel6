@@ -223,7 +223,6 @@ struct lwis_event_control {
 #define LWIS_EVENT_COUNTER_EVERY_TIME (-2LL)
 struct lwis_transaction_info {
 	// Input
-	int trigger_device_id;
 	int64_t trigger_event_id;
 	int64_t trigger_event_counter;
 	size_t num_io_entries;
