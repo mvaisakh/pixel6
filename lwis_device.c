@@ -369,6 +369,7 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 						PTR_ERR(gpios));
 					return PTR_ERR(gpios);
 				}
+				gpios_info->gpios = NULL;
 			} else {
 				if (gpios_info->is_pulse) {
 					ret = lwis_gpio_list_set_output_value(gpios, 0);
@@ -384,9 +385,8 @@ static int lwis_dev_power_up_by_seqs(struct lwis_device *lwis_dev)
 					dev_err(lwis_dev->dev, "Error set GPIO pins (%d)\n", ret);
 					return ret;
 				}
+				gpios_info->gpios = gpios;
 			}
-
-			gpios_info->gpios = gpios;
 		} else if (strcmp(list->seq_info[i].type, "pinctrl") == 0) {
 			bool activate_mclk = true;
 
@@ -708,6 +708,9 @@ static int lwis_dev_power_down_by_seqs(struct lwis_device *lwis_dev)
 			}
 
 			if (gpios_info->gpios == NULL) {
+				if (gpios_info->is_shared) {
+					continue;
+				}
 				dev_err(lwis_dev->dev, "No %s gpios defined\n",
 					list->seq_info[i].name);
 				last_error = -ENODEV;
