@@ -24,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/regmap.h>
+#include <linux/thermal.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <misc/gvotable.h>
@@ -31,6 +32,20 @@
 #include "google_bms.h"
 #include "max_m5.h"
 #include "max77759.h"
+
+#define VD_BATTERY_VOLTAGE 4200
+#define VD_UPPER_LIMIT 3350
+#define VD_LOWER_LIMIT 2600
+#define VD_STEP 50
+#define VD_DELAY 300
+#define THERMAL_IRQ_COUNTER_LIMIT 5
+#define THERMAL_HYST_LEVEL 100
+
+enum PMIC_VDROOP_SENSOR {
+	VDROOP1,
+	VDROOP2,
+	VDROOP_MAX,
+};
 
 /* Hardware modes */
 enum max77759_charger_modes {
@@ -119,6 +134,15 @@ struct max77759_chgr_data {
 	int fship_dtls;
 	bool online;
 	bool wden;
+
+	/* thermal */
+	struct thermal_zone_device *tz_vdroop[VDROOP_MAX];
+	int vdroop_counter[VDROOP_MAX];
+	unsigned int vdroop_lvl[VDROOP_MAX];
+	unsigned int vdroop_irq[VDROOP_MAX];
+	struct mutex vdroop_irq_lock[VDROOP_MAX];
+	struct delayed_work vdroop_irq_work[VDROOP_MAX];
+
 };
 
 static inline int max77759_reg_read(struct regmap *regmap, uint8_t reg,
@@ -2026,9 +2050,16 @@ static int sys_uvlo1_get(void *d, u64 *val)
 static int sys_uvlo1_set(void *d, u64 val)
 {
 	struct max77759_chgr_data *data = d;
-	int ret = 0;
+	int ret;
+
+	if ((val >= 0) && (val <= 0xF))
+		return -EINVAL;
 
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_15, (u8) val);
+	if (ret < 0)
+		return ret;
+
+	data->vdroop_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
 	return ret;
 }
@@ -2052,9 +2083,15 @@ static int sys_uvlo2_get(void *d, u64 *val)
 static int sys_uvlo2_set(void *d, u64 val)
 {
 	struct max77759_chgr_data *data = d;
-	int ret = 0;
+	int ret;
 
+	if ((val >= 0) && (val <= 0xF))
+		return -EINVAL;
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_16, (u8) val);
+	if (ret < 0)
+		return ret;
+
+	data->vdroop_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
 	return ret;
 }
@@ -2166,6 +2203,65 @@ static u8 max77759_int_mask[MAX77759_CHG_INT_COUNT] = {
 	  MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M),
 };
 
+static int max77759_irq_work(struct max77759_chgr_data *data, u8 idx)
+{
+	u8 chg_dtls1;
+	int ret;
+	u64 val;
+	struct delayed_work *irq_wq = &data->vdroop_irq_work[idx];
+
+	mutex_lock(&data->vdroop_irq_lock[idx]);
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &chg_dtls1);
+	if (ret < 0) {
+		mutex_unlock(&data->vdroop_irq_lock[idx]);
+		return -ENODEV;
+	}
+	val = _chg_details_01_vdroop2_ok_get(chg_dtls1);
+
+	if (((val >> 7) & 0x1) == 0) {
+		/* Still below threshold */
+		mod_delayed_work(system_wq, irq_wq,
+				   msecs_to_jiffies(VD_DELAY));
+	} else {
+		data->vdroop_counter[idx] = 0;
+		enable_irq(data->vdroop_irq[idx]);
+	}
+	mutex_unlock(&data->vdroop_irq_lock[idx]);
+	return 0;
+}
+
+static void max77759_vdroop1_work(struct work_struct *work)
+{
+	struct max77759_chgr_data *chg_data =
+	    container_of(work, struct max77759_chgr_data, vdroop_irq_work[VDROOP1].work);
+
+	max77759_irq_work(chg_data, VDROOP1);
+}
+
+static void max77759_vdroop2_work(struct work_struct *work)
+{
+	struct max77759_chgr_data *chg_data =
+	    container_of(work, struct max77759_chgr_data, vdroop_irq_work[VDROOP2].work);
+
+	max77759_irq_work(chg_data, VDROOP2);
+}
+
+static void max77759_vdroop_irq_work(void *data, int id)
+{
+	struct max77759_chgr_data *chg_data = data;
+	struct thermal_zone_device *tvid = chg_data->tz_vdroop[id];
+
+	mutex_lock(&chg_data->vdroop_irq_lock[id]);
+	if (chg_data->vdroop_counter[id] == 0) {
+		chg_data->vdroop_counter[id] += 1;
+		if (tvid)
+			thermal_zone_device_update(tvid, THERMAL_EVENT_UNSPECIFIED);
+	}
+	disable_irq_nosync(chg_data->vdroop_irq[id]);
+	mod_delayed_work(system_wq, &chg_data->vdroop_irq_work[id],
+			 msecs_to_jiffies(VD_DELAY));
+	mutex_unlock(&chg_data->vdroop_irq_lock[id]);
+}
 
 static irqreturn_t max77759_chgr_irq(int irq, void *client)
 {
@@ -2199,11 +2295,15 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 	pr_debug("INT : %x %x\n", chg_int[0], chg_int[1]);
 
-	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I)
+	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
 		atomic_inc(&data->sysuvlo1_cnt);
+		max77759_vdroop_irq_work(data, VDROOP1);
+	}
 
-	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO2_I)
+	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO2_I) {
 		atomic_inc(&data->sysuvlo2_cnt);
+		max77759_vdroop_irq_work(data, VDROOP2);
+	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
@@ -2296,6 +2396,88 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 	gvotable_election_set_name(data->dc_icl_votable, "DC_ICL");
 	gvotable_use_default(data->dc_icl_votable, true);
 
+	return 0;
+}
+
+static int max77759_vdroop_read_level(void *data, int *val, int id)
+{
+	struct max77759_chgr_data *chg_data = data;
+	int vdroop_counter = chg_data->vdroop_counter[id];
+	unsigned int vdroop_lvl = chg_data->vdroop_lvl[id];
+
+	if ((vdroop_counter != 0) && (vdroop_counter < THERMAL_IRQ_COUNTER_LIMIT)) {
+		*val = vdroop_lvl + THERMAL_HYST_LEVEL;
+		vdroop_counter += 1;
+	} else {
+		*val = vdroop_lvl;
+		vdroop_counter = 0;
+	}
+	chg_data->vdroop_counter[id] = vdroop_counter;
+
+	return 0;
+}
+
+static int max77759_vdroop1_read_temp(void *data, int *val)
+{
+	return max77759_vdroop_read_level(data, val, VDROOP1);
+}
+
+static int max77759_vdroop2_read_temp(void *data, int *val)
+{
+	return max77759_vdroop_read_level(data, val, VDROOP2);
+}
+
+static const struct thermal_zone_of_device_ops vdroop1_tz_ops = {
+	.get_temp = max77759_vdroop1_read_temp,
+};
+
+static const struct thermal_zone_of_device_ops vdroop2_tz_ops = {
+	.get_temp = max77759_vdroop2_read_temp,
+};
+
+static int max77759_init_vdroop(void *data_)
+{
+	struct max77759_chgr_data *data = data_;
+	int ret = 0;
+	u8 regdata;
+
+	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP1], max77759_vdroop1_work);
+	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP2], max77759_vdroop2_work);
+	data->vdroop_counter[VDROOP1] = 0;
+	data->vdroop_counter[VDROOP2] = 0;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &regdata);
+	if (ret < 0)
+		return -ENODEV;
+
+	data->vdroop_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_16, &regdata);
+	if (ret < 0)
+		return -ENODEV;
+
+	data->vdroop_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+
+	data->tz_vdroop[VDROOP1] = thermal_zone_of_sensor_register(data->dev,
+							      VDROOP1, data,
+							      &vdroop1_tz_ops);
+	if (IS_ERR(data->tz_vdroop[VDROOP1])) {
+		dev_err(data->dev, "TZ register vdroop%d failed, err:%ld\n", VDROOP1,
+			PTR_ERR(data->tz_vdroop[VDROOP1]));
+	} else {
+		thermal_zone_device_enable(data->tz_vdroop[VDROOP1]);
+		thermal_zone_device_update(data->tz_vdroop[VDROOP1], THERMAL_DEVICE_UP);
+	}
+	data->tz_vdroop[VDROOP2] = thermal_zone_of_sensor_register(data->dev,
+							      VDROOP2, data,
+							      &vdroop2_tz_ops);
+	if (IS_ERR(data->tz_vdroop[VDROOP2])) {
+		dev_err(data->dev, "TZ register vdroop%d failed, err:%ld\n", VDROOP2,
+			PTR_ERR(data->tz_vdroop[VDROOP2]));
+	} else {
+		thermal_zone_device_enable(data->tz_vdroop[VDROOP2]);
+		thermal_zone_device_update(data->tz_vdroop[VDROOP2], THERMAL_DEVICE_UP);
+	}
 	return 0;
 }
 
@@ -2399,11 +2581,21 @@ static int max77759_charger_probe(struct i2c_client *client,
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	max77759_init_wcin_psy(data);
+
+	if (max77759_init_vdroop(data) < 0)
+		dev_err(dev, "vdroop initialization failed %d.\n", ret);
+
 	return 0;
 }
 
 static int max77759_charger_remove(struct i2c_client *client)
 {
+	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+
+	if (data->tz_vdroop[VDROOP1])
+		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
+	if (data->tz_vdroop[VDROOP2])
+		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
 	return 0;
 }
 
