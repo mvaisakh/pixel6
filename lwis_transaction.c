@@ -342,7 +342,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list, node) {
-		if (it_evt_list->event_id == LWIS_EVENT_ID_CLIENT_CLEANUP) {
+		if ((it_evt_list->event_id & 0xFFFF0000FFFFFFFFll) ==
+		    LWIS_EVENT_ID_CLIENT_CLEANUP) {
 			continue;
 		}
 		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
@@ -383,7 +384,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* Perform client defined clean-up routine. */
-	it_evt_list = event_list_find(client, LWIS_EVENT_ID_CLIENT_CLEANUP);
+	it_evt_list = event_list_find(client, LWIS_EVENT_ID_CLIENT_CLEANUP |
+				      (int64_t)client->lwis_dev->id <<
+				      LWIS_EVENT_ID_EVENT_CODE_LEN);
 	if (it_evt_list == NULL) {
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		return 0;
