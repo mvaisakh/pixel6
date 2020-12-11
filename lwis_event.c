@@ -417,24 +417,13 @@ int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 	/* Temporary vars for hash table traversal */
 	struct hlist_node *n;
 	int i;
-	/* Events to be cleared */
-	DECLARE_HASHTABLE(events_to_clear, EVENT_HASH_BITS);
 	/* Flags for irqsave */
 	unsigned long flags;
 	/* Disable IRQs and lock the event lock */
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 	/* Iterate over the entire hash table */
 	hash_for_each_safe (lwis_client->event_states, i, n, state, node) {
-		/* Delete the node from the client's hash table */
-		hash_del(&state->node);
-		/* Add the node to to-clear events hash table */
-		hash_add(events_to_clear, &state->node, state->event_control.event_id);
-	}
-	/* Restore the lock */
-	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
-
-	/* Clear the individual events */
-	hash_for_each_safe (events_to_clear, i, n, state, node) {
+		/* Delete the node from the hash table */
 		hash_del(&state->node);
 		/* Update the device state with zero flags */
 		lwis_device_event_flags_updated(lwis_client->lwis_dev,
@@ -443,6 +432,8 @@ int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 		/* Free the object */
 		kfree(state);
 	}
+	/* Restore the lock */
+	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
 	return 0;
 }
