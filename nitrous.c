@@ -9,12 +9,15 @@
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
 #include <linux/rfkill.h>
 
 struct nitrous_bt_lpm {
+	struct pinctrl *pinctrls;
+	struct pinctrl_state *pinctrl_default_state;
 	struct gpio_desc *gpio_dev_wake;     /* Host -> Dev WAKE GPIO */
 	struct gpio_desc *gpio_host_wake;    /* Dev -> Host WAKE GPIO */
 	struct gpio_desc *gpio_power;        /* GPIO to control power */
@@ -134,6 +137,16 @@ static int nitrous_probe(struct platform_device *pdev)
 		lpm->wake_polarity = 1;
 	}
 
+	lpm->pinctrls = devm_pinctrl_get(lpm->dev);
+	if (IS_ERR(lpm->pinctrls)) {
+		pr_warn("[BT] Can't get pinctrl\n");
+	} else {
+		lpm->pinctrl_default_state =
+			pinctrl_lookup_state(lpm->pinctrls, "default");
+		if (IS_ERR(lpm->pinctrl_default_state))
+			pr_warn("[BT] Can't get default pinctrl state\n");
+	}
+
 	lpm->gpio_dev_wake = devm_gpiod_get_optional(dev, "device-wakeup", GPIOD_OUT_LOW);
 	if (IS_ERR(lpm->gpio_dev_wake))
 		return PTR_ERR(lpm->gpio_dev_wake);
@@ -145,6 +158,13 @@ static int nitrous_probe(struct platform_device *pdev)
 	rc = nitrous_rfkill_init(lpm);
 	if (unlikely(rc))
 		goto err_rfkill_init;
+
+	if (!IS_ERR_OR_NULL(lpm->pinctrl_default_state)) {
+		rc = pinctrl_select_state(lpm->pinctrls,
+					  lpm->pinctrl_default_state);
+		if (unlikely(rc))
+			pr_warn("[BT] Can't set default pinctrl state\n");
+	}
 
 	platform_set_drvdata(pdev, lpm);
 
