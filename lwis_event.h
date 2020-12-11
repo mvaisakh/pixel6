@@ -58,6 +58,7 @@ struct lwis_device_event_state_history {
 struct lwis_client_event_state {
 	struct lwis_event_control event_control;
 	struct hlist_node node;
+	struct list_head clearance_node;
 };
 
 /*
