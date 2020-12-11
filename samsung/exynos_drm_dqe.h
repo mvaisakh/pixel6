@@ -25,9 +25,9 @@ struct exynos_dqe_funcs {
 };
 
 struct exynos_dqe_state {
-	const struct gamma_matrix *gamma_matrix;
 	const struct drm_color_lut *degamma_lut;
-	const struct linear_matrix *linear_matrix;
+	const struct exynos_matrix *linear_matrix;
+	const struct exynos_matrix *gamma_matrix;
 	const struct cgc_lut *cgc_lut;
 	struct drm_color_lut *regamma_lut;
 	struct dither_config *disp_dither_config;
@@ -38,6 +38,21 @@ struct dither_debug_override {
 	bool force_en;
 	bool verbose;
 	struct dither_config val;
+};
+
+enum elem_size {
+	ELEM_SIZE_16 = 16,
+	ELEM_SIZE_32 = 32,
+};
+
+#define MAX_NAME_SIZE		32
+struct debugfs_lut {
+	void *lut_ptr;
+	struct drm_color_lut *dlut_ptr;
+	char name[MAX_NAME_SIZE];
+	enum elem_size elem_size;
+	size_t count;
+	size_t pcount;
 };
 
 struct exynos_dqe {
@@ -51,6 +66,12 @@ struct exynos_dqe {
 	struct dither_debug_override disp_dither_override;
 
 	bool cgc_first_write;
+
+	bool force_lm;
+	struct exynos_matrix force_linear_matrix;
+
+	bool force_gm;
+	struct exynos_matrix force_gamma_matrix;
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,

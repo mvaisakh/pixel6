@@ -241,8 +241,11 @@ struct exynos_drm_crtc_state {
 	struct drm_property_blob *cgc_lut;
 	struct drm_property_blob *disp_dither;
 	struct drm_property_blob *cgc_dither;
+	struct drm_property_blob *linear_matrix;
+	struct drm_property_blob *gamma_matrix;
 	enum exynos_drm_writeback_type wb_type;
 	u8 seamless_mode_changed : 1;
+	unsigned int reserved_win_mask;
 };
 
 static inline struct exynos_drm_crtc_state *
@@ -271,6 +274,8 @@ struct exynos_drm_crtc {
 		struct drm_property *disp_dither;
 		struct drm_property *cgc_dither;
 		struct drm_property *force_bpc;
+		struct drm_property *linear_matrix;
+		struct drm_property *gamma_matrix;
 	} props;
 };
 
@@ -283,6 +288,8 @@ struct exynos_drm_priv_state {
 
 	struct drm_atomic_state *old_state;
 	struct kthread_work commit_work;
+
+	unsigned int available_win_mask;
 };
 
 static inline struct exynos_drm_priv_state *

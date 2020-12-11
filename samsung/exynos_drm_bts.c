@@ -24,33 +24,39 @@
 #include <dt-bindings/clock/exynos9820.h>
 #endif
 
+#include <linux/kernel.h>
 #include "exynos_drm_decon.h"
 #include "exynos_drm_format.h"
 #include "exynos_drm_writeback.h"
 
-#define DISP_FACTOR		100UL
+#define DISP_FACTOR_PCT		100UL
 #define MULTI_FACTOR		(1UL << 10)
-/* bus utilization 70% : same value with INT_UTIL */
-#define BUS_UTIL		70
-
-#define DPP_SCALE_NONE		0
-#define DPP_SCALE_UP		1
-#define DPP_SCALE_DOWN		2
+#define ROT_READ_BYTE		(32) /* unit : BYTE(= pixel, based on NV12) */
 
 #define ACLK_100MHZ_PERIOD	10000UL
-#define ACLK_MHZ_INC_STEP	50U	/* 50Mhz */
 #define FRAME_TIME_NSEC		1000000000UL	/* 1sec */
-#define TOTAL_BUS_LATENCY	3000UL	/* 3us: BUS(1) + PWT(1) + Request(1) */
-
-/* tuning parameters for rotation */
-#define ROTATION_FACTOR_BPP	32UL
-#define ROTATION_FACTOR_SCUP	1332UL	/* 1.3x */
-#define ROTATION_FACTOR_SCDN	1434UL	/* 1.4x */
-#define RESOL_QHDP_21_TO_9	(3440 * 1440UL) /* for MIF min-lock */
 
 #define DPU_DEBUG_BTS(fmt, args...)	pr_debug("[BTS] "fmt,  ##args)
 #define DPU_INFO_BTS(fmt, args...)	pr_info("[BTS] "fmt,  ##args)
 #define DPU_ERR_BTS(fmt, args...)	pr_err("[BTS] "fmt, ##args)
+
+/*
+ * 1. function clock
+ *    clk[i] = dst_w * dst_h * scale_ratio_h * scale_ratio_h * fps * 1.1 / ppc
+ *    aclk1 = max(clk[i])
+ * 2. AXI throughput clock
+ *    1) fps based
+ *       clk_bw[i] = src_w * src_h * fps * (bpp/8) / (bus_width * bus_util_pct)
+ *    2) rotation throughput for initial latency
+ *       clk_r[i] = src_h * 32 * (bpp/8) / (bus_width * rot_util_pct) / (v_blank)
+ *       # v_blank : command - TE_hi_pulse
+ *                   video - (vbp) @initial-frame, (vbp+vfp) @inter-frame
+ *    if (clk_bw[i] < clk_r[i])
+ *       clk_bw[i] = clk_r[i]
+ *    aclk2 = max(clk for sum(same axi bw[i])) --> clk of peak_bw
+ *
+ * => aclk_dpu = max(aclk1, aclk2)
+ */
 
 /* unit : usec x 1000 -> 5592 (5.592us) for WQHD+ case */
 static inline u32 dpu_bts_get_one_line_time(u32 lcd_height, u32 vbp, u32 vfp,
@@ -65,45 +71,45 @@ static inline u32 dpu_bts_get_one_line_time(u32 lcd_height, u32 vbp, u32 vfp,
 	return (tmp / tot_v);
 }
 
-/* lmc : line memory count (usually 4) */
-static inline u32 dpu_bts_afbc_latency(u32 src_w, u32 ppc, u32 lmc)
+/* framebuffer compressor(AFBC, SBWC) line delay is usually 4 */
+static inline u32 dpu_bts_comp_latency(u32 src_w, u32 ppc, u32 line_delay)
 {
-	return mult_frac(src_w, lmc, ppc);
+	return mult_frac(src_w, line_delay, ppc);
 }
 
-/*
- * line memory max size : 4096
- * lmc : line memory count (usually 4)
+/* scaler line delay is usually 3
+ * scaling order : horizontal -> vertical scale
+ * -> need to reflect scale-ratio
  */
-static inline u32 dpu_bts_scale_latency(u32 is_s, u32 src_w, u32 dst_w,
-		u32 ppc, u32 lmc)
+static inline u32 dpu_bts_scale_latency(u32 src_w, u32 dst_w, u32 ppc,
+				u32 line_delay)
 {
-	if (is_s == DPP_SCALE_DOWN)
-		return mult_frac(src_w * lmc, src_w, dst_w * ppc);
+	if (src_w > dst_w)
+		return mult_frac(src_w * line_delay, src_w, dst_w * ppc);
 	else
-		return DIV_ROUND_CLOSEST(src_w * lmc, ppc);
+		return DIV_ROUND_CLOSEST(src_w * line_delay, ppc);
 }
 
-/*
- * src_h : height of original input source image
- * cpl : cycles per line
+/* rotator ppc is usually 4 or 8
+ * 1-read : 32BYTE (pixel)
  */
-static inline u32 dpu_bts_rotate_latency(u32 src_h, u32 cpl)
+static inline u32 dpu_bts_rotate_latency(u32 src_w, u32 r_ppc)
 {
-	return (src_h * cpl * 12 / 10);
+	return (src_w * (ROT_READ_BYTE / r_ppc));
 }
 
 /*
  * [DSC]
  * Line memory is necessary like following.
- *  1EA : 2-line for 2-slice, 1-line for 1-slice
- *  2EA : 3.5-line for 4-slice (DSCC 0.5-line + DSC 3-line)
+ *  1EA(1ppc) : 2-line for 2-slice, 1-line for 1-slice
+ *  2EA(2ppc) : 3.5-line for 4-slice (DSCC 0.5-line + DSC 3-line)
  *        2.5-line for 2-slice (DSCC 0.5-line + DSC 2-line)
  *
  * [DECON] none
  * When 1H is filled at OUT_FIFO, it immediately transfers to DSIM.
  */
-static inline u32 dpu_bts_dsc_latency(u32 slice_num, u32 dsc_cnt, u32 dst_w)
+static inline u32 dpu_bts_dsc_latency(u32 slice_num, u32 dsc_cnt,
+		u32 dst_w, u32 ppc)
 {
 	u32 lat_dsc = dst_w;
 
@@ -116,11 +122,11 @@ static inline u32 dpu_bts_dsc_latency(u32 slice_num, u32 dsc_cnt, u32 dst_w)
 		if (dsc_cnt == 1)
 			lat_dsc = dst_w * 2;
 		else
-			lat_dsc = (dst_w * 25) / 10;
+			lat_dsc = (dst_w * 25) / (10 * ppc);
 		break;
 	case 4:
 		/* DSC: 2EA */
-		lat_dsc = (dst_w * 35) / 10;
+		lat_dsc = (dst_w * 35) / (10 * ppc);
 		break;
 	default:
 		break;
@@ -130,88 +136,13 @@ static inline u32 dpu_bts_dsc_latency(u32 slice_num, u32 dsc_cnt, u32 dst_w)
 }
 
 /*
- * unit : cycles
- * rotate and afbc are incompatible
- */
-static u32 dpu_bts_get_initial_latency(bool is_r, u32 is_s, bool is_c,
-		struct exynos_dsc *dsc, u32 src_w, u32 dst_w,
-		u32 ppc, u32 cpl, u32 lmc)
-{
-	u32 lat_cycle = 0;
-	u32 tmp;
-
-	if (dsc->enabled) {
-		lat_cycle = dpu_bts_dsc_latency(dsc->slice_count,
-				dsc->dsc_count, dst_w);
-		DPU_DEBUG_BTS("\tDSC_lat_cycle(%d)\n", lat_cycle);
-	}
-
-	/* src_w : rotation reflected value */
-	if (is_r) {
-		tmp = dpu_bts_rotate_latency(src_w, cpl);
-		DPU_DEBUG_BTS("\tR_lat_cycle(%d)\n", tmp);
-		lat_cycle += tmp;
-	}
-	if (is_s) {
-		tmp = dpu_bts_scale_latency(is_s, src_w, dst_w, ppc, lmc);
-		DPU_DEBUG_BTS("\tS_lat_cycle(%d)\n", tmp);
-		lat_cycle += tmp;
-	}
-	if (is_c) {
-		tmp = dpu_bts_afbc_latency(src_w, ppc, lmc);
-		DPU_DEBUG_BTS("\tC_lat_cycle(%d)\n", tmp);
-		lat_cycle += tmp;
-	}
-
-	return lat_cycle;
-}
-
-/*
  * unit : nsec x 1000
  * reference aclk : 100MHz (-> 10ns x 1000)
+ * # cycles = usec * aclk_mhz
  */
-static inline u32 dpu_bts_get_aclk_period_time(u32 aclk_mhz)
+static inline u32 dpu_bts_convert_aclk_to_ns(u32 aclk_mhz)
 {
 	return ((ACLK_100MHZ_PERIOD * 100) / aclk_mhz);
-}
-
-/* find min-ACLK to meet latency */
-static u32 dpu_bts_find_latency_meet_aclk(u32 lat_cycle, u32 line_time,
-		u32 criteria_v, u32 aclk_disp,
-		bool is_yuv10, bool is_rotate, u32 rot_factor)
-{
-	u32 aclk_mhz = aclk_disp / 1000UL;
-	u32 aclk_period, lat_time;
-	u32 lat_time_max;
-
-	DPU_DEBUG_BTS("\t(rot_factor = %d) (is_yuv10 = %d)\n",
-			rot_factor, is_yuv10);
-
-	/* lat_time_max: usec x 1000 */
-	lat_time_max = line_time * criteria_v;
-
-	/* find min-ACLK to able to cover initial latency */
-	while (1) {
-		/* aclk_period: nsec x 1000 */
-		aclk_period = dpu_bts_get_aclk_period_time(aclk_mhz);
-		lat_time = (lat_cycle * aclk_period) / 1000UL;
-		lat_time = lat_time << is_yuv10;
-		lat_time += TOTAL_BUS_LATENCY;
-		if (is_rotate)
-			lat_time = (lat_time * rot_factor) / MULTI_FACTOR;
-
-		DPU_DEBUG_BTS("\tloop: (aclk_period = %d) (lat_time = %d)\n",
-			aclk_period, lat_time);
-		if (lat_time < lat_time_max)
-			break;
-
-		aclk_mhz += ACLK_MHZ_INC_STEP;
-	}
-
-	DPU_DEBUG_BTS("\t(lat_time = %d) (lat_time_max = %d)\n",
-		lat_time, lat_time_max);
-
-	return (aclk_mhz * 1000UL);
 }
 
 /*
@@ -236,19 +167,159 @@ static u64 dpu_bts_get_resol_clock(u32 xres, u32 yres, u32 fps)
 	return resol_khz;
 }
 
+static u32 dpu_bts_get_vblank_time_ns(struct decon_device *decon)
+{
+	u32 line_t_ns, v_blank_t_ns;
+
+	line_t_ns = dpu_bts_get_one_line_time(decon->config.image_height,
+		decon->bts.vbp, decon->bts.vfp, decon->bts.vsa, decon->bts.fps);
+	if (decon->config.mode.op_mode == DECON_VIDEO_MODE)
+		v_blank_t_ns = (decon->bts.vbp + decon->bts.vfp) * line_t_ns;
+	else
+		v_blank_t_ns = decon->config.vblank_usec * 1000U;
+
+	DPU_DEBUG_BTS("\t-line_t_ns(%d) v_blank_t_ns(%d)\n",
+			line_t_ns, v_blank_t_ns);
+
+	return v_blank_t_ns;
+}
+
+static u32 dpu_bts_find_nearest_high_freq(struct decon_device *decon, u32 aclk_base)
+{
+	int i;
+
+	if (aclk_base > decon->bts.dfs_lv_khz[0]) {
+		DPU_DEBUG_BTS("\taclk_base is greater than L0 frequency!");
+		i = 0;
+	} else {
+		/* search from low frequency level */
+		for (i = (decon->bts.dfs_lv_cnt - 1); i >= 0; i--) {
+			if (aclk_base <= decon->bts.dfs_lv_khz[i])
+				break;
+		}
+	}
+	DPU_DEBUG_BTS("\tNearest DFS: %d KHz @L%d\n", decon->bts.dfs_lv_khz[i], i);
+
+	return i;
+}
+
+/*
+ * [caution] src_w/h is rotated size info
+ * - src_w : src_h @original input image
+ * - src_h : src_w @original input image
+ */
+static u64 dpu_bts_calc_rotate_aclk(struct decon_device *decon, u32 aclk_base,
+		u32 ppc, u32 src_w, u32 dst_w,
+		bool is_comp, bool is_scale, bool is_dsc)
+{
+	u32 dfs_idx = 0;
+	u32 dpu_cycle, basic_cycle, dsi_cycle, module_cycle = 0;
+	u32 comp_cycle = 0, rot_cycle = 0, scale_cycle = 0, dsc_cycle = 0;
+	u32 rot_init_bw = 0; /* KB/s */
+	u64 rot_clk, rot_need_clk;
+	u32 aclk_x_1k_ns, dpu_lat_t_ns, max_lat_t_ns, tx_allow_t_ns;
+	u32 bus_perf;
+	u32 temp_clk;
+	bool retry_flag = false;
+
+	DPU_DEBUG_BTS("[ROT+] BEFORE latency check: %d KHz\n", aclk_base);
+
+	dfs_idx = dpu_bts_find_nearest_high_freq(decon, aclk_base);
+	rot_clk = decon->bts.dfs_lv_khz[dfs_idx];
+
+	/* post DECON OUTFIFO based on 1H transfer */
+	dsi_cycle = decon->config.image_width;
+
+	/* get additional pipeline latency */
+	if (is_comp) {
+		comp_cycle = dpu_bts_comp_latency(src_w, ppc,
+			decon->bts.delay_comp);
+		DPU_DEBUG_BTS("\tCOMP: lat_cycle(%d)\n", comp_cycle);
+		module_cycle += comp_cycle;
+	} else {
+		rot_cycle = dpu_bts_rotate_latency(src_w,
+			decon->bts.ppc_rotator);
+		DPU_DEBUG_BTS("\tROT: lat_cycle(%d)\n", rot_cycle);
+		module_cycle += rot_cycle;
+	}
+	if (is_scale) {
+		scale_cycle = dpu_bts_scale_latency(src_w, dst_w,
+			decon->bts.ppc_scaler, decon->bts.delay_scaler);
+		DPU_DEBUG_BTS("\tSCALE: lat_cycle(%d)\n", scale_cycle);
+		module_cycle += scale_cycle;
+	}
+	if (is_dsc) {
+		dsc_cycle = dpu_bts_dsc_latency(decon->config.dsc.slice_count,
+			decon->config.dsc.dsc_count, dst_w, ppc);
+		DPU_DEBUG_BTS("\tDSC: lat_cycle(%d)\n", dsc_cycle);
+		module_cycle += dsc_cycle;
+		dsi_cycle = (dsi_cycle + 2) / 3;
+	}
+
+	/*
+	 * basic cycle(+ bubble: 10%) + additional cycle based on function
+	 * cycle count increases when ACLK goes up due to other conditions
+	 * At latency monitor experiment using unit test,
+	 *  cycles at 400Mhz were increased by about 800 compared to 200Mhz.
+	 * Here, (aclk_mhz * 2) cycles are reflected referring to the result
+	 *  because the exact value is unknown.
+	 */
+	basic_cycle = (decon->config.image_width * 11 / 10 + dsi_cycle) / ppc;
+
+retry_hi_freq:
+	dpu_cycle = (basic_cycle + module_cycle) + rot_clk * 2 / 1000U;
+	aclk_x_1k_ns = dpu_bts_convert_aclk_to_ns(rot_clk / 1000U);
+	dpu_lat_t_ns = mult_frac(aclk_x_1k_ns, dpu_cycle, 1000);
+	max_lat_t_ns = dpu_bts_get_vblank_time_ns(decon);
+	if (max_lat_t_ns > dpu_lat_t_ns) {
+		tx_allow_t_ns = max_lat_t_ns - dpu_lat_t_ns;
+	} else {
+		/* abnormal case : apply bus_util_pct of v_blank */
+		tx_allow_t_ns = (max_lat_t_ns * decon->bts.bus_util_pct) / 100;
+		DPU_DEBUG_BTS("\tWARN: latency calc is abnormal!(-> %d%)\n",
+				decon->bts.bus_util_pct);
+	}
+
+	bus_perf = decon->bts.bus_width * decon->bts.rot_util_pct;
+	/* apply as worst(P010: 3) case to simplify */
+	rot_init_bw = mult_frac(NSEC_PER_SEC, src_w * ROT_READ_BYTE * 3, tx_allow_t_ns) / 1000;
+	rot_need_clk = rot_init_bw * 100 / bus_perf;
+
+	if (rot_need_clk > rot_clk) {
+		/* not max level */
+		if (dfs_idx) {
+			/* check if calc_clk is greater than 1-step */
+			dfs_idx--;
+			temp_clk = decon->bts.dfs_lv_khz[dfs_idx];
+			if ((rot_need_clk > temp_clk) && (!retry_flag)) {
+				DPU_DEBUG_BTS("\t-allow_ns(%d) dpu_ns(%d)\n",
+					tx_allow_t_ns, dpu_lat_t_ns);
+				rot_clk = temp_clk;
+				retry_flag = true;
+				goto retry_hi_freq;
+			}
+		}
+		rot_clk = rot_need_clk;
+	}
+
+	DPU_DEBUG_BTS("\t-dpu_cycle(%d) aclk_x_1k_ns(%d) dpu_lat_t_ns(%d)\n",
+			dpu_cycle, aclk_x_1k_ns, dpu_lat_t_ns);
+	DPU_DEBUG_BTS("\t-tx_allow_t_ns(%d) rot_init_bw(%d) rot_need_clk(%lld)\n",
+			tx_allow_t_ns, rot_init_bw, rot_need_clk);
+	DPU_DEBUG_BTS("[ROT-] AFTER latency check: %lld KHz\n", rot_clk);
+
+	return rot_clk;
+}
+
 static u64 dpu_bts_calc_aclk_disp(struct decon_device *decon,
-		struct dpu_bts_win_config *config, u64 resol_clock)
+		struct dpu_bts_win_config *config, u64 resol_clk, u32 max_clk)
 {
 	u64 s_ratio_h, s_ratio_v;
-	u64 aclk_disp;
-	u64 ppc;
-	const struct dpu_fmt *fmt_info = dpu_find_fmt_info(config->format);
+	u64 aclk_disp, aclk_base;
+	u32 ppc;
 	u32 src_w, src_h;
-	u32 is_scale;
-	u32 lat_cycle, line_time;
-	u32 cycle_per_line, line_mem_cnt;
-	u32 criteria_v, tot_v;
-	u32 rot_factor = ROTATION_FACTOR_SCUP;
+	u32 is_scale = false;
+	u32 is_dsc = false;
 
 	if (config->is_rot) {
 		src_w = config->src_h;
@@ -258,10 +329,12 @@ static u64 dpu_bts_calc_aclk_disp(struct decon_device *decon,
 		src_h = config->src_h;
 	}
 
-	s_ratio_h = (src_w <= config->dst_w) ? MULTI_FACTOR : MULTI_FACTOR *
-		(u64)src_w / (u64)config->dst_w;
-	s_ratio_v = (src_h <= config->dst_h) ? MULTI_FACTOR : MULTI_FACTOR *
-		(u64)src_h / (u64)config->dst_h;
+	s_ratio_h = (src_w <= config->dst_w) ? MULTI_FACTOR :
+				mult_frac(MULTI_FACTOR, src_w, config->dst_w);
+	s_ratio_v = (src_h <= config->dst_h) ? MULTI_FACTOR :
+				mult_frac(MULTI_FACTOR, src_h, config->dst_h);
+	if ((s_ratio_h != MULTI_FACTOR) || (s_ratio_v != MULTI_FACTOR))
+		is_scale = true;
 
 	/* case for using dsc encoder 1ea at decon0 or decon1 */
 	if ((decon->id != 2) && (decon->config.dsc.dsc_count == 1))
@@ -270,51 +343,30 @@ static u64 dpu_bts_calc_aclk_disp(struct decon_device *decon,
 	else
 		ppc = decon->bts.ppc;
 
-	aclk_disp = resol_clock * s_ratio_h * s_ratio_v * DISP_FACTOR  / 100UL /
-		ppc * (MULTI_FACTOR * (u64)config->dst_w /
-		(u64)decon->config.image_width) /
-		(MULTI_FACTOR * MULTI_FACTOR * MULTI_FACTOR);
-
-	if (aclk_disp < (resol_clock / ppc))
-		aclk_disp = resol_clock / ppc;
-
-	DPU_DEBUG_BTS("BEFORE latency calc: aclk_disp = %d\n", (u32)aclk_disp);
-
-	/* scaling latency: width only */
-	if (src_w < config->dst_w)
-		is_scale = DPP_SCALE_UP;
-	else if (src_w > config->dst_w) {
-		is_scale = DPP_SCALE_DOWN;
-		rot_factor = ROTATION_FACTOR_SCDN;
-	} else
-		is_scale = DPP_SCALE_NONE;
-
-	/* to check initial latency */
-	cycle_per_line = decon->bts.cycle_per_line;
-	line_mem_cnt = decon->bts.line_mem_cnt;
-	lat_cycle = dpu_bts_get_initial_latency(config->is_rot, is_scale,
-			config->is_comp, &decon->config.dsc, src_w,
-			config->dst_w, (u32)ppc, cycle_per_line, line_mem_cnt);
-	line_time = dpu_bts_get_one_line_time(decon->config.image_height,
-			decon->bts.vbp, decon->bts.vfp, decon->bts.vsa,
-			decon->bts.fps);
-
-	if (decon->config.mode.op_mode == DECON_VIDEO_MODE) {
-		criteria_v = decon->bts.vbp;
+	if (is_scale) {
+		aclk_disp = mult_frac(resol_clk * s_ratio_h * s_ratio_v,
+				DISP_FACTOR_PCT, 100UL * MULTI_FACTOR * MULTI_FACTOR);
+		if (aclk_disp < resol_clk)
+			aclk_disp = resol_clk;
+		aclk_disp /= ppc;
 	} else {
-		/* command mode margin : apply 20% of v-blank time */
-		tot_v = decon->bts.vfp + decon->bts.vsa + decon->bts.vbp;
-		criteria_v = tot_v - (tot_v * 20 / 100);
+		aclk_disp = mult_frac(resol_clk, DISP_FACTOR_PCT, 100UL * ppc);
 	}
 
-	aclk_disp = dpu_bts_find_latency_meet_aclk(lat_cycle, line_time,
-			criteria_v, aclk_disp, IS_YUV10(fmt_info),
-			config->is_rot, rot_factor);
+	if (!config->is_rot)
+		return aclk_disp;
 
-	DPU_DEBUG_BTS("\t[R:%d C:%d S:%d] (lat_cycle=%d) (line_time=%d)\n",
-		config->is_rot, config->is_comp, is_scale, lat_cycle,
-		line_time);
-	DPU_DEBUG_BTS("AFTER latency calc: aclk_disp = %d\n", (u32)aclk_disp);
+	/* rotation case: check if latency conditions are met */
+	if (aclk_disp > max_clk)
+		aclk_base = aclk_disp;
+	else
+		aclk_base = max_clk;
+
+	if (decon->config.dsc.enabled)
+		is_dsc = true;
+
+	aclk_disp = dpu_bts_calc_rotate_aclk(decon, (u32)aclk_base, ppc,
+			src_w, config->dst_w, config->is_comp, is_scale, is_dsc);
 
 	return aclk_disp;
 }
@@ -354,7 +406,8 @@ static u32 dpu_bts_calc_disp_with_full_size(struct decon_device *decon)
 			decon->config.image_width,
 			decon->config.image_height, decon->bts.fps);
 
-	return dpu_bts_calc_aclk_disp(decon, &config, decon->bts.resol_clk);
+	return dpu_bts_calc_aclk_disp(decon, &config, decon->bts.resol_clk,
+		decon->bts.resol_clk);
 }
 
 static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
@@ -377,7 +430,7 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
 
 	for (i = 0; i < MAX_DECON_CNT; ++i)
 		if (disp_ch_bw[i])
-			DPU_DEBUG_BTS("\tPort%d = %d\n", i, disp_ch_bw[i]);
+			DPU_DEBUG_BTS("\tAXI_DPU%d = %d\n", i, disp_ch_bw[i]);
 
 	max_disp_ch_bw = disp_ch_bw[0];
 	for (i = 1; i < MAX_DECON_CNT; ++i)
@@ -385,7 +438,11 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
 			max_disp_ch_bw = disp_ch_bw[i];
 
 	decon->bts.peak = max_disp_ch_bw;
-	decon->bts.max_disp_freq = max_disp_ch_bw * 100 / (16 * BUS_UTIL) + 1;
+	if (max_disp_ch_bw < decon->bts.write_bw)
+		decon->bts.peak = decon->bts.write_bw;
+	decon->bts.max_disp_freq = decon->bts.peak * 100 /
+			(decon->bts.bus_width * decon->bts.bus_util_pct);
+	disp_op_freq = decon->bts.max_disp_freq;
 
 	DPU_DEBUG_BTS("\tDECON%d : resol clock = %d Khz\n", decon->id,
 			decon->bts.resol_clk);
@@ -396,7 +453,7 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
 			continue;
 
 		freq = dpu_bts_calc_aclk_disp(decon, &config[i],
-				(u64)decon->bts.resol_clk);
+				(u64)decon->bts.resol_clk, disp_op_freq);
 		if (disp_op_freq < freq)
 			disp_op_freq = freq;
 	}
@@ -440,15 +497,26 @@ static void dpu_bts_share_bw_info(int id)
 }
 
 static void
-dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 vclk, u32 lcd_w, int idx)
+dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 fps, u32 vblank_us, int idx)
 {
-	unsigned int dst_w, dst_h;
+	u32 ch_bw = 0, rot_bw;
+	u32 src_w = dpp->src_w;
+	u32 src_h = dpp->src_h;
+	u32 bpp = dpp->bpp;
 
-	dst_w = dpp->dst.x2 - dpp->dst.x1;
-	dst_h = dpp->dst.y2 - dpp->dst.y1;
+	/* BW(KB) : sw * sh * fps * (bpp/8) * 1.1 */
+	ch_bw = mult_frac(src_w * src_h * bpp / 8, fps  * 11, 10 * 1000);
 
-	dpp->bw = ((u64)dpp->src_h * dpp->src_w * dpp->bpp * vclk) /
-							(8 * dst_h * lcd_w);
+	if (dpp->rotation) {
+		/* BW(KB) : sh * 32B * (bpp/8) / v_blank */
+		rot_bw = mult_frac(src_h * ROT_READ_BYTE * bpp / 8,
+				USEC_PER_SEC, vblank_us) / 1000;
+
+		if (rot_bw > ch_bw)
+			ch_bw = rot_bw;
+	}
+
+	dpp->bw = ch_bw;
 
 	DPU_DEBUG_BTS("\tDPP%d bandwidth = %d\n", idx, dpp->bw);
 }
@@ -468,23 +536,6 @@ static void dpu_bts_convert_config_to_info(struct bts_dpp_info *dpp,
 	dpp->dst.y2 = config->dst_y + config->dst_h;
 	dpp->rotation = config->is_rot;
 
-	/*
-	 * [ GUIDE : #if 0 ]
-	 * Need to apply twice instead of x1.25 as many bandwidth
-	 * of 8-bit YUV if it is a 8P2 format rotation.
-	 *
-	 * [ APPLY : #else ]
-	 * In case of rotation, MIF & INT and DISP clock frequencies
-	 * are important factors related to the issue of underrun.
-	 * So, relatively high frequency is required to avoid underrun.
-	 * By using 32 instead of 12/15/24 as bpp(bit-per-pixel) value,
-	 * MIF & INT frequency can be increased because
-	 * those are decided by the bandwidth.
-	 * ROTATION_FACTOR_BPP(= ARGB8888 value) is a tunable value.
-	 */
-	if (dpp->rotation)
-		dpp->bpp = ROTATION_FACTOR_BPP;
-
 	DPU_DEBUG_BTS("\tDPP%d : bpp(%d) src w(%d) h(%d) rot(%d)\n",
 			DPU_DMA2CH(config->dpp_ch), dpp->bpp, dpp->src_w,
 			dpp->src_h, dpp->rotation);
@@ -499,6 +550,7 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 	int idx, i, wb_idx;
 	u32 read_bw = 0, write_bw;
 	u64 resol_clock;
+	u32 vblank_us;
 
 	if (!decon->bts.enabled)
 		return;
@@ -516,6 +568,9 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 	bts_info.vclk = decon->bts.resol_clk;
 	bts_info.lcd_w = decon->config.image_width;
 	bts_info.lcd_h = decon->config.image_height;
+	vblank_us = dpu_bts_get_vblank_time_ns(decon) / 1000U;
+	/* reflect bus_util_pct for dpu processing latency when rotation */
+	vblank_us = (vblank_us * decon->bts.bus_util_pct) / 100;
 
 	/* read bw calculation */
 	config = decon->bts.win_config;
@@ -525,8 +580,7 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 
 		idx = config[i].dpp_ch;
 		dpu_bts_convert_config_to_info(&bts_info.rdma[idx], &config[i]);
-		dpu_bts_calc_dpp_bw(&bts_info.rdma[idx], bts_info.vclk,
-							bts_info.lcd_w, idx);
+		dpu_bts_calc_dpp_bw(&bts_info.rdma[idx], decon->bts.fps, vblank_us, idx);
 		read_bw += bts_info.rdma[idx].bw;
 	}
 
@@ -535,8 +589,7 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 	if (config->state == DPU_WIN_STATE_BUFFER) {
 		wb_idx = config->dpp_ch;
 		dpu_bts_convert_config_to_info(&bts_info.odma, config);
-		dpu_bts_calc_dpp_bw(&bts_info.odma, bts_info.vclk,
-						bts_info.lcd_w, wb_idx);
+		dpu_bts_calc_dpp_bw(&bts_info.odma, decon->bts.fps, vblank_us, wb_idx);
 		write_bw = bts_info.odma.bw;
 	} else {
 		wb_idx = -1;
@@ -566,7 +619,6 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 	dpu_bts_share_bw_info(decon->id);
 
 	DPU_EVENT_LOG(DPU_EVT_BTS_CALC_BW, decon->id, NULL);
-
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 
@@ -579,12 +631,12 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 	if (!decon->bts.enabled)
 		return;
 
-	/* update peak & read bandwidth per DPU port */
+	/* update peak & R/W bandwidth per DPU port */
 	bw.peak = decon->bts.peak;
 	bw.read = decon->bts.read_bw;
 	bw.write = decon->bts.write_bw;
-	DPU_DEBUG_BTS("\tpeak = %d, read = %d, write = %d\n", bw.peak, bw.read,
-			bw.write);
+	DPU_DEBUG_BTS("\tpeak = %d, read = %d, write = %d\n",
+			bw.peak, bw.read, bw.write);
 
 	if (shadow_updated) {
 		/* after DECON h/w configs are updated to shadow SFR */

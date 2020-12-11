@@ -95,6 +95,15 @@ static void exynos_crtc_update_lut(struct drm_crtc *crtc,
 	else
 		dqe_state->cgc_dither_config = NULL;
 
+	if (exynos_state->linear_matrix)
+		dqe_state->linear_matrix = exynos_state->linear_matrix->data;
+	else
+		dqe_state->linear_matrix = NULL;
+
+	if (exynos_state->gamma_matrix)
+		dqe_state->gamma_matrix = exynos_state->gamma_matrix->data;
+	else
+		dqe_state->gamma_matrix = NULL;
 
 	if (state->degamma_lut) {
 		degamma_lut = state->degamma_lut->data;
@@ -282,6 +291,8 @@ static void exynos_drm_crtc_destroy_state(struct drm_crtc *crtc,
 	drm_property_blob_put(exynos_crtc_state->cgc_lut);
 	drm_property_blob_put(exynos_crtc_state->disp_dither);
 	drm_property_blob_put(exynos_crtc_state->cgc_dither);
+	drm_property_blob_put(exynos_crtc_state->linear_matrix);
+	drm_property_blob_put(exynos_crtc_state->gamma_matrix);
 	__drm_atomic_helper_crtc_destroy_state(state);
 	kfree(exynos_crtc_state);
 }
@@ -325,6 +336,12 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 
 	if (copy->cgc_dither)
 		drm_property_blob_get(copy->cgc_dither);
+
+	if (copy->linear_matrix)
+		drm_property_blob_get(copy->linear_matrix);
+
+	if (copy->gamma_matrix)
+		drm_property_blob_get(copy->gamma_matrix);
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
@@ -395,6 +412,16 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 				&exynos_crtc_state->cgc_dither, val,
 				sizeof(struct dither_config), -1);
 		return ret;
+	} else if (property == exynos_crtc->props.linear_matrix) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->linear_matrix, val,
+				sizeof(struct exynos_matrix), -1);
+		return ret;
+	} else if (property == exynos_crtc->props.gamma_matrix) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->gamma_matrix, val,
+				sizeof(struct exynos_matrix), -1);
+		return ret;
 	} else {
 		return -EINVAL;
 	}
@@ -426,6 +453,12 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 	else if (property == exynos_crtc->props.cgc_dither)
 		*val = (exynos_crtc_state->cgc_dither) ?
 			exynos_crtc_state->cgc_dither->base.id : 0;
+	else if (property == exynos_crtc->props.linear_matrix)
+		*val = (exynos_crtc_state->linear_matrix) ?
+			exynos_crtc_state->linear_matrix->base.id : 0;
+	else if (property == exynos_crtc->props.gamma_matrix)
+		*val = (exynos_crtc_state->gamma_matrix) ?
+			exynos_crtc_state->gamma_matrix->base.id : 0;
 	else
 		return -EINVAL;
 
@@ -436,9 +469,11 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 					const struct drm_crtc_state *state)
 {
 	const struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(state->crtc);
+	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(state);
 	const struct decon_device *decon = exynos_crtc->ctx;
 	const struct decon_config *cfg = &decon->config;
 
+	drm_printf(p, "\treserved_win_mask=0x%x\n", exynos_crtc_state->reserved_win_mask);
 	drm_printf(p, "\tDecon #%d (state:%d)\n", decon->id, decon->state);
 	drm_printf(p, "\t\ttype=0x%x\n", cfg->out_type);
 	drm_printf(p, "\t\tsize=%dx%d\n", cfg->image_width, cfg->image_height);
@@ -566,7 +601,8 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	crtc = &exynos_crtc->base;
 
 	ret = drm_crtc_init_with_planes(drm_dev, crtc, plane, NULL,
-					&exynos_crtc_funcs, "exynos-crtc");
+					&exynos_crtc_funcs, "exynos-crtc-%d",
+					decon->id);
 	if (ret < 0)
 		goto err_crtc;
 
@@ -597,6 +633,16 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 
 		drm_crtc_enable_color_mgmt(crtc, DEGAMMA_LUT_SIZE, false,
 				REGAMMA_LUT_SIZE);
+
+		ret = exynos_drm_crtc_create_blob(crtc, "linear_matrix",
+				&exynos_crtc->props.linear_matrix);
+		if (ret)
+			goto err_crtc;
+
+		ret = exynos_drm_crtc_create_blob(crtc, "gamma_matrix",
+				&exynos_crtc->props.gamma_matrix);
+		if (ret)
+			goto err_crtc;
 	}
 
 	return exynos_crtc;
@@ -607,30 +653,15 @@ err_crtc:
 	return ERR_PTR(ret);
 }
 
-struct exynos_drm_crtc *exynos_drm_crtc_get_by_type(struct drm_device *drm_dev,
-				       enum exynos_drm_output_type out_type)
-{
-	struct drm_crtc *crtc;
-
-	drm_for_each_crtc(crtc, drm_dev)
-		if (to_exynos_crtc(crtc)->possible_type == out_type)
-			return to_exynos_crtc(crtc);
-
-	return ERR_PTR(-EPERM);
-}
-
-uint32_t exynos_drm_get_possible_crtcs(struct drm_encoder *encoder,
+uint32_t exynos_drm_get_possible_crtcs(const struct drm_encoder *encoder,
 		enum exynos_drm_output_type out_type)
 {
-	struct exynos_drm_crtc *find_crtc;
-	struct drm_crtc *crtc;
+	const struct drm_crtc *crtc;
 	uint32_t possible_crtcs = 0;
 
 	drm_for_each_crtc(crtc, encoder->dev) {
-		if (to_exynos_crtc(crtc)->possible_type & out_type) {
-			find_crtc = to_exynos_crtc(crtc);
-			possible_crtcs |= drm_crtc_mask(&find_crtc->base);
-		}
+		if (to_exynos_crtc(crtc)->possible_type & out_type)
+			possible_crtcs |= drm_crtc_mask(crtc);
 	}
 
 	return possible_crtcs;

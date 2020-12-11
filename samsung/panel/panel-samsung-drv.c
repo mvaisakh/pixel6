@@ -45,6 +45,9 @@ static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
 #define bridge_to_exynos_panel(b) \
 	container_of((b), struct exynos_panel, bridge)
 
+static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
+					enum exynos_panel_state panel_state);
+
 static inline bool in_tui(struct exynos_panel *ctx)
 {
 	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
@@ -53,12 +56,26 @@ static inline bool in_tui(struct exynos_panel *ctx)
 		const struct drm_crtc_state *crtc_state =
 						conn_state->crtc->state;
 
-		if (crtc_state && (crtc_state->adjusted_mode.private_flags &
-				 EXYNOS_DISPLAY_MODE_FLAG_TUI))
+		if (crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI))
 			return true;
 	}
 
 	return false;
+}
+
+static inline bool is_backlight_off_state(const struct backlight_device *bl)
+{
+	return (bl->props.state & BL_STATE_STANDBY) != 0;
+}
+
+static inline bool is_backlight_lp_state(const struct backlight_device *bl)
+{
+	return (bl->props.state & BL_STATE_LP) != 0;
+}
+
+static void backlight_state_changed(struct backlight_device *bl)
+{
+	sysfs_notify(&bl->dev.kobj, NULL, "state");
 }
 
 static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
@@ -419,6 +436,9 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 		return;
 
 	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
+
+	exynos_panel_set_backlight_state(ctx,
+		!binned_lp->bl_threshold ? PANEL_STATE_OFF : PANEL_STATE_LP);
 }
 EXPORT_SYMBOL(exynos_panel_set_binned_lp);
 
@@ -446,11 +466,38 @@ static int exynos_get_brightness(struct backlight_device *bl)
 	return bl->props.brightness;
 }
 
+static int exynos_bl_find_range(struct exynos_panel *ctx,
+				int brightness, u32 *range)
+{
+	u32 i;
+
+	if (!ctx->bl_notifier.num_ranges)
+		return -EOPNOTSUPP;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	for (i = 0; i < ctx->bl_notifier.num_ranges; i++) {
+		if (brightness <= ctx->bl_notifier.ranges[i]) {
+			*range = i;
+			mutex_unlock(&ctx->bl_state_lock);
+
+			return 0;
+		}
+	}
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	dev_warn(ctx->dev, "failed to find bl range\n");
+
+	return -EINVAL;
+}
+
 static int exynos_update_status(struct backlight_device *bl)
 {
 	struct exynos_panel *ctx = bl_get_data(bl);
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
+	u32 bl_range = 0;
 
 	if (!ctx->enabled || !ctx->initialized) {
 		dev_dbg(ctx->dev, "panel is not enabled\n");
@@ -469,6 +516,17 @@ static int exynos_update_status(struct backlight_device *bl)
 		exynos_panel_func->set_brightness(ctx, brightness);
 	else
 		exynos_dcs_set_brightness(ctx, brightness);
+
+	if (!ctx->hbm_mode &&
+	    exynos_bl_find_range(ctx, brightness, &bl_range) >= 0 &&
+	    bl_range != ctx->bl_notifier.current_range) {
+		ctx->bl_notifier.current_range = bl_range;
+
+		sysfs_notify(&ctx->bl->dev.kobj, NULL, "brightness");
+
+		dev_dbg(ctx->dev, "bl range is changed to %d\n",
+			ctx->bl_notifier.current_range);
+	}
 
 	return 0;
 }
@@ -698,6 +756,9 @@ static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
 	}
 
 	exynos_panel_func->set_hbm_mode(ctx, hbm_en);
+
+	if (ctx->bl)
+		backlight_state_changed(ctx->bl);
 
 	return count;
 }
@@ -1062,12 +1123,194 @@ static ssize_t local_hbm_max_timeout_show(struct device *dev,
 
 static DEVICE_ATTR_RW(local_hbm_max_timeout);
 
+static ssize_t state_show(struct device *dev,
+			  struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	bool show_mode = true;
+	const char *statestr;
+	int rc;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	if (is_backlight_off_state(bl)) {
+		statestr = "Off";
+		show_mode = false;
+	} else if (is_backlight_lp_state(bl)) {
+		statestr = "LP";
+	} else {
+		statestr = (ctx->hbm_mode) ? "HBM" : "On";
+	}
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	if (show_mode) {
+		const struct exynos_panel_mode *pmode = ctx->current_mode;
+
+		rc = snprintf(buf, PAGE_SIZE, "%s: %dx%d@%d\n", statestr,
+			      pmode->mode.hdisplay, pmode->mode.vdisplay,
+			      drm_mode_vrefresh(&pmode->mode));
+	} else {
+		rc = snprintf(buf, PAGE_SIZE, "%s\n", statestr);
+	}
+
+	return rc;
+}
+
+static DEVICE_ATTR_RO(state);
+
+static int parse_u32_buf(char *src, size_t src_len, u32 *out, size_t out_len)
+{
+	int rc = 0, cnt = 0;
+	char *str;
+	const char *delim = " ";
+
+	if (!src || !src_len || !out || !out_len)
+		return -EINVAL;
+
+	/* src_len is the length of src including null character '\0' */
+	if (strnlen(src, src_len) == src_len)
+		return -EINVAL;
+
+	for (str = strsep(&src, delim); str != NULL; str = strsep(&src, delim)) {
+		rc = kstrtou32(str, 0, out + cnt);
+		if (rc)
+			return -EINVAL;
+
+		cnt++;
+
+		if (out_len == cnt)
+			break;
+	}
+
+	return cnt;
+}
+
+static ssize_t als_table_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	ssize_t bl_num_ranges;
+	char *buf_dup;
+	u32 ranges[MAX_BL_RANGES] = {0};
+	u32 i;
+
+	if (count == 0)
+		return -EINVAL;
+
+	buf_dup = kstrndup(buf, count, GFP_KERNEL);
+	if (!buf_dup)
+		return -ENOMEM;
+
+	if (strlen(buf_dup) != count) {
+		kfree(buf_dup);
+		return -EINVAL;
+	}
+
+	bl_num_ranges = parse_u32_buf(buf_dup, count + 1,
+				      ranges, MAX_BL_RANGES);
+	if (bl_num_ranges < 0 || bl_num_ranges > MAX_BL_RANGES) {
+		dev_warn(ctx->dev, "exceed max number of bl range\n");
+		kfree(buf_dup);
+		return -EINVAL;
+	}
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	ctx->bl_notifier.num_ranges = bl_num_ranges;
+	for (i = 0; i < ctx->bl_notifier.num_ranges; i++)
+		ctx->bl_notifier.ranges[i] = ranges[i];
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	kfree(buf_dup);
+
+	return count;
+}
+
+static ssize_t als_table_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	ssize_t rc = 0;
+	size_t len = 0;
+	u32 i = 0;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	for (i = 0; i < ctx->bl_notifier.num_ranges; i++) {
+		rc = scnprintf(buf + len, PAGE_SIZE - len,
+			       "%u ", ctx->bl_notifier.ranges[i]);
+		if (rc < 0) {
+			mutex_unlock(&ctx->bl_state_lock);
+			return -EINVAL;
+		}
+
+		len += rc;
+	}
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
+
+	return len;
+}
+
+static DEVICE_ATTR_RW(als_table);
+
 static struct attribute *bl_device_attrs[] = {
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
+	&dev_attr_state.attr,
+	&dev_attr_als_table.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(bl_device);
+
+static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
+					enum exynos_panel_state panel_state)
+{
+	unsigned long state = bl->props.state;
+
+	switch (panel_state) {
+	case PANEL_STATE_ON:
+		state &= ~(BL_STATE_STANDBY | BL_STATE_LP);
+		break;
+	case PANEL_STATE_LP:
+		state |= BL_STATE_LP;
+		break;
+	case PANEL_STATE_OFF:
+		state &= ~(BL_STATE_LP);
+		state |= BL_STATE_STANDBY;
+		break;
+	}
+
+	return state;
+}
+
+static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
+					enum exynos_panel_state panel_state)
+{
+	struct backlight_device *bl = ctx->bl;
+
+	if (!bl)
+		return;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	bl->props.state = get_backlight_state_from_panel(bl, panel_state);
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	backlight_state_changed(bl);
+
+	dev_info(ctx->dev, "%s: panel:%d, bl:0x%x\n", __func__,
+		 panel_state, bl->props.state);
+}
 
 static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 {
@@ -1176,6 +1419,8 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
 	}
 
 	drm_panel_enable(&ctx->panel);
+
+	exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 }
 
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge)
@@ -1215,6 +1460,8 @@ static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge)
 	}
 
 	drm_panel_unprepare(&ctx->panel);
+
+	exynos_panel_set_backlight_state(ctx, PANEL_STATE_OFF);
 }
 
 static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
@@ -1259,13 +1506,17 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			need_update_backlight = true;
 		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
 			funcs->set_nolp_mode(ctx, pmode);
+			exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 			need_update_backlight = true;
 		} else if (funcs->mode_set) {
 			funcs->mode_set(ctx, pmode);
+			if (ctx->bl)
+				backlight_state_changed(ctx->bl);
 		}
 	}
 	ctx->current_mode = pmode;
-	if (need_update_backlight)
+
+	if (need_update_backlight && ctx->bl)
 		backlight_update_status(ctx->bl);
 }
 
@@ -1281,9 +1532,6 @@ static void local_hbm_timeout_work(struct work_struct *work)
 
 static void local_hbm_data_init(struct exynos_panel *ctx)
 {
-	if (sysfs_create_groups(&ctx->bl->dev.kobj, bl_device_groups))
-		dev_err(ctx->dev, "unable to create bl_device_groups groups\n");
-
 	mutex_init(&ctx->local_hbm.lock);
 	ctx->local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
 	ctx->local_hbm.enabled = false;
@@ -1313,6 +1561,7 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	int ret = 0;
 	char name[32];
 	const struct exynos_panel_funcs *exynos_panel_func;
+	int i;
 
 	ctx = devm_kzalloc(dev, sizeof(struct exynos_panel), GFP_KERNEL);
 	if (!ctx)
@@ -1346,6 +1595,19 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode)
 		local_hbm_data_init(ctx);
 
+	if (ctx->desc->bl_num_ranges) {
+		ctx->bl_notifier.num_ranges = ctx->desc->bl_num_ranges;
+		if (ctx->bl_notifier.num_ranges > MAX_BL_RANGES) {
+			dev_warn(ctx->dev, "exceed max number of bl range\n");
+			ctx->bl_notifier.num_ranges = MAX_BL_RANGES;
+		}
+
+		for (i = 0; i < ctx->bl_notifier.num_ranges; i++)
+			ctx->bl_notifier.ranges[i] = ctx->desc->bl_range[i];
+	}
+
+	mutex_init(&ctx->bl_state_lock);
+
 	drm_panel_init(&ctx->panel, dev, ctx->desc->panel_func, DRM_MODE_CONNECTOR_DSI);
 
 	drm_panel_add(&ctx->panel);
@@ -1359,6 +1621,10 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	ret = sysfs_create_files(&dev->kobj, panel_attrs);
 	if (ret)
 		pr_warn("unable to add panel sysfs files (%d)\n", ret);
+
+	ret = sysfs_create_groups(&ctx->bl->dev.kobj, bl_device_groups);
+	if (ret)
+		dev_err(ctx->dev, "unable to create bl_device_groups groups\n");
 
 	exynos_panel_handoff(ctx);
 
@@ -1381,14 +1647,12 @@ EXPORT_SYMBOL(exynos_panel_probe);
 int exynos_panel_remove(struct mipi_dsi_device *dsi)
 {
 	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
-	const struct exynos_panel_funcs *exynos_panel_func;
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
 	drm_bridge_remove(&ctx->bridge);
-	exynos_panel_func = ctx->desc->exynos_panel_func;
-	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode)
-		sysfs_remove_groups(&ctx->bl->dev.kobj, bl_device_groups);
+
+	sysfs_remove_groups(&ctx->bl->dev.kobj, bl_device_groups);
 	devm_backlight_device_unregister(ctx->dev, ctx->bl);
 
 	return 0;

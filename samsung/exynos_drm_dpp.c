@@ -94,6 +94,8 @@ static const uint32_t dpp_vg_formats[] = {
 	DRM_FORMAT_NV16,
 	DRM_FORMAT_NV61,
 	DRM_FORMAT_P010,
+	DRM_FORMAT_YUV420_8BIT,
+	DRM_FORMAT_YUV420_10BIT,
 };
 
 const struct dpp_restriction dpp_drv_data = {
@@ -368,7 +370,8 @@ static void __dpp_enable(struct dpp_device *dpp)
 	dpp_debug(dpp, "enabled\n");
 }
 
-#if defined(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
+#if IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
+
 static int set_protection(struct dpp_device *dpp, uint64_t modifier)
 {
 	bool protection;

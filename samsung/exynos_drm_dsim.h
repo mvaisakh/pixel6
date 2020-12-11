@@ -70,6 +70,11 @@ struct dsim_device {
 	struct dsim_resources res;
 	struct clk **clks;
 	struct dsim_pll_params *pll_params;
+
+#ifdef CONFIG_DEBUG_FS
+        struct dentry *debugfs_entry;
+#endif
+
 	int irq;
 	int id;
 	spinlock_t slock;
@@ -95,7 +100,7 @@ struct dsim_device {
 
 extern struct dsim_device *dsim_drvdata[MAX_DSI_CNT];
 
-#define to_dsi(nm)	container_of(nm, struct dsim_device, nm)
+#define encoder_to_dsim(e) container_of(e, struct dsim_device, encoder)
 
 #define MIPI_WR_TIMEOUT				msecs_to_jiffies(50)
 #define MIPI_RD_TIMEOUT				msecs_to_jiffies(100)
@@ -117,4 +122,15 @@ dsim_get_decon(const struct dsim_device *dsim)
 
 void dsim_enter_ulps(struct dsim_device *dsim);
 void dsim_exit_ulps(struct dsim_device *dsim);
+
+#ifdef CONFIG_DEBUG_FS
+void dsim_diag_create_debugfs(struct dsim_device *dsim);
+void dsim_diag_remove_debugfs(struct dsim_device *dsim);
+
+int dsim_dphy_diag_get_reg(struct dsim_device *dsim,
+                           struct dsim_dphy_diag *diag, uint32_t *vals);
+int dsim_dphy_diag_set_reg(struct dsim_device *dsim,
+                           struct dsim_dphy_diag *diag, uint32_t val);
+#endif
+
 #endif /* __EXYNOS_DRM_DSI_H__ */

@@ -405,11 +405,11 @@
 #define GAMMA_MATRIX_COEFF_L_MASK	(0x3FFF << 0)
 
 #define DQE0_GAMMA_MATRIX_OFFSET0	(0x0C18)
-#define GAMMA_MATRIX_OFFSET_1		(0xFFF << 16)
-#define GAMMA_MATRIX_OFFSET_0		(0xFFF << 0)
+#define GAMMA_MATRIX_OFFSET_1(_v)	((_v) << 16)
+#define GAMMA_MATRIX_OFFSET_0(_v)	((_v) << 0)
 
 #define DQE0_GAMMA_MATRIX_OFFSET1	(0x0C1C)
-#define GAMMA_MATRIX_OFFSET_2		(0xFFF << 0)
+#define GAMMA_MATRIX_OFFSET_2(_v)	((_v) << 0)
 
 /*----------------------[DEGAMMA_CON]----------------------------------------*/
 

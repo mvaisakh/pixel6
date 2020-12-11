@@ -152,6 +152,26 @@ struct dphy_timing_value {
 	unsigned int b_dphyctl;
 };
 
+/* Max registers number in one diag command: 1 clock + 4 data lanes */
+#define MAX_DIAG_REG_NUM 5
+
+struct dsim_dphy_diag {
+	const char *name;
+	const char *desc;
+	const char *help;
+	uint8_t num_reg;
+	/* REGS_DSIM_PHY or REGS_DSIM_PHY_BIAS */
+	uint8_t reg_base;
+	uint16_t reg_offset[MAX_DIAG_REG_NUM];
+	uint8_t bit_start;
+	uint8_t bit_end;
+	bool read_only;
+
+	bool override;
+	uint32_t user_value;
+	void *private;
+};
+
 struct dsim_reg_config {
 	struct dpu_panel_timing	p_timing;
 	enum dsim_panel_mode	mode;
@@ -163,6 +183,8 @@ struct dsim_reg_config {
 	unsigned int		mres_mode;
 	unsigned int		cmd_underrun_cnt[MAX_RES_NUMBER];
 	unsigned int		bpp;
+	unsigned int num_dphy_diags;
+	struct dsim_dphy_diag *dphy_diags;
 };
 
 void dsim_regs_desc_init(void __iomem *reg_base, const char *name,
@@ -212,4 +234,10 @@ void dsim_reg_set_dphy_freq_hopping(u32 id, u32 p, u32 m, u32 k, u32 en);
 
 /* DSIM SFR dump */
 void __dsim_dump(u32 id, struct dsim_regs *regs);
+
+/* For dphy diagnosis */
+u32 diag_dsim_dphy_reg_read_mask(u32 id, u16 offset, u32 mask);
+u32 diag_dsim_dphy_extra_reg_read_mask(u32 id, u16 offset, u32 mask);
+int dsim_dphy_diag_mask_from_range(uint8_t start, uint8_t end, uint32_t *mask);
+
 #endif /* __SAMSUNG_DSIM_CAL_H__ */

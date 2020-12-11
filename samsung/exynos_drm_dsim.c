@@ -79,11 +79,6 @@ pr_debug("%s[%d]: "fmt, dsim->dev->driver->name, dsim->id, ##__VA_ARGS__)
 
 //#define DSIM_BIST
 
-static inline struct dsim_device *encoder_to_dsim(struct drm_encoder *e)
-{
-	return container_of(e, struct dsim_device, encoder);
-}
-
 static const struct of_device_id dsim_of_match[] = {
 	{ .compatible = "samsung,exynos-dsim",
 	  .data = NULL },
@@ -582,6 +577,193 @@ getnode_fail:
 	return NULL;
 }
 
+static void dsim_restart(struct dsim_device *dsim)
+{
+	mutex_lock(&dsim->cmd_lock);
+	dsim_reg_stop(dsim->id, 0x1F);
+	disable_irq(dsim->irq);
+
+	dsim_reg_init(dsim->id, &dsim->config, &dsim->clk_param, true);
+	dsim_reg_start(dsim->id);
+	enable_irq(dsim->irq);
+	mutex_unlock(&dsim->cmd_lock);
+}
+
+#ifdef CONFIG_DEBUG_FS
+
+static int dsim_of_parse_diag(struct device_node *np, struct dsim_dphy_diag *diag)
+{
+        int count;
+        u8 bit_range[2];
+        const char *reg_base = NULL;
+
+        of_property_read_string(np, "reg-base", &reg_base);
+        if (!strcmp(reg_base, "dphy")) {
+                diag->reg_base = REGS_DSIM_PHY;
+        } else if (!strcmp(reg_base, "dphy-extra")) {
+                diag->reg_base = REGS_DSIM_PHY_BIAS;
+        } else {
+                pr_err("%s: invalid reg-base: %s\n", __func__, reg_base);
+                return -EINVAL;
+        }
+
+        of_property_read_string(np, "diag-name", &diag->name);
+        if (!diag->name || !diag->name[0]) {
+                pr_err("%s: empty diag-name\n", __func__);
+                return -EINVAL;
+        }
+
+        of_property_read_string(np, "desc", &diag->desc);
+        of_property_read_string(np, "help", &diag->help);
+
+        count = of_property_count_u16_elems(np, "reg-offset");
+        if (count <= 0 || count > MAX_DIAG_REG_NUM) {
+                pr_err("%s: wrong number of reg-offset: %d\n", __func__, count);
+                return -ERANGE;
+        }
+
+        if (of_property_read_u16_array(np, "reg-offset", diag->reg_offset, count) < 0) {
+                pr_err("%s: failed to read reg-offset\n", __func__);
+                return -EINVAL;
+        }
+        diag->num_reg = count;
+
+        if (of_property_read_u8_array(np, "bit-range", bit_range, 2) < 0) {
+                pr_err("%s: failed to read bit-range\n", __func__);
+                return -EINVAL;
+        }
+
+        if (bit_range[0] >= 32 || bit_range[1] >= 32) {
+                pr_err("%s: invalid bit range %d, %d\n", __func__, bit_range[0], bit_range[1]);
+                return -EINVAL;
+        }
+        if (bit_range[0] < bit_range[1]) {
+                diag->bit_start = bit_range[0];
+                diag->bit_end = bit_range[1];
+        } else {
+                diag->bit_start = bit_range[1];
+                diag->bit_end = bit_range[0];
+        }
+        diag->read_only = of_property_read_bool(np, "read_only");
+
+        return 0;
+}
+
+static void dsim_of_get_pll_diags(struct dsim_device *dsim)
+{
+	struct device_node *np, *entry;
+	struct device *dev = dsim->dev;
+        uint32_t index = 0;
+
+	np = of_parse_phandle(dev->of_node, "dphy_diag", 0);
+        dsim->config.num_dphy_diags = of_get_child_count(np);
+        if (dsim->config.num_dphy_diags == 0) {
+                goto nochild;
+        }
+
+	dsim->config.dphy_diags = devm_kzalloc(dsim->dev, sizeof(struct dsim_dphy_diag) *
+					dsim->config.num_dphy_diags, GFP_KERNEL);
+	if (!dsim->config.dphy_diags) {
+                dsim_warn(dsim, "%s: no memory for %u diag items\n",
+                          __func__, dsim->config.num_dphy_diags);
+                dsim->config.num_dphy_diags = 0;
+                goto nochild;
+        }
+
+        for_each_child_of_node(np, entry) {
+                if (index >= dsim->config.num_dphy_diags) {
+                      dsim_warn(dsim, "%s: diag parsing error with unexpected index %u\n",
+                                __func__, index);
+                      goto get_diag_fail;
+                }
+
+                if (dsim_of_parse_diag(entry, &dsim->config.dphy_diags[index]) < 0) {
+                      dsim_warn(dsim, "%s: diag parsing error for item %u\n",
+                                __func__, index);
+                      goto get_diag_fail;
+                }
+                ++index;
+        }
+        return;
+
+get_diag_fail:
+        dsim->config.num_dphy_diags = 0;
+        devm_kfree(dsim->dev, dsim->config.dphy_diags);
+        dsim->config.dphy_diags = NULL;
+nochild:
+        return;
+}
+
+int dsim_dphy_diag_get_reg(struct dsim_device *dsim,
+                           struct dsim_dphy_diag *diag, uint32_t *vals)
+{
+	int ret;
+	uint32_t ix, mask, val;
+
+	ret = dsim_dphy_diag_mask_from_range(diag->bit_start, diag->bit_end,
+					     &mask);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&dsim->state_lock);
+	if (dsim->state != DSIM_STATE_HSCLKEN) {
+		ret = -ENODEV;
+		goto out;
+	}
+
+	for (ix = 0; ix < diag->num_reg; ++ix) {
+		if (diag->reg_base == REGS_DSIM_PHY_BIAS)
+			val = diag_dsim_dphy_extra_reg_read_mask(
+				dsim->id, diag->reg_offset[ix], mask);
+		else if (diag->reg_base == REGS_DSIM_PHY)
+			val = diag_dsim_dphy_reg_read_mask(
+				dsim->id, diag->reg_offset[ix], mask);
+		else {
+			pr_err("%s: invalid reg_base %u\n", __func__,
+			       diag->reg_base);
+			goto out;
+		}
+		vals[ix] = val >> diag->bit_start;
+	}
+out:
+	mutex_unlock(&dsim->state_lock);
+	return ret;
+}
+
+int dsim_dphy_diag_set_reg(struct dsim_device *dsim,
+                           struct dsim_dphy_diag *diag, uint32_t val)
+{
+	int ret;
+	u32 mask;
+
+	ret = dsim_dphy_diag_mask_from_range(diag->bit_start, diag->bit_end,
+					     &mask);
+	if (ret < 0)
+		return ret;
+
+	diag->override = true;
+	diag->user_value = (val << diag->bit_start) & mask;
+
+	mutex_lock(&dsim->state_lock);
+	if (dsim->state != DSIM_STATE_HSCLKEN)
+		goto out;
+
+	/* restart dsim to apply new config */
+	dsim_restart(dsim);
+
+out:
+	mutex_unlock(&dsim->state_lock);
+	return ret;
+}
+
+#else
+
+static void dsim_of_get_pll_diags(struct dsim_device * /* dsim */)
+{
+}
+
+#endif
+
 static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 					const struct drm_display_mode *mode,
 					const struct exynos_display_mode *exynos_mode)
@@ -740,8 +922,38 @@ static const struct drm_encoder_helper_funcs dsim_encoder_helper_funcs = {
 	.atomic_check = dsim_atomic_check,
 };
 
+#ifdef CONFIG_DEBUG_FS
+
+static int dsim_encoder_late_register(struct drm_encoder *encoder)
+{
+        struct dsim_device *dsim = encoder_to_dsim(encoder);
+        dsim_diag_create_debugfs(dsim);
+        return 0;
+}
+
+static void dsim_encoder_early_unregister(struct drm_encoder *encoder)
+{
+        struct dsim_device *dsim = encoder_to_dsim(encoder);
+        dsim_diag_remove_debugfs(dsim);
+}
+
+#else
+
+static int dsim_encoder_late_register(struct drm_encoder * /* encoder */)
+{
+        return 0;
+}
+
+static void dsim_encoder_early_unregister(struct drm_encoder * /*encoder */)
+{
+}
+
+#endif
+
 static const struct drm_encoder_funcs dsim_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
+        .late_register = dsim_encoder_late_register,
+        .early_unregister = dsim_encoder_early_unregister,
 };
 
 static int dsim_add_mipi_dsi_device(struct dsim_device *dsim)
@@ -861,6 +1073,7 @@ static int dsim_parse_dt(struct dsim_device *dsim)
 	}
 
 	dsim->pll_params = dsim_of_get_clock_mode(dsim);
+	dsim_of_get_pll_diags(dsim);
 
 	return 0;
 }
@@ -921,7 +1134,7 @@ err:
 
 static void dsim_underrun_info(struct dsim_device *dsim)
 {
-	dsim_info(dsim, "underrun irq occurs: MIF(%lu), INT(%lu), DISP(%lu)\n",
+	printk_ratelimited("underrun irq occurs: MIF(%lu), INT(%lu), DISP(%lu)\n",
 			exynos_devfreq_get_domain_freq(DEVFREQ_MIF),
 			exynos_devfreq_get_domain_freq(DEVFREQ_INT),
 			exynos_devfreq_get_domain_freq(DEVFREQ_DISP));
@@ -1641,16 +1854,7 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 		goto out;
 
 	/* Restart dsim to apply new clock settings */
-	mutex_lock(&dsim->cmd_lock);
-	dsim_reg_stop(dsim->id, 0x1F);
-	disable_irq(dsim->irq);
-
-	dsim_reg_init(dsim->id, &dsim->config, &dsim->clk_param, true);
-	dsim_reg_start(dsim->id);
-	enable_irq(dsim->irq);
-
-	mutex_unlock(&dsim->cmd_lock);
-
+	dsim_restart(dsim);
 out:
 	mutex_unlock(&dsim->state_lock);
 

@@ -561,7 +561,219 @@ static struct dentry *exynos_debugfs_add_dqe_override(const char *name,
 	return dent;
 }
 
-#define MAX_NAME_SIZE	32
+static int get_lut(char *lut_buf, u32 count, u32 pcount, void **lut,
+						enum elem_size elem_size)
+{
+	int i = 0, ret = 0;
+	char *token;
+	u16 *plut16;
+	u32 *plut32;
+
+	if (elem_size == ELEM_SIZE_16)
+		plut16 = *lut;
+	else if (elem_size == ELEM_SIZE_32)
+		plut32 = *lut;
+	else
+		return -EINVAL;
+
+	if (!pcount || pcount > count)
+		pcount = count;
+
+	while ((token = strsep(&lut_buf, " "))) {
+		if (i >= count)
+			break;
+
+		if (elem_size == ELEM_SIZE_16)
+			ret = kstrtou16(token, 0, &plut16[i++]);
+		else if (elem_size == ELEM_SIZE_32)
+			ret = kstrtou32(token, 0, &plut32[i++]);
+
+		if (ret)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int lut_show(struct seq_file *s, void *unused)
+{
+	struct debugfs_lut *lut = s->private;
+	struct drm_printer p = drm_seq_file_printer(s);
+	char buf[128] = {0};
+	int len = 0;
+	int i;
+	u16 *plut16;
+	u32 *plut32;
+
+	if (lut->elem_size == ELEM_SIZE_16)
+		plut16 = lut->lut_ptr;
+	else if (lut->elem_size == ELEM_SIZE_32)
+		plut32 = lut->lut_ptr;
+	else
+		return -EINVAL;
+
+	if (!lut->pcount || lut->pcount > lut->count)
+		lut->pcount = lut->count;
+
+	for (i = 0; i < lut->pcount; ++i) {
+		if (lut->elem_size == ELEM_SIZE_16)
+			len += sprintf(buf + len, "[%2d] %4x  ", i, plut16[i]);
+		else if (lut->elem_size == ELEM_SIZE_32)
+			len += sprintf(buf + len, "[%2d] %4x  ", i, plut32[i]);
+
+		if ((i % 4) == 3) {
+			drm_printf(&p, "%s\n", buf);
+			len = 0;
+			memset(buf, 0, sizeof(buf));
+		}
+	}
+
+	if (len)
+		drm_printf(&p, "%s\n", buf);
+
+	return 0;
+}
+
+static int lut_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, lut_show, inode->i_private);
+}
+
+static ssize_t lut_write(struct file *file, const char __user *buffer,
+		size_t len, loff_t *ppos)
+{
+	char *tmpbuf;
+	struct debugfs_lut *lut =
+		((struct seq_file *)file->private_data)->private;
+	int ret;
+
+	if (len == 0)
+		return 0;
+
+	tmpbuf = memdup_user_nul(buffer, len);
+	if (IS_ERR(tmpbuf))
+		return PTR_ERR(tmpbuf);
+
+	pr_debug("read %d bytes from userspace\n", (int)len);
+
+	ret = get_lut(tmpbuf, lut->count, lut->pcount, &lut->lut_ptr,
+				lut->elem_size);
+	if (ret)
+		goto err;
+
+	ret = len;
+err:
+	kfree(tmpbuf);
+
+	return ret;
+}
+
+static const struct file_operations lut_fops = {
+	.open	 = lut_open,
+	.read	 = seq_read,
+	.write	 = lut_write,
+	.llseek	 = seq_lseek,
+	.release = seq_release,
+};
+
+static void exynos_debugfs_add_lut(const char *name, umode_t mode,
+		struct dentry *parent, size_t count, size_t pcount,
+		void *lut_ptr, struct drm_color_lut *dlut_ptr,
+		enum elem_size elem_size)
+{
+	struct debugfs_lut *lut = kmalloc(sizeof(struct debugfs_lut),
+			GFP_KERNEL);
+	if (!lut)
+		return;
+
+	if (!lut_ptr) {
+		lut_ptr = kmalloc(count * (elem_size >> 3), GFP_KERNEL);
+		if (!lut_ptr)
+			return;
+	}
+
+	memcpy(lut->name, name, MAX_NAME_SIZE);
+	lut->lut_ptr = lut_ptr;
+	lut->dlut_ptr = dlut_ptr;
+	lut->elem_size = elem_size;
+	lut->count = count;
+	lut->pcount = pcount;
+
+	debugfs_create_file(name, mode, parent, lut, &lut_fops);
+}
+
+static struct dentry *exynos_debugfs_add_matrix(const char *name,
+		struct dentry *parent, bool *force_enable, void *coeffs,
+		size_t coeffs_cnt, enum elem_size coeffs_elem_size,
+		void *offsets, size_t offsets_cnt,
+		enum elem_size offsets_elem_size)
+{
+	struct dentry *dent, *dent_matrix;
+
+	dent = debugfs_create_dir(name, parent);
+	if (!dent) {
+		pr_err("failed to create %s matrix directory\n", name);
+		return NULL;
+	}
+
+	debugfs_create_bool("force_enable", 0664, dent, force_enable);
+	dent_matrix = debugfs_create_dir("matrix", dent);
+	if (!dent_matrix) {
+		pr_err("failed to create %s directory\n", name);
+		debugfs_remove_recursive(dent);
+		return NULL;
+	}
+
+	exynos_debugfs_add_lut("coeffs", 0664, dent_matrix, coeffs_cnt, 0,
+			coeffs, NULL, coeffs_elem_size);
+	exynos_debugfs_add_lut("offsets", 0664, dent_matrix, offsets_cnt, 0,
+			offsets, NULL, offsets_elem_size);
+
+	return dent;
+}
+
+static void
+exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
+{
+	struct dentry *dent_dir;
+
+	if (!dqe)
+		return;
+
+	dent_dir = debugfs_create_dir("dqe", parent);
+	if (!dent_dir) {
+		pr_err("failed to create dqe directory\n");
+		return;
+	}
+
+	if (!exynos_debugfs_add_dqe_override("cgc_dither",
+			&dqe->cgc_dither_override, dent_dir))
+		goto err;
+
+	if (!exynos_debugfs_add_dqe_override("disp_dither",
+			&dqe->disp_dither_override, dent_dir))
+		goto err;
+
+	if (!exynos_debugfs_add_matrix("linear_matrix", dent_dir,
+			&dqe->force_lm, dqe->force_linear_matrix.coeffs,
+			DRM_SAMSUNG_MATRIX_DIMENS * DRM_SAMSUNG_MATRIX_DIMENS,
+			ELEM_SIZE_16, dqe->force_linear_matrix.offsets,
+			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
+		goto err;
+
+	if (!exynos_debugfs_add_matrix("gamma_matrix", dent_dir,
+			&dqe->force_gm, dqe->force_gamma_matrix.coeffs,
+			DRM_SAMSUNG_MATRIX_DIMENS * DRM_SAMSUNG_MATRIX_DIMENS,
+			ELEM_SIZE_16, dqe->force_gamma_matrix.offsets,
+			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
+		goto err;
+
+	return;
+
+err:
+	debugfs_remove_recursive(dent_dir);
+}
+
 int dpu_init_debug(struct decon_device *decon)
 {
 	int i;
@@ -570,7 +782,6 @@ int dpu_init_debug(struct decon_device *decon)
 	struct exynos_dqe *dqe = decon->dqe;
 	struct dentry *debug_event;
 	struct dentry *urgent_dent;
-	struct dentry *cgc_dither_dent, *disp_dither_dent;
 
 	decon->d.event_log = NULL;
 	event_cnt = dpu_event_log_max;
@@ -625,25 +836,10 @@ int dpu_init_debug(struct decon_device *decon)
 	debugfs_create_x32("dta_hi_thres", 0664, urgent_dent, &decon->config.urgent.dta_hi_thres);
 	debugfs_create_x32("dta_lo_thres", 0664, urgent_dent, &decon->config.urgent.dta_lo_thres);
 
-	if (dqe) {
-		cgc_dither_dent = exynos_debugfs_add_dqe_override("cgc_dither",
-				&dqe->cgc_dither_override, crtc->debugfs_entry);
-		if (!cgc_dither_dent)
-			goto err_urgent;
-
-		disp_dither_dent = exynos_debugfs_add_dqe_override(
-				"disp_dither", &dqe->disp_dither_override,
-				crtc->debugfs_entry);
-		if (!disp_dither_dent)
-			goto err_cgc_dither;
-	}
+	exynos_debugfs_add_dqe(dqe, crtc->debugfs_entry);
 
 	return 0;
 
-err_cgc_dither:
-	debugfs_remove_recursive(cgc_dither_dent);
-err_urgent:
-	debugfs_remove_recursive(urgent_dent);
 err_debugfs:
 	debugfs_remove(debug_event);
 err_event_log:
@@ -719,5 +915,116 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 	pr_debug("%s -\n", __func__);
 
 	return NOTIFY_DONE;
+}
+
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+static int dphy_diag_text_show(struct seq_file *m, void *p)
+{
+	char *text = m->private;
+
+	seq_printf(m, "%s\n", text);
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(dphy_diag_text);
+
+static ssize_t dphy_diag_reg_write(struct file *file, const char *user_buf,
+			      size_t count, loff_t *f_pos)
+{
+	int ret;
+	uint32_t val;
+	struct seq_file *m = file->private_data;
+	struct dsim_dphy_diag *diag = m->private;
+
+	ret = kstrtou32_from_user(user_buf, count, 0, &val);
+	if (ret)
+		return ret;
+
+	ret = dsim_dphy_diag_set_reg(diag->private, diag, val);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static int dphy_diag_reg_show(struct seq_file *m, void *data)
+{
+	struct dsim_dphy_diag *diag = m->private;
+	uint32_t regs[MAX_DIAG_REG_NUM];
+	uint32_t ix;
+	int ret;
+
+	ret = dsim_dphy_diag_get_reg(diag->private, diag, regs);
+
+	if (ret == 0) {
+		for (ix = 0; ix < diag->num_reg; ++ix)
+			seq_printf(m, "%d ", regs[ix]);
+		seq_puts(m, "\n");
+	}
+
+	return ret;
+}
+
+static int dphy_diag_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dphy_diag_reg_show, inode->i_private);
+}
+
+static const struct file_operations dphy_diag_reg_fops = {
+	.owner = THIS_MODULE,
+	.open = dphy_diag_reg_open,
+	.write = dphy_diag_reg_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+void dsim_diag_create_debugfs(struct dsim_device *dsim) {
+	struct dentry *dent_dphy;
+	struct dentry *dent_diag;
+	struct dsim_dphy_diag *diag;
+	char dir_name[32];
+	int ix;
+
+	scnprintf(dir_name, sizeof(dir_name), "dsim%d", dsim->id);
+	dsim->debugfs_entry = debugfs_create_dir(
+		dir_name, dsim->encoder.dev->primary->debugfs_root);
+	if (!dsim->debugfs_entry) {
+		pr_warn("%s: failed to create %s\n", __func__, dir_name);
+		return;
+	}
+
+	if (dsim->config.num_dphy_diags == 0)
+		return;
+
+	dent_dphy = debugfs_create_dir("dphy", dsim->debugfs_entry);
+	if (!dent_dphy) {
+		pr_warn("%s: failed to create %s\n", __func__, dir_name);
+		return;
+	}
+
+	for (ix = 0; ix < dsim->config.num_dphy_diags; ++ix) {
+		diag = &dsim->config.dphy_diags[ix];
+		dent_diag = debugfs_create_dir(diag->name, dent_dphy);
+		if (!dent_diag) {
+			pr_warn("%s: failed to create %s\n", __func__,
+				diag->name);
+			continue;
+		}
+		debugfs_create_file("desc", 0400, dent_diag, (void *)diag->desc,
+				    &dphy_diag_text_fops);
+		debugfs_create_file("help", 0400, dent_diag, (void *)diag->help,
+				    &dphy_diag_text_fops);
+		diag->private = dsim;
+		debugfs_create_file("value", diag->read_only ? 0400 : 0600,
+				    dent_diag, diag, &dphy_diag_reg_fops);
+	}
+}
+
+void dsim_diag_remove_debugfs(struct dsim_device *dsim) {
+	debugfs_remove_recursive(dsim->debugfs_entry);
+	dsim->debugfs_entry = NULL;
 }
 #endif

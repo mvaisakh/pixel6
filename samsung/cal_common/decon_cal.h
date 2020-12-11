@@ -17,6 +17,7 @@
 
 #define MAX_WIN_PER_DECON	6
 #define MAX_DECON_CNT		3
+#define BTS_DFS_MAX		7 /* DPU DVFS Level */
 
 #define DECON_BLENDING_PREMULT		0
 #define DECON_BLENDING_COVERAGE		1
@@ -216,6 +217,7 @@ struct decon_config {
 	struct exynos_dsc	dsc;
 	unsigned int		out_bpc;
 	unsigned int		in_bpc;
+	unsigned int		vblank_usec;
 };
 
 struct decon_regs {

@@ -47,6 +47,10 @@ static struct cal_regs_desc regs_desc[REGS_DSIM_TYPE_MAX][MAX_DSI_CNT];
 	(&regs_desc[REGS_DSIM_PHY_BIAS][id])
 #define dsim_phy_extra_write(id, offset, val)		\
 	cal_write(dphy_bias_regs_desc(id), offset, val)
+#define dsim_phy_extra_read_mask(id, offset, mask)       \
+	cal_read_mask(dphy_bias_regs_desc(id), offset, mask)
+#define dsim_phy_extra_write_mask(id, offset, val, mask) \
+	cal_write_mask(dphy_bias_regs_desc(id), offset, val, mask);
 
 #define sys_regs_desc(id)				\
 	(&regs_desc[REGS_DSIM_SYS][id])
@@ -502,7 +506,7 @@ static void dsim_reg_set_dphy_timing_values(u32 id,
 	}
 }
 
-static void dsim_reg_set_dphy_param_dither(u32 id, struct stdphy_pms *dphy_pms)
+static void dsim_reg_set_dphy_param_dither(u32 id, const struct stdphy_pms *dphy_pms)
 {
 	u32 val, mask;
 
@@ -1622,6 +1626,37 @@ static void dsim_reg_set_config(u32 id, struct dsim_reg_config *config,
 	}
 }
 
+static void dsim_reg_diag_apply(u32 id, u32 num_dphy_diag,
+				struct dsim_dphy_diag *dphy_diags)
+{
+	int ret;
+	u32 diag_ix, reg_ix, mask;
+	struct dsim_dphy_diag *diag;
+
+	for (diag_ix = 0; diag_ix < num_dphy_diag; ++diag_ix) {
+		diag = &dphy_diags[diag_ix];
+		if (!diag->override)
+			continue;
+		ret = dsim_dphy_diag_mask_from_range(diag->bit_start,
+						     diag->bit_end, &mask);
+		if (ret < 0)
+			continue;
+		if (diag->reg_base == REGS_DSIM_PHY) {
+			for (reg_ix = 0; reg_ix < diag->num_reg; ++reg_ix) {
+				dsim_phy_write_mask(id,
+						    diag->reg_offset[reg_ix],
+						    diag->user_value, mask);
+			}
+		} else if (diag->reg_base == REGS_DSIM_PHY_BIAS) {
+			for (reg_ix = 0; reg_ix < diag->num_reg; ++reg_ix) {
+				dsim_phy_extra_write_mask(
+					id, diag->reg_offset[reg_ix],
+					diag->user_value, mask);
+			}
+		}
+	}
+}
+
 /*
  * configure and set DPHY PLL, byte clock, escape clock and hs clock
  *	- PMS value have to be optained by using PMS Gen.
@@ -1640,13 +1675,15 @@ static void dsim_reg_set_config(u32 id, struct dsim_reg_config *config,
  *		in : requested escape clock. out : calculated escape clock
  *	- word_clk : out parameter. byte clock = hs clock / 16
  */
-static int dsim_reg_set_clocks(u32 id, struct dsim_clks *clks,
-		struct stdphy_pms *dphy_pms, u32 en)
+
+static int dsim_reg_set_clocks(u32 id, const struct dsim_reg_config *config,
+			       struct dsim_clks *clks, u32 en)
 {
 	unsigned int esc_div;
 	struct dsim_pll_param pll;
 	struct dphy_timing_value t;
 	u32 pll_lock_cnt;
+	const struct stdphy_pms *dphy_pms;
 	int ret = 0;
 	u32 hsmode = 0;
 #ifdef DPDN_INV_SWAP
@@ -1654,6 +1691,11 @@ static int dsim_reg_set_clocks(u32 id, struct dsim_clks *clks,
 #endif
 
 	if (en) {
+		if (!config) {
+			cal_log_err(id, "%s invalid config (null)\n", __func__);
+			return -EINVAL;
+		}
+
 		/*
 		 * Do not need to set clocks related with PLL,
 		 * if DPHY_PLL is already stabled because of LCD_ON_UBOOT.
@@ -1668,6 +1710,7 @@ static int dsim_reg_set_clocks(u32 id, struct dsim_clks *clks,
 		 * PMS value has to be optained by PMS calculation tool
 		 * released to customer
 		 */
+		dphy_pms = &config->dphy_pms;
 		pll.p = dphy_pms->p;
 		pll.m = dphy_pms->m;
 		pll.s = dphy_pms->s;
@@ -1757,6 +1800,7 @@ static int dsim_reg_set_clocks(u32 id, struct dsim_clks *clks,
 #ifdef DPHY_LOOP
 		dsim_reg_set_dphy_loop_test(id);
 #endif
+		dsim_reg_diag_apply(id, config->num_dphy_diags, config->dphy_diags);
 		/* enable PLL */
 		ret = dsim_reg_enable_pll(id, 1);
 	} else {
@@ -1765,7 +1809,7 @@ static int dsim_reg_set_clocks(u32 id, struct dsim_clks *clks,
 		dsim_reg_set_esc_clk_prescaler(id, 0, 0xff);
 
 		/* check dither sequence */
-		if (dphy_pms && dphy_pms->dither_en)
+		if (config != NULL && config->dphy_pms.dither_en)
 			dsim_reg_set_dphy_dither_en(id, 0);
 
 		dsim_reg_enable_pll(id, 0);
@@ -2032,8 +2076,7 @@ void dsim_reg_init(u32 id, struct dsim_reg_config *config,
 #endif
 
 #if !defined(CONFIG_BOARD_EMULATOR)
-	dsim_reg_set_clocks(id, clks, &config->dphy_pms, 1);
-
+	dsim_reg_set_clocks(id, config, clks, 1);
 	dsim_reg_set_lanes_dphy(id, lanes, true);
 	dpu_sysreg_dphy_reset(id, 1); /* Release DPHY reset */
 #endif
@@ -2140,7 +2183,6 @@ int dsim_reg_stop_and_enter_ulps(u32 id, u32 ddi_type, u32 lanes)
 	/* 3.3 off DPHY */
 	dsim_reg_set_lanes_dphy(id, lanes, false);
 	dsim_reg_set_clocks(id, NULL, NULL, 0);
-
 	/* 3.4 sw reset */
 	dsim_reg_sw_reset(id);
 
@@ -2437,4 +2479,26 @@ void __dsim_dump(u32 id, struct dsim_regs *regs)
 
 	/* restore to avoid size mismatch (possible config error at DECON) */
 	dsim_reg_enable_shadow_read(id, 1);
+}
+
+int dsim_dphy_diag_mask_from_range(uint8_t start, uint8_t end, uint32_t *mask)
+{
+	if (start > end || end >= 32) {
+		pr_err("%s: invalid bit range [%u, %u]\n", __func__, start,
+		       end);
+		return -EINVAL;
+	}
+
+	*mask = (((uint32_t)1 << (end - start + 1)) - 1) << start;
+	return 0;
+}
+
+u32 diag_dsim_dphy_reg_read_mask(u32 id, u16 offset, u32 mask)
+{
+	return dsim_phy_read_mask(id, offset, mask);
+}
+
+u32 diag_dsim_dphy_extra_reg_read_mask(u32 id, u16 offset, u32 mask)
+{
+	return dsim_phy_extra_read_mask(id, offset, mask);
 }
