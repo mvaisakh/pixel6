@@ -231,7 +231,7 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 		new_state->event_id = event_id;
 		new_state->enable_counter = 0;
 		new_state->event_counter = 0;
-		new_state->subscriber_count = 0;
+		new_state->has_subscriber = false;
 
 		/* Critical section for adding to the hash table */
 		spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -624,7 +624,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	/* Saves this event to history buffer */
 	save_device_event_state_to_history_locked(lwis_dev, device_event_state, timestamp);
 
-	has_subscriber = (device_event_state->subscriber_count > 0);
+	has_subscriber = device_event_state->has_subscriber;
 
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
@@ -759,8 +759,8 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
 	return return_val;
 }
 
-int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id)
-{
+int lwis_device_event_update_subscriber(struct lwis_device *lwis_dev, int64_t event_id,
+	bool has_subscriber) {
 	int ret = 0;
 	unsigned long flags;
 	struct lwis_device_event_state *event_state;
@@ -772,25 +772,10 @@ int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id)
 		ret = -EINVAL;
 		goto out;
 	}
-	event_state->subscriber_count++;
-out:
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-	return ret;
-}
-int lwis_device_event_unsubscribed(struct lwis_device *lwis_dev, int64_t event_id)
-{
-	int ret = 0;
-	unsigned long flags;
-	struct lwis_device_event_state *event_state;
-
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	event_state = lwis_device_event_state_find_locked(lwis_dev, event_id);
-	if (event_state == NULL) {
-		dev_err(lwis_dev->dev, "Event not found in trigger device");
-		ret = -EINVAL;
-		goto out;
+	if (event_state->has_subscriber != has_subscriber) {
+		event_state->has_subscriber = has_subscriber;
+		dev_info(lwis_dev->dev, "Event: %llx, has subscriber: %d", event_id, has_subscriber);
 	}
-	event_state->subscriber_count--;
 out:
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 	return ret;

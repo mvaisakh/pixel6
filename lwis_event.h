@@ -36,7 +36,7 @@ struct lwis_device_event_state {
 	int64_t event_id;
 	int64_t enable_counter;
 	int64_t event_counter;
-	uint32_t subscriber_count;
+	bool has_subscriber;
 	struct hlist_node node;
 };
 
@@ -265,19 +265,10 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
 			     bool in_irq);
 
 /*
- * lwis_device_event_subscribed: Increase ref count on trigger device, when a
- * event has been subscribed
- * This should only called by top device.
+ * lwis_device_event_update_subscriber: The function to notify an event has been subscribed/unsubscribed.
  * Returns: 0 on success, -EINVAL if event id not found in trigger device.
  */
-int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id);
-
-/*
- * lwis_device_event_subscribed: If a receiver device unsubscribe a event,
- * decrease ref count on trigger device.
- * This should only called by top device.
- * Returns: 0 on success, -EINVAL if event id not found in trigger device.
- */
-int lwis_device_event_unsubscribed(struct lwis_device *lwis_dev, int64_t event_id);
+int lwis_device_event_update_subscriber(struct lwis_device *lwis_dev, int64_t event_id,
+	bool has_subscriber);
 
 #endif /* LWIS_EVENT_H_ */

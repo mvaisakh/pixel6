@@ -130,9 +130,11 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 				      int receiver_device_id)
 {
 	struct lwis_top_device *lwis_top_dev = (struct lwis_top_device *)lwis_dev;
+	struct lwis_device *trigger_dev;
 	struct lwis_event_subscribe_info *p;
 	struct lwis_trigger_event_info *pending_event, *n;
 	unsigned long flags;
+	bool has_subscriber = false;
 
 	/* Clear pending events */
 	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
@@ -148,15 +150,18 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
 	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node, trigger_event_id) {
 		if (p->event_id == trigger_event_id && p->receiver_dev->id == receiver_device_id) {
-			/* Notify trigger device someone unsubscribe a event */
-			lwis_device_event_unsubscribed(p->trigger_dev, trigger_event_id);
+			dev_info(lwis_dev->dev, "unsubscribe event: %llx, trigger device: %s, target device: %s\n",
+			trigger_event_id, p->trigger_dev->name, p->receiver_dev->name);
+			trigger_dev = p->trigger_dev;
 			hash_del(&p->node);
 			kfree(p);
-			goto out;
+		} else if (p->event_id == trigger_event_id && p->receiver_dev->id != receiver_device_id) {
+			/* The condition indicate there are other client still subscribe the event */
+			trigger_dev = p->trigger_dev;
+			has_subscriber = true;
 		}
 	}
-
-out:
+	lwis_device_event_update_subscriber(trigger_dev, trigger_event_id, has_subscriber);
 	mutex_unlock(&lwis_top_dev->base_dev.client_lock);
 	return 0;
 }
@@ -169,6 +174,7 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 	struct lwis_device *lwis_receiver_dev = lwis_find_dev_by_id(receiver_device_id);
 	struct lwis_event_subscribe_info *p, *new_subscription;
 	int ret = 0;
+	bool has_subscriber = true;
 
 	if (lwis_trigger_dev == NULL || lwis_receiver_dev == NULL) {
 		dev_err(lwis_top_dev->base_dev.dev, "LWIS trigger/receiver device not found");
@@ -177,24 +183,20 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 	mutex_lock(&lwis_top_dev->base_dev.client_lock);
 	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node, trigger_event_id) {
 		/* event already registered for this device */
-		if (p->event_id == trigger_event_id && p->receiver_dev->id == receiver_device_id)
+		if (p->event_id == trigger_event_id && p->receiver_dev->id == receiver_device_id) {
+			dev_info(lwis_dev->dev,
+				"already registered event: %llx, trigger device: %s, target device: %s\n",
+				trigger_event_id, lwis_trigger_dev->name, lwis_receiver_dev->name);
 			goto out;
-	}
-
-	/* Notify trigger device someone subscribe a event */
-	ret = lwis_device_event_subscribed(lwis_trigger_dev, trigger_event_id);
-	if (ret < 0) {
-		dev_err(lwis_top_dev->base_dev.dev, "Failed to subcribe event : %llx\n",
-			trigger_event_id);
-		goto out;
+		}
 	}
 
 	/* If the subscription does not exist in hash table, create one */
 	new_subscription = kzalloc(sizeof(struct lwis_event_subscribe_info), GFP_KERNEL);
 	if (!new_subscription) {
-		lwis_device_event_unsubscribed(lwis_trigger_dev, trigger_event_id);
 		dev_err(lwis_top_dev->base_dev.dev,
 			"Failed to allocate memory for new subscription\n");
+		has_subscriber = false;
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -202,8 +204,16 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 	new_subscription->receiver_dev = lwis_receiver_dev;
 	new_subscription->trigger_dev = lwis_trigger_dev;
 	hash_add(lwis_top_dev->event_subscriber, &new_subscription->node, trigger_event_id);
+	dev_info(lwis_dev->dev,
+		"subscribe event: %llx, trigger device: %s, target device: %s",
+		trigger_event_id, lwis_trigger_dev->name, lwis_receiver_dev->name);
 
 out:
+	ret = lwis_device_event_update_subscriber(lwis_trigger_dev, trigger_event_id, has_subscriber);
+	if (ret < 0) {
+		dev_err(lwis_top_dev->base_dev.dev, "Failed to subcribe event : %llx\n",
+			trigger_event_id);
+	}
 	mutex_unlock(&lwis_top_dev->base_dev.client_lock);
 	return ret;
 }
