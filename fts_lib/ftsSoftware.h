@@ -45,6 +45,14 @@ typedef enum {
 	BITS_64 = 8
 } AddrSize;
 
+/**
+ * Enumerator which define the keep_cx meaning
+ */
+enum {
+	CX_ERASE,
+	CX_KEEP,
+	CX_CHECK_AFE_VER
+};
 
 /********************  NEW API  *********************/
 
@@ -517,7 +525,8 @@ typedef enum {
 #define MP_FLAG_OTHERS		0xFF	/* /< Full Panel Init done somewhere else */
 #define MP_FLAG_NEED_FPI	0xDF	/* /< Manual firmware update with keep_cx=0
 					 * and Full Panel Init is not executed yet */
-
+#define MP_FLAG_CX_AFE_CHG	0xCF	/* /< Need to do Full Panel Init when cx_afe
+					 * version change during auto firmware update. */
 /** @}*/
 
 /** @}*/

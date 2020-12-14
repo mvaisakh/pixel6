@@ -201,7 +201,7 @@ static ssize_t fwupdate_store(struct device *dev,
 	int ret;
 	/* default(if not specified by user) set force = 0 and keep_cx to 1 */
 	int force = 0;
-	int keep_cx = 1;
+	int keep_cx = CX_KEEP;
 	char path[100 + 1]; /* extra byte to hold '\0'*/
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
@@ -215,7 +215,7 @@ static ssize_t fwupdate_store(struct device *dev,
 			ret = ERROR_BUS_WR;
 		else {
 #ifdef COMPUTE_INIT_METHOD
-			if (keep_cx == 0) {
+			if (keep_cx == CX_ERASE) {
 				fts_system_reset(info);
 				flushFIFO(info);
 				/* Set MPFlag to MP_FLAG_NEED_FPI since we will overwrite MS CX and
@@ -4633,9 +4633,12 @@ static int fts_fw_update(struct fts_ts_info *info)
 	struct device_node *np = info->dev->of_node;
 
 #if defined(PRE_SAVED_METHOD) || defined(COMPUTE_INIT_METHOD)
-	int keep_cx = 1;
+	/* Not decided yet.
+	 * Still need the firmware CX AFE version to decide the final value.
+	 */
+	int keep_cx = CX_CHECK_AFE_VER;
 #else
-	int keep_cx = 0;
+	int keep_cx = CX_ERASE;
 #endif
 
 	/* Read extinfo from display driver. Wait for up to ten seconds if
@@ -4774,7 +4777,8 @@ static int fts_fw_update(struct fts_ts_info *info)
 #endif
 			) {
 			init_type = SPECIAL_FULL_PANEL_INIT;
-			dev_err(info->dev, "%s: Different CX AFE Ver: %02X != %02X or invalid MpFlag = %02X... Execute FULL Panel Init!\n",
+			dev_err(info->dev,
+				"%s: Different CX AFE Ver: %02X != %02X or MpFlag = %02X... Execute FULL Panel Init!\n",
 				__func__, info->systemInfo.u8_cfgAfeVer,
 				info->systemInfo.u8_cxAfeVer,
 				info->systemInfo.u8_mpFlag);
