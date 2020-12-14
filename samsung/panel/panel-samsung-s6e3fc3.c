@@ -43,6 +43,17 @@ static const u8 aod_on_50nit[] = { 0x53, 0x24 };
 static const u8 aod_on_10nit[] = { 0x53, 0x25 };
 static const u8 display_off[] = { 0x28 };
 static const u8 display_on[] = { 0x29 };
+static const u8 sleep_in[] = { 0x10 };
+
+static const struct exynos_dsi_cmd s6e3fc3_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 0),
+	EXYNOS_DSI_CMD(sleep_in, 120),
+};
+
+static const struct exynos_dsi_cmd_set s6e3fc3_off_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3fc3_off_cmds),
+	.cmds = s6e3fc3_off_cmds
+};
 
 static const struct exynos_dsi_cmd s6e3fc3_lp_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 0),
@@ -357,6 +368,7 @@ const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.min_luminance = 5,
 	.modes = s6e3fc3_modes,
 	.num_modes = ARRAY_SIZE(s6e3fc3_modes),
+	.off_cmd_set = &s6e3fc3_off_cmd_set,
 	.lp_mode = &s6e3fc3_lp_mode,
 	.lp_cmd_set = &s6e3fc3_lp_cmd_set,
 	.binned_lp = s6e3fc3_binned_lp,
