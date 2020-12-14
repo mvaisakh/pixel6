@@ -76,6 +76,17 @@ static const u8 hlpm_on_10nit[] = { 0x53, 0x03 };
 static const u8 gamma_aid_update[] = { 0xF7, 0x02 };
 static const u8 display_off[] = { 0x28 };
 static const u8 display_on[] = { 0x29 };
+static const u8 sleep_in[] = { 0x10 };
+
+static const struct exynos_dsi_cmd s6e3hc2_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 10),
+	EXYNOS_DSI_CMD(sleep_in, 120),
+};
+
+static const struct exynos_dsi_cmd_set s6e3hc2_off_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3hc2_off_cmds),
+	.cmds = s6e3hc2_off_cmds
+};
 
 static const struct exynos_dsi_cmd s6e3hc2_lp_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 17),
@@ -532,6 +543,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc2_bl_range),
 	.modes = s6e3hc2_wqhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_wqhd_modes),
+	.off_cmd_set = &s6e3hc2_off_cmd_set,
 	.lp_mode = &s6e3hc2_wqhd_lp_mode,
 	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
 	.binned_lp = s6e3hc2_binned_lp,
@@ -555,6 +567,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc2_bl_range),
 	.modes = s6e3hc2_fhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_fhd_modes),
+	.off_cmd_set = &s6e3hc2_off_cmd_set,
 	.lp_mode = &s6e3hc2_fhd_lp_mode,
 	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
 	.binned_lp = s6e3hc2_binned_lp,
