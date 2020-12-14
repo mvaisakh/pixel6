@@ -180,6 +180,7 @@ struct exynos_panel_desc {
 	u32 bl_num_ranges;
 	const struct exynos_panel_mode *modes;
 	size_t num_modes;
+	const struct exynos_dsi_cmd_set *off_cmd_set;
 	/* @lp_mode: provides a low power mode if available, otherwise null */
 	const struct exynos_panel_mode *lp_mode;
 	const struct exynos_dsi_cmd_set *lp_cmd_set;

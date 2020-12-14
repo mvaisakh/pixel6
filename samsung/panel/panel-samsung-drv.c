@@ -362,6 +362,8 @@ int exynos_panel_disable(struct drm_panel *panel)
 		cancel_delayed_work_sync(&ctx->local_hbm.timeout_work);
 	}
 
+	exynos_panel_send_cmd_set(ctx, ctx->desc->off_cmd_set);
+
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 	return 0;
 }
