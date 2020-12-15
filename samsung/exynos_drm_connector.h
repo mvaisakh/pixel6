@@ -39,8 +39,6 @@ struct exynos_display_underrun_param {
 	unsigned int te_idle_us;
 	/* @te_var: te variation (percentage) to calculate underrun_lp_ref */
 	unsigned int te_var;
-	/* @max_vrefresh: refresh rate used to calculate underrun_lp_ref */
-	unsigned int max_vrefresh;
 };
 
 /**

@@ -251,7 +251,6 @@ static bool s6e3fc3_is_mode_seamless(const struct exynos_panel *ctx,
 static const struct exynos_display_underrun_param underrun_param = {
 	.te_idle_us = 1000,
 	.te_var = 1,
-	.max_vrefresh = 90,
 };
 
 static const struct exynos_panel_mode s6e3fc3_modes[] = {

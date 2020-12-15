@@ -84,8 +84,7 @@ static struct cal_regs_desc regs_desc[REGS_DSIM_TYPE_MAX][MAX_DSI_CNT];
  */
 #define DSIM_CMD_ALLOW_VALUE		4
 #define DSIM_STABLE_VFP_VALUE		2
-#define TE_PROTECT_ON_TIME		158 /* 15.8ms*/
-#define TE_TIMEOUT_TIME			180 /* 18ms */
+#define TE_MARGIN			5	/* 5% */
 
 #define PLL_LOCK_CNT_MUL		500
 #define PLL_LOCK_CNT_MARGIN_RATIO	0	/* 10% ~ 20% */
@@ -1197,17 +1196,29 @@ static void dsim_reg_set_cmd_te_ctrl1(u32 id, u32 teprotecton, u32 tetout)
 	dsim_write(id, DSIM_CMD_TE_CTRL1, val);
 }
 
-static void dsim_reg_set_cmd_ctrl(u32 id, struct dsim_reg_config *config,
+static void dsim_reg_get_cmd_timer(unsigned int fps, u32 hs_clk,
+		unsigned int *te_protect, unsigned int *te_timeout)
+{
+	*te_protect = hs_clk * (100 - TE_MARGIN) * 100 / fps / 16;
+	*te_timeout = hs_clk * (100 + TE_MARGIN * 2) * 100 / fps / 16;
+}
+
+static void dsim_reg_set_cmd_ctrl(u32 id, const struct dsim_reg_config *config,
 						struct dsim_clks *clks)
 {
 	unsigned int time_stable_vfp;
 	unsigned int time_te_protect_on;
 	unsigned int time_te_tout;
 
-	time_stable_vfp = config->p_timing.hactive *
+	if (config->dsc.enabled)
+		time_stable_vfp = config->p_timing.hactive *
+			DSIM_STABLE_VFP_VALUE / 100;
+	else
+		time_stable_vfp = config->p_timing.hactive *
 				DSIM_STABLE_VFP_VALUE * 3 / 100;
-	time_te_protect_on = (clks->hs_clk * TE_PROTECT_ON_TIME) / 16;
-	time_te_tout = (clks->hs_clk * TE_TIMEOUT_TIME) / 16;
+
+	dsim_reg_get_cmd_timer(config->p_timing.vrefresh, clks->hs_clk,
+		&time_te_protect_on, &time_te_tout);
 	dsim_reg_set_cmd_te_ctrl0(id, time_stable_vfp);
 	dsim_reg_set_cmd_te_ctrl1(id, time_te_protect_on, time_te_tout);
 }
@@ -2141,6 +2152,19 @@ int dsim_reg_stop(u32 id, u32 lanes)
 		dsim_reg_sw_reset(id);
 
 	return err;
+}
+
+/* Update DSIM reg for vrr changed */
+void dsim_reg_set_vrr_config(u32 id, const struct dsim_reg_config *config,
+		struct dsim_clks *clks)
+{
+	int idx;
+	if (config->mode == DSIM_COMMAND_MODE) {
+		idx = config->mres_mode;
+		dsim_reg_set_cm_underrun_lp_ref(id, config->cmd_underrun_cnt[idx]);
+		dsim_reg_set_cmd_ctrl(id, config, clks);
+	}
+	/* TODO: handle video mode panel */
 }
 
 /* Exit ULPS mode and set clocks and lanes */

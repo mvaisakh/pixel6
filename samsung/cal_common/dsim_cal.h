@@ -196,6 +196,8 @@ void dsim_reg_init(u32 id, struct dsim_reg_config *config,
 		struct dsim_clks *clks, bool panel_ctrl);
 void dsim_reg_start(u32 id);
 int dsim_reg_stop(u32 id, u32 lanes);
+void dsim_reg_set_vrr_config(u32 id, const struct dsim_reg_config *config,
+		struct dsim_clks *clks);
 
 /* ULPS control */
 int dsim_reg_exit_ulps_and_start(u32 id, u32 ddi_type, u32 lanes);
