@@ -18,6 +18,7 @@
 #include <linux/of_address.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
+#include <linux/mfd/samsung/s2mpg10.h>
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
 #if IS_ENABLED(CONFIG_GS_ACPM)
@@ -26,6 +27,9 @@
 #include <soc/google/exynos-el3_mon.h>
 /* TODO: temporary workaround. must remove. see b/169128860  */
 #include <linux/soc/samsung/exynos-smc.h>
+#include "../../bms/google_bms.h"
+
+#define BMS_RSBM_VALID   BIT(31)
 
 static struct regmap *pmureg;
 static u32 reboot_offset, reboot_trigger;
@@ -98,53 +102,76 @@ static void exynos_power_off(void)
 #define REBOOT_MODE_FACTORY		(0xFD)
 #define REBOOT_MODE_RECOVERY		(0xFF)
 
-static void exynos_reboot_parse(const char *cmd)
+static bool target_bms_rsbm_supported(void)
+{
+	u32 data;
+	int ret = gbms_storage_read(GBMS_TAG_RSBM, &data, sizeof(data));
+
+	return (ret != -ENOENT);
+}
+
+static void exynos_reboot_mode_set(u32 val)
 {
 	int ret;
+	u32 reboot_mode;
+	phys_addr_t reboot_cmd_addr = pmu_alive_base + reboot_cmd_offset;
 
+	ret = set_priv_reg(reboot_cmd_addr, val);
+	/* TODO: remove following fallback. see b/169128860 */
+	if (ret) {
+		pr_info("%s(): failed to set addr %pap via set_priv_reg, using regmap\n",
+			__func__, &reboot_cmd_addr);
+		regmap_write(pmureg, reboot_cmd_offset, val);
+	}
+
+	if (s2mpg10_get_rev_id() > S2MPG10_EVT0 && target_bms_rsbm_supported()) {
+		reboot_mode = val | BMS_RSBM_VALID;
+		ret = gbms_storage_write(GBMS_TAG_RSBM, &reboot_mode, sizeof(reboot_mode));
+		if (ret < 0)
+			pr_err("%s(): failed to write gbms storage: %d(%d)\n", __func__,
+				GBMS_TAG_RSBM, ret);
+	}
+}
+
+static void exynos_reboot_parse(const char *cmd)
+{
 	if (cmd) {
 		pr_info("Reboot command: '%s'\n", cmd);
 
 		if (!strcmp(cmd, "charge")) {
-			ret = set_priv_reg(pmu_alive_base + reboot_cmd_offset,
-					   REBOOT_MODE_CHARGE);
-			/* TODO: remove following fallback. see b/169128860 */
-			if (ret)
-				regmap_write(pmureg, reboot_cmd_offset,
-					     REBOOT_MODE_CHARGE);
+			exynos_reboot_mode_set(REBOOT_MODE_CHARGE);
 		} else if (!strcmp(cmd, "bootloader") ||
 			   !strcmp(cmd, "fastboot") ||
 			   !strcmp(cmd, "bl") ||
 			   !strcmp(cmd, "fb")) {
-			ret = set_priv_reg(pmu_alive_base + reboot_cmd_offset,
-					   REBOOT_MODE_FASTBOOT);
-			if (ret) {
-				pr_warn("%s(): priv_reg: failed to set addr: 0x%lx\n",
-					__func__, pmu_alive_base + reboot_cmd_offset);
-				regmap_write(pmureg, reboot_cmd_offset,
-					     REBOOT_MODE_FASTBOOT);
-			}
+			exynos_reboot_mode_set(REBOOT_MODE_FASTBOOT);
 		} else if (!strcmp(cmd, "recovery")) {
-			ret = set_priv_reg(pmu_alive_base + reboot_cmd_offset,
-					   REBOOT_MODE_RECOVERY);
-			/* TODO: remove following fallback. see b/169128860 */
-			if (ret)
-				regmap_write(pmureg, reboot_cmd_offset,
-					     REBOOT_MODE_RECOVERY);
+			exynos_reboot_mode_set(REBOOT_MODE_RECOVERY);
 		} else {
 			pr_err("Unknown reboot command: '%s'\n", cmd);
 		}
 	}
 }
 
-static int exynos_restart_handler(struct notifier_block *this,
+static int exynos_reboot_handler(struct notifier_block *nb,
 				  unsigned long mode, void *cmd)
+{
+	exynos_reboot_parse(cmd);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block exynos_reboot_nb = {
+	.notifier_call = exynos_reboot_handler,
+	.priority = INT_MAX,
+};
+
+static int exynos_restart_handler(struct notifier_block *this, unsigned long mode, void *cmd)
 {
 	int ret;
 #if IS_ENABLED(CONFIG_GS_ACPM)
 	exynos_acpm_reboot();
 #endif
-	exynos_reboot_parse(cmd);
 
 	/* Do S/W Reset */
 	pr_emerg("%s: Exynos SoC reset right now\n", __func__);
@@ -220,14 +247,18 @@ static int exynos_reboot_probe(struct platform_device *pdev)
 		reboot_cmd_offset = EXYNOS_PMU_SYSIP_DAT0;
 	}
 
+	err = register_reboot_notifier(&exynos_reboot_nb);
+	if (err)
+		dev_err(dev, "cannot register reboot handler (err=%d)\n", err);
+
 	err = register_restart_handler(&exynos_restart_nb);
-	if (err) {
-		dev_err(dev, "cannot register restart handler (err=%d)\n",
-			err);
-	}
+	if (err)
+		dev_err(dev, "cannot register restart handler (err=%d)\n", err);
+
 	pm_power_off = exynos_power_off;
 
-	dev_info(dev, "register restart handler successfully\n");
+	if (!err)
+		dev_info(dev, "register restart handler successfully\n");
 
 	return err;
 }
