@@ -1207,8 +1207,8 @@ static void max77759_dcicl_callback(struct gvotable_election *el,
 	const bool suspend = dc_icl == 0;
 	int ret;
 
-	pr_debug("%s: dc_icl=%d suspend=%d (%d)\n", __func__,
-		 dc_icl, suspend, ret);
+	pr_debug("%s: dc_icl=%d suspend=%d\n", __func__,
+		 dc_icl, suspend);
 
 	ret = max77759_wcin_set_ilim_max_ua(data, dc_icl);
 	if (ret < 0)

@@ -713,7 +713,6 @@ static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 	online = pps_prog_check_online(&pca9468->pps_data, tcpm_psy);
 	if (!online) {
 		mutex_unlock(&pca9468->lock);
-		pr_debug("%s: offline ret=%d\n", __func__, ret);
 		return -EINVAL;
 	}
 
