@@ -80,6 +80,7 @@ struct exynos_dqe {
 	bool force_disabled;
 
 	bool verbose_atc;
+	bool dstep_changed;
 	struct exynos_atc force_atc_config;
 	u32 lpd_atc_regs[LPD_ATC_REG_CNT];
 };

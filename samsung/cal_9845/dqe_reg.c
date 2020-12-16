@@ -484,7 +484,7 @@ void dqe_reg_set_atc(const struct exynos_atc *atc)
 
 	dqe_write(DQE0_ATC_AMBIENT_LIGHT, atc->ambient_light);
 	dqe_write(DQE0_ATC_BACK_LIGHT, atc->back_light);
-	dqe_write(DQE0_ATC_DSTEP, atc->dstep);
+	dqe_write(DQE0_ATC_DSTEP, atc->actual_dstep);
 	dqe_write(DQE0_ATC_SCALE_MODE, atc->scale_mode);
 
 	val = ATC_THRESHOLD_1(atc->threshold_1) |

@@ -54,6 +54,7 @@ struct exynos_atc {
 	__u8 ambient_light;
 	__u8 back_light;
 	__u8 dstep;
+	__u8 actual_dstep;
 	__u8 scale_mode;
 	__u8 threshold_1;
 	__u8 threshold_2;

@@ -21,11 +21,26 @@
 
 #include "exynos_drm_decon.h"
 
+static inline u8 get_actual_dstep(u8 dstep, int vrefresh)
+{
+	return dstep * vrefresh / 60;
+}
+
 static void
 exynos_atc_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state)
 {
-	pr_debug("%s: en(%d), dirty(%d)\n", __func__,
-			dqe->force_atc_config.en, dqe->force_atc_config.dirty);
+	const struct exynos_drm_crtc_state *exynos_crtc_state =
+		container_of(state, struct exynos_drm_crtc_state, dqe);
+	const struct drm_crtc_state *crtc_state = &exynos_crtc_state->base;
+
+	if (drm_atomic_crtc_needs_modeset(crtc_state) || dqe->dstep_changed ||
+			exynos_crtc_state->seamless_mode_changed) {
+		int vrefresh = drm_mode_vrefresh(&crtc_state->mode);
+
+		dqe->force_atc_config.actual_dstep =
+			get_actual_dstep(dqe->force_atc_config.dstep, vrefresh);
+		dqe->dstep_changed = false;
+	}
 
 	if (dqe->force_atc_config.dirty) {
 		if (dqe->force_atc_config.en) {
@@ -38,6 +53,13 @@ exynos_atc_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state)
 
 	if (dqe->verbose_atc)
 		dqe_reg_print_atc();
+
+	pr_debug("%s: en(%d) dirty(%d) vrefresh(%d) dstep(%d/%d)\n",
+			__func__, dqe->force_atc_config.en,
+			dqe->force_atc_config.dirty,
+			drm_mode_vrefresh(&crtc_state->mode),
+			dqe->force_atc_config.dstep,
+			dqe->force_atc_config.actual_dstep);
 }
 
 static void __exynos_dqe_update(struct exynos_dqe *dqe,
@@ -197,6 +219,7 @@ static void set_default_atc_config(struct exynos_atc *atc)
 	atc->ambient_light = 0x8C;
 	atc->back_light = 0xFF;
 	atc->dstep = 0x4;
+	atc->actual_dstep = 0x4;
 	atc->scale_mode = 0x1;
 	atc->threshold_1 = 0x1;
 	atc->threshold_2 = 0x1;
@@ -278,7 +301,6 @@ DQE_ATC_ATTR_U16_RW(tdr_max);
 DQE_ATC_ATTR_U16_RW(tdr_min);
 DQE_ATC_ATTR_U8_RW(ambient_light);
 DQE_ATC_ATTR_U8_RW(back_light);
-DQE_ATC_ATTR_U8_RW(dstep);
 DQE_ATC_ATTR_U8_RW(scale_mode);
 DQE_ATC_ATTR_U8_RW(threshold_1);
 DQE_ATC_ATTR_U8_RW(threshold_2);
@@ -327,6 +349,33 @@ out:
 	return ret ? : count;
 }
 static DEVICE_ATTR_WO(force_update);
+
+static ssize_t dstep_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct exynos_dqe *dqe = dev_get_drvdata(dev);
+	const struct exynos_atc *atc = &dqe->force_atc_config;
+
+	return snprintf(buf, PAGE_SIZE, "dstep(%u), actual dstep(%u), vrefresh(%d)\n",
+			atc->dstep, atc->actual_dstep, dqe->decon->bts.fps);
+}
+
+static ssize_t dstep_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct exynos_dqe *dqe = dev_get_drvdata(dev);
+	struct exynos_atc *atc = &dqe->force_atc_config;
+	int err;
+
+	err = atc_u8_store(dqe, &atc->dstep, buf, count);
+	if (err < 0)
+		return err;
+
+	dqe->dstep_changed = true;
+
+	return count;
+}
+static DEVICE_ATTR_RW(dstep);
 
 static struct attribute *atc_attrs[] = {
 	&dev_attr_force_update.attr,
