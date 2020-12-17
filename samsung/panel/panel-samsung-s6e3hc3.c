@@ -9,6 +9,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <drm/drm_vblank.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <video/mipi_display.h>
@@ -206,13 +207,62 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	return 0;
 }
 
+static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
+				 bool hbm_mode)
+{
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
+
+	ctx->hbm_mode = hbm_mode;
+
+	/*
+	 * TODO(b/176400319): The delay time here may cause performance issue,
+	 * need to revisit this later.
+	 */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+	if (ctx->hbm_mode) {
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x00);
+		usleep_range(17000, 17010);
+	} else {
+		usleep_range(17000, 17010);
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
+	}
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
+	s6e3hc3_write_display_mode(ctx, &pmode->mode);
+}
+
+static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
+				 bool local_hbm_en)
+{
+	struct drm_mode_config *config;
+	struct drm_crtc *crtc = NULL;
+
+	if (ctx->local_hbm.enabled == local_hbm_en)
+		return;
+
+	mutex_lock(&ctx->local_hbm.lock);
+	ctx->local_hbm.enabled = local_hbm_en;
+	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
+	mutex_unlock(&ctx->local_hbm.lock);
+
+	config = &ctx->exynos_connector.base.dev->mode_config;
+	drm_modeset_lock(&config->connection_mutex, NULL);
+	if (ctx->exynos_connector.base.state)
+		crtc = ctx->exynos_connector.base.state->crtc;
+	drm_modeset_unlock(&config->connection_mutex);
+	if (crtc) {
+		drm_crtc_wait_one_vblank(crtc);
+		drm_crtc_wait_one_vblank(crtc);
+	}
+}
+
 static void s6e3hc3_mode_set(struct exynos_panel *ctx,
 			     const struct exynos_panel_mode *pmode)
 {
 	if (!ctx->enabled)
 		return;
 
-	s6e3hc3_write_display_mode(ctx, &pmode->mode);
 	s6e3hc3_change_frequency(ctx, drm_mode_vrefresh(&pmode->mode));
 }
 
@@ -338,6 +388,8 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.set_lp_mode = exynos_panel_set_lp_mode,
 	.set_nolp_mode = s6e3hc3_set_nolp_mode,
 	.set_binned_lp = exynos_panel_set_binned_lp,
+	.set_hbm_mode = s6e3hc3_set_hbm_mode,
+	.set_local_hbm_mode = s6e3hc3_set_local_hbm_mode,
 	.is_mode_seamless = s6e3hc3_is_mode_seamless,
 	.mode_set = s6e3hc3_mode_set,
 };
