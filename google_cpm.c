@@ -393,7 +393,7 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 {
 	struct pd_pps_data *pps_data = &gcpm->pps_data;
 	bool schedule_pps_dc = false;
-	bool dc_ena, pps_ena;
+	bool dc_ena = 0, pps_ena;
 	int ret = 0, index;
 
 	/* might have more than one policy */

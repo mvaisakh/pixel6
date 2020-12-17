@@ -66,6 +66,8 @@ enum gbms_tags {
 
 	/* User Space Read/Write scratch */
 	GBMS_TAG_RS32 = 0x52533332,
+	GBMS_TAG_RSBM = 0x5253424d,
+	GBMS_TAG_RSBR = 0x52534252,
 
 	/* Reboot scratch */
 	GBMS_TAG_RRS0 = 0x52525330,
