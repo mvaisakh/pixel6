@@ -231,7 +231,7 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 		new_state->event_id = event_id;
 		new_state->enable_counter = 0;
 		new_state->event_counter = 0;
-		new_state->subscriber_count = 0;
+		new_state->has_subscriber = false;
 
 		/* Critical section for adding to the hash table */
 		spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -305,76 +305,96 @@ int lwis_client_event_control_get(struct lwis_client *lwis_client, int64_t event
 	return 0;
 }
 
-int lwis_client_event_pop_front(struct lwis_client *lwis_client,
-				struct lwis_event_entry **event_out)
-{
-	/* Our client event object */
-	struct lwis_event_entry *event;
-	/* Return value and flags for irqsave */
-	unsigned long ret = 0;
-	unsigned long flags;
-
-	/* Critical section while modifying event queue */
-	spin_lock_irqsave(&lwis_client->event_lock, flags);
-	if (!list_empty(&lwis_client->event_queue)) {
-		/* Get the front of the list */
-		event = list_first_entry(&lwis_client->event_queue, struct lwis_event_entry, node);
-		/* Delete from the queue */
-		list_del(&event->node);
-		/* Copy it over */
-		if (event_out) {
-			*event_out = event;
-		} else {
-			/* The caller didn't receive it, so can't free it*/
-			kfree(event);
-		}
-	} else {
-		ret = -ENOENT;
-	}
-	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
-
-	return ret;
-}
-
-int lwis_client_event_peek_front(struct lwis_client *lwis_client,
+static int event_queue_get_front(struct lwis_client *lwis_client,
+				 struct list_head *event_queue,
+				 bool should_remove_entry,
 				 struct lwis_event_entry **event_out)
 {
 	/* Our client event object */
 	struct lwis_event_entry *event;
-	/* Return value and flags for irqsave */
-	unsigned long ret = 0;
+	/* Flags for irqsave */
 	unsigned long flags;
 
 	/* Critical section while modifying event queue */
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
-	if (!list_empty(&lwis_client->event_queue)) {
-		/* Get the front of the list */
-		event = list_first_entry(&lwis_client->event_queue, struct lwis_event_entry, node);
+	if (list_empty(event_queue)) {
+		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+		return -ENOENT;
+	}
+	/* Get the front of the list */
+	event = list_first_entry(event_queue, struct lwis_event_entry, node);
+	if (should_remove_entry) {
+		/* Delete from the queue */
+		list_del(&event->node);
+	}
+	if (event_out) {
 		/* Copy it over */
-		if (event_out) {
-			*event_out = event;
-		}
-	} else {
-		ret = -ENOENT;
+		*event_out = event;
+	} else if (should_remove_entry) {
+		/* The caller did not request ownership of the event,
+		 * and this is a "pop" operation, we can just free the
+		 * event here. */
+		kfree(event);
 	}
 	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
-	return ret;
+	return 0;
 }
 
-void lwis_client_event_queue_clear(struct lwis_client *lwis_client)
+static void event_queue_clear(struct lwis_client *lwis_client,
+		       struct list_head *event_queue)
 {
 	struct list_head *it_event, *it_tmp;
 	struct lwis_event_entry *event;
 	unsigned long flags;
 
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
-	list_for_each_safe (it_event, it_tmp, &lwis_client->event_queue) {
+	list_for_each_safe (it_event, it_tmp, event_queue) {
 		event = list_entry(it_event, struct lwis_event_entry, node);
 		list_del(&event->node);
 		kfree(event);
 	}
 	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+}
+
+int lwis_client_event_pop_front(struct lwis_client *lwis_client,
+				struct lwis_event_entry **event_out)
+{
+	return event_queue_get_front(lwis_client, &lwis_client->event_queue,
+				     /*should_remove_entry=*/true, event_out);
+}
+
+int lwis_client_event_peek_front(struct lwis_client *lwis_client,
+				 struct lwis_event_entry **event_out)
+{
+	return event_queue_get_front(lwis_client, &lwis_client->event_queue,
+				     /*should_remove_entry=*/false, event_out);
+}
+
+void lwis_client_event_queue_clear(struct lwis_client *lwis_client)
+{
+	event_queue_clear(lwis_client, &lwis_client->event_queue);
+}
+
+int lwis_client_error_event_pop_front(struct lwis_client *lwis_client,
+				      struct lwis_event_entry **event_out)
+{
+	return event_queue_get_front(lwis_client,
+				     &lwis_client->error_event_queue,
+				     /*should_remove_entry=*/true, event_out);
+}
+
+int lwis_client_error_event_peek_front(struct lwis_client *lwis_client,
+				       struct lwis_event_entry **event_out)
+{
+	return event_queue_get_front(lwis_client,
+				     &lwis_client->error_event_queue,
+				     /*should_remove_entry=*/false, event_out);
+}
+
+void lwis_client_error_event_queue_clear(struct lwis_client *lwis_client)
+{
+	event_queue_clear(lwis_client, &lwis_client->error_event_queue);
 }
 
 /*
@@ -410,6 +430,27 @@ static int lwis_client_event_push_back(struct lwis_client *lwis_client,
 	return 0;
 }
 
+static int lwis_client_error_event_push_back(struct lwis_client *lwis_client,
+					     struct lwis_event_entry *event)
+{
+	unsigned long flags;
+
+	if (!event) {
+		pr_err("NULL event provided\n");
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&lwis_client->event_lock, flags);
+
+	list_add_tail(&event->node, &lwis_client->error_event_queue);
+
+	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+
+	wake_up_interruptible(&lwis_client->event_wait_queue);
+
+	return 0;
+}
+
 int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 {
 	/* Our hash table iterator */
@@ -417,14 +458,29 @@ int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 	/* Temporary vars for hash table traversal */
 	struct hlist_node *n;
 	int i;
+	struct list_head *it_event, *it_tmp;
+	/* Events to be cleared */
+	struct list_head events_to_clear;
 	/* Flags for irqsave */
 	unsigned long flags;
+
+	INIT_LIST_HEAD(&events_to_clear);
 	/* Disable IRQs and lock the event lock */
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 	/* Iterate over the entire hash table */
 	hash_for_each_safe (lwis_client->event_states, i, n, state, node) {
-		/* Delete the node from the hash table */
+		/* Delete the node from the client's hash table */
 		hash_del(&state->node);
+		/* Add the node to to-clear events hash table */
+		list_add_tail(&state->clearance_node, &events_to_clear);
+	}
+	/* Restore the lock */
+	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+
+	/* Clear the individual events */
+	list_for_each_safe (it_event, it_tmp, &events_to_clear) {
+		state = list_entry(it_event, struct lwis_client_event_state, clearance_node);
+		list_del(&state->clearance_node);
 		/* Update the device state with zero flags */
 		lwis_device_event_flags_updated(lwis_client->lwis_dev,
 						state->event_control.event_id,
@@ -432,8 +488,6 @@ int lwis_client_event_states_clear(struct lwis_client *lwis_client)
 		/* Free the object */
 		kfree(state);
 	}
-	/* Restore the lock */
-	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
 	return 0;
 }
@@ -611,7 +665,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	/* Saves this event to history buffer */
 	save_device_event_state_to_history_locked(lwis_dev, device_event_state, timestamp);
 
-	has_subscriber = (device_event_state->subscriber_count > 0);
+	has_subscriber = device_event_state->has_subscriber;
 
 	/* Unlock and restore device lock */
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
@@ -746,8 +800,8 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
 	return return_val;
 }
 
-int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id)
-{
+int lwis_device_event_update_subscriber(struct lwis_device *lwis_dev, int64_t event_id,
+	bool has_subscriber) {
 	int ret = 0;
 	unsigned long flags;
 	struct lwis_device_event_state *event_state;
@@ -759,25 +813,10 @@ int lwis_device_event_subscribed(struct lwis_device *lwis_dev, int64_t event_id)
 		ret = -EINVAL;
 		goto out;
 	}
-	event_state->subscriber_count++;
-out:
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-	return ret;
-}
-int lwis_device_event_unsubscribed(struct lwis_device *lwis_dev, int64_t event_id)
-{
-	int ret = 0;
-	unsigned long flags;
-	struct lwis_device_event_state *event_state;
-
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	event_state = lwis_device_event_state_find_locked(lwis_dev, event_id);
-	if (event_state == NULL) {
-		dev_err(lwis_dev->dev, "Event not found in trigger device");
-		ret = -EINVAL;
-		goto out;
+	if (event_state->has_subscriber != has_subscriber) {
+		event_state->has_subscriber = has_subscriber;
+		dev_info(lwis_dev->dev, "Event: %llx, has subscriber: %d", event_id, has_subscriber);
 	}
-	event_state->subscriber_count--;
 out:
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 	return ret;
@@ -850,4 +889,47 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 	}
 
 	lwis_pending_events_emit(lwis_dev, &pending_events, in_irq);
+}
+
+void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
+				  int64_t event_id, void *payload,
+				  size_t payload_size)
+{
+	struct lwis_event_entry *event;
+	/* Our iterators */
+	struct lwis_client *lwis_client;
+	struct list_head *p, *n;
+	int64_t timestamp;
+
+	if (event_id < LWIS_EVENT_ID_START_OF_ERROR_RANGE ||
+	    event_id >= LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
+		pr_err("Event ID %lld is not in the error event range\n",
+		       event_id);
+		return;
+	}
+
+	/* Latch timestamp */
+	timestamp = ktime_to_ns(lwis_get_time());
+
+	/* Notify clients */
+	list_for_each_safe (p, n, &lwis_dev->clients) {
+		lwis_client = list_entry(p, struct lwis_client, node);
+
+		event = kzalloc(sizeof(struct lwis_event_entry) + payload_size,
+				GFP_ATOMIC);
+		event->event_info.event_id = event_id;
+		event->event_info.event_counter = 0;
+		event->event_info.timestamp_ns = timestamp;
+		event->event_info.payload_size = payload_size;
+		if (payload_size > 0) {
+			event->event_info.payload_buffer =
+				(void *)((uint8_t *)event +
+					 sizeof(struct lwis_event_entry));
+			memcpy(event->event_info.payload_buffer, payload,
+			       payload_size);
+		} else {
+			event->event_info.payload_buffer = NULL;
+		}
+		lwis_client_error_event_push_back(lwis_client, event);
+	}
 }

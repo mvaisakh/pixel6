@@ -61,6 +61,7 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 static int __attribute__((unused)) lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 {
 	struct lwis_device *lwis_dev = (struct lwis_device *)param;
+	struct lwis_mem_page_fault_event_payload event_payload;
 
 	pr_err("############ LWIS IOMMU PAGE FAULT ############\n");
 	pr_err("\n");
@@ -74,6 +75,11 @@ static int __attribute__((unused)) lwis_iommu_fault_handler(struct iommu_fault *
 	lwis_debug_print_buffer_info(lwis_dev);
 	pr_err("\n");
 	pr_err("###############################################\n");
+
+	event_payload.fault_address = fault->event.addr;
+	event_payload.fault_flags = fault->event.flags;
+	lwis_device_error_event_emit(lwis_dev, LWIS_ERROR_EVENT_ID_MEMORY_PAGE_FAULT,
+				     &event_payload, sizeof(event_payload));
 
 #ifdef ENABLE_PAGE_FAULT_PANIC
 	return NOTIFY_BAD;

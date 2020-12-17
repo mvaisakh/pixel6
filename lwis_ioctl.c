@@ -755,6 +755,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 	struct lwis_event_entry *event;
 	struct lwis_event_info info_user;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	bool is_error_event = false;
 
 	ret = copy_from_user((void *)&info_user, (void __user *)msg, sizeof(info_user));
 	if (ret) {
@@ -762,13 +763,24 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 		return -EINVAL;
 	}
 
-	/* Peek at the front element */
-	ret = lwis_client_event_peek_front(lwis_client, &event);
-	if (ret) {
-		if (ret != -ENOENT) {
-			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
-		}
+	/* Peek at the front element of error event queue first */
+	ret = lwis_client_error_event_peek_front(lwis_client, &event);
+	if (ret == 0) {
+		is_error_event = true;
+	} else if (ret != -ENOENT) {
+		dev_err(lwis_dev->dev, "Error dequeueing error event: %ld\n", ret);
 		return ret;
+	} else {
+		/* Nothing at error event queue, continue to check normal
+		 * event queue */
+		ret = lwis_client_event_peek_front(lwis_client, &event);
+		if (ret) {
+			if (ret != -ENOENT) {
+				dev_err(lwis_dev->dev,
+					"Error dequeueing event: %ld\n", ret);
+			}
+			return ret;
+		}
 	}
 
 	/* We need to check if we have an adequate payload buffer */
@@ -809,7 +821,12 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 	 * should try again with a bigger payload_buffer.
 	 */
 	if (!err) {
-		ret = lwis_client_event_pop_front(lwis_client, NULL);
+		if (is_error_event) {
+			ret = lwis_client_error_event_pop_front(lwis_client,
+								NULL);
+		} else {
+			ret = lwis_client_event_pop_front(lwis_client, NULL);
+		}
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 			return ret;

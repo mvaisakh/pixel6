@@ -186,6 +186,10 @@ struct lwis_echo {
 #define LWIS_EVENT_ID_HEARTBEAT 1
 #define LWIS_EVENT_ID_CLIENT_CLEANUP 2
 // ...
+// Error event defines
+#define LWIS_EVENT_ID_START_OF_ERROR_RANGE 2048
+#define LWIS_ERROR_EVENT_ID_MEMORY_PAGE_FAULT 2048
+// ...
 #define LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE 4096
 
 // Event flags used for transaction events.
@@ -339,6 +343,16 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_DPM_CLK_UPDATE _IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
 #define LWIS_DPM_QOS_UPDATE _IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
 #define LWIS_DPM_GET_CLOCK _IOW(LWIS_IOC_TYPE, 52, struct lwis_qos_setting)
+
+/*
+ * Event payloads
+ */
+
+/* For LWIS_ERROR_EVENT_ID_MEMORY_PAGE_FAULT */
+struct lwis_mem_page_fault_event_payload {
+	uint64_t fault_address;
+	uint64_t fault_flags;
+};
 
 #ifdef __cplusplus
 } /* extern "C" */
