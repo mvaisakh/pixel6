@@ -25,8 +25,6 @@
 #include <linux/types.h>
 #include "ftsHardware.h"
 
-#undef SUPPORT_PROX_PALM
-
 /* signed type */
 typedef signed char i8;	/* /< basic type that represent one signed byte (or 8
 			 * bits) */
@@ -408,9 +406,6 @@ typedef enum {
 						 * Validation Status */
 #define EVT_TYPE_STATUS_GOLDEN_RAW_ERR	0x16	/* /< Golden Raw
 						 * Data Abnormal */
-#ifdef SUPPORT_PROX_PALM
-#define EVT_TYPE_STATUS_PROX_PALM	0x18	/* /< Proximity: Palm**/
-#endif
 
 /** @} */
 

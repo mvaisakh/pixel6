@@ -37,8 +37,8 @@ int u8ToU64_be(u8 *src, u64 *dest, int size);
 int u64ToU8_be(u64 src, u8 *dest, int size);
 int attempt_function(int (*code)(void), unsigned long wait_before_retry, int
 		     retry_count);
-int senseOn(void);
-int senseOff(void);
+int senseOn(struct fts_ts_info *info);
+int senseOff(struct fts_ts_info *info);
 void print_frame_short(char *label, short **matrix, int row, int column);
 short **array1dTo2d_short(short *data, int size, int columns);
 void print_frame_u16(char *label, u16 **matrix, int row, int column);
@@ -49,8 +49,8 @@ void print_frame_u8(char *label, u8 **matrix, int row, int column);
 void print_frame_i8(char *label, i8 **matrix, int row, int column);
 void print_frame_u32(char *label, u32 **matrix, int row, int column);
 void print_frame_int(char *label, int **matrix, int row, int column);
-int cleanUp(int enableTouch);
-int flushFIFO(void);
+int cleanUp(struct fts_ts_info *info, int enableTouch);
+int flushFIFO(struct fts_ts_info *info);
 
 /* New API */
 int fromIDtoMask(u8 id, u8 *mask, int size);

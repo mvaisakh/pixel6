@@ -227,196 +227,9 @@
 #define SS_IX2_FORCE_W			"IX2_FORCE_W"
 #define SS_IX1_SENSE_W			"IX1_SENSE_W"
 #define SS_IX2_SENSE_W			"IX2_SENSE_W"
-/** @}*/
 
 
-/**
-  * Struct used to specify which test perform during the Mass Production Test.
-  * For each test item selected in this structure, there should be one or
-  * more labels associated in the Limit file from where load the thresholds
-  */
-typedef struct {
-	int MutualRaw;	/* /< MS Raw min/Max test */
-	int MutualRawMap;	/* /< MS Raw min/Max test for each node */
-	int MutualRawGap;	/* /< MS Raw Gap(max-min) test */
-	int MutualRawAdj;	/* /< MS Raw Adjacent test */
-	int MutualRawAdjGap;	/* /< MS Raw Adjacent Gap (max-min) test */
-	int MutualRawAdjPeak;	/* /< MS Raw Adjacent Peak
-				 * max(max(adjv),max(adjh)) test
-				 */
-	int MutualRawLP;	/* /< MS Low Power Raw min/Max test */
-	int MutualRawMapLP;	/* /< MS Low Power Raw min/Max test
-				 * for each node
-				 */
-	int MutualRawGapLP;	/* /< MS Low Power Raw Gap(max-min) test */
-	int MutualRawAdjLP;	/* /< MS Low Power Raw Adjacent test */
-	int MutualRawAdjITO;	/* /< MS Raw Adjacent test during ITO test */
-	int MutualRawMapITO; 	/* /< MS Raw ITO min/Max test */
-
-	int MutualCx1;	/* /< MS Cx1 min/Max test */
-	int MutualCx2;	/* /< MS Cx2 min/Max (for each node) test */
-	int MutualCx2Adj;	/* /< MS Vertical and Horizontal Adj Cx2 min/Max
-				 *  (for each node) test */
-	int MutualCxTotal;	/* /< MS Total Cx min/Max (for each node) test
-				 * */
-	int MutualCxTotalAdj;	/* /< MS Total vertical and Horizontal Adj Cx2
-				 * min/Max (for each node) test
-				 */
-
-	int MutualCx1LP;	/* /< MS LowPower Cx1 min/Max test */
-	int MutualCx2LP;	/* /< MS LowPower Cx2 min/Max (for each node)
-				 * test
-				 */
-	int MutualCx2AdjLP;	/* /< MS LowPower Vertical and Horizontal Adj
-				 * Cx2 min/Max
-				 * (for each node) test
-				 */
-	int MutualCxTotalLP;	/* /< MS Total LowPower Cx min/Max
-				 * (for each node) test */
-	int MutualCxTotalAdjLP;	/* /< MS Total LowPower vertical and Horizontal
-				 * Adj Cx2 min/Max (for each node) test
-				 */
-
-	int MutualKeyRaw;	/* /< MS Raw Key min/Max test */
-	int MutualKeyCx1;	/* /< MS Cx1 Key min/Max test */
-	int MutualKeyCx2;	/* /< MS Cx2 Key min/Max (for each node) test */
-	int MutualKeyCxTotal;	/* /< MS Total Cx Key min/Max (for each node)
-				 * test */
-
-	int SelfForceRaw;	/* /< SS Force Raw min/Max test */
-	int SelfForceRawGap;	/* /< SS Force Raw Gap(max-min) test */
-	int SelfForceRawMap;	/* /< SS Force Raw min/Max Map test */
-	int SelfForceRawLP;	/* /< SS Low Power Force Raw min/Max test */
-	int SelfForceRawGapLP; /* /< SS Low Power Force Raw Gap(max-min) test */
-	int SelfForceRawMapLP;	/* /< SS Low Power Force Raw min/Max Map test */
-
-	int SelfForceIx1;	/* /< SS Force Ix1 min/Max test */
-	int SelfForceIx2;	/* /< SS Force Ix2 min/Max (for each node) test
-				 * */
-	int SelfForceIx2Adj;	/* /< SS Vertical Adj Force Ix2 min/Max
-				 * (for each node) test */
-	int SelfForceIxTotal;	/* /< SS Total Force Ix min/Max (for each node)
-				 * test */
-	int SelfForceIxTotalAdj;	/* /< SS Total Vertical Adj Force Ix
-					 * min/Max
-					 * (for each node) test */
-	int SelfForceCx1;	/* /< SS Force Cx1 min/Max test */
-	int SelfForceCx2; /* /< SS Force Cx2 min/Max (for each node) test */
-	int SelfForceCx2Adj;	/* /< SS Vertical Adj Force Cx2 min/Max (for
-				 * each node) test */
-	int SelfForceCxTotal;	/* /< SS Total Force Cx min/Max (for each node)
-				 * test */
-	int SelfForceCxTotalAdj;	/* /< SS Total Vertical Adj Force Cx
-					 * min/Max (for each node) test
-					 */
-
-	int SelfForceIx1LP;	/* /< SS LP Force Ix1 min/Max test */
-	int SelfForceIx2LP;	/* /< SS LP Force Ix2 min/Max (for each node)
-				 *  test
-				 */
-	int SelfForceIx2AdjLP;	/* /< SS LP Vertical Adj Force Ix2 min/Max
-					 * (for each node) test */
-	int SelfForceIxTotalLP;	/* /< SS LP Total Force Ix min/Max
-				 * (for each node) test
-				 */
-	int SelfForceIxTotalAdjLP;	/* /< SS LP Total Vertical Adj Force Ix
-					 * min/Max (for each node) test
-					 */
-	int SelfForceCx1LP;	/* /< SS LP Force Cx1 min/Max test */
-	int SelfForceCx2LP;	/* /< SS LP Force Cx2 min/Max (for each node)
-				 * test
-				 */
-	int SelfForceCx2AdjLP;	/* /< SS LP Vertical Adj Force Cx2 min/Max (for
-				 * each node) test
-				 */
-	int SelfForceCxTotalLP;	/* /< SS LP Total Force Cx min/Max
-				 * (for each node) test
-				 */
-	int SelfForceCxTotalAdjLP;	/* /< SS LP Total Vertical Adj Force Cx
-					 * min/Max (for each node) test
-					 */
-
-	int SelfSenseRaw;	/* /< SS Sense Raw min/Max test */
-	int SelfSenseRawGap;	/* /< SS Sense Raw Gap(max-min) test */
-	int SelfSenseRawMap;	/* /< SS Sense Raw min/Max test for each node */
-	int SelfSenseRawLP;	/* /< SS Low Power Sense Raw min/Max test */
-	int SelfSenseRawGapLP; /* /< SS Low Power Sense Raw Gap(max-min) test */
-	int SelfSenseRawMapLP;	/* /< SS Low Power Sense Raw min/Max test for
-				 * each node
-				 */
-
-	int SelfSenseIx1;	/* /< SS Sense Ix1 min/Max test */
-	int SelfSenseIx2; /* /< SS Sense Ix2 min/Max (for each node) test */
-	int SelfSenseIx2Adj;	/* /< SS Horizontal Adj Sense Ix2 min/Max
-				  * (for each node) test */
-	int SelfSenseIxTotal;	/* /< SS Total Horizontal Sense Ix min/Max
-				  * (for each node) test */
-	int SelfSenseIxTotalAdj;	/* /< SS Total Horizontal Adj Sense Ix
-					 * min/Max
-					 * (for each node) test */
-	int SelfSenseCx1;	/* /< SS Sense Cx1 min/Max test */
-	int SelfSenseCx2; /* /< SS Sense Cx2 min/Max (for each node) test */
-	int SelfSenseCx2Adj;	/* /< SS Horizontal Adj Sense Cx2 min/Max
-				  * (for each node) test */
-	int SelfSenseCxTotal;	/* /< SS Total Sense Cx min/Max (for each node)
-				 * test */
-	int SelfSenseCxTotalAdj;	/* /< SS Total Horizontal Adj Sense Cx
-					 * min/Max
-					 * (for each node) test */
-	int SelfSenseIx1LP;	/* /< SS LP Sense Ix1 min/Max test */
-	int SelfSenseIx2LP; /* /< SS LP Sense Ix2 min/Max (for each node)
-			     * test
-			     */
-	int SelfSenseIx2AdjLP;	/* /< SS LP Horizontal Adj Sense Ix2 min/Max
-				 * (for each node) test
-				 */
-	int SelfSenseIxTotalLP;	/* /< SS LP Total Horizontal Sense Ix min/Max
-				 * (for each node) test
-				 */
-	int SelfSenseIxTotalAdjLP; /* /< SS LP Total Horizontal Adj Sense Ix
-				    * min/Max (for each node) test
-				    */
-	int SelfSenseCx1LP;	/* /< SS LP Sense Cx1 min/Max test */
-	int SelfSenseCx2LP; /* /< SS LP Sense Cx2 min/Max (for each node)
-			     * test
-			     */
-	int SelfSenseCx2AdjLP;	/* /< SS LP Horizontal Adj Sense Cx2 min/Max
-				 * (for each node) test
-				 */
-	int SelfSenseCxTotalLP;	/* /< SS LP Total Sense Cx min/Max
-				 * (for each node) test
-				 */
-	int SelfSenseCxTotalAdjLP; /* /< SS LP Total Horizontal Adj Sense Cx
-				    * min/Max (for each node) test
-				    */
-} TestToDo;
-
-
-#define MAX_LIMIT_FILE_NAME 100	/* /< max number of chars of the limit file name
-				 * */
-
-/**
-  * Struct which store the data coming from a Production Limit File
-  */
-typedef struct {
-	char *data;	/* /< pointer to an array of char which contains
-			  * the content of the Production Limit File */
-	int size;	/* /< size of data */
-	char name[MAX_LIMIT_FILE_NAME];	/* /< identifier of the source from
-					  * where the limits data were loaded
-					  * (if loaded from a file it will be
-					  * the file name, while if loaded
-					  * from .h will be "NULL") */
-} LimitFile;
-
-
-
-int initTestToDo(void);
-/**@}*/
-
-/**@}*/
-
-
+int initTestToDo(struct fts_ts_info *info);
 int computeAdjHoriz(i8 *data, int row, int column, u8 **result);
 int computeAdjHorizTotal(short *data, int row, int column, u16 **result);
 int computeAdjVert(i8 *data, int row, int column, u8 **result);
@@ -444,57 +257,64 @@ int checkLimitsGapOffsets(short *data, int row, int column, int threshold,
   * in order to satisfy different scenarios
   * @{
   */
-int production_test_ito(const char *path_limits, TestToDo *todo,
+int production_test_ito(struct fts_ts_info *info, const char *path_limits,
 			MutualSenseFrame *frame, u16 *max_val);
-int production_test_initialization(u8 type);
-int production_test_main(const char *pathThresholds, int stop_on_fail,
-			 int saveInit, TestToDo *todo, u8 mpflag);
-int production_test_ms_raw(const char *path_limits, int stop_on_fail,
-			   TestToDo *todo);
-int production_test_ms_raw_lp(const char *path_limits, int stop_on_fail,
-			      TestToDo *todo);
-int production_test_ms_cx(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ms_cx_lp(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_ss_raw(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ss_raw_lp(const char *path_limits, int stop_on_fail,
-			      TestToDo *todo);
-int production_test_ss_ix_cx(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_ss_ix_cx_lp(const char *path_limits, int stop_on_fail,
-			     TestToDo *todo);
-int production_test_data(const char *path_limits, int stop_on_fail,
-			  TestToDo *todo);
-int production_test_ms_key_cx(const char *path_limits, int stop_on_fail,
-			      TestToDo *todo);
-int production_test_ms_key_raw(const char *path_limits);
+int production_test_initialization(struct fts_ts_info *info, u8 type);
+int production_test_main(struct fts_ts_info *info, const char *pathThresholds,
+			 int stop_on_fail, int saveInit, u8 mpflag);
+int production_test_ms_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail);
+int production_test_ms_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail);
+int production_test_ms_cx(struct fts_ts_info *info, const char *path_limits,
+			  int stop_on_fail);
+int production_test_ms_cx_lp(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail);
+int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
+			   int stop_on_fail);
+int production_test_ss_raw_lp(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail);
+int production_test_ss_ix_cx(struct fts_ts_info *info, const char *path_limits,
+			     int stop_on_fail);
+int production_test_ss_ix_cx_lp(struct fts_ts_info *info,
+				const char *path_limits, int stop_on_fail);
+int production_test_data(struct fts_ts_info *info, const char *path_limits,
+			 int stop_on_fail);
+int production_test_ms_key_cx(struct fts_ts_info *info,
+			      const char *path_limits, int stop_on_fail);
+int production_test_ms_key_raw(struct fts_ts_info *info,
+			       const char *path_limits);
 /** @}*/
 
 /**
   * @addtogroup limit_file
   * @{
   */
-int parseProductionTestLimits(const char *path, LimitFile *file, char *label,
-			      int **data, int *row, int *column);
+int parseProductionTestLimits(struct fts_ts_info *info, const char *path,
+			      LimitFile *file, char *label, int **data,
+			      int *row, int *column);
 int readLine(char *data, char *line, int size, int *n);
-int getLimitsFile(const char *path, LimitFile *file);
+int getLimitsFile(struct fts_ts_info *info, const char *path, LimitFile *file);
 int freeLimitsFile(LimitFile *file);
-int freeCurrentLimitsFile(void);
+int freeCurrentLimitsFile(struct fts_ts_info *info);
 /**@}*/
 
-int tp_sensitivity_test_pre_cal_ms(MutualSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ms(struct fts_ts_info *info,
+				   MutualSenseFrame *finalFrame, short target,
 				   int percentage);
-int tp_sensitivity_test_pre_cal_ss(SelfSenseFrame *finalFrame, short target,
+int tp_sensitivity_test_pre_cal_ss(struct fts_ts_info *info,
+				   SelfSenseFrame *finalFrame, short target,
 				   int percentage);
-int tp_sensitivity_compute_gains(MutualSenseFrame *frame, short target,
+int tp_sensitivity_compute_gains(struct fts_ts_info *info,
+				  MutualSenseFrame *frame, short target,
 				 int saveGain);
-int tp_sensitivity_test_post_cal_ms(MutualSenseFrame *finalFrame,
+int tp_sensitivity_test_post_cal_ms(struct fts_ts_info *info,
+				    MutualSenseFrame *finalFrame,
 				    MutualSenseFrame *deltas, short target,
 				    int percentage, int *mean_normal,
 				    int *mean_edge);
-int tp_sensitivity_set_scan_mode(u8 scan, int enableGains);
-int tp_sensitivity_mode(u8 enter, int saveGain);
-int tp_sensitivity_test_std_ms(int numFrames, MutualSenseFrame *std);
+int tp_sensitivity_set_scan_mode(struct fts_ts_info *info, u8 scan, int enableGains);
+int tp_sensitivity_mode(struct fts_ts_info *info, u8 enter, int saveGain);
+int tp_sensitivity_test_std_ms(struct fts_ts_info *info, int numFrames,
+			       MutualSenseFrame *std);
 #endif

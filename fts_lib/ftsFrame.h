@@ -106,13 +106,17 @@ typedef struct {
 } SelfSenseFrame;
 
 
-int getChannelsLength(void);
-int getFrameData(u16 address, int size, short *frame);
-int getSenseLen(void);
-int getForceLen(void);
-int getMSFrame3(MSFrameType type, MutualSenseFrame *frame);
-int getSSFrame3(SSFrameType type, SelfSenseFrame *frame);
-int readSyncDataHeader(u8 type, DataHeader *msHeader, DataHeader *ssHeader,
+int getChannelsLength(struct fts_ts_info *info);
+int getFrameData(struct fts_ts_info *info, u16 address, int size,
+		 short *frame);
+int getSenseLen(struct fts_ts_info *info);
+int getForceLen(struct fts_ts_info *info);
+int getMSFrame3(struct fts_ts_info *info, MSFrameType type,
+		MutualSenseFrame *frame);
+int getSSFrame3(struct fts_ts_info *info, SSFrameType type,
+		SelfSenseFrame *frame);
+int readSyncDataHeader(struct fts_ts_info *info, u8 type, DataHeader *msHeader, DataHeader *ssHeader,
 		       u64 *address);
-int getSyncFrame(u8 type, MutualSenseFrame *msFrame, SelfSenseFrame *ssFrame);
+int getSyncFrame(struct fts_ts_info *info, u8 type, MutualSenseFrame *msFrame,
+		 SelfSenseFrame *ssFrame);
 #endif

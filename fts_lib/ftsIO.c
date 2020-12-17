@@ -40,11 +40,6 @@ static u16 I2CSAD;	/* /< slave address of the IC in the i2c bus */
 #include <linux/spi/spidev.h>
 #endif
 
-static void *client;	/* /< bus client retrived by the OS and
-			 * used to execute the bus transfers */
-
-
-
 #include "ftsCore.h"
 #include "ftsError.h"
 #include "ftsHardware.h"
@@ -60,19 +55,21 @@ static void *client;	/* /< bus client retrived by the OS and
   */
 int openChannel(void *clt)
 {
-	client = clt;
 #ifdef I2C_INTERFACE
 	I2CSAD = ((struct i2c_client *)clt)->addr;
-	pr_info("openChannel: SAD: %02X\n", I2CSAD);
+	dev_info(&((struct i2c_client *)clt)->dev, "openChannel: SAD: %02X\n",
+		I2CSAD);
 #else
-	pr_info("%s: spi_master: flags = %04X !\n", __func__,
-		 ((struct spi_device *)client)->master->flags);
-	pr_info("%s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
-		__func__, ((struct spi_device *)client)->max_speed_hz,
-		((struct spi_device *)client)->chip_select,
-		((struct spi_device *)client)->bits_per_word,
-		((struct spi_device *)client)->mode);
-	pr_info("openChannel: completed!\n");
+	dev_info(&((struct spi_device *)clt)->dev,
+		"%s: spi_master: flags = %04X !\n", __func__,
+		 ((struct spi_device *)clt)->master->flags);
+	dev_info(&((struct spi_device *)clt)->dev,
+		"%s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
+		__func__, ((struct spi_device *)clt)->max_speed_hz,
+		((struct spi_device *)clt)->chip_select,
+		((struct spi_device *)clt)->bits_per_word,
+		((struct spi_device *)clt)->mode);
+	dev_info(&((struct spi_device *)clt)->dev, "openChannel: completed!\n");
 #endif
 	return OK;
 }
@@ -92,58 +89,6 @@ int changeSAD(u8 sad)
 #endif
 
 
-/**
-  * Retrieve the pointer to the device struct of the IC
-  * @return a the device struct pointer if client was previously set
-  * or NULL in all the other cases
-  */
-struct device *getDev(void)
-{
-	if (client != NULL)
-		return &(getClient()->dev);
-	else
-		return NULL;
-}
-
-
-#ifdef I2C_INTERFACE
-/**
-  * Retrieve the pointer of the i2c_client struct representing the IC as i2c
-  * slave
-  * @return client if it was previously set or NULL in all the other cases
-  */
-struct i2c_client *getClient()
-{
-	if (client != NULL)
-		return (struct i2c_client *)client;
-	else
-		return NULL;
-}
-#else
-/**
-  * Retrieve the pointer of the spi_device struct representing the IC as spi
-  * slave
-  * @return client if it was previously set or NULL in all the other cases
-  */
-struct spi_device *getClient()
-{
-	if (client != NULL)
-		return (struct spi_device *)client;
-	else
-		return NULL;
-}
-#endif
-
-struct fts_ts_info *getDrvInfo(void)
-{
-	struct device *dev = getDev();
-	struct fts_ts_info *info = NULL;
-
-	if (dev != NULL)
-		info = dev_get_drvdata(dev);
-	return info;
-}
-
 /****************** New I2C API *********************/
 
 /**
@@ -153,11 +98,11 @@ struct fts_ts_info *getDrvInfo(void)
   * @param byteToRead number of bytes to read
   * @return OK if success or an error code which specify the type of error
   */
-static int fts_read_internal(u8 *outBuf, int byteToRead, bool dma_safe)
+static int fts_read_internal(struct fts_ts_info *info, u8 *outBuf,
+			     int byteToRead, bool dma_safe)
 {
 	int ret = -1;
 	int retry = 0;
-	struct fts_ts_info *info = getDrvInfo();
 #ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
 #else
@@ -166,7 +111,7 @@ static int fts_read_internal(u8 *outBuf, int byteToRead, bool dma_safe)
 #endif
 
 	if (dma_safe == false && byteToRead > sizeof(info->io_read_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -191,22 +136,22 @@ static int fts_read_internal(u8 *outBuf, int byteToRead, bool dma_safe)
 	spi_message_add_tail(&transfer[0], &msg);
 #endif
 
-	if (client == NULL)
+	if (info->client == NULL)
 		return ERROR_BUS_O;
 	while (retry < I2C_RETRY && ret < OK) {
 #ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
+		ret = i2c_transfer(info->client->adapter, I2CMsg, 1);
 #else
-		ret = spi_sync(getClient(), &msg);
+		ret = spi_sync(info->client, &msg);
 #endif
 
 		retry++;
 		if (ret < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_R);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_R);
 		return ERROR_BUS_R;
 	}
 
@@ -226,12 +171,12 @@ static int fts_read_internal(u8 *outBuf, int byteToRead, bool dma_safe)
   * @param byteToRead number of bytes to read
   * @return OK if success or an error code which specify the type of error
   */
-static int fts_writeRead_internal(u8 *cmd, int cmdLength, u8 *outBuf,
-				  int byteToRead, bool dma_safe)
+static int fts_writeRead_internal(struct fts_ts_info *info, u8 *cmd,
+				  int cmdLength, u8 *outBuf, int byteToRead,
+				  bool dma_safe)
 {
 	int ret = -1;
 	int retry = 0;
-	struct fts_ts_info *info = getDrvInfo();
 #ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[2];
 #else
@@ -241,7 +186,7 @@ static int fts_writeRead_internal(u8 *cmd, int cmdLength, u8 *outBuf,
 
 	if (dma_safe == false && (cmdLength > sizeof(info->io_write_buf) ||
 	    byteToRead > sizeof(info->io_read_buf))) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -289,14 +234,14 @@ static int fts_writeRead_internal(u8 *cmd, int cmdLength, u8 *outBuf,
 
 #endif
 
-	if (client == NULL)
+	if (info->client == NULL)
 		return ERROR_BUS_O;
 
 	while (retry < I2C_RETRY && ret < OK) {
 #ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 2);
+		ret = i2c_transfer(info->client->adapter, I2CMsg, 2);
 #else
-		ret = spi_sync(getClient(), &msg);
+		ret = spi_sync(info->client, &msg);
 #endif
 
 		retry++;
@@ -304,7 +249,7 @@ static int fts_writeRead_internal(u8 *cmd, int cmdLength, u8 *outBuf,
 			mdelay(I2C_WAIT_BEFORE_RETRY);
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
 
@@ -321,11 +266,11 @@ static int fts_writeRead_internal(u8 *cmd, int cmdLength, u8 *outBuf,
   * @param cmdLength size of cmd
   * @return OK if success or an error code which specify the type of error
   */
-static int fts_write_internal(u8 *cmd, int cmdLength, bool dma_safe)
+static int fts_write_internal(struct fts_ts_info *info, u8 *cmd, int cmdLength,
+			      bool dma_safe)
 {
 	int ret = -1;
 	int retry = 0;
-	struct fts_ts_info *info = getDrvInfo();
 #ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
 #else
@@ -334,7 +279,7 @@ static int fts_write_internal(u8 *cmd, int cmdLength, bool dma_safe)
 #endif
 
 	if (dma_safe == false && cmdLength > sizeof(info->io_write_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -364,22 +309,22 @@ static int fts_write_internal(u8 *cmd, int cmdLength, bool dma_safe)
 #endif
 
 
-	if (client == NULL)
+	if (info->client == NULL)
 		return ERROR_BUS_O;
 	while (retry < I2C_RETRY && ret < OK) {
 #ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
+		ret = i2c_transfer(info->client->adapter, I2CMsg, 1);
 #else
-		ret = spi_sync(getClient(), &msg);
+		ret = spi_sync(info->client, &msg);
 #endif
 
 		retry++;
 		if (ret < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_W);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 	return OK;
@@ -391,12 +336,12 @@ static int fts_write_internal(u8 *cmd, int cmdLength, bool dma_safe)
   * @param cmdLength size of cmd
   * @return OK if success, or an error code which specify the type of error
   */
-static int fts_writeFwCmd_internal(u8 *cmd, int cmdLength, bool dma_safe)
+static int fts_writeFwCmd_internal(struct fts_ts_info *info, u8 *cmd,
+				   int cmdLength, bool dma_safe)
 {
 	int ret = -1;
 	int ret2 = -1;
 	int retry = 0;
-	struct fts_ts_info *info = getDrvInfo();
 #ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
 #else
@@ -405,7 +350,7 @@ static int fts_writeFwCmd_internal(u8 *cmd, int cmdLength, bool dma_safe)
 #endif
 
 	if (dma_safe == false && cmdLength > sizeof(info->io_write_buf)) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -434,28 +379,28 @@ static int fts_writeFwCmd_internal(u8 *cmd, int cmdLength, bool dma_safe)
 	spi_message_add_tail(&transfer[0], &msg);
 #endif
 
-	if (client == NULL)
+	if (info->client == NULL)
 		return ERROR_BUS_O;
-	resetErrorList();
+	resetErrorList(info);
 	while (retry < I2C_RETRY && (ret < OK || ret2 < OK)) {
 #ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
+		ret = i2c_transfer(info->client->adapter, I2CMsg, 1);
 #else
-		ret = spi_sync(getClient(), &msg);
+		ret = spi_sync(info->client, &msg);
 #endif
 		retry++;
 		if (ret >= 0)
-			ret2 = checkEcho(cmd, cmdLength);
+			ret2 = checkEcho(info, cmd, cmdLength);
 		if (ret < OK || ret2 < OK)
 			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* pr_err("fts_writeCmd: attempt %d\n", retry); */
+		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
 	}
 	if (ret < 0) {
-		pr_err("fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
+		dev_err(info->dev, "fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 	if (ret2 < OK) {
-		pr_err("fts_writeFwCmd: check echo ERROR %08X\n", ret2);
+		dev_err(info->dev, "fts_writeFwCmd: check echo ERROR %08X\n", ret2);
 		return ret2;
 	}
 	return OK;
@@ -475,14 +420,14 @@ static int fts_writeFwCmd_internal(u8 *cmd, int cmdLength, bool dma_safe)
   * @param byteToRead number of bytes to read
   * @return OK if success or an error code which specify the type of error
   */
-static int fts_writeThenWriteRead_internal(u8 *writeCmd1, int writeCmdLength,
-				    u8 *readCmd1, int readCmdLength,
-				    u8 *outBuf, int byteToRead,
-				    bool dma_safe)
+static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
+					   u8 *writeCmd1, int writeCmdLength,
+					   u8 *readCmd1, int readCmdLength,
+					   u8 *outBuf, int byteToRead,
+					   bool dma_safe)
 {
 	int ret = -1;
 	int retry = 0;
-	struct fts_ts_info *info = getDrvInfo();
 #ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[3];
 #else
@@ -493,7 +438,7 @@ static int fts_writeThenWriteRead_internal(u8 *writeCmd1, int writeCmdLength,
 	if (dma_safe == false && (writeCmdLength > sizeof(info->io_write_buf) ||
 	    readCmdLength > sizeof(info->io_extra_write_buf) ||
 	    byteToRead > sizeof(info->io_read_buf))) {
-		pr_err("%s: preallocated buffers are too small!\n", __func__);
+		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
 		return ERROR_ALLOC;
 	}
 
@@ -555,13 +500,13 @@ static int fts_writeThenWriteRead_internal(u8 *writeCmd1, int writeCmdLength,
 	spi_message_add_tail(&transfer[2], &msg);
 #endif
 
-	if (client == NULL)
+	if (info->client == NULL)
 		return ERROR_BUS_O;
 	while (retry < I2C_RETRY && ret < OK) {
 #ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 3);
+		ret = i2c_transfer(info->client->adapter, I2CMsg, 3);
 #else
-		ret = spi_sync(getClient(), &msg);
+		ret = spi_sync(info->client, &msg);
 #endif
 		retry++;
 		if (ret < OK)
@@ -569,7 +514,7 @@ static int fts_writeThenWriteRead_internal(u8 *writeCmd1, int writeCmdLength,
 	}
 
 	if (ret < 0) {
-		pr_err("%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
+		dev_err(info->dev, "%s: ERROR %08X\n", __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
 
@@ -580,61 +525,64 @@ static int fts_writeThenWriteRead_internal(u8 *writeCmd1, int writeCmdLength,
 }
 
 /* Wrapper API for i2c read and write */
-int fts_read(u8 *outBuf, int byteToRead)
+int fts_read(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 {
-	return fts_read_internal(outBuf, byteToRead, false);
+	return fts_read_internal(info, outBuf, byteToRead, false);
 }
 
-int fts_read_heap(u8 *outBuf, int byteToRead)
+int fts_read_heap(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 {
-	return fts_read_internal(outBuf, byteToRead, true);
+	return fts_read_internal(info, outBuf, byteToRead, true);
 }
 
-int fts_writeRead(u8 *cmd, int cmdLength, u8 *outBuf, int byteToRead)
+int fts_writeRead(struct fts_ts_info *info, u8 *cmd, int cmdLength, u8 *outBuf,
+		  int byteToRead)
 {
-	return fts_writeRead_internal(cmd, cmdLength, outBuf, byteToRead,
+	return fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
 					false);
 }
 
-int fts_writeRead_heap(u8 *cmd, int cmdLength, u8 *outBuf, int byteToRead)
+int fts_writeRead_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength,
+		       u8 *outBuf, int byteToRead)
 {
-	return fts_writeRead_internal(cmd, cmdLength, outBuf, byteToRead, true);
+	return fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
+				      true);
 }
 
-int fts_write(u8 *cmd, int cmdLength)
+int fts_write(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_write_internal(cmd, cmdLength, false);
+	return fts_write_internal(info, cmd, cmdLength, false);
 }
 
-int fts_write_heap(u8 *cmd, int cmdLength)
+int fts_write_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_write_internal(cmd, cmdLength, true);
+	return fts_write_internal(info, cmd, cmdLength, true);
 }
 
-int fts_writeFwCmd(u8 *cmd, int cmdLength)
+int fts_writeFwCmd(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_writeFwCmd_internal(cmd, cmdLength, false);
+	return fts_writeFwCmd_internal(info, cmd, cmdLength, false);
 }
 
-int fts_writeFwCmd_heap(u8 *cmd, int cmdLength)
+int fts_writeFwCmd_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_writeFwCmd_internal(cmd, cmdLength, true);
+	return fts_writeFwCmd_internal(info, cmd, cmdLength, true);
 }
 
-int fts_writeThenWriteRead(u8 *writeCmd1, int writeCmdLength,
-			   u8 *readCmd1, int readCmdLength,
+int fts_writeThenWriteRead(struct fts_ts_info *info, u8 *writeCmd1,
+			   int writeCmdLength, u8 *readCmd1, int readCmdLength,
 			   u8 *outBuf, int byteToRead)
 {
-	return fts_writeThenWriteRead_internal(writeCmd1, writeCmdLength,
+	return fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
 						readCmd1, readCmdLength,
 						outBuf, byteToRead, false);
 }
 
-int fts_writeThenWriteRead_heap(u8 *writeCmd1, int writeCmdLength,
-				u8 *readCmd1, int readCmdLength,
-				u8 *outBuf, int byteToRead)
+int fts_writeThenWriteRead_heap(struct fts_ts_info *info, u8 *writeCmd1,
+				int writeCmdLength, u8 *readCmd1,
+				int readCmdLength, u8 *outBuf, int byteToRead)
 {
-	return fts_writeThenWriteRead_internal(writeCmd1, writeCmdLength,
+	return fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
 						readCmd1, readCmdLength,
 						outBuf, byteToRead, true);
 }
@@ -649,13 +597,12 @@ int fts_writeThenWriteRead_heap(u8 *writeCmd1, int writeCmdLength,
   * @return OK if success or an error code which specify the type of error
   */
 /* this function works only if the address is max 8 bytes */
-int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data,
-		  int dataSize)
+int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
+		  u64 address, u8 *data, int dataSize)
 {
 	u8 *finalCmd;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
-	struct fts_ts_info *info = getDrvInfo();
 
 	finalCmd = info->io_write_buf;
 
@@ -670,20 +617,20 @@ int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data,
 			}
 
 			finalCmd[0] = cmd;
-			pr_debug("%s: addrSize = %d\n", __func__, addrSize);
+			dev_dbg(info->dev, "%s: addrSize = %d\n", __func__, addrSize);
 			for (i = 0; i < addrSize; i++) {
 				finalCmd[i + 1] = (u8)((address >> ((addrSize -
 								     1 - i) *
 								    8)) & 0xFF);
-				pr_debug("%s: cmd[%d] = %02X\n",
+				dev_dbg(info->dev, "%s: cmd[%d] = %02X\n",
 					 __func__, i + 1, finalCmd[i + 1]);
 			}
 
 			memcpy(&finalCmd[addrSize + 1], data, toWrite);
 
-			if (fts_write_heap(finalCmd, 1 + addrSize + toWrite)
-				< OK) {
-				pr_err(" %s: ERROR %08X\n",
+			if (fts_write_heap(info, finalCmd, 1 + addrSize +
+					   toWrite) < OK) {
+				dev_err(info->dev, " %s: ERROR %08X\n",
 					 __func__, ERROR_BUS_W);
 				return ERROR_BUS_W;
 			}
@@ -693,7 +640,7 @@ int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data,
 			data += toWrite;
 		}
 	} else
-		pr_err("%s: address size bigger than max allowed %lu... ERROR %08X\n",
+		dev_err(info->dev, "%s: address size bigger than max allowed %lu... ERROR %08X\n",
 			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
 
 	return OK;
@@ -712,14 +659,14 @@ int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data,
   * set to 1, otherwise if it is valid set to 0 (or any other value)
   * @return OK if success or an error code which specify the type of error
   */
-int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf,
-		      int byteToRead, int hasDummyByte)
+int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
+		      u64 address, u8 *outBuf, int byteToRead,
+		      int hasDummyByte)
 {
 	u8 *finalCmd;
 	u8 *buff;
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
-	struct fts_ts_info *info = getDrvInfo();
 
 	finalCmd = info->io_write_buf;
 	buff = info->io_read_buf;
@@ -739,17 +686,17 @@ int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf,
 							    8)) & 0xFF);
 
 		if (hasDummyByte == 1) {
-			if (fts_writeRead_heap(finalCmd, 1 + addrSize, buff,
-					toRead + 1) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
+					       buff, toRead + 1) < OK) {
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff + 1, toRead);
 		} else {
-			if (fts_writeRead_heap(finalCmd, 1 + addrSize, buff,
-					toRead) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
+					       buff, toRead) < OK) {
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
@@ -779,15 +726,14 @@ int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf,
   */
 /* this function works only if the sum of two addresses in the two commands is
  * max 8 bytes */
-int fts_writeU8UXthenWriteU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
-			       AddrSize addrSize2, u64 address, u8 *data,
-			       int dataSize)
+int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
+			       AddrSize addrSize1, u8 cmd2, AddrSize addrSize2,
+			       u64 address, u8 *data, int dataSize)
 {
 	u8 *finalCmd1;
 	u8 *finalCmd2;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
-	struct fts_ts_info *info = getDrvInfo();
 
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
@@ -816,14 +762,15 @@ int fts_writeU8UXthenWriteU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 
 		memcpy(&finalCmd2[addrSize2 + 1], data, toWrite);
 
-		if (fts_write_heap(finalCmd1, 1 + addrSize1) < OK) {
-			pr_err("%s: first write error... ERROR %08X\n",
+		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
+			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
 
-		if (fts_write_heap(finalCmd2, 1 + addrSize2 + toWrite) < OK) {
-			pr_err("%s: second write error... ERROR %08X\n",
+		if (fts_write_heap(info, finalCmd2, 1 + addrSize2 + toWrite)
+				   < OK) {
+			dev_err(info->dev, "%s: second write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
@@ -853,7 +800,8 @@ int fts_writeU8UXthenWriteU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
   */
 /* this function works only if the sum of two addresses in the two commands is
  * max 8 bytes */
-int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
+int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
+				   AddrSize addrSize1, u8 cmd2,
 				   AddrSize addrSize2, u64 address, u8 *outBuf,
 				   int byteToRead, int hasDummyByte)
 {
@@ -862,7 +810,6 @@ int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 	u8 *buff;
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
-	struct fts_ts_info *info = getDrvInfo();
 
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
@@ -891,24 +838,24 @@ int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 							       addrSize2 - 1 -
 							       i) * 8)) & 0xFF);
 
-		if (fts_write_heap(finalCmd1, 1 + addrSize1) < OK) {
-			pr_err("%s: first write error... ERROR %08X\n",
+		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
+			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
 			return ERROR_BUS_W;
 		}
 
 		if (hasDummyByte == 1) {
-			if (fts_writeRead_heap(finalCmd2, 1 + addrSize2, buff,
-					toRead + 1) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
+					       buff, toRead + 1) < OK) {
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff + 1, toRead);
 		} else {
-			if (fts_writeRead_heap(finalCmd2, 1 + addrSize2, buff,
-					toRead) < OK) {
-				pr_err("%s: read error... ERROR %08X\n",
+			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
+					       buff, toRead) < OK) {
+				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
 				return ERROR_BUS_WR;
 			}

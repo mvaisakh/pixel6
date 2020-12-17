@@ -168,14 +168,21 @@ typedef struct {
 	u32 data_size; 	        /* /< size of raw data buffer */
 } GoldenMutualRawData;
 
-int requestHDMDownload(u8 type);
-int readHDMHeader(u8 type, DataHeader *header, u64 *address);
-int readMutualSenseCompensationData(u8 type, MutualSenseData *data);
-int readSelfSenseCompensationData(u8 type, SelfSenseData *data);
-int readTotMutualSenseCompensationData(u8 type, TotMutualSenseData *data);
-int readTotSelfSenseCompensationData(u8 type, TotSelfSenseData *data);
-int readSensitivityCoefficientsData(MutualSenseCoeff *msData,
+int requestHDMDownload(struct fts_ts_info *info, u8 type);
+int readHDMHeader(struct fts_ts_info *info, u8 type, DataHeader *header,
+		  u64 *address);
+int readMutualSenseCompensationData(struct fts_ts_info *info, u8 type,
+				    MutualSenseData *data);
+int readSelfSenseCompensationData(struct fts_ts_info *info, u8 type,
+				  SelfSenseData *data);
+int readTotMutualSenseCompensationData(struct fts_ts_info *info, u8 type,
+				       TotMutualSenseData *data);
+int readTotSelfSenseCompensationData(struct fts_ts_info *info, u8 type,
+				     TotSelfSenseData *data);
+int readSensitivityCoefficientsData(struct fts_ts_info *info,
+				    MutualSenseCoeff *msData,
 				    SelfSenseCoeff *ssData);
-int readGoldenMutualRawData(GoldenMutualRawData *pgmData);
+int readGoldenMutualRawData(struct fts_ts_info *info,
+			    GoldenMutualRawData *pgmData);
 
 #endif

@@ -119,21 +119,27 @@ typedef struct {
   * @{
   */
 
-int wait_for_flash_ready(u8 type);
-int hold_m3(void);
-int flash_erase_unlock(void);
-int flash_full_erase(void);
-int flash_erase_page_by_page(ErasePage keep_cx, Firmware *fw);
-int start_flash_dma(void);
-int fillFlash(u32 address, u8 *data, int size);
+int wait_for_flash_ready(struct fts_ts_info *info, u8 type);
+int hold_m3(struct fts_ts_info *info);
+int flash_erase_unlock(struct fts_ts_info *info);
+int flash_full_erase(struct fts_ts_info *info);
+int flash_erase_page_by_page(struct fts_ts_info *info, ErasePage keep_cx,
+			     Firmware *fw);
+int start_flash_dma(struct fts_ts_info *info);
+int fillFlash(struct fts_ts_info *info, u32 address, u8 *data, int size);
 
-int flash_unlock(void);
-int getFWdata(const char *pathToFile, u8 **data, int *size);
-int parseBinFile(u8 *fw_data, int fw_size, Firmware *fw, int keep_cx);
-int readFwFile(const char *path, Firmware *fw, int keep_cx);
-int flash_burn(Firmware fw, int force_burn, int keep_cx);
-int flashProcedure(const char *path, int force, int keep_cx);
-int flash_enable_uvlo_autopowerdown(void);
+int flash_unlock(struct fts_ts_info *info);
+int getFWdata(struct fts_ts_info *info, const char *pathToFile, u8 **data,
+	      int *size);
+int parseBinFile(struct fts_ts_info *info, u8 *fw_data, int fw_size,
+		 Firmware *fw, int keep_cx);
+int readFwFile(struct fts_ts_info *info, const char *path, Firmware *fw,
+	       int keep_cx);
+int flash_burn(struct fts_ts_info *info, Firmware fw, int force_burn,
+	       int keep_cx);
+int flashProcedure(struct fts_ts_info *info, const char *path, int force,
+		   int keep_cx);
+int flash_enable_uvlo_autopowerdown(struct fts_ts_info *info);
 
 #endif
 
