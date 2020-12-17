@@ -143,15 +143,43 @@ bool is_exynos_drm_connector(const struct drm_connector *connector)
 int exynos_drm_connector_init(struct drm_device *dev,
 			      struct exynos_drm_connector *exynos_connector,
 			      const struct exynos_drm_connector_funcs *funcs,
+			      const struct exynos_drm_connector_helper_funcs *helper_funcs,
 			      int connector_type)
 {
 	exynos_connector->funcs = funcs;
+	exynos_connector->helper_private = helper_funcs;
 
 	return drm_connector_init(dev, &exynos_connector->base,
 				 &exynos_drm_connector_funcs,
 				 DRM_MODE_CONNECTOR_DSI);
 }
 EXPORT_SYMBOL(exynos_drm_connector_init);
+
+static int exynos_drm_connector_create_brightness_properties(struct drm_device *dev)
+{
+	struct drm_property *prop;
+	struct exynos_drm_connector_properties *p = dev_get_exynos_connector_properties(dev);
+
+	prop = drm_property_create(dev, DRM_MODE_PROP_BLOB|DRM_MODE_PROP_IMMUTABLE,
+		 "brightness_capability", 0);
+	if (!prop) {
+		pr_err("create brightness_capability property failed");
+		return -ENOMEM;
+	}
+	p->brightness_capability = prop;
+
+	prop = drm_property_create_bool(dev, 0, "hbm_on");
+	if (!prop)
+		return -ENOMEM;
+	p->hbm_on = prop;
+
+	prop = drm_property_create_range(dev, 0, "brightness_level", 0, UINT_MAX);
+	if (!prop)
+		return -ENOMEM;
+	p->brightness_level = prop;
+
+	return 0;
+}
 
 static int exynos_drm_connector_create_hdr_formats_property(struct drm_device *dev)
 {
@@ -204,6 +232,10 @@ int exynos_drm_connector_create_properties(struct drm_device *dev)
                 return PTR_ERR(p->lp_mode);
 
 	ret = exynos_drm_connector_create_luminance_properties(dev);
+	if (ret)
+		return ret;
+
+	ret = exynos_drm_connector_create_brightness_properties(dev);
 	if (ret)
 		return ret;
 

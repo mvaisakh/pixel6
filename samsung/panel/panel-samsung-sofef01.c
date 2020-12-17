@@ -18,6 +18,27 @@
 #define SOFEF01_WRCTRLD_BCTRL_BIT      0x20
 #define SOFEF01_WRCTRLD_HBM_BIT        0xC0
 
+static const u8 unlock_cmd_f0[] = { 0xF0, 0x5A, 0x5A };
+static const u8 lock_cmd_f0[] = { 0xF0, 0xA5, 0xA5 };
+static const u8 global_para_05[] = { 0xB0, 0x05 };
+static const u8 err_flag_setting[] = { 0xF4, 0x01 };
+static const u8 display_off[] = { 0x28 };
+static const u8 sleep_in[] = { 0x10 };
+
+static const struct exynos_dsi_cmd sofef01_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 20),
+	EXYNOS_DSI_CMD(sleep_in, 0),
+	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
+	EXYNOS_DSI_CMD(global_para_05, 0),
+	EXYNOS_DSI_CMD(err_flag_setting, 0),
+	EXYNOS_DSI_CMD(lock_cmd_f0, 120),
+};
+
+static const struct exynos_dsi_cmd_set sofef01_off_cmd_set = {
+	.num_cmd = ARRAY_SIZE(sofef01_off_cmds),
+	.cmds = sofef01_off_cmds
+};
+
 static void sofef01_write_display_mode(struct exynos_panel *ctx,
 				       const struct drm_display_mode *mode)
 {
@@ -163,6 +184,7 @@ const struct exynos_panel_desc samsung_sofef01 = {
 	.min_luminance = 5,
 	.modes = sofef01_modes,
 	.num_modes = ARRAY_SIZE(sofef01_modes),
+	.off_cmd_set = &sofef01_off_cmd_set,
 	.panel_func = &sofef01_drm_funcs,
 	.exynos_panel_func = &sofef01_exynos_funcs,
 };

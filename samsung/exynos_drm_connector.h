@@ -12,6 +12,7 @@
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_connector.h>
+#include <drm/samsung_drm.h>
 
 struct exynos_drm_connector;
 
@@ -21,6 +22,9 @@ struct exynos_drm_connector_properties {
 	struct drm_property *min_luminance;
 	struct drm_property *hdr_formats;
 	struct drm_property *lp_mode;
+	struct drm_property *hbm_on;
+	struct drm_property *brightness_capability;
+	struct drm_property *brightness_level;
 };
 
 struct exynos_display_dsc {
@@ -74,6 +78,12 @@ struct exynos_drm_connector_state {
 
 	/* @seamless_possible: this is set if the current mode switch can be done seamlessly */
 	bool seamless_possible;
+
+	/* @brightness_level: panel brightness level */
+	unsigned int brightness_level;
+
+	/* @hbm_on: hbm_on indicator */
+	bool hbm_on;
 };
 
 #define to_exynos_connector_state(connector_state) \
@@ -92,9 +102,16 @@ struct exynos_drm_connector_funcs {
 				   uint64_t *val);
 };
 
+struct exynos_drm_connector_helper_funcs {
+	void (*atomic_commit)(struct exynos_drm_connector *exynos_connector,
+			      struct exynos_drm_connector_state *exynos_old_state,
+			      struct exynos_drm_connector_state *exynos_new_state);
+};
+
 struct exynos_drm_connector {
 	struct drm_connector base;
 	const struct exynos_drm_connector_funcs *funcs;
+	const struct exynos_drm_connector_helper_funcs *helper_private;
 };
 
 #define to_exynos_connector(connector) \
@@ -104,6 +121,7 @@ bool is_exynos_drm_connector(const struct drm_connector *connector);
 int exynos_drm_connector_init(struct drm_device *dev,
 			      struct exynos_drm_connector *exynos_connector,
 			      const struct exynos_drm_connector_funcs *funcs,
+			      const struct exynos_drm_connector_helper_funcs *helper_funcs,
 			      int connector_type);
 int exynos_drm_connector_create_properties(struct drm_device *dev);
 struct exynos_drm_connector_properties *

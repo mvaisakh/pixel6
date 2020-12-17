@@ -362,6 +362,8 @@ int exynos_panel_disable(struct drm_panel *panel)
 		cancel_delayed_work_sync(&ctx->local_hbm.timeout_work);
 	}
 
+	exynos_panel_send_cmd_set(ctx, ctx->desc->off_cmd_set);
+
 	dev_dbg(ctx->dev, "%s +\n", __func__);
 	return 0;
 }
@@ -497,6 +499,7 @@ static int exynos_update_status(struct backlight_device *bl)
 	struct exynos_panel *ctx = bl_get_data(bl);
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
+	struct drm_connector_state *conn_state;
 	u32 bl_range = 0;
 
 	if (!ctx->enabled || !ctx->initialized) {
@@ -510,6 +513,14 @@ static int exynos_update_status(struct backlight_device *bl)
 
 	dev_info(ctx->dev, "req: %d, br: %d\n", bl->props.brightness,
 		brightness);
+
+	/* TODO(b/175121444): add drm_modeset_lock() to protect brightness sync */
+	conn_state = ctx->exynos_connector.base.state;
+	if (conn_state) {
+		struct exynos_drm_connector_state *exynos_connector_state =
+			to_exynos_connector_state(conn_state);
+		exynos_connector_state->brightness_level = bl->props.brightness;
+	}
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func && exynos_panel_func->set_brightness)
@@ -599,10 +610,82 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 		   desc->min_luminance, desc->max_luminance,
 		   desc->max_avg_luminance);
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
+	drm_printf(p, "\thbm_on: %s\n", ctx->hbm_mode ? "true" : "false");
+}
+
+static int exynos_panel_connector_get_property(
+				   struct exynos_drm_connector *exynos_connector,
+				   const struct exynos_drm_connector_state *exynos_state,
+				   struct drm_property *property,
+				   uint64_t *val)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+
+	if (property == p->brightness_level) {
+		*val = exynos_state->brightness_level;
+		dev_dbg(ctx->dev, "%s: brt(%llu)\n", __func__, *val);
+	} else if (property == p->hbm_on) {
+		*val = exynos_state->hbm_on;
+		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	} else
+		return -EINVAL;
+
+	return 0;
+}
+
+static int exynos_panel_connector_set_property(
+				   struct exynos_drm_connector *exynos_connector,
+				   struct exynos_drm_connector_state *exynos_state,
+				   struct drm_property *property,
+				   uint64_t val)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_connector);
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+
+	if (property == p->brightness_level) {
+		exynos_state->brightness_level = val;
+		dev_dbg(ctx->dev, "%s: brt(%u)\n", __func__, exynos_state->brightness_level);
+	} else if (property == p->hbm_on) {
+		exynos_state->hbm_on = val;
+		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__,
+			 exynos_state->hbm_on ? "true" : "false");
+	} else
+		return -EINVAL;
+
+	return 0;
 }
 
 static const struct exynos_drm_connector_funcs exynos_panel_connector_funcs = {
 	.atomic_print_state = exynos_panel_connector_print_state,
+	.atomic_get_property = exynos_panel_connector_get_property,
+	.atomic_set_property = exynos_panel_connector_set_property,
+};
+
+static void exynos_panel_connector_atomic_commit(
+				struct exynos_drm_connector *exynos_connector,
+			    struct exynos_drm_connector_state *exynos_old_state,
+			    struct exynos_drm_connector_state *exynos_new_state)
+{
+	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
+	const struct exynos_panel_funcs *exynos_panel_func;
+
+	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		ctx->bl->props.brightness = exynos_new_state->brightness_level;
+		backlight_update_status(ctx->bl);
+	}
+
+	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
+		exynos_panel_func = ctx->desc->exynos_panel_func;
+		if (exynos_panel_func && exynos_panel_func->set_hbm_mode)
+			exynos_panel_func->set_hbm_mode(ctx, exynos_new_state->hbm_on);
+	}
+}
+
+static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
+	.atomic_commit = exynos_panel_connector_atomic_commit,
 };
 
 static int exynos_drm_connector_modes(struct drm_connector *connector)
@@ -1271,6 +1354,23 @@ static struct attribute *bl_device_attrs[] = {
 };
 ATTRIBUTE_GROUPS(bl_device);
 
+static int exynos_panel_attach_brightness_capability(struct exynos_drm_connector *exynos_conn,
+				const struct brightness_capability *brt_capability)
+{
+	struct exynos_drm_connector_properties *p =
+		exynos_drm_connector_get_properties(exynos_conn);
+	struct drm_property_blob *blob;
+
+	blob = drm_property_create_blob(exynos_conn->base.dev,
+				 sizeof(struct brightness_capability),
+				 brt_capability);
+	if (IS_ERR(blob))
+		return PTR_ERR(blob);
+	drm_object_attach_property(&exynos_conn->base.base, p->brightness_capability, blob->base.id);
+
+	return 0;
+}
+
 static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
 					enum exynos_panel_state panel_state)
 {
@@ -1327,6 +1427,15 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->max_luminance, desc->max_luminance);
 	drm_object_attach_property(obj, p->max_avg_luminance, desc->max_avg_luminance);
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
+	drm_object_attach_property(obj, p->brightness_level, 0);
+	drm_object_attach_property(obj, p->hbm_on, 0);
+
+	if (desc->brt_capability) {
+		ret = exynos_panel_attach_brightness_capability(&ctx->exynos_connector,
+				desc->brt_capability);
+		if (ret)
+			dev_err(ctx->dev, "Failed to attach brightness capability (%d)\n", ret);
+	}
 
 	if (desc->lp_mode) {
 		ret = exynos_panel_attach_lp_mode(&ctx->exynos_connector, &desc->lp_mode->mode);
@@ -1347,6 +1456,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	ret = exynos_drm_connector_init(dev, &ctx->exynos_connector,
 					&exynos_panel_connector_funcs,
+					&exynos_panel_connector_helper_funcs,
 					DRM_MODE_CONNECTOR_DSI);
 	if (ret) {
 		dev_err(ctx->dev, "failed to initialize connector with drm\n");

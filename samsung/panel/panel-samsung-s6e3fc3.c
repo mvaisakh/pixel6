@@ -9,6 +9,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <drm/drm_vblank.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <video/mipi_display.h>
@@ -43,6 +44,17 @@ static const u8 aod_on_50nit[] = { 0x53, 0x24 };
 static const u8 aod_on_10nit[] = { 0x53, 0x25 };
 static const u8 display_off[] = { 0x28 };
 static const u8 display_on[] = { 0x29 };
+static const u8 sleep_in[] = { 0x10 };
+
+static const struct exynos_dsi_cmd s6e3fc3_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 0),
+	EXYNOS_DSI_CMD(sleep_in, 120),
+};
+
+static const struct exynos_dsi_cmd_set s6e3fc3_off_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3fc3_off_cmds),
+	.cmds = s6e3fc3_off_cmds
+};
 
 static const struct exynos_dsi_cmd s6e3fc3_lp_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 0),
@@ -197,6 +209,9 @@ static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool local_hbm_en)
 {
+	struct drm_mode_config *config;
+	struct drm_crtc *crtc = NULL;
+
 	if (exynos_panel->local_hbm.enabled == local_hbm_en)
 		return;
 
@@ -204,8 +219,16 @@ static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 	exynos_panel->local_hbm.enabled = local_hbm_en;
 	s6e3fc3_write_display_mode(exynos_panel, &exynos_panel->current_mode->mode);
 	mutex_unlock(&exynos_panel->local_hbm.lock);
-	/* TODO: need to wait two drm_crtc_wait_one_vblank() */
 
+	config = &exynos_panel->exynos_connector.base.dev->mode_config;
+	drm_modeset_lock(&config->connection_mutex, NULL);
+	if (exynos_panel->exynos_connector.base.state)
+		crtc = exynos_panel->exynos_connector.base.state->crtc;
+	drm_modeset_unlock(&config->connection_mutex);
+	if (crtc) {
+		drm_crtc_wait_one_vblank(crtc);
+		drm_crtc_wait_one_vblank(crtc);
+	}
 }
 
 static void s6e3fc3_mode_set(struct exynos_panel *ctx,
@@ -344,12 +367,44 @@ static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.mode_set = s6e3fc3_mode_set,
 };
 
+const struct brightness_capability s6e3fc3_brightness_capability = {
+	.normal = {
+		.nits = {
+			.min = 2,
+			.max = 500,
+		},
+		.level = {
+			.min = 4,
+			.max = 2047,
+		},
+		.percentage = {
+			.min = 0,
+			.max = 80,
+		},
+	},
+	.hbm = {
+		.nits = {
+			.min = 550,
+			.max = 800,
+		},
+		.level = {
+			.min = 2389,
+			.max = 4095,
+		},
+		.percentage = {
+			.min = 80,
+			.max = 100,
+		},
+	},
+};
+
 const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.dsc_pps = PPS_SETTING,
 	.dsc_pps_len = ARRAY_SIZE(PPS_SETTING),
 	.data_lane_cnt = 4,
 	.max_brightness = 2047,
 	.dft_brightness = 1023,
+	.brt_capability = &s6e3fc3_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
 	.hdr_formats = BIT(2),
 	.max_luminance = 5400000,
@@ -357,6 +412,7 @@ const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.min_luminance = 5,
 	.modes = s6e3fc3_modes,
 	.num_modes = ARRAY_SIZE(s6e3fc3_modes),
+	.off_cmd_set = &s6e3fc3_off_cmd_set,
 	.lp_mode = &s6e3fc3_lp_mode,
 	.lp_cmd_set = &s6e3fc3_lp_cmd_set,
 	.binned_lp = s6e3fc3_binned_lp,

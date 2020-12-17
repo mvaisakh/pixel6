@@ -76,6 +76,17 @@ static const u8 hlpm_on_10nit[] = { 0x53, 0x03 };
 static const u8 gamma_aid_update[] = { 0xF7, 0x02 };
 static const u8 display_off[] = { 0x28 };
 static const u8 display_on[] = { 0x29 };
+static const u8 sleep_in[] = { 0x10 };
+
+static const struct exynos_dsi_cmd s6e3hc2_off_cmds[] = {
+	EXYNOS_DSI_CMD(display_off, 10),
+	EXYNOS_DSI_CMD(sleep_in, 120),
+};
+
+static const struct exynos_dsi_cmd_set s6e3hc2_off_cmd_set = {
+	.num_cmd = ARRAY_SIZE(s6e3hc2_off_cmds),
+	.cmds = s6e3hc2_off_cmds
+};
 
 static const struct exynos_dsi_cmd s6e3hc2_lp_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 17),
@@ -517,12 +528,44 @@ static const struct exynos_panel_funcs s6e3hc2_exynos_funcs = {
 	.mode_set = s6e3hc2_mode_set,
 };
 
+const struct brightness_capability s6e3hc2_brightness_capability = {
+	.normal = {
+		.nits = {
+			.min = 2,
+			.max = 450,
+		},
+		.level = {
+			.min = 4,
+			.max = 1023,
+		},
+		.percentage = {
+			.min = 0,
+			.max = 80,
+		},
+	},
+	.hbm = {
+		.nits = {
+			.min = 600,
+			.max = 600,
+		},
+		.level = { /* not valid for one-step hbm */
+			.min = 1023,
+			.max = 1023,
+		},
+		.percentage = {
+			.min = 80,
+			.max = 100,
+		},
+	},
+};
+
 const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.dsc_pps = SEQ_PPS_WQHD,
 	.dsc_pps_len = ARRAY_SIZE(SEQ_PPS_WQHD),
 	.data_lane_cnt = 4,
 	.max_brightness = 1023,
 	.dft_brightness = 511,
+	.brt_capability = &s6e3hc2_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
 	.hdr_formats = BIT(2),
 	.max_luminance = 5400000,
@@ -532,6 +575,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_wqhd = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc2_bl_range),
 	.modes = s6e3hc2_wqhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_wqhd_modes),
+	.off_cmd_set = &s6e3hc2_off_cmd_set,
 	.lp_mode = &s6e3hc2_wqhd_lp_mode,
 	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
 	.binned_lp = s6e3hc2_binned_lp,
@@ -546,6 +590,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.data_lane_cnt = 4,
 	.max_brightness = 1023,
 	.dft_brightness = 511,
+	.brt_capability = &s6e3hc2_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
 	.hdr_formats = BIT(2),
 	.max_luminance = 5400000,
@@ -555,6 +600,7 @@ const struct exynos_panel_desc samsung_s6e3hc2_fhd = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc2_bl_range),
 	.modes = s6e3hc2_fhd_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc2_fhd_modes),
+	.off_cmd_set = &s6e3hc2_off_cmd_set,
 	.lp_mode = &s6e3hc2_fhd_lp_mode,
 	.lp_cmd_set = &s6e3hc2_lp_cmd_set,
 	.binned_lp = s6e3hc2_binned_lp,
