@@ -225,6 +225,12 @@ static int process_io_entries(struct lwis_client *client,
 				resp->error_code = ret;
 				goto event_push;
 			}
+		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
+			ret = lwis_entry_read_assert(lwis_dev, entry, /*non_blocking=*/false);
+			if (ret) {
+				resp->error_code = ret;
+				goto event_push;
+			}
 		} else {
 			pr_err_ratelimited("Unrecognized io_entry command\n");
 			resp->error_code = -EINVAL;

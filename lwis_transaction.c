@@ -67,27 +67,42 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 	int ret = 0;
 
 	/* Read until getting the expected value or timeout */
-	val = ~entry->poll.val;
+	val = ~entry->read_assert.val;
 	start = ktime_to_ms(lwis_get_time());
-	while (val != entry->poll.val) {
-		ret = lwis_device_single_register_read(lwis_dev, /*non_blocking=*/false,
-						       entry->poll.bid, entry->poll.offset, &val,
-						       lwis_dev->native_value_bitwidth);
-		if (ret) {
-			dev_err(lwis_dev->dev, "Failed to read registers: block %d offset 0x%llx\n",
-				entry->poll.bid, entry->poll.offset);
-			return ret;
+	while (val != entry->read_assert.val) {
+		ret = lwis_entry_read_assert(lwis_dev, entry, /*non_blocking=*/false);
+		if (ret == 0) {
+			break;
 		}
-		if ((val & entry->poll.mask) == (entry->poll.val & entry->poll.mask)) {
-			return 0;
-		}
-		if (ktime_to_ms(lwis_get_time()) - start > entry->poll.timeout_ms) {
+		if (ktime_to_ms(lwis_get_time()) - start > entry->read_assert.timeout_ms) {
+			dev_err(lwis_dev->dev, "Polling timed out: block %d offset 0x%llx\n",
+				entry->read_assert.bid, entry->read_assert.offset);
 			return -ETIMEDOUT;
 		}
 		/* Sleep for 1ms */
 		usleep_range(1000, 1000);
 	}
-	return -ETIMEDOUT;
+	return ret;
+}
+
+int lwis_entry_read_assert(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
+			   bool non_blocking)
+{
+	uint64_t val;
+	int ret = 0;
+
+	ret = lwis_device_single_register_read(lwis_dev, non_blocking, entry->read_assert.bid,
+					       entry->read_assert.offset, &val,
+					       lwis_dev->native_value_bitwidth);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to read registers: block %d offset 0x%llx\n",
+			entry->read_assert.bid, entry->read_assert.offset);
+		return ret;
+	}
+	if ((val & entry->read_assert.mask) == (entry->read_assert.val & entry->read_assert.mask)) {
+		return 0;
+	}
+	return -EINVAL;
 }
 
 static void save_transaction_to_history(struct lwis_client *client,
@@ -186,6 +201,12 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
 			ret = lwis_entry_poll(lwis_dev, entry);
+			if (ret) {
+				resp->error_code = ret;
+				goto event_push;
+			}
+		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
+			ret = lwis_entry_read_assert(lwis_dev, entry, in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;

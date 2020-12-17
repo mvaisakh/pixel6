@@ -348,6 +348,9 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 			break;
 		case LWIS_IO_ENTRY_POLL:
 			ret = lwis_entry_poll(lwis_dev, &io_entries[i]);
+		case LWIS_IO_ENTRY_READ_ASSERT:
+			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i],
+						     /*non_blocking=*/false);
 			break;
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
