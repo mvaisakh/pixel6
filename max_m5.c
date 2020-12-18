@@ -53,19 +53,26 @@ static void dump_model(struct device *dev, u16 *data, int count)
 int max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic)
 {
 	struct max_m5_data *m5_data = max1720x_get_model_data(client);
+	unsigned long sum = 0;
+	const int loops = 4;
 	unsigned int tmp;
-	int rtn;
+	int i, rtn;
 
 	if (!m5_data || !m5_data->regmap)
 		return -ENODEV;
 
-	rtn = regmap_read(m5_data->regmap->regmap, MAX_M5_IIN, &tmp);
-	if (rtn)
-		pr_err("Failed to read %x\n", MAX_M5_IIN);
-	else
-		*iic  = tmp * 125;
+	for (i = 0; i < loops; i++) {
+		rtn = regmap_read(m5_data->regmap->regmap, MAX_M5_IIN, &tmp);
+		if (rtn) {
+			pr_err("Failed to read %x\n", MAX_M5_IIN);
+			return rtn;
+		}
 
-	return rtn;
+		sum += tmp;
+	}
+
+	*iic  = (sum * 125) / loops;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(max_m5_read_actual_input_current_ua);
 
