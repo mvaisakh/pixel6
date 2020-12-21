@@ -32,6 +32,12 @@ config GOOGLE_BATTERY
 	  battery statistics such as bin count and other features common to all
 	  google battery powered devices.
 
+config GOOGLE_DUAL_BATT_GAUGE
+        tristate "Google Dual Battery Gauge"
+        help
+          Say Y here to choose the Google Dual Battery Gauge.
+          The driver handles 2 battery gauges and called by google battery.
+
 config GOOGLE_CPM
 	tristate "Google Charging Policy Manager"
 	help

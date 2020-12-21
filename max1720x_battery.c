@@ -203,6 +203,8 @@ struct max1720x_chip {
 
 	/* debug interface, register to read or write */
 	u32 debug_reg_address;
+
+	struct power_supply_desc max1720x_psy_desc;
 };
 
 #define MAX1720_EMPTY_VOLTAGE(profile, temp, cycle) \
@@ -3011,7 +3013,7 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 {
 	struct dentry *de;
 
-	de = debugfs_create_dir("max1720x", 0);
+	de = debugfs_create_dir(chip->max1720x_psy_desc.name, 0);
 	if (IS_ERR_OR_NULL(de))
 		return -ENOENT;
 
@@ -3841,17 +3843,6 @@ static int max1720x_decode_sn(char *serial_number,
 	return 0;
 }
 
-static struct power_supply_desc max1720x_psy_desc = {
-	.name = "maxfg",
-	.type = POWER_SUPPLY_TYPE_BATTERY,
-	.get_property = max1720x_get_property,
-	.set_property = max1720x_set_property,
-	.property_is_writeable = max1720x_property_is_writeable,
-	.properties = max1720x_battery_props,
-	.num_properties = ARRAY_SIZE(max1720x_battery_props),
-};
-
-
 static void *ct_seq_start(struct seq_file *s, loff_t *pos)
 {
 	struct max1720x_history *hi = (struct max1720x_history *)s->private;
@@ -4599,6 +4590,7 @@ static int max1720x_probe(struct i2c_client *client,
 	struct device *dev = &client->dev;
 	struct power_supply_config psy_cfg = { };
 	const struct max17x0x_reg *reg;
+	const char *psy_name = NULL;
 	int ret = 0;
 
 	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
@@ -4649,11 +4641,28 @@ static int max1720x_probe(struct i2c_client *client,
 	}
 
 	if (of_property_read_bool(dev->of_node, "maxim,psy-type-unknown"))
-		max1720x_psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
+		chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
 
 	psy_cfg.drv_data = chip;
 	psy_cfg.of_node = chip->dev->of_node;
-	chip->psy = devm_power_supply_register(dev, &max1720x_psy_desc,
+
+	ret = of_property_read_string(dev->of_node,
+				      "maxim,dual-battery", &psy_name);
+	if (ret == 0)
+		chip->max1720x_psy_desc.name = devm_kstrdup(dev, psy_name, GFP_KERNEL);
+	else
+		chip->max1720x_psy_desc.name = "maxfg";
+
+	pr_info("max1720x_psy_desc.name=%s\n",chip->max1720x_psy_desc.name);
+
+	chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_BATTERY,
+	chip->max1720x_psy_desc.get_property = max1720x_get_property,
+	chip->max1720x_psy_desc.set_property = max1720x_set_property,
+	chip->max1720x_psy_desc.property_is_writeable = max1720x_property_is_writeable,
+	chip->max1720x_psy_desc.properties = max1720x_battery_props,
+	chip->max1720x_psy_desc.num_properties = ARRAY_SIZE(max1720x_battery_props),
+
+	chip->psy = devm_power_supply_register(dev, &chip->max1720x_psy_desc,
 					       &psy_cfg);
 	if (IS_ERR(chip->psy)) {
 		dev_err(dev, "Couldn't register as power supply\n");
@@ -4694,7 +4703,7 @@ static int max1720x_probe(struct i2c_client *client,
 				ret);
 	}
 
-	chip->ce_log = logbuffer_register("batt_ce");
+	chip->ce_log = logbuffer_register(chip->max1720x_psy_desc.name);
 	if (IS_ERR(chip->ce_log)) {
 		ret = PTR_ERR(chip->ce_log);
 		dev_err(dev, "failed to obtain logbuffer, ret=%d\n", ret);
