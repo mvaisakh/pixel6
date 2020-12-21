@@ -308,6 +308,7 @@ static void exynos_drm_crtc_reset(struct drm_crtc *crtc)
 
 	exynos_crtc_state = kzalloc(sizeof(*exynos_crtc_state), GFP_KERNEL);
 	if (exynos_crtc_state) {
+		exynos_crtc_state->dqe.enabled = true;
 		crtc->state = &exynos_crtc_state->base;
 		crtc->state->crtc = crtc;
 	} else {
@@ -400,6 +401,8 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 	} else if (property == exynos_crtc->props.ppc ||
 			property == exynos_crtc->props.max_disp_freq) {
 		return 0;
+	} else if (property == exynos_crtc->props.dqe_enabled) {
+		exynos_crtc_state->dqe.enabled = val;
 	} else if (property == exynos_crtc->props.cgc_lut) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_lut, val,
@@ -452,6 +455,8 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 		*val = decon->bts.dvfs_max_disp_freq;
 	else if (property == exynos_crtc->props.force_bpc)
 		*val = exynos_crtc_state->force_bpc;
+	else if (property == exynos_crtc->props.dqe_enabled)
+		*val = exynos_crtc_state->dqe.enabled;
 	else if (property == exynos_crtc->props.cgc_lut)
 		*val = (exynos_crtc_state->cgc_lut) ?
 			exynos_crtc_state->cgc_lut->base.id : 0;
@@ -578,6 +583,21 @@ exynos_drm_crtc_create_force_bpc_property(struct exynos_drm_crtc *exynos_crtc)
 	return 0;
 }
 
+static int exynos_drm_crtc_create_bool(struct drm_crtc *crtc, const char *name,
+		struct drm_property **prop)
+{
+	struct drm_property *p;
+
+	p = drm_property_create_bool(crtc->dev, 0, name);
+	if (!p)
+		return -ENOMEM;
+
+	drm_object_attach_property(&crtc->base, p, 0);
+	*prop = p;
+
+	return 0;
+}
+
 static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
 		struct drm_property **prop)
 {
@@ -677,6 +697,11 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 
 		ret = exynos_drm_crtc_create_blob(crtc, "gamma_matrix",
 				&exynos_crtc->props.gamma_matrix);
+		if (ret)
+			goto err_crtc;
+
+		ret = exynos_drm_crtc_create_bool(crtc, "dqe_enabled",
+				&exynos_crtc->props.dqe_enabled);
 		if (ret)
 			goto err_crtc;
 	}

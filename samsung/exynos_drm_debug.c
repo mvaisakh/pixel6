@@ -770,6 +770,9 @@ exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
 		goto err;
 
+	debugfs_create_bool("force_disabled", 0664, dent_dir,
+			&dqe->force_disabled);
+
 	return;
 
 err:

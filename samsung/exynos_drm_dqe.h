@@ -32,6 +32,7 @@ struct exynos_dqe_state {
 	struct drm_color_lut *regamma_lut;
 	struct dither_config *disp_dither_config;
 	struct dither_config *cgc_dither_config;
+	bool enabled;
 };
 
 struct dither_debug_override {
@@ -72,6 +73,8 @@ struct exynos_dqe {
 
 	bool force_gm;
 	struct exynos_matrix force_gamma_matrix;
+
+	bool force_disabled;
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,

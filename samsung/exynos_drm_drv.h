@@ -278,6 +278,7 @@ struct exynos_drm_crtc {
 		struct drm_property *max_disp_freq;
 		struct drm_property *linear_matrix;
 		struct drm_property *gamma_matrix;
+		struct drm_property *dqe_enabled;
 	} props;
 };
 
