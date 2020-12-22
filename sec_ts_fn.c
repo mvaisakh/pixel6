@@ -11,7 +11,9 @@
  */
 
 #include "sec_ts.h"
+#ifdef USE_SPEC_CHECK
 #include "sec_ts_fac_spec.h"
+#endif
 
 static void fw_update(void *device_data);
 static void get_fw_ver_bin(void *device_data);
@@ -1344,9 +1346,10 @@ static int sec_ts_cm_spec_over_check(struct sec_ts_data *ts, short *gap,
 					gapx = 100 - (dpos1 * 100 / dpos2);
 
 				gap[pos1] = gapx;
-
+#ifdef USE_SPEC_CHECK
 				if (gapx > cm_gap[i][j])
 					specover_count++;
+#endif
 			}
 		}
 	}
@@ -1369,9 +1372,10 @@ static int sec_ts_cm_spec_over_check(struct sec_ts_data *ts, short *gap,
 					gapy = 100 - (dpos1 * 100 / dpos2);
 
 				gap[pos1] = gapy;
-
+#ifdef USE_SPEC_CHECK
 				if (gapy > cm_gap[i][j])
 					specover_count++;
+#endif
 			}
 		}
 	}
@@ -1394,9 +1398,10 @@ static int sec_ts_cs_spec_over_check(struct sec_ts_data *ts, short *gap)
 			dTmp *= -1;
 
 		gap[i] = dTmp;
-
+#ifdef USE_SPEC_CHECK
 		if (dTmp > cs_tx_gap)
 			specover_count++;
+#endif
 	}
 
 	for (i = ts->tx_count; i < ts->tx_count + ts->rx_count - 1; i++) {
@@ -1405,9 +1410,10 @@ static int sec_ts_cs_spec_over_check(struct sec_ts_data *ts, short *gap)
 			dTmp *= -1;
 
 		gap[i] = dTmp;
-
+#ifdef USE_SPEC_CHECK
 		if (dTmp > cs_rx_gap)
 			specover_count++;
+#endif
 	}
 
 	input_info(true, &ts->client->dev, "%s: Gap NG for %d node(s)\n",
@@ -1687,7 +1693,6 @@ static int sec_ts_read_frame(struct sec_ts_data *ts, u8 type, short *min,
 	int ret = 0;
 	int i = 0;
 	int j = 0;
-	short dTmp = 0;
 	short *temp = NULL;
 	u8 w_type;
 
@@ -1805,9 +1810,11 @@ static int sec_ts_read_frame(struct sec_ts_data *ts, u8 type, short *min,
 					temp[(i * ts->rx_count) + j];
 	}
 
+#ifdef USE_SPEC_CHECK
 	/* spec check */
 	if (*spec_check == SPEC_CHECK) {
 		int specover_count = 0;
+		short dTmp = 0;
 
 		if (type == TYPE_OFFSET_DATA_SDC) {
 			unsigned int region = 0;
@@ -1884,6 +1891,9 @@ static int sec_ts_read_frame(struct sec_ts_data *ts, u8 type, short *min,
 				*spec_check = SPEC_FAIL;
 		}
 	}
+#else
+	*spec_check = SPEC_PASS;
+#endif
 
 	kfree(temp);
 
@@ -2063,21 +2073,24 @@ static int sec_ts_read_channel(struct sec_ts_data *ts, u8 type, short *min,
 			max[0] = max[1] = SHRT_MIN;
 
 			for (ii = 0; ii < ts->tx_count; ii++) {
+#ifdef USE_SPEC_CHECK
 				if (ts->pFrame[ii] > cs_tx_max)
 					specover_count++;
 				if (ts->pFrame[ii] < cs_tx_min)
 					specover_count++;
-
+#endif
 				min[0] = min(min[0], ts->pFrame[ii]);
 				max[0] = max(max[0], ts->pFrame[ii]);
 			}
+
 			for (ii = ts->tx_count;
 			     ii < ts->tx_count + ts->rx_count; ii++) {
+#ifdef USE_SPEC_CHECK
 				if (ts->pFrame[ii] > cs_rx_max)
 					specover_count++;
 				if (ts->pFrame[ii] < cs_rx_min)
 					specover_count++;
-
+#endif
 				min[1] = min(min[1], ts->pFrame[ii]);
 				max[1] = max(max[1], ts->pFrame[ii]);
 			}
@@ -2086,13 +2099,16 @@ static int sec_ts_read_channel(struct sec_ts_data *ts, u8 type, short *min,
 		input_info(true, &ts->client->dev,
 			   "%s: type : %d, specover = %d\n",
 			   __func__, type, specover_count);
-
+#ifdef USE_SPEC_CHECK
 		if (specover_count == 0 &&
 			(max[0] - min[0]) < cs_tx_mm &&
 			(max[1] - min[1]) < cs_rx_mm)
 			*spec_check = SPEC_PASS;
 		else
 			*spec_check = SPEC_FAIL;
+#else
+		*spec_check = SPEC_PASS;
+#endif
 	}
 
 err_read_data:
@@ -3003,7 +3019,9 @@ static void run_rawcap_read(void *device_data)
 
 	memset(&mode, 0x00, sizeof(struct sec_ts_test_mode));
 	mode.type = TYPE_OFFSET_DATA_SDC;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 
 	sec_ts_read_raw_data(ts, sec, &mode);
 
@@ -3023,7 +3041,9 @@ static void run_rawcap_read_all(void *device_data)
 	memset(&mode, 0x00, sizeof(struct sec_ts_test_mode));
 	mode.type = TYPE_OFFSET_DATA_SDC;
 	mode.allnode = TEST_MODE_ALL_NODE;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 
 	sec_ts_read_raw_data(ts, sec, &mode);
 
@@ -3426,6 +3446,7 @@ static int sec_ts_read_frame_stdev(struct sec_ts_data *ts,
 		}
 	}
 
+#ifdef USE_SPEC_CHECK
 	if (*spec_check == SPEC_CHECK) {
 		int specover_count = 0;
 
@@ -3442,6 +3463,9 @@ static int sec_ts_read_frame_stdev(struct sec_ts_data *ts,
 		else
 			*spec_check = SPEC_FAIL;
 	}
+#else
+	*spec_check = SPEC_PASS;
+#endif
 
 	if (*spec_check == SPEC_PASS)
 		buff_len = scnprintf(pBuff, buff_size, "OK %d %d\n",
@@ -3509,7 +3533,9 @@ static void run_rawdata_stdev_read(void *device_data)
 
 	memset(&mode, 0x00, sizeof(struct sec_ts_test_mode));
 	mode.type = TYPE_REMV_AMB_DATA;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 
 	sec_ts_read_frame_stdev(ts, sec, mode.type, mode.min, mode.max,
 				&mode.spec_check, false);
@@ -3555,7 +3581,9 @@ static int sec_ts_read_frame_p2p(struct sec_ts_data *ts,
 
 	/* get min data */
 	mode.type = TYPE_NOI_P2P_MIN;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 	sec_ts_read_frame(ts, mode.type, mode.min, mode.max,
 			  &mode.spec_check);
 	if (mode.spec_check == SPEC_FAIL)
@@ -3573,7 +3601,9 @@ static int sec_ts_read_frame_p2p(struct sec_ts_data *ts,
 
 	/* get max data */
 	mode.type = TYPE_NOI_P2P_MAX;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 	sec_ts_read_frame(ts, mode.type, mode.min, mode.max,
 			  &mode.spec_check);
 	if (mode.spec_check == SPEC_FAIL)
@@ -3582,8 +3612,10 @@ static int sec_ts_read_frame_p2p(struct sec_ts_data *ts,
 	for (i = 0; i < readbytes; i++) {
 		/* get p2p by subtract min from max data */
 		ts->pFrame[i] = ts->pFrame[i] - temp[i];
+#ifdef USE_SPEC_CHECK
 		if (ts->pFrame[i] > noi_mm)
 			result |= 0x4;
+#endif
 	}
 
 	if (result != 0x0)
@@ -3697,7 +3729,9 @@ static void run_self_rawcap_read(void *device_data)
 	memset(&mode, 0x00, sizeof(struct sec_ts_test_mode));
 	mode.type = TYPE_OFFSET_DATA_SDC;
 	mode.frame_channel = TEST_MODE_READ_CHANNEL;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 
 	sec_ts_read_raw_data(ts, sec, &mode);
 
@@ -3718,7 +3752,9 @@ static void run_self_rawcap_read_all(void *device_data)
 	mode.type = TYPE_OFFSET_DATA_SDC;
 	mode.frame_channel = TEST_MODE_READ_CHANNEL;
 	mode.allnode = TEST_MODE_ALL_NODE;
+#ifdef USE_SPEC_CHECK
 	mode.spec_check = SPEC_CHECK;
+#endif
 
 	sec_ts_read_raw_data(ts, sec, &mode);
 
