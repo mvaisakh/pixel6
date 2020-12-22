@@ -55,6 +55,18 @@ struct edgetpu_device_group {
 	 */
 	refcount_t ref_count;
 	uint workload_id;
+	struct edgetpu_dev *etdev;	/* the device opened by the leader */
+	/*
+	 * Whether edgetpu_group_detach_mailbox() has effects on this group.
+	 * This field is configured according to the priority field when
+	 * creating this group.
+	 */
+	bool mailbox_detachable;
+
+	/* protects everything in the following comment block */
+	struct mutex lock;
+	/* fields protected by @lock */
+
 	/*
 	 * List of clients belonging to this group.
 	 * The first client is the leader.
@@ -69,14 +81,21 @@ struct edgetpu_device_group {
 	 */
 	struct edgetpu_client **members;
 	enum edgetpu_device_group_status status;
-	struct edgetpu_dev *etdev;	/* the device opened by the leader */
 	struct edgetpu_vii vii;		/* VII mailbox */
+	/*
+	 * Context ID ranges from EDGETPU_CONTEXT_VII_BASE to
+	 * EDGETPU_NCONTEXTS - 1.
+	 * This equals EDGETPU_CONTEXT_INVALID when the group has mailbox
+	 * detached (means the group isn't in any context at this time).
+	 */
+	enum edgetpu_context_id context_id;
 	/* The IOMMU domain being associated to this group */
 	struct edgetpu_iommu_domain *etdomain;
 	/* matrix of P2P mailboxes */
 	struct edgetpu_p2p_mailbox **p2p_mailbox_matrix;
-	/* protects clients, n_clients, status, and vii */
-	struct mutex lock;
+
+	/* end of fields protected by @lock */
+
 	/* TPU IOVA mapped to host DRAM space */
 	struct edgetpu_mapping_root host_mappings;
 	/* TPU IOVA mapped to buffers backed by dma-buf */
@@ -102,8 +121,8 @@ static inline bool edgetpu_device_group_is_waiting(
  *
  * Must be called with lock held.
  */
-static inline bool edgetpu_device_group_is_finalized(
-		const struct edgetpu_device_group *group)
+static inline bool
+edgetpu_device_group_is_finalized(const struct edgetpu_device_group *group)
 {
 	return group->status == EDGETPU_DEVICE_GROUP_FINALIZED;
 }
@@ -239,11 +258,16 @@ int edgetpu_device_group_sync_buffer(struct edgetpu_device_group *group,
 /* Clear all mappings for a device group. */
 void edgetpu_mappings_clear_group(struct edgetpu_device_group *group);
 
-/* Return context ID for group MMU mappings, based on VII mailbox index. */
+/*
+ * Return context ID for group MMU mappings.
+ *
+ * Caller holds @group->lock to prevent race, the context ID may be changed by
+ * edgetpu_group_{detach/attach}_mailbox.
+ */
 static inline enum edgetpu_context_id
-edgetpu_group_context_id(struct edgetpu_device_group *group)
+edgetpu_group_context_id_locked(struct edgetpu_device_group *group)
 {
-	return EDGETPU_CONTEXT_VII_BASE + group->vii.mailbox->mailbox_id - 1;
+	return group->context_id;
 }
 
 /* dump mappings in @group */
@@ -289,5 +313,40 @@ bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
 
 /* Notify all device groups of @etdev about a failure on the die */
 void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev);
+
+/*
+ * Detach and release the mailbox of VII from @group.
+ * Some group operations would be disabled when a group has no mailbox attached.
+ */
+void edgetpu_group_detach_mailbox(struct edgetpu_device_group *group);
+/*
+ * Request and attach a mailbox of VII to @group.
+ *
+ * Return 0 on success.
+ */
+int edgetpu_group_attach_mailbox(struct edgetpu_device_group *group);
+
+/*
+ * Checks whether @group has mailbox detached.
+ *
+ * Caller holds @group->lock.
+ */
+static inline bool
+edgetpu_group_mailbox_detached_locked(const struct edgetpu_device_group *group)
+{
+	return group->context_id == EDGETPU_CONTEXT_INVALID;
+}
+
+/*
+ * Returns whether @group is finalized and has mailbox attached.
+ *
+ * Caller holds @group->lock.
+ */
+static inline bool
+edgetpu_group_finalized_and_attached(const struct edgetpu_device_group *group)
+{
+	return edgetpu_device_group_is_finalized(group) &&
+	       !edgetpu_group_mailbox_detached_locked(group);
+}
 
 #endif /* __EDGETPU_DEVICE_GROUP_H__ */

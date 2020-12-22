@@ -72,6 +72,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 		container_of(etdev, struct edgetpu_platform_dev, edgetpu_dev);
 	void *image_vaddr, *header_vaddr;
 	struct abrolhos_image_config *image_config;
+	phys_addr_t image_start, image_end, carveout_start, carveout_end;
 	dma_addr_t header_dma_addr;
 	int ret, tpu_state;
 
@@ -140,6 +141,27 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	image_config = fw_buf->vaddr + ABROLHOS_IMAGE_CONFIG_OFFSET;
 	memcpy(&etdev->fw_version, &image_config->firmware_versions,
 	       sizeof(etdev->fw_version));
+
+	/*
+	 * GSA verifies the image config addresses and sizes are valid,
+	 * so we don't perform overflow checks here.
+	 */
+	image_start = (phys_addr_t)image_config->carveout_base;
+	image_end = (phys_addr_t)(image_config->firmware_base +
+				  image_config->firmware_size - 1);
+	carveout_start = edgetpu_pdev->fw_region_paddr;
+	carveout_end = carveout_start + edgetpu_pdev->fw_region_size - 1;
+
+	/* Image must fit within the carveout */
+	if (image_start < carveout_start || image_end > carveout_end) {
+		etdev_err(etdev, "Firmware image doesn't fit in carveout\n");
+		etdev_err(etdev, "Image config: %pap - %pap\n", &image_start,
+			  &image_end);
+		etdev_err(etdev, "Carveout: %pap - %pap\n", &carveout_start,
+			  &carveout_end);
+		ret = -ERANGE;
+		goto out_free_gsa;
+	}
 
 	/* Reset KCI mailbox before starting f/w, don't process anything old.*/
 	edgetpu_mailbox_reset(etdev->kci->mailbox);

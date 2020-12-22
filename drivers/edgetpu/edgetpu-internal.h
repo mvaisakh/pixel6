@@ -7,6 +7,13 @@
 #ifndef __EDGETPU_INTERNAL_H__
 #define __EDGETPU_INTERNAL_H__
 
+#include <linux/printk.h>
+
+#ifdef CONFIG_X86
+#include <asm/pgtable_types.h>
+#include <asm/set_memory.h>
+#endif
+
 #include <linux/atomic.h>
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
@@ -61,6 +68,7 @@
  * specific values in the mmu driver.
  */
 enum edgetpu_context_id {
+	EDGETPU_CONTEXT_INVALID = -1,
 	EDGETPU_CONTEXT_KCI = 0,	/* TPU firmware/kernel ID 0 */
 	EDGETPU_CONTEXT_VII_BASE = 1,	/* groups 0-6 IDs 1-7 */
 	/* contexts 8 and above not yet allocated */
@@ -74,6 +82,9 @@ struct edgetpu_coherent_mem {
 	tpu_addr_t tpu_addr;	/* DMA handle for TPU internal IOMMU, if any */
 	u64 host_addr;		/* address mapped on host for debugging */
 	size_t size;
+#ifdef CONFIG_X86
+	bool is_set_uc;		/* memory has been marked uncached on X86 */
+#endif
 };
 
 struct edgetpu_reg_window {
@@ -237,6 +248,38 @@ static inline void edgetpu_dev_write_64(struct edgetpu_dev *etdev,
 					uint reg_offset, u64 value)
 {
 	writeq_relaxed(value, etdev->regs.mem + reg_offset);
+}
+
+static inline void
+edgetpu_x86_coherent_mem_init(struct edgetpu_coherent_mem *mem)
+{
+#ifdef CONFIG_X86
+	mem->is_set_uc = false;
+#endif
+}
+
+static inline void
+edgetpu_x86_coherent_mem_set_uc(struct edgetpu_coherent_mem *mem)
+{
+#ifdef CONFIG_X86
+	if (!mem->is_set_uc) {
+		set_memory_uc((unsigned long)mem->vaddr, mem->size >>
+			      PAGE_SHIFT);
+		mem->is_set_uc = true;
+	}
+#endif
+}
+
+static inline void
+edgetpu_x86_coherent_mem_set_wb(struct edgetpu_coherent_mem *mem)
+{
+#ifdef CONFIG_X86
+	if (mem->is_set_uc) {
+		set_memory_wb((unsigned long)mem->vaddr, mem->size >>
+			      PAGE_SHIFT);
+		mem->is_set_uc = false;
+	}
+#endif
 }
 
 /* External drivers can hook up to edgetpu driver using these calls. */

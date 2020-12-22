@@ -6,13 +6,6 @@
  * Copyright (C) 2020 Google, Inc.
  */
 
-#include <linux/printk.h>
-
-#ifdef CONFIG_X86
-#include <asm/pgtable_types.h>
-#include <asm/set_memory.h>
-#endif
-
 #include <linux/dma-mapping.h>
 #include <linux/genalloc.h>
 #include <linux/kernel.h>
@@ -20,6 +13,7 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 
+#include "edgetpu-internal.h"
 #include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
 
@@ -94,16 +88,11 @@ static int edgetpu_alloc_coherent(struct edgetpu_dev *etdev, size_t size,
 					GFP_KERNEL);
 	if (!mem->vaddr)
 		return -ENOMEM;
-#ifdef CONFIG_X86
-	set_memory_uc((unsigned long)mem->vaddr, size >> PAGE_SHIFT);
-#endif
+	edgetpu_x86_coherent_mem_init(mem);
 	mem->tpu_addr =
 		edgetpu_mmu_tpu_map(etdev, mem->dma_addr, size,
 				    DMA_BIDIRECTIONAL, context_id, flags);
 	if (!mem->tpu_addr) {
-#ifdef CONFIG_X86
-		set_memory_wb((unsigned long)mem->vaddr, size >> PAGE_SHIFT);
-#endif
 		dma_free_coherent(etdev->dev, size, mem->vaddr, mem->dma_addr);
 		mem->vaddr = NULL;
 		return -EINVAL;
@@ -145,9 +134,7 @@ static void edgetpu_free_coherent(struct edgetpu_dev *etdev,
 				  enum edgetpu_context_id context_id)
 {
 	edgetpu_mmu_tpu_unmap(etdev, mem->tpu_addr, mem->size, context_id);
-#ifdef CONFIG_X86
-	set_memory_wb((unsigned long)mem->vaddr, mem->size >> PAGE_SHIFT);
-#endif
+	edgetpu_x86_coherent_mem_set_wb(mem);
 	dma_free_coherent(etdev->dev, mem->size, mem->vaddr, mem->dma_addr);
 	mem->vaddr = NULL;
 }
@@ -192,6 +179,7 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 
 	vma->vm_pgoff = 0;
 	if (!etmempool) {
+		edgetpu_x86_coherent_mem_set_uc(mem);
 		ret = dma_mmap_coherent(etdev->dev, vma, mem->vaddr,
 					mem->dma_addr, mem->size);
 		vma->vm_pgoff = orig_pgoff;

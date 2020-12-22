@@ -122,6 +122,11 @@ struct edgetpu_event_register {
 #define EDGETPU_SET_EVENTFD \
 	_IOW(EDGETPU_IOCTL_BASE, 5, struct edgetpu_event_register)
 
+/*
+ * @priority with this bit means the mailbox could be released when wakelock is
+ * released.
+ */
+#define EDGETPU_PRIORITY_DETACHABLE (1u << 3)
 struct edgetpu_mailbox_attr {
 	/*
 	 * There are limitations on these size fields, see the error cases in

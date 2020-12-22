@@ -576,8 +576,14 @@ static int edgetpu_ioctl_release_wakelock(struct edgetpu_client *client)
 		return -EINVAL;
 	}
 
-	edgetpu_pm_put(client->etdev->pm);
 	client->wakelock.req_count--;
+	if (!client->wakelock.req_count) {
+		mutex_lock(&client->group_lock);
+		if (client->group)
+			edgetpu_group_detach_mailbox(client->group);
+		mutex_unlock(&client->group_lock);
+	}
+	edgetpu_pm_put(client->etdev->pm);
 	etdev_dbg(client->etdev,
 		  "%s: wakelock req count = %u CSR map count = %u\n", __func__,
 		  client->wakelock.req_count, client->wakelock.csr_map_count);
@@ -599,16 +605,28 @@ static int edgetpu_ioctl_acquire_wakelock(struct edgetpu_client *client)
 	if (ret) {
 		etdev_warn(client->etdev, "%s: pm_get failed (%d)", __func__,
 			   ret);
-		mutex_unlock(&client->wakelock.lock);
-		return ret;
+		goto out_unlock;
+	}
+	if (!client->wakelock.req_count) {
+		mutex_lock(&client->group_lock);
+		if (client->group)
+			ret = edgetpu_group_attach_mailbox(client->group);
+		mutex_unlock(&client->group_lock);
+		if (ret) {
+			etdev_warn(client->etdev,
+				   "failed to attach mailbox: %d", ret);
+			edgetpu_pm_put(client->etdev->pm);
+			goto out_unlock;
+		}
 	}
 
 	client->wakelock.req_count++;
 	etdev_dbg(client->etdev,
 		  "%s: wakelock req count = %u CSR map count = %u\n", __func__,
 		  client->wakelock.req_count, client->wakelock.csr_map_count);
+out_unlock:
 	mutex_unlock(&client->wakelock.lock);
-	return 0;
+	return ret;
 }
 
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
@@ -729,20 +747,12 @@ static struct edgetpu_dumpregs_range common_statusregs_ranges[] = {
 		.lastreg = EDGETPU_REG_USER_HIB_DMA_PAUSED,
 	},
 	{
-		.firstreg = EDGETPU_REG_USER_HIB_FIRST_ERROR_STATUS,
-		.lastreg = EDGETPU_REG_USER_HIB_FIRST_ERROR_STATUS,
-	},
-	{
 		.firstreg = EDGETPU_REG_USER_HIB_ERROR_STATUS,
 		.lastreg = EDGETPU_REG_USER_HIB_ERROR_MASK,
 	},
 	{
 		.firstreg = EDGETPU_REG_SC_CURRENTPC,
 		.lastreg = EDGETPU_REG_SC_DECODEPC,
-	},
-	{
-		.firstreg = EDGETPU_REG_SC_RUNSTATUS,
-		.lastreg = EDGETPU_REG_SC_RUNSTATUS,
 	},
 	{
 		.firstreg = EDGETPU_REG_SC_ERROR,
@@ -753,28 +763,12 @@ static struct edgetpu_dumpregs_range common_statusregs_ranges[] = {
 		.lastreg = EDGETPU_REG_SC_ERROR_INFO,
 	},
 	{
-		.firstreg = EDGETPU_REG_USER_HIB_OUT_ACTVQ_INT_STAT,
-		.lastreg = EDGETPU_REG_USER_HIB_OUT_ACTVQ_INT_STAT,
-	},
-	{
 		.firstreg = EDGETPU_REG_USER_HIB_INSTRQ_TAIL,
 		.lastreg = EDGETPU_REG_USER_HIB_INSTRQ_INT_STAT,
 	},
 	{
-		.firstreg = EDGETPU_REG_USER_HIB_IN_ACTVQ_INT_STAT,
-		.lastreg = EDGETPU_REG_USER_HIB_IN_ACTVQ_INT_STAT,
-	},
-	{
-		.firstreg = EDGETPU_REG_USER_HIB_PARAMQ_INT_STAT,
-		.lastreg = EDGETPU_REG_USER_HIB_PARAMQ_INT_STAT,
-	},
-	{
 		.firstreg = EDGETPU_REG_USER_HIB_SC_HOST_INT_STAT,
 		.lastreg = EDGETPU_REG_USER_HIB_SC_HOST_INT_STAT,
-	},
-	{
-		.firstreg = EDGETPU_REG_USER_HIB_TOPLVL_INT_STAT,
-		.lastreg = EDGETPU_REG_USER_HIB_TOPLVL_INT_STAT,
 	},
 	{
 		.firstreg = EDGETPU_REG_USER_HIB_FATALERR_INT_STAT,
