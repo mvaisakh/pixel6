@@ -219,8 +219,12 @@ static void s6e3hc3_mode_set(struct exynos_panel *ctx,
 static bool s6e3hc3_is_mode_seamless(const struct exynos_panel *ctx,
 				     const struct exynos_panel_mode *pmode)
 {
-	/* seamless mode switch is possible if only changing refresh rate */
-	return drm_mode_equal_no_clocks(&ctx->current_mode->mode, &pmode->mode);
+	const struct drm_display_mode *c = &ctx->current_mode->mode;
+	const struct drm_display_mode *n = &pmode->mode;
+
+	/* seamless mode set can happen if active region resolution is same */
+	return (c->vdisplay == n->vdisplay) && (c->hdisplay == n->hdisplay) &&
+	       (c->flags == n->flags);
 }
 
 static const struct exynos_display_underrun_param underrun_param = {
