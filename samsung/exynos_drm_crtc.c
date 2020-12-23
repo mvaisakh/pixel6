@@ -477,9 +477,15 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 	drm_printf(p, "\tDecon #%d (state:%d)\n", decon->id, decon->state);
 	drm_printf(p, "\t\ttype=0x%x\n", cfg->out_type);
 	drm_printf(p, "\t\tsize=%dx%d\n", cfg->image_width, cfg->image_height);
-	drm_printf(p, "\t\tmode=%s (%d)\n",
-		   cfg->mode.op_mode == DECON_VIDEO_MODE ? "vid" : "cmd",
-		   cfg->mode.dsi_mode);
+	if (cfg->mode.dsi_mode != DSI_MODE_NONE) {
+		drm_printf(p, "\t\tdsi_mode=%s (%d)\n",
+			cfg->mode.op_mode == DECON_VIDEO_MODE ? "vid" : "cmd",
+			cfg->mode.dsi_mode);
+		if (cfg->mode.op_mode == DECON_COMMAND_MODE)
+			drm_printf(p, "\t\ttrig_mode=%s ddi=%d\n",
+				cfg->mode.trig_mode == DECON_HW_TRIG ? "hw" : "sw",
+				cfg->te_from);
+	}
 	drm_printf(p, "\t\tbpc=%d\n", cfg->out_bpc);
 }
 

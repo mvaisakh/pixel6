@@ -178,6 +178,18 @@ void dsim_exit_ulps(struct dsim_device *dsim)
 	dsim_debug(dsim, "%s -\n", __func__);
 }
 
+static void dsim_set_te_pinctrl(struct dsim_device *dsim, bool en)
+{
+	int ret;
+
+	if (!dsim->hw_trigger || !dsim->te_on || !dsim->te_off)
+		return;
+
+	ret = pinctrl_select_state(dsim->pinctrl, en ? dsim->te_on : dsim->te_off);
+	if (ret)
+		dsim_err(dsim, "failed to control decon TE(%d)\n", en);
+}
+
 static void dsim_enable(struct drm_encoder *encoder)
 {
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
@@ -205,6 +217,8 @@ static void dsim_enable(struct drm_encoder *encoder)
 	dsim->state = DSIM_STATE_HSCLKEN;
 	enable_irq(dsim->irq);
 	mutex_unlock(&dsim->state_lock);
+
+	dsim_set_te_pinctrl(dsim, 1);
 
 #if defined(DSIM_BIST)
 	dsim_reg_set_bist(dsim->id, true, DSIM_GRAY_GRADATION);
@@ -268,6 +282,8 @@ static void dsim_disable(struct drm_encoder *encoder)
 	dsim->state = DSIM_STATE_SUSPEND;
 	mutex_unlock(&dsim->cmd_lock);
 	mutex_unlock(&dsim->state_lock);
+
+	dsim_set_te_pinctrl(dsim, 0);
 
 	dsim_phy_power_off(dsim);
 
@@ -819,6 +835,7 @@ static void dsim_set_display_mode(struct dsim_device *dsim,
 
 	mutex_lock(&dsim->state_lock);
 	dsim->config.data_lane_cnt = dsim->dsi_device->lanes;
+	dsim->hw_trigger = !exynos_mode->sw_trigger;
 
 	dsim_update_config_for_mode(&dsim->config, mode, exynos_mode);
 
@@ -908,6 +925,20 @@ static int dsim_atomic_check(struct drm_encoder *encoder,
 			dsim_warn(dsim, "%s: seamless mode switch not supported for %s\n",
 				  __func__, mode->name);
 			exynos_conn_state->seamless_possible = false;
+		}
+
+		if (!exynos_conn_state->exynos_mode.sw_trigger) {
+			if (!dsim->pinctrl) {
+				dsim_err(dsim, "TE error: pinctrl not found\n");
+				return -EINVAL;
+			} else if ((dsim->te_gpio < 0) ||
+				   (dsim->te_from >= MAX_DECON_TE_FROM_DDI)) {
+				dsim_err(dsim, "invalid TE config for hw trigger mode\n");
+				return -EINVAL;
+			}
+
+			exynos_conn_state->te_from = dsim->te_from;
+			exynos_conn_state->te_gpio = dsim->te_gpio;
 		}
 	}
 
@@ -1060,6 +1091,7 @@ static const struct component_ops dsim_component_ops = {
 static int dsim_parse_dt(struct dsim_device *dsim)
 {
 	struct device_node *np = dsim->dev->of_node;
+	int ret;
 
 	if (!np) {
 		dsim_err(dsim, "no device tree information\n");
@@ -1074,6 +1106,21 @@ static int dsim_parse_dt(struct dsim_device *dsim)
 
 	dsim->pll_params = dsim_of_get_clock_mode(dsim);
 	dsim_of_get_pll_diags(dsim);
+
+	ret = of_property_read_u32(np, "te_from", &dsim->te_from);
+	if (ret) {
+		dsim->te_from = MAX_DECON_TE_FROM_DDI;
+		dsim_warn(dsim, "failed to get TE from DDI\n");
+	}
+	dsim_debug(dsim, "TE from DDI%d\n", dsim->te_from);
+
+	if (!ret) {
+		dsim->te_gpio = of_get_named_gpio(np, "te-gpio", 0);
+		if (dsim->te_gpio < 0) {
+			dsim_warn(dsim, "failed to get TE gpio\n");
+			dsim->te_from = MAX_DECON_TE_FROM_DDI;
+		}
+	}
 
 	return 0;
 }
@@ -1941,6 +1988,38 @@ static ssize_t hs_clock_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(hs_clock);
 
+static int dsim_get_pinctrl(struct dsim_device *dsim)
+{
+	int ret = 0;
+
+	dsim->pinctrl = devm_pinctrl_get(dsim->dev);
+	if (IS_ERR(dsim->pinctrl)) {
+		ret = PTR_ERR(dsim->pinctrl);
+		dsim_debug(dsim, "failed to get pinctrl (%d)\n", ret);
+		dsim->pinctrl = NULL;
+		/* optional in video mode */
+		return 0;
+	}
+
+	dsim->te_on = pinctrl_lookup_state(dsim->pinctrl, "hw_te_on");
+	if (IS_ERR(dsim->te_on)) {
+		dsim_err(dsim, "failed to get hw_te_on pin state\n");
+		ret = PTR_ERR(dsim->te_on);
+		dsim->te_on = NULL;
+		goto err;
+	}
+	dsim->te_off = pinctrl_lookup_state(dsim->pinctrl, "hw_te_off");
+	if (IS_ERR(dsim->te_off)) {
+		dsim_err(dsim, "failed to get hw_te_off pin state\n");
+		ret = PTR_ERR(dsim->te_off);
+		dsim->te_off = NULL;
+		goto err;
+	}
+
+err:
+	return ret;
+}
+
 static int dsim_probe(struct platform_device *pdev)
 {
 	struct dsim_device *dsim;
@@ -1972,6 +2051,10 @@ static int dsim_probe(struct platform_device *pdev)
 	init_completion(&dsim->rd_comp);
 
 	ret = dsim_init_resources(dsim);
+	if (ret)
+		goto err;
+
+	ret = dsim_get_pinctrl(dsim);
 	if (ret)
 		goto err;
 

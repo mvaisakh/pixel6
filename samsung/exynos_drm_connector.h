@@ -64,6 +64,15 @@ struct exynos_display_mode {
 
 	/* @is_lp_mode: boolean, if true it means this mode is a Low Power mode */
 	bool is_lp_mode;
+
+	/**
+	 * @sw_trigger:
+	 *
+	 * Force frame transfer to be triggered by sw instead of based on TE.
+	 * This is only applicable for DSI command mode, SW trigger is the
+	 * default for Video mode.
+	 */
+	bool sw_trigger;
 };
 
 /**
@@ -84,6 +93,18 @@ struct exynos_drm_connector_state {
 
 	/* @hbm_on: hbm_on indicator */
 	bool hbm_on;
+
+	/*
+	 * @te_from: Specify ddi interface where TE signals are received by decon.
+	 *	     This is required for dsi command mode hw trigger.
+	 */
+	int te_from;
+
+	/*
+	 * @te_gpio: Provies the the gpio for panel TE signal.
+	 *	     This is required for dsi command mode hw trigger.
+	 */
+	int te_gpio;
 };
 
 #define to_exynos_connector_state(connector_state) \
