@@ -6096,15 +6096,6 @@ static int fts_probe(struct spi_device *client)
 
 	dev_set_drvdata(info->dev, info);
 
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	info->tbn = tbn_init(info->dev);
-	if (!info->tbn) {
-		dev_err(info->dev, "ERROR: failed to init tbn context\n");
-		error = -ENODEV;
-		goto ProbeErrorExit_1;
-	}
-#endif
-
 	if (dp) {
 		info->board = devm_kzalloc(&client->dev,
 					   sizeof(struct fts_hw_platform_data),
@@ -6130,6 +6121,15 @@ static int fts_probe(struct spi_device *client)
 		dev_err(info->dev, "%s: ERROR Failed to enable regulators\n", __func__);
 		goto ProbeErrorExit_2;
 	}
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+	info->tbn = tbn_init(info->dev);
+	if (!info->tbn) {
+		dev_err(info->dev, "ERROR: failed to init tbn context\n");
+		error = -ENODEV;
+		goto ProbeErrorExit_2;
+	}
+#endif
 
 	dev_info(info->dev, "SET GPIOS:\n");
 	error = fts_set_gpio(info);
@@ -6472,6 +6472,10 @@ ProbeErrorExit_3:
 	fts_enable_reg(info, false);
 
 ProbeErrorExit_2:
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+	if (info->tbn)
+		tbn_cleanup(info->tbn);
+#endif
 	fts_get_reg(info, false);
 
 ProbeErrorExit_1:
