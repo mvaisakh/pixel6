@@ -89,16 +89,31 @@ static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 
 #endif /* CONFIG_ABROLHOS */
 
-/*
- * Asynchronously sends LEAVE_GROUP KCI to all devices in @group.
- *
- * Caller holds group->lock.
- */
-static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
+static int edgetpu_group_kci_open_device(struct edgetpu_device_group *group)
 {
-#if IS_ENABLED(CONFIG_ABROLHOS)
-	u8 mailbox_id = group->vii.mailbox->mailbox_id;
-	int ret = edgetpu_kci_close_device(group->etdev->kci, BIT(mailbox_id));
+	u8 mailbox_id = edgetpu_group_context_id_locked(group);
+	int ret = edgetpu_kci_open_device(group->etdev->kci, BIT(mailbox_id));
+
+	/*
+	 * This should only happen when the FW hasn't driven this KCI, log once
+	 * to prevent log storm.
+	 */
+	if (ret)
+		etdev_warn_once(group->etdev, "Open device failed with %d",
+				ret);
+	atomic_inc(&group->etdev->job_count);
+	return 0;
+}
+
+static void edgetpu_group_kci_close_device(struct edgetpu_device_group *group)
+{
+	u8 mailbox_id;
+	int ret;
+
+	if (edgetpu_group_mailbox_detached_locked(group))
+		return;
+	mailbox_id = edgetpu_group_context_id_locked(group);
+	ret = edgetpu_kci_close_device(group->etdev->kci, BIT(mailbox_id));
 
 	/*
 	 * This should only happen when the FW hasn't driven this KCI, log once
@@ -108,6 +123,17 @@ static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 		etdev_warn_once(group->etdev, "Close device failed with %d",
 				ret);
 	return;
+}
+
+/*
+ * Asynchronously sends LEAVE_GROUP KCI to all devices in @group.
+ *
+ * Caller holds group->lock.
+ */
+static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
+{
+#if IS_ENABLED(CONFIG_ABROLHOS)
+	return edgetpu_group_kci_close_device(group);
 #else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
@@ -149,18 +175,7 @@ static int
 edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
-	u8 mailbox_id = group->vii.mailbox->mailbox_id;
-	int ret = edgetpu_kci_open_device(group->etdev->kci, BIT(mailbox_id));
-
-	/*
-	 * This should only happen when the FW hasn't driven this KCI, log once
-	 * to prevent log storm.
-	 */
-	if (ret)
-		etdev_warn_once(group->etdev, "Open device failed with %d",
-				ret);
-	atomic_inc(&group->etdev->job_count);
-	return 0;
+	return edgetpu_group_kci_open_device(group);
 #else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
@@ -354,8 +369,10 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 		group_release_members(group);
 	}
 	edgetpu_mailbox_remove_vii(&group->vii);
-	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
-	edgetpu_mmu_free_domain(group->etdev, group->etdomain);
+	if (group->etdomain) {
+		edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+		edgetpu_mmu_free_domain(group->etdev, group->etdomain);
+	}
 	group->status = EDGETPU_DEVICE_GROUP_DISBANDED;
 }
 
@@ -648,12 +665,12 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
 	if (!etdomain) {
 		ret = -ENOMEM;
-		goto error_put_group;
+		goto error_leave_group;
 	}
 	ret = edgetpu_mmu_attach_domain(group->etdev, etdomain);
 	if (ret) {
 		edgetpu_mmu_free_domain(group->etdev, etdomain);
-		goto error_put_group;
+		goto error_leave_group;
 	}
 	group->etdomain = etdomain;
 	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
@@ -661,15 +678,19 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
 			  __func__, group->workload_id, ret);
 		/* this also performs domain detach / free */
-		edgetpu_device_group_leave_locked(client);
-		goto error_put_group;
+		goto error_leave_group;
 	}
 
+	group->context_id = group->vii.mailbox->mailbox_id;
+	if (attr->priority & EDGETPU_PRIORITY_DETACHABLE)
+		group->mailbox_detachable = true;
 	group->mbox_attr = *attr;
 
 	mutex_unlock(&client->etdev->state_lock);
 	return group;
 
+error_leave_group:
+	edgetpu_device_group_leave_locked(client);
 error_put_group:
 	edgetpu_device_group_put(group);
 state_unlock:
@@ -714,7 +735,8 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 	if (edgetpu_device_group_is_finalized(group))
 		goto err_unlock;
 
-	if (!edgetpu_device_group_is_waiting(group)) {
+	if (!edgetpu_device_group_is_waiting(group) ||
+	    edgetpu_group_mailbox_detached_locked(group)) {
 		ret = -EINVAL;
 		goto err_unlock;
 	}
@@ -808,15 +830,16 @@ static int edgetpu_device_group_map_iova_sgt(struct edgetpu_device_group *group,
 {
 	struct edgetpu_dev *etdev;
 	const struct edgetpu_mapping *map = &hmap->map;
-	enum edgetpu_context_id context_id = edgetpu_group_context_id(group);
+	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
 	uint i;
 	int ret;
 
 	for (i = 1; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
+		edgetpu_mmu_reserve(etdev, map->alloc_iova, map->alloc_size);
 		ret = edgetpu_mmu_map_iova_sgt(etdev, map->device_address,
 					       &hmap->sg_tables[i], map->dir,
-					       context_id);
+					       ctx_id);
 		if (ret)
 			goto rollback;
 	}
@@ -829,8 +852,9 @@ rollback:
 		etdev = edgetpu_device_group_nth_etdev(group, i);
 		edgetpu_mmu_unmap_iova_sgt_attrs(etdev, map->device_address,
 						 &hmap->sg_tables[i], map->dir,
-						 context_id,
+						 ctx_id,
 						 DMA_ATTR_SKIP_CPU_SYNC);
+		edgetpu_mmu_free(etdev, map->alloc_iova, map->alloc_size);
 	}
 	return ret;
 }
@@ -846,14 +870,15 @@ edgetpu_device_group_unmap_iova_sgt(struct edgetpu_device_group *group,
 {
 	const struct edgetpu_mapping *map = &hmap->map;
 	struct edgetpu_dev *etdev;
-	enum edgetpu_context_id context_id = edgetpu_group_context_id(group);
+	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
 	uint i;
 
 	for (i = 1; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
 		edgetpu_mmu_unmap_iova_sgt_attrs(etdev, map->device_address,
 						 &hmap->sg_tables[i], map->dir,
-						 context_id, map->dma_attrs);
+						 ctx_id, map->dma_attrs);
+		edgetpu_mmu_free(etdev, map->alloc_iova, map->alloc_size);
 	}
 }
 
@@ -866,7 +891,7 @@ edgetpu_device_group_unmap_iova_sgt(struct edgetpu_device_group *group,
 static void edgetpu_unmap_node(struct edgetpu_mapping *map)
 {
 	struct edgetpu_device_group *group = map->priv;
-	enum edgetpu_context_id context_id = edgetpu_group_context_id(group);
+	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
 	struct edgetpu_host_map *hmap =
 		container_of(map, struct edgetpu_host_map, map);
 	struct edgetpu_dev *etdev;
@@ -884,7 +909,7 @@ static void edgetpu_unmap_node(struct edgetpu_mapping *map)
 			etdev = edgetpu_device_group_nth_etdev(group,
 							       map->die_index);
 		}
-		edgetpu_mmu_unmap(etdev, map, context_id);
+		edgetpu_mmu_unmap(etdev, map, ctx_id);
 	}
 
 	for_each_sg_page(map->sgt.sgl, &sg_iter, map->sgt.orig_nents, 0) {
@@ -1155,7 +1180,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 	struct edgetpu_host_map *hmap;
 	struct edgetpu_mapping *map;
 	struct edgetpu_dev *etdev;
-	enum edgetpu_context_id context_id = edgetpu_group_context_id(group);
+	enum edgetpu_context_id context_id;
 	const u32 mmu_flags = map_to_mmu_flags(flags) | EDGETPU_MMU_HOST;
 
 	/* Pin user pages before holding any lock. */
@@ -1164,7 +1189,8 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 		return PTR_ERR(pages);
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
+	context_id = edgetpu_group_context_id_locked(group);
+	if (!edgetpu_group_finalized_and_attached(group)) {
 		ret = -EINVAL;
 		goto error_unlock_group;
 	}
@@ -1236,7 +1262,7 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	int ret = 0;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
+	if (!edgetpu_group_finalized_and_attached(group)) {
 		ret = -EINVAL;
 		goto unlock_group;
 	}
@@ -1279,7 +1305,7 @@ int edgetpu_device_group_sync_buffer(struct edgetpu_device_group *group,
 		return -EINVAL;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
+	if (!edgetpu_group_finalized_and_attached(group)) {
 		ret = -EINVAL;
 		goto unlock_group;
 	}
@@ -1323,7 +1349,7 @@ void edgetpu_group_mappings_show(struct edgetpu_device_group *group,
 		seq_puts(s, ": disbanded\n");
 		return;
 	}
-	seq_printf(s, " context %u:\n", edgetpu_group_context_id(group));
+	seq_printf(s, " context %d:\n", edgetpu_group_context_id_locked(group));
 
 	if (group->host_mappings.count) {
 		seq_puts(s, "host buffer mappings:\n");
@@ -1363,7 +1389,7 @@ int edgetpu_mmap_csr(struct edgetpu_device_group *group,
 	ulong phys_base, vma_size, map_size;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
+	if (!edgetpu_group_finalized_and_attached(group)) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1390,6 +1416,10 @@ int edgetpu_mmap_queue(struct edgetpu_device_group *group,
 	edgetpu_queue_mem *queue_mem;
 
 	mutex_lock(&group->lock);
+	/*
+	 * VII queues are available even when mailbox detached, no need to check
+	 * whether mailbox attached here.
+	 */
 	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = -EINVAL;
 		goto out;
@@ -1425,4 +1455,64 @@ void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev)
 					     EDGETPU_EVENT_FATAL_ERROR);
 	}
 	mutex_unlock(&etdev->groups_lock);
+}
+
+void edgetpu_group_detach_mailbox(struct edgetpu_device_group *group)
+{
+	struct edgetpu_mailbox_manager *mgr = group->etdev->mailbox_manager;
+	struct edgetpu_mailbox *mailbox;
+
+	if (!group->mailbox_detachable)
+		return;
+	mutex_lock(&group->lock);
+	if (edgetpu_group_mailbox_detached_locked(group)) {
+		mutex_unlock(&group->lock);
+		return;
+	}
+	if (edgetpu_device_group_is_finalized(group))
+		edgetpu_group_kci_close_device(group);
+	mailbox = group->vii.mailbox;
+	group->vii.mailbox = NULL;
+	edgetpu_device_group_put(mailbox->internal.group);
+	edgetpu_mailbox_remove(mgr, mailbox);
+	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+	group->context_id = EDGETPU_CONTEXT_INVALID;
+
+	mutex_unlock(&group->lock);
+}
+
+int edgetpu_group_attach_mailbox(struct edgetpu_device_group *group)
+{
+	struct edgetpu_mailbox_manager *mgr = group->etdev->mailbox_manager;
+	struct edgetpu_mailbox *mailbox;
+	uint ctx_id;
+	int ret = 0;
+
+	if (!group->mailbox_detachable)
+		return 0;
+	mutex_lock(&group->lock);
+	if (!edgetpu_group_mailbox_detached_locked(group))
+		goto out;
+	ret = edgetpu_mmu_attach_domain(group->etdev, group->etdomain);
+	if (ret)
+		goto out;
+	if (group->etdomain->pasid == IOMMU_PASID_INVALID)
+		mailbox = edgetpu_mailbox_vii_add(mgr, 0);
+	else
+		mailbox = edgetpu_mailbox_vii_add(mgr, group->etdomain->pasid);
+	if (IS_ERR(mailbox)) {
+		edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+		ret = PTR_ERR(mailbox);
+		goto out;
+	}
+	ctx_id = mailbox->mailbox_id;
+	group->vii.mailbox = mailbox;
+	mailbox->internal.group = edgetpu_device_group_get(group);
+	edgetpu_mailbox_reinit_vii(group);
+	group->context_id = ctx_id;
+	if (edgetpu_device_group_is_finalized(group))
+		edgetpu_group_kci_open_device(group);
+out:
+	mutex_unlock(&group->lock);
+	return ret;
 }

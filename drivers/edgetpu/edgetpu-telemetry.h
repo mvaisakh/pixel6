@@ -12,6 +12,7 @@
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/workqueue.h>
 
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
@@ -57,6 +58,8 @@ struct edgetpu_log_entry_header {
 } __packed;
 
 struct edgetpu_telemetry {
+	struct edgetpu_dev *etdev;
+
 	/*
 	 * State transitioning is to prevent racing in IRQ handlers. e.g. the
 	 * interrupt comes when the kernel is releasing buffers.
@@ -77,6 +80,11 @@ struct edgetpu_telemetry {
 	rwlock_t ctx_mem_lock; /* protects ctx and coherent_mem */
 	const char *name; /* for debugging */
 	bool inited; /* whether telemetry_init() succeeded */
+
+	/* Worker for handling data. */
+	struct work_struct work;
+	/* Fallback function to call for default log/trace handling. */
+	void (*fallback_fn)(struct edgetpu_telemetry *tel);
 };
 
 struct edgetpu_telemetry_ctx {

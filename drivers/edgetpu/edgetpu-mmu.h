@@ -10,6 +10,7 @@
 #include <linux/dma-direction.h>
 #include <linux/dma-mapping.h>
 #include <linux/iommu.h>
+#include <linux/version.h>
 
 #include "edgetpu-internal.h"
 #include "edgetpu.h"
@@ -17,6 +18,12 @@
 /* TODO(b/153947157): remove this */
 #if IS_ENABLED(CONFIG_EDGETPU_TEST)
 #include <linux/iommu-ext.h>
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
+#ifndef IOMMU_PASID_INVALID
+#define IOMMU_PASID_INVALID	(-1U)
+#endif
 #endif
 
 #define IS_MIRRORED(flag) (!((flag) & EDGETPU_MAP_NONMIRRORED))
@@ -120,6 +127,9 @@ void edgetpu_mmu_unmap(struct edgetpu_dev *dev, struct edgetpu_mapping *map,
  * Description: Request TPU to map @iova to the pages presented by @sgt.
  *
  * Returns 0 on success, -errno on error.
+ *
+ * Note: Caller should use edgetpu_mmu_reserve() before calling this method if
+ * the target @iova isn't acquired from edgetpu_mmu_alloc(@etdev).
  */
 int edgetpu_mmu_map_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
 			     struct sg_table *sgt, enum dma_data_direction dir,

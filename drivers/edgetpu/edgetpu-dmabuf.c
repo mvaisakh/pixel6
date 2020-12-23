@@ -129,13 +129,16 @@ rollback:
  *
  * If the first entry is not fetched (this could happen in bulk mappings),
  * a TPU VA is still allocated according to @dmap->mmu_flags but not mapped.
+ *
+ * Caller holds @group->lock.
  */
 static int etdev_map_dmabuf(struct edgetpu_dev *etdev,
 			    struct edgetpu_dmabuf_map *dmap,
 			    enum dma_data_direction dir, tpu_addr_t *tpu_addr_p)
 {
 	struct edgetpu_device_group *group = dmap->map.priv;
-	const enum edgetpu_context_id ctx_id = edgetpu_group_context_id(group);
+	const enum edgetpu_context_id ctx_id =
+		edgetpu_group_context_id_locked(group);
 	struct dmabuf_map_entry *entry = &dmap->entries[0];
 	tpu_addr_t tpu_addr;
 	int ret;
@@ -180,13 +183,18 @@ static int etdev_map_dmabuf(struct edgetpu_dev *etdev,
 	return 0;
 }
 
-/* reverts etdev_map_dmabuf() */
+/*
+ * Reverts etdev_map_dmabuf().
+ *
+ * Caller holds @group->lock.
+ */
 static void etdev_unmap_dmabuf(struct edgetpu_dev *etdev,
 			       struct edgetpu_dmabuf_map *dmap,
 			       tpu_addr_t tpu_addr)
 {
 	struct edgetpu_device_group *group = dmap->map.priv;
-	const enum edgetpu_context_id ctx_id = edgetpu_group_context_id(group);
+	const enum edgetpu_context_id ctx_id =
+		edgetpu_group_context_id_locked(group);
 	struct dmabuf_map_entry *entry = &dmap->entries[0];
 
 	if (entry->n == 0) {
@@ -200,12 +208,17 @@ static void etdev_unmap_dmabuf(struct edgetpu_dev *etdev,
 	}
 }
 
-/* handles mirrored mapping request */
+/*
+ * Handles mirrored mapping request.
+ *
+ * Caller holds @group->lock.
+ */
 static int group_map_dmabuf(struct edgetpu_device_group *group,
 			    struct edgetpu_dmabuf_map *dmap,
 			    enum dma_data_direction dir, tpu_addr_t *tpu_addr_p)
 {
-	const enum edgetpu_context_id ctx_id = edgetpu_group_context_id(group);
+	const enum edgetpu_context_id ctx_id =
+		edgetpu_group_context_id_locked(group);
 	struct edgetpu_dev *etdev = group->etdev;
 	tpu_addr_t tpu_addr;
 	uint i;
@@ -243,12 +256,17 @@ err_remove:
 	return ret;
 }
 
-/* reverts group_map_dmabuf() */
+/*
+ * Reverts group_map_dmabuf().
+ *
+ * Caller holds @group->lock.
+ */
 static void group_unmap_dmabuf(struct edgetpu_device_group *group,
 			       struct edgetpu_dmabuf_map *dmap,
 			       tpu_addr_t tpu_addr)
 {
-	const enum edgetpu_context_id ctx_id = edgetpu_group_context_id(group);
+	const enum edgetpu_context_id ctx_id =
+		edgetpu_group_context_id_locked(group);
 	struct edgetpu_dev *etdev;
 	uint i;
 
@@ -731,7 +749,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 		goto err_put;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_group_finalized_and_attached(group))
 		goto err_unlock_group;
 
 	dmap = alloc_dmabuf_map(group, flags);
@@ -801,7 +819,7 @@ int edgetpu_unmap_dmabuf(struct edgetpu_device_group *group, u32 die_index,
 
 	mutex_lock(&group->lock);
 	/* the group is disbanded means all the mappings have been released */
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_group_finalized_and_attached(group))
 		goto out_unlock;
 	edgetpu_mapping_lock(mappings);
 	map = edgetpu_mapping_find_locked(mappings, die_index, tpu_addr);
@@ -837,7 +855,7 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 	if (arg->size == 0)
 		return -EINVAL;
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_group_finalized_and_attached(group))
 		goto err_unlock_group;
 	/* checks not all FDs are ignored */
 	for (i = 0; i < group->n_clients; i++)

@@ -34,6 +34,19 @@ struct edgetpu_mapping {
 	u64 host_address;
 	u32 die_index; /* this mapping is mapped on the @die_index-th die */
 	tpu_addr_t device_address;
+	/*
+	 * The size used for allocating @alloc_iova in bytes. This field may be
+	 * set by edgetpu_mmu_map().
+	 */
+	size_t alloc_size;
+	/*
+	 * This might be different from @device_address since edgetpu_mmu_map()
+	 * may allocate more space than the size requested in the reason of
+	 * alignment. This field and @alloc_size are expected to be used in
+	 * edgetpu_mmu_unmap() and/or to reserve the IOVA space before calling
+	 * edgetpu_mmu_map_iova_sgt().
+	 */
+	tpu_addr_t alloc_iova;
 	edgetpu_map_flag_t flags; /* the flag passed by the runtime */
 	/* DMA attributes to be performed for dma_(un)map calls. */
 	unsigned long dma_attrs;

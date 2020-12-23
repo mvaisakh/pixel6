@@ -66,8 +66,12 @@ struct edgetpu_mailbox {
 typedef struct edgetpu_coherent_mem edgetpu_queue_mem;
 
 struct edgetpu_vii {
-	/* The mailbox this VII uses, can be NULL for an uninitialized VII. */
+	/*
+	 * The mailbox this VII uses, can be NULL when uninitialized or mailbox
+	 * detached.
+	 */
 	struct edgetpu_mailbox *mailbox;
+	struct edgetpu_dev *etdev;
 	edgetpu_queue_mem cmd_queue_mem;
 	edgetpu_queue_mem resp_queue_mem;
 };
@@ -234,17 +238,18 @@ void edgetpu_mailbox_free_queue(struct edgetpu_dev *etdev,
 				edgetpu_queue_mem *mem);
 
 /*
+ * Re-programs the CSRs of queue addresses, context, priority etc. to @group's
+ * VII mailbox.
+ *
+ * Caller holds @group->lock and ensures @group has mailbox attached.
+ */
+void edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group);
+
+/*
  * Re-configure VII mailbox queues which have an active client, re-using
  * existing buffers
  */
 void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev);
-
-/* Return context ID for mailbox. */
-static inline enum edgetpu_context_id
-edgetpu_mailbox_context_id(struct edgetpu_mailbox *mailbox)
-{
-	return EDGETPU_CONTEXT_VII_BASE + mailbox->mailbox_id - 1;
-}
 
 /* utility functions for P2P */
 

@@ -5,11 +5,6 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
-#ifdef CONFIG_X86
-#include <linux/printk.h>
-#include <asm/pgtable_types.h>
-#include <asm/set_memory.h>
-#endif
 #include <linux/bits.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
@@ -34,6 +29,15 @@ static inline bool valid_circular_queue_size(u32 size)
 	return true;
 }
 
+/* Return context ID for mailbox. */
+static inline enum edgetpu_context_id
+edgetpu_mailbox_context_id(struct edgetpu_mailbox *mailbox)
+{
+	if (!mailbox)
+		return EDGETPU_CONTEXT_INVALID;
+	return EDGETPU_CONTEXT_VII_BASE + mailbox->mailbox_id - 1;
+}
+
 /* Sets mailbox->cmd_queue_tail and corresponding CSR on device. */
 static void edgetpu_mailbox_set_cmd_queue_tail(struct edgetpu_mailbox *mailbox,
 					       u32 value)
@@ -56,9 +60,8 @@ static void edgetpu_mailbox_set_resp_queue_head(struct edgetpu_mailbox *mailbox,
  *
  * Caller holds mgr->mailboxes_lock.
  */
-static struct edgetpu_mailbox *edgetpu_mailbox_create_locked(
-		struct edgetpu_mailbox_manager *mgr,
-		uint index)
+static struct edgetpu_mailbox *
+edgetpu_mailbox_create_locked(struct edgetpu_mailbox_manager *mgr, uint index)
 {
 	struct edgetpu_mailbox *mailbox = kzalloc(sizeof(*mailbox), GFP_ATOMIC);
 
@@ -97,7 +100,9 @@ static void edgetpu_mailbox_disable_ith(struct edgetpu_mailbox_manager *mgr,
 
 static void edgetpu_vii_irq_handler(struct edgetpu_mailbox *mailbox)
 {
-	edgetpu_group_notify(mailbox->internal.group, EDGETPU_EVENT_RESPDATA);
+	if (mailbox->internal.group)
+		edgetpu_group_notify(mailbox->internal.group,
+				     EDGETPU_EVENT_RESPDATA);
 }
 
 /*
@@ -206,7 +211,6 @@ void edgetpu_mailbox_reset(struct edgetpu_mailbox *mailbox)
 /* Sets the priority of @mailbox. */
 void edgetpu_mailbox_set_priority(struct edgetpu_mailbox *mailbox, u32 priority)
 {
-	/* TODO(b/137343013): check whether priority is valid */
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, priority, priority);
 }
 
@@ -238,8 +242,10 @@ edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id)
 		mailbox = ERR_PTR(-EBUSY);
 	} else {
 		mailbox = edgetpu_mailbox_create_locked(mgr, id);
-		if (!IS_ERR(mailbox))
+		if (!IS_ERR(mailbox)) {
 			mgr->mailboxes[id] = mailbox;
+			mailbox->handle_irq = edgetpu_vii_irq_handler;
+		}
 	}
 	write_unlock_irqrestore(&mgr->mailboxes_lock, flags);
 	return mailbox;
@@ -457,7 +463,7 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 		  __func__, mailbox->mailbox_id, vii->resp_queue_mem.tpu_addr,
 		  &vii->resp_queue_mem.dma_addr);
 	mailbox->internal.group = edgetpu_device_group_get(group);
-	mailbox->handle_irq = edgetpu_vii_irq_handler;
+	vii->etdev = group->etdev;
 	vii->mailbox = mailbox;
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
 	return 0;
@@ -466,17 +472,15 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 void edgetpu_mailbox_remove_vii(struct edgetpu_vii *vii)
 {
 	struct edgetpu_dev *etdev;
-	struct edgetpu_mailbox_manager *mgr;
 
-	if (!vii->mailbox)
-		return;
-	etdev = vii->mailbox->internal.group->etdev;
-	mgr = etdev->mailbox_manager;
+	etdev = vii->etdev;
 	edgetpu_mailbox_free_queue(etdev, vii->mailbox, &vii->cmd_queue_mem);
 	edgetpu_mailbox_free_queue(etdev, vii->mailbox, &vii->resp_queue_mem);
-	edgetpu_device_group_put(vii->mailbox->internal.group);
-	edgetpu_mailbox_remove(mgr, vii->mailbox);
-	vii->mailbox = NULL;
+	if (vii->mailbox) {
+		edgetpu_device_group_put(vii->mailbox->internal.group);
+		edgetpu_mailbox_remove(etdev->mailbox_manager, vii->mailbox);
+		vii->mailbox = NULL;
+	}
 }
 
 /*
@@ -666,62 +670,42 @@ void edgetpu_mailbox_reset_vii(struct edgetpu_mailbox_manager *mgr)
 	write_unlock_irqrestore(&mgr->mailboxes_lock, flags);
 }
 
-static int edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group)
+void edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group)
 {
 	int cmd_queue_size, resp_queue_size;
 	struct edgetpu_mailbox *mailbox = group->vii.mailbox;
 	struct edgetpu_mailbox_attr *attr = &group->mbox_attr;
-	int ret;
 
+	/*
+	 * Sizes here should never be invalid since they are checked in
+	 * edgetpu_mailbox_init_vii().
+	 */
 	cmd_queue_size = convert_runtime_queue_size_to_fw(attr->cmd_queue_size,
 							  attr->sizeof_cmd);
-	if (cmd_queue_size < 0)
-		return cmd_queue_size;
-
 	resp_queue_size = convert_runtime_queue_size_to_fw(
 		attr->resp_queue_size, attr->sizeof_resp);
-	if (resp_queue_size < 0)
-		return resp_queue_size;
 
 	etdev_dbg(group->etdev, "Restoring vii. workload_id=%u mbox_id=%u\n",
-		  group->workload_id, group->vii.mailbox->mailbox_id);
+		  group->workload_id, mailbox->mailbox_id);
 
 	etdev_dbg(group->etdev, "Priority: %d\n", attr->priority);
 	etdev_dbg(group->etdev, "Tail doorbell %s",
 		  attr->cmdq_tail_doorbell ? "enabled" : "disabled");
 	etdev_dbg(group->etdev, "cmd queue: addr=%llX size=%u\n",
-		  group->vii.cmd_queue_mem.tpu_addr,
-		  cmd_queue_size);
+		  group->vii.cmd_queue_mem.tpu_addr, cmd_queue_size);
 	etdev_dbg(group->etdev, "resp queue: addr=%llX size=%u\n",
-		  group->vii.resp_queue_mem.tpu_addr,
-		  resp_queue_size);
+		  group->vii.resp_queue_mem.tpu_addr, resp_queue_size);
 
 	edgetpu_mailbox_set_priority(mailbox, attr->priority);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, cmd_queue_tail_doorbell_enable,
 				      attr->cmdq_tail_doorbell);
-
-	ret = edgetpu_mailbox_set_queue(mailbox, MAILBOX_CMD_QUEUE,
-					group->vii.cmd_queue_mem.tpu_addr,
-					cmd_queue_size);
-	if (ret) {
-		etdev_warn(group->etdev,
-			   "%s: Restoring command queue failed: %d\n", __func__,
-			   ret);
-		return ret;
-	}
-
-	ret = edgetpu_mailbox_set_queue(mailbox, MAILBOX_RESP_QUEUE,
-					group->vii.resp_queue_mem.tpu_addr,
-					resp_queue_size);
-	if (ret) {
-		etdev_warn(group->etdev,
-			   "%s: Restoring response queue failed: %d\n",
-			   __func__, ret);
-		return ret;
-	}
-
+	edgetpu_mailbox_set_queue(mailbox, MAILBOX_CMD_QUEUE,
+				  group->vii.cmd_queue_mem.tpu_addr,
+				  cmd_queue_size);
+	edgetpu_mailbox_set_queue(mailbox, MAILBOX_RESP_QUEUE,
+				  group->vii.resp_queue_mem.tpu_addr,
+				  resp_queue_size);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
-	return 0;
 }
 
 void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
@@ -733,7 +717,7 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 	mutex_lock(&etdev->groups_lock);
 	for (i = 0; i < EDGETPU_NGROUPS; i++) {
 		group = etdev->groups[i];
-		if (group) {
+		if (group && !edgetpu_group_mailbox_detached_locked(group)) {
 			edgetpu_mailbox_reinit_vii(group);
 			if (edgetpu_device_group_is_finalized(group))
 				mailbox_ids |=

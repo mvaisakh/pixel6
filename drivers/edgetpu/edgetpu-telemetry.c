@@ -4,21 +4,22 @@
  *
  * Copyright (C) 2019-2020 Google, Inc.
  */
-#ifdef CONFIG_X86
-#include <linux/printk.h>	// pr_warn used by set_memory.h
-#include <asm/pgtable_types.h>
-#include <asm/set_memory.h>
-#endif
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/workqueue.h>
 
+#include "edgetpu-internal.h"
 #include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu.h"
+
+/* When log data arrives, recheck for more log data after this delay. */
+#define TELEMETRY_LOG_RECHECK_DELAY	200	/* ms */
 
 static struct edgetpu_telemetry *
 select_telemetry(struct edgetpu_telemetry_ctx *ctx,
@@ -34,88 +35,6 @@ select_telemetry(struct edgetpu_telemetry_ctx *ctx,
 		/* return a valid object, don't crash the kernel */
 		return &ctx->log;
 	}
-}
-
-static int telemetry_init(struct edgetpu_dev *etdev,
-			  struct edgetpu_telemetry *tel, const char *name,
-			  struct edgetpu_coherent_mem *mem)
-{
-	const size_t size = EDGETPU_TELEMETRY_BUFFER_SIZE;
-	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
-	void *vaddr;
-	dma_addr_t dma_addr;
-	tpu_addr_t tpu_addr;
-
-	if (mem) {
-		tel->coherent_mem = *mem;
-		vaddr = mem->vaddr;
-		tel->caller_mem = true;
-	} else {
-		vaddr = dmam_alloc_coherent(etdev->dev, size, &dma_addr,
-					    GFP_KERNEL);
-		if (!vaddr)
-			return -ENOMEM;
-#ifdef CONFIG_X86
-		set_memory_uc((unsigned long)vaddr, size >> PAGE_SHIFT);
-#endif
-		tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size,
-					       DMA_BIDIRECTIONAL,
-					       EDGETPU_CONTEXT_KCI, flags);
-		if (!tpu_addr) {
-			dev_err(etdev->dev,
-				"%s: failed to map buffer for '%s'\n",
-				etdev->dev_name, name);
-			return -ENOSPC;
-		}
-		tel->coherent_mem.vaddr = vaddr;
-		tel->coherent_mem.dma_addr = dma_addr;
-		tel->coherent_mem.tpu_addr = tpu_addr;
-		tel->coherent_mem.size = size;
-		tel->caller_mem = false;
-	}
-
-	rwlock_init(&tel->ctx_mem_lock);
-	tel->name = name;
-
-	tel->header = (struct edgetpu_telemetry_header *)vaddr;
-	tel->header->head = 0;
-	tel->header->tail = 0;
-	tel->header->entries_dropped = 0;
-
-	tel->ctx = NULL;
-
-	spin_lock_init(&tel->state_lock);
-	tel->state = EDGETPU_TELEMETRY_ENABLED;
-	tel->inited = true;
-
-	return 0;
-}
-
-static void telemetry_exit(struct edgetpu_dev *etdev,
-			   struct edgetpu_telemetry *tel)
-{
-	ulong flags;
-
-	if (!tel->inited)
-		return;
-	spin_lock_irqsave(&tel->state_lock, flags);
-	/* Prevent racing with the IRQ handler */
-	tel->state = EDGETPU_TELEMETRY_INVALID;
-	spin_unlock_irqrestore(&tel->state_lock, flags);
-
-	if (tel->coherent_mem.tpu_addr && !tel->caller_mem) {
-		edgetpu_mmu_tpu_unmap(etdev, tel->coherent_mem.tpu_addr,
-				      tel->coherent_mem.size,
-				      EDGETPU_CONTEXT_KCI);
-		tel->coherent_mem.tpu_addr = 0;
-#ifdef CONFIG_X86
-		set_memory_wb((unsigned long)tel->coherent_mem.vaddr,
-			      tel->coherent_mem.size >> PAGE_SHIFT);
-#endif
-	}
-	if (tel->ctx)
-		eventfd_ctx_put(tel->ctx);
-	tel->ctx = NULL;
 }
 
 static int telemetry_kci(struct edgetpu_dev *etdev,
@@ -201,9 +120,9 @@ static void copy_with_wrap(struct edgetpu_telemetry_header *header, void *dest,
 }
 
 /* Log messages from TPU CPU to dmesg */
-static void edgetpu_fw_log(struct edgetpu_dev *etdev,
-			   struct edgetpu_telemetry *log)
+static void edgetpu_fw_log(struct edgetpu_telemetry *log)
 {
+	struct edgetpu_dev *etdev = log->etdev;
 	struct edgetpu_telemetry_header *header = log->header;
 	struct edgetpu_log_entry_header entry;
 	u8 *start;
@@ -255,23 +174,55 @@ static void edgetpu_fw_log(struct edgetpu_dev *etdev,
 }
 
 /* Consumes the queue buffer. */
-static void edgetpu_fw_trace(struct edgetpu_dev *etdev,
-			     struct edgetpu_telemetry *trace)
+static void edgetpu_fw_trace(struct edgetpu_telemetry *trace)
 {
 	struct edgetpu_telemetry_header *header = trace->header;
 
 	header->head = header->tail;
 }
 
-/*
- * If the buffer queue is not empty,
- * - signals the event context.
- * - calls @fallback if event is not set.
- */
+/* Worker for processing log/trace buffers. */
+
+static void telemetry_worker(struct work_struct *work)
+{
+	struct edgetpu_telemetry *tel =
+		container_of(work, struct edgetpu_telemetry, work);
+	u32 prev_head;
+	ulong flags;
+
+	/*
+	 * Loop while telemetry enabled, there is data to be consumed,
+	 * and the previous iteration made progress.  If another IRQ arrives
+	 * just after the last head != tail check we should get another worker
+	 * schedule.
+	 */
+	do {
+		spin_lock_irqsave(&tel->state_lock, flags);
+		if (tel->state != EDGETPU_TELEMETRY_ENABLED) {
+			spin_unlock_irqrestore(&tel->state_lock, flags);
+			return;
+		}
+
+		prev_head = tel->header->head;
+		if (tel->header->head != tel->header->tail) {
+			read_lock(&tel->ctx_mem_lock);
+			if (tel->ctx)
+				eventfd_signal(tel->ctx, 1);
+			else
+				tel->fallback_fn(tel);
+			read_unlock(&tel->ctx_mem_lock);
+		}
+
+		spin_unlock_irqrestore(&tel->state_lock, flags);
+		msleep(TELEMETRY_LOG_RECHECK_DELAY);
+	} while (tel->header->head != tel->header->tail &&
+		 tel->header->head != prev_head);
+}
+
+
+/* If the buffer queue is not empty, schedules worker. */
 static void telemetry_irq_handler(struct edgetpu_dev *etdev,
-				  struct edgetpu_telemetry *tel,
-				  void (*fallback)(struct edgetpu_dev *,
-						   struct edgetpu_telemetry *))
+				  struct edgetpu_telemetry *tel)
 {
 	if (!tel->inited)
 		return;
@@ -279,12 +230,7 @@ static void telemetry_irq_handler(struct edgetpu_dev *etdev,
 
 	if (tel->state == EDGETPU_TELEMETRY_ENABLED &&
 	    tel->header->head != tel->header->tail) {
-		read_lock(&tel->ctx_mem_lock);
-		if (tel->ctx)
-			eventfd_signal(tel->ctx, 1);
-		else
-			fallback(etdev, tel);
-		read_unlock(&tel->ctx_mem_lock);
+		schedule_work(&tel->work);
 	}
 
 	spin_unlock(&tel->state_lock);
@@ -323,6 +269,88 @@ static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 	return ret;
 }
 
+static int telemetry_init(struct edgetpu_dev *etdev,
+			  struct edgetpu_telemetry *tel, const char *name,
+			  struct edgetpu_coherent_mem *mem,
+			  void (*fallback)(struct edgetpu_telemetry *))
+{
+	const size_t size = EDGETPU_TELEMETRY_BUFFER_SIZE;
+	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
+	void *vaddr;
+	dma_addr_t dma_addr;
+	tpu_addr_t tpu_addr;
+
+	if (mem) {
+		tel->coherent_mem = *mem;
+		vaddr = mem->vaddr;
+		tel->caller_mem = true;
+	} else {
+		vaddr = dmam_alloc_coherent(etdev->dev, size, &dma_addr,
+					    GFP_KERNEL);
+		if (!vaddr)
+			return -ENOMEM;
+		tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size,
+					       DMA_BIDIRECTIONAL,
+					       EDGETPU_CONTEXT_KCI, flags);
+		if (!tpu_addr) {
+			dev_err(etdev->dev,
+				"%s: failed to map buffer for '%s'\n",
+				etdev->dev_name, name);
+			return -ENOSPC;
+		}
+		tel->coherent_mem.vaddr = vaddr;
+		tel->coherent_mem.dma_addr = dma_addr;
+		tel->coherent_mem.tpu_addr = tpu_addr;
+		tel->coherent_mem.size = size;
+		tel->caller_mem = false;
+		edgetpu_x86_coherent_mem_set_uc(&tel->coherent_mem);
+	}
+
+	rwlock_init(&tel->ctx_mem_lock);
+	tel->name = name;
+	tel->etdev = etdev;
+
+	tel->header = (struct edgetpu_telemetry_header *)vaddr;
+	tel->header->head = 0;
+	tel->header->tail = 0;
+	tel->header->entries_dropped = 0;
+
+	tel->ctx = NULL;
+
+	spin_lock_init(&tel->state_lock);
+	INIT_WORK(&tel->work, telemetry_worker);
+	tel->fallback_fn = fallback;
+	tel->state = EDGETPU_TELEMETRY_ENABLED;
+	tel->inited = true;
+
+	return 0;
+}
+
+static void telemetry_exit(struct edgetpu_dev *etdev,
+			   struct edgetpu_telemetry *tel)
+{
+	ulong flags;
+
+	if (!tel->inited)
+		return;
+	spin_lock_irqsave(&tel->state_lock, flags);
+	/* Prevent racing with the IRQ handler or worker */
+	tel->state = EDGETPU_TELEMETRY_INVALID;
+	spin_unlock_irqrestore(&tel->state_lock, flags);
+	cancel_work_sync(&tel->work);
+
+	if (tel->coherent_mem.tpu_addr && !tel->caller_mem) {
+		edgetpu_mmu_tpu_unmap(etdev, tel->coherent_mem.tpu_addr,
+				      tel->coherent_mem.size,
+				      EDGETPU_CONTEXT_KCI);
+		tel->coherent_mem.tpu_addr = 0;
+		edgetpu_x86_coherent_mem_set_wb(&tel->coherent_mem);
+	}
+	if (tel->ctx)
+		eventfd_ctx_put(tel->ctx);
+	tel->ctx = NULL;
+}
+
 int edgetpu_telemetry_init(struct edgetpu_dev *etdev,
 			   struct edgetpu_coherent_mem *log_mem,
 			   struct edgetpu_coherent_mem *trace_mem)
@@ -332,12 +360,12 @@ int edgetpu_telemetry_init(struct edgetpu_dev *etdev,
 	if (!etdev->telemetry)
 		return -ENODEV;
 	ret = telemetry_init(etdev, &etdev->telemetry->log, "telemetry_log",
-			     log_mem);
+			     log_mem, edgetpu_fw_log);
 	if (ret)
 		return ret;
 #if IS_ENABLED(CONFIG_EDGETPU_TELEMETRY_TRACE)
 	ret = telemetry_init(etdev, &etdev->telemetry->trace, "telemetry_trace",
-			     trace_mem);
+			     trace_mem, edgetpu_fw_trace);
 	if (ret) {
 		telemetry_exit(etdev, &etdev->telemetry->log);
 		return ret;
@@ -393,9 +421,8 @@ void edgetpu_telemetry_irq_handler(struct edgetpu_dev *etdev)
 {
 	if (!etdev->telemetry)
 		return;
-	telemetry_irq_handler(etdev, &etdev->telemetry->log, edgetpu_fw_log);
-	telemetry_irq_handler(etdev, &etdev->telemetry->trace,
-			      edgetpu_fw_trace);
+	telemetry_irq_handler(etdev, &etdev->telemetry->log);
+	telemetry_irq_handler(etdev, &etdev->telemetry->trace);
 }
 
 void edgetpu_telemetry_mappings_show(struct edgetpu_dev *etdev,

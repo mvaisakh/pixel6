@@ -388,15 +388,18 @@ void edgetpu_mmu_unmap(struct edgetpu_dev *etdev, struct edgetpu_mapping *map,
 		iommu_get_domain_for_dev(etdev->dev);
 
 	ret = get_iommu_map_params(etdev, map, context_id, &params);
-	if (ret)
-		return;
-	/*
-	 * If this is a per-context maping, it was mirrored in the per-context
-	 * domain. Undo that mapping first.
-	 */
-	if (params.domain != default_domain)
+	if (!ret && params.domain != default_domain) {
+		/*
+		 * If this is a per-context mapping, it was mirrored in the
+		 * per-context domain. Undo that mapping first.
+		 */
 		iommu_unmap(params.domain, map->device_address, params.size);
+	}
 
+	/*
+	 * Always do dma_unmap since context_id might be invalid when group has
+	 * mailbox detached.
+	 */
 	/* Undo the mapping in the default domain */
 	dma_unmap_sg_attrs(etdev->dev, map->sgt.sgl, map->sgt.orig_nents,
 			   edgetpu_host_dma_dir(map->dir), map->dma_attrs);

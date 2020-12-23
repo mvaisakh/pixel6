@@ -80,7 +80,6 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	int ret;
 	struct edgetpu_thermal *cooling = cdev->devdata;
 	struct device *dev = cooling->dev;
-	unsigned long pwr_state;
 
 	if (WARN_ON(state_original >= ARRAY_SIZE(state_mapping))) {
 		dev_err(dev, "%s: invalid cooling state %lu\n", __func__,
@@ -89,7 +88,6 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	}
 
 	mutex_lock(&cooling->lock);
-	pwr_state = state_mapping[state_original];
 	if (state_original != cooling->cooling_state) {
 		/*
 		 * TODO (b/174799481):
@@ -106,9 +104,6 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 			return ret;
 		}
 		cooling->cooling_state = state_original;
-	} else {
-		mutex_unlock(&cooling->lock);
-		return -EALREADY;
 	}
 
 	mutex_unlock(&cooling->lock);
@@ -188,7 +183,7 @@ static int edgetpu_power2state(struct thermal_cooling_device *cdev,
 
 	for (i = 0; i < ARRAY_SIZE(state_pwr_map); i++) {
 		if (power >= state_pwr_map[i].power) {
-			*state = state_pwr_map[i].state;
+			*state = i;
 			return 0;
 		}
 	}
