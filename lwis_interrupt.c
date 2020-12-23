@@ -222,11 +222,12 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	for (i = 0; i < irq_events_num; i++) {
 		struct lwis_single_event_info *new_event =
 			kzalloc(sizeof(struct lwis_single_event_info), GFP_KERNEL);
-
 		if (!new_event) {
 			return -ENOMEM;
 		}
 
+		/* Fill the device id info in event id bit[47..32] */
+		irq_events[i] |= (int64_t)(list->lwis_dev->id & 0xFFFF) << 32;
 		/* Grab the device state outside of the spinlock */
 		new_event->state =
 			lwis_device_event_state_find_or_create(list->lwis_dev, irq_events[i]);
