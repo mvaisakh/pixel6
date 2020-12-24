@@ -522,6 +522,7 @@ static int exynos_update_status(struct backlight_device *bl)
 	struct exynos_panel *ctx = bl_get_data(bl);
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
+	int min_brightness = ctx->desc->min_brightness ? : 1;
 	struct drm_connector_state *conn_state;
 	u32 bl_range = 0;
 
@@ -534,6 +535,9 @@ static int exynos_update_status(struct backlight_device *bl)
 	if (bl->props.power != FB_BLANK_UNBLANK)
 		brightness = 0;
 
+	if (brightness && brightness < min_brightness)
+		brightness = min_brightness;
+
 	dev_info(ctx->dev, "req: %d, br: %d\n", bl->props.brightness,
 		brightness);
 
@@ -542,7 +546,7 @@ static int exynos_update_status(struct backlight_device *bl)
 	if (conn_state) {
 		struct exynos_drm_connector_state *exynos_connector_state =
 			to_exynos_connector_state(conn_state);
-		exynos_connector_state->brightness_level = bl->props.brightness;
+		exynos_connector_state->brightness_level = brightness;
 	}
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
