@@ -443,7 +443,8 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 		case GSU_MODE_USB_CHG:
 			need_stby = use_case != GSU_MODE_USB_CHG_WLC_TX &&
 				    use_case != GSU_MODE_WLC_RX &&
-				    use_case != GSU_MODE_USB_DC;
+				    use_case != GSU_MODE_USB_DC &&
+				    use_case != GSU_MODE_USB_OTG_FRS;
 			break;
 		case GSU_MODE_WLC_RX:
 			need_stby = use_case != GSU_MODE_USB_OTG_WLC_RX &&
@@ -480,7 +481,7 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 
 		case GSU_MODE_USB_OTG_FRS:
 
-			if (use_case == GSU_MODE_USB_OTG)
+			if (use_case == GSU_MODE_USB_OTG || use_case == GSU_MODE_USB_OTG_FRS)
 				break;
 
 			need_stby = true;
