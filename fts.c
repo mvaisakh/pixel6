@@ -3740,7 +3740,7 @@ static bool fts_user_report_event_handler(struct fts_ts_info *info, unsigned
 }
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-static void heatmap_enable(struct fts_ts_info info)
+static void heatmap_enable(struct fts_ts_info *info)
 {
 	u8 command[] = {FTS_CMD_SYSTEM, SYS_CMD_LOAD_DATA,
 					LOCAL_HEATMAP_MODE};
