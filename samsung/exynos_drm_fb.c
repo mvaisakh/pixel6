@@ -440,6 +440,16 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 }
 
 #define TIMEOUT	msecs_to_jiffies(50)
+
+/* wait at least one frame time on top of common timeout */
+static inline unsigned long fps_timeout(int fps)
+{
+	/* default to 60 fps, if fps is not provided */
+	const frame_time_ms = DIV_ROUND_UP(MSEC_PER_SEC, fps ? : 60);
+
+	return msecs_to_jiffies(frame_time_ms) + TIMEOUT;
+}
+
 static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
 	int i;
@@ -481,8 +491,11 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 				new_crtc_state);
 
 		if (new_crtc_state->active || new_crtc_state->active_changed) {
-			hibernation_block_exit(decon->hibernation);
+			const bool was_hibernating = hibernation_block_exit(decon->hibernation);
+
 			hibernation_crtc_mask |= drm_crtc_mask(crtc);
+			if (was_hibernating)
+				WARN_ON(drm_atomic_add_affected_planes(old_state, crtc));
 		}
 
 		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
@@ -542,22 +555,30 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_fake_vblank(old_state);
 
+	DPU_ATRACE_BEGIN("wait_for_vblanks");
+	drm_atomic_helper_wait_for_vblanks(dev, old_state);
+	DPU_ATRACE_END("wait_for_vblanks");
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
 		struct decon_mode *mode;
+		int fps;
 
 		decon = crtc_to_decon(crtc);
 
 		if (!new_crtc_state->active)
 			continue;
 
+		fps = drm_mode_vrefresh(&new_crtc_state->mode);
+		if (old_crtc_state->active)
+			fps = min(fps, drm_mode_vrefresh(&old_crtc_state->mode));
+
 		DPU_ATRACE_BEGIN("wait_for_frame_start");
 		if (!wait_for_completion_timeout(&decon->framestart_done,
-						 TIMEOUT)) {
+						 fps_timeout(fps))) {
 			DPU_EVENT_LOG(DPU_EVT_FRAMESTART_TIMEOUT,
 					decon->id, NULL);
-			pr_warn("decon%d framestart timeout\n",
-					decon->id);
+			pr_warn("decon%d framestart timeout (%d fps)\n",
+					decon->id, fps);
 			decon_dump_all(decon);
 		}
 		DPU_ATRACE_END("wait_for_frame_start");
@@ -570,10 +591,6 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 					DECON_TRIG_MASK);
 		}
 	}
-
-	DPU_ATRACE_BEGIN("wait_for_vblanks");
-	drm_atomic_helper_wait_for_vblanks(dev, old_state);
-	DPU_ATRACE_END("wait_for_vblanks");
 
 	exynos_atomic_bts_post_update(dev, old_state);
 

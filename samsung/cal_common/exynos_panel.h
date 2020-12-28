@@ -59,7 +59,6 @@ struct dpu_panel_timing {
 
 	unsigned int vrefresh;
 
-	unsigned int max_vrefresh;
 	unsigned int te_idle_us;
 	unsigned int te_var;
 };

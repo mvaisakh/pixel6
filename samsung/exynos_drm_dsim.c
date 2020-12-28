@@ -79,12 +79,18 @@ pr_debug("%s[%d]: "fmt, dsim->dev->driver->name, dsim->id, ##__VA_ARGS__)
 
 //#define DSIM_BIST
 
+#define DEFAULT_TE_IDLE_US              1000
+#define DEFAULT_TE_VARIATION            1
+
 static const struct of_device_id dsim_of_match[] = {
 	{ .compatible = "samsung,exynos-dsim",
 	  .data = NULL },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, dsim_of_match);
+
+static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t hs_clock_mhz,
+		uint32_t *underrun);
 
 static void dsim_dump(struct dsim_device *dsim)
 {
@@ -343,6 +349,8 @@ dsim_get_clock_mode(const struct dsim_device *dsim,
 static void dsim_update_clock_config(struct dsim_device *dsim,
 				     const struct dsim_pll_param *p)
 {
+	uint32_t underrun_cnt;
+
 	dsim->config.dphy_pms.p = p->p;
 	dsim->config.dphy_pms.m = p->m;
 	dsim->config.dphy_pms.s = p->s;
@@ -371,8 +379,14 @@ static void dsim_update_clock_config(struct dsim_device *dsim,
 	dsim_debug(dsim, "\t%s(hs:%d,esc:%d)\n", p->name, dsim->clk_param.hs_clk,
 		 dsim->clk_param.esc_clk);
 
-	dsim->config.cmd_underrun_cnt[0] = p->cmd_underrun_cnt;
-	dsim_debug(dsim, "\tunderrun_lp_ref 0x%x\n", p->cmd_underrun_cnt);
+	if (p->cmd_underrun_cnt) {
+		dsim->config.cmd_underrun_cnt[0] = p->cmd_underrun_cnt;
+	} else {
+		dsim_calc_underrun(dsim, dsim->clk_param.hs_clk, &underrun_cnt);
+		dsim->config.cmd_underrun_cnt[0] = underrun_cnt;
+	}
+
+	dsim_debug(dsim, "\tunderrun_lp_ref 0x%x\n", dsim->config.cmd_underrun_cnt[0]);
 }
 
 static int dsim_set_clock_mode(struct dsim_device *dsim,
@@ -800,12 +814,12 @@ static void dsim_update_config_for_mode(struct dsim_reg_config *config,
 	p_timing->hsa = vm.hsync_len;
 	p_timing->vrefresh = drm_mode_vrefresh(mode);
 	if (exynos_mode->underrun_param) {
-		p_timing->max_vrefresh = exynos_mode->underrun_param->max_vrefresh;
 		p_timing->te_idle_us = exynos_mode->underrun_param->te_idle_us;
 		p_timing->te_var = exynos_mode->underrun_param->te_var;
 	} else {
-		p_timing->max_vrefresh = p_timing->vrefresh;
-		pr_warn("%s: underrun_param for mode " DRM_MODE_FMT
+		p_timing->te_idle_us = DEFAULT_TE_IDLE_US;
+		p_timing->te_var = DEFAULT_TE_VARIATION;
+		pr_debug("%s: underrun_param for mode " DRM_MODE_FMT
 			" not specified", __func__, DRM_MODE_ARG(mode));
 	}
 
@@ -840,6 +854,9 @@ static void dsim_set_display_mode(struct dsim_device *dsim,
 	dsim_update_config_for_mode(&dsim->config, mode, exynos_mode);
 
 	dsim_set_clock_mode(dsim, mode);
+
+	if (dsim->state == DSIM_STATE_HSCLKEN)
+		dsim_reg_set_vrr_config(dsim->id, &dsim->config, &dsim->clk_param);
 
 	dsim_debug(dsim, "dsim mode %s dsc is %s [%d %d %d %d]\n",
 			dsim->config.mode == DSIM_VIDEO_MODE ? "video" : "cmd",
@@ -1814,8 +1831,8 @@ static int dsim_calc_pmsk(struct dsim_pll_features *pll_features,
 	return 0;
 }
 
-static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun,
-			      uint32_t hs_clock_mhz)
+static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t hs_clock_mhz,
+		uint32_t *underrun)
 {
 	const struct dsim_reg_config *config = &dsim->config;
 	uint32_t lanes = config->data_lane_cnt;
@@ -1836,7 +1853,7 @@ static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t *underrun
 
 	/* max time to transfer one frame, in the unit of nanosecond */
 	max_frame_time = NSEC_PER_SEC * 100 /
-		(config->p_timing.max_vrefresh * (100 + config->p_timing.te_var)) -
+		(config->p_timing.vrefresh * (100 + config->p_timing.te_var)) -
 		NSEC_PER_USEC * config->p_timing.te_idle_us;
 	/* one frame pixel data (bytes) */
 	frame_data = number_of_transfer * w_threshold * config->bpp / 8;
@@ -1877,7 +1894,7 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 	}
 
 	mutex_lock(&dsim->state_lock);
-	ret = dsim_calc_underrun(dsim, &lp_underrun, hs_clock);
+	ret = dsim_calc_underrun(dsim, hs_clock, &lp_underrun);
 	if (ret < 0) {
 		dsim_err(dsim, "Failed to update underrun\n");
 		goto out;

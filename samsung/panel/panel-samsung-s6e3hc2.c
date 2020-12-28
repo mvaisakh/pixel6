@@ -303,7 +303,6 @@ static bool s6e3hc2_is_mode_seamless(const struct exynos_panel *ctx,
 static const struct exynos_display_underrun_param wqhd_underrun_param = {
 	.te_idle_us = 1000,
 	.te_var = 1,
-	.max_vrefresh = 90,
 };
 
 static const u32 s6e3hc2_bl_range[] = {
@@ -374,7 +373,6 @@ static const struct exynos_panel_mode s6e3hc2_wqhd_modes[] = {
 static const struct exynos_display_underrun_param fhd_underrun_param = {
 	.te_idle_us = 1000,
 	.te_var = 1,
-	.max_vrefresh = 90,
 };
 
 static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {

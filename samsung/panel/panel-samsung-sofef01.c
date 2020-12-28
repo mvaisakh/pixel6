@@ -128,7 +128,6 @@ static void sofef01_set_hbm_mode(struct exynos_panel *exynos_panel,
 static const struct exynos_display_underrun_param underrun_param = {
 	.te_idle_us = 1000,
 	.te_var = 1,
-	.max_vrefresh = 60,
 };
 
 static const struct exynos_panel_mode sofef01_modes[] = {

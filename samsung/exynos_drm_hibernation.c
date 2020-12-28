@@ -105,14 +105,15 @@ ret:
 			pm_runtime_active(decon->dev) ? "on" : "off");
 }
 
-static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
+static int exynos_hibernation_exit(struct exynos_hibernation *hiber)
 {
 	struct decon_device *decon = hiber->decon;
+	int ret = -EBUSY;
 
 	pr_debug("%s +\n", __func__);
 
 	if (!decon)
-		return;
+		return -ENODEV;
 
 	hibernation_block(hiber);
 
@@ -150,26 +151,29 @@ static void exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_OUT, decon->id, NULL);
 	DPU_ATRACE_END("exynos_hibernation_exit");
 
+	ret = 0;
 ret:
 	mutex_unlock(&hiber->lock);
 	hibernation_unblock(hiber);
 
 	pr_debug("%s: DPU power %s -\n", __func__,
 			pm_runtime_active(decon->dev) ? "on" : "off");
+
+	return ret;
 }
 
-void hibernation_block_exit(struct exynos_hibernation *hiber)
+bool hibernation_block_exit(struct exynos_hibernation *hiber)
 {
 	const struct exynos_hibernation_funcs *funcs;
 
 	if (!hiber)
-		return;
+		return false;
 
 	hibernation_block(hiber);
 
 	funcs = hiber->funcs;
-	if (funcs)
-		funcs->exit(hiber);
+
+	return !funcs || !funcs->exit(hiber);
 }
 
 static const struct exynos_hibernation_funcs hibernation_funcs = {
