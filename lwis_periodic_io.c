@@ -22,7 +22,6 @@
 
 static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 {
-	ktime_t current_time;
 	ktime_t interval;
 	unsigned long flags;
 	struct list_head *it_period, *it_period_tmp;
@@ -62,9 +61,8 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 		return HRTIMER_NORESTART;
 	}
 
-	current_time = lwis_get_time();
 	interval = ktime_set(0, periodic_io_list->period_ns);
-	hrtimer_forward(timer, current_time, interval);
+	hrtimer_forward_now(timer, interval);
 
 	return HRTIMER_RESTART;
 }
