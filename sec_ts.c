@@ -3296,7 +3296,7 @@ int sec_ts_read_information(struct sec_ts_data *ts)
 	}
 
 	input_info(true, &ts->client->dev,
-		   "%s: nTX:%X, nRX:%X, rY:%d, rX:%d\n",
+		   "%s: nTX:%d, nRX:%d, rY:%d, rX:%d\n",
 		   __func__, data[8], data[9],
 		   (data[2] << 8) | data[3], (data[0] << 8) | data[1]);
 
