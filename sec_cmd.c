@@ -45,11 +45,19 @@ void sec_cmd_set_default_result(struct sec_cmd_data *data)
 	memset(data->cmd_result, 0x00, SEC_CMD_RESULT_STR_LEN);
 	memcpy(data->cmd_result, data->cmd, SEC_CMD_STR_LEN);
 	strncat(data->cmd_result, &delim, 1);
+	memset(data->cmd_result_2, 0x00, SEC_CMD_RESULT_STR_LEN);
+	memcpy(data->cmd_result_2, data->cmd, SEC_CMD_STR_LEN);
+	strncat(data->cmd_result_2, &delim, 1);
 }
 
 void sec_cmd_set_cmd_result(struct sec_cmd_data *data, char *buff, int len)
 {
 	strlcat(data->cmd_result, buff, SEC_CMD_RESULT_STR_LEN);
+}
+
+void sec_cmd_set_cmd_result_2(struct sec_cmd_data *data, char *buff, int len)
+{
+	strlcat(data->cmd_result_2, buff, SEC_CMD_RESULT_STR_LEN);
 }
 
 #ifndef USE_SEC_CMD_QUEUE
@@ -385,6 +393,27 @@ static ssize_t cmd_result_show(struct device *dev,
 	return size;
 }
 
+static ssize_t cmd_result_2_show(struct device *dev,
+				 struct device_attribute *devattr, char *buf)
+{
+	struct sec_cmd_data *data = dev_get_drvdata(dev);
+	int size;
+
+	if (!data) {
+		pr_err("%s %s: No platform data found\n", SECLOG, __func__);
+		return -EINVAL;
+	}
+
+	data->cmd_state = SEC_CMD_STATUS_WAITING;
+	pr_info("%s %s: %s\n", SECLOG, __func__, data->cmd_result_2);
+	size = snprintf(buf, SEC_CMD_RESULT_STR_LEN, "%s\n",
+			data->cmd_result_2);
+
+	sec_cmd_set_cmd_exit(data);
+
+	return size;
+}
+
 static ssize_t cmd_list_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -419,12 +448,14 @@ static ssize_t cmd_list_show(struct device *dev,
 static DEVICE_ATTR_WO(cmd);
 static DEVICE_ATTR_RO(cmd_status);
 static DEVICE_ATTR_RO(cmd_result);
+static DEVICE_ATTR_RO(cmd_result_2);
 static DEVICE_ATTR_RO(cmd_list);
 
 static struct attribute *sec_fac_attrs[] = {
 	&dev_attr_cmd.attr,
 	&dev_attr_cmd_status.attr,
 	&dev_attr_cmd_result.attr,
+	&dev_attr_cmd_result_2.attr,
 	&dev_attr_cmd_list.attr,
 	NULL,
 };

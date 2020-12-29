@@ -3565,12 +3565,24 @@ static int sec_ts_fw_init(struct sec_ts_data *ts)
 	if (!ts->pFrame)
 		return SEC_TS_ERR_ALLOC_FRAME;
 
+
+	ts->pFrameSS = kzalloc((ts->tx_count + ts->rx_count) * 2, GFP_KERNEL);
+	if (!ts->pFrameSS) {
+		kfree(ts->pFrame);
+		ts->pFrame = NULL;
+		return SEC_TS_ERR_ALLOC_FRAME_SS;
+	}
+
+#ifdef USE_STIM_PAD
 	ts->gainTable = kzalloc(ts->tx_count * ts->rx_count, GFP_KERNEL);
 	if (!ts->gainTable) {
 		kfree(ts->pFrame);
+		kfree(ts->pFrameSS);
 		ts->pFrame = NULL;
+		ts->pFrameSS = NULL;
 		return SEC_TS_ERR_ALLOC_GAINTABLE;
 	}
+#endif
 
 	if (ts->plat_data->support_dex) {
 		ts->input_dev_pad->name = "sec_touchpad";
@@ -3877,6 +3889,8 @@ static int sec_ts_probe(struct spi_device *client)
 			goto err_init;
 		case SEC_TS_ERR_ALLOC_FRAME:
 			goto err_allocate_frame;
+		case SEC_TS_ERR_ALLOC_FRAME_SS:
+			goto err_allocate_frame_ss;
 		case SEC_TS_ERR_ALLOC_GAINTABLE:
 			goto err_allocate_gaintable;
 		case SEC_TS_ERR_REG_INPUT_DEV:
@@ -4035,8 +4049,12 @@ err_input_pad_register_device:
 	ts->input_dev = NULL;
 	ts->input_dev_touch = NULL;
 err_input_register_device:
+#ifdef USE_STIM_PAD
 	kfree(ts->gainTable);
+#endif
 err_allocate_gaintable:
+	kfree(ts->pFrameSS);
+err_allocate_frame_ss:
 	kfree(ts->pFrame);
 err_allocate_frame:
 err_init:
@@ -4562,7 +4580,10 @@ static int sec_ts_remove(struct spi_device *client)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	kfree(ts->heatmap_buff);
 #endif
+#ifdef USE_STIM_PAD
 	kfree(ts->gainTable);
+#endif
+	kfree(ts->pFrameSS);
 	kfree(ts->pFrame);
 	kfree(ts);
 	return 0;

@@ -587,6 +587,7 @@ enum {
 	SEC_TS_ERR_NA = 0,
 	SEC_TS_ERR_INIT,
 	SEC_TS_ERR_ALLOC_FRAME,
+	SEC_TS_ERR_ALLOC_FRAME_SS,
 	SEC_TS_ERR_ALLOC_GAINTABLE,
 	SEC_TS_ERR_REG_INPUT_DEV,
 	SEC_TS_ERR_REG_INPUT_PAD_DEV
@@ -679,8 +680,9 @@ struct heatmap_report {
 
 #define TEST_MODE_MIN_MAX		false
 #define TEST_MODE_ALL_NODE		true
-#define TEST_MODE_READ_FRAME		false
-#define TEST_MODE_READ_CHANNEL		true
+#define TEST_MODE_READ_FRAME		0
+#define TEST_MODE_READ_CHANNEL		1
+#define TEST_MODE_READ_ALL		2
 
 /* factory test mode */
 struct sec_ts_test_mode {
@@ -688,7 +690,7 @@ struct sec_ts_test_mode {
 	short min[REGION_TYPE_COUNT];
 	short max[REGION_TYPE_COUNT];
 	bool allnode;
-	bool frame_channel;
+	u8 frame_channel;
 	enum spec_check_type spec_check;
 };
 
@@ -916,8 +918,17 @@ struct sec_ts_data {
 						 **/
 	struct completion resume_done;
 	struct sec_cmd_data sec;
-	short *pFrame;
+	union {
+		short *pFrame;
+		short *pFrameMS;
+	};
+
+	/* only available if sec_ts_read_frame_and_channel() be called */
+	short *pFrameSS;
+
+#ifdef USE_STIM_PAD
 	u8 *gainTable;
+#endif
 
 	bool probe_done;
 	bool reinit_done;
