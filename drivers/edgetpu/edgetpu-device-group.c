@@ -919,7 +919,7 @@ static void edgetpu_unmap_node(struct edgetpu_mapping *map)
 		    map->dir == DMA_BIDIRECTIONAL)
 			set_page_dirty(page);
 
-		put_page(page);
+		unpin_user_page(page);
 	}
 
 	sg_free_table(&map->sgt);
@@ -991,7 +991,8 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 	/*
 	 * DMA Buffers appear to be always dirty, so mark pages as always writeable
 	 */
-	ret = get_user_pages_fast(host_addr & PAGE_MASK, num_pages, 1, pages);
+	ret = pin_user_pages_fast(host_addr & PAGE_MASK, num_pages,
+				  FOLL_WRITE | FOLL_LONGTERM, pages);
 	if (ret < 0) {
 		etdev_dbg(etdev, "get user pages failed %u:%pK-%u: %d",
 			  group->workload_id, (void *)host_addr, num_pages,
@@ -1015,7 +1016,7 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 
 error:
 	for (i = 0; i < num_pages; i++)
-		put_page(pages[i]);
+		unpin_user_page(pages[i]);
 	kfree(pages);
 
 	return ERR_PTR(ret);
@@ -1093,7 +1094,7 @@ error_free_sgt:
 	}
 error:
 	for (i = 0; i < num_pages; i++)
-		put_page(pages[i]);
+		unpin_user_page(pages[i]);
 	if (hmap) {
 		edgetpu_device_group_put(hmap->map.priv);
 		kfree(hmap->sg_tables);
