@@ -240,6 +240,7 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer, size
 	char tmp_buf[64] = {};
 	struct lwis_client *client;
 	int idx = 0;
+	unsigned long flags;
 
 	if (lwis_dev == NULL) {
 		pr_err("Unknown LWIS device pointer\n");
@@ -253,6 +254,7 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer, size
 		return 0;
 	}
 
+	spin_lock_irqsave(&lwis_dev->lock, flags);
 	list_for_each_entry (client, &lwis_dev->clients, node) {
 		scnprintf(tmp_buf, sizeof(tmp_buf), "Client %d:\n", idx);
 		strlcat(buffer, tmp_buf, buffer_size);
@@ -260,6 +262,7 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer, size
 		list_enrolled_buffers(client, buffer, buffer_size);
 		idx++;
 	}
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	return 0;
 }
