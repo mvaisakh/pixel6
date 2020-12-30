@@ -3646,7 +3646,8 @@ static int sec_ts_probe(struct spi_device *client)
 		return -EIO;
 	}
 #else
-	input_info(true, &client->dev, "%s: SPI interface\n", __func__);
+	input_info(true, &client->dev, "%s: SPI interface(%d Hz)\n",
+		   __func__, client->max_speed_hz);
 #endif
 	/* parse dt */
 	if (client->dev.of_node) {
