@@ -33,40 +33,19 @@ struct exynos_hibernation_funcs {
 };
 
 struct exynos_hibernation {
-	atomic_t trig_cnt;
 	atomic_t block_cnt;
 	/* register to check whether camera is operating or not */
 	void __iomem *cam_op_reg;
 	struct mutex lock;
-	struct kthread_work work;
+	struct kthread_delayed_work dwork;
 	struct decon_device *decon;
 	struct dsim_device *dsim;
 	struct writeback_device *wb;
 	const struct exynos_hibernation_funcs *funcs;
 };
 
-static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
-{
-	return (atomic_read(&hiber->block_cnt) > 0);
-}
-
-static inline void hibernation_block(struct exynos_hibernation *hiber)
-{
-	if (!hiber)
-		return;
-
-	atomic_inc(&hiber->block_cnt);
-}
 bool hibernation_block_exit(struct exynos_hibernation *hiber);
-
-static inline void hibernation_unblock(struct exynos_hibernation *hiber)
-{
-	if (!hiber)
-		return;
-
-	atomic_add_unless(&hiber->block_cnt, -1, 0);
-}
-
+void hibernation_unblock_enter(struct exynos_hibernation *hiber);
 struct exynos_hibernation *
 exynos_hibernation_register(struct decon_device *decon);
 void exynos_hibernation_destroy(struct exynos_hibernation *hiber);
