@@ -450,6 +450,7 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 {
 	int i;
 	const struct exynos_binned_lp *binned_lp;
+	struct backlight_device *bl = ctx->bl;
 
 	for (i = 0; i < ctx->desc->num_binned_lp; i++) {
 		binned_lp = &ctx->desc->binned_lp[i];
@@ -461,8 +462,16 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 
 	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
 
+	mutex_lock(&ctx->lp_state_lock);
+	ctx->current_binned_lp = binned_lp;
+	dev_dbg(ctx->dev, "enter lp_%s\n", ctx->current_binned_lp->name);
+	mutex_unlock(&ctx->lp_state_lock);
+
 	exynos_panel_set_backlight_state(ctx,
 		!binned_lp->bl_threshold ? PANEL_STATE_OFF : PANEL_STATE_LP);
+
+	if (bl)
+		sysfs_notify(&bl->dev.kobj, NULL, "lp_state");
 }
 EXPORT_SYMBOL(exynos_panel_set_binned_lp);
 
@@ -1241,6 +1250,38 @@ static ssize_t state_show(struct device *dev,
 
 static DEVICE_ATTR_RO(state);
 
+static ssize_t lp_state_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	int rc;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	if (!is_backlight_lp_state(bl)) {
+		dev_warn(ctx->dev, "panel is not in LP mode\n");
+		mutex_unlock(&ctx->bl_state_lock);
+		return -EPERM;
+	}
+
+	if (!ctx->current_binned_lp) {
+		dev_warn(ctx->dev, "LP state is null\n");
+		mutex_unlock(&ctx->bl_state_lock);
+		return -EINVAL;
+	}
+
+	mutex_lock(&ctx->lp_state_lock);
+	rc = scnprintf(buf, PAGE_SIZE, "%s\n", ctx->current_binned_lp->name);
+	mutex_unlock(&ctx->lp_state_lock);
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	return rc;
+}
+
+static DEVICE_ATTR_RO(lp_state);
+
 static int parse_u32_buf(char *src, size_t src_len, u32 *out, size_t out_len)
 {
 	int rc = 0, cnt = 0;
@@ -1348,6 +1389,7 @@ static struct attribute *bl_device_attrs[] = {
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
 	&dev_attr_state.attr,
+	&dev_attr_lp_state.attr,
 	&dev_attr_als_table.attr,
 	NULL,
 };
@@ -1380,6 +1422,7 @@ static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
 		state &= ~(BL_STATE_STANDBY | BL_STATE_LP);
 		break;
 	case PANEL_STATE_LP:
+		state &= ~(BL_STATE_STANDBY);
 		state |= BL_STATE_LP;
 		break;
 	case PANEL_STATE_OFF:
@@ -1722,6 +1765,7 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	}
 
 	mutex_init(&ctx->bl_state_lock);
+	mutex_init(&ctx->lp_state_lock);
 
 	drm_panel_init(&ctx->panel, dev, ctx->desc->panel_func, DRM_MODE_CONNECTOR_DSI);
 
