@@ -1401,6 +1401,10 @@ static int dsim_host_attach(struct mipi_dsi_host *host,
 		dsim->dsi_device = device;
 	}
 
+	ret = sysfs_create_link(&device->dev.kobj, &host->dev->kobj, "dsim");
+	if (ret)
+		dev_warn(&device->dev, "unable to link %s sysfs (%d)\n", "dsim", ret);
+
 	dsim_debug(dsim, "%s -\n", __func__);
 
 	return ret;
@@ -1423,6 +1427,7 @@ static int dsim_host_detach(struct mipi_dsi_host *host,
 	}
 	dsim->dsi_device = NULL;
 
+	sysfs_remove_link(&device->dev.kobj, "dsim");
 	dsim_info(dsim, "%s -\n", __func__);
 	return 0;
 }
