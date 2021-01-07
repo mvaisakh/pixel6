@@ -688,8 +688,10 @@ static void exynos_debugfs_add_lut(const char *name, umode_t mode,
 
 	if (!lut_ptr) {
 		lut_ptr = kmalloc(count * (elem_size >> 3), GFP_KERNEL);
-		if (!lut_ptr)
+		if (!lut_ptr) {
+			kfree(lut);
 			return;
+		}
 	}
 
 	memcpy(lut->name, name, MAX_NAME_SIZE);
