@@ -166,6 +166,11 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x0B, 0x8F); /* global para */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x8F, 0x2B); /* IRC setting */
 
+	/* TODO: remove FD setting after EVT */
+	/* Enable FD in display PMIC for ELVDD and ELVSS */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x0B, 0xF4); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF4, 0x1C); /* discharge on */
+
 	/* Local HBM circle location setting */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF1, 0x5A, 0x5A); /* TEST_KEY_ON_F1 */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para */
