@@ -202,8 +202,7 @@ struct chg_drv {
 
 static void reschedule_chg_work(struct chg_drv *chg_drv)
 {
-	cancel_delayed_work_sync(&chg_drv->chg_work);
-	schedule_delayed_work(&chg_drv->chg_work, 0);
+	mod_delayed_work(system_wq, &chg_drv->chg_work, 0);
 }
 
 static enum alarmtimer_restart
@@ -214,7 +213,7 @@ google_chg_alarm_handler(struct alarm *alarm, ktime_t time)
 
 	__pm_stay_awake(chg_drv->chg_ws);
 
-	schedule_delayed_work(&chg_drv->chg_work, 0);
+	reschedule_chg_work(chg_drv);
 
 	return ALARMTIMER_NORESTART;
 }
@@ -304,9 +303,10 @@ static inline void chg_init_state(struct chg_drv *chg_drv)
 }
 
 /* NOTE: doesn't reset chg_drv->adapter_details.v = 0 see chg_work() */
-static inline void chg_reset_state(struct chg_drv *chg_drv)
+static inline int chg_reset_state(struct chg_drv *chg_drv)
 {
 	union gbms_charger_state chg_state = { .v = 0 };
+	int ret = 0;
 
 	chg_init_state(chg_drv);
 
@@ -331,9 +331,14 @@ static inline void chg_reset_state(struct chg_drv *chg_drv)
 			GBMS_PROP_TAPER_CONTROL,
 			GBMS_TAPER_CONTROL_OFF);
 	/* make sure the battery knows that it's disconnected */
-	GPSY_SET_INT64_PROP(chg_drv->bat_psy,
-			GBMS_PROP_CHARGE_CHARGER_STATE,
-			chg_state.v);
+	ret = GPSY_SET_INT64_PROP(chg_drv->bat_psy,
+				  GBMS_PROP_CHARGE_CHARGER_STATE,
+				  chg_state.v);
+	/* handle google_battery not resume case */
+	if (ret == -EAGAIN)
+		return ret;
+
+	return 0;
 }
 
 /* definitions from FOREACH_CHG_EV_ADAPTER() in google_bms.h */
@@ -929,8 +934,12 @@ static void chg_work(struct work_struct *work)
 			vote(chg_drv->msc_chg_disable_votable,
 			     MSC_CHG_VOTER, true, 0);
 
-			chg_reset_state(chg_drv);
-			chg_drv->stop_charging = 1;
+			rc = chg_reset_state(chg_drv);
+			if (rc == -EAGAIN)
+				schedule_delayed_work(&chg_drv->chg_work,
+						      msecs_to_jiffies(100));
+			else
+				chg_drv->stop_charging = 1;
 		}
 
 		goto exit_chg_work;
