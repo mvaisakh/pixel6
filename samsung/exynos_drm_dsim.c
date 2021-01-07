@@ -1930,7 +1930,7 @@ static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t hs_clock_
 	return 0;
 }
 
-static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
+static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock, bool apply_now)
 {
 	int ret;
 	struct stdphy_pms pms;
@@ -1968,7 +1968,7 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 	pll_param->cmd_underrun_cnt = lp_underrun;
 	dsim_update_clock_config(dsim, pll_param);
 
-	if (dsim->state != DSIM_STATE_HSCLKEN)
+	if (!apply_now || dsim->state != DSIM_STATE_HSCLKEN)
 		goto out;
 
 	/* Restart dsim to apply new clock settings */
@@ -2045,13 +2045,30 @@ static ssize_t hs_clock_store(struct device *dev,
 	struct dsim_device *dsim = dev_get_drvdata(dev);
 	int rc;
 	unsigned int hs_clock;
+	bool apply_now = true;
 
-	rc = kstrtouint(buf, 0, &hs_clock);
+	char params[32];
+	char *hs_clk_str;
+	char *apply_now_str;
+	char *p = params;
+
+	strlcpy(params, buf, sizeof(params));
+	hs_clk_str = strsep(&p, " ");
+	apply_now_str = strsep(&p, " ");
+
+	if (apply_now_str) {
+		rc = kstrtobool(apply_now_str, &apply_now);
+		if (rc < 0)
+		    return rc;
+	}
+
+	rc = kstrtouint(hs_clk_str, 0, &hs_clock);
 	if (rc < 0)
 		return rc;
 
-	/* hs_clock unit: MHz */
-	rc = dsim_set_hs_clock(dsim, hs_clock);
+	/* ddr hs_clock unit: MHz */
+	dsim_info(dsim, "%s: hs clock %u, apply now: %u\n", __func__, hs_clock, apply_now);
+	rc = dsim_set_hs_clock(dsim, hs_clock, apply_now);
 	if (rc < 0)
 		return rc;
 
