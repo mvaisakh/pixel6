@@ -26,12 +26,14 @@
 #define MAX1730X_GAUGE_TYPE	1
 #define MAX_M5_GAUGE_TYPE	2
 
+/* multiply by 2 when task period = 351 ms */
 static inline int reg_to_micro_amp_h(s16 val, u16 rsense)
 {
 	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */
 	return div_s64((s64) val * 500000, rsense);
 }
 
+/* divide by 2 when task period = 351 ms */
 static inline s16 micro_amp_h_to_reg(int val, u16 rsense)
 {
 	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */

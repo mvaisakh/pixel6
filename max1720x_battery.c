@@ -503,6 +503,27 @@ static inline int reg_to_vrecovery(u16 val)
 	return (val & 0x7F) * 40;
 }
 
+/* b/177099997 TaskPeriod ----------------------------------------------- */
+
+static inline int reg_to_capacity_uah(u16 val, struct max1720x_chip *chip)
+{
+	const int lsb = max_m5_cap_lsb(chip->model_data);
+
+	return reg_to_micro_amp_h(val, chip->RSense) * lsb;
+}
+
+#if 0
+/* TODO: will need in outliers */
+static inline int capacity_uah_to_reg(int capacity, struct max1720x_chip *chip)
+{
+	const int lsb = max_m5_cap_lsb(chip->model_data);
+
+	return micro_amp_h_to_reg(capacity / lsb, chip->RSense);
+}
+#endif
+
+/* log ----------------------------------------------------------------- */
+
 static void max1730x_read_log_write_status(struct max1720x_chip *chip,
 					   u16 *buffer)
 {
@@ -832,8 +853,8 @@ static ssize_t max1720x_model_show_state(struct device *dev,
  */
 static void max1720x_model_reload(struct max1720x_chip *chip, bool force)
 {
-	const bool pending = chip->model_reload == MAX_M5_LOAD_MODEL_REQUEST;
 	const bool disabled = chip->model_reload == MAX_M5_LOAD_MODEL_DISABLED;
+	const bool pending = chip->model_reload != MAX_M5_LOAD_MODEL_IDLE;
 
 	pr_debug("model_reload=%d force=%d pending=%d disabled=%d\n",
 		 chip->model_reload, force, pending, disabled);
@@ -842,7 +863,12 @@ static void max1720x_model_reload(struct max1720x_chip *chip, bool force)
 		return;
 
 	/* REQUEST -> IDLE or set to the number of retries */
-	dev_info(chip->dev, "Reload FG Model for ID=%d\n", chip->batt_id);
+	dev_info(chip->dev, "Schedule Load FG Model, ID=%d, %d->%d cap_lsb=%d\n",
+			chip->batt_id,
+			max_m5_model_read_version(chip->model_data),
+			max_m5_fg_model_version(chip->model_data),
+			max_m5_cap_lsb(chip->model_data));
+
 	chip->model_reload = MAX_M5_LOAD_MODEL_REQUEST;
 	chip->model_ok = false;
 	mod_delayed_work(system_wq, &chip->model_work, 0);
@@ -1636,8 +1662,7 @@ static int max1720x_get_property(struct power_supply *psy,
 		if (err < 0)
 			break;
 
-		val->intval = reg_to_micro_amp_h(chip->current_capacity,
-						 chip->RSense);
+		val->intval = reg_to_capacity_uah(chip->current_capacity, chip);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		/*
@@ -1656,12 +1681,12 @@ static int max1720x_get_property(struct power_supply *psy,
 			err = REGMAP_READ(map, MAX1720X_FULLCAPNOM, &data);
 
 		if (err == 0)
-			val->intval = reg_to_micro_amp_h(data, chip->RSense);
+			val->intval = reg_to_capacity_uah(data, chip);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		err = REGMAP_READ(map, MAX1720X_DESIGNCAP, &data);
 		if (err == 0)
-			val->intval = reg_to_micro_amp_h(data, chip->RSense);
+			val->intval = reg_to_capacity_uah(data, chip);
 		break;
 	/* current is positive value when flowing to device */
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
@@ -2184,13 +2209,13 @@ static int max1720x_read_batt_id(int *batt_id, const struct max1720x_chip *chip)
 	return 0;
 }
 
+/*  */
 static struct device_node *max1720x_find_batt_node(struct max1720x_chip *chip)
 {
 	const int batt_id = chip->batt_id;
 	const struct device *dev = chip->dev;
-	const int algo_ver = chip->drift_data.algo_ver;
 	struct device_node *config_node, *child_node;
-	u32 batt_id_range = 20, algo = 0, batt_id_kohm;
+	u32 batt_id_range = 20, batt_id_kohm;
 	int ret;
 
 	config_node = of_find_node_by_name(dev->of_node, "maxim,config");
@@ -2205,16 +2230,21 @@ static struct device_node *max1720x_find_batt_node(struct max1720x_chip *chip)
 		dev_warn(dev, "failed to read maxim,batt-id-range-pct\n");
 
 	for_each_child_of_node(config_node, child_node) {
-		ret = of_property_read_u32(child_node, "maxim,fg-algo", &algo);
-		if (ret < 0)
-			algo = 0;
-		if (algo_ver != algo)
-			continue;
-
 		ret = of_property_read_u32(child_node, "maxim,batt-id-kohm",
 					   &batt_id_kohm);
 		if (ret != 0)
 			continue;
+
+		/* only look for matching algo_ver if set */
+		if (chip->drift_data.algo_ver != MAX1720X_DA_VER_NONE) {
+			u32 algo_ver;
+
+			ret = of_property_read_u32(child_node,
+						   "maxim,algo-version",
+						   &algo_ver);
+			if (ret == 0 && chip->drift_data.algo_ver != algo_ver)
+				continue;
+		}
 
 		if (!batt_id_range && batt_id == batt_id_kohm)
 			return child_node;
@@ -2690,8 +2720,9 @@ static int max1720x_init_model(struct max1720x_chip *chip)
 	/* ->batt_id negative for no lookup */
 	if (chip->batt_id >= 0) {
 		chip->batt_node = max1720x_find_batt_node(chip);
-		pr_debug("node found=%d for ID=%d\n", !!chip->batt_node,
-			 chip->batt_id);
+		pr_debug("node found=%d for ID=%d algo=%d\n",
+			 !!chip->batt_node, chip->batt_id,
+			 chip->drift_data.algo_ver);
 	}
 
 	/* TODO: split allocation and initialization */
@@ -2702,11 +2733,23 @@ static int max1720x_init_model(struct max1720x_chip *chip)
 		return PTR_ERR(model_data);
 
 	chip->model_data = model_data;
+
 	if (!chip->batt_node) {
-		dev_warn(chip->dev, "No child node for ID=%d\n", chip->batt_id);
+		dev_warn(chip->dev, "No child node for ID=%d, algo=%d\n",
+			 chip->batt_id, chip->drift_data.algo_ver);
 		chip->model_reload = MAX_M5_LOAD_MODEL_DISABLED;
 	} else {
-		pr_debug("model_data ok for ID=%d", chip->batt_id);
+		u32 data32;
+		int rc;
+
+		/* align algo_ver for capacity drift to model */
+		rc = of_property_read_u32(chip->batt_node, "maxim,algo-version",
+					  &data32);
+		if (rc == 0)
+			chip->drift_data.algo_ver = data32;
+
+		pr_debug("model_data ok for ID=%d, algo=%d\n",
+			 chip->batt_id, chip->drift_data.algo_ver);
 		chip->model_reload = MAX_M5_LOAD_MODEL_IDLE;
 	}
 
@@ -3165,8 +3208,7 @@ static int max1720x_model_load(struct max1720x_chip *chip)
 	/* failure on the gauge: retry as long as model_reload > IDLE */
 	ret = max_m5_load_gauge_model(chip->model_data);
 	if (ret < 0) {
-		dev_err(chip->dev, "%s: Load Gauge Model Failed rc=%d\n",
-			__func__, ret);
+		dev_err(chip->dev, "Load Gauge Model Failed ret=%d\n", ret);
 		return -EAGAIN;
 	}
 
@@ -3208,8 +3250,8 @@ static void max1720x_model_work(struct work_struct *work)
 		if (rc == 0) {
 			rc = max1720x_clear_por(chip);
 
-			dev_info(chip->dev, "%s Power-On Reset clear (%d)\n",
-				 __func__, rc);
+			dev_info(chip->dev, "Model OK, Clear Power-On Reset (%d)\n",
+				 rc);
 
 			/* TODO: keep trying to clear POR if the above fail */
 			chip->model_reload = MAX_M5_LOAD_MODEL_IDLE;
@@ -3218,7 +3260,7 @@ static void max1720x_model_work(struct work_struct *work)
 		} else if (rc != -EAGAIN) {
 			chip->model_reload = MAX_M5_LOAD_MODEL_DISABLED;
 			chip->model_ok = false;
-		} else {
+		} else if (chip->model_reload > MAX_M5_LOAD_MODEL_IDLE) {
 			chip->model_reload -= 1;
 		}
 	}
@@ -3241,8 +3283,13 @@ static void max1720x_model_work(struct work_struct *work)
 		schedule_delayed_work(&chip->model_work, delay);
 	}
 
-	if (new_model)
+	if (new_model) {
+		dev_info(chip->dev, "FG Model OK, ver=%d cap_lsb=%d next_update=%d\n",
+			 max_m5_fg_model_version(chip->model_data),
+			 max_m5_cap_lsb(chip->model_data),
+			 chip->model_next_update);
 		power_supply_changed(chip->psy);
+	}
 
 	mutex_unlock(&chip->model_lock);
 }
@@ -3261,7 +3308,7 @@ static int read_chip_property_u32(const struct max1720x_chip *chip,
 	return of_property_read_u32(chip->dev->of_node, property, data32);
 }
 
-/* capacity outliers, capacity drift */
+/* fix capacity drift after loading the model */
 static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 {
 	struct max1720x_drift_data *ddata = &chip->drift_data;
@@ -3287,7 +3334,7 @@ static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 
 	/* device dependent values */
 	ddata->rsense = chip->RSense;
-
+	/* update design_capacity after loading the model if not set in dt */
 	ret = of_property_read_u32(chip->dev->of_node, "maxim,capacity-design",
 				   &data32);
 	if (ret < 0) {
@@ -3348,20 +3395,24 @@ static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 			ddata->cycle_band = BATTERY_MAX_CYCLE_BAND;
 	}
 
-	ret = of_property_read_u32(chip->dev->of_node, "maxim,algo-version",
-				   &data32);
-	if (ret < 0)
+	/*
+	 * Set to force loading the model with corresponding algo-version.
+	 * MW A0+ MW-A0 should use MAX1720X_DA_VER_ORIG while and MW-A1 should
+	 * use MAX1720X_DA_VER_MWA1 for RC1 or MAX1720X_DA_VER_NONE for RC2.
+	 * MW-A2 should use MAX1720X_DA_VER_NONE for RC1 and RC2.
+	 * Not used for max1720x and max1730x.
+	 */
+	if (max_m5_check_devname(chip->devname) ) {
+		ret = of_property_read_u32(chip->dev->of_node,
+					   "maxim,algo-version",
+					   &data32);
+		if (ret < 0 || data32 > MAX1720X_DA_VER_MWA2)
+			ddata->algo_ver = MAX1720X_DA_VER_NONE;
+		else
+			ddata->algo_ver = data32;
+	} else {
 		ddata->algo_ver = MAX1720X_DA_VER_ORIG;
-	else if (data32 < MAX1720X_DA_VER_NONE || data32 > MAX1720X_DA_VER_MWA2)
-		ddata->algo_ver = MAX1720X_DA_VER_NONE;
-	else
-		ddata->algo_ver = MAX1720X_DA_VER_NONE;
-
-	dev_info(chip->dev, "ver=%d rsns=%d cnts=%d,%d dc=%d cap_sta=%d cap_fad=%d rcomp0=0x%x tempco=0x%x\n",
-		ddata->algo_ver, ddata->rsense,
-		chip->comp_update_count, chip->dxacc_update_count,
-		ddata->design_capacity, ddata->cycle_stable, ddata->cycle_fade,
-		ddata->ini_rcomp0, ddata->ini_tempco);
+	}
 
 	ret = read_chip_property_u32(chip, "maxim,capacity-filtercfg", &data32);
 	if (ret < 0)
@@ -3369,8 +3420,9 @@ static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 	else
 		ddata->ini_filtercfg = data32;
 
-	if (ddata->ini_filtercfg)
-		dev_info(chip->dev, "ini_filtercfg=0x%x\n", ddata->ini_filtercfg);
+	if (ddata->ini_filtercfg != -1)
+		dev_info(chip->dev, "ini_filtercfg=0x%x\n",
+			 ddata->ini_filtercfg);
 
 	return 0;
 }
@@ -3445,7 +3497,7 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 				     MAX1720X_NAGEFCCFG, 0);
 	}
 
-	/* */
+	/* device dependent fixups to the registers */
 	if (chip->fixups_fn) {
 		ret = chip->fixups_fn(chip);
 		if (ret < 0) {
@@ -3470,9 +3522,38 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 			 chip->batt_id);
 	}
 
-	/* init model data, needs batt_id */
+	/* fuel gauge model needs to know the batt_id */
 	mutex_init(&chip->model_lock);
-	max1720x_init_model(chip);
+
+	/*
+	 * The behavior of the drift workaround changes with the capacity
+	 * learning algo used in the part. Integrated FG might have
+	 * configurable capacity learning.
+	 */
+	ret = max17201_init_fix_capacity(chip);
+	if (ret < 0)
+		dev_err(chip->dev, "Capacity drift WAR not enabled(%d)\n", ret);
+	/*
+	 * FG model is ony used for integrated FG (MW). Loading a model might
+	 * change the capacity drift WAR algo_ver and design_capacity.
+	 * NOTE: design_capacity used for drift might be updated after loading
+	 * a FG model.
+	 */
+	ret = max1720x_init_model(chip);
+	if (ret < 0)
+		dev_err(chip->dev, "Cannot init FG model (%d)\n", ret);
+
+	/* dump capacity drift fixup configuration only when enabled */
+	if (chip->drift_data.algo_ver != MAX1720X_DA_VER_NONE) {
+		struct max1720x_drift_data *ddata = &chip->drift_data;
+
+		dev_info(chip->dev, "ver=%d rsns=%d cnts=%d,%d dc=%d cap_sta=%d cap_fad=%d rcomp0=0x%x tempco=0x%x\n",
+			 ddata->algo_ver, ddata->rsense,
+			 chip->comp_update_count, chip->dxacc_update_count,
+			 ddata->design_capacity, ddata->cycle_stable,
+			 ddata->cycle_fade, ddata->ini_rcomp0,
+			 ddata->ini_tempco);
+	}
 
 	/* not needed for FG with NVRAM */
 	ret = max17x0x_handle_dt_shadow_config(chip);
@@ -3510,7 +3591,7 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 				   MAX1720X_STATUS_BI, 0x0);
 	}
 
-	/* max_m5 load the model in the irq handler when por is set  */
+	/* max_m5 triggers loading of the model in the irq handler on POR */
 	if (!por && chip->gauge_type == MAX_M5_GAUGE_TYPE) {
 
 		ret = max_m5_model_read_state(chip->model_data);
@@ -3518,9 +3599,17 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 			ret = max1720x_set_next_update(chip);
 		if (ret < 0) {
 			dev_err(chip->dev, "FG Model Error (%d)\n", ret);
+		} else if (!max_m5_fg_model_check_version(chip->model_data)) {
+
+			/* reload only when enabled */
+			if (chip->model_reload != MAX_M5_LOAD_MODEL_DISABLED)
+				max1720x_model_reload(chip, false);
 		} else {
-			dev_info(chip->dev, "FG Model OK, next_update=%d\n",
+			dev_info(chip->dev, "FG Model OK, ver=%d cap_lsb=%d next_update=%d\n",
+				 max_m5_model_read_version(chip->model_data),
+				 max_m5_cap_lsb(chip->model_data),
 				 chip->model_next_update);
+
 			chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
 			chip->model_ok = true;
 		}
@@ -3533,11 +3622,6 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 		chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
 	}
 
-	/* Fix capacity drift b/134500876 */
-	ret = max17201_init_fix_capacity(chip);
-	if (ret < 0)
-		dev_err(chip->dev, "Failed to initialize capacity fix (%d)\n",
-			ret);
 
 	max1720x_restore_battery_qh_capacity(chip);
 
@@ -4201,13 +4285,6 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 	uint8_t buf[2] = { };
 	int ret, gauge_type;
 
-	ret = of_property_read_u32(chip->dev->of_node, "maxim,gauge-type",
-				   &gauge_type);
-	if (ret == 0) {
-		dev_warn(chip->dev, "forced gauge type to %d\n", gauge_type);
-		return gauge_type;
-	}
-
 	/* some maxim IF-PMIC corrupt reads w/o Rs b/152373060 */
 	xfer[0].addr = chip->primary->addr;
 	xfer[0].flags = 0;
@@ -4223,9 +4300,20 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 	if (ret != 2)
 		return -EIO;
 
+	/* it might need devname later */
 	chip->devname = buf[1] << 8 | buf[0];
-	if (!chip->devname)
-		return -ENODEV;
+
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,gauge-type",
+				   &gauge_type);
+	if (ret == 0) {
+		dev_warn(chip->dev, "forced gauge type to %d\n", gauge_type);
+		return gauge_type;
+	}
+
+	/* 0 not M5, !=0 M5 */
+	ret = max_m5_check_devname(chip->devname);
+	if (ret)
+		return MAX_M5_GAUGE_TYPE;
 
 	switch (chip->devname >> 4) {
 	case 0x404: /* max1730x sample */
@@ -4233,13 +4321,10 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 	case 0x406: /* max1730x pass2 silicon */
 		gauge_type = MAX1730X_GAUGE_TYPE;
 		break;
-	case 0x620: /* m5 algo */
-		gauge_type = MAX_M5_GAUGE_TYPE;
-		break;
-	default: /* default to max1720x */
-		dev_warn(chip->dev, "devname=%x defaults to max17201\n",
-			chip->devname);
+	default:
 		gauge_type = MAX1720X_GAUGE_TYPE;
+		dev_warn(chip->dev, "devname=%x defaults to %d\n",
+			 chip->devname, gauge_type);
 		break;
 	}
 
