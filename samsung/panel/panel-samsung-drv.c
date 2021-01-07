@@ -1092,6 +1092,48 @@ static int exynos_panel_attach_lp_mode(struct exynos_drm_connector *exynos_conn,
 	return 0;
 }
 
+static ssize_t hbm_mode_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	bool hbm_en;
+	int ret;
+
+	if (!funcs || !funcs->set_hbm_mode) {
+		dev_err(ctx->dev, "HBM is not supported\n");
+		return -ENOTSUPP;
+	}
+
+	if (!ctx->enabled || !ctx->initialized) {
+		dev_err(ctx->dev, "panel is not enabled\n");
+		return -EPERM;
+	}
+
+	ret = kstrtobool(buf, &hbm_en);
+	if (ret) {
+		dev_err(ctx->dev, "invalid hbm_mode value\n");
+		return ret;
+	}
+
+	funcs->set_hbm_mode(ctx, hbm_en);
+
+	return count;
+}
+
+static ssize_t hbm_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->hbm_mode);
+}
+
+static DEVICE_ATTR_RW(hbm_mode);
+
 static ssize_t local_hbm_mode_store(struct device *dev,
 			       struct device_attribute *attr,
 			       const char *buf, size_t count)
@@ -1302,6 +1344,7 @@ static ssize_t als_table_show(struct device *dev,
 static DEVICE_ATTR_RW(als_table);
 
 static struct attribute *bl_device_attrs[] = {
+	&dev_attr_hbm_mode.attr,
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
 	&dev_attr_state.attr,
