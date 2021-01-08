@@ -99,8 +99,7 @@ static void s6e3fc3_change_frequency(struct exynos_panel *ctx,
 	dev_dbg(ctx->dev, "%s: change to %uhz\n", __func__, vrefresh);
 }
 
-static void s6e3fc3_write_display_mode(struct exynos_panel *ctx,
-				       const struct drm_display_mode *mode)
+static void s6e3fc3_update_wrctrld(struct exynos_panel *ctx)
 {
 	u8 val = S6E3FC3_WRCTRLD_BCTRL_BIT;
 
@@ -129,7 +128,7 @@ static void s6e3fc3_set_nolp_mode(struct exynos_panel *ctx,
 		return;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_off);
-	s6e3fc3_write_display_mode(ctx, &pmode->mode);
+	s6e3fc3_update_wrctrld(ctx);
 	s6e3fc3_change_frequency(ctx, vrefresh);
 	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
@@ -187,7 +186,7 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xC2, 0x14); /* PPS_MIC_OFF */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x9D, 0x01); /* PPS_DSC_EN */
 
-	s6e3fc3_write_display_mode(ctx, mode); /* dimming and HBM */
+	s6e3fc3_update_wrctrld(ctx); /* dimming and HBM */
 
 	ctx->enabled = true;
 
@@ -204,11 +203,9 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool hbm_mode)
 {
-	const struct exynos_panel_mode *pmode = exynos_panel->current_mode;
-
 	exynos_panel->hbm_mode = hbm_mode;
 
-	s6e3fc3_write_display_mode(exynos_panel, &pmode->mode);
+	s6e3fc3_update_wrctrld(exynos_panel);
 }
 
 static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
@@ -222,7 +219,7 @@ static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 
 	mutex_lock(&exynos_panel->local_hbm.lock);
 	exynos_panel->local_hbm.enabled = local_hbm_en;
-	s6e3fc3_write_display_mode(exynos_panel, &exynos_panel->current_mode->mode);
+	s6e3fc3_update_wrctrld(exynos_panel);
 	mutex_unlock(&exynos_panel->local_hbm.lock);
 
 	config = &exynos_panel->exynos_connector.base.dev->mode_config;
@@ -242,7 +239,6 @@ static void s6e3fc3_mode_set(struct exynos_panel *ctx,
 	if (!ctx->enabled)
 		return;
 
-	s6e3fc3_write_display_mode(ctx, &pmode->mode);
 	s6e3fc3_change_frequency(ctx, drm_mode_vrefresh(&pmode->mode));
 }
 
