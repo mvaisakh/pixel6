@@ -254,7 +254,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 				     void *vote)
 {
 	struct max77759_foreach_cb_data *cb_data = data;
-	int mode = (int)vote; /* max77759_mode is an int election */
+	int mode = (long)vote; /* max77759_mode is an int election */
 
 	pr_info("%s: %s : reason=%s mode=%x\n", __func__,
 		 cb_data->reason, reason ? reason : "", mode);
@@ -846,8 +846,8 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	u8 reg;
 
 	/* reason and value are the last voted on */
-	pr_debug("%s: current reason=%s, value=0x%x\n", __func__,
-		 reason ? reason : "<>", (int)value);
+	pr_debug("%s: current reason=%s, value=0x%lx\n", __func__,
+		 reason ? reason : "<>", (long)value);
 
 	mutex_lock(&data->io_lock);
 
@@ -1210,7 +1210,7 @@ static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 					      const char *reason, void *value)
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
-	int ret, suspend = (int)value > 0;
+	int ret, suspend = (long)value > 0;
 
 	ret = max77759_wcin_input_suspend(data, suspend, "DC_SUSPEND");
 	if (ret < 0)
@@ -1219,8 +1219,8 @@ static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 	/* enable charging when DC_SUSPEND is not set */
 	ret = max77759_set_charge_enabled(data, !suspend, "DC_SUSPEND");
 
-	dev_info(data->dev, "DC_SUSPEND reason=%s, value=%d suspend=%d (%d)\n",
-		reason ? reason : "", (int)value, suspend, ret);
+	dev_info(data->dev, "DC_SUSPEND reason=%s, value=%ld suspend=%d (%d)\n",
+		reason ? reason : "", (long)value, suspend, ret);
 }
 
 static void max77759_dcicl_callback(struct gvotable_election *el,
@@ -1228,7 +1228,7 @@ static void max77759_dcicl_callback(struct gvotable_election *el,
 				    void *value)
 {
 	struct max77759_chgr_data *data = gvotable_get_data(el);
-	int dc_icl = (int)value;
+	int dc_icl = (long)value;
 	const bool suspend = dc_icl == 0;
 	int ret;
 

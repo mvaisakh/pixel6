@@ -424,7 +424,7 @@ static void max77729_mode_callback(struct gvotable_election *el,
 				   const char *reason, void *value)
 {
 	struct max77729_chgr_data *data = gvotable_get_data(el);
-	int mode = (int)value;
+	int mode = (long)value;
 	uint8_t reg, reg_new;
 	int ret;
 
@@ -475,7 +475,7 @@ static void max77729_dc_suspend_vote_callback(struct gvotable_election *el,
 					      const char *reason, void *value)
 {
 	struct max77729_chgr_data *data = gvotable_get_data(el);
-	int result = (int)value;
+	int result = (long)value;
 
 	/* TODO: disable WCIN */
 
@@ -487,7 +487,7 @@ static void max77729_dcicl_callback(struct gvotable_election *el,
 				    const char *reason, void *value)
 {
 	struct max77729_chgr_data *data = gvotable_get_data(el);
-	int dc_icl = (int)value;
+	int dc_icl = (long)value;
 	const bool suspend = dc_icl == 0;
 	int ret;
 
