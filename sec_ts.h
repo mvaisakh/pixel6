@@ -60,7 +60,7 @@
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-#include <linux/input/touch_bus_negotiator.h>
+#include <touch_bus_negotiator.h>
 #endif
 
 #define SEC_TS_NAME		"sec_ts"
