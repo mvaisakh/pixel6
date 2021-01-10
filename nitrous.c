@@ -377,6 +377,9 @@ static int nitrous_rfkill_set_power(void *data, bool blocked)
 	}
 	lpm->rfkill_blocked = blocked;
 
+	/* wait for device to power cycle and come out of reset */
+	usleep_range(10000, 20000);
+
 	return 0;
 }
 
