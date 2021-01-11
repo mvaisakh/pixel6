@@ -2926,24 +2926,28 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 
 static u16 max1720x_read_rsense(const struct max1720x_chip *chip)
 {
+	u32 rsense_default = 500;
+	int dt_rsense, ret;
 	u16 rsense = 0;
-	u32 rsense_default = 0;
 
-	(void)of_property_read_u32(chip->dev->of_node, "maxim,rsense-default",
-		&rsense_default);
+	ret = of_property_read_u32(chip->dev->of_node, "maxim,rsense-default",
+				   &rsense_default);
+	dt_rsense = ret == 0;
+
+	/* read from NVRAM if present */
 	if (chip->regmap_nvram.regmap) {
-		int ret;
 
 		ret = REGMAP_READ(&chip->regmap_nvram, MAX1720X_NRSENSE, &rsense);
-		if (rsense_default && (ret < 0 || rsense != rsense_default)) {
+		if (ret == 0 && dt_rsense && rsense != rsense_default) {
+			dev_warn(chip->dev, "RSense %d, forcing to %d uOhm\n",
+				 rsense * 10, rsense_default * 10);
+
 			rsense = rsense_default;
-			dev_warn(chip->dev, "RSense, forcing %d micro Ohm (%d)\n",
-				rsense * 10, ret);
 		}
 	}
 
 	if (!rsense)
-		rsense = 500;
+		rsense = rsense_default;
 
 	return rsense;
 }
