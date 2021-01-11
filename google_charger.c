@@ -1889,7 +1889,8 @@ update_charger:
 	goto exit_chg_work;
 
 rerun_error:
-	success = schedule_delayed_work(&chg_drv->chg_work, CHG_WORK_ERROR_RETRY_MS);
+	success = schedule_delayed_work(&chg_drv->chg_work,
+				msecs_to_jiffies(CHG_WORK_ERROR_RETRY_MS));
 
 	/*
 	 * no need to reschedule the pending after an error
