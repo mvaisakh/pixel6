@@ -2540,6 +2540,9 @@ static int max77759_charger_probe(struct i2c_client *client,
 	if (ret < 0)
 		return ret;
 
+	if (max77759_init_vdroop(data) < 0)
+		dev_err(dev, "vdroop initialization failed %d.\n", ret);
+
 	data->irq_gpio = of_get_named_gpio(dev->of_node, "max77759,irq-gpio", 0);
 	if (data->irq_gpio < 0) {
 		dev_err(dev, "failed get irq_gpio\n");
@@ -2581,9 +2584,6 @@ static int max77759_charger_probe(struct i2c_client *client,
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	max77759_init_wcin_psy(data);
-
-	if (max77759_init_vdroop(data) < 0)
-		dev_err(dev, "vdroop initialization failed %d.\n", ret);
 
 	return 0;
 }
