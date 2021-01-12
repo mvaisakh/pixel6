@@ -200,6 +200,9 @@ struct max1720x_chip {
 	/* Capacity Estimation */
 	struct gbatt_capacity_estimation cap_estimate;
 	struct logbuffer *ce_log;
+
+	/* debug interface, register to read or write */
+	u32 debug_reg_address;
 };
 
 #define MAX1720_EMPTY_VOLTAGE(profile, temp, cycle) \
@@ -2920,6 +2923,50 @@ static ssize_t max1720x_set_custom_model(struct file *filp,
 BATTERY_DEBUG_ATTRIBUTE(debug_m5_custom_model_fops, max1720x_show_custom_model,
 			max1720x_set_custom_model);
 
+static ssize_t max1720x_show_debug_data(struct file *filp, char __user *buf,
+				        size_t count, loff_t *ppos)
+{
+	struct max1720x_chip *chip = (struct max1720x_chip *)filp->private_data;
+	char msg[8];
+	u16 data;
+	int ret;
+
+	ret = REGMAP_READ(&chip->regmap, chip->debug_reg_address, &data);
+	if (ret < 0)
+		return ret;
+
+	ret = scnprintf(msg, sizeof(msg), "%x\n", data);
+
+	return simple_read_from_buffer(buf, count, ppos, msg, ret);
+}
+
+static ssize_t max1720x_set_debug_data(struct file *filp,
+				       const char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	struct max1720x_chip *chip = (struct max1720x_chip *)filp->private_data;
+	char temp[8] = { };
+	u16 data;
+	int ret;
+
+	ret = simple_write_to_buffer(temp, sizeof(temp) - 1, ppos, user_buf, count);
+	if (!ret)
+		return -EFAULT;
+
+	ret = kstrtou16(temp, 16, &data);
+	if (ret < 0)
+		return ret;
+
+	ret =  REGMAP_WRITE(&chip->regmap, chip->debug_reg_address, data);
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+
+BATTERY_DEBUG_ATTRIBUTE(debug_reg_data_fops, max1720x_show_debug_data,
+			max1720x_set_debug_data);
+
 
 /*
  * TODO: add the building blocks of google capacity
@@ -2963,6 +3010,9 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 
 	/* capacity drift fixup, one of MAX1720X_DA_VER_* */
 	debugfs_create_u32("algo_ver", 0644, de, &chip->drift_data.algo_ver);
+	/* new debug interface */
+	debugfs_create_u32("address", 0600, de, &chip->debug_reg_address);
+	debugfs_create_file("data", 0600, de, chip, &debug_reg_data_fops);
 
 	return 0;
 }
