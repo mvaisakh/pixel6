@@ -39,16 +39,22 @@ int attempt_function(int (*code)(void), unsigned long wait_before_retry, int
 		     retry_count);
 int senseOn(struct fts_ts_info *info);
 int senseOff(struct fts_ts_info *info);
-void print_frame_short(char *label, short **matrix, int row, int column);
 short **array1dTo2d_short(short *data, int size, int columns);
-void print_frame_u16(char *label, u16 **matrix, int row, int column);
 u16 **array1dTo2d_u16(u16 *data, int size, int columns);
 u8 **array1dTo2d_u8(u8 *data, int size, int columns);
 i8 **array1dTo2d_i8(i8 *data, int size, int columns);
-void print_frame_u8(char *label, u8 **matrix, int row, int column);
-void print_frame_i8(char *label, i8 **matrix, int row, int column);
-void print_frame_u32(char *label, u32 **matrix, int row, int column);
-void print_frame_int(char *label, int **matrix, int row, int column);
+void print_frame_short(struct fts_ts_info *info, char *label, short **matrix,
+		       int row, int column);
+void print_frame_u16(struct fts_ts_info *info, char *label, u16 **matrix,
+		     int row, int column);
+void print_frame_u8(struct fts_ts_info *info, char *label, u8 **matrix,
+		    int row, int column);
+void print_frame_i8(struct fts_ts_info *info, char *label, i8 **matrix,
+		    int row, int column);
+void print_frame_u32(struct fts_ts_info *info, char *label, u32 **matrix,
+		     int row, int column);
+void print_frame_int(struct fts_ts_info *info, char *label, int **matrix,
+		     int row, int column);
 int cleanUp(struct fts_ts_info *info, int enableTouch);
 int flushFIFO(struct fts_ts_info *info);
 
