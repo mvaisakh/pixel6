@@ -121,9 +121,10 @@ struct max_m5_data {
 /** ------------------------------------------------------------------------ */
 
 int max_m5_model_read_version(const struct max_m5_data *m5_data);
+int max_m5_model_get_cap_lsb(const struct max_m5_data *m5_data);
 
 /*
- * max_m5 migh use the low 8 bits of devname to keep the model version number
+ * max_m5 might use the low 8 bits of devname to keep the model version number
  * - 0 not M5, !=0 M5
  */
 static inline int max_m5_check_devname(u16 devname)
@@ -170,6 +171,7 @@ int max_m5_save_state_data(struct max_m5_data *m5_data);
 
 /* read state from the gauge */
 int max_m5_model_read_state(struct max_m5_data *m5_data);
+int max_m5_model_check_state(struct max_m5_data *m5_data);
 
 /* load model to gauge */
 int max_m5_load_gauge_model(struct max_m5_data *m5_data);

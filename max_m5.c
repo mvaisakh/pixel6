@@ -509,10 +509,46 @@ int max_m5_fixup_outliers(struct max1720x_drift_data *ddata,
 	return 0;
 }
 
-/* load parameters and model state from permanent storage */
+static bool memtst(void *buf, char c, size_t count)
+{
+	bool same = true;
+	int i;
+
+	for (i = 0; same && i < count; i++)
+		same = ((char*)buf)[i] == c;
+
+	return same;
+}
+
+static int max_m5_check_state_data(struct model_state_save *state)
+{
+	bool bad_residual, empty;
+
+	empty = memtst(state, 0xff, sizeof(*state)) == 0;
+	if (empty)
+		return -EINVAL;
+
+	if (state->rcomp0 == 0xFF)
+		return -EINVAL;
+
+	bad_residual = state->qresidual00 == 0xffff &&
+		       state->qresidual10 == 0xffff &&
+		       state->qresidual20 == 0xffff &&
+		       state->qresidual30 == 0xffff;
+	if (bad_residual)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * Load parameters and model state from permanent storage.
+ * Called on boot after POR
+ */
 int max_m5_load_state_data(struct max_m5_data *m5_data)
 {
-	int ret = 0;
+	struct max_m5_custom_parameters *cp = &m5_data->parameters;
+	int ret;
 
 	if (!m5_data)
 		return -EINVAL;
@@ -525,20 +561,20 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 		return ret;
 	}
 
-	if (m5_data->model_save.rcomp0 == 0xFF) {
-		dev_info(m5_data->dev, "Model Data Empty\n");
-		return -EINVAL;
-	}
+	ret = max_m5_check_state_data(&m5_data->model_save);
+	if (ret < 0)
+		return ret;
 
-	m5_data->parameters.rcomp0 = m5_data->model_save.rcomp0;
-	m5_data->parameters.tempco = m5_data->model_save.tempco;
-	m5_data->parameters.fullcaprep = m5_data->model_save.fullcaprep;
+	cp->rcomp0 = m5_data->model_save.rcomp0;
+	cp->tempco = m5_data->model_save.tempco;
+	cp->fullcaprep = m5_data->model_save.fullcaprep;
+	cp->fullcapnom = m5_data->model_save.fullcapnom;
+	cp->qresidual00 = m5_data->model_save.qresidual00;
+	cp->qresidual10 = m5_data->model_save.qresidual10;
+	cp->qresidual20 = m5_data->model_save.qresidual20;
+	cp->qresidual30 = m5_data->model_save.qresidual30;
+
 	m5_data->cycles = m5_data->model_save.cycles;
-	m5_data->parameters.fullcapnom = m5_data->model_save.fullcapnom;
-	m5_data->parameters.qresidual00 = m5_data->model_save.qresidual00;
-	m5_data->parameters.qresidual10 = m5_data->model_save.qresidual10;
-	m5_data->parameters.qresidual20 = m5_data->model_save.qresidual20;
-	m5_data->parameters.qresidual30 = m5_data->model_save.qresidual30;
 	m5_data->mixcap = m5_data->model_save.mixcap;
 	m5_data->halftime = m5_data->model_save.halftime;
 
@@ -548,17 +584,19 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 /* save/commit parameters and model state to permanent storage */
 int max_m5_save_state_data(struct max_m5_data *m5_data)
 {
+	struct max_m5_custom_parameters *cp = &m5_data->parameters;
 	int ret = 0;
 
-	m5_data->model_save.rcomp0 = m5_data->parameters.rcomp0;
-	m5_data->model_save.tempco = m5_data->parameters.tempco;
-	m5_data->model_save.fullcaprep = m5_data->parameters.fullcaprep;
+	m5_data->model_save.rcomp0 = cp->rcomp0;
+	m5_data->model_save.tempco = cp->tempco;
+	m5_data->model_save.fullcaprep = cp->fullcaprep;
+	m5_data->model_save.fullcapnom = cp->fullcapnom;
+	m5_data->model_save.qresidual00 = cp->qresidual00;
+	m5_data->model_save.qresidual10 = cp->qresidual10;
+	m5_data->model_save.qresidual20 = cp->qresidual20;
+	m5_data->model_save.qresidual30 = cp->qresidual30;
+
 	m5_data->model_save.cycles = m5_data->cycles;
-	m5_data->model_save.fullcapnom = m5_data->parameters.fullcapnom;
-	m5_data->model_save.qresidual00 = m5_data->parameters.qresidual00;
-	m5_data->model_save.qresidual10 = m5_data->parameters.qresidual10;
-	m5_data->model_save.qresidual20 = m5_data->parameters.qresidual20;
-	m5_data->model_save.qresidual30 = m5_data->parameters.qresidual30;
 	m5_data->model_save.mixcap = m5_data->mixcap;
 	m5_data->model_save.halftime = m5_data->halftime;
 
@@ -571,7 +609,29 @@ int max_m5_save_state_data(struct max_m5_data *m5_data)
 	return ret == sizeof(m5_data->model_save) ? 0 : -ERANGE;
 }
 
-/* read fuel gauge state to parameters/model state */
+/* 0 ok, < 0 error. Call after reading from the FG */
+int max_m5_model_check_state(struct max_m5_data *m5_data)
+{
+	struct max_m5_custom_parameters *fg_param = &m5_data->parameters;
+	bool bad_residual;
+
+	if (fg_param->rcomp0 == 0xFF)
+		return -EINVAL;
+
+	bad_residual = fg_param->qresidual00 == 0xffff &&
+		       fg_param->qresidual10 == 0xffff &&
+		       fg_param->qresidual20 == 0xffff &&
+		       fg_param->qresidual30 == 0xffff;
+	if (bad_residual)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * read fuel gauge state to parameters/model state.
+ * NOTE: Called on boot if POR is not set or during save state.
+ */
 int max_m5_model_read_state(struct max_m5_data *m5_data)
 {
 	int rc;
@@ -658,7 +718,7 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 		dev_info(m5_data->dev, "@%d: reg=%x val=%x\n", index, reg, val);
 
 		switch (reg) {
-		/* fg-params */
+		/* model parameters (fg-params) */
 		case MAX_M5_IAVGEMPTY:
 			m5_data->parameters.iavg_empty = val;
 			break;
@@ -721,7 +781,7 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 			m5_data->parameters.taskperiod = val;
 			break;
 
-		/* model state */
+		/* model state, saved and restored */
 		case MAX_M5_RCOMP0:
 			m5_data->parameters.rcomp0 = val;
 			break;
@@ -783,6 +843,14 @@ static int max_m5_read_taskperiod(int *cap_lsb, struct max17x0x_regmap *regmap)
 
 	*cap_lsb = ret;
 	return 0;
+}
+
+int max_m5_model_get_cap_lsb(const struct max_m5_data *m5_data)
+{
+	struct max17x0x_regmap *regmap = m5_data->regmap;
+	int cap_lsb;
+
+	return max_m5_read_taskperiod(&cap_lsb, regmap) < 0 ? -1 : cap_lsb;
 }
 
 /* custom model parameters */

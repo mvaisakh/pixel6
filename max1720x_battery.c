@@ -866,10 +866,11 @@ static void max1720x_model_reload(struct max1720x_chip *chip, bool force)
 		return;
 
 	/* REQUEST -> IDLE or set to the number of retries */
-	dev_info(chip->dev, "Schedule Load FG Model, ID=%d, %d->%d cap_lsb=%d\n",
+	dev_info(chip->dev, "Schedule Load FG Model, ID=%d, ver:%d->%d cap_lsb:%d->%d\n",
 			chip->batt_id,
 			max_m5_model_read_version(chip->model_data),
 			max_m5_fg_model_version(chip->model_data),
+			max_m5_model_get_cap_lsb(chip->model_data),
 			max_m5_cap_lsb(chip->model_data));
 
 	chip->model_reload = MAX_M5_LOAD_MODEL_REQUEST;
@@ -2923,6 +2924,26 @@ static ssize_t max1720x_set_custom_model(struct file *filp,
 BATTERY_DEBUG_ATTRIBUTE(debug_m5_custom_model_fops, max1720x_show_custom_model,
 			max1720x_set_custom_model);
 
+
+static int debug_sync_model(void *data, u64 val)
+{
+	struct max1720x_chip *chip = data;
+	int ret;
+
+	if (!chip->model_data)
+		return -EINVAL;
+
+	/* re-read new state from Fuel gauge, save to storage  */
+	ret = max_m5_model_read_state(chip->model_data);
+	if (ret == 0)
+		ret = max_m5_save_state_data(chip->model_data);
+
+	return ret;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(debug_sync_model_fops, NULL, debug_sync_model, "%llu\n");
+
+
 static ssize_t max1720x_show_debug_data(struct file *filp, char __user *buf,
 				        size_t count, loff_t *ppos)
 {
@@ -3007,9 +3028,12 @@ static int max17x0x_init_debugfs(struct max1720x_chip *chip)
 		debugfs_create_file("fg_model", 0440, de, chip,
 				    &debug_m5_custom_model_fops);
 	debugfs_create_bool("model_ok", 0444, de, &chip->model_ok);
+	debugfs_create_file("sync_model", 0400, de, chip,
+			    &debug_sync_model_fops);
 
 	/* capacity drift fixup, one of MAX1720X_DA_VER_* */
 	debugfs_create_u32("algo_ver", 0644, de, &chip->drift_data.algo_ver);
+
 	/* new debug interface */
 	debugfs_create_u32("address", 0600, de, &chip->debug_reg_address);
 	debugfs_create_file("data", 0600, de, chip, &debug_reg_data_fops);
@@ -3226,15 +3250,23 @@ static int max1720x_set_next_update(struct max1720x_chip *chip)
 
 	/* read new state from Fuel gauge, save to storage if needed */
 	rc = max_m5_model_read_state(chip->model_data);
+	if (rc == 0) {
+		rc = max_m5_model_check_state(chip->model_data);
+		if (rc < 0) {
+			pr_debug("%s: fg model state is corrupt rc=%d\n",
+				 __func__, rc);
+			return -EINVAL;
+		}
+	}
+
 	if (rc == 0 && chip->model_next_update)
 		rc = max_m5_save_state_data(chip->model_data);
 	if (rc == 0)
 		chip->model_next_update = (cycle_count + (1 << 6)) &
 					  ~((1 << 6) - 1);
 
-	pr_debug("%s: cycle_count=%d next_update=%d rc=%d\n",
-			__func__, cycle_count, chip->model_next_update,
-			rc);
+	pr_debug("%s: cycle_count=%d next_update=%d rc=%d\n", __func__,
+		 cycle_count, chip->model_next_update, rc);
 
 	return 0;
 }
@@ -3246,34 +3278,33 @@ static int max1720x_model_load(struct max1720x_chip *chip)
 	/* retrieve model state from permanent storage only on boot */
 	if (!chip->model_state_valid) {
 
-		/* will retry on -EAGAIN as long as model_reload > _IDLE */
+		/*
+		 * retrieve state from storage: retry on -EAGAIN as long as
+		 * model_reload > _IDLE
+		 */
 		ret = max_m5_load_state_data(chip->model_data);
-		if (ret < 0) {
-			dev_err(chip->dev, "Cannot Load Model State (%d)\n",
+		if (ret == -EAGAIN)
+			return -EAGAIN;
+		if (ret < 0)
+			dev_warn(chip->dev, "Load Model Using Default State (%d)\n",
 				ret);
-			return ret;
-		}
+
+		/* use the state from the DT when GMSR is invalid */
 	}
 
 	/* failure on the gauge: retry as long as model_reload > IDLE */
 	ret = max_m5_load_gauge_model(chip->model_data);
 	if (ret < 0) {
-		dev_err(chip->dev, "Load Gauge Model Failed ret=%d\n", ret);
+		dev_err(chip->dev, "Load Model Failed ret=%d\n", ret);
 		return -EAGAIN;
 	}
 
 	/* fix capacity outliers algo */
 	ret = max_m5_fixup_outliers(&chip->drift_data, chip->model_data);
 	if (ret < 0)
-		dev_err(chip->dev, "%s: error fixing drift data rc=%d\n",
-			__func__, ret);
+		dev_err(chip->dev, "Load Model fixing drift data rc=%d\n", ret);
 
-
-	/* loading model might change cycle count */
-	ret = max1720x_set_next_update(chip);
-	if (ret < 0)
-		dev_err(chip->dev, "%s: error setting next update rc=%d\n",
-			__func__, ret);
+	/* The caller need to call max1720x_set_next_update() */
 
 	/* mark model state as "safe" */
 	chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
@@ -3477,6 +3508,56 @@ static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 	return 0;
 }
 
+/* handle recovery of FG state */
+static int max1720x_init_max_m5(struct max1720x_chip *chip)
+{
+	int ret;
+
+	/* TODO add retries */
+	ret = max_m5_model_read_state(chip->model_data);
+	if (ret < 0) {
+		dev_err(chip->dev, "FG Model Error (%d)\n", ret);
+		return -EPROBE_DEFER;
+	}
+
+	ret = max_m5_model_check_state(chip->model_data);
+	if (ret < 0) {
+		ret = max1720x_full_reset(chip);
+		if (ret == 0)
+			ret = max_m5_model_read_state(chip->model_data);
+
+		dev_err(chip->dev, "FG State Corrupt, Reset (%d), Will reload\n",
+			ret);
+		return 0;
+	}
+
+	if (!max_m5_fg_model_check_version(chip->model_data)) {
+		ret = max1720x_full_reset(chip);
+		if (ret == 0)
+			ret = max_m5_model_read_state(chip->model_data);
+
+		/* TODO: invalidate GSMR data when switching from RC2->RC1 */
+
+		dev_warn(chip->dev, "FG Version Changed, Reset (%d), Will Reload\n",
+			 ret);
+		return 0;
+	}
+
+	ret = max1720x_set_next_update(chip);
+	if (ret < 0)
+		dev_warn(chip->dev, "Error on Next Update, Will retry\n");
+
+	dev_info(chip->dev, "FG Model OK, ver=%d cap_lsb=%d next_update=%d\n",
+			max_m5_model_read_version(chip->model_data),
+			max_m5_cap_lsb(chip->model_data),
+			chip->model_next_update);
+
+	chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
+	chip->model_state_valid = true;
+	chip->model_ok = true;
+	return 0;
+}
+
 
 static int max1720x_init_chip(struct max1720x_chip *chip)
 {
@@ -3643,27 +3724,9 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 
 	/* max_m5 triggers loading of the model in the irq handler on POR */
 	if (!por && chip->gauge_type == MAX_M5_GAUGE_TYPE) {
-
-		ret = max_m5_model_read_state(chip->model_data);
-		if (ret == 0)
-			ret = max1720x_set_next_update(chip);
-		if (ret < 0) {
-			dev_err(chip->dev, "FG Model Error (%d)\n", ret);
-		} else if (!max_m5_fg_model_check_version(chip->model_data)) {
-
-			/* reload only when enabled */
-			if (chip->model_reload != MAX_M5_LOAD_MODEL_DISABLED)
-				max1720x_model_reload(chip, false);
-		} else {
-			dev_info(chip->dev, "FG Model OK, ver=%d cap_lsb=%d next_update=%d\n",
-				 max_m5_model_read_version(chip->model_data),
-				 max_m5_cap_lsb(chip->model_data),
-				 chip->model_next_update);
-
-			chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
-			chip->model_ok = true;
-		}
-
+		ret = max1720x_init_max_m5(chip);
+		if (ret < 0)
+			return ret;
 	} else if (por && chip->gauge_type != MAX_M5_GAUGE_TYPE) {
 		ret = regmap_update_bits(chip->regmap.regmap,
 					 MAX1720X_STATUS,
