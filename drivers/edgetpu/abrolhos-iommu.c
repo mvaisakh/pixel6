@@ -186,7 +186,7 @@ out:
 /* mmu_info is unused and NULL for IOMMU version, let IOMMU API supply info */
 int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
-	struct edgetpu_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	struct edgetpu_iommu *etiommu;
 	int ret;
 
@@ -247,7 +247,7 @@ void edgetpu_mmu_reset(struct edgetpu_dev *etdev)
 
 void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 {
-	struct edgetpu_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	int i, ret;
 

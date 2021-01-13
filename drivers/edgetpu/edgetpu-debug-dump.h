@@ -10,7 +10,7 @@
 
 #include "edgetpu-internal.h"
 
-#define DEBUG_DUMP_HOST_CONTRACT_VERSION 1
+#define DEBUG_DUMP_HOST_CONTRACT_VERSION 2
 
 enum edgetpu_dump_type_bit_position {
 	DUMP_TYPE_CRASH_REASON_BIT = 0,
@@ -22,6 +22,13 @@ enum edgetpu_dump_type_bit_position {
 
 	DUMP_TYPE_MAX_BIT = 63
 
+};
+
+enum edgetpu_dump_request_reason {
+	DUMP_REQ_REASON_DEFAULT = 0,
+	DUMP_REQ_REASON_WDT_TIMEOUT = 1,
+	DUMP_REQ_REASON_BY_USER = 2,
+	DUMP_REQ_REASON_NUM = 3
 };
 
 struct edgetpu_crash_reason {
@@ -57,6 +64,7 @@ struct edgetpu_debug_dump_setup {
 	/* types of dumps requested by host */
 	u64 type;
 	u64 dump_mem_size;	/* total size of memory allocated to dump */
+	u64 dump_req_reason; /* debug dump request reason */
 	u64 reserved[2];
 };
 

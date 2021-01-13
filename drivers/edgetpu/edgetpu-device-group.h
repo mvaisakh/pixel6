@@ -106,6 +106,23 @@ struct edgetpu_device_group {
 };
 
 /*
+ * Entry of edgetpu_dev#groups.
+ *
+ * Files other than edgetpu-device-group.c shouldn't need to access this
+ * structure. Use macro etdev_for_each_group to access the groups under an
+ * etdev.
+ */
+struct edgetpu_list_group {
+	struct list_head list;
+	struct edgetpu_device_group *grp;
+};
+
+/* Macro to loop through etdev->groups. */
+#define etdev_for_each_group(etdev, l, g)                                      \
+	for (l = list_entry(etdev->groups.next, typeof(*l), list), g = l->grp; \
+	     &l->list != &etdev->groups;                                       \
+	     l = list_entry(l->list.next, typeof(*l), list), g = l->grp)
+/*
  * Returns if the group is waiting for members to join.
  *
  * Must be called with lock held.

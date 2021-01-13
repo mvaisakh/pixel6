@@ -107,8 +107,7 @@ static int abrolhos_pwr_state_get(void *data, u64 *val)
 
 static int abrolhos_pwr_policy_set(void *data, u64 val)
 {
-	struct edgetpu_platform_dev *edgetpu_pdev =
-		(struct edgetpu_platform_dev *)data;
+	struct abrolhos_platform_dev *edgetpu_pdev = (typeof(edgetpu_pdev))data;
 	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
 	int ret;
 
@@ -129,8 +128,7 @@ static int abrolhos_pwr_policy_set(void *data, u64 val)
 
 static int abrolhos_pwr_policy_get(void *data, u64 *val)
 {
-	struct edgetpu_platform_dev *edgetpu_pdev =
-		(struct edgetpu_platform_dev *)data;
+	struct abrolhos_platform_dev *edgetpu_pdev = (typeof(edgetpu_pdev))data;
 	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
 
 	mutex_lock(&platform_pwr->policy_lock);
@@ -365,8 +363,7 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm);
 static int abrolhos_power_up(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
-	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-		etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	struct device *dev = etdev->dev;
 	int ret = abrolhos_pwr_state_set(dev,
 					 abrolhos_get_initial_pwr_state(dev));
@@ -438,7 +435,7 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 static void
 abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
-			      struct edgetpu_platform_dev *edgetpu_pdev)
+			      struct abrolhos_platform_dev *edgetpu_pdev)
 {
 	if (!edgetpu_pchannel_power_down(etdev, false))
 		return;
@@ -467,42 +464,41 @@ abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
 
 static void abrolhos_power_down(struct edgetpu_pm *etpm)
 {
-	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-		etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct edgetpu_dev *etdev = etpm->etdev;
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	u64 val;
 	int res;
 
-	etdev_info(etpm->etdev, "Powering down\n");
+	etdev_info(etdev, "Powering down\n");
 
-	if (abrolhos_pwr_state_get(etpm->etdev->dev, &val)) {
-		etdev_warn(etpm->etdev, "Failed to read current power state\n");
+	if (abrolhos_pwr_state_get(etdev->dev, &val)) {
+		etdev_warn(etdev, "Failed to read current power state\n");
 		val = TPU_ACTIVE_NOM;
 	}
 	if (val == TPU_OFF) {
-		etdev_dbg(etpm->etdev,
-			  "Device already off, skipping shutdown\n");
+		etdev_dbg(etdev, "Device already off, skipping shutdown\n");
 		return;
 	}
 
-	if (etpm->etdev->kci &&
-	    edgetpu_firmware_status_locked(etpm->etdev) == FW_VALID) {
-		abrolhos_pm_shutdown_firmware(etpm->etdev, edgetpu_pdev);
-		cancel_work_sync(&etpm->etdev->kci->work);
+	if (etdev->kci && edgetpu_firmware_status_locked(etdev) == FW_VALID) {
+		/* Update usage stats before we power off fw. */
+		edgetpu_kci_update_usage(etdev);
+		abrolhos_pm_shutdown_firmware(etdev, edgetpu_pdev);
+		cancel_work_sync(&etdev->kci->work);
 	}
 
 	res = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
 	if (res < 0)
-		etdev_warn(etpm->etdev, "GSA shutdown request failed (%d)\n",
-			   res);
-	abrolhos_pwr_state_set(etpm->etdev->dev, TPU_OFF);
+		etdev_warn(etdev, "GSA shutdown request failed (%d)\n", res);
+	abrolhos_pwr_state_set(etdev->dev, TPU_OFF);
 }
 
 static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 {
 	int ret;
-	struct device *dev = etpm->etdev->dev;
-	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-			etpm->etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct edgetpu_dev *etdev = etpm->etdev;
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct device *dev = etdev->dev;
 
 	ret = abrolhos_pwr_state_init(dev);
 	if (ret)
@@ -515,28 +511,33 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
 	abrolhos_pwr_debugfs_dir =
 		debugfs_create_dir("power", edgetpu_fs_debugfs_dir());
-	debugfs_create_file("state", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_pwr_state);
-	debugfs_create_file("vdd_tpu", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_vdd_tpu);
-	debugfs_create_file("vdd_tpu_m", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_vdd_tpu_m);
-	debugfs_create_file("vdd_int_m", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_vdd_int_m);
-	debugfs_create_file("core_rate", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_core_rate);
-	debugfs_create_file("ctl_rate", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_ctl_rate);
-	debugfs_create_file("axi_rate", 0660, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_axi_rate);
-	debugfs_create_file("apb_rate", 0440, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_apb_rate);
-	debugfs_create_file("uart_rate", 0440, abrolhos_pwr_debugfs_dir,
-			dev, &fops_tpu_uart_rate);
+	if (!abrolhos_pwr_debugfs_dir) {
+		etdev_warn(etdev, "Failed to create debug FS power");
+		/* don't fail the procedure on debug FS creation fails */
+		return 0;
+	}
+	debugfs_create_file("state", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_pwr_state);
+	debugfs_create_file("vdd_tpu", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_vdd_tpu);
+	debugfs_create_file("vdd_tpu_m", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_vdd_tpu_m);
+	debugfs_create_file("vdd_int_m", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_vdd_int_m);
+	debugfs_create_file("core_rate", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_core_rate);
+	debugfs_create_file("ctl_rate", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_ctl_rate);
+	debugfs_create_file("axi_rate", 0660, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_axi_rate);
+	debugfs_create_file("apb_rate", 0440, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_apb_rate);
+	debugfs_create_file("uart_rate", 0440, abrolhos_pwr_debugfs_dir, dev,
+			    &fops_tpu_uart_rate);
 	debugfs_create_file("policy", 0660, abrolhos_pwr_debugfs_dir,
-			edgetpu_pdev, &fops_tpu_pwr_policy);
+			    edgetpu_pdev, &fops_tpu_pwr_policy);
 	debugfs_create_file("core_pwr", 0660, abrolhos_pwr_debugfs_dir,
-			edgetpu_pdev, &fops_tpu_core_pwr);
+			    edgetpu_pdev, &fops_tpu_core_pwr);
 
 	return 0;
 }

@@ -710,14 +710,13 @@ void edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group)
 
 void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 {
-	int i;
+	struct edgetpu_list_group *l;
 	struct edgetpu_device_group *group;
 	u32 mailbox_ids = 0;
 
 	mutex_lock(&etdev->groups_lock);
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		group = etdev->groups[i];
-		if (group && !edgetpu_group_mailbox_detached_locked(group)) {
+	etdev_for_each_group(etdev, l, group) {
+		if (!edgetpu_group_mailbox_detached_locked(group)) {
 			edgetpu_mailbox_reinit_vii(group);
 			if (edgetpu_device_group_is_finalized(group))
 				mailbox_ids |=

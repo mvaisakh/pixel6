@@ -95,6 +95,7 @@ enum edgetpu_kci_code {
 	KCI_CODE_OPEN_DEVICE = 9,
 	KCI_CODE_CLOSE_DEVICE = 10,
 	KCI_CODE_FIRMWARE_INFO = 11,
+	KCI_CODE_GET_USAGE = 12,
 };
 
 /*
@@ -243,6 +244,9 @@ int edgetpu_kci_ack(struct edgetpu_kci *kci);
  */
 enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info);
+
+/* Retrieve usage tracking data from firmware, update info on host. */
+void edgetpu_kci_update_usage(struct edgetpu_dev *etdev);
 
 /*
  * Sends the "Map Log Buffer" command and waits for remote response.

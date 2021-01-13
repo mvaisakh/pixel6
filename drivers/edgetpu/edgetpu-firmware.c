@@ -595,43 +595,41 @@ static const struct attribute_group edgetpu_firmware_attr_group = {
 	.attrs = dev_attrs,
 };
 
-static void edgetpu_firmware_wdt_timeout_action(void *data)
+/*
+ * Can only be called with etdev->state == ETDEV_STATE_FWLOADING.
+ */
+static void edgetpu_abort_clients(struct edgetpu_dev *etdev)
 {
-	int ret, i, num_clients = 0;
-	struct edgetpu_dev *etdev = data;
+	int i, num_clients = 0;
 	struct edgetpu_device_group *group;
-	struct edgetpu_client *clients[EDGETPU_NGROUPS];
+	struct edgetpu_list_group *g;
+	struct edgetpu_client **clients;
 	struct edgetpu_list_client *c;
-	struct edgetpu_firmware *et_fw = etdev->firmware;
-
-	/* Don't attempt f/w restart if device is off. */
-	if (!edgetpu_is_powered(etdev))
-		return;
-
-	mutex_lock(&etdev->state_lock);
-	if (etdev->state == ETDEV_STATE_FWLOADING) {
-		mutex_unlock(&etdev->state_lock);
-		return;
-	}
-	etdev->state = ETDEV_STATE_FWLOADING;
-	mutex_unlock(&etdev->state_lock);
 
 	/*
 	 * We don't hold etdev->groups_lock here because
-	 *   1. All group operations should be protected by "state GOOD" and
+	 *   1. All group operations (functions in edgetpu-device-group.c)
+	 *      are skipped when "etdev->state is not GOOD", we shall be the
+	 *      only one accessing @etdev->groups, and
 	 *   2. to prevent LOCKDEP from reporting deadlock with
 	 *      edgetpu_device_group_add_locked, which nested holds group->lock
 	 *      then etdev->groups_lock.
 	 */
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		group = etdev->groups[i];
-		if (!group)
-			continue;
+	clients = kmalloc_array(etdev->n_groups, sizeof(*clients), GFP_KERNEL);
+	if (!clients) {
+		/*
+		 * Just give up aborting clients in this case, this should never
+		 * happen after all.
+		 */
+		edgetpu_fatal_error_notify(etdev);
+		return;
+	}
+	etdev_for_each_group(etdev, g, group) {
 		mutex_lock(&group->lock);
 		list_for_each_entry(c, &group->clients, list) {
 			if (etdev == c->client->etdev) {
 				clients[num_clients++] =
-						edgetpu_client_get(c->client);
+					edgetpu_client_get(c->client);
 				break;
 			}
 		}
@@ -646,6 +644,28 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 		edgetpu_device_group_leave_locked(clients[i]);
 		edgetpu_client_put(clients[i]);
 	}
+	kfree(clients);
+}
+
+static void edgetpu_firmware_wdt_timeout_action(void *data)
+{
+	int ret;
+	struct edgetpu_dev *etdev = data;
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	/* Don't attempt f/w restart if device is off. */
+	if (!edgetpu_is_powered(etdev))
+		return;
+
+	mutex_lock(&etdev->state_lock);
+	if (etdev->state == ETDEV_STATE_FWLOADING) {
+		mutex_unlock(&etdev->state_lock);
+		return;
+	}
+	etdev->state = ETDEV_STATE_FWLOADING;
+	mutex_unlock(&etdev->state_lock);
+
+	edgetpu_abort_clients(etdev);
 
 	ret = edgetpu_firmware_lock(etdev);
 	/*

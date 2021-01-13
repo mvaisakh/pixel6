@@ -22,8 +22,8 @@ static int abrolhos_firmware_alloc_buffer(
 		struct edgetpu_firmware_buffer *fw_buf)
 {
 	struct edgetpu_dev *etdev = et_fw->etdev;
-	struct edgetpu_platform_dev *edgetpu_pdev =
-		container_of(etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+
 	/* Allocate extra space the image header */
 	size_t buffer_size =
 		edgetpu_pdev->fw_region_size + ABROLHOS_FW_HEADER_SIZE;
@@ -68,8 +68,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 					 struct edgetpu_firmware_buffer *fw_buf)
 {
 	struct edgetpu_dev *etdev = et_fw->etdev;
-	struct edgetpu_platform_dev *edgetpu_pdev =
-		container_of(etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	void *image_vaddr, *header_vaddr;
 	struct abrolhos_image_config *image_config;
 	phys_addr_t image_start, image_end, carveout_start, carveout_end;

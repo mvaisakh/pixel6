@@ -28,10 +28,12 @@
 #include <linux/refcount.h>
 #include <linux/scatterlist.h>
 #include <linux/types.h>
+#include <linux/workqueue.h>
 
 #include "edgetpu.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-thermal.h"
+#include "edgetpu-usage-stats.h"
 
 #define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
 #define etdev_warn(etdev, fmt, ...)                                            \
@@ -135,6 +137,8 @@ struct edgetpu_kci;
 struct edgetpu_telemetry_ctx;
 struct edgetpu_mempool;
 
+typedef int(*edgetpu_debug_dump_handlers)(void *etdev, void *dump_setup);
+
 #define EDGETPU_DEVICE_NAME_MAX	64
 
 /* ioremapped resource */
@@ -168,8 +172,9 @@ struct edgetpu_dev {
 	struct dentry *d_entry;    /* debugfs dir for this device */
 	struct mutex state_lock;   /* protects state of this device */
 	enum edgetpu_dev_state state;
-	struct mutex groups_lock;  /* protects groups and lockout */
-	struct edgetpu_device_group *groups[EDGETPU_NGROUPS];
+	struct mutex groups_lock;  /* protects groups, n_groups, and lockout */
+	struct list_head groups;
+	uint n_groups;		   /* number of entries in @groups */
 	bool group_join_lockout;   /* disable group join while reinit */
 	void *mmu_cookie;	   /* mmu driver private data */
 	void *dram_cookie;	   /* on-device DRAM private data */
@@ -178,6 +183,7 @@ struct edgetpu_dev {
 	struct edgetpu_firmware *firmware; /* firmware management */
 	struct edgetpu_telemetry_ctx *telemetry;
 	struct edgetpu_thermal *thermal;
+	struct edgetpu_usage_stats *usage_stats; /* usage stats private data */
 	struct edgetpu_pm *pm;  /* Power management interface */
 	/* Memory pool in instruction remap region */
 	struct edgetpu_mempool *iremap_pool;
@@ -185,10 +191,14 @@ struct edgetpu_dev {
 	uint mcp_die_index;	/* physical die index w/in multichip pkg */
 	u8 mcp_pkg_type;	/* multichip pkg type */
 	struct edgetpu_sw_wdt *etdev_sw_wdt;	/* software watchdog */
+	bool reset_needed;	/* error recovery requests full chip reset. */
 	/* version read from the firmware binary file */
 	struct edgetpu_fw_version fw_version;
 	atomic_t job_count;	/* times joined to a device group */
 	struct edgetpu_coherent_mem debug_dump_mem;	/* debug dump memory */
+	/* debug dump handlers */
+	edgetpu_debug_dump_handlers *debug_dump_handlers;
+	struct work_struct debug_dump_work;
 };
 
 extern const struct file_operations edgetpu_fops;

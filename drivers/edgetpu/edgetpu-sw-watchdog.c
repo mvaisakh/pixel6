@@ -25,6 +25,23 @@ static void sw_wdt_handler_work(struct work_struct *work)
 		et_action_work->edgetpu_sw_wdt_handler(et_action_work->data);
 }
 
+void edgetpu_watchdog_bite(struct edgetpu_dev *etdev, bool reset)
+{
+	if (!etdev->etdev_sw_wdt)
+		return;
+	/*
+	 * Stop sw wdog delayed worker, to reduce chance this explicit call
+	 * races with a sw wdog timeout.  May be in IRQ context, no sync,
+	 * worker may already be active.  If we race with a sw wdog restart
+	 * and need a chip reset, hopefully the P-channel reset will fail
+	 * and the bigger hammer chip reset will kick in at that point.
+	 */
+	cancel_delayed_work(&etdev->etdev_sw_wdt->dwork);
+	etdev_err(etdev, "watchdog %s", reset ? "reset" : "restart");
+	etdev->reset_needed = reset;
+	schedule_work(&etdev->etdev_sw_wdt->et_action_work.work);
+}
+
 /*
  * Ping the f/w for a response. Reschedule the work for next beat
  * in case of response or schedule a worker for action callback in case of

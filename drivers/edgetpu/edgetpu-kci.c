@@ -19,6 +19,7 @@
 #include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
+#include "edgetpu-usage-stats.h"
 
 /* the index of mailbox for kernel should always be zero */
 #define KERNEL_MAILBOX_INDEX 0
@@ -31,7 +32,7 @@
 /* Set extra ludicrously high to 60 seconds for (slow) Palladium emulation. */
 #define KCI_TIMEOUT	(60000)
 #else
-/* 5 secs.  TODO(134408592): Define a timeout for TPU CPU responses  */
+/* 5 secs. */
 #define KCI_TIMEOUT	(5000)
 #endif
 
@@ -728,6 +729,44 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	}
 
 	return flavor;
+}
+
+void edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
+{
+#define EDGETPU_USAGE_BUFFER_SIZE	4096
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_GET_USAGE,
+		.dma = {
+			.address = 0,
+			.size = 0,
+		},
+	};
+	struct edgetpu_coherent_mem mem;
+	struct edgetpu_kci_response_element resp;
+	int ret;
+
+	ret = edgetpu_iremap_alloc(etdev, EDGETPU_USAGE_BUFFER_SIZE, &mem,
+				   EDGETPU_CONTEXT_KCI);
+
+	if (ret) {
+		etdev_warn_once(etdev, "%s: failed to allocate usage buffer",
+				__func__);
+		return;
+	}
+
+	cmd.dma.address = mem.tpu_addr;
+	cmd.dma.size = EDGETPU_USAGE_BUFFER_SIZE;
+	memset(mem.vaddr, 0, sizeof(struct usage_tracker_header));
+	ret = edgetpu_kci_send_cmd_return_resp(etdev->kci, &cmd, &resp);
+
+	if (ret == KCI_ERROR_UNIMPLEMENTED || ret == KCI_ERROR_UNAVAILABLE)
+		etdev_dbg(etdev, "firmware does not report usage\n");
+	else if (ret == KCI_ERROR_OK)
+		edgetpu_usage_stats_process_buffer(etdev, mem.vaddr);
+	else
+		etdev_warn_once(etdev, "%s: error %d", __func__, ret);
+
+	edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
 }
 
 /* debugfs mappings dump */

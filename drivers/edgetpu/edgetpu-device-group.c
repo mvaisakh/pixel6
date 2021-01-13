@@ -12,6 +12,7 @@
 #include <linux/eventfd.h>
 #include <linux/iommu.h>
 #include <linux/kconfig.h>
+#include <linux/list.h>
 #include <linux/mm.h>
 #include <linux/refcount.h>
 #include <linux/scatterlist.h>
@@ -32,6 +33,7 @@
 #include "edgetpu-sw-watchdog.h"
 #include "edgetpu-usr.h"
 #include "edgetpu.h"
+#include "mm-backport.h"
 
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 #include "edgetpu-p2p-mailbox.h"
@@ -83,6 +85,7 @@ static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
 
 	etdev_dbg(etdev, "%s: leave group %u", __func__, group->workload_id);
+	edgetpu_kci_update_usage(etdev);
 	edgetpu_kci_leave_group(etdev->kci);
 	return 0;
 }
@@ -126,13 +129,20 @@ static void edgetpu_group_kci_close_device(struct edgetpu_device_group *group)
 }
 
 /*
- * Asynchronously sends LEAVE_GROUP KCI to all devices in @group.
+ * Handle KCI chores for device group disband.
+ *
+ * For multi-chip architectures: asynchronously send LEAVE_GROUP KCI to all
+ * devices in @group (and GET_USAGE to update usage stats).
+ *
+ * For single-chip, multiple client architectures: send KCI CLOSE_DEVICE
+ * to the device (and GET_USAGE to update usage stats).
  *
  * Caller holds group->lock.
  */
 static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 {
 #if IS_ENABLED(CONFIG_ABROLHOS)
+	edgetpu_kci_update_usage(group->etdev);
 	return edgetpu_group_kci_close_device(group);
 #else /* !CONFIG_ABROLHOS */
 	struct kci_worker_param *params =
@@ -417,34 +427,30 @@ static bool edgetpu_group_check_contiguity(struct edgetpu_device_group *group)
 }
 
 /*
- * Finds an empty slot of @etdev->groups and assigns @group to it.
+ * Inserts @group to the list @etdev->groups.
  *
- * Returns the non-negative index of etdev->groups on success.
- * Returns -EBUSY if no empty slot found.
+ * Returns 0 on success.
+ * Returns -EAGAIN if group join is currently disabled.
  */
 static int edgetpu_dev_add_group(struct edgetpu_dev *etdev,
 				 struct edgetpu_device_group *group)
 {
-	int i;
+	struct edgetpu_list_group *l = kmalloc(sizeof(*l), GFP_KERNEL);
 
+	if (!l)
+		return -ENOMEM;
 	mutex_lock(&etdev->groups_lock);
 	if (etdev->group_join_lockout) {
 		mutex_unlock(&etdev->groups_lock);
+		kfree(l);
 		return -EAGAIN;
 	}
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (!etdev->groups[i])
-			break;
-	}
+	l->grp = edgetpu_device_group_get(group);
+	list_add_tail(&l->list, &etdev->groups);
+	etdev->n_groups++;
 
-	if (i >= EDGETPU_NGROUPS) {
-		mutex_unlock(&etdev->groups_lock);
-		return -EBUSY;
-	}
-	etdev->groups[i] = edgetpu_device_group_get(group);
 	mutex_unlock(&etdev->groups_lock);
-
-	return i;
+	return 0;
 }
 
 void edgetpu_device_group_put(struct edgetpu_device_group *group)
@@ -458,23 +464,16 @@ void edgetpu_device_group_put(struct edgetpu_device_group *group)
 /* caller must hold @etdev->groups_lock. */
 static bool edgetpu_in_any_group_locked(struct edgetpu_dev *etdev)
 {
-	int i;
-
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (etdev->groups[i])
-			return true;
-	}
-
-	return false;
+	return etdev->n_groups;
 }
 
 /* caller must hold the client's etdev state_lock. */
 void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
 {
 	struct edgetpu_device_group *group;
+	struct edgetpu_list_group *l;
 	struct edgetpu_list_client *cur, *nxt;
 	bool will_disband = false;
-	int i;
 
 	mutex_lock(&client->group_lock);
 	group = client->group;
@@ -530,10 +529,12 @@ void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
 	mutex_unlock(&client->group_lock);
 	/* remove the group from the client device */
 	mutex_lock(&client->etdev->groups_lock);
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (client->etdev->groups[i] == group) {
-			edgetpu_device_group_put(client->etdev->groups[i]);
-			client->etdev->groups[i] = NULL;
+	list_for_each_entry(l, &client->etdev->groups, list) {
+		if (l->grp == group) {
+			list_del(&l->list);
+			edgetpu_device_group_put(l->grp);
+			kfree(l);
+			client->etdev->n_groups--;
 			break;
 		}
 	}
@@ -553,7 +554,6 @@ static int edgetpu_device_group_add_locked(struct edgetpu_device_group *group,
 					   struct edgetpu_client *client)
 {
 	struct edgetpu_list_client *c;
-	int i;
 	int ret = 0;
 
 	mutex_lock(&client->group_lock);
@@ -581,10 +581,9 @@ static int edgetpu_device_group_add_locked(struct edgetpu_device_group *group,
 		goto out;
 	}
 
-	i = edgetpu_dev_add_group(client->etdev, group);
-	if (i < 0) {
+	ret = edgetpu_dev_add_group(client->etdev, group);
+	if (ret) {
 		kfree(c);
-		ret = i;
 		goto out;
 	}
 
@@ -1447,14 +1446,14 @@ out:
 
 void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev)
 {
-	int i;
+	struct edgetpu_list_group *l;
+	struct edgetpu_device_group *group;
 
 	mutex_lock(&etdev->groups_lock);
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		if (etdev->groups[i])
-			edgetpu_group_notify(etdev->groups[i],
-					     EDGETPU_EVENT_FATAL_ERROR);
-	}
+
+	etdev_for_each_group(etdev, l, group)
+		edgetpu_group_notify(group, EDGETPU_EVENT_FATAL_ERROR);
+
 	mutex_unlock(&etdev->groups_lock);
 }
 

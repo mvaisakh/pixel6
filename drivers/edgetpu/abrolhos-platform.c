@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Platform device driver for the Google Edge TPU ML accelerator.
+ * Abrolhos device driver for the Google EdgeTPU ML accelerator.
  *
  * Copyright (C) 2019 Google, Inc.
  */
@@ -30,29 +30,26 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 
-#define MAX_SEGS     1
-
 static const struct of_device_id edgetpu_of_match[] = {
 	{ .compatible = "google,darwinn", },
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, edgetpu_of_match);
 
-static void edgetpu_sscd_release(struct device *dev)
+static void sscd_release(struct device *dev)
 {
 	pr_debug(DRIVER_NAME " release\n");
 }
-static struct sscd_platform_data edgetpu_sscd_pdata;
-static struct platform_device edgetpu_sscd_dev = {
+static struct sscd_platform_data sscd_pdata;
+static struct platform_device sscd_dev = {
 	.name            = DRIVER_NAME,
 	.driver_override = SSCD_NAME,
 	.id              = -1,
 	.dev             = {
-		.platform_data = &edgetpu_sscd_pdata,
-		.release       = edgetpu_sscd_release,
+		.platform_data = &sscd_pdata,
+		.release       = sscd_release,
 	},
 };
-
 /*
  * Log and trace buffers at the beginning of the remapped region,
  * pool memory afterwards.
@@ -60,7 +57,7 @@ static struct platform_device edgetpu_sscd_dev = {
 
 #define EDGETPU_POOL_MEM_OFFSET (EDGETPU_TELEMETRY_BUFFER_SIZE * 2)
 
-static void abrolhos_get_telemetry_mem(struct edgetpu_platform_dev *etpdev,
+static void abrolhos_get_telemetry_mem(struct abrolhos_platform_dev *etpdev,
 				       enum edgetpu_telemetry_type type,
 				       struct edgetpu_coherent_mem *mem)
 {
@@ -75,7 +72,8 @@ static void abrolhos_get_telemetry_mem(struct edgetpu_platform_dev *etpdev,
 }
 
 /* Setup the firmware region carveout. */
-static int edgetpu_platform_setup_fw_region(struct edgetpu_platform_dev *etpdev)
+static int
+edgetpu_platform_setup_fw_region(struct abrolhos_platform_dev *etpdev)
 {
 	struct edgetpu_dev *etdev = &etpdev->edgetpu_dev;
 	struct platform_device *gsa_pdev;
@@ -163,7 +161,7 @@ out_unmap:
 }
 
 static void edgetpu_platform_cleanup_fw_region(
-	struct edgetpu_platform_dev *etpdev)
+	struct abrolhos_platform_dev *etpdev)
 {
 	gsa_unload_tpu_fw_image(etpdev->gsa_dev);
 
@@ -183,68 +181,7 @@ void edgetpu_setup_mmu(struct edgetpu_dev *etdev)
 		dev_warn(etdev->dev, "failed to attach IOMMU: %d\n", ret);
 }
 
-static int edgetpu_sscd_generate_coredump(void)
-{
-	struct sscd_platform_data *pdata = &edgetpu_sscd_pdata;
-	static struct sscd_segment segs[MAX_SEGS];
-	char msg[128];
-	int cnt;
-
-	if (!pdata->sscd_report) {
-		pr_err(DRIVER_NAME " failed to generate coredump\n");
-		return -1;
-	}
-
-	/*
-	 * TODO (b/156049774):
-	 * Replace with dump information when it's available
-	 */
-	cnt = scnprintf(msg, sizeof(msg), "HELLO TPU!");
-	segs[0].addr = (void *)&msg;
-	segs[0].size = cnt;
-
-	pr_debug(DRIVER_NAME " report: %d segments", MAX_SEGS);
-	return pdata->sscd_report(&edgetpu_sscd_dev, segs, MAX_SEGS,
-				  0, "edgetpu_coredump");
-}
-
-static ssize_t edgetpu_coredump_store(struct file *filep,
-	const char __user *ubuf, size_t size, loff_t *offp)
-{
-	int generate_coredump, ret;
-
-	ret = kstrtoint_from_user(ubuf, size, 0, &generate_coredump);
-	if (ret)
-		return ret;
-	if (generate_coredump) {
-		ret = edgetpu_sscd_generate_coredump();
-		if (ret) {
-			pr_err(DRIVER_NAME " failed to generate coredump: %d\n",
-			       ret);
-			return ret;
-		}
-	}
-
-	return size;
-};
-
-static const struct file_operations coredump_ops = {
-	.owner = THIS_MODULE,
-	.write = edgetpu_coredump_store,
-};
-
-static void edgetpu_sscd_init(struct edgetpu_dev *etdev)
-{
-	/*
-	 * TODO (b/156049774):
-	 * Remove debugfs file after dump information is available and
-	 * edgetpu_sscd_generate_coredump is triggered by a crash
-	 */
-	debugfs_create_file("coredump", 0220, etdev->d_entry, etdev,
-			    &coredump_ops);
-}
-
-static int abrolhos_parse_ssmt(struct edgetpu_platform_dev *etpdev)
+static int abrolhos_parse_ssmt(struct abrolhos_platform_dev *etpdev)
 {
 	struct edgetpu_dev *etdev = &etpdev->edgetpu_dev;
 	struct platform_device *pdev = to_platform_device(etdev->dev);
@@ -270,13 +207,12 @@ static int abrolhos_parse_ssmt(struct edgetpu_platform_dev *etpdev)
 static int edgetpu_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct edgetpu_platform_dev *edgetpu_pdev;
+	struct abrolhos_platform_dev *edgetpu_pdev;
 	struct resource *r;
 	struct edgetpu_mapped_resource regs;
 	int ret;
 
-	edgetpu_pdev =
-		devm_kzalloc(dev, sizeof(*edgetpu_pdev), GFP_KERNEL);
+	edgetpu_pdev = devm_kzalloc(dev, sizeof(*edgetpu_pdev), GFP_KERNEL);
 	if (!edgetpu_pdev)
 		return -ENOMEM;
 
@@ -379,14 +315,15 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	dev_dbg(dev, "Creating thermal device\n");
 	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
 
-	edgetpu_sscd_init(&edgetpu_pdev->edgetpu_dev);
-
 	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
 		 edgetpu_pdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
 
 	dev_dbg(dev, "Probe finished, powering down\n");
 	/* Turn the device off unless a client request is already received. */
 	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, false);
+
+	edgetpu_pdev->sscd_info.pdata = &sscd_pdata;
+	edgetpu_pdev->sscd_info.dev = &sscd_dev;
 
 	return ret;
 out_tel_exit:
@@ -406,8 +343,7 @@ out_shutdown:
 static int edgetpu_platform_remove(struct platform_device *pdev)
 {
 	struct edgetpu_dev *etdev = platform_get_drvdata(pdev);
-	struct edgetpu_platform_dev *edgetpu_pdev = container_of(
-			etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 
 	abrolhos_edgetpu_firmware_destroy(etdev);
 	if (edgetpu_pdev->irq >= 0)
@@ -442,7 +378,7 @@ static int __init edgetpu_platform_init(void)
 		return ret;
 
 	/* Register SSCD platform device */
-	ret = platform_device_register(&edgetpu_sscd_dev);
+	ret = platform_device_register(&sscd_dev);
 	if (ret)
 		pr_err(DRIVER_NAME " SSCD platform device registration failed: %d\n",
 		       ret);
@@ -452,11 +388,11 @@ static int __init edgetpu_platform_init(void)
 static void __exit edgetpu_platform_exit(void)
 {
 	platform_driver_unregister(&edgetpu_platform_driver);
-	platform_device_unregister(&edgetpu_sscd_dev);
+	platform_device_unregister(&sscd_dev);
 	edgetpu_exit();
 }
 
-MODULE_DESCRIPTION("Google Edge TPU platform driver");
+MODULE_DESCRIPTION("Google EdgeTPU platform driver");
 MODULE_LICENSE("GPL v2");
 module_init(edgetpu_platform_init);
 module_exit(edgetpu_platform_exit);

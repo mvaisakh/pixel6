@@ -201,11 +201,11 @@ static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
 	if (val & PDENY) {
 		edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL,
 				     val & !state);
-		etdev_err(etdev, "p-channel state change request denied\n");
+		etdev_dbg(etdev, "p-channel state change request denied\n");
 		deny = true;
 	}
 	if (ret) {
-		etdev_err(etdev, "p-channel state change request timeout\n");
+		etdev_dbg(etdev, "p-channel state change request timeout\n");
 		return ret;
 	}
 	/* Phase 4. Drive PREQ to 0 */
@@ -226,7 +226,8 @@ int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
 	edgetpu_sw_wdt_stop(etdev);
 	ret = edgetpu_kci_shutdown(etdev->kci);
 	if (ret) {
-		etdev_err(etdev, "request power down routing failed\n");
+		etdev_err(etdev, "p-channel power down routing failed: %d",
+			  ret);
 		return ret;
 	}
 	if (wait_on_pactive) {
@@ -240,6 +241,10 @@ int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
 		ret = pchannel_state_change_request(etdev, STATE_SHUTDOWN);
 		tries--;
 	} while (ret && tries);
+
+	if (ret)
+		etdev_err(etdev, "p-channel shutdown state change failed: %d",
+			  ret);
 
 	return ret;
 }
