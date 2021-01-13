@@ -655,6 +655,33 @@ static int p9221_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
 	return ret;
 }
 
+static int p9412_chip_set_cmd_reg(struct p9221_charger_data *chgr, u16 cmd)
+{
+	u16 cur_cmd = 0;
+	int retry;
+	int ret;
+
+	for (retry = 0; retry < P9221_COM_CHAN_RETRIES; retry++) {
+		ret = chgr->reg_read_16(chgr, P9221_COM_REG, &cur_cmd);
+		if (ret == 0 && cur_cmd == 0)
+			break;
+		msleep(25);
+	}
+
+	if (retry >= P9221_COM_CHAN_RETRIES) {
+		dev_err(&chgr->client->dev,
+			"Failed to wait for cmd free %02x\n", cur_cmd);
+		return -EBUSY;
+	}
+
+	ret = chgr->reg_write_16(chgr, P9221_COM_REG, cmd);
+	if (ret)
+		dev_err(&chgr->client->dev,
+			"Failed to set cmd reg %02x: %d\n", cmd, ret);
+
+	return ret;
+}
+
 /* ccreset */
 static int p9221_send_ccreset(struct p9221_charger_data *chgr)
 {
@@ -789,6 +816,113 @@ out:
 	return ret;
 }
 
+/* For high power mode */
+static int p9221_prop_mode_enable(struct p9221_charger_data *chgr)
+{
+	return -ENOTSUPP;
+}
+
+static int p9412_prop_mode_enable(struct p9221_charger_data *chgr)
+{
+	int ret, loops;
+	u8 val8, cdmode, req_pwr, pwr_stp, mode_sts, err_sts, prop_cur_pwr;
+
+	ret = chgr->chip_get_sys_mode(chgr, &val8);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: cannot get sys mode\n");
+		return 0;
+	}
+
+	if (val8 == P9412_SYS_OP_MODE_PROPRIETARY) {
+		chgr->prop_mode_en = true;
+		goto err_exit;
+	}
+
+	ret = chgr->chip_get_tx_mfg_code(chgr, &chgr->mfg);
+	if (chgr->mfg != WLC_MFG_GOOGLE) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: mfg code =%02x\n", chgr->mfg);
+                return 0;
+	}
+
+	/* Step 1: enable Cap Div mode */
+	/* write 0x2 to 0x101 (capacitor divider mode req reg) */
+	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, CDMODE_CAP_DIV_MODE);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+                        "PROP_MODE: fail to enable Cap Div mode\n");
+		goto err_exit;
+	}
+
+	/* write 0x40(bit6) to 0x4E (initiate capacitor divider command) */
+	ret = p9412_chip_set_cmd_reg(chgr, INIT_CAP_DIV_CMD);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: fail to send INIT_CAP_DIV_CMD\n");
+		goto err_exit;
+	}
+
+	msleep(50);
+
+	/* Step 2: enable proprietary mode */
+	/* write 0x01 to 0x4F (Enable Proprietary Mode) 0x4E bit8*/
+	ret = p9412_chip_set_cmd_reg(chgr, PROP_MODE_EN_CMD);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: fail to send PROP_MODE_EN_CMD\n");
+		goto err_exit;
+	}
+
+	/* 60 * 50 = 3 secs */
+	for (loops = 60 ; loops ; loops--) {
+		if (chgr->prop_mode_en) {
+			dev_info(&chgr->client->dev,
+				 "PROP_MODE: Proprietary Mode Enabled\n");
+			break;
+		}
+		msleep(50);
+	}
+	if (!chgr->prop_mode_en)
+		goto err_exit;
+
+	/* Step 3: requested power(30W) */
+	/* Write requested power(30W) to register 0xC5 (0.5W units)*/
+	req_pwr = 30 * 2;
+	ret = chgr->reg_write_8(chgr, P9412_PROP_REQ_PWR_REG, req_pwr);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: fail to write pwr req register\n");
+		goto err_exit;
+	}
+
+	/* Request power from TX based on PropReqPwr (0xC5) */
+	ret = p9412_chip_set_cmd_reg(chgr, PROP_REQ_PWR_CMD);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: fail to send PROP_REQ_PWR_CMD\n");
+		goto err_exit;
+	}
+	msleep(50);
+
+err_exit:
+        /* check status */
+	ret = chgr->chip_get_sys_mode(chgr, &val8);
+	ret |= chgr->reg_read_8(chgr, P9412_PROP_CURR_PWR_REG, &prop_cur_pwr);
+	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_PWR_STEP_REG, &pwr_stp);
+	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_STATUS_REG, &mode_sts);
+	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_ERR_STS_REG, &err_sts);
+	ret |= chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
+
+	if (!ret) {
+		dev_info(&chgr->client->dev,
+			 "PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,cdmode=%02x,pwr_stp=%02x,prop_cur_pwr=%02x",
+			 chgr->prop_mode_en, val8, mode_sts, err_sts, cdmode, pwr_stp, prop_cur_pwr);
+	}
+
+	return chgr->prop_mode_en;
+}
+
 int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 {
 	chgr->chip_get_iout = p9xxx_chip_get_iout;
@@ -823,6 +957,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_send_ccreset = p9412_send_ccreset;
 		chgr->chip_get_sys_mode = p9412_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9412_chip_renegotiate_pwr;
+		chgr->chip_prop_mode_en = p9412_prop_mode_enable;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->rtx_state = RTX_AVAILABLE;
@@ -848,6 +983,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_send_ccreset = p9221_send_ccreset;
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
+		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		break;
 	default:
 		chgr->rtx_state = RTX_NOTSUPPORTED;
@@ -873,6 +1009,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_send_ccreset = p9221_send_ccreset;
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
+		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		break;
 	}
 

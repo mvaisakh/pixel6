@@ -33,7 +33,6 @@
 #define OVC_BACKOFF_AMOUNT		100000
 
 #define WLC_ALIGNMENT_MAX		100
-#define WLC_MFG_GOOGLE			0x72
 #define WLC_CURRENT_FILTER_LENGTH	10
 #define WLC_ALIGN_DEFAULT_SCALAR	4
 #define WLC_ALIGN_IRQ_THRESHOLD		10
@@ -505,6 +504,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	charger->online = false;
 	charger->force_bpp = false;
 	charger->chg_on_rtx = false;
+	charger->prop_mode_en = false;
 
 	/* Reset PP buf so we can get a new serial number next time around */
 	charger->pp_buf_valid = false;
@@ -1628,6 +1628,8 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 		p9221_write_fod(charger);
 		if (!charger->dc_icl_bpp)
 			p9221_icl_ramp_start(charger);
+		if (charger->chip_prop_mode_en(charger))
+			dev_info(&charger->client->dev, "PROP_MODE: enable\n");
 	}
 
 	/* We may have already gone online during check_det */
@@ -3487,10 +3489,18 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 			}
 		}
 	}
-
+/* TODO: bit 12 use for PropModeStat_INT p9412 */
+#if 0
 	/* CC Reset complete */
 	if (irq_src & P9221R5_STAT_CCRESET)
 		p9221_abort_transfers(charger);
+#endif
+	if (irq_src & PROP_MODE_STAT_INT) {
+		u8 mode;
+		charger->chip_get_sys_mode(charger, &mode);
+		if (mode == P9412_SYS_OP_MODE_PROPRIETARY)
+			charger->prop_mode_en = true;
+	}
 }
 
 static irqreturn_t p9221_irq_thread(int irq, void *irq_data)
