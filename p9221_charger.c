@@ -921,7 +921,7 @@ static int p9382_get_ptmc_id_str(char *buffer, int len,
  * DC_SUSPEND is used to prevent inflow from wireless charging. When present
  * will return 1 if the user has disabled the source (override online).
  */
-static int p9221_get_dc_enable(struct p9221_charger_data *charger)
+static int p9221_get_psy_online(struct p9221_charger_data *charger)
 {
 	int suspend = -EINVAL;
 
@@ -930,8 +930,16 @@ static int p9221_get_dc_enable(struct p9221_charger_data *charger)
 	if (charger->dc_suspend_votable)
 		suspend = get_effective_result(charger->dc_suspend_votable);
 
-	pr_debug("%s: suspend=%d\n", __func__, suspend);
-	return suspend < 0 ? suspend : !suspend;
+	pr_debug("%s: suspend=%d, wc_dc=%d\n", __func__, suspend,
+		 charger->wlc_dc_enabled);
+
+	/* TODO: not sure if this needs to be reported with */
+	if (suspend < 0)
+		return suspend;
+	if (suspend || !charger->online || !charger->enabled)
+		return 0;
+
+	return charger->wlc_dc_enabled ? 2 : 1;
 }
 
 
@@ -941,6 +949,7 @@ static int p9221_get_property(struct power_supply *psy,
 {
 	struct p9221_charger_data *charger = power_supply_get_drvdata(psy);
 	int ret = 0;
+	u32 temp;
 
 	switch (prop) {
 	/* check for field */
@@ -948,12 +957,10 @@ static int p9221_get_property(struct power_supply *psy,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = p9221_get_dc_enable(charger);
+		val->intval = p9221_get_psy_online(charger);
 		pr_debug("%s: dc_enable=%d, online=%d, enabled=%d\n",
 			 __func__, val->intval,  charger->online,
 			 charger->enabled);
-		if (val->intval != 0)
-			val->intval = charger->online && charger->enabled;
 		break;
 	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		val->strval = p9221_get_tx_id_str(charger);
@@ -995,27 +1002,34 @@ static int p9221_get_property(struct power_supply *psy,
 #endif
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		ret = p9221_ready_to_read(charger);
-		if (!ret) {
-			u32 ma;
+		if (ret < 0)
+			break;
 
-			ret = charger->chip_get_iout(charger, &ma);
-			if (ret)
-				val->intval = ret;
-			else
-				val->intval = ma * 1000; /* mA to uA */
+		if (charger->wlc_dc_enabled) {
+			ret = charger->chip_get_rx_ilim(charger, &temp);
+			if (ret == 0)
+				charger->wlc_dc_current_now = temp * 1000; /* mA to uA */
+		} else {
+			ret = charger->chip_get_iout(charger, &temp);
 		}
-		break;
+
+		val->intval = ret ? : temp * 1000; /* mA to uA */
+	break;
+
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		ret = p9221_ready_to_read(charger);
-		if (!ret) {
-			u32 mv;
+		if (ret < 0)
+			break;
 
-			ret = charger->chip_get_vout(charger, &mv);
-			if (ret)
-				val->intval = ret;
-			else
-				val->intval = mv * 1000; /* mV to uV */
+		if (charger->wlc_dc_enabled) {
+			ret = charger->chip_get_vout_max(charger, &temp);
+			if (ret == 0)
+				charger->wlc_dc_voltage_now = temp * 1000; /* mV to uV */
+		} else {
+			ret = charger->chip_get_vout(charger, &temp);
 		}
+
+		val->intval = ret ? : temp * 1000; /* mV to uV */
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		ret = p9221_ready_to_read(charger);
@@ -1029,6 +1043,10 @@ static int p9221_get_property(struct power_supply *psy,
 				val->intval = mv * 1000; /* mv to uV */
 		}
 		break;
+
+	case POWER_SUPPLY_PROP_VOLTAGE_MIN:
+		val->intval = 5000000; // TODO: fix it
+		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		ret = p9221_ready_to_read(charger);
 		if (!ret) {
@@ -1040,6 +1058,7 @@ static int p9221_get_property(struct power_supply *psy,
 		if (ret)
 			val->intval = ret;
 		break;
+
 	default:
 		ret = -EINVAL;
 		break;
@@ -1049,6 +1068,51 @@ static int p9221_get_property(struct power_supply *psy,
 		dev_dbg(&charger->client->dev,
 			"Couldn't get prop %d, ret=%d\n", prop, ret);
 	return ret;
+}
+
+/* < 0 error, 0 = no changes, > 1 changed */
+static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
+{
+
+	if (online < 0 || (online > 1 && !charger->has_wlc_dc))
+		return -EINVAL;
+
+	/* online = 2 enable LL, return < 0 if NOT on LL */
+	if (online == 2 && charger->has_wlc_dc) {
+		/* Ping? */
+		if (charger->wlc_dc_enabled) {
+			return 0;
+		} else if (charger->prop_mode_en) {
+			charger->wlc_dc_enabled = true;
+			return 1;
+		} else {
+			return -1;
+		}
+	} else if (online != 2 && charger->has_wlc_dc) {
+		/* Done */
+		if (!charger->wlc_dc_enabled)
+			return 0;
+
+		charger->wlc_dc_enabled = false;
+		return 1;
+	}
+
+	if (charger->enabled == !!online)
+		return 0;
+
+	/*
+	 * Asserting the enable line will automatically take bring
+	 * us online if we are in field.  De-asserting the enable
+	 * line will automatically take us offline if we are in field.
+	 * This is due to the fact that DC in will change state
+	 * appropriately when we change the state of this line.
+	 */
+	charger->enabled = !!online;
+	dev_warn(&charger->client->dev, "Set enable %d\n", charger->enabled);
+	if (charger->pdata->qien_gpio >= 0)
+		gpio_set_value(charger->pdata->qien_gpio, charger->enabled);
+
+	return 1;
 }
 
 static int p9221_set_property(struct power_supply *psy,
@@ -1061,30 +1125,11 @@ static int p9221_set_property(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		if ((val->intval < 0) || (val->intval > 1)) {
-			ret = -EINVAL;
+		ret = p9221_set_psy_online(charger, val->intval);
+		if (ret < 0)
 			break;
-		}
 
-		if (charger->enabled == val->intval)
-			break;
-		/*
-		 * Asserting the enable line will automatically take bring
-		 * us online if we are in field.  De-asserting the enable
-		 * line will automatically take us offline if we are in field.
-		 * This is due to the fact that DC in will change state
-		 * appropriately when we change the state of this line.
-		 */
-		charger->enabled = val->intval;
-
-		dev_warn(&charger->client->dev, "Set enable %d\n",
-			 charger->enabled);
-
-		if (charger->pdata->qien_gpio >= 0)
-			gpio_set_value_cansleep(charger->pdata->qien_gpio,
-				       charger->enabled ? 0 : 1);
-
-		changed = true;
+		changed = !!ret;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		if (charger->last_capacity == val->intval)
@@ -1123,6 +1168,19 @@ static int p9221_set_property(struct power_supply *psy,
 		if (ret == 0)
 			changed = true;
 		break;
+
+	/* route to p9412 if for wlc_dc */
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		/* uA */
+		charger->wlc_dc_current_now = val->intval;
+		ret = charger->chip_set_rx_ilim(charger, P9221_UA_TO_MA(charger->wlc_dc_current_now));
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		/* uV */
+		charger->wlc_dc_voltage_now = val->intval;
+		ret = charger->chip_set_vout_max(charger, P9221_UV_TO_MV(charger->wlc_dc_voltage_now));
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -1147,6 +1205,8 @@ static int p9221_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 	case POWER_SUPPLY_PROP_CAPACITY:
 	case POWER_SUPPLY_PROP_ONLINE:
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		writeable = 1;
 	default:
 		break;
@@ -3961,6 +4021,7 @@ static enum power_supply_property p9221_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	POWER_SUPPLY_PROP_VOLTAGE_MIN,
 	POWER_SUPPLY_PROP_TEMP,
 #ifdef CONFIG_QC_COMPAT
 	POWER_SUPPLY_PROP_AICL_DELAY,
@@ -4104,6 +4165,8 @@ static int p9221_charger_probe(struct i2c_client *client,
 			"Failed to initialize chip specific information\n");
 		return ret;
 	}
+
+	charger->has_wlc_dc = charger->pdata->chip_id == P9412_CHIP_ID;
 
 	/* Default enable */
 	charger->enabled = true;

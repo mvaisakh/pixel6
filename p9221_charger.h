@@ -492,6 +492,12 @@ struct p9221_charger_data {
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
 
+	/* WLC DC when available */
+	u32 				wlc_dc_voltage_now;
+	u32 				wlc_dc_current_now;
+	bool				wlc_dc_enabled;
+	bool				has_wlc_dc;
+
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
 	int (*reg_read_8)(struct p9221_charger_data *chgr, u16 reg,
