@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Edge TPU thermal driver header.
+ * EdgeTPU thermal driver header.
  *
  * Copyright (C) 2020 Google, Inc.
  */
-
 #ifndef __EDGETPU_THERMAL_H__
 #define __EDGETPU_THERMAL_H__
 

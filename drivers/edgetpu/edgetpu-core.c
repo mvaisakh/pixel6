@@ -30,6 +30,7 @@
 #include "edgetpu-mcp.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
+#include "edgetpu-usage-stats.h"
 #include "edgetpu.h"
 
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
@@ -219,6 +220,8 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 
 	mutex_init(&etdev->open.lock);
 	mutex_init(&etdev->groups_lock);
+	INIT_LIST_HEAD(&etdev->groups);
+	etdev->n_groups = 0;
 	etdev->group_join_lockout = false;
 	mutex_init(&etdev->state_lock);
 	etdev->state = ETDEV_STATE_NOFW;
@@ -240,6 +243,8 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 		goto remove_dev;
 	}
 	edgetpu_setup_mmu(etdev);
+
+	edgetpu_usage_stats_init(etdev);
 
 	etdev->kci = devm_kzalloc(etdev->dev, sizeof(*etdev->kci), GFP_KERNEL);
 	if (!etdev->kci) {
@@ -279,6 +284,7 @@ remove_kci:
 	/* releases the resources of KCI */
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 detach_mmu:
+	edgetpu_usage_stats_exit(etdev);
 	edgetpu_mmu_detach(etdev);
 remove_dev:
 	edgetpu_mark_probe_fail(etdev);
@@ -291,6 +297,7 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 	edgetpu_chip_exit(etdev);
 	edgetpu_debug_dump_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
+	edgetpu_usage_stats_exit(etdev);
 	edgetpu_mmu_detach(etdev);
 	edgetpu_fs_remove(etdev);
 }

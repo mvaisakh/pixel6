@@ -880,17 +880,13 @@ static const struct file_operations statusregs_ops = {
 static int mappings_show(struct seq_file *s, void *data)
 {
 	struct edgetpu_dev *etdev = s->private;
-	int i;
+	struct edgetpu_list_group *l;
+	struct edgetpu_device_group *group;
 
 	mutex_lock(&etdev->groups_lock);
 
-	for (i = 0; i < EDGETPU_NGROUPS; i++) {
-		struct edgetpu_device_group *group = etdev->groups[i];
-
-		if (!group)
-			continue;
+	etdev_for_each_group(etdev, l, group)
 		edgetpu_group_mappings_show(group, s);
-	}
 
 	mutex_unlock(&etdev->groups_lock);
 	edgetpu_kci_mappings_show(etdev, s);

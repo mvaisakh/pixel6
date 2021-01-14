@@ -5,6 +5,8 @@
  *
  * Copyright (C) 2020 Google, Inc.
  */
+#include <linux/workqueue.h>
+
 #include "edgetpu-config.h"
 #include "edgetpu-debug-dump.h"
 #include "edgetpu-iremap-pool.h"
@@ -14,51 +16,6 @@ static inline u64 word_align_offset(u64 offset)
 {
 	return offset/sizeof(u64) +
 	       (((offset % sizeof(u64)) == 0) ? 0 : 1);
-}
-
-int edgetpu_debug_dump_init(struct edgetpu_dev *etdev)
-{
-#ifdef CONFIG_ABROLHOS
-	size_t size;
-	int ret;
-	struct edgetpu_debug_dump_setup *dump_setup;
-
-	size = EDGETPU_DEBUG_DUMP_MEM_SIZE;
-
-	/*
-	 * Allocate buffers for various dump segments and map them to FW
-	 * accessible regions
-	 */
-	ret = edgetpu_iremap_alloc(etdev, size, &etdev->debug_dump_mem,
-				   EDGETPU_CONTEXT_KCI);
-	if (ret) {
-		etdev_err(etdev, "Debug dump seg alloc failed");
-		etdev->debug_dump_mem.vaddr = NULL;
-		return ret;
-	}
-	dump_setup =
-		(struct edgetpu_debug_dump_setup *)etdev->debug_dump_mem.vaddr;
-	dump_setup->dump_mem_size = size;
-	memset(dump_setup, 0, dump_setup->dump_mem_size);
-	return ret;
-#else
-	return 0;
-#endif	/* CONFIG_ABROLHOS */
-}
-
-void edgetpu_debug_dump_exit(struct edgetpu_dev *etdev)
-{
-#ifdef CONFIG_ABROLHOS
-	if (!etdev->debug_dump_mem.vaddr) {
-		etdev_dbg(etdev, "Debug dump not allocated");
-		return;
-	}
-	/*
-	 * Free the memory assigned for debug dump
-	 */
-	edgetpu_iremap_free(etdev, &etdev->debug_dump_mem,
-			    EDGETPU_CONTEXT_KCI);
-#endif	/* CONFIG_ABROLHOS */
 }
 
 int edgetpu_get_debug_dump(struct edgetpu_dev *etdev, u64 type)
@@ -86,6 +43,47 @@ int edgetpu_get_debug_dump(struct edgetpu_dev *etdev, u64 type)
 	return ret;
 }
 
+static void edgetpu_debug_dump_work(struct work_struct *work)
+{
+	struct edgetpu_dev *etdev;
+	struct edgetpu_debug_dump_setup *dump_setup;
+	struct edgetpu_debug_dump *debug_dump;
+	int ret;
+	u64 offset, dump_reason;
+
+	etdev = container_of(work, struct edgetpu_dev, debug_dump_work);
+	dump_setup =
+		(struct edgetpu_debug_dump_setup *)etdev->debug_dump_mem.vaddr;
+	offset = sizeof(struct edgetpu_debug_dump_setup);
+	debug_dump = (struct edgetpu_debug_dump *)((u64 *)dump_setup +
+		     word_align_offset(offset));
+
+	if (!etdev->debug_dump_handlers) {
+		etdev_err(etdev,
+			  "Failed to generate coredump as handler is NULL");
+		goto debug_dump_work_done;
+	}
+
+	dump_reason = dump_setup->dump_req_reason;
+	if (dump_reason >= DUMP_REQ_REASON_NUM ||
+	    !etdev->debug_dump_handlers[dump_reason]) {
+		etdev_err(etdev,
+			  "Failed to generate coredump as handler is NULL for dump request reason: 0x%llx",
+			  dump_reason);
+		goto debug_dump_work_done;
+	}
+
+	ret = etdev->debug_dump_handlers[dump_reason]
+	      ((void *)etdev, (void *)dump_setup);
+	if (ret) {
+		etdev_err(etdev, "Failed to generate coredump: %d\n", ret);
+		goto debug_dump_work_done;
+	}
+
+debug_dump_work_done:
+	debug_dump->host_dump_available_to_read = false;
+}
+
 void edgetpu_debug_dump_resp_handler(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_debug_dump_setup *dump_setup;
@@ -104,9 +102,8 @@ void edgetpu_debug_dump_resp_handler(struct edgetpu_dev *etdev)
 	if (!debug_dump->host_dump_available_to_read)
 		return;
 
-	/*
-	 * TODO (b/156049774): Dump segments may be collected here and exposed
-	 * to SSCD.
-	 */
-	debug_dump->host_dump_available_to_read = false;
+	if (!etdev->debug_dump_work.func)
+		INIT_WORK(&etdev->debug_dump_work, edgetpu_debug_dump_work);
+
+	schedule_work(&etdev->debug_dump_work);
 }

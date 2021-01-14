@@ -48,4 +48,11 @@ void edgetpu_sw_wdt_set_handler(struct edgetpu_dev *etdev,
 void edgetpu_sw_wdt_modify_heartbeat(struct edgetpu_dev *etdev,
 				     unsigned long hrtbeat_ms);
 
+/*
+ * Schedule sw watchdog action immediately.  Called on fatal errors.
+ * @reset: true if error recovery requires a full chip reset, not just
+ *         firmware restart.
+ */
+void edgetpu_watchdog_bite(struct edgetpu_dev *etdev, bool reset);
+
 #endif /* __EDGETPU_SW_WDT_H__ */

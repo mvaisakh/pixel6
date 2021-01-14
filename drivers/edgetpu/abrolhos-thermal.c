@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Edge TPU thermal driver for Abrolhos.
+ * EdgeTPU thermal driver for Abrolhos.
  *
  * Copyright (C) 2020 Google, Inc.
  */
@@ -54,15 +54,6 @@ static const struct edgetpu_state_pwr state_pwr_map[] = {
 	{ TPU_OFF, 0 },
 };
 
-#define find_state_pwr(i, cmp_left, cmp_right, list, out_left, out_right)      \
-	do {                                                                   \
-		if (cmp_left == cmp_right) {                                   \
-			out_left = out_right;                                  \
-			return 0;                                              \
-		}                                                              \
-		i++;                                                           \
-	} while (i < ARRAY_SIZE(list))
-
 static int edgetpu_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
@@ -70,9 +61,8 @@ static int edgetpu_get_max_state(struct thermal_cooling_device *cdev,
 	return 0;
 }
 
-/* Set cooling state
- * Re-using code from abrohlos-platform.
- * TODO: move to external call
+/*
+ * Set cooling state.
  */
 static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 				 unsigned long state_original)
@@ -81,7 +71,7 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	struct edgetpu_thermal *cooling = cdev->devdata;
 	struct device *dev = cooling->dev;
 
-	if (WARN_ON(state_original >= ARRAY_SIZE(state_mapping))) {
+	if (state_original >= ARRAY_SIZE(state_mapping)) {
 		dev_err(dev, "%s: invalid cooling state %lu\n", __func__,
 			state_original);
 		return -EINVAL;
@@ -96,18 +86,21 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 		 */
 #if 0
 		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, pwr_state);
-#endif
+#else
 		ret = 0;
+#endif
 		if (ret) {
 			dev_err(dev, "error setting tpu policy: %d\n", ret);
-			mutex_unlock(&cooling->lock);
-			return ret;
+			goto out;
 		}
 		cooling->cooling_state = state_original;
+	} else {
+		ret = -EALREADY;
 	}
 
+out:
 	mutex_unlock(&cooling->lock);
-	return 0;
+	return ret;
 }
 
 static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
@@ -118,12 +111,14 @@ static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 
 	*state = cooling->cooling_state;
 	if (*state >= ARRAY_SIZE(state_mapping)) {
-		dev_warn(cooling->dev, "Unknown cooling state: %lu, resetting\n", *state);
+		dev_warn(cooling->dev,
+			 "Unknown cooling state: %lu, resetting\n", *state);
 		mutex_lock(&cooling->lock);
 
 		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, TPU_ACTIVE_OD);
 		if (ret) {
-			dev_err(cooling->dev, "error setting tpu policy: %d\n", ret);
+			dev_err(cooling->dev, "error setting tpu policy: %d\n",
+				ret);
 			mutex_unlock(&cooling->lock);
 			return ret;
 		}
@@ -139,13 +134,16 @@ static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 static int edgetpu_state2power_internal(unsigned long state, u32 *power,
 					struct device *dev)
 {
-	int i = 0;
+	int i;
 
-	find_state_pwr(i, state, state_pwr_map[i].state, state_pwr_map, *power,
-		       state_pwr_map[i].power);
+	for (i = 0; i < ARRAY_SIZE(state_pwr_map); i++) {
+		if (state == state_pwr_map[i].state) {
+			*power = state_pwr_map[i].power;
+			return 0;
+		}
+	}
 	dev_err(dev, "Unknown state req for: %lu\n", state);
 	*power = 0;
-	WARN_ON(1);
 	return -EINVAL;
 }
 
@@ -189,7 +187,6 @@ static int edgetpu_power2state(struct thermal_cooling_device *cdev,
 	}
 
 	dev_err(cooling->dev, "No power2state mapping found: %d\n", power);
-	WARN_ON(1);
 	return -EINVAL;
 }
 
@@ -204,7 +201,8 @@ static struct thermal_cooling_device_ops edgetpu_cooling_ops = {
 
 static void tpu_thermal_exit_cooling(struct edgetpu_thermal *thermal)
 {
-	thermal_cooling_device_unregister(thermal->cdev);
+	if (!IS_ERR_OR_NULL(thermal->cdev))
+		thermal_cooling_device_unregister(thermal->cdev);
 }
 
 static void tpu_thermal_exit(struct edgetpu_thermal *thermal)
@@ -243,10 +241,14 @@ tpu_thermal_cooling_register(struct edgetpu_thermal *thermal, char *type)
 static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 {
 	int err;
+	struct dentry *d;
 
+	d = debugfs_create_dir("cooling", edgetpu_fs_debugfs_dir());
+	/* don't let debugfs creation failure abort the init procedure */
+	if (!d)
+		dev_warn(dev, "failed to create debug fs for cooling");
 	thermal->dev = dev;
-	thermal->cooling_root =
-		debugfs_create_dir("cooling", edgetpu_fs_debugfs_dir());
+	thermal->cooling_root = d;
 
 	err = tpu_thermal_cooling_register(thermal, EDGETPU_COOLING_NAME);
 	if (err) {

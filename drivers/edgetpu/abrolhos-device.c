@@ -84,8 +84,7 @@ u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev)
 void edgetpu_chip_init(struct edgetpu_dev *etdev)
 {
 	int i;
-	struct edgetpu_platform_dev *etpdev = container_of(
-			etdev, struct edgetpu_platform_dev, edgetpu_dev);
+	struct abrolhos_platform_dev *etpdev = to_abrolhos_dev(etdev);
 
 	/* Disable the CustomBlock Interrupt. */
 	edgetpu_dev_write_32(etdev, HOST_NONSECURE_INTRSRCMASKREG, 0x1);
