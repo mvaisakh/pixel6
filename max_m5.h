@@ -24,7 +24,7 @@
 /* change to 1 or 0 to load FG model with default parameters on startup */
 #define MAX_M5_LOAD_MODEL_DISABLED	-1
 #define MAX_M5_LOAD_MODEL_IDLE		0
-#define MAX_M5_LOAD_MODEL_REQUEST	1
+#define MAX_M5_LOAD_MODEL_REQUEST	5
 
 #define MAX_M5_FG_MODEL_START		0x80
 #define MAX_M5_FG_MODEL_SIZE		48
@@ -40,6 +40,10 @@
 
 #define MAX_M5_TCURVE	0xB9
 #define MAX_M5_VFSOC	0xFF
+
+/* model version */
+#define MAX_M5_INVALID_VERSION	-1
+
 
 /** ------------------------------------------------------------------------ */
 
@@ -77,6 +81,7 @@ struct max_m5_custom_parameters {
 	u16 atrate;
 	u16 convgcfg;
 	u16 filtercfg; 	/* write to 0x0029 */
+	u16 taskperiod;
 } __attribute__((packed));
 
 /* this is what is saved and restored to/from GMSR */
@@ -97,6 +102,7 @@ struct model_state_save {
 struct max_m5_data {
 	struct device *dev;
 	struct max17x0x_regmap *regmap;
+	int cap_lsb;	/* b/177099997 */
 
 	/* initial parameters are in device tree they are also learned */
 	struct max_m5_custom_parameters parameters;
@@ -106,10 +112,50 @@ struct max_m5_data {
 
 	int custom_model_size;
 	u16 *custom_model;
+	u32 model_version;
 
 	/* to/from GMSR */
 	struct model_state_save model_save;
 };
+
+/** ------------------------------------------------------------------------ */
+
+int max_m5_model_read_version(const struct max_m5_data *m5_data);
+int max_m5_model_get_cap_lsb(const struct max_m5_data *m5_data);
+
+/*
+ * max_m5 might use the low 8 bits of devname to keep the model version number
+ * - 0 not M5, !=0 M5
+ */
+static inline int max_m5_check_devname(u16 devname)
+{
+	return (devname >> 8) == 0x62;
+}
+
+/* b/177099997, handle TaskConfig = 351 */
+static inline int max_m5_cap_lsb(const struct max_m5_data *m5_data)
+{
+	return m5_data ? (1 << m5_data->cap_lsb) : 1;
+}
+
+static inline int max_m5_fg_model_version(const struct max_m5_data *m5_data)
+{
+	return m5_data ? m5_data->model_version : MAX_M5_INVALID_VERSION;
+}
+
+/*
+ * 0 reload, != 0 no reload
+ * always reload when the model version is not specified
+ */
+static inline int max_m5_fg_model_check_version(const struct max_m5_data *m5_data)
+{
+	if (!m5_data)
+		return 1;
+	if (m5_data->model_version == MAX_M5_INVALID_VERSION)
+		return 0;
+
+	return max_m5_model_read_version(m5_data) == m5_data->model_version;
+}
 
 /** ------------------------------------------------------------------------ */
 
@@ -125,6 +171,7 @@ int max_m5_save_state_data(struct max_m5_data *m5_data);
 
 /* read state from the gauge */
 int max_m5_model_read_state(struct max_m5_data *m5_data);
+int max_m5_model_check_state(struct max_m5_data *m5_data);
 
 /* load model to gauge */
 int max_m5_load_gauge_model(struct max_m5_data *m5_data);
@@ -139,6 +186,8 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 int max_m5_fg_model_sscan(struct max_m5_data *m5_data, const char *buf,
 			  int max);
 int max_m5_fg_model_cstr(char *buf, int max, const struct max_m5_data *m5_data);
+
+/** ------------------------------------------------------------------------ */
 
 /*
  *

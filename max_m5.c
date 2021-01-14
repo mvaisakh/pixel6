@@ -34,6 +34,14 @@
 #include <linux/debugfs.h>
 #endif
 
+/* Config2: must not enable TAlert */
+#define MODEL_VERSION_REG	MAX_M5_TALRTTH
+#define MODEL_VERSION_SHIFT	8
+#define MODEL_VERSION_MASK	0xff
+
+#define MAX_M5_TASKPERIOD_175MS	0x1680
+#define MAX_M5_TASKPERIOD_351MS	0x2D00
+
 static void dump_model(struct device *dev, u16 *data, int count)
 {
 	int i, j, len;
@@ -338,6 +346,52 @@ exit_done:
 	return ret;
 }
 
+int max_m5_model_read_version(const struct max_m5_data *m5_data)
+{
+	u16 version;
+	int ret;
+
+	ret = REGMAP_READ(m5_data->regmap, MODEL_VERSION_REG, &version);
+	if (ret < 0)
+		return ret;
+
+	return (version >> MODEL_VERSION_SHIFT) & MODEL_VERSION_MASK;
+}
+
+static int max_m5_model_write_version(const struct max_m5_data *m5_data,
+				      int version)
+{
+	u16 temp;
+	int ret;
+
+	if (version == MAX_M5_INVALID_VERSION)
+		return 0;
+
+	ret = REGMAP_READ(m5_data->regmap, MODEL_VERSION_REG, &temp);
+	if (ret == 0) {
+		temp &= ~(MODEL_VERSION_MASK << MODEL_VERSION_SHIFT);
+		temp |= (version & MODEL_VERSION_MASK) << MODEL_VERSION_SHIFT;
+
+		ret =  REGMAP_WRITE(m5_data->regmap, MODEL_VERSION_REG, temp);
+	}
+
+	return ret;
+}
+
+/* convert taskperiod to the scaling factor for capacity */
+static int max_m5_period2caplsb(u16 taskperiod)
+{
+	int cap_lsb = -EINVAL;
+
+	if (taskperiod == MAX_M5_TASKPERIOD_351MS)
+		cap_lsb = 1;
+	else if (taskperiod == MAX_M5_TASKPERIOD_175MS)
+		cap_lsb = 0;
+
+	return cap_lsb;
+}
+
+/* 0 is ok */
 int max_m5_load_gauge_model(struct max_m5_data *m5_data)
 {
 	struct max17x0x_regmap *regmap = m5_data->regmap;
@@ -349,6 +403,13 @@ int max_m5_load_gauge_model(struct max_m5_data *m5_data)
 
 	if (!m5_data || !m5_data->custom_model || !m5_data->custom_model_size)
 		return -ENODATA;
+
+	/* loading in progress, this is not good (tm) */
+	ret = REGMAP_READ(regmap, MAX_M5_CONFIG2, &data);
+	if (ret == 0 && (data & MAX_M5_CONFIG2_LDMDL)) {
+		dev_err(m5_data->dev, "load model in progress (%x)\n", data);
+		return -EINVAL;
+	}
 
 	ret = max_m5_update_custom_model(m5_data);
 	if (ret < 0) {
@@ -363,39 +424,72 @@ int max_m5_load_gauge_model(struct max_m5_data *m5_data)
 		return ret;
 	}
 
-	/* tcurve, filterconfig are not part of model state */
+	/* tcurve, filterconfig, taskperiod, version are not part of model */
 	ret = REGMAP_WRITE(regmap, MAX_M5_TCURVE, m5_data->parameters.tcurve);
 	if (ret < 0) {
-		dev_err(m5_data->dev, "cannot update tcurve (%d)\n",
-			ret);
+		dev_err(m5_data->dev, "cannot update tcurve (%d)\n", ret);
 		return ret;
 	}
 
 	ret = REGMAP_WRITE(regmap, MAX_M5_FILTERCFG,
 			   m5_data->parameters.filtercfg);
 	if (ret < 0) {
-		dev_err(m5_data->dev, "cannot update filter config (%d)\n",
-			ret);
+		dev_err(m5_data->dev, "cannot update filter config (%d)\n", ret);
 		return ret;
 	}
 
-	/* load model now */
+	/*  b/177099997 cap_lsb gives the LSB for capacity conversions */
+	ret = REGMAP_WRITE(regmap, MAX_M5_TASKPERIOD,
+			   m5_data->parameters.taskperiod);
+	if (ret < 0) {
+		dev_err(m5_data->dev, "cannot update taskperiod (%d)\n", ret);
+		return ret;
+	}
+
+	m5_data->cap_lsb = max_m5_period2caplsb(m5_data->parameters.taskperiod);
+
+	/*
+	 * version could be in the DT: this will overwrite it if set.
+	 * Invalid version is not written out.
+	 */
+	ret = max_m5_model_write_version(m5_data, m5_data->model_version);
+	if (ret < 0) {
+		dev_err(m5_data->dev, "cannot update version (%d)\n", ret);
+		return ret;
+	}
+
+	/* trigger load model */
 	ret = REGMAP_READ(regmap, MAX_M5_CONFIG2, &data);
 	if (ret == 0)
-		ret = REGMAP_WRITE(regmap, MAX_M5_CONFIG2, data | 0x20);
+		ret = REGMAP_WRITE(regmap, MAX_M5_CONFIG2,
+				   data | MAX_M5_CONFIG2_LDMDL);
 	if (ret < 0) {
 		dev_err(m5_data->dev, "failed start model loading (%d)\n", ret);
 		return ret;
 	}
 
-	/* around 400ms for this */
-	for (retries = 10; retries > 0; retries--) {
+	/* around 400ms for this usually */
+	for (retries = 20; retries > 0; retries--) {
 
 		mdelay(50);
 
 		ret = REGMAP_READ(regmap, MAX_M5_CONFIG2, &data);
-		if (ret == 0 && !(data & 0x20))
+		if (ret == 0 && !(data & MAX_M5_CONFIG2_LDMDL)) {
+			int temp;
+
+			temp = max_m5_model_read_version(m5_data);
+			if (m5_data->model_version == MAX_M5_INVALID_VERSION) {
+				dev_info(m5_data->dev, "No Model Version, Current %x\n",
+					 temp);
+			} else if (temp != m5_data->model_version) {
+				dev_info(m5_data->dev, "Model Version %x, Mismatch %x\n",
+					 m5_data->model_version, temp);
+				return -EINVAL;
+			}
+
 			return 0;
+		}
+
 	}
 
 	return -ETIMEDOUT;
@@ -415,10 +509,46 @@ int max_m5_fixup_outliers(struct max1720x_drift_data *ddata,
 	return 0;
 }
 
-/* load parameters and model state from permanent storage */
+static bool memtst(void *buf, char c, size_t count)
+{
+	bool same = true;
+	int i;
+
+	for (i = 0; same && i < count; i++)
+		same = ((char*)buf)[i] == c;
+
+	return same;
+}
+
+static int max_m5_check_state_data(struct model_state_save *state)
+{
+	bool bad_residual, empty;
+
+	empty = memtst(state, 0xff, sizeof(*state)) == 0;
+	if (empty)
+		return -EINVAL;
+
+	if (state->rcomp0 == 0xFF)
+		return -EINVAL;
+
+	bad_residual = state->qresidual00 == 0xffff &&
+		       state->qresidual10 == 0xffff &&
+		       state->qresidual20 == 0xffff &&
+		       state->qresidual30 == 0xffff;
+	if (bad_residual)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * Load parameters and model state from permanent storage.
+ * Called on boot after POR
+ */
 int max_m5_load_state_data(struct max_m5_data *m5_data)
 {
-	int ret = 0;
+	struct max_m5_custom_parameters *cp = &m5_data->parameters;
+	int ret;
 
 	if (!m5_data)
 		return -EINVAL;
@@ -431,20 +561,20 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 		return ret;
 	}
 
-	if (m5_data->model_save.rcomp0 == 0xFF) {
-		dev_info(m5_data->dev, "Model Data Empty\n");
-		return -EINVAL;
-	}
+	ret = max_m5_check_state_data(&m5_data->model_save);
+	if (ret < 0)
+		return ret;
 
-	m5_data->parameters.rcomp0 = m5_data->model_save.rcomp0;
-	m5_data->parameters.tempco = m5_data->model_save.tempco;
-	m5_data->parameters.fullcaprep = m5_data->model_save.fullcaprep;
+	cp->rcomp0 = m5_data->model_save.rcomp0;
+	cp->tempco = m5_data->model_save.tempco;
+	cp->fullcaprep = m5_data->model_save.fullcaprep;
+	cp->fullcapnom = m5_data->model_save.fullcapnom;
+	cp->qresidual00 = m5_data->model_save.qresidual00;
+	cp->qresidual10 = m5_data->model_save.qresidual10;
+	cp->qresidual20 = m5_data->model_save.qresidual20;
+	cp->qresidual30 = m5_data->model_save.qresidual30;
+
 	m5_data->cycles = m5_data->model_save.cycles;
-	m5_data->parameters.fullcapnom = m5_data->model_save.fullcapnom;
-	m5_data->parameters.qresidual00 = m5_data->model_save.qresidual00;
-	m5_data->parameters.qresidual10 = m5_data->model_save.qresidual10;
-	m5_data->parameters.qresidual20 = m5_data->model_save.qresidual20;
-	m5_data->parameters.qresidual30 = m5_data->model_save.qresidual30;
 	m5_data->mixcap = m5_data->model_save.mixcap;
 	m5_data->halftime = m5_data->model_save.halftime;
 
@@ -454,17 +584,19 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 /* save/commit parameters and model state to permanent storage */
 int max_m5_save_state_data(struct max_m5_data *m5_data)
 {
+	struct max_m5_custom_parameters *cp = &m5_data->parameters;
 	int ret = 0;
 
-	m5_data->model_save.rcomp0 = m5_data->parameters.rcomp0;
-	m5_data->model_save.tempco = m5_data->parameters.tempco;
-	m5_data->model_save.fullcaprep = m5_data->parameters.fullcaprep;
+	m5_data->model_save.rcomp0 = cp->rcomp0;
+	m5_data->model_save.tempco = cp->tempco;
+	m5_data->model_save.fullcaprep = cp->fullcaprep;
+	m5_data->model_save.fullcapnom = cp->fullcapnom;
+	m5_data->model_save.qresidual00 = cp->qresidual00;
+	m5_data->model_save.qresidual10 = cp->qresidual10;
+	m5_data->model_save.qresidual20 = cp->qresidual20;
+	m5_data->model_save.qresidual30 = cp->qresidual30;
+
 	m5_data->model_save.cycles = m5_data->cycles;
-	m5_data->model_save.fullcapnom = m5_data->parameters.fullcapnom;
-	m5_data->model_save.qresidual00 = m5_data->parameters.qresidual00;
-	m5_data->model_save.qresidual10 = m5_data->parameters.qresidual10;
-	m5_data->model_save.qresidual20 = m5_data->parameters.qresidual20;
-	m5_data->model_save.qresidual30 = m5_data->parameters.qresidual30;
 	m5_data->model_save.mixcap = m5_data->mixcap;
 	m5_data->model_save.halftime = m5_data->halftime;
 
@@ -477,7 +609,29 @@ int max_m5_save_state_data(struct max_m5_data *m5_data)
 	return ret == sizeof(m5_data->model_save) ? 0 : -ERANGE;
 }
 
-/* read fuel gauge state to parameters/model state */
+/* 0 ok, < 0 error. Call after reading from the FG */
+int max_m5_model_check_state(struct max_m5_data *m5_data)
+{
+	struct max_m5_custom_parameters *fg_param = &m5_data->parameters;
+	bool bad_residual;
+
+	if (fg_param->rcomp0 == 0xFF)
+		return -EINVAL;
+
+	bad_residual = fg_param->qresidual00 == 0xffff &&
+		       fg_param->qresidual10 == 0xffff &&
+		       fg_param->qresidual20 == 0xffff &&
+		       fg_param->qresidual30 == 0xffff;
+	if (bad_residual)
+		return -ERANGE;
+
+	return 0;
+}
+
+/*
+ * read fuel gauge state to parameters/model state.
+ * NOTE: Called on boot if POR is not set or during save state.
+ */
 int max_m5_model_read_state(struct max_m5_data *m5_data)
 {
 	int rc;
@@ -564,7 +718,7 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 		dev_info(m5_data->dev, "@%d: reg=%x val=%x\n", index, reg, val);
 
 		switch (reg) {
-		/* fg-params */
+		/* model parameters (fg-params) */
 		case MAX_M5_IAVGEMPTY:
 			m5_data->parameters.iavg_empty = val;
 			break;
@@ -616,8 +770,18 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 		case MAX_M5_FILTERCFG:
 			m5_data->parameters.filtercfg = val;
 			break;
+		case MAX_M5_TASKPERIOD:
+			if (val != MAX_M5_TASKPERIOD_175MS &&
+			    val != MAX_M5_TASKPERIOD_351MS) {
+				dev_err(m5_data->dev, "@%d: reg=%x val %x not allowed\n",
+					index, reg, val);
+				return -EINVAL;
+			}
 
-		/* model state */
+			m5_data->parameters.taskperiod = val;
+			break;
+
+		/* model state, saved and restored */
 		case MAX_M5_RCOMP0:
 			m5_data->parameters.rcomp0 = val;
 			break;
@@ -662,6 +826,31 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 	}
 
 	return 0;
+}
+
+/* b/177099997 TaskPeriod = 351 ms changes the lsb for capacity conversions */
+static int max_m5_read_taskperiod(int *cap_lsb, struct max17x0x_regmap *regmap)
+{
+	u16 data;
+	int ret;
+
+	/* TaskPeriod = 351 ms changes the lsb for capacity conversions */
+	ret = REGMAP_READ(regmap, MAX_M5_TASKPERIOD, &data);
+	if (ret == 0)
+		ret = max_m5_period2caplsb(data);
+	if (ret < 0)
+		return ret;
+
+	*cap_lsb = ret;
+	return 0;
+}
+
+int max_m5_model_get_cap_lsb(const struct max_m5_data *m5_data)
+{
+	struct max17x0x_regmap *regmap = m5_data->regmap;
+	int cap_lsb;
+
+	return max_m5_read_taskperiod(&cap_lsb, regmap) < 0 ? -1 : cap_lsb;
 }
 
 /* custom model parameters */
@@ -758,6 +947,7 @@ void *max_m5_init_data(struct device *dev, struct device_node *node,
 	struct max_m5_data *m5_data;
 	int cnt, ret;
 	u16 *model;
+	u32 temp;
 
 	m5_data = devm_kzalloc(dev, sizeof(*m5_data), GFP_KERNEL);
 	if (!m5_data) {
@@ -784,6 +974,11 @@ void *max_m5_init_data(struct device *dev, struct device_node *node,
 			m5_data->custom_model_size = cnt;
 	}
 
+	ret = of_property_read_u32(node, "maxim,model-version", &temp);
+	if (ret < 0 || temp > 255)
+		temp = MAX_M5_INVALID_VERSION;
+	m5_data->model_version = temp;
+
 	/*
 	 * Initial values: check max_m5_model_read_state() for the registers
 	 * updated from max1720x_model_work()
@@ -791,6 +986,11 @@ void *max_m5_init_data(struct device *dev, struct device_node *node,
 	ret = m5_init_custom_parameters(dev, &m5_data->parameters, node);
 	if (ret < 0)
 		dev_err(dev, "fg-params: %s not found\n", propname);
+
+	/* b/177099997 TaskPeriod changes LSB for capacity etc. */
+	ret = max_m5_read_taskperiod(&m5_data->cap_lsb, regmap);
+	if (ret < 0)
+		dev_err(dev, "Cannot set TaskPeriod (%d)\n", ret);
 
 	m5_data->custom_model = model;
 	m5_data->regmap = regmap;

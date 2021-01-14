@@ -154,6 +154,8 @@ int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 	err = REGMAP_READ(map, MAX17X0X_FULLCAPNOM, &fullcapnom);
 	if (err < 0)
 		return err;
+
+	/* TODO: fix for TaskPeriod == 351ms b/177099997 */
 	capacity = reg_to_micro_amp_h(fullcapnom, ddata->rsense) / 1000;
 
 	/* return the expected FCN, done if the same of th eold one */
@@ -166,6 +168,8 @@ int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 	 * LSB (FullCapNom >> 4, LSB = 8 mAh). The equation can be written a
 	 * (DesignCap * scale) >> 4 when writing the age-compensated value.
 	 */
+
+	/* TODO: fix for TaskPeriod == 351ms b/177099997 */
 	fcrep = micro_amp_h_to_reg(new_capacity * 1000, ddata->rsense);
 	dqacc = fcrep >> 4;
 	dpacc = 0xc80;
