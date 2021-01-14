@@ -2907,8 +2907,10 @@ static ssize_t max1720x_set_custom_model(struct file *filp,
 		return -ENOMEM;
 
 	ret = simple_write_to_buffer(tmp, PAGE_SIZE, ppos, user_buf, count);
-	if (!ret)
+	if (!ret) {
+		kfree(tmp);
 		return -EFAULT;
+	}
 
 	mutex_lock(&chip->model_lock);
 	ret = max_m5_fg_model_sscan(chip->model_data, tmp, count);
