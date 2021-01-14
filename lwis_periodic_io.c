@@ -22,7 +22,6 @@
 
 static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 {
-	ktime_t current_time;
 	ktime_t interval;
 	unsigned long flags;
 	struct list_head *it_period, *it_period_tmp;
@@ -62,9 +61,8 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 		return HRTIMER_NORESTART;
 	}
 
-	current_time = lwis_get_time();
 	interval = ktime_set(0, periodic_io_list->period_ns);
-	hrtimer_forward(timer, current_time, interval);
+	hrtimer_forward_now(timer, interval);
 
 	return HRTIMER_RESTART;
 }
@@ -223,6 +221,12 @@ static int process_io_entries(struct lwis_client *client,
 				    io_result->io_result.num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
 			ret = lwis_entry_poll(lwis_dev, entry);
+			if (ret) {
+				resp->error_code = ret;
+				goto event_push;
+			}
+		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
+			ret = lwis_entry_read_assert(lwis_dev, entry, /*non_blocking=*/false);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;

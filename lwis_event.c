@@ -259,6 +259,94 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 	return state;
 }
 
+static int lwis_client_event_get_trigger_device_id(int64_t event_id)
+{
+	return (event_id >> LWIS_EVENT_ID_EVENT_CODE_LEN) & 0xFFFF;
+}
+
+static int lwis_client_event_subscribe(struct lwis_client *lwis_client,
+				       int64_t trigger_event_id)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_device *trigger_device;
+	int trigger_device_id = lwis_client_event_get_trigger_device_id(trigger_event_id);
+
+	/* Check if top device probe failed */
+	if (lwis_dev->top_dev == NULL) {
+		dev_err(lwis_dev->dev, "Top device is null\n");
+		return -EINVAL;
+	}
+
+	if ((trigger_event_id & LWIS_TRANSACTION_EVENT_FLAG) ||
+	    (trigger_event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
+		dev_err(lwis_dev->dev, "Not support SW event subscription\n");
+		return -EINVAL;
+	}
+
+	trigger_device = lwis_find_dev_by_id(trigger_device_id);
+	if (!trigger_device) {
+		dev_err(lwis_dev->dev, "Device id : %d doesn't match to any device\n",
+			trigger_device_id);
+		return -EINVAL;
+	}
+
+	/* Create event state to trigger/receiver device
+	 * Because of driver initialize in user space is sequential, it's
+	 * possible that receiver device subscribe an event before trigger
+	 * device set it up
+	 */
+	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(lwis_dev,
+								  trigger_event_id)) ||
+	    IS_ERR_OR_NULL(
+		    lwis_client_event_state_find_or_create(lwis_client, trigger_event_id)) ||
+	    IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(trigger_device,
+								  trigger_event_id))) {
+		dev_err(lwis_dev->dev, "Failed to add event id 0x%llx to trigger/receiver device\n",
+			trigger_event_id);
+
+		return -EINVAL;
+	}
+	ret = lwis_dev->top_dev->subscribe_ops.subscribe_event(
+		lwis_dev->top_dev, trigger_event_id, trigger_device->id, lwis_dev->id);
+	if (ret < 0)
+		dev_err(lwis_dev->dev, "Failed to subscribe event: 0x%llx\n",
+			trigger_event_id);
+
+	return ret;
+}
+
+static int lwis_client_event_unsubscribe(struct lwis_client *lwis_client,
+					 int64_t event_id)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_device_event_state* event_state;
+	unsigned long flags;
+
+	/* Check if top device probe failed */
+	if (lwis_dev->top_dev == NULL) {
+		dev_err(lwis_dev->dev, "Top device is null\n");
+		return -EINVAL;
+	}
+
+	ret = lwis_dev->top_dev->subscribe_ops.unsubscribe_event(lwis_dev->top_dev, event_id,
+								 lwis_dev->id);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to unsubscribe event: 0x%llx\n", event_id);
+	}
+
+	/* Reset event counter */
+	event_state = lwis_device_event_state_find(lwis_dev, event_id);
+	if (event_state) {
+		spin_lock_irqsave(&lwis_dev->lock, flags);
+		event_state->event_counter = 0;
+		spin_unlock_irqrestore(&lwis_dev->lock, flags);
+	}
+
+	return ret;
+}
+
 int lwis_client_event_control_set(struct lwis_client *lwis_client,
 				  const struct lwis_event_control *control)
 {
@@ -282,6 +370,24 @@ int lwis_client_event_control_set(struct lwis_client *lwis_client,
 		if (ret) {
 			dev_err(lwis_client->lwis_dev->dev, "Updating device flags failed: %d\n",
 				ret);
+			return ret;
+		}
+
+		if (lwis_client_event_get_trigger_device_id(control->event_id) !=
+		    lwis_client->lwis_dev->id) {
+			if (new_flags != 0) {
+				ret = lwis_client_event_subscribe(lwis_client, control->event_id);
+				if (ret) {
+					dev_err(lwis_client->lwis_dev->dev,
+						"Subscribe event failed: %d\n",	ret);
+				}
+			} else {
+				ret = lwis_client_event_unsubscribe(lwis_client, control->event_id);
+				if (ret) {
+					dev_err(lwis_client->lwis_dev->dev,
+						"UnSubscribe event failed: %d\n", ret);
+				}
+			}
 		}
 	}
 
@@ -576,8 +682,10 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev, int64_t event_
 static void lwis_device_event_heartbeat_timer(struct timer_list *t)
 {
 	struct lwis_device *lwis_dev = from_timer(lwis_dev, t, heartbeat_timer);
+	int64_t event_id = LWIS_EVENT_ID_HEARTBEAT | (int64_t)lwis_dev->id
+			   << LWIS_EVENT_ID_EVENT_CODE_LEN;
 
-	lwis_device_event_emit(lwis_dev, LWIS_EVENT_ID_HEARTBEAT, NULL, 0,
+	lwis_device_event_emit(lwis_dev, event_id, NULL, 0,
 			       /*in_irq=*/false);
 
 	mod_timer(t, jiffies + msecs_to_jiffies(1000));
@@ -586,10 +694,16 @@ static void lwis_device_event_heartbeat_timer(struct timer_list *t)
 int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id, bool enabled)
 {
 	int ret = -EINVAL, err = 0;
+	/*
+	 * The event_id includes 16 bits flags + 16 bits device id + 32 bits event code.
+	 * For generic event, the flags will be 0. We do not care about the device id
+	 * when we handle generic event. Use a mask here to filter out the device id.
+	 */
+	int64_t generic_event_id = event_id & 0xFFFF0000FFFFFFFFll;
 	/* Generic events */
-	if (event_id < LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
+	if (generic_event_id < LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE) {
 		ret = 0;
-		switch (event_id) {
+		switch (generic_event_id) {
 		case LWIS_EVENT_ID_HEARTBEAT: {
 			if (enabled) {
 				timer_setup(&lwis_dev->heartbeat_timer,

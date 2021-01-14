@@ -120,7 +120,8 @@ enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_WRITE,
 	LWIS_IO_ENTRY_WRITE_BATCH,
 	LWIS_IO_ENTRY_MODIFY,
-	LWIS_IO_ENTRY_POLL
+	LWIS_IO_ENTRY_POLL,
+	LWIS_IO_ENTRY_READ_ASSERT
 };
 
 // For io_entry read and write types.
@@ -145,8 +146,8 @@ struct lwis_io_entry_modify {
 	uint64_t val_mask;
 };
 
-// For io_entry poll type.
-struct lwis_io_entry_poll {
+// For io_entry read assert type.
+struct lwis_io_entry_read_assert {
 	int bid;
 	uint64_t offset;
 	uint64_t val;
@@ -160,7 +161,7 @@ struct lwis_io_entry {
 		struct lwis_io_entry_rw rw;
 		struct lwis_io_entry_rw_batch rw_batch;
 		struct lwis_io_entry_modify mod;
-		struct lwis_io_entry_poll poll;
+		struct lwis_io_entry_read_assert read_assert;
 	};
 };
 
@@ -191,6 +192,15 @@ struct lwis_echo {
 #define LWIS_ERROR_EVENT_ID_MEMORY_PAGE_FAULT 2048
 // ...
 #define LWIS_EVENT_ID_START_OF_SPECIALIZED_RANGE 4096
+
+/*
+ * LWIS event id structure:
+ *   bit[0..31] Event code - actual software/hardware event ID
+ *   bit[32..47] Device ID - the device that the event belongs to
+ *   bit[48..63] flags
+ */
+#define LWIS_EVENT_ID_EVENT_CODE_LEN 32
+#define LWIS_EVENT_ID_DEVICE_ID_LEN 16
 
 // Event flags used for transaction events.
 #define LWIS_TRANSACTION_EVENT_FLAG (1ULL << 63)
@@ -223,7 +233,6 @@ struct lwis_event_control {
 #define LWIS_EVENT_COUNTER_EVERY_TIME (-2LL)
 struct lwis_transaction_info {
 	// Input
-	int trigger_device_id;
 	int64_t trigger_event_id;
 	int64_t trigger_event_counter;
 	size_t num_io_entries;
@@ -254,11 +263,6 @@ struct lwis_io_result {
 	uint64_t offset;
 	size_t num_value_bytes;
 	uint8_t values[];
-};
-
-struct lwis_event_subscribe {
-	int trigger_device_id;
-	int64_t trigger_event_id;
 };
 
 struct lwis_periodic_io_info {
@@ -330,8 +334,6 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_EVENT_CONTROL_GET _IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
 #define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
-#define LWIS_EVENT_SUBSCRIBE _IOW(LWIS_IOC_TYPE, 23, struct lwis_event_subscribe)
-#define LWIS_EVENT_UNSUBSCRIBE _IOW(LWIS_IOC_TYPE, 24, int64_t)
 
 #define LWIS_TRANSACTION_SUBMIT _IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
 #define LWIS_TRANSACTION_CANCEL _IOWR(LWIS_IOC_TYPE, 31, int64_t)
