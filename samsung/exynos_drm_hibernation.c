@@ -27,11 +27,9 @@
 #include "exynos_drm_hibernation.h"
 #include "exynos_drm_writeback.h"
 
-#define HIBERNATION_ENTRY_DEFAULT_FPS		60
 #define HIBERNATION_ENTRY_MIN_TIME_MS		50
-#define HIBERNATION_ENTRY_MIN_ENTRY_CNT		1
-
 #define CAMERA_OPERATION_MASK	0xF
+
 static bool is_camera_operating(struct exynos_hibernation *hiber)
 {
 	/* No need to check camera operation status. It depends on SoC */
@@ -41,16 +39,9 @@ static bool is_camera_operating(struct exynos_hibernation *hiber)
 	return (readl(hiber->cam_op_reg) & CAMERA_OPERATION_MASK);
 }
 
-static void exynos_hibernation_trig_reset(struct exynos_hibernation *hiber)
+static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
 {
-	const struct decon_device *decon = hiber->decon;
-	const int fps = decon->bts.fps ? : HIBERNATION_ENTRY_DEFAULT_FPS;
-	int entry_cnt = DIV_ROUND_UP(fps * HIBERNATION_ENTRY_MIN_TIME_MS, MSEC_PER_SEC);
-
-	if (entry_cnt < HIBERNATION_ENTRY_MIN_ENTRY_CNT)
-		entry_cnt = HIBERNATION_ENTRY_MIN_ENTRY_CNT;
-
-	atomic_set(&hiber->trig_cnt, entry_cnt);
+	return (atomic_read(&hiber->block_cnt) > 0);
 }
 
 static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
@@ -58,8 +49,23 @@ static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 	pr_debug("%s +\n", __func__);
 
 	return (!is_hibernaton_blocked(hiber) &&
-		!is_camera_operating(hiber) &&
-		atomic_dec_and_test(&hiber->trig_cnt));
+		!is_camera_operating(hiber));
+}
+
+static inline void hibernation_block(struct exynos_hibernation *hiber)
+{
+	if (!hiber)
+		return;
+
+	atomic_inc(&hiber->block_cnt);
+}
+
+static inline void hibernation_unblock(struct exynos_hibernation *hiber)
+{
+	if (!hiber)
+		return;
+
+	WARN_ON(!atomic_add_unless(&hiber->block_cnt, -1, 0));
 }
 
 static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
@@ -121,11 +127,9 @@ static int exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	 * Cancel and/or wait for finishing previous queued hibernation entry work. It only
 	 * goes to sleep when work is currently executing. If not, there is no operation here.
 	 */
-	kthread_cancel_work_sync(&hiber->work);
+	kthread_cancel_delayed_work_sync(&hiber->dwork);
 
 	mutex_lock(&hiber->lock);
-
-	exynos_hibernation_trig_reset(hiber);
 
 	if (decon->state != DECON_STATE_HIBERNATION)
 		goto ret;
@@ -165,6 +169,7 @@ ret:
 bool hibernation_block_exit(struct exynos_hibernation *hiber)
 {
 	const struct exynos_hibernation_funcs *funcs;
+	bool ret;
 
 	if (!hiber)
 		return false;
@@ -173,7 +178,32 @@ bool hibernation_block_exit(struct exynos_hibernation *hiber)
 
 	funcs = hiber->funcs;
 
-	return !funcs || !funcs->exit(hiber);
+	ret = !funcs || !funcs->exit(hiber);
+
+	pr_debug("%s: block_cnt(%d)\n", __func__, atomic_read(&hiber->block_cnt));
+
+	return ret;
+}
+
+void hibernation_unblock_enter(struct exynos_hibernation *hiber)
+{
+	struct decon_device *decon;
+
+	if (!hiber)
+		return;
+
+	decon = hiber->decon;
+
+	if (!decon)
+		return;
+
+	hibernation_unblock(hiber);
+
+	if (!is_hibernaton_blocked(hiber))
+		kthread_mod_delayed_work(&decon->worker, &hiber->dwork,
+			msecs_to_jiffies(HIBERNATION_ENTRY_MIN_TIME_MS));
+
+	pr_debug("%s: block_cnt(%d)\n", __func__, atomic_read(&hiber->block_cnt));
 }
 
 static const struct exynos_hibernation_funcs hibernation_funcs = {
@@ -184,12 +214,11 @@ static const struct exynos_hibernation_funcs hibernation_funcs = {
 
 static void exynos_hibernation_handler(struct kthread_work *work)
 {
-	struct exynos_hibernation *hibernation =
-		container_of(work, struct exynos_hibernation, work);
+	struct exynos_hibernation *hibernation = container_of(work,
+			struct exynos_hibernation, dwork.work);
 	const struct exynos_hibernation_funcs *funcs = hibernation->funcs;
 
-	pr_debug("Display hibernation handler is called(trig_cnt:%d)\n",
-			atomic_read(&hibernation->trig_cnt));
+	pr_debug("Display hibernation handler is called\n");
 
 	/* If hibernation entry condition does NOT meet, just return here */
 	if (!funcs->check(hibernation))
@@ -234,11 +263,9 @@ exynos_hibernation_register(struct decon_device *decon)
 
 	mutex_init(&hibernation->lock);
 
-	exynos_hibernation_trig_reset(hibernation);
-
 	atomic_set(&hibernation->block_cnt, 0);
 
-	kthread_init_work(&hibernation->work, exynos_hibernation_handler);
+	kthread_init_delayed_work(&hibernation->dwork, exynos_hibernation_handler);
 
 	pr_info("display hibernation is supported\n");
 

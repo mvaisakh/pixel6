@@ -486,10 +486,11 @@ void decon_reg_set_cwb_enable(u32 id, u32 en)
 
 void decon_reg_set_dqe_enable(u32 id, bool en)
 {
-	u32 val;
+	u32 val, mask;
 
 	val = en ? ENHANCE_DQE_ON : 0;
-	decon_write_mask(id, DATA_PATH_CON, val, ENHANCE_DQE_ON);
+	mask = en ? ENHANCE_DQE_ON : ENHANCE_PATH_MASK;
+	decon_write_mask(id, DATA_PATH_CON, val, mask);
 }
 
 /*

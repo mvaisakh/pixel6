@@ -447,7 +447,7 @@ int exynos_atomic_enter_tui(void)
 err:
 	drm_atomic_state_put(state);
 err_dup:
-	hibernation_unblock(decon->hibernation);
+	hibernation_unblock_enter(decon->hibernation);
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
 	pr_debug("%s -\n", __func__);

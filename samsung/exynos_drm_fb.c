@@ -597,7 +597,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
 		decon = crtc_to_decon(crtc);
 		if (hibernation_crtc_mask & drm_crtc_mask(crtc))
-			hibernation_unblock(decon->hibernation);
+			hibernation_unblock_enter(decon->hibernation);
 		if (disabling_crtc_mask & drm_crtc_mask(crtc))
 			pm_runtime_put_sync(decon->dev);
 	}

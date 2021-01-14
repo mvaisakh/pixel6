@@ -113,6 +113,8 @@ static inline void cal_write_mask(struct cal_regs_desc *regs_desc,
 	cal_write(regs_desc, offset, val);
 }
 
+#define cal_mask(val, mask)	(((val) & (mask)) >> (ffs(mask) - 1))
+
 void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);
 
 /* log messages */
@@ -129,5 +131,8 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);
 #define cal_log_err(id, fmt, ...)	cal_msg(pr_err, id, fmt, ##__VA_ARGS__)
 #define cal_info_ratelimited(id, fmt, ...)	\
 	cal_msg(pr_info_ratelimited, id, fmt, ##__VA_ARGS__)
+
+#define GET_LUT_H(v)	(((v) >> 16) & 0xFFFF)
+#define GET_LUT_L(v)	((v) & 0xFFFF)
 
 #endif /* __CAL_OS_CONFIG_H__ */

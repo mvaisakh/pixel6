@@ -553,6 +553,29 @@ static int dpp_check_size(struct dpp_device *dpp,
 	return 0;
 }
 
+static int dpp_check_dst_size(struct dpp_device *dpp,
+			struct dpp_params_info *config)
+{
+	struct decon_frame *dst;
+	struct dpp_restriction *res;
+
+	res = &dpp->restriction;
+	dst = &config->dst;
+
+	/* check range */
+	if (!IN_RANGE(dst->w, res->dst_w.min, res->dst_w.max) ||
+			!IN_RANGE(dst->h, res->dst_h.min, res->dst_h.max) ||
+			!IN_RANGE(dst->f_w, res->dst_f_w.min,
+						res->dst_f_w.max) ||
+			!IN_RANGE(dst->f_h, res->dst_f_h.min,
+						res->dst_f_h.max)) {
+		dpp_err(dpp, "not supported destination size range\n");
+		return -ENOTSUPP;
+	}
+
+	return 0;
+}
+
 static int dpp_check(struct dpp_device *dpp,
 		const struct exynos_drm_plane_state *state)
 {
@@ -563,12 +586,20 @@ static int dpp_check(struct dpp_device *dpp,
 			drm_atomic_get_new_crtc_state(plane_state->state,
 							plane_state->crtc);
 	const struct drm_display_mode *mode = &crtc_state->adjusted_mode;
+	const struct drm_framebuffer *fb = state->base.fb;
 
 	dpp_debug(dpp, "%s +\n", __func__);
 
 	memset(&config, 0, sizeof(struct dpp_params_info));
 
 	dpp_convert_plane_state_to_config(&config, state, mode);
+
+	if (has_all_bits(DRM_FORMAT_MOD_SAMSUNG_COLORMAP, fb->modifier)) {
+		if (dpp_check_dst_size(dpp, &config))
+			goto err;
+
+		return 0;
+	}
 
 	if (dpp_check_scale(dpp, &config))
 		goto err;

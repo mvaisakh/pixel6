@@ -688,8 +688,10 @@ static void exynos_debugfs_add_lut(const char *name, umode_t mode,
 
 	if (!lut_ptr) {
 		lut_ptr = kmalloc(count * (elem_size >> 3), GFP_KERNEL);
-		if (!lut_ptr)
+		if (!lut_ptr) {
+			kfree(lut);
 			return;
+		}
 	}
 
 	memcpy(lut->name, name, MAX_NAME_SIZE);
@@ -767,6 +769,9 @@ exynos_debugfs_add_dqe(struct exynos_dqe *dqe, struct dentry *parent)
 			ELEM_SIZE_16, dqe->force_gamma_matrix.offsets,
 			DRM_SAMSUNG_MATRIX_DIMENS, ELEM_SIZE_16))
 		goto err;
+
+	debugfs_create_bool("force_disabled", 0664, dent_dir,
+			&dqe->force_disabled);
 
 	return;
 

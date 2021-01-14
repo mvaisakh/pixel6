@@ -23,7 +23,13 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 	const struct decon_device *decon;
 	struct dither_config dither_config;
 
-	pr_debug("%s +\n", __func__);
+	pr_debug("%s: enabled(%d) +\n", __func__, state->enabled);
+
+	dqe->state.enabled = state->enabled && !dqe->force_disabled;
+
+	decon_reg_set_dqe_enable(0, dqe->state.enabled);
+	if (!dqe->state.enabled)
+		return;
 
 	if (!dqe->initialized) {
 		dqe_reg_init(width, height);

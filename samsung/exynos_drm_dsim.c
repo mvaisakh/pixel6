@@ -1753,7 +1753,7 @@ static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
 		break;
 	}
 
-	hibernation_unblock(decon->hibernation);
+	hibernation_unblock_enter(decon->hibernation);
 
 	return ret;
 }

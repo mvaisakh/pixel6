@@ -1256,17 +1256,11 @@ err:
 static irqreturn_t decon_te_irq_handler(int irq, void *dev_id)
 {
 	struct decon_device *decon = dev_id;
-	struct exynos_hibernation *hibernation;
 
 	if (!decon || decon->state != DECON_STATE_ON)
 		goto end;
 
 	DPU_EVENT_LOG(DPU_EVT_TE_INTERRUPT, decon->id, NULL);
-
-	hibernation = decon->hibernation;
-
-	if (hibernation && !is_hibernaton_blocked(hibernation))
-		kthread_queue_work(&decon->worker, &hibernation->work);
 
 	if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
 		drm_crtc_handle_vblank(&decon->crtc->base);

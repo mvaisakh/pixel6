@@ -122,11 +122,16 @@ static void s6e3fc3_write_display_mode(struct exynos_panel *ctx,
 static void s6e3fc3_set_nolp_mode(struct exynos_panel *ctx,
 				  const struct exynos_panel_mode *pmode)
 {
+	unsigned int vrefresh = drm_mode_vrefresh(&pmode->mode);
+	u32 delay_us = mult_frac(1000, 1020, vrefresh);
+
 	if (!ctx->enabled)
 		return;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_off);
 	s6e3fc3_write_display_mode(ctx, &pmode->mode);
+	s6e3fc3_change_frequency(ctx, vrefresh);
+	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
 
 	dev_info(ctx->dev, "exit LP mode\n");
@@ -402,6 +407,7 @@ const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.dsc_pps_len = ARRAY_SIZE(PPS_SETTING),
 	.data_lane_cnt = 4,
 	.max_brightness = 2047,
+	.min_brightness = 4,
 	.dft_brightness = 1023,
 	.brt_capability = &s6e3fc3_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
