@@ -2937,8 +2937,13 @@ static int debug_sync_model(void *data, u64 val)
 
 	/* re-read new state from Fuel gauge, save to storage  */
 	ret = max_m5_model_read_state(chip->model_data);
-	if (ret == 0)
+	if (ret == 0) {
+		ret = max_m5_model_check_state(chip->model_data);
+		if (ret < 0)
+			pr_warn("%s: warning invalid state %d\n", __func__, ret);
+
 		ret = max_m5_save_state_data(chip->model_data);
+	}
 
 	return ret;
 }
