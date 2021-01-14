@@ -1,192 +1,82 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Bluetooth low power control via GPIO
  *
- * Copyright (C) 2015 Google, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
- *
- * The current implementation is very specific to Qualcomm serial driver
- * with BCM chipset.
+ * Copyright 2015-2020 Google LLC.
  */
 
 #include <linux/delay.h>
-#include <linux/gpio.h>
-#include <linux/hrtimer.h>
-#include <linux/init.h>
+#include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
 #include <linux/module.h>
-#include <linux/of_gpio.h>
-#include <linux/platform_data/msm_serial_hs.h>
+#include <linux/of.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/proc_fs.h>
+#include <linux/property.h>
 #include <linux/rfkill.h>
-#include <linux/wakelock.h>
 
-/* Timeout on UART Tx traffic before releasing wakelock. */
-static const int UART_TIMEOUT_SEC = 1;
+#define NITROUS_AUTOSUSPEND_DELAY   1000 /* autosleep delay 1000 ms */
+
+struct nitrous_lpm_proc;
 
 struct nitrous_bt_lpm {
-	int gpio_dev_wake;           /* host -> dev wake gpio */
-	int gpio_host_wake;          /* dev -> host wake gpio */
-	int gpio_power;              /* gpio to control power */
-	int irq_host_wake;           /* IRQ associated with host wake gpio */
-	int dev_wake_pol;            /* 0: active low; 1: active high */
-	int host_wake_pol;           /* 0: active low; 1: active high */
+	struct pinctrl *pinctrls;
+	struct pinctrl_state *pinctrl_default_state;
+	struct gpio_desc *gpio_dev_wake;     /* Host -> Dev WAKE GPIO */
+	struct gpio_desc *gpio_host_wake;    /* Dev -> Host WAKE GPIO */
+	struct gpio_desc *gpio_power;        /* GPIO to control power */
+	int irq_host_wake;           /* IRQ associated with HOST_WAKE GPIO */
+	int wake_polarity;           /* 0: active low; 1: active high */
 
-	struct wake_lock dev_lock;   /* Wakelock held during Tx */
-	struct wake_lock host_lock;  /* Wakelock held during Rx */
-	struct hrtimer tx_lpm_timer; /* timer for going into LPM during Tx */
 	bool is_suspended;           /* driver is in suspend state */
 	bool pending_irq;            /* pending host wake IRQ during suspend */
 
-	struct uart_port *uart_port;
-	struct platform_device *pdev;
+	struct device *dev;
 	struct rfkill *rfkill;
-	bool rfkill_blocked;         /* blocked: off; not blocked: on */
+	bool rfkill_blocked;         /* blocked: OFF; not blocked: ON */
+	bool lpm_enabled;
+	struct nitrous_lpm_proc *proc;
 };
 
-static struct nitrous_bt_lpm *bt_lpm;  /* Reference for internal data */
+#define PROC_BTWAKE	0
+#define PROC_LPM	1
+#define PROC_BTWRITE	2
+#define PROC_DIR	"bluetooth/sleep"
+struct proc_dir_entry *bluetooth_dir, *sleep_dir;
 
-/* Helper to fetch gpio information from the device tree and then register it */
-static int read_and_request_gpio(struct platform_device *pdev,
-				 const char *dt_name, int *gpio,
-				 unsigned long gpio_flags, const char *label)
-{
-	int rc;
-
-	*gpio = of_get_named_gpio(pdev->dev.of_node, dt_name, 0);
-	if (unlikely(*gpio < 0)) {
-		pr_err("%s: %s not in device tree",  __func__, dt_name);
-		return -EINVAL;
-	}
-
-	if (!gpio_is_valid(*gpio)) {
-		pr_err("%s: %s is invalid", __func__, dt_name);
-		return -EINVAL;
-	}
-
-	rc = gpio_request_one(*gpio, gpio_flags, label);
-	if (unlikely(rc < 0)) {
-		pr_err("%s: failed to request gpio: %d (%s), error: %d",
-			__func__, *gpio, label, rc);
-		return -EINVAL;
-	}
-
-	return 0;
-}
+struct nitrous_lpm_proc {
+	long operation;
+	struct nitrous_bt_lpm *lpm;
+};
 
 /*
- * Power up or down UART driver and hold Tx/Rx wakelock.
- *
- * Note that the use of pm_runtime_get here is not ideal as the call is not
- * blocking.  By the time the UART driver is powered up, the serial core might
- * have attempted to do a Tx at the UART driver already.  There is currently a
- * workaround in the MSM serial driver to catch this race.  Over time the clock
- * on and Tx sequence should be made synchronous.
+ * Wake up or sleep BT device for Tx.
  */
-static bool nitrous_uart_power(struct uart_port *uart_port,
-			       struct wake_lock *lock, bool on)
+static inline void nitrous_wake_controller(struct nitrous_bt_lpm *lpm, bool wake)
 {
-	if (wake_lock_active(lock) == on)
-		return false;
-
-	if (on) {
-		wake_lock(lock);
-		pm_runtime_get(uart_port->dev);
-	} else {
-		pm_runtime_put(uart_port->dev);
-		wake_unlock(lock);
-	}
-
-	return true;
-}
-
-/*
- * Wake up or sleep UART and BT device for Tx.
- */
-static inline void nitrous_wake_device_locked(struct nitrous_bt_lpm *lpm,
-					      bool wake)
-{
-	if (nitrous_uart_power(lpm->uart_port, &lpm->dev_lock, wake)) {
-		/*
-		 * If there is a UART power on/off, assert/deassert dev wake
-		 * gpio accordingly.
-		 */
-		int assert_level = (wake == lpm->dev_wake_pol);
-		gpio_set_value(lpm->gpio_dev_wake, assert_level);
-	}
-}
-
-/*
- * Wake up or sleep UART for Rx.
- */
-static inline void nitrous_wake_uart(struct nitrous_bt_lpm *lpm, bool wake)
-{
-	nitrous_uart_power(lpm->uart_port, &lpm->host_lock, wake);
-}
-
-/*
- * Called when the tx_lpm_timer expires and the last Tx transaction should have
- * been started about UART_TIMEOUT_SEC second(s) ago.  At this time, the Tx
- * should have been completed.
- */
-static enum hrtimer_restart nitrous_tx_lpm_handler(struct hrtimer *timer)
-{
-	unsigned long flags;
-
-	if (!bt_lpm) {
-		pr_err("%s: missing bt_lpm\n", __func__);
-		return HRTIMER_NORESTART;
-	}
-
-	pr_debug("%s\n", __func__);
-
-	/* Release UART and BT resources */
-	spin_lock_irqsave(&bt_lpm->uart_port->lock, flags);
-	nitrous_wake_device_locked(bt_lpm, false);
-	spin_unlock_irqrestore(&bt_lpm->uart_port->lock, flags);
-
-	return HRTIMER_NORESTART;
+	int assert_level = (wake == lpm->wake_polarity);
+	pr_debug("[BT] DEV_WAKE: %s", (assert_level ? "Assert" : "Dessert"));
+	gpiod_set_value_cansleep(lpm->gpio_dev_wake, assert_level);
 }
 
 /*
  * Called before UART driver starts transmitting data out. UART and BT resources
  * are requested to allow a transmission.
- *
- * Note that the calling context from the serial core should have the
- * uart_port locked.
  */
-void nitrous_prepare_uart_tx_locked(struct uart_port *port)
+static void nitrous_prepare_uart_tx_locked(struct nitrous_bt_lpm *lpm)
 {
-	if (!bt_lpm) {
-		pr_err("%s: missing bt_lpm\n", __func__);
+	if (lpm->rfkill_blocked) {
+		pr_err("unexpected Tx when rfkill is blocked\n");
 		return;
 	}
 
-	if (bt_lpm->rfkill_blocked) {
-		pr_err("%s: unexpected Tx when rfkill is blocked\n", __func__);
-		return;
-	}
-
-	hrtimer_cancel(&bt_lpm->tx_lpm_timer);
-	nitrous_wake_device_locked(bt_lpm, true);
-	hrtimer_start(&bt_lpm->tx_lpm_timer, ktime_set(UART_TIMEOUT_SEC, 0),
-		HRTIMER_MODE_REL);
+	pm_runtime_get_sync(lpm->dev);
+	/* Shall be resumed here */
+	pm_runtime_mark_last_busy(lpm->dev);
+	pm_runtime_put_autosuspend(lpm->dev);
 }
-EXPORT_SYMBOL(nitrous_prepare_uart_tx_locked);
 
 /*
  * ISR to handle host wake line from the BT chip.
@@ -195,137 +85,300 @@ EXPORT_SYMBOL(nitrous_prepare_uart_tx_locked);
  * interrupt will be delayed until the driver is resumed.  This allows the use
  * of pm runtime framework to wake the serial driver.
  */
-static irqreturn_t nitrous_host_wake_isr(int irq, void *dev)
+static irqreturn_t nitrous_host_wake_isr(int irq, void *data)
 {
-	int host_wake, rc;
-	struct platform_device *pdev = container_of(dev,
-			struct platform_device, dev);
-	struct nitrous_bt_lpm *lpm = platform_get_drvdata(pdev);
+	struct nitrous_bt_lpm *lpm = data;
 
-	if (!lpm) {
-		pr_err("%s: missing lpm\n", __func__);
-		return IRQ_HANDLED;
-	}
-
+	pr_debug("[BT] Host wake IRQ: %u\n", gpiod_get_value(lpm->gpio_host_wake));
 	if (lpm->rfkill_blocked) {
-		pr_err("%s: unexpected host wake IRQ\n", __func__);
+		pr_err("[BT] %s: Unexpected Host wake IRQ\n", __func__);
 		return IRQ_HANDLED;
 	}
 
-	host_wake = gpio_get_value(lpm->gpio_host_wake);
-	pr_debug("%s: host wake gpio: %d\n", __func__, host_wake);
-
-	/* Invert the interrupt type to catch the next edge */
-	rc = irq_set_irq_type(irq,
-		host_wake ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);
-	if (unlikely(rc))
-		pr_err("%s: error setting irq type %d\n", __func__, rc);
-
-	if (lpm->is_suspended) {
-		/* Mark pending irq flag to delay processing. */
-		lpm->pending_irq = true;
-	} else {
-		/* Wake up UART right the way if not suspended. */
-		bool uart_enable = (host_wake == lpm->host_wake_pol);
-		nitrous_wake_uart(lpm, uart_enable);
-	}
+	pm_runtime_get(lpm->dev);
+	pm_runtime_mark_last_busy(lpm->dev);
+	pm_runtime_put_autosuspend(lpm->dev);
 
 	return IRQ_HANDLED;
+}
+
+static int nitrous_lpm_runtime_enable(struct nitrous_bt_lpm *lpm)
+{
+	int rc;
+
+	if (lpm->irq_host_wake <= 0)
+		return -EOPNOTSUPP;
+
+	if (lpm->rfkill_blocked) {
+		pr_err("[BT] Unexpected LPM request\n");
+		return -EINVAL;
+	}
+
+	if (lpm->lpm_enabled) {
+		pr_warn("[BT] Try to request LPM twice\n");
+		return 0;
+	}
+
+	rc = devm_request_irq(lpm->dev, lpm->irq_host_wake, nitrous_host_wake_isr,
+			lpm->wake_polarity ? IRQF_TRIGGER_RISING : IRQF_TRIGGER_FALLING,
+			"bt_host_wake", lpm);
+	if (unlikely(rc)) {
+		pr_err("[BT] Unable to request IRQ for bt_host_wake GPIO\n");
+		lpm->irq_host_wake = rc;
+		return rc;
+	}
+
+	device_init_wakeup(lpm->dev, true);
+	pm_runtime_set_autosuspend_delay(lpm->dev, NITROUS_AUTOSUSPEND_DELAY);
+	pm_runtime_use_autosuspend(lpm->dev);
+	pm_runtime_set_active(lpm->dev);
+	pm_runtime_enable(lpm->dev);
+
+	lpm->lpm_enabled = true;
+
+	return rc;
+}
+
+static void nitrous_lpm_runtime_disable(struct nitrous_bt_lpm *lpm)
+{
+	if (lpm->irq_host_wake <= 0)
+		return;
+
+	if (!lpm->lpm_enabled)
+		return;
+
+	devm_free_irq(lpm->dev, lpm->irq_host_wake, lpm);
+	device_init_wakeup(lpm->dev, false);
+	pm_runtime_disable(lpm->dev);
+	pm_runtime_set_suspended(lpm->dev);
+
+	lpm->lpm_enabled = false;
+}
+
+static int nitrous_proc_show(struct seq_file *m, void *v)
+{
+	struct nitrous_lpm_proc *data = m->private;
+	struct nitrous_bt_lpm *lpm = data->lpm;
+
+	switch (data->operation) {
+	case PROC_BTWAKE:
+		seq_printf(m, "LPM: %s\nPolarity: %s\nHOST_WAKE: %u\nDEV_WAKE: %u\n",
+			   (lpm->lpm_enabled ? "Enabled" : "Disabled"),
+			   (lpm->wake_polarity ? "High" : "Low"),
+			   gpiod_get_value(lpm->gpio_host_wake),
+			   gpiod_get_value(lpm->gpio_dev_wake));
+		break;
+	case PROC_LPM:
+	case PROC_BTWRITE:
+		seq_printf(m, "REG_ON: %s\nLPM: %s\nState: %s\n",
+			   (lpm->rfkill_blocked ? "OFF" : "ON"),
+			   (lpm->lpm_enabled ? "Enabled" : "Disabled"),
+			   (lpm->is_suspended ? "asleep" : "awake"));
+		break;
+	default:
+		return 0;
+	}
+	return 0;
+}
+
+static int nitrous_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nitrous_proc_show, PDE_DATA(inode));
+}
+
+static ssize_t nitrous_proc_write(struct file *file, const char *buf,
+	size_t count, loff_t *pos)
+{
+	struct nitrous_lpm_proc *data = PDE_DATA(file_inode(file));
+	struct nitrous_bt_lpm *lpm = data->lpm;
+	char lbuf[4];
+	int rc;
+
+	if (count >= sizeof(lbuf))
+		count = sizeof(lbuf) - 1;
+	if (copy_from_user(lbuf, buf, count))
+		return -EFAULT;
+
+	switch (data->operation) {
+	case PROC_LPM:
+		if (lbuf[0] == '1') {
+			pr_info("[BT] LPM enabling\n");
+			rc = nitrous_lpm_runtime_enable(lpm);
+			if (unlikely(rc))
+				return rc;
+		} else if (lbuf[0] == '0') {
+			pr_info("[BT] LPM disabling\n");
+			nitrous_lpm_runtime_disable(lpm);
+		} else {
+			pr_warn("[BT] Unknown LPM operation\n");
+			return -EFAULT;
+		}
+		break;
+	case PROC_BTWRITE:
+		if (!lpm->lpm_enabled) {
+			pr_info("[BT] LPM not enabled\n");
+			return count;
+		}
+		pr_debug("[BT] LPM waking up for Tx\n");
+		nitrous_prepare_uart_tx_locked(lpm);
+		break;
+	default:
+		return 0;
+	}
+	return count;
+}
+
+static const struct proc_ops nitrous_proc_read_fops = {
+	.proc_open	= nitrous_proc_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
+
+static const struct proc_ops nitrous_proc_readwrite_fops = {
+	.proc_open	= nitrous_proc_open,
+	.proc_read	= seq_read,
+	.proc_write	= nitrous_proc_write,
+	.proc_release	= single_release,
+};
+
+static void nitrous_lpm_remove_proc_entries(struct nitrous_bt_lpm *lpm)
+{
+	if (bluetooth_dir == NULL)
+		return;
+	if (sleep_dir) {
+		remove_proc_entry("btwrite", sleep_dir);
+		remove_proc_entry("lpm", sleep_dir);
+		remove_proc_entry("btwake", sleep_dir);
+		remove_proc_entry("sleep", bluetooth_dir);
+	}
+	remove_proc_entry("bluetooth", 0);
+	if (lpm->proc) {
+		devm_kfree(lpm->dev, lpm->proc);
+		lpm->proc = NULL;
+	}
 }
 
 static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 {
 	int rc;
+	struct proc_dir_entry *entry;
+	struct nitrous_lpm_proc *data;
 
-	hrtimer_init(&lpm->tx_lpm_timer, CLOCK_MONOTONIC,
-		HRTIMER_MODE_REL);
-	lpm->tx_lpm_timer.function = nitrous_tx_lpm_handler;
+	lpm->irq_host_wake = gpiod_to_irq(lpm->gpio_host_wake);
+	pr_info("[BT] IRQ: %d active: %s\n", lpm->irq_host_wake,
+		(lpm->wake_polarity ? "High" : "Low"));
 
-	lpm->irq_host_wake = gpio_to_irq(lpm->gpio_host_wake);
-
-	rc = request_irq(lpm->irq_host_wake, nitrous_host_wake_isr,
-		lpm->host_wake_pol ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH,
-		"bt_host_wake", &lpm->pdev->dev);
-	if (rc < 0) {
-		pr_err("%s: unable to request IRQ for bt_host_wake GPIO\n",
-			__func__);
-		goto err_request_irq;
+	data = devm_kzalloc(lpm->dev, sizeof(struct nitrous_lpm_proc) * 3, GFP_KERNEL);
+	if (data == NULL) {
+		pr_err("[BT] %s: Unable to alloc memory", __func__);
+		return -ENOMEM;
 	}
+	lpm->proc = data;
 
-	wake_lock_init(&lpm->dev_lock, WAKE_LOCK_SUSPEND, "bt_dev_tx_wake");
-	wake_lock_init(&lpm->host_lock, WAKE_LOCK_SUSPEND, "bt_host_rx_wake");
-
-	/* Configure wake peer callback to be called at the onset of Tx. */
-	msm_hs_set_wake_peer(lpm->uart_port, nitrous_prepare_uart_tx_locked);
+	bluetooth_dir = proc_mkdir("bluetooth", NULL);
+	if (bluetooth_dir == NULL) {
+		pr_err("[BT] Unable to create /proc/bluetooth directory");
+		rc = -ENOMEM;
+		goto fail;
+	}
+	sleep_dir = proc_mkdir("sleep", bluetooth_dir);
+	if (sleep_dir == NULL) {
+		pr_err("[BT] Unable to create /proc/%s directory", PROC_DIR);
+		rc = -ENOMEM;
+		goto fail;
+	}
+	/* Creating read only proc entries "btwake" showing GPIOs state */
+	data[0].operation = PROC_BTWAKE;
+	data[0].lpm = lpm;
+	entry = proc_create_data("btwake", (S_IRUSR | S_IRGRP), sleep_dir,
+				 &nitrous_proc_read_fops, data);
+	if (entry == NULL) {
+		pr_err("[BT] Unable to create /proc/%s/btwake entry", PROC_DIR);
+		rc = -ENOMEM;
+		goto fail;
+	}
+	/* read/write proc entries "lpm" */
+	data[1].operation = PROC_LPM;
+	data[1].lpm = lpm;
+	entry = proc_create_data("lpm", (S_IRUSR | S_IRGRP | S_IWUSR),
+			sleep_dir, &nitrous_proc_readwrite_fops, data + 1);
+	if (entry == NULL) {
+		pr_err("[BT] Unable to create /proc/%s/lpm entry", PROC_DIR);
+		rc = -ENOMEM;
+		goto fail;
+	}
+	/* read/write proc entries "btwrite" */
+	data[2].operation = PROC_BTWRITE;
+	data[2].lpm = lpm;
+	entry = proc_create_data("btwrite", (S_IRUSR | S_IRGRP | S_IWUSR),
+			sleep_dir, &nitrous_proc_readwrite_fops, data + 2);
+	if (entry == NULL) {
+		pr_err("[BT] Unable to create /proc/%s/btwrite entry", PROC_DIR);
+		rc = -ENOMEM;
+		goto fail;
+	}
 
 	return 0;
 
-err_request_irq:
-	lpm->irq_host_wake = 0;
+fail:
+	nitrous_lpm_remove_proc_entries(lpm);
 	return rc;
 }
 
 static void nitrous_lpm_cleanup(struct nitrous_bt_lpm *lpm)
 {
-	free_irq(lpm->irq_host_wake, NULL);
+	nitrous_lpm_runtime_disable(lpm);
 	lpm->irq_host_wake = 0;
-	msm_hs_set_wake_peer(lpm->uart_port, NULL);
-	wake_lock_destroy(&lpm->dev_lock);
-	wake_lock_destroy(&lpm->host_lock);
+
+	nitrous_lpm_remove_proc_entries(lpm);
 }
 
 /*
- * Set BT power on/off (blocked is true: off; blocked is false: on)
+ * Set BT power on/off (blocked is true: OFF; blocked is false: ON)
  */
 static int nitrous_rfkill_set_power(void *data, bool blocked)
 {
 	struct nitrous_bt_lpm *lpm = data;
 
 	if (!lpm) {
-		pr_err("%s: missing lpm\n", __func__);
+		pr_err("[BT] %s: missing lpm\n", __func__);
 		return -EINVAL;
 	}
 
-	pr_info("%s: %s (blocked=%d)\n", __func__, blocked ? "off" : "on",
+	pr_info("[BT] %s: %s (blocked=%d)\n", __func__, blocked ? "off" : "on",
 		blocked);
 
 	if (blocked == lpm->rfkill_blocked) {
-		pr_info("%s already in requested state. Ignoring.\n", __func__);
+		pr_info("[BT] %s(%s) already in requested state\n", __func__,
+			blocked ? "off" : "on");
 		return 0;
 	}
 
+	/* Reset to make sure LPM is disabled */
+	nitrous_lpm_runtime_disable(lpm);
+
 	if (!blocked) {
-		int rc;
-
-		/*
-		 * Power up the BT chip. Datasheet of BCM4343W suggests at
-		 * least a 10ms time delay between consecutive toggles.
-		 */
-		gpio_set_value(lpm->gpio_power, 0);
+		/* Power up the BT chip. delay between consecutive toggles. */
+		pr_debug("[BT] REG_ON: Low");
+		gpiod_set_value_cansleep(lpm->gpio_power, false);
 		msleep(30);
-		gpio_set_value(lpm->gpio_power, 1);
+		pr_debug("[BT] REG_ON: High");
+		gpiod_set_value_cansleep(lpm->gpio_power, true);
 
-		/* Enable host_wake irq to get ready */
-		rc = irq_set_irq_type(lpm->irq_host_wake,
-			lpm->host_wake_pol ?
-				IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);
-		if (unlikely(rc))
-			pr_err("%s: error setting irq type %d\n", __func__, rc);
-		enable_irq(lpm->irq_host_wake);
+		pr_debug("[BT] DEV_WAKE: High");
+		gpiod_set_value_cansleep(lpm->gpio_dev_wake, true);
 	} else {
-		/* Disable host wake IRQ and release Rx wakelock*/
-		disable_irq(lpm->irq_host_wake);
-		nitrous_wake_device_locked(lpm, false);
-
-		/* Cancel pending LPM timer and release Tx wakelock*/
-		hrtimer_cancel(&lpm->tx_lpm_timer);
-		nitrous_wake_uart(lpm, false);
+		pr_debug("[BT] DEV_WAKE: Low");
+		gpiod_set_value_cansleep(lpm->gpio_dev_wake, false);
 
 		/* Power down the BT chip */
-		gpio_set_value(lpm->gpio_power, 0);
+		pr_debug("[BT] REG_ON: Low");
+		gpiod_set_value_cansleep(lpm->gpio_power, false);
 	}
-
 	lpm->rfkill_blocked = blocked;
+
+	/* wait for device to power cycle and come out of reset */
+	usleep_range(10000, 20000);
 
 	return 0;
 }
@@ -334,32 +387,23 @@ static const struct rfkill_ops nitrous_rfkill_ops = {
 	.set_block = nitrous_rfkill_set_power,
 };
 
-static int nitrous_rfkill_init(struct platform_device *pdev,
-	struct nitrous_bt_lpm *lpm)
+static int nitrous_rfkill_init(struct nitrous_bt_lpm *lpm)
 {
 	int rc;
 
-	rc = read_and_request_gpio(
-		pdev,
-		"power-gpio",
-		&lpm->gpio_power,
-		GPIOF_OUT_INIT_LOW,
-		"power_gpio"
-	);
-	if (unlikely(rc < 0))
-		goto err_gpio_power_reg;
+	lpm->gpio_power = devm_gpiod_get_optional(lpm->dev, "shutdown", GPIOD_OUT_LOW);
+	if (IS_ERR(lpm->gpio_power))
+		return PTR_ERR(lpm->gpio_power);
 
 	lpm->rfkill = rfkill_alloc(
 		"nitrous_bluetooth",
-		&pdev->dev,
+		lpm->dev,
 		RFKILL_TYPE_BLUETOOTH,
 		&nitrous_rfkill_ops,
 		lpm
 	);
-	if (unlikely(!lpm->rfkill)) {
-		rc = -ENOMEM;
-		goto err_rfkill_alloc;
-	}
+	if (unlikely(!lpm->rfkill))
+		return -ENOMEM;
 
 	/* Make sure rfkill core is initialized to be blocked initially. */
 	rfkill_init_sw_state(lpm->rfkill, true);
@@ -374,10 +418,6 @@ static int nitrous_rfkill_init(struct platform_device *pdev,
 err_rfkill_register:
 	rfkill_destroy(lpm->rfkill);
 	lpm->rfkill = NULL;
-err_rfkill_alloc:
-	gpio_free(lpm->gpio_power);
-err_gpio_power_reg:
-	lpm->gpio_power = 0;
 	return rc;
 }
 
@@ -387,74 +427,61 @@ static void nitrous_rfkill_cleanup(struct nitrous_bt_lpm *lpm)
 	rfkill_unregister(lpm->rfkill);
 	rfkill_destroy(lpm->rfkill);
 	lpm->rfkill = NULL;
-	gpio_free(lpm->gpio_power);
-	lpm->gpio_power = 0;
 }
 
 static int nitrous_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct nitrous_bt_lpm *lpm;
-	struct device_node *np = dev->of_node;
-	u32 port_number;
 	int rc = 0;
+
+	pr_debug("[BT] %s\n", __func__);
 
 	lpm = devm_kzalloc(dev, sizeof(struct nitrous_bt_lpm), GFP_KERNEL);
 	if (!lpm)
 		return -ENOMEM;
 
-	lpm->pdev = pdev;
+	lpm->dev = dev;
 
-	if (of_property_read_u32(np, "uart-port", &port_number)) {
-		pr_err("%s: UART port not in dev tree\n",  __func__);
-		return -EINVAL;
-	}
-	lpm->uart_port = msm_hs_get_uart_port(port_number);
-
-	if (of_property_read_u32(np, "host-wake-polarity",
-		&lpm->host_wake_pol)) {
-		pr_err("%s: host wake polarity not in dev tree.\n", __func__);
-		return -EINVAL;
+	if (device_property_read_u32(dev, "wake-polarity", &lpm->wake_polarity)) {
+		pr_warn("[BT] Wake polarity not in dev tree\n");
+		lpm->wake_polarity = 1;
 	}
 
-	if (of_property_read_u32(np, "dev-wake-polarity",
-		&lpm->dev_wake_pol)) {
-		pr_err("%s: dev wake polarity not in dev tree\n", __func__);
-		return -EINVAL;
+	lpm->pinctrls = devm_pinctrl_get(lpm->dev);
+	if (IS_ERR(lpm->pinctrls)) {
+		pr_warn("[BT] Can't get pinctrl\n");
+	} else {
+		lpm->pinctrl_default_state =
+			pinctrl_lookup_state(lpm->pinctrls, "default");
+		if (IS_ERR(lpm->pinctrl_default_state))
+			pr_warn("[BT] Can't get default pinctrl state\n");
 	}
 
-	rc = read_and_request_gpio(
-		pdev,
-		"dev-wake-gpio",
-		&lpm->gpio_dev_wake,
-		GPIOF_OUT_INIT_LOW,
-		"dev_wake_gpio"
-	);
-	if (unlikely(rc < 0))
-		goto err_gpio_dev_req;
+	lpm->gpio_dev_wake = devm_gpiod_get_optional(dev, "device-wakeup", GPIOD_OUT_LOW);
+	if (IS_ERR(lpm->gpio_dev_wake))
+		return PTR_ERR(lpm->gpio_dev_wake);
 
-	rc = read_and_request_gpio(
-		pdev,
-		"host-wake-gpio",
-		&lpm->gpio_host_wake,
-		GPIOF_IN,
-		"host_wake_gpio"
-	);
-	if (unlikely(rc < 0))
-		goto err_gpio_host_req;
-
-	device_init_wakeup(dev, true);
+	lpm->gpio_host_wake = devm_gpiod_get_optional(dev, "host-wakeup", GPIOD_IN);
+	if (IS_ERR(lpm->gpio_host_wake))
+		return PTR_ERR(lpm->gpio_host_wake);
 
 	rc = nitrous_lpm_init(lpm);
 	if (unlikely(rc))
 		goto err_lpm_init;
 
-	rc = nitrous_rfkill_init(pdev, lpm);
+	rc = nitrous_rfkill_init(lpm);
 	if (unlikely(rc))
 		goto err_rfkill_init;
 
+	if (!IS_ERR_OR_NULL(lpm->pinctrl_default_state)) {
+		rc = pinctrl_select_state(lpm->pinctrls,
+					  lpm->pinctrl_default_state);
+		if (unlikely(rc))
+			pr_warn("[BT] Can't set default pinctrl state\n");
+	}
+
 	platform_set_drvdata(pdev, lpm);
-	bt_lpm = lpm;
 
 	return rc;
 
@@ -462,13 +489,6 @@ err_rfkill_init:
 	nitrous_rfkill_cleanup(lpm);
 err_lpm_init:
 	nitrous_lpm_cleanup(lpm);
-	device_init_wakeup(dev, false);
-	gpio_free(lpm->gpio_host_wake);
-err_gpio_host_req:
-	lpm->gpio_host_wake = 0;
-	gpio_free(lpm->gpio_dev_wake);
-err_gpio_dev_req:
-	lpm->gpio_dev_wake = 0;
 	devm_kfree(dev, lpm);
 	return rc;
 }
@@ -478,67 +498,85 @@ static int nitrous_remove(struct platform_device *pdev)
 	struct nitrous_bt_lpm *lpm = platform_get_drvdata(pdev);
 
 	if (!lpm) {
-		pr_err("%s: missing lpm\n", __func__);
+		pr_err("[BT] %s: missing lpm\n", __func__);
 		return -EINVAL;
 	}
 
 	nitrous_rfkill_cleanup(lpm);
 	nitrous_lpm_cleanup(lpm);
 
-	gpio_free(lpm->gpio_dev_wake);
-	gpio_free(lpm->gpio_host_wake);
-	lpm->gpio_dev_wake = 0;
-	lpm->gpio_host_wake = 0;
 	devm_kfree(&pdev->dev, lpm);
+
+	return 0;
+}
+
+static int nitrous_suspend_device(struct device *dev)
+{
+	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
+
+	pr_debug("[BT] %s from %s\n", __func__,
+		 (lpm->is_suspended ? "asleep" : "awake"));
+
+	nitrous_wake_controller(lpm, false);
+	lpm->is_suspended = true;
+
+	return 0;
+}
+
+static int nitrous_resume_device(struct device *dev)
+{
+	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
+
+	pr_debug("[BT] %s from %s\n", __func__,
+		 (lpm->is_suspended ? "asleep" : "awake"));
+
+	nitrous_wake_controller(lpm, true);
+	lpm->is_suspended = false;
 
 	return 0;
 }
 
 static int nitrous_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct nitrous_bt_lpm *lpm = platform_get_drvdata(pdev);
+	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(&pdev->dev) && !lpm->rfkill_blocked) {
+	pr_debug("[BT] %s\n", __func__);
+
+	if (pm_runtime_active(dev))
+		nitrous_suspend_device(dev);
+
+	if (device_may_wakeup(dev) && lpm->lpm_enabled) {
 		enable_irq_wake(lpm->irq_host_wake);
-
-		/* Reset flag to capture pending irq before resume */
-		lpm->pending_irq = false;
+		pr_debug("[BT] Host wake IRQ enabled\n");
 	}
-
-	lpm->is_suspended = true;
 
 	return 0;
 }
 
 static int nitrous_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct nitrous_bt_lpm *lpm = platform_get_drvdata(pdev);
+	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(&pdev->dev) && !lpm->rfkill_blocked) {
+	pr_debug("[BT] %s\n", __func__);
+
+	if (device_may_wakeup(dev) && lpm->lpm_enabled) {
 		disable_irq_wake(lpm->irq_host_wake);
-
-		/* Handle pending host wake irq. */
-		if (lpm->pending_irq) {
-			pr_info("%s: pending host_wake irq\n", __func__);
-			nitrous_wake_uart(lpm, true);
-			lpm->pending_irq = false;
-		}
+		pr_debug("[BT] Host wake IRQ disabled\n");
 	}
 
-	lpm->is_suspended = false;
+	nitrous_resume_device(dev);
 
 	return 0;
 }
 
 static struct of_device_id nitrous_match_table[] = {
-	{.compatible = "goog,nitrous"},
+	{ .compatible = "goog,nitrous" },
 	{}
 };
 
 static const struct dev_pm_ops nitrous_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(nitrous_suspend, nitrous_resume)
+	SET_RUNTIME_PM_OPS(nitrous_suspend_device, nitrous_resume_device, NULL)
 };
 
 static struct platform_driver nitrous_platform_driver = {
