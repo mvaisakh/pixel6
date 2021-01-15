@@ -41,9 +41,24 @@
 #define EDGETPU_MMU_DEVICE	(1 << 2)
 #define EDGETPU_MMU_DMABUF	(2 << 2)
 
+/*
+ * The max possible value of token is (EDGETPU_DOMAIN_TOKEN_END - 1), which
+ * shouldn't equal or exceed the bit mask EDGETPU_CONTEXT_DOMAIN_TOKEN.
+ */
+#define EDGETPU_DOMAIN_TOKEN_END EDGETPU_CONTEXT_DOMAIN_TOKEN
 struct edgetpu_iommu_domain {
+	/*
+	 * IOMMU PASID, set by edgetpu_mmu_attach_domain().
+	 * This field should be set as IOMMU_PASID_INVALID in
+	 * edgetpu_mmu_detach_domain().
+	 */
 	uint pasid;
 	struct iommu_domain *iommu_domain;
+	/*
+	 * A token set by edgetpu_mmu_alloc_domain(). See the description of
+	 * edgetpu_mmu_add_translation() about @context_id for more details.
+	 */
+	int token;
 };
 
 /*
@@ -185,6 +200,12 @@ void edgetpu_mmu_free(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
  * may actually be another IOVA for another IOMMU downstream of the chip MMU
  * (as on Hermosa, where the SMMU translates TPU VAs to IOVAs sent to the IOMMU
  * downstream of the TPU).
+ *
+ * For chipsets with IOMMU AUX domain support, @context_id can be used to
+ * specify a detached IOMMU domain by value
+ * (EDGETPU_CONTEXT_DOMAIN_TOKEN | @token), where @token is the one returned by
+ * edgetpu_mmu_alloc_domain(). This description holds for all APIs in this file
+ * with @context_id as a parameter.
  */
 int edgetpu_mmu_add_translation(struct edgetpu_dev *etdev, unsigned long iova,
 				phys_addr_t paddr, size_t size, int prot,

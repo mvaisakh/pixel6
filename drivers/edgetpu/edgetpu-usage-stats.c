@@ -65,23 +65,24 @@ find_uid_entry_locked(int32_t uid, struct edgetpu_usage_stats *ustats)
 	return NULL;
 }
 
-int edgetpu_usage_stats_add(int32_t uid, uint32_t state, uint32_t duration,
-			    struct edgetpu_dev *etdev)
+int edgetpu_usage_add(struct edgetpu_dev *etdev, struct tpu_usage *tpu_usage)
 {
 	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
 	struct uid_entry *uid_entry;
+	int state = tpu_state_map(tpu_usage->power_state);
 
 	if (!ustats)
 		return 0;
 
-	etdev_dbg(etdev, "%s: uid=%u state=%u dur=%u", __func__, uid, state,
-		  duration);
+	etdev_dbg(etdev, "%s: uid=%u state=%u dur=%u", __func__,
+		  tpu_usage->uid, tpu_usage->power_state,
+		  tpu_usage->duration_us);
 	mutex_lock(&ustats->usage_stats_lock);
 
 	/* Find the uid in uid_hash_table first */
-	uid_entry = find_uid_entry_locked(uid, ustats);
+	uid_entry = find_uid_entry_locked(tpu_usage->uid, ustats);
 	if (uid_entry) {
-		uid_entry->time_in_state[tpu_state_map(state)] += duration;
+		uid_entry->time_in_state[state] += tpu_usage->duration_us;
 		mutex_unlock(&ustats->usage_stats_lock);
 		return 0;
 	}
@@ -93,11 +94,11 @@ int edgetpu_usage_stats_add(int32_t uid, uint32_t state, uint32_t duration,
 		return -ENOMEM;
 	}
 
-	uid_entry->uid = uid;
-	uid_entry->time_in_state[tpu_state_map(state)] += duration;
+	uid_entry->uid = tpu_usage->uid;
+	uid_entry->time_in_state[state] += tpu_usage->duration_us;
 
 	/* Add uid_entry to the uid_hash_table */
-	hash_add(ustats->uid_hash_table, &uid_entry->node, uid);
+	hash_add(ustats->uid_hash_table, &uid_entry->node, tpu_usage->uid);
 
 	mutex_unlock(&ustats->usage_stats_lock);
 
@@ -122,14 +123,7 @@ void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 	for (i = 0; i < header->num_metrics; i++) {
 		switch (metric->type) {
 		case metric_type_tpu_usage:
-			{
-				struct tpu_usage *tpu_usage =
-					&metric->tpu_usage;
-
-				edgetpu_usage_stats_add(
-					tpu_usage->uid, tpu_usage->power_state,
-					tpu_usage->duration_us, etdev);
-			}
+			edgetpu_usage_add(etdev, &metric->tpu_usage);
 			break;
 		default:
 			etdev_dbg(etdev, "%s: %d: skip unknown type=%u",
@@ -141,9 +135,9 @@ void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 	}
 }
 
-static ssize_t usage_stats_show(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
+static ssize_t tpu_usage_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
 {
 	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
 	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
@@ -196,10 +190,10 @@ static void usage_stats_remove_uids(struct edgetpu_usage_stats *ustats)
 }
 
 /* Write to clear all entries in uid_hash_table */
-static ssize_t usage_stats_clear(struct device *dev,
-				 struct device_attribute *attr,
-				 const char *buf,
-				 size_t count)
+static ssize_t tpu_usage_clear(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf,
+			       size_t count)
 {
 	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
 	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
@@ -209,7 +203,7 @@ static ssize_t usage_stats_clear(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(usage_stats, 0644, usage_stats_show, usage_stats_clear);
+static DEVICE_ATTR(tpu_usage, 0644, tpu_usage_show, tpu_usage_clear);
 
 void edgetpu_usage_stats_init(struct edgetpu_dev *etdev)
 {
@@ -229,7 +223,7 @@ void edgetpu_usage_stats_init(struct edgetpu_dev *etdev)
 
 	etdev->usage_stats = ustats;
 
-	ret = device_create_file(etdev->dev, &dev_attr_usage_stats);
+	ret = device_create_file(etdev->dev, &dev_attr_tpu_usage);
 	if (ret)
 		etdev_warn(etdev, "failed to create the usage_stats file\n");
 
@@ -242,7 +236,7 @@ void edgetpu_usage_stats_exit(struct edgetpu_dev *etdev)
 
 	if (ustats) {
 		usage_stats_remove_uids(ustats);
-		device_remove_file(etdev->dev, &dev_attr_usage_stats);
+		device_remove_file(etdev->dev, &dev_attr_tpu_usage);
 	}
 
 	etdev_dbg(etdev, "%s exit\n", __func__);

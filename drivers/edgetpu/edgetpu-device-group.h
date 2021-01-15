@@ -85,8 +85,9 @@ struct edgetpu_device_group {
 	/*
 	 * Context ID ranges from EDGETPU_CONTEXT_VII_BASE to
 	 * EDGETPU_NCONTEXTS - 1.
-	 * This equals EDGETPU_CONTEXT_INVALID when the group has mailbox
-	 * detached (means the group isn't in any context at this time).
+	 * This equals EDGETPU_CONTEXT_INVALID or a token OR'ed with
+	 * EDGETPU_CONTEXT_DOMAIN_TOKEN when the group has mailbox detached
+	 * (means the group isn't in any context at this time).
 	 */
 	enum edgetpu_context_id context_id;
 	/* The IOMMU domain being associated to this group */
@@ -351,7 +352,8 @@ int edgetpu_group_attach_mailbox(struct edgetpu_device_group *group);
 static inline bool
 edgetpu_group_mailbox_detached_locked(const struct edgetpu_device_group *group)
 {
-	return group->context_id == EDGETPU_CONTEXT_INVALID;
+	return group->context_id == EDGETPU_CONTEXT_INVALID ||
+	       group->context_id & EDGETPU_CONTEXT_DOMAIN_TOKEN;
 }
 
 /*
