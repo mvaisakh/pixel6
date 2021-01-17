@@ -16,6 +16,8 @@
 #include <linux/proc_fs.h>
 #include <linux/property.h>
 #include <linux/rfkill.h>
+#include <linux/rtc.h>
+#include <misc/logbuffer.h>
 
 #define NITROUS_AUTOSUSPEND_DELAY   1000 /* autosleep delay 1000 ms */
 
@@ -38,6 +40,7 @@ struct nitrous_bt_lpm {
 	bool rfkill_blocked;         /* blocked: OFF; not blocked: ON */
 	bool lpm_enabled;
 	struct nitrous_lpm_proc *proc;
+	struct logbuffer *log;
 };
 
 #define PROC_BTWAKE	0
@@ -57,7 +60,8 @@ struct nitrous_lpm_proc {
 static inline void nitrous_wake_controller(struct nitrous_bt_lpm *lpm, bool wake)
 {
 	int assert_level = (wake == lpm->wake_polarity);
-	pr_debug("[BT] DEV_WAKE: %s", (assert_level ? "Assert" : "Dessert"));
+	dev_dbg(lpm->dev, "DEV_WAKE: %s", (assert_level ? "Assert" : "Dessert"));
+	logbuffer_log(lpm->log, "DEV_WAKE: %s", (assert_level ? "Assert" : "Dessert"));
 	gpiod_set_value_cansleep(lpm->gpio_dev_wake, assert_level);
 }
 
@@ -68,12 +72,14 @@ static inline void nitrous_wake_controller(struct nitrous_bt_lpm *lpm, bool wake
 static void nitrous_prepare_uart_tx_locked(struct nitrous_bt_lpm *lpm)
 {
 	if (lpm->rfkill_blocked) {
-		pr_err("unexpected Tx when rfkill is blocked\n");
+		dev_err(lpm->dev, "unexpected Tx when rfkill is blocked\n");
+		logbuffer_log(lpm->log, "unexpected Tx when rfkill is blocked");
 		return;
 	}
 
 	pm_runtime_get_sync(lpm->dev);
 	/* Shall be resumed here */
+	logbuffer_log(lpm->log, "uart_tx_locked");
 	pm_runtime_mark_last_busy(lpm->dev);
 	pm_runtime_put_autosuspend(lpm->dev);
 }
@@ -89,13 +95,15 @@ static irqreturn_t nitrous_host_wake_isr(int irq, void *data)
 {
 	struct nitrous_bt_lpm *lpm = data;
 
-	pr_debug("[BT] Host wake IRQ: %u\n", gpiod_get_value(lpm->gpio_host_wake));
+	dev_dbg(lpm->dev, "Host wake IRQ: %u\n", gpiod_get_value(lpm->gpio_host_wake));
 	if (lpm->rfkill_blocked) {
-		pr_err("[BT] %s: Unexpected Host wake IRQ\n", __func__);
+		dev_err(lpm->dev, "Unexpected Host wake IRQ\n");
+		logbuffer_log(lpm->log, "Unexpected Host wake IRQ");
 		return IRQ_HANDLED;
 	}
 
 	pm_runtime_get(lpm->dev);
+	logbuffer_log(lpm->log, "host_wake_isr");
 	pm_runtime_mark_last_busy(lpm->dev);
 	pm_runtime_put_autosuspend(lpm->dev);
 
@@ -110,12 +118,13 @@ static int nitrous_lpm_runtime_enable(struct nitrous_bt_lpm *lpm)
 		return -EOPNOTSUPP;
 
 	if (lpm->rfkill_blocked) {
-		pr_err("[BT] Unexpected LPM request\n");
+		dev_err(lpm->dev, "Unexpected LPM request\n");
+		logbuffer_log(lpm->log, "Unexpected LPM request");
 		return -EINVAL;
 	}
 
 	if (lpm->lpm_enabled) {
-		pr_warn("[BT] Try to request LPM twice\n");
+		dev_warn(lpm->dev, "Try to request LPM twice\n");
 		return 0;
 	}
 
@@ -123,7 +132,8 @@ static int nitrous_lpm_runtime_enable(struct nitrous_bt_lpm *lpm)
 			lpm->wake_polarity ? IRQF_TRIGGER_RISING : IRQF_TRIGGER_FALLING,
 			"bt_host_wake", lpm);
 	if (unlikely(rc)) {
-		pr_err("[BT] Unable to request IRQ for bt_host_wake GPIO\n");
+		dev_err(lpm->dev, "Unable to request IRQ for bt_host_wake GPIO\n");
+		logbuffer_log(lpm->log, "Unable to request IRQ for bt_host_wake GPIO");
 		lpm->irq_host_wake = rc;
 		return rc;
 	}
@@ -191,6 +201,7 @@ static ssize_t nitrous_proc_write(struct file *file, const char *buf,
 {
 	struct nitrous_lpm_proc *data = PDE_DATA(file_inode(file));
 	struct nitrous_bt_lpm *lpm = data->lpm;
+	struct timespec64 ts;
 	char lbuf[4];
 	int rc;
 
@@ -202,24 +213,30 @@ static ssize_t nitrous_proc_write(struct file *file, const char *buf,
 	switch (data->operation) {
 	case PROC_LPM:
 		if (lbuf[0] == '1') {
-			pr_info("[BT] LPM enabling\n");
+			dev_info(lpm->dev, "LPM enabling\n");
+			logbuffer_log(lpm->log, "PROC_LPM: enable");
 			rc = nitrous_lpm_runtime_enable(lpm);
 			if (unlikely(rc))
 				return rc;
 		} else if (lbuf[0] == '0') {
-			pr_info("[BT] LPM disabling\n");
+			dev_info(lpm->dev, "LPM disabling\n");
+			logbuffer_log(lpm->log, "PROC_LPM: disable");
 			nitrous_lpm_runtime_disable(lpm);
 		} else {
-			pr_warn("[BT] Unknown LPM operation\n");
+			dev_warn(lpm->dev, "Unknown LPM operation\n");
+			logbuffer_log(lpm->log, "PROC_LPM: unknown");
 			return -EFAULT;
 		}
 		break;
 	case PROC_BTWRITE:
 		if (!lpm->lpm_enabled) {
-			pr_info("[BT] LPM not enabled\n");
+			dev_info(lpm->dev, "LPM not enabled\n");
+			logbuffer_log(lpm->log, "PROC_BTWRITE: not enabled");
 			return count;
 		}
-		pr_debug("[BT] LPM waking up for Tx\n");
+		dev_dbg(lpm->dev, "LPM waking up for Tx\n");
+		ktime_get_real_ts64(&ts);
+		logbuffer_log(lpm->log, "PROC_BTWRITE: waking up %ptTt", &ts);
 		nitrous_prepare_uart_tx_locked(lpm);
 		break;
 	default:
@@ -265,25 +282,30 @@ static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 	struct nitrous_lpm_proc *data;
 
 	lpm->irq_host_wake = gpiod_to_irq(lpm->gpio_host_wake);
-	pr_info("[BT] IRQ: %d active: %s\n", lpm->irq_host_wake,
+	dev_info(lpm->dev, "IRQ: %d active: %s\n", lpm->irq_host_wake,
+		(lpm->wake_polarity ? "High" : "Low"));
+	logbuffer_log(lpm->log, "init: IRQ: %d active: %s", lpm->irq_host_wake,
 		(lpm->wake_polarity ? "High" : "Low"));
 
 	data = devm_kzalloc(lpm->dev, sizeof(struct nitrous_lpm_proc) * 3, GFP_KERNEL);
 	if (data == NULL) {
-		pr_err("[BT] %s: Unable to alloc memory", __func__);
+		dev_err(lpm->dev, "Unable to alloc memory");
+		logbuffer_log(lpm->log, "Unable to alloc memory");
 		return -ENOMEM;
 	}
 	lpm->proc = data;
 
 	bluetooth_dir = proc_mkdir("bluetooth", NULL);
 	if (bluetooth_dir == NULL) {
-		pr_err("[BT] Unable to create /proc/bluetooth directory");
+		dev_err(lpm->dev, "Unable to create /proc/bluetooth directory");
+		logbuffer_log(lpm->log, "Unable to create /proc/bluetooth directory");
 		rc = -ENOMEM;
 		goto fail;
 	}
 	sleep_dir = proc_mkdir("sleep", bluetooth_dir);
 	if (sleep_dir == NULL) {
-		pr_err("[BT] Unable to create /proc/%s directory", PROC_DIR);
+		dev_err(lpm->dev, "Unable to create /proc/%s directory", PROC_DIR);
+		logbuffer_log(lpm->log, "Unable to create /proc/%s directory", PROC_DIR);
 		rc = -ENOMEM;
 		goto fail;
 	}
@@ -293,7 +315,8 @@ static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 	entry = proc_create_data("btwake", (S_IRUSR | S_IRGRP), sleep_dir,
 				 &nitrous_proc_read_fops, data);
 	if (entry == NULL) {
-		pr_err("[BT] Unable to create /proc/%s/btwake entry", PROC_DIR);
+		dev_err(lpm->dev, "Unable to create /proc/%s/btwake entry", PROC_DIR);
+		logbuffer_log(lpm->log, "Unable to create /proc/%s/btwake entry", PROC_DIR);
 		rc = -ENOMEM;
 		goto fail;
 	}
@@ -303,7 +326,8 @@ static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 	entry = proc_create_data("lpm", (S_IRUSR | S_IRGRP | S_IWUSR),
 			sleep_dir, &nitrous_proc_readwrite_fops, data + 1);
 	if (entry == NULL) {
-		pr_err("[BT] Unable to create /proc/%s/lpm entry", PROC_DIR);
+		dev_err(lpm->dev, "Unable to create /proc/%s/lpm entry", PROC_DIR);
+		logbuffer_log(lpm->log, "Unable to create /proc/%s/lpm entry", PROC_DIR);
 		rc = -ENOMEM;
 		goto fail;
 	}
@@ -313,7 +337,8 @@ static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 	entry = proc_create_data("btwrite", (S_IRUSR | S_IRGRP | S_IWUSR),
 			sleep_dir, &nitrous_proc_readwrite_fops, data + 2);
 	if (entry == NULL) {
-		pr_err("[BT] Unable to create /proc/%s/btwrite entry", PROC_DIR);
+		dev_err(lpm->dev, "Unable to create /proc/%s/btwrite entry", PROC_DIR);
+		logbuffer_log(lpm->log, "Unable to create /proc/%s/btwrite entry", PROC_DIR);
 		rc = -ENOMEM;
 		goto fail;
 	}
@@ -341,15 +366,19 @@ static int nitrous_rfkill_set_power(void *data, bool blocked)
 	struct nitrous_bt_lpm *lpm = data;
 
 	if (!lpm) {
-		pr_err("[BT] %s: missing lpm\n", __func__);
+		dev_err(lpm->dev, "rfkill: lpm is NULL\n");
+		logbuffer_log(lpm->log, "rfkill: lpm is NULL");
 		return -EINVAL;
 	}
 
-	pr_info("[BT] %s: %s (blocked=%d)\n", __func__, blocked ? "off" : "on",
+	dev_info(lpm->dev, "rfkill: %s (blocked=%d)\n", blocked ? "off" : "on",
 		blocked);
+	logbuffer_log(lpm->log, "rfkill: blocked=%s", blocked ? "off" : "on");
 
 	if (blocked == lpm->rfkill_blocked) {
-		pr_info("[BT] %s(%s) already in requested state\n", __func__,
+		dev_info(lpm->dev, "rfkill: already in requested state: %s\n",
+			blocked ? "off" : "on");
+		logbuffer_log(lpm->log, "rfkill: already in requested state: %s",
 			blocked ? "off" : "on");
 		return 0;
 	}
@@ -359,20 +388,22 @@ static int nitrous_rfkill_set_power(void *data, bool blocked)
 
 	if (!blocked) {
 		/* Power up the BT chip. delay between consecutive toggles. */
-		pr_debug("[BT] REG_ON: Low");
+		logbuffer_log(lpm->log, "Power up BT chip");
+		dev_dbg(lpm->dev, "REG_ON: Low");
 		gpiod_set_value_cansleep(lpm->gpio_power, false);
 		msleep(30);
-		pr_debug("[BT] REG_ON: High");
+		dev_dbg(lpm->dev, "REG_ON: High");
 		gpiod_set_value_cansleep(lpm->gpio_power, true);
 
-		pr_debug("[BT] DEV_WAKE: High");
+		dev_dbg(lpm->dev, "DEV_WAKE: High");
 		gpiod_set_value_cansleep(lpm->gpio_dev_wake, true);
 	} else {
-		pr_debug("[BT] DEV_WAKE: Low");
+		dev_dbg(lpm->dev, "DEV_WAKE: Low");
 		gpiod_set_value_cansleep(lpm->gpio_dev_wake, false);
 
 		/* Power down the BT chip */
-		pr_debug("[BT] REG_ON: Low");
+		dev_dbg(lpm->dev, "REG_ON: Low");
+		logbuffer_log(lpm->log, "Power down BT chip");
 		gpiod_set_value_cansleep(lpm->gpio_power, false);
 	}
 	lpm->rfkill_blocked = blocked;
@@ -435,7 +466,7 @@ static int nitrous_probe(struct platform_device *pdev)
 	struct nitrous_bt_lpm *lpm;
 	int rc = 0;
 
-	pr_debug("[BT] %s\n", __func__);
+	dev_dbg(lpm->dev, "nitrous_probe\n");
 
 	lpm = devm_kzalloc(dev, sizeof(struct nitrous_bt_lpm), GFP_KERNEL);
 	if (!lpm)
@@ -444,18 +475,18 @@ static int nitrous_probe(struct platform_device *pdev)
 	lpm->dev = dev;
 
 	if (device_property_read_u32(dev, "wake-polarity", &lpm->wake_polarity)) {
-		pr_warn("[BT] Wake polarity not in dev tree\n");
+		dev_warn(lpm->dev, "Wake polarity not in dev tree\n");
 		lpm->wake_polarity = 1;
 	}
 
 	lpm->pinctrls = devm_pinctrl_get(lpm->dev);
 	if (IS_ERR(lpm->pinctrls)) {
-		pr_warn("[BT] Can't get pinctrl\n");
+		dev_warn(lpm->dev, "Can't get pinctrl\n");
 	} else {
 		lpm->pinctrl_default_state =
 			pinctrl_lookup_state(lpm->pinctrls, "default");
 		if (IS_ERR(lpm->pinctrl_default_state))
-			pr_warn("[BT] Can't get default pinctrl state\n");
+			dev_warn(lpm->dev, "Can't get default pinctrl state\n");
 	}
 
 	lpm->gpio_dev_wake = devm_gpiod_get_optional(dev, "device-wakeup", GPIOD_OUT_LOW);
@@ -465,6 +496,12 @@ static int nitrous_probe(struct platform_device *pdev)
 	lpm->gpio_host_wake = devm_gpiod_get_optional(dev, "host-wakeup", GPIOD_IN);
 	if (IS_ERR(lpm->gpio_host_wake))
 		return PTR_ERR(lpm->gpio_host_wake);
+
+	lpm->log = logbuffer_register("btlpm");
+	if (IS_ERR_OR_NULL(lpm->log)) {
+		dev_info(lpm->dev, "logbuffer get failed\n");
+		lpm->log = NULL;
+	}
 
 	rc = nitrous_lpm_init(lpm);
 	if (unlikely(rc))
@@ -478,10 +515,12 @@ static int nitrous_probe(struct platform_device *pdev)
 		rc = pinctrl_select_state(lpm->pinctrls,
 					  lpm->pinctrl_default_state);
 		if (unlikely(rc))
-			pr_warn("[BT] Can't set default pinctrl state\n");
+			dev_warn(lpm->dev, "Can't set default pinctrl state\n");
 	}
 
 	platform_set_drvdata(pdev, lpm);
+
+	logbuffer_log(lpm->log, "probe: successful");
 
 	return rc;
 
@@ -498,12 +537,16 @@ static int nitrous_remove(struct platform_device *pdev)
 	struct nitrous_bt_lpm *lpm = platform_get_drvdata(pdev);
 
 	if (!lpm) {
-		pr_err("[BT] %s: missing lpm\n", __func__);
+		dev_err(lpm->dev, "LPM is NULL\n");
+		logbuffer_log(lpm->log, "remove: LPM is NULL");
 		return -EINVAL;
 	}
 
+	logbuffer_log(lpm->log, "removing");
 	nitrous_rfkill_cleanup(lpm);
 	nitrous_lpm_cleanup(lpm);
+	if (!IS_ERR_OR_NULL(lpm->log))
+		logbuffer_unregister(lpm->log);
 
 	devm_kfree(&pdev->dev, lpm);
 
@@ -514,8 +557,10 @@ static int nitrous_suspend_device(struct device *dev)
 {
 	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	pr_debug("[BT] %s from %s\n", __func__,
+	dev_dbg(lpm->dev, "suspend_device from %s\n",
 		 (lpm->is_suspended ? "asleep" : "awake"));
+	logbuffer_log(lpm->log, "suspend_device from %s",
+		(lpm->is_suspended ? "asleep" : "awake"));
 
 	nitrous_wake_controller(lpm, false);
 	lpm->is_suspended = true;
@@ -527,8 +572,10 @@ static int nitrous_resume_device(struct device *dev)
 {
 	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	pr_debug("[BT] %s from %s\n", __func__,
+	dev_dbg(lpm->dev, "resume_device from %s\n",
 		 (lpm->is_suspended ? "asleep" : "awake"));
+	logbuffer_log(lpm->log, "resume_device from %s",
+		(lpm->is_suspended ? "asleep" : "awake"));
 
 	nitrous_wake_controller(lpm, true);
 	lpm->is_suspended = false;
@@ -540,14 +587,16 @@ static int nitrous_suspend(struct device *dev)
 {
 	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	pr_debug("[BT] %s\n", __func__);
+	dev_dbg(lpm->dev, "nitrous_suspend\n");
+	logbuffer_log(lpm->log, "nitrous_suspend");
 
 	if (pm_runtime_active(dev))
 		nitrous_suspend_device(dev);
 
 	if (device_may_wakeup(dev) && lpm->lpm_enabled) {
 		enable_irq_wake(lpm->irq_host_wake);
-		pr_debug("[BT] Host wake IRQ enabled\n");
+		dev_dbg(lpm->dev, "Host wake IRQ enabled\n");
+		logbuffer_log(lpm->log, "Host wake IRQ enabled");
 	}
 
 	return 0;
@@ -557,11 +606,13 @@ static int nitrous_resume(struct device *dev)
 {
 	struct nitrous_bt_lpm *lpm = dev_get_drvdata(dev);
 
-	pr_debug("[BT] %s\n", __func__);
+	dev_dbg(lpm->dev, "nitrous_resume\n");
+	logbuffer_log(lpm->log, "nitrous_resume");
 
 	if (device_may_wakeup(dev) && lpm->lpm_enabled) {
 		disable_irq_wake(lpm->irq_host_wake);
-		pr_debug("[BT] Host wake IRQ disabled\n");
+		dev_dbg(lpm->dev, "Host wake IRQ disabled\n");
+		logbuffer_log(lpm->log, "Host wake IRQ disabled");
 	}
 
 	nitrous_resume_device(dev);
