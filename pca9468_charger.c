@@ -26,6 +26,7 @@
 #include <linux/rtc.h>
 #include <linux/debugfs.h>
 #include <linux/thermal.h>
+
 #include "gbms_power_supply.h"
 #include "pca9468_charger.h"
 
@@ -262,10 +263,10 @@ enum {
 enum {
 	ADCCH_VOUT = 1,
 	ADCCH_VIN,
-	ADCCH_VBAT,
+	ADCCH_VBAT,	/* 3 */
 	ADCCH_ICHG,
-	ADCCH_IIN,
-	ADCCH_DIETEMP,
+	ADCCH_IIN,	/* 5 */
+	ADCCH_DIETEMP,	/* 6 */
 	ADCCH_NTC,
 	ADCCH_MAX
 };
@@ -520,6 +521,7 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @ta_type: TA type for the direct charging, USBPD TA or Wireless Charger.
  * @chg_mode: supported DC charging mode 2:1 or 4:1 mode
  * @pdata: pointer to platform data
+ * @usb_tzd: device for thermal zone
  * @debug_root: debug entry
  * @debug_address: debug register address
  * @debug_adc_channel: ADC channel to read
@@ -581,6 +583,10 @@ struct pca9468_charger {
 
 	struct pca9468_platform_data *pdata;
 
+
+#ifdef CONFIG_THERMAL
+	struct thermal_zone_device *usb_tzd;
+#endif
 	/* debug */
 	struct dentry		*debug_root;
 	u32			debug_address;
@@ -700,11 +706,11 @@ static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 
 	mutex_lock(&pca9468->lock);
 
-	pr_info("%s: tcpm_psy_ok=%d charging_state=%u",
-		__func__,  tcpm_psy != 0, pca9468->charging_state);
-
 	if (!tcpm_psy || (pca9468->charging_state == DC_STATE_NO_CHARGING &&
 	    msg_type == PD_MSG_REQUEST_APDO) || !pca9468->mains_online) {
+		pr_debug("%s: failure tcpm_psy_ok=%d charging_state=%u online=%d",
+			__func__,  tcpm_psy != 0, pca9468->charging_state,
+			pca9468->mains_online);
 		mutex_unlock(&pca9468->lock);
 		return -EINVAL;
 	}
@@ -712,6 +718,7 @@ static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 	/* false when offline (0) or not in prog (1) mode */
 	online = pps_prog_check_online(&pca9468->pps_data, tcpm_psy);
 	if (!online) {
+		pr_debug("%s: not online", __func__);
 		mutex_unlock(&pca9468->lock);
 		return -EINVAL;
 	}
@@ -719,7 +726,7 @@ static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 	/* request offline */
 	if (msg_type == PD_MSG_REQUEST_FIXED_PDO) {
 		ret = pps_prog_offline(&pca9468->pps_data, tcpm_psy);
-		pr_debug("%s: request offline ret=%d\n", __func__, ret);
+		pr_debug("%s: requesting offline ret=%d\n", __func__, ret);
 		/* TODO: reset state? */
 		mutex_unlock(&pca9468->lock);
 		return ret;
@@ -765,7 +772,7 @@ static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		if (ret == 0)
 			pps_ui = PD_T_PPS_TIMEOUT;
 
-		pr_debug("%s: dkeep alive ret=%d\n", __func__, ret);
+		pr_debug("%s: keep alive ret=%d\n", __func__, ret);
 	}
 
 	if (((pca9468->charging_state == DC_STATE_NO_CHARGING) &&
@@ -936,10 +943,9 @@ error:
 static int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
 {
 	u8 reg_data[2];
-	u16 raw_adc;
-	int conv_adc;
+	u16 raw_adc = 0;
+	int conv_adc = -1;
 	int ret;
-
 
 	switch (adc_ch) {
 	case ADCCH_VOUT:
@@ -2522,8 +2528,8 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468)
 	/* Check whether the previous request is done */
 	} else if (pca9468->req_new_iin) {
 		/* The previous request is not done yet */
-		pr_err("%s: There is the previous request for New iin\n",
-		       __func__);
+		pr_err("%s: current=%d new_iin=%d \n", __func__,
+		       pca9468->iin_cc, pca9468->new_iin);
 		return -EBUSY;
 	}
 
@@ -3681,7 +3687,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		val = pca9468->ta_max_pwr / (pca9468->iin_cc / chg_mode / 1000);
 		/* Adjust values with APDO resolution(20mV) */
 		val = val * 1000 / PD_MSG_TA_VOL_STEP;
-		val = val*PD_MSG_TA_VOL_STEP; /* uV */
+		val = val * PD_MSG_TA_VOL_STEP; /* uV */
 		pca9468->ta_max_vol = min(val, (unsigned long)PCA9468_TA_MAX_VOL * chg_mode);
 
 		/* MAX[8000mV*chg_mode, 2*VBAT_ADC*chg_mode+500 mV] */
@@ -3694,7 +3700,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		/* Set TA voltage to MIN[TA voltage, TA_MAX_VOL*chg_mode] */
 		pca9468->ta_vol = min(pca9468->ta_vol, pca9468->ta_max_vol);
 		/* Set the initial TA current to IIN_CC/chg_mode */
-		pca9468->ta_cur = pca9468->iin_cc/chg_mode;
+		pca9468->ta_cur = pca9468->iin_cc / chg_mode;
 		/* Recover IIN_CC to the original value(iin_cfg) */
 		pca9468->iin_cc = pca9468->pdata->iin_cfg;
 
@@ -3702,8 +3708,9 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 			__func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			pca9468->ta_max_pwr, pca9468->iin_cc,
 			pca9468->chg_mode);
-		pr_debug("%s: Preset DC, ta_vol=%u, ta_cur=%u\n",  __func__,
-			 pca9468->ta_vol, pca9468->ta_cur);
+		pr_debug("%s: Preset DC, ta_vol=%u, ta_cur=%u fv_uv=%d cc_max=%d\n",
+			 __func__, pca9468->ta_vol, pca9468->ta_cur,
+			 pca9468->fv_uv, pca9468->cc_max);
 	}
 
 	/* Send PD Message */
@@ -4063,10 +4070,6 @@ static void pca9468_timer_work(struct work_struct *work)
 						      PD_MSG_REQUEST_APDO);
 		}
 
-		if (ret < 0)
-			pr_err("%s: Error-send_pd_message to %d (%d)\n",
-			       __func__, pca9468->ta_type, ret);
-
 		/* Go to the next state */
 		mutex_lock(&pca9468->lock);
 		switch (pca9468->charging_state) {
@@ -4095,6 +4098,13 @@ static void pca9468_timer_work(struct work_struct *work)
 			ret = -EINVAL;
 			break;
 		}
+
+		if (ret < 0) {
+			pr_err("%s: Error-send_pd_message to %d (%d)\n",
+			       __func__, pca9468->ta_type, ret);
+			pca9468->timer_id = TIMER_CHECK_ACTIVE;
+		}
+
 		pca9468->timer_period = PCA9468_PDMSG_WAIT_T;
 		mutex_unlock(&pca9468->lock);
 
@@ -4570,15 +4580,15 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX:
-		pr_debug("%s: new_vfloat=%u->%d\n", __func__,
-			 pca9468->new_vfloat, val->intval);
-
-		pca9468->fv_uv = val->intval;
 		if (val->intval < 0) {
 			pr_debug("%s: ignore negative vfloat %d\n",
 				 __func__, val->intval);
 		} else if (val->intval != pca9468->new_vfloat) {
+			pr_debug("%s: new_vfloat=%u->%d\n", __func__,
+				 pca9468->new_vfloat, val->intval);
+
 			/* race with pca9468_set_new_vfloat(pca9468) */
+			pca9468->fv_uv = val->intval;
 			pca9468->new_vfloat = val->intval;
 			ret = pca9468_set_new_vfloat(pca9468);
 		}
@@ -4589,15 +4599,15 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		pr_debug("%s: new_iin=%u->%d\n", __func__,
-			 pca9468->new_iin, val->intval);
-		pca9468->cc_max = val->intval;
-
 		if (val->intval < 0) {
 			pr_debug("%s: ignore negative iin %d\n",
 				 __func__, val->intval);
 		} else if (val->intval != pca9468->new_iin) {
+			pr_debug("%s: new_iin=%u->%d\n", __func__,
+				 pca9468->new_iin, val->intval);
+
 			/* request new input current */
+			pca9468->cc_max = val->intval;
 			pca9468->new_iin = val->intval;
 			ret = pca9468_set_new_iin(pca9468);
 		}
@@ -5121,13 +5131,6 @@ static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 	chip->debug_adc_channel = ADCCH_VOUT;
 	ent = debugfs_create_file("adc_chan", 0644, chip->debug_root, chip,
 				  &debug_adc_chan_ops);
-
-	if (!ent)
-		dev_err(chip->dev, "Couldn't create data debug file\n");
-
-	chip->debug_adc_channel = ADCCH_VOUT;
-	ent = debugfs_create_file("adc_chan", 0644, chip->debug_root, chip,
-				  &debug_adc_chan_ops);
 	if (!ent)
 		dev_err(chip->dev, "Couldn't create data debug file\n");
 
@@ -5269,16 +5272,16 @@ static int pca9468_probe(struct i2c_client *client,
 
 #ifdef CONFIG_THERMAL
 	if (pdata->usb_tz_name) {
-		pdata->usb_tzd =
+		pca9468_chg->usb_tzd =
 			thermal_zone_device_register(pdata->usb_tz_name, 0, 0,
 						     pca9468_chg,
 						     &pca9468_usb_tzd_ops,
 						     NULL, 0, 0);
-		if (IS_ERR(pdata->usb_tzd)) {
-			ret = PTR_ERR(pdata->usb_tzd);
+		if (IS_ERR(pca9468_chg->usb_tzd)) {
+			pca9468_chg->usb_tzd = NULL;
+			ret = PTR_ERR(pca9468_chg->usb_tzd);
 			dev_err(dev, "Couldn't register usb connector thermal zone ret=%d\n",
 				ret);
-			goto error;
 		}
 	}
 #endif
@@ -5310,13 +5313,13 @@ static int pca9468_remove(struct i2c_client *client)
 	destroy_workqueue(pca9468_chg->dc_wq);
 
 	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
+
 #ifdef CONFIG_DC_STEP_CHARGING
 	pca9468_step_chg_deinit();
 #endif
-
 #ifdef CONFIG_THERMAL
-	if (pca9468_chg->pdata->usb_tz_name)
-		thermal_zone_device_unregister(pca9468_chg->pdata->usb_tzd);
+	if (pca9468_chg->usb_tzd)
+		thermal_zone_device_unregister(pca9468_chg->usb_tzd);
 #endif
 	return 0;
 }
