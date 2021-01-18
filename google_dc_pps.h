@@ -28,7 +28,7 @@
 #define CHG_PPS_VOTER		"pps_chg"
 
 enum pd_pps_stage {
-	PPS_NOTSUPP = -1,	/* tried and failed */
+	PPS_NOTSUPP = -1,	/* tried and failed or disconnected */
 	PPS_DISABLED = 0,	/* default state, never tried */
 	PPS_NONE,		/* try to enable */
 	PPS_AVAILABLE,
@@ -45,6 +45,9 @@ enum pd_nr_pdo {
 };
 
 struct pd_pps_data {
+	struct power_supply *pps_psy;
+	void *port_data;
+
 	struct wakeup_source *pps_ws;
 	bool stay_awake;
 
@@ -112,6 +115,8 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 			   struct power_supply *tcpm_psy);
 
 int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy);
+
+int pps_register_logbuffer(struct pd_pps_data *pps_data, const char *name);
 
 void pps_log(struct pd_pps_data *pps, const char *fmt, ...);
 
