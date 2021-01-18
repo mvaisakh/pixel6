@@ -227,6 +227,11 @@ struct lwis_event_control {
 	uint64_t flags;
 };
 
+struct lwis_event_control_list {
+	size_t num_event_controls;
+	struct lwis_event_control *event_controls;
+};
+
 // Invalid ID for Transaction id and Periodic IO id
 #define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
@@ -333,7 +338,7 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_DEVICE_RESET _IOWR(LWIS_IOC_TYPE, 13, struct lwis_io_entries)
 
 #define LWIS_EVENT_CONTROL_GET _IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
-#define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control)
+#define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control_list)
 #define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
 
 #define LWIS_TRANSACTION_SUBMIT _IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
