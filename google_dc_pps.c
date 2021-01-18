@@ -79,6 +79,9 @@ void pps_init_state(struct pd_pps_data *pps_data)
 #if 0 //TODO
 	tcpm_put_partner_src_caps(&pps_data->src_caps);
 #endif
+	pr_debug("%s: %s src_caps=%d\n", __func__,
+		 pps_data->pps_psy ? pps_data->pps_psy->desc->name : "<>",
+		 !!pps_data->src_caps);
 
 	pps_data->pd_online = TCPM_PSY_OFFLINE;
 	pps_data->stage = PPS_DISABLED;
@@ -233,6 +236,7 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 	if (pd_online != TCPM_PSY_PROG_ONLINE)
 		goto not_supp;
 
+	/* make the transition to active */
 	if (pps_data->stage != PPS_ACTIVE) {
 		int rc;
 
@@ -276,7 +280,9 @@ static int pps_prog_online(struct pd_pps_data *pps,
 
 	ret = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
 			    TCPM_PSY_PROG_ONLINE);
-	if (ret == 0) {
+	if (ret == -EOPNOTSUPP) {
+		pps->stage = PPS_NOTSUPP;
+	} else if (ret == 0) {
 		pps->pd_online = TCPM_PSY_PROG_ONLINE;
 		pps->stage = PPS_NONE;
 	}
@@ -432,6 +438,18 @@ DEFINE_SIMPLE_ATTRIBUTE(debug_pps_op_ua_fops,
 
 int pps_init_fs(struct pd_pps_data *pps_data, struct dentry *de)
 {
+	struct power_supply *pps_psy = pps_data->pps_psy;
+
+	if (pps_psy) {
+		char name[32];
+
+		scnprintf(name, sizeof(name), "%s_pps", pps_psy->desc->name);
+
+		pps_data->log = logbuffer_register(name);
+		if (IS_ERR(pps_data->log))
+			pps_data->log = NULL;
+	}
+
 	if (!de)
 		return 0;
 
@@ -561,7 +579,8 @@ static int pps_init_snk(struct pd_pps_data *pps_data,
 /* Look for the connector and retrieve source capabilities.
  * pps_data->nr_snk_pdo == 0 means no PPS
  */
-int pps_init(struct pd_pps_data *pps_data, struct device *dev)
+int pps_init(struct pd_pps_data *pps_data, struct device *dev,
+	     struct power_supply *pps_psy)
 {
 	const char *psy_name;
 	int ret;
@@ -572,6 +591,8 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev)
 	ret = pps_init_snk(pps_data, dev->of_node);
 	if (ret < 0)
 		return ret;
+	if (!pps_data->nr_snk_pdo)
+		pr_err("nr_sink_pdo=%d this is a fake one\n", pps_data->nr_snk_pdo);
 
 	psy_name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
 
@@ -597,6 +618,7 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev)
 		}
 	}
 
+	pps_data->pps_psy = pps_psy;
 	return 0;
 }
 // EXPORT_SYMBOL_GPL(pps_init);

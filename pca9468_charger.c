@@ -684,6 +684,15 @@ static int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
 	pca9468->tcpm_psy_name = tcpm_psy->desc->name;
 	pca9468->pd = tcpm_psy;
 
+	/* setup PPS, not needed if tcpm-power-supply is not there */
+	ret = pps_init(&pca9468->pps_data, pca9468->dev, tcpm_psy);
+	if (ret == 0 && pca9468->debug_root)
+		pps_init_fs(&pca9468->pps_data, pca9468->debug_root);
+	if (ret == 0) {
+		pps_init_state(&pca9468->pps_data);
+		pr_info("pca9468: PPS direct available\n");
+	}
+
 check_online:
 	online = pps_prog_check_online(&pca9468->pps_data, pca9468->pd);
 	if (!online)
@@ -5250,16 +5259,6 @@ static int pca9468_probe(struct i2c_client *client,
 	ret = pca9468_create_debugfs_entries(pca9468_chg);
 	if (ret < 0)
 		dev_err(dev, "error while registering debugfs %d\n", ret);
-
-	/* setup PPS, not needed if tcpm-power-supply is not there */
-	ret = pps_init(&pca9468_chg->pps_data, pca9468_chg->dev);
-	if (ret == 0 && pca9468_chg->debug_root)
-		pps_init_fs(&pca9468_chg->pps_data,
-				pca9468_chg->debug_root);
-	if (ret == 0) {
-		pps_init_state(&pca9468_chg->pps_data);
-		pr_info("pca9468: PPS direct available\n");
-	}
 
 #ifdef CONFIG_DC_STEP_CHARGING
 	ret = pca9468_step_chg_init(pca9468_chg->dev);

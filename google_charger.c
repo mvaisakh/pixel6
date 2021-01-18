@@ -2303,7 +2303,7 @@ static void google_charger_init_work(struct work_struct *work)
 	} else {
 		const char *name = tcpm_psy->desc->name;
 
-		ret = pps_init(&chg_drv->pps_data, chg_drv->device);
+		ret = pps_init(&chg_drv->pps_data, chg_drv->device, tcpm_psy);
 		if (ret == 0 && chg_drv->debug_entry)
 			pps_init_fs(&chg_drv->pps_data, chg_drv->debug_entry);
 		if (ret < 0)
@@ -2471,8 +2471,6 @@ static int google_charger_probe(struct platform_device *pdev)
 			pr_err("Couldn't get rtc device\n");
 		}
 	}
-
-
 
 	INIT_DELAYED_WORK(&chg_drv->init_work, google_charger_init_work);
 	INIT_DELAYED_WORK(&chg_drv->chg_work, chg_work);
