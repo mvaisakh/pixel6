@@ -2562,6 +2562,38 @@ static ssize_t rtx_err_show(struct device *dev,
 
 static DEVICE_ATTR_RO(rtx_err);
 
+static ssize_t qi_vbus_en_show(struct device *dev,
+			       struct device_attribute *attr,
+			       char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	int value;
+
+	if (charger->pdata->qi_vbus_en < 0)
+		return -ENODEV;
+
+	value = gpio_get_value(charger->pdata->qi_vbus_en);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
+}
+
+static ssize_t qi_vbus_en_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	if (charger->pdata->qi_vbus_en < 0)
+		return -ENODEV;
+
+	gpio_set_value(charger->pdata->qi_vbus_en, buf[0] != '0');
+
+	return count;
+}
+static DEVICE_ATTR_RW(qi_vbus_en);
+
 static ssize_t ext_ben_show(struct device *dev,
 			    struct device_attribute *attr,
 			    char *buf)
@@ -2573,7 +2605,7 @@ static ssize_t ext_ben_show(struct device *dev,
 	if (charger->pdata->ext_ben_gpio < 0)
 		return -ENODEV;
 
-	value = gpio_direction_output(charger->pdata->ext_ben_gpio, 0);
+	value = gpio_get_value(charger->pdata->ext_ben_gpio);
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
 }
@@ -2632,7 +2664,6 @@ static ssize_t rtx_sw_store(struct device *dev,
 }
 
 static DEVICE_ATTR_RW(rtx_sw);
-
 
 static ssize_t p9382_show_rtx_boost(struct device *dev,
 				    struct device_attribute *attr,
@@ -2900,6 +2931,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_operating_freq.attr,
 	&dev_attr_ptmc_id.attr,
 	&dev_attr_ext_ben.attr,
+	&dev_attr_qi_vbus_en.attr,
 	NULL
 };
 
@@ -3649,6 +3681,15 @@ static int p9221_parse_dt(struct device *dev,
 	else
 		dev_info(dev, "enable gpio:%d", pdata->qien_gpio);
 
+	/* QI_USB_VBUS_EN */
+	ret = of_get_named_gpio(node, "idt,gpio_qi_vbus_en", 0);
+	pdata->qi_vbus_en = ret;
+	if (ret < 0)
+		dev_warn(dev, "unable to read idt,gpio_qi_vbus_en from dt: %d\n",
+			 ret);
+	else
+		dev_info(dev, "QI_USB_VBUS_EN gpio:%d", pdata->qi_vbus_en);
+
 	/* WLC_BPP_EPP_SLCT */
 	ret = of_get_named_gpio(node, "idt,gpio_slct", 0);
 	pdata->slct_gpio = ret;
@@ -4058,6 +4099,9 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->enabled = true;
 	if (charger->pdata->qien_gpio >= 0)
 		gpio_direction_output(charger->pdata->qien_gpio, 0);
+
+	if (charger->pdata->qi_vbus_en >= 0)
+		gpio_direction_output(charger->pdata->qi_vbus_en, 1);
 
 	if (charger->pdata->slct_gpio >= 0)
 		gpio_direction_output(charger->pdata->slct_gpio,
