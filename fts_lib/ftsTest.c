@@ -985,7 +985,7 @@ int production_test_ito(struct fts_ts_info *info, const char *path_limits,
 			goto ERROR;
 		}
 
-		print_frame_short("MS Raw ITO frame =",
+		print_frame_short(info, "MS Raw ITO frame =",
 				  array1dTo2d_short(
 					  (*ptr_frame).node_data,
 					  (*ptr_frame).node_data_size,
@@ -1357,7 +1357,7 @@ int production_test_ms_raw(struct fts_ts_info *info, const char *path_limits,
 			return ret | ERROR_PROD_TEST_DATA;
 		}
 
-		print_frame_short("MS Raw frame =",
+		print_frame_short(info, "MS Raw frame =",
 				  array1dTo2d_short(
 					  msRawFrame.node_data,
 					  msRawFrame.node_data_size,
@@ -1868,7 +1868,7 @@ int production_test_ms_raw_lp(struct fts_ts_info *info,
 			return ret | ERROR_PROD_TEST_DATA;
 		}
 
-		print_frame_short("MS Raw LP frame =",
+		print_frame_short(info, "MS Raw LP frame =",
 				  array1dTo2d_short(
 					  msRawFrame.node_data,
 					  msRawFrame.node_data_size,
@@ -2187,7 +2187,7 @@ int production_test_ms_key_raw(struct fts_ts_info *info,
 	return OK;
 
 ERROR:
-	print_frame_short("MS Key Raw frame =", array1dTo2d_short(
+	print_frame_short(info, "MS Key Raw frame =", array1dTo2d_short(
 				  msRawFrame.node_data,
 				  msRawFrame.node_data_size,
 				  msRawFrame.header.sense_node),
@@ -2653,13 +2653,13 @@ ERROR:
 		msCompData.node_data = NULL;
 		return OK;
 	} else {
-		print_frame_i8("MS Init Data (Cx2) =", array1dTo2d_i8(
+		print_frame_i8(info, "MS Init Data (Cx2) =", array1dTo2d_i8(
 				       msCompData.node_data,
 				       msCompData.node_data_size,
 				       msCompData.header.sense_node),
 			       msCompData.header.force_node,
 			       msCompData.header.sense_node);
-		print_frame_short(" TOT MS Init Data (Cx) =", array1dTo2d_short(
+		print_frame_short(info, "TOT MS Init Data (Cx) =", array1dTo2d_short(
 					  totCompData.node_data,
 					  totCompData.node_data_size,
 					  totCompData.header.sense_node),
@@ -2916,7 +2916,7 @@ ERROR:
 		msCompData.node_data = NULL;
 		return OK;
 	} else {
-		print_frame_i8("MS Key Init Data (Cx2) =", array1dTo2d_i8(
+		print_frame_i8(info, "MS Key Init Data (Cx2) =", array1dTo2d_i8(
 				       msCompData.node_data,
 				       msCompData.node_data_size,
 				       msCompData.header.sense_node),
@@ -3367,13 +3367,13 @@ ERROR:
 		return OK;
 	}
 
-	print_frame_i8("MS LP Init Data (Cx2) =", array1dTo2d_i8(
+	print_frame_i8(info, "MS LP Init Data (Cx2) =", array1dTo2d_i8(
 			       msCompData.node_data,
 			       msCompData.node_data_size,
 			       msCompData.header.sense_node),
 		       msCompData.header.force_node,
 		       msCompData.header.sense_node);
-	print_frame_short(" TOT MS LP Init Data (Cx) =",
+	print_frame_short(info, " TOT MS LP Init Data (Cx) =",
 			array1dTo2d_short(
 				  totCompData.node_data,
 				  totCompData.node_data_size,
@@ -3471,13 +3471,13 @@ int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	print_frame_short("SS Raw force frame =",
+	print_frame_short(info, "SS Raw force frame =",
 			  array1dTo2d_short(
 				  ssRawFrame.force_data,
 				  ssRawFrame.header.force_node,
 				  1),
 			  ssRawFrame.header.force_node, 1);
-	print_frame_short("SS Raw sense frame =",
+	print_frame_short(info, "SS Raw sense frame =",
 			  array1dTo2d_short(
 				  ssRawFrame.sense_data,
 				  ssRawFrame.header.sense_node,
@@ -3562,7 +3562,7 @@ int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
 					ret);
 				dev_err(info->dev, "SS RAW FORCE MAP MIN MAX TEST:.................FAIL\n\n");
 				count_fail += 1;
-				print_frame_short("SS Raw force frame =",
+				print_frame_short(info, "SS Raw force frame =",
 						  array1dTo2d_short(
 							  ssRawFrame.force_data,
 							  rows *
@@ -3703,7 +3703,7 @@ int production_test_ss_raw(struct fts_ts_info *info, const char *path_limits,
 					ret);
 				dev_err(info->dev, "SS RAW SENSE MAP MIN MAX TEST:.................FAIL\n\n");
 				count_fail += 1;
-				print_frame_short("SS Raw sense frame =",
+				print_frame_short(info, "SS Raw sense frame =",
 						  array1dTo2d_short(
 							  ssRawFrame.sense_data,
 							  rows *
@@ -3848,12 +3848,12 @@ int production_test_ss_raw_lp(struct fts_ts_info *info,
 		return ret | ERROR_PROD_TEST_DATA;
 	}
 
-	print_frame_short("SS Raw LP force frame =",
+	print_frame_short(info, "SS Raw LP force frame =",
 			  array1dTo2d_short(
 				  ssRawFrame.force_data,
 				  ssRawFrame.header.force_node, 1),
 			  ssRawFrame.header.force_node, 1);
-	print_frame_short("SS Raw LP sense frame =",
+	print_frame_short(info, "SS Raw LP sense frame =",
 			  array1dTo2d_short(
 				  ssRawFrame.sense_data,
 				  ssRawFrame.header.sense_node,
@@ -3937,7 +3937,7 @@ int production_test_ss_raw_lp(struct fts_ts_info *info,
 					ret);
 				dev_err(info->dev, "SS RAW LP FORCE MAP MIN MAX TEST:.................FAIL\n\n");
 				count_fail += 1;
-				print_frame_short("SS Raw LP force frame =",
+				print_frame_short(info, "SS Raw LP force frame =",
 						  array1dTo2d_short(
 							  ssRawFrame.force_data,
 							  rows *
@@ -4079,7 +4079,7 @@ int production_test_ss_raw_lp(struct fts_ts_info *info,
 					ret);
 				dev_err(info->dev, "SS RAW LP SENSE MAP MIN MAX TEST:.................FAIL\n\n");
 				count_fail += 1;
-				print_frame_short("SS Raw LP sense frame =",
+				print_frame_short(info, "SS Raw LP sense frame =",
 						  array1dTo2d_short(
 							  ssRawFrame.sense_data,
 							  rows *
@@ -5246,39 +5246,39 @@ ERROR:
 	}
 
 	/* print all kind of data in just one row for readability reason */
-	print_frame_u8("SS Init Data Ix2_fm = ", array1dTo2d_u8(
+	print_frame_u8(info, "SS Init Data Ix2_fm = ", array1dTo2d_u8(
 			       ssCompData.ix2_fm,
 			       ssCompData.header.force_node, 1),
 		       ssCompData.header.force_node, 1);
-	print_frame_i8("SS Init Data Cx2_fm = ", array1dTo2d_i8(
+	print_frame_i8(info, "SS Init Data Cx2_fm = ", array1dTo2d_i8(
 			       ssCompData.cx2_fm,
 			       ssCompData.header.force_node, 1),
 		       ssCompData.header.force_node, 1);
-	print_frame_u8("SS Init Data Ix2_sn = ", array1dTo2d_u8(
+	print_frame_u8(info, "SS Init Data Ix2_sn = ", array1dTo2d_u8(
 			       ssCompData.ix2_sn,
 			       ssCompData.header.sense_node,
 			       ssCompData.header.sense_node), 1,
 		       ssCompData.header.sense_node);
-	print_frame_i8("SS Init Data Cx2_sn = ", array1dTo2d_i8(
+	print_frame_i8(info, "SS Init Data Cx2_sn = ", array1dTo2d_i8(
 			       ssCompData.cx2_sn,
 			       ssCompData.header.sense_node,
 			       ssCompData.header.sense_node), 1,
 		       ssCompData.header.sense_node);
-	print_frame_u16("TOT SS Init Data Ix_fm = ", array1dTo2d_u16(
+	print_frame_u16(info, "TOT SS Init Data Ix_fm = ", array1dTo2d_u16(
 				totCompData.ix_fm,
 				totCompData.header.force_node, 1),
 			totCompData.header.force_node, 1);
-	print_frame_short("TOT SS Init Data Cx_fm = ",
+	print_frame_short(info, "TOT SS Init Data Cx_fm = ",
 			  array1dTo2d_short(totCompData.cx_fm,
 					    totCompData.header.force_node,
 					    1),
 			  totCompData.header.force_node, 1);
-	print_frame_u16("TOT SS Init Data Ix_sn = ", array1dTo2d_u16(
+	print_frame_u16(info, "TOT SS Init Data Ix_sn = ", array1dTo2d_u16(
 				totCompData.ix_sn,
 				totCompData.header.sense_node,
 				totCompData.header.sense_node), 1,
 			totCompData.header.sense_node);
-	print_frame_short("TOT SS Init Data Cx_sn = ",
+	print_frame_short(info, "TOT SS Init Data Cx_sn = ",
 			  array1dTo2d_short(totCompData.cx_sn,
 					    totCompData.header.sense_node,
 					    totCompData.header.sense_node),
@@ -6422,39 +6422,39 @@ ERROR:
 		return OK;
 	} else {
 	/* print all kind of data in just one row for readability reason */
-		print_frame_u8("SS LP Init Data Ix2_fm = ", array1dTo2d_u8(
+		print_frame_u8(info, "SS LP Init Data Ix2_fm = ", array1dTo2d_u8(
 				       ssCompData.ix2_fm,
 				       ssCompData.header.force_node, 1),
 			       ssCompData.header.force_node, 1);
-		print_frame_i8("SS LP Init Data Cx2_fm = ", array1dTo2d_i8(
+		print_frame_i8(info, "SS LP Init Data Cx2_fm = ", array1dTo2d_i8(
 				       ssCompData.cx2_fm,
 				       ssCompData.header.force_node, 1),
 			       ssCompData.header.force_node, 1);
-		print_frame_u8("SS LP Init Data Ix2_sn = ", array1dTo2d_u8(
+		print_frame_u8(info, "SS LP Init Data Ix2_sn = ", array1dTo2d_u8(
 				       ssCompData.ix2_sn,
 				       ssCompData.header.sense_node,
 				       ssCompData.header.sense_node), 1,
 			       ssCompData.header.sense_node);
-		print_frame_i8("SS LP Init Data Cx2_sn = ", array1dTo2d_i8(
+		print_frame_i8(info, "SS LP Init Data Cx2_sn = ", array1dTo2d_i8(
 				       ssCompData.cx2_sn,
 				       ssCompData.header.sense_node,
 				       ssCompData.header.sense_node), 1,
 			       ssCompData.header.sense_node);
-		print_frame_u16("TOT SS LP Init Data Ix_fm = ", array1dTo2d_u16(
+		print_frame_u16(info, "TOT SS LP Init Data Ix_fm = ", array1dTo2d_u16(
 					totCompData.ix_fm,
 					totCompData.header.force_node, 1),
 				totCompData.header.force_node, 1);
-		print_frame_short("TOT SS LP Init Data Cx_fm = ",
+		print_frame_short(info, "TOT SS LP Init Data Cx_fm = ",
 				  array1dTo2d_short(totCompData.cx_fm,
 						    totCompData.header.
 						    force_node, 1),
 				  totCompData.header.force_node, 1);
-		print_frame_u16("TOT SS LP Init Data Ix_sn = ", array1dTo2d_u16(
+		print_frame_u16(info, "TOT SS LP Init Data Ix_sn = ", array1dTo2d_u16(
 					totCompData.ix_sn,
 					totCompData.header.sense_node,
 					totCompData.header.sense_node), 1,
 				totCompData.header.sense_node);
-		print_frame_short("TOT SS LP Init Data Cx_sn = ",
+		print_frame_short(info, "TOT SS LP Init Data Cx_sn = ",
 				  array1dTo2d_short(totCompData.cx_sn,
 						    totCompData.header.
 						    sense_node,
@@ -6713,7 +6713,7 @@ int tp_sensitivity_test_pre_cal_ms(struct fts_ts_info *info, MutualSenseFrame *f
 
 
 	/* print average frame in the log */
-	print_frame_short("MS FS Mean =",
+	print_frame_short(info, "MS FS Mean =",
 			  array1dTo2d_short(
 				  finalFrame->node_data,
 				  finalFrame->node_data_size,
@@ -6863,13 +6863,13 @@ int tp_sensitivity_test_pre_cal_ss(struct fts_ts_info *info, SelfSenseFrame *fin
 	}
 
 	/* print average frame in the log */
-	print_frame_short("SS FS force Mean =",
+	print_frame_short(info, "SS FS force Mean =",
 			  array1dTo2d_short(
 				  finalFrame->force_data,
 				  finalFrame->header.force_node,
 				  1),
 			  finalFrame->header.force_node, 1);
-	print_frame_short("SS FS sense Mean =",
+	print_frame_short(info, "SS FS sense Mean =",
 			  array1dTo2d_short(
 				  finalFrame->sense_data,
 				  finalFrame->header.sense_node,
@@ -6953,7 +6953,7 @@ int tp_sensitivity_compute_gains(struct fts_ts_info *info,
 
 
 	/* print average frame in the log */
-	print_frame_u8("MS Digital Gain =",
+	print_frame_u8(info, "MS Digital Gain =",
 		       array1dTo2d_u8(
 			       gains,
 			       frame->node_data_size,
@@ -7249,7 +7249,7 @@ int tp_sensitivity_test_post_cal_ms(struct fts_ts_info *info,
 
 
 	/* print average frame in the log */
-	print_frame_short("FS Uniform (%) =",
+	print_frame_short(info, "FS Uniform (%) =",
 			  array1dTo2d_short(
 				  deltas->node_data,
 				  deltas->node_data_size,
@@ -7496,7 +7496,7 @@ int tp_sensitivity_test_std_ms(struct fts_ts_info *info,
 	mean = NULL;
 
 	/* print average frame in the log */
-	print_frame_short("STD =",
+	print_frame_short(info, "STD =",
 			  array1dTo2d_short(
 				  std->node_data,
 				  std->node_data_size,

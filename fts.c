@@ -464,9 +464,10 @@ static ssize_t fts_strength_frame_show(struct device *dev,
 		size += (res * 6);
 		dev_info(dev, "The frame size is %d words\n", res);
 		res = OK;
-		print_frame_short("MS Strength frame =", array1dTo2d_short(
-					  frame.node_data, frame.node_data_size,
-					  frame.header.sense_node),
+		print_frame_short(info, "MS Strength frame =",
+				  array1dTo2d_short(
+				  frame.node_data, frame.node_data_size,
+				  frame.header.sense_node),
 				  frame.header.force_node,
 				  frame.header.sense_node);
 	}
@@ -1849,6 +1850,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 	u8 *all_strbuff = buf;
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 	const char *limits_file = info->board->limits_name;
+	char *label[2];
 
 	MutualSenseData compData;
 	SelfSenseData comData;
@@ -1979,12 +1981,19 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				 * successful res = number of words read
 				 */
 				res = OK;
-				print_frame_short(
-					"MS frame =",
+				if (info->typeOfCommand[1] == LOCKED_ACTIVE)
+					label[0] = "CmRaw =";
+				else if (info->typeOfCommand[1] ==
+					 LOCKED_LP_ACTIVE)
+					label[0] = "CmRaw_LP =";
+				else
+					label[0] = "MS Frame =";
+				print_frame_short(info,
+					label[0],
 					array1dTo2d_short(
-						frameMS.node_data,
-						frameMS.node_data_size,
-						frameMS.header.sense_node),
+					frameMS.node_data,
+					frameMS.node_data_size,
+					frameMS.header.sense_node),
 					frameMS.header.force_node,
 					frameMS.header.sense_node);
 			}
@@ -2043,19 +2052,30 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				 * successful res = number of words read
 				 */
 				res = OK;
-				print_frame_short(
-					"SS force frame =",
+				if (info->typeOfCommand[1] == LOCKED_ACTIVE) {
+					label[0] = "CsRaw_Tx =";
+					label[1] = "CsRaw_Rx =";
+				} else if (info->typeOfCommand[1] ==
+					   LOCKED_LP_DETECT) {
+					label[0] = "CsRaw_Tx_LP =";
+					label[1] = "CsRaw_Rx_LP =";
+				} else {
+					label[0] = "SS force frame =";
+					label[1] = "SS sense frame =";
+				}
+				print_frame_short(info,
+					label[0],
 					array1dTo2d_short(
-						frameSS.force_data,
-						frameSS.header.force_node,
-						1),
-					frameSS.header.force_node, 1);
-				print_frame_short(
-					"SS sense frame =",
+					frameSS.force_data,
+					frameSS.header.force_node,
+					frameSS.header.force_node),
+					1, frameSS.header.force_node);
+				print_frame_short(info,
+					label[1],
 					array1dTo2d_short(
-						frameSS.sense_data,
-						frameSS.header.sense_node,
-						frameSS.header.sense_node),
+					frameSS.sense_data,
+					frameSS.header.sense_node,
+					frameSS.header.sense_node),
 					1, frameSS.header.sense_node);
 			}
 			break;
@@ -2073,7 +2093,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				dev_info(dev, "MS Compensation Data Reading Finished!\n");
 				size += ((compData.node_data_size + 3) *
 					 sizeof(u8)) * 2;
-				print_frame_i8("MS Data (Cx2) =",
+				print_frame_i8(info, "MS Data (Cx2) =",
 					       array1dTo2d_i8(
 						       compData.node_data,
 						       compData.
@@ -2098,24 +2118,24 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 				size += ((comData.header.force_node +
 					  comData.header.sense_node) * 2 + 8) *
 					sizeof(u8) * 2;
-				print_frame_u8("SS Data Ix2_fm = ",
+				print_frame_u8(info, "SS Data Ix2_fm = ",
 					       array1dTo2d_u8(comData.ix2_fm,
 							      comData.header.
 							      force_node, 1),
 					       comData.header.force_node, 1);
-				print_frame_i8("SS Data Cx2_fm = ",
+				print_frame_i8(info, "SS Data Cx2_fm = ",
 					       array1dTo2d_i8(comData.cx2_fm,
 							      comData.header.
 							      force_node, 1),
 					       comData.header.force_node, 1);
-				print_frame_u8("SS Data Ix2_sn = ",
+				print_frame_u8(info, "SS Data Ix2_sn = ",
 					       array1dTo2d_u8(comData.ix2_sn,
 							      comData.header.
 							      sense_node,
 							      comData.header.
 							      sense_node), 1,
 					       comData.header.sense_node);
-				print_frame_i8("SS Data Cx2_sn = ",
+				print_frame_i8(info, "SS Data Cx2_sn = ",
 					       array1dTo2d_i8(comData.cx2_sn,
 							      comData.header.
 							      sense_node,
@@ -2152,7 +2172,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 #else
 				size += (nodes * sizeof(short) + 2) * 2;
 #endif
-				print_frame_short("MS strength =",
+				print_frame_short(info, "MS strength =",
 				    array1dTo2d_short(frameMS.node_data,
 						frameMS.node_data_size,
 						frameMS.header.sense_node),

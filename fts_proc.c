@@ -716,6 +716,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 	u64 address;
 	u16 ito_max_val[2] = {0x00};
+	char *label[4];
 
 	Firmware fw;
 	LimitFile lim;
@@ -1452,7 +1453,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					 *	res = number of words read
 					 */
 					res = OK;
-					print_frame_short("MS frame =",
+					print_frame_short(info, "MS frame =",
 						array1dTo2d_short(
 						    frameMS.node_data,
 						    frameMS.node_data_size,
@@ -1497,13 +1498,15 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					 *	res = number of words read
 					 */
 					res = OK;
-					print_frame_short("SS force frame =",
+					print_frame_short(info,
+						  "SS force frame =",
 						  array1dTo2d_short(
 						    frameSS.force_data,
 						    frameSS.header.force_node,
 						    1),
 						  frameSS.header.force_node, 1);
-					print_frame_short("SS sense frame =",
+					print_frame_short(info,
+						"SS sense frame =",
 						array1dTo2d_short(
 						  frameSS.sense_data,
 						  frameSS.header.sense_node,
@@ -1541,21 +1544,23 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					 */
 					res = OK;
 
-					print_frame_short("MS frame =",
+					print_frame_short(info, "MS frame =",
 						array1dTo2d_short(
 						    frameMS.node_data,
 						    frameMS.node_data_size,
 						    frameMS.header.sense_node),
 						frameMS.header.force_node,
 						frameMS.header.sense_node);
-					print_frame_short("SS force frame =",
+					print_frame_short(info,
+						"SS force frame =",
 						array1dTo2d_short(
 						    frameSS.force_data,
 						    frameSS.header.force_node,
 						    1),
 						frameSS.header.force_node,
 						1);
-					print_frame_short("SS sense frame =",
+					print_frame_short(info,
+						"SS sense frame =",
 						array1dTo2d_short(
 						    frameSS.sense_data,
 						    frameSS.header.sense_node,
@@ -1626,11 +1631,18 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					dev_info(info->dev, "MS Compensation Data Reading Finished!\n");
 					size = ((compData.node_data_size + 10) *
 						sizeof(i8));
-					print_frame_i8("MS Data (Cx2) =",
+					if (cmd[1] == LOAD_CX_MS_TOUCH)
+						label[0] = "CX2 =";
+					else if(cmd[1] == LOAD_CX_MS_LOW_POWER)
+						label[0] = "CX2_LP =";
+					else
+						label[0] = "MS Data (Cx2) =";
+					print_frame_i8(info,
+						label[0],
 						array1dTo2d_i8(
-						  compData.node_data,
-						  compData.node_data_size,
-						  compData.header.sense_node),
+						compData.node_data,
+						compData.node_data_size,
+						compData.header.sense_node),
 						compData.header.force_node,
 						compData.header.sense_node);
 				}
@@ -1655,28 +1667,32 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						 comData.header.sense_node) *
 						2 + 15) *
 					       sizeof(i8);
-					print_frame_i8("SS Data Ix2_fm = ",
+					print_frame_i8(info,
+						"SS Data Ix2_fm = ",
 						array1dTo2d_i8(
 						  comData.ix2_fm,
 						  comData.header.force_node,
 						  comData.header.force_node),
 						1,
 						comData.header.force_node);
-					print_frame_i8("SS Data Cx2_fm = ",
+					print_frame_i8(info,
+						"SS Data Cx2_fm = ",
 						array1dTo2d_i8(
 						  comData.cx2_fm,
 						  comData.header.force_node,
 						  comData.header.force_node),
 						1,
 						comData.header.force_node);
-					print_frame_i8("SS Data Ix2_sn = ",
+					print_frame_i8(info,
+						"SS Data Ix2_sn = ",
 						array1dTo2d_i8(
 						  comData.ix2_sn,
 						  comData.header.sense_node,
 						  comData.header.sense_node),
 						1,
 						comData.header.sense_node);
-					print_frame_i8("SS Data Cx2_sn = ",
+					print_frame_i8(info,
+						"SS Data Cx2_sn = ",
 						array1dTo2d_i8(
 						  comData.cx2_sn,
 						  comData.header.sense_node,
@@ -1709,7 +1725,7 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 
 			size = (6 + gmRawData.data_size) * sizeof(u16);
 
-			print_frame_short("Golden Mutual Data =",
+			print_frame_short(info, "Golden Mutual Data =",
 					array1dTo2d_short(
 						gmRawData.data,
 						gmRawData.data_size,
@@ -1732,7 +1748,8 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					dev_info(info->dev, "TOT MS Compensation Data Reading Finished!\n");
 					size = (totCompData.node_data_size *
 						sizeof(short) + 9);
-					print_frame_short("MS Data (TOT Cx) =",
+					print_frame_short(info,
+					  "MS Data (TOT Cx) =",
 					  array1dTo2d_short(
 					      totCompData.node_data,
 					      totCompData.node_data_size,
@@ -1761,34 +1778,54 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 						 totComData.header.sense_node) *
 						2 *
 						sizeof(short) + 9);
-					print_frame_u16("SS Data TOT Ix_fm = ",
+					if (cmd[1] ==
+					    LOAD_PANEL_CX_TOT_SS_TOUCH) {
+					    label[0] = "SS_TOT_IX_TX = ";
+					    label[1] = "SS_TOT_Cx_Tx = ";
+					    label[2] = "SS_TOT_Ix_Rx = ";
+					    label[3] = "SS_TOT_Cx_Rx = ";
+					} else if (cmd[1] ==
+					    LOAD_PANEL_CX_TOT_SS_TOUCH_IDLE) {
+					    label[0] = "SS_TOT_Ix_Tx_LP = ";
+					    label[1] = "SS_TOT_Cx_Tx_LP = ";
+					    label[2] = "SS_TOT_Ix_Rx_LP = ";
+					    label[3] = "SS_TOT_Cx_Rx_LP = ";
+					} else {
+					    label[0] = "SS Data TOT Ix_fm = ";
+					    label[1] = "SS Data TOT Cx_fm = ";
+					    label[2] = "SS Data TOT Ix_sn = ";
+					    label[3] = "SS Data TOT Cx_sn = ";
+					}
+					print_frame_u16(info,
+						label[0],
 						array1dTo2d_u16(
-						  totComData.ix_fm,
-						  totComData.header.force_node,
-						  totComData.header.force_node),
+						totComData.ix_fm,
+						totComData.header.force_node,
+						totComData.header.force_node),
 						1,
 						totComData.header.force_node);
-					print_frame_short(
-						"SS Data TOT Cx_fm = ",
+					print_frame_short(info,
+						label[1],
 						array1dTo2d_short(
-						  totComData.cx_fm,
-						  totComData.header.force_node,
-						  totComData.header.force_node),
+						totComData.cx_fm,
+						totComData.header.force_node,
+						totComData.header.force_node),
 						1,
 						totComData.header.force_node);
-					print_frame_u16("SS Data TOT Ix_sn = ",
+					print_frame_u16(info,
+						label[2],
 						array1dTo2d_u16(
-						  totComData.ix_sn,
-						  totComData.header.sense_node,
-						  totComData.header.sense_node),
+						totComData.ix_sn,
+						totComData.header.sense_node,
+						totComData.header.sense_node),
 						1,
 						totComData.header.sense_node);
-					print_frame_short(
-						"SS Data TOT Cx_sn = ",
+					print_frame_short(info,
+						label[3],
 						array1dTo2d_short(
-						  totComData.cx_sn,
-						  totComData.header.sense_node,
-						  totComData.header.sense_node),
+						totComData.cx_sn,
+						totComData.header.sense_node,
+						totComData.header.sense_node),
 						1,
 						totComData.header.sense_node);
 				}
@@ -1812,7 +1849,8 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 					  ssCoeff.header.force_node +
 					  ssCoeff.header.sense_node) *
 					 sizeof(u8) + 4);
-				print_frame_u8("MS Sensitivity Coeff = ",
+				print_frame_u8(info,
+					       "MS Sensitivity Coeff = ",
 					       array1dTo2d_u8(msCoeff.ms_coeff,
 							      msCoeff.
 							      node_data_size,
@@ -1820,13 +1858,15 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 							      sense_node),
 					       msCoeff.header.force_node,
 					       msCoeff.header.sense_node);
-				print_frame_u8("SS Sensitivity Coeff force = ",
+				print_frame_u8(info,
+					       "SS Sensitivity Coeff force = ",
 					       array1dTo2d_u8(
 						       ssCoeff.ss_force_coeff,
 						       ssCoeff.header.
 						       force_node, 1),
 					       ssCoeff.header.force_node, 1);
-				print_frame_u8("SS Sensitivity Coeff sense = ",
+				print_frame_u8(info,
+					       "SS Sensitivity Coeff sense = ",
 					       array1dTo2d_u8(
 						       ssCoeff.ss_sense_coeff,
 						       ssCoeff.header.
@@ -2539,20 +2579,23 @@ END_DIAGNOSTIC:
 					 */
 					res = OK;
 
-					print_frame_short("MS frame =",
+					print_frame_short(info,
+						"MS frame =",
 						array1dTo2d_short(
 						    frameMS.node_data,
 						    frameMS.node_data_size,
 						    frameMS.header.sense_node),
 						frameMS.header.force_node,
 						frameMS.header.sense_node);
-					print_frame_short("SS force frame =",
+					print_frame_short(info,
+						"SS force frame =",
 						array1dTo2d_short(
 						    frameSS.force_data,
 						    frameSS.header.force_node,
 						    1),
 						frameSS.header.force_node, 1);
-					print_frame_short("SS sense frame =",
+					print_frame_short(info,
+						"SS sense frame =",
 						array1dTo2d_short(
 						    frameSS.sense_data,
 						    frameSS.header.sense_node,
