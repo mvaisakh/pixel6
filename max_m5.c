@@ -417,6 +417,7 @@ int max_m5_load_gauge_model(struct max_m5_data *m5_data)
 		return ret;
 	}
 
+	/* write parameters (which include state) */
 	ret = max_m5_update_custom_parameters(m5_data);
 	if (ret < 0) {
 		dev_err(m5_data->dev, "cannot update custom parameters (%d)\n",
@@ -515,7 +516,7 @@ static bool memtst(void *buf, char c, size_t count)
 	int i;
 
 	for (i = 0; same && i < count; i++)
-		same = ((char*)buf)[i] == c;
+		same = ((char *)buf)[i] == c;
 
 	return same;
 }
@@ -524,19 +525,20 @@ static int max_m5_check_state_data(struct model_state_save *state)
 {
 	bool bad_residual, empty;
 
-	empty = memtst(state, 0xff, sizeof(*state)) == 0;
+	empty = memtst(state, 0xff, sizeof(*state));
 	if (empty)
-		return -EINVAL;
+		return -ENODATA;
 
 	if (state->rcomp0 == 0xFF)
-		return -EINVAL;
+		return -ERANGE;
 
 	bad_residual = state->qresidual00 == 0xffff &&
 		       state->qresidual10 == 0xffff &&
 		       state->qresidual20 == 0xffff &&
 		       state->qresidual30 == 0xffff;
+
 	if (bad_residual)
-		return -ERANGE;
+		return -EINVAL;
 
 	return 0;
 }
@@ -578,7 +580,7 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 	m5_data->mixcap = m5_data->model_save.mixcap;
 	m5_data->halftime = m5_data->model_save.halftime;
 
-	return ret;
+	return 0;
 }
 
 /* save/commit parameters and model state to permanent storage */
@@ -616,14 +618,14 @@ int max_m5_model_check_state(struct max_m5_data *m5_data)
 	bool bad_residual;
 
 	if (fg_param->rcomp0 == 0xFF)
-		return -EINVAL;
+		return -ERANGE;
 
 	bad_residual = fg_param->qresidual00 == 0xffff &&
 		       fg_param->qresidual10 == 0xffff &&
 		       fg_param->qresidual20 == 0xffff &&
 		       fg_param->qresidual30 == 0xffff;
 	if (bad_residual)
-		return -ERANGE;
+		return -EINVAL;
 
 	return 0;
 }
