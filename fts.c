@@ -198,24 +198,39 @@ static ssize_t fwupdate_store(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
 {
-	int ret, mode[2];
+	int ret;
+	/* default(if not specified by user) set force = 0 and keep_cx to 1 */
+	int force = 0;
+	int keep_cx = 1;
 	char path[100 + 1]; /* extra byte to hold '\0'*/
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-	/* default(if not specified by user) set force = 0 and keep_cx to 1 */
-	mode[0] = 0;
-	mode[1] = 1;
-
 	/* reading out firmware upgrade parameters */
-	if (sscanf(buf, "%100s %d %d", path, &mode[0], &mode[1]) >= 1) {
+	if (sscanf(buf, "%100s %d %d", path, &force, &keep_cx) >= 1) {
 		dev_info(dev, "%s: file = %s, force = %d, keep_cx = %d\n", __func__,
-			path, mode[0], mode[1]);
+			path, force, keep_cx);
 		fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, true);
 
 		if (info->sensor_sleep)
 			ret = ERROR_BUS_WR;
-		else
-			ret = flashProcedure(info, path, mode[0], mode[1]);
+		else {
+#ifdef COMPUTE_INIT_METHOD
+			if (keep_cx == 0) {
+				fts_system_reset(info);
+				flushFIFO(info);
+				/* Set MPFlag to MP_FLAG_NEED_FPI since we will overwrite MS CX and
+				 * SS IX by firmware golden value (if exist).
+				 */
+				ret = saveMpFlag(info, MP_FLAG_NEED_FPI);
+				if (ret < OK)
+					dev_err(info->dev,
+						"Error while saving MP FLAG! ERROR %08X\n", ret);
+				else
+					dev_info(info->dev, "MP FLAG saving OK!\n");
+			}
+#endif
+			ret = flashProcedure(info, path, force, keep_cx);
+		}
 
 		info->fwupdate_stat = ret;
 
@@ -4716,8 +4731,8 @@ static int fts_fw_update(struct fts_ts_info *info)
 			info->systemInfo.u8_cxAfeVer)
 #ifdef COMPUTE_INIT_METHOD
 			|| ((info->systemInfo.u8_mpFlag != MP_FLAG_BOOT) &&
-				(info->systemInfo.u8_mpFlag !=
-					MP_FLAG_FACTORY))
+				(info->systemInfo.u8_mpFlag != MP_FLAG_FACTORY) &&
+				(info->systemInfo.u8_mpFlag != MP_FLAG_NEED_FPI))
 #endif
 			) {
 			init_type = SPECIAL_FULL_PANEL_INIT;
