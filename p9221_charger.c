@@ -619,7 +619,7 @@ static void p9221_dcin_pon_work(struct work_struct *work)
 	struct p9221_charger_data *charger = container_of(work,
 		struct p9221_charger_data, dcin_pon_work.work);
 
-	gpio_set_value(charger->pdata->qien_gpio, 0);
+	gpio_set_value_cansleep(charger->pdata->qien_gpio, 0);
 }
 #endif
 
@@ -1081,7 +1081,7 @@ static int p9221_set_property(struct power_supply *psy,
 			 charger->enabled);
 
 		if (charger->pdata->qien_gpio >= 0)
-			gpio_set_value(charger->pdata->qien_gpio,
+			gpio_set_value_cansleep(charger->pdata->qien_gpio,
 				       charger->enabled ? 0 : 1);
 
 		changed = true;
@@ -2284,7 +2284,7 @@ static ssize_t p9221_force_epp(struct device *dev,
 	charger->fake_force_epp = (val != 0);
 
 	if (charger->pdata->slct_gpio >= 0)
-		gpio_set_value(charger->pdata->slct_gpio,
+		gpio_set_value_cansleep(charger->pdata->slct_gpio,
 			       charger->fake_force_epp ? 1 : 0);
 	return count;
 }
@@ -2588,7 +2588,7 @@ static ssize_t ext_ben_store(struct device *dev,
 	if (charger->pdata->ext_ben_gpio < 0)
 		return -ENODEV;
 
-	gpio_set_value(charger->pdata->ext_ben_gpio, buf[0] != '0');
+	gpio_set_value_cansleep(charger->pdata->ext_ben_gpio, buf[0] != '0');
 
 	return count;
 }
@@ -2605,7 +2605,7 @@ static ssize_t rtx_sw_show(struct device *dev,
 	if (charger->pdata->switch_gpio < 0)
 		return -ENODEV;
 
-	value = gpio_get_value(charger->pdata->switch_gpio);
+	value = gpio_get_value_cansleep(charger->pdata->switch_gpio);
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
 }
@@ -2626,7 +2626,7 @@ static ssize_t rtx_sw_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	gpio_set_value(charger->pdata->switch_gpio, buf[0] != '0');
+	gpio_set_value_cansleep(charger->pdata->switch_gpio, buf[0] != '0');
 
 	return count;
 }
@@ -2648,12 +2648,12 @@ static ssize_t p9382_show_rtx_boost(struct device *dev,
 static int p9382_rtx_enable(struct p9221_charger_data *charger, bool enable)
 {
 	if (charger->pdata->ben_gpio >= 0)
-		gpio_set_value(charger->pdata->ben_gpio, enable);
+		gpio_set_value_cansleep(charger->pdata->ben_gpio, enable);
 	if (charger->pdata->switch_gpio >= 0)
-		gpio_set_value(charger->pdata->switch_gpio, enable);
+		gpio_set_value_cansleep(charger->pdata->switch_gpio, enable);
 	/* some systems provide additional boost_gpio for charging level */
 	if (charger->pdata->boost_gpio >= 0)
-		gpio_set_value(charger->pdata->boost_gpio, enable);
+		gpio_set_value_cansleep(charger->pdata->boost_gpio, enable);
 
 	return (charger->pdata->ben_gpio < 0 &&
 		charger->pdata->switch_gpio < 0) ? -ENODEV : 0;
@@ -2672,13 +2672,13 @@ static int p9382_ben_cfg(struct p9221_charger_data *charger, int cfg)
 		if (charger->ben_state == RTX_BEN_ON)
 			p9382_rtx_enable(charger, false);
 		else if (ben_gpio == RTX_BEN_ENABLED)
-			gpio_set_value(ben_gpio, 0);
+			gpio_set_value_cansleep(ben_gpio, 0);
 		charger->ben_state = cfg;
 		break;
 	case RTX_BEN_ENABLED:
 		charger->ben_state = cfg;
 		if (ben_gpio >= 0)
-			gpio_set_value(ben_gpio, 1);
+			gpio_set_value_cansleep(ben_gpio, 1);
 		break;
 	case RTX_BEN_ON:
 		charger->ben_state = cfg;
