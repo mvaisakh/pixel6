@@ -239,6 +239,10 @@ int sec_ts_system_reset(struct sec_ts_data *ts)
 		goto err_system_reset;
 	}
 
+	/* initialize wet status */
+	ts->wet_mode = 0;
+	ts->wet_count = 0;
+
 	return 0;
 
 err_system_reset:
@@ -816,7 +820,7 @@ static int sec_ts_firmware_update(struct sec_ts_data *ts, const u8 *data,
 	}
 
 	input_info(true, &ts->client->dev,
-			"%s: firmware update retry :%d\n", __func__, retry);
+			"%s: firmware update retry: %d\n", __func__, retry);
 
 	fw_hd = (fw_header *)fd;
 	fd += sizeof(fw_header);
