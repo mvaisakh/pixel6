@@ -528,6 +528,11 @@ void edgetpu_mmu_remove_translation(struct edgetpu_dev *etdev,
 		iommu_unmap(domain, iova, size);
 }
 
+/*
+ * This function assumes [@down_addr, @down_addr + size) is mapped to
+ * [phys_addr, phys_addr + size). This is true if @down_addr was mapped by
+ * dma_alloc_* series, and may not be true when mapped by dma_map_sg*.
+ */
 tpu_addr_t edgetpu_mmu_tpu_map(struct edgetpu_dev *etdev, dma_addr_t down_addr,
 			       size_t size, enum dma_data_direction dir,
 			       enum edgetpu_context_id context_id,
@@ -575,6 +580,74 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
 		return;
 	/* Unmap the address from the context-specific domain */
 	iommu_unmap(domain, tpu_addr, size);
+}
+
+tpu_addr_t edgetpu_mmu_tpu_map_sgt(struct edgetpu_dev *etdev,
+				   struct sg_table *sgt,
+				   enum dma_data_direction dir,
+				   enum edgetpu_context_id context_id,
+				   u32 mmu_flags)
+{
+	struct iommu_domain *domain;
+	struct iommu_domain *default_domain =
+		iommu_get_domain_for_dev(etdev->dev);
+	phys_addr_t paddr;
+	dma_addr_t iova, cur_iova;
+	size_t size;
+	int prot = __dma_dir_to_iommu_prot(dir);
+	struct scatterlist *sg;
+	int ret;
+	int i;
+
+	/*
+	 * We cannot map the SG to a single TPU VA if the table contains more
+	 * than one DMA address.
+	 */
+	if (sgt->nents != 1)
+		return 0;
+	iova = sg_dma_address(sgt->sgl);
+	domain = get_domain_by_context_id(etdev, context_id);
+	/*
+	 * Either we don't have per-context domains or this mapping
+	 * belongs to the default context, in which case we don't need
+	 * to do anything.
+	 */
+	if (!domain || domain == default_domain)
+		return iova;
+	cur_iova = iova;
+	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
+		/* ignore sg->offset */
+		paddr =  page_to_phys(sg_page(sg));
+		size = sg->length + sg->offset;
+		ret = iommu_map(domain, cur_iova, paddr, size, prot);
+		if (ret)
+			goto rollback;
+		cur_iova += size;
+	}
+
+	return iova;
+rollback:
+	iommu_unmap(domain, iova, cur_iova - iova);
+	etdev_err(etdev, "TPU map sgt failed: %d", ret);
+	return 0;
+}
+
+void edgetpu_mmu_tpu_unmap_sgt(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
+			       struct sg_table *sgt,
+			       enum edgetpu_context_id context_id)
+{
+	struct iommu_domain *domain;
+	struct iommu_domain *default_domain =
+		iommu_get_domain_for_dev(etdev->dev);
+
+	domain = get_domain_by_context_id(etdev, context_id);
+	if (!domain || domain == default_domain)
+		return;
+	/*
+	 * We have checked sgt->nents == 1 on map, sg_dma_len(sgt->sgl) should
+	 * equal the total size.
+	 */
+	iommu_unmap(domain, tpu_addr, sg_dma_len(sgt->sgl));
 }
 
 void edgetpu_mmu_use_dev_dram(struct edgetpu_dev *etdev, bool use_dev_dram)
