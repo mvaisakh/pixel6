@@ -59,7 +59,7 @@ struct edgetpu_host_map {
 	struct sg_table *sg_tables;
 };
 
-#if !IS_ENABLED(CONFIG_ABROLHOS)
+#ifdef EDGETPU_HAS_MCP
 
 /* parameter to be used in async KCI jobs */
 struct kci_worker_param {
@@ -90,7 +90,7 @@ static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 	return 0;
 }
 
-#endif /* CONFIG_ABROLHOS */
+#endif /* EDGETPU_HAS_MCP */
 
 static int edgetpu_group_kci_open_device(struct edgetpu_device_group *group)
 {
@@ -141,10 +141,10 @@ static void edgetpu_group_kci_close_device(struct edgetpu_device_group *group)
  */
 static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 {
-#if IS_ENABLED(CONFIG_ABROLHOS)
+#ifdef EDGETPU_HAS_MULTI_GROUPS
 	edgetpu_kci_update_usage(group->etdev);
 	return edgetpu_group_kci_close_device(group);
-#else /* !CONFIG_ABROLHOS */
+#else /* !EDGETPU_HAS_MULTI_GROUPS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
 	struct edgetpu_async_ctx *ctx = edgetpu_async_alloc_ctx();
@@ -173,7 +173,7 @@ static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 out_free:
 	edgetpu_async_free_ctx(ctx);
 	kfree(params);
-#endif /* CONFIG_ABROLHOS */
+#endif /* EDGETPU_HAS_MULTI_GROUPS */
 }
 
 /*
@@ -184,9 +184,9 @@ out_free:
 static int
 edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 {
-#if IS_ENABLED(CONFIG_ABROLHOS)
+#ifdef EDGETPU_HAS_MULTI_GROUPS
 	return edgetpu_group_kci_open_device(group);
-#else /* !CONFIG_ABROLHOS */
+#else /* !EDGETPU_HAS_MULTI_GROUPS */
 	struct kci_worker_param *params =
 		kmalloc_array(group->n_clients, sizeof(*params), GFP_KERNEL);
 	struct edgetpu_async_ctx *ctx = edgetpu_async_alloc_ctx();
@@ -255,7 +255,7 @@ out_free:
 	edgetpu_async_free_ctx(ctx);
 	kfree(params);
 	return ret;
-#endif /* CONFIG_ABROLHOS */
+#endif /* EDGETPU_HAS_MULTI_GROUPS */
 }
 
 /*
@@ -1190,7 +1190,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 
 	mutex_lock(&group->lock);
 	context_id = edgetpu_group_context_id_locked(group);
-	if (!edgetpu_group_finalized_and_attached(group)) {
+	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = -EINVAL;
 		goto error_unlock_group;
 	}
@@ -1262,7 +1262,7 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	int ret = 0;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_group_finalized_and_attached(group)) {
+	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = -EINVAL;
 		goto unlock_group;
 	}
@@ -1305,7 +1305,7 @@ int edgetpu_device_group_sync_buffer(struct edgetpu_device_group *group,
 		return -EINVAL;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_group_finalized_and_attached(group)) {
+	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = -EINVAL;
 		goto unlock_group;
 	}
@@ -1476,7 +1476,11 @@ void edgetpu_group_detach_mailbox(struct edgetpu_device_group *group)
 	edgetpu_device_group_put(mailbox->internal.group);
 	edgetpu_mailbox_remove(mgr, mailbox);
 	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
-	group->context_id = EDGETPU_CONTEXT_INVALID;
+	if (group->etdomain->token != EDGETPU_DOMAIN_TOKEN_END)
+		group->context_id =
+			EDGETPU_CONTEXT_DOMAIN_TOKEN | group->etdomain->token;
+	else
+		group->context_id = EDGETPU_CONTEXT_INVALID;
 
 	mutex_unlock(&group->lock);
 }

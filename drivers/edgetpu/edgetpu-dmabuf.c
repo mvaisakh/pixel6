@@ -749,7 +749,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 		goto err_put;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_group_finalized_and_attached(group))
+	if (!edgetpu_device_group_is_finalized(group))
 		goto err_unlock_group;
 
 	dmap = alloc_dmabuf_map(group, flags);
@@ -819,7 +819,7 @@ int edgetpu_unmap_dmabuf(struct edgetpu_device_group *group, u32 die_index,
 
 	mutex_lock(&group->lock);
 	/* the group is disbanded means all the mappings have been released */
-	if (!edgetpu_group_finalized_and_attached(group))
+	if (!edgetpu_device_group_is_finalized(group))
 		goto out_unlock;
 	edgetpu_mapping_lock(mappings);
 	map = edgetpu_mapping_find_locked(mappings, die_index, tpu_addr);
@@ -855,7 +855,7 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 	if (arg->size == 0)
 		return -EINVAL;
 	mutex_lock(&group->lock);
-	if (!edgetpu_group_finalized_and_attached(group))
+	if (!edgetpu_device_group_is_finalized(group))
 		goto err_unlock_group;
 	/* checks not all FDs are ignored */
 	for (i = 0; i < group->n_clients; i++)

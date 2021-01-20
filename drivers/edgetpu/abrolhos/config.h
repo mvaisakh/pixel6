@@ -12,6 +12,8 @@
 
 #define EDGETPU_DEV_MAX		1
 
+#define EDGETPU_HAS_MULTI_GROUPS
+
 /*
  * A remapped data region is available. This will be accessible by the R52
  * regardless of active context and is typically used for logging buffer and

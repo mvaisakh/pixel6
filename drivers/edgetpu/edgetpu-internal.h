@@ -74,6 +74,8 @@ enum edgetpu_context_id {
 	EDGETPU_CONTEXT_KCI = 0,	/* TPU firmware/kernel ID 0 */
 	EDGETPU_CONTEXT_VII_BASE = 1,	/* groups 0-6 IDs 1-7 */
 	/* contexts 8 and above not yet allocated */
+	/* A bit mask to mark the context is an IOMMU domain token */
+	EDGETPU_CONTEXT_DOMAIN_TOKEN = 1 << 30,
 };
 
 typedef u64 tpu_addr_t;

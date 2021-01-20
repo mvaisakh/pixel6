@@ -56,8 +56,7 @@ struct edgetpu_usage_stats {
 	struct mutex usage_stats_lock;
 };
 
-int edgetpu_usage_stats_add(int32_t uid, uint32_t state, uint32_t duration,
-			    struct edgetpu_dev *etdev);
+int edgetpu_usage_add(struct edgetpu_dev *etdev, struct tpu_usage *tpu_usage);
 void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf);
 void edgetpu_usage_stats_init(struct edgetpu_dev *etdev);
 void edgetpu_usage_stats_exit(struct edgetpu_dev *etdev);

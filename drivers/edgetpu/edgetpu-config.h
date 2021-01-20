@@ -14,6 +14,12 @@
 
 #else /* !CONFIG_HERMOSA */
 
+#ifdef CONFIG_JANEIRO
+
+#include "janeiro/config.h"
+
+#else
+
 #ifndef CONFIG_ABROLHOS
 #define CONFIG_ABROLHOS
 #warning "Building default chipset abrolhos"
@@ -21,6 +27,7 @@
 
 #include "abrolhos/config.h"
 
+#endif /* CONFIG_JANEIRO */
 #endif /* CONFIG_HERMOSA */
 
 #define EDGETPU_DEFAULT_FIRMWARE_NAME "google/edgetpu-" DRIVER_NAME ".fw"
