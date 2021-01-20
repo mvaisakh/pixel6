@@ -622,13 +622,20 @@ static void dpp_reg_set_v_coef(u32 id, u32 v_ratio)
 
 static void dpp_reg_set_scale_ratio(u32 id, struct dpp_params_info *p)
 {
-	dpp_write_mask(id, DPP_SCL_MAIN_H_RATIO, DPP_H_RATIO(p->h_ratio),
-			DPP_H_RATIO_MASK);
-	dpp_write_mask(id, DPP_SCL_MAIN_V_RATIO, DPP_V_RATIO(p->v_ratio),
-			DPP_V_RATIO_MASK);
+	u32 prev_h_ratio, prev_v_ratio;
 
-	dpp_reg_set_h_coef(id, p->h_ratio);
-	dpp_reg_set_v_coef(id, p->v_ratio);
+	prev_h_ratio = dpp_read_mask(id, DPP_SCL_MAIN_H_RATIO, DPP_H_RATIO_MASK);
+	prev_v_ratio = dpp_read_mask(id, DPP_SCL_MAIN_V_RATIO, DPP_V_RATIO_MASK);
+
+	if (prev_h_ratio != p->h_ratio) {
+		dpp_write(id, DPP_SCL_MAIN_H_RATIO, DPP_H_RATIO(p->h_ratio));
+		dpp_reg_set_h_coef(id, p->h_ratio);
+	}
+
+	if (prev_v_ratio != p->v_ratio) {
+		dpp_write(id, DPP_SCL_MAIN_V_RATIO, DPP_V_RATIO(p->v_ratio));
+		dpp_reg_set_v_coef(id, p->v_ratio);
+	}
 
 	cal_log_debug(id, "h_ratio : %#x, v_ratio : %#x\n",
 			p->h_ratio, p->v_ratio);
