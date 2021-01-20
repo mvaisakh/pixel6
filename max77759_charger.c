@@ -138,6 +138,9 @@ struct max77759_chgr_data {
 	bool online;
 	bool wden;
 
+	/* debug interface, register to read or write */
+	u32 debug_reg_address;
+
 	/* thermal */
 	struct thermal_zone_device *tz_vdroop[VDROOP_MAX];
 	int vdroop_counter[VDROOP_MAX];
@@ -2211,6 +2214,30 @@ static int input_mask_clear_set(void *d, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(input_mask_clear_fops, NULL, input_mask_clear_set, "%llu\n");
 
+static int max77759_chg_debug_reg_read(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	u8 reg = 0;
+	int ret;
+
+	ret = max77759_reg_read(data->regmap, data->debug_reg_address, &reg);
+	if (ret)
+		return ret;
+
+	*val = reg;
+	return 0;
+}
+
+static int max77759_chg_debug_reg_write(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	u8 reg = (u8) val;
+
+	pr_warn("debug write reg 0x%x, 0x%x", data->debug_reg_address, reg);
+	return max77759_reg_write(data->regmap, data->debug_reg_address, reg);
+}
+DEFINE_SIMPLE_ATTRIBUTE(debug_reg_rw_fops, max77759_chg_debug_reg_read,
+			max77759_chg_debug_reg_write, "%02llx\n");
 
 static int dbg_init_fs(struct max77759_chgr_data *data)
 {
@@ -2250,6 +2277,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	debugfs_create_file("input_mask_clear", 0600, data->de, data,
 			    &input_mask_clear_fops);
 
+	debugfs_create_u32("address", 0600, data->de, &data->debug_reg_address);
+	debugfs_create_file("data", 0600, data->de, data, &debug_reg_rw_fops);
 	return 0;
 }
 
