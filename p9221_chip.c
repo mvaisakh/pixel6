@@ -987,15 +987,16 @@ out:
 }
 
 /* For high power mode */
-static int p9221_prop_mode_enable(struct p9221_charger_data *chgr)
+static int p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	return -ENOTSUPP;
 }
 
-static int p9412_prop_mode_enable(struct p9221_charger_data *chgr)
+/* TODO: bool unless you return an error code */
+static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	int ret, loops;
-	u8 val8, cdmode, req_pwr, pwr_stp, mode_sts, err_sts, prop_cur_pwr;
+	u8 val8, cdmode, pwr_stp, mode_sts, err_sts, prop_cur_pwr;
 
 	ret = chgr->chip_get_sys_mode(chgr, &val8);
 	if (ret) {
@@ -1058,8 +1059,7 @@ static int p9412_prop_mode_enable(struct p9221_charger_data *chgr)
 
 	/* Step 3: requested power(30W) */
 	/* Write requested power(30W) to register 0xC5 (0.5W units)*/
-	req_pwr = 30 * 2;
-	ret = chgr->reg_write_8(chgr, P9412_PROP_REQ_PWR_REG, req_pwr);
+	ret = chgr->reg_write_8(chgr, P9412_PROP_REQ_PWR_REG, req_pwr * 2);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to write pwr req register\n");
@@ -1083,6 +1083,10 @@ err_exit:
 	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_STATUS_REG, &mode_sts);
 	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_ERR_STS_REG, &err_sts);
 	ret |= chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
+
+	/* TODO: report current negotiated power */
+	pr_debug("%s PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,cdmode=%02x,pwr_stp=%02x,prop_cur_pwr=%02x",
+		 __func__, chgr->prop_mode_en, val8, mode_sts, err_sts, cdmode, pwr_stp, prop_cur_pwr);
 
 	if (!ret) {
 		dev_info(&chgr->client->dev,

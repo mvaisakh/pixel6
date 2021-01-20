@@ -408,6 +408,7 @@ struct p9221_charger_platform_data {
 	int                             ext_ben_gpio;
 	int				switch_gpio;
 	int				boost_gpio;
+	int				dc_switch_gpio;
 	int				qi_vbus_en;
 	int				max_vout_mv;
 	u8				fod[P9221R5_NUM_FOD];
@@ -423,6 +424,7 @@ struct p9221_charger_platform_data {
 	u32				alignment_hysteresis;
 	u32				icl_ramp_delay_ms;
 	u16				chip_id;
+	bool				has_wlc_dc;
 
 	u32				alignment_scalar_low_current;
 	u32				alignment_scalar_high_current;
@@ -519,7 +521,6 @@ struct p9221_charger_data {
 	u32 				wlc_dc_voltage_now;
 	u32 				wlc_dc_current_now;
 	bool				wlc_dc_enabled;
-	bool				has_wlc_dc;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -565,7 +566,7 @@ struct p9221_charger_data {
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
 	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
-	int (*chip_prop_mode_en)(struct p9221_charger_data *chgr);
+	int (*chip_prop_mode_en)(struct p9221_charger_data *chgr, int req_pwr);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
