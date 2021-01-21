@@ -2635,7 +2635,7 @@ static ssize_t qi_vbus_en_show(struct device *dev,
 	if (charger->pdata->qi_vbus_en < 0)
 		return -ENODEV;
 
-	value = gpio_get_value(charger->pdata->qi_vbus_en);
+	value = gpio_get_value_cansleep(charger->pdata->qi_vbus_en);
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
 }
@@ -2650,7 +2650,7 @@ static ssize_t qi_vbus_en_store(struct device *dev,
 	if (charger->pdata->qi_vbus_en < 0)
 		return -ENODEV;
 
-	gpio_set_value(charger->pdata->qi_vbus_en, buf[0] != '0');
+	gpio_set_value_cansleep(charger->pdata->qi_vbus_en, buf[0] != '0');
 
 	return count;
 }
@@ -2667,7 +2667,7 @@ static ssize_t ext_ben_show(struct device *dev,
 	if (charger->pdata->ext_ben_gpio < 0)
 		return -ENODEV;
 
-	value = gpio_get_value(charger->pdata->ext_ben_gpio);
+	value = gpio_get_value_cansleep(charger->pdata->ext_ben_gpio);
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", value != 0);
 }
@@ -3738,8 +3738,11 @@ static int p9221_parse_dt(struct device *dev,
 		dev_info(dev, "selecting p9382\n");
 		pdata->chip_id = P9382A_CHIP_ID;
 	} else if (of_device_is_compatible(node, "idt,p9221")) {
-		dev_info(dev, "selecting p9211\n");
+		dev_info(dev, "selecting p9221\n");
 		pdata->chip_id = P9221_CHIP_ID;
+	} else if (of_device_is_compatible(node, "idt,p9222")) {
+		dev_info(dev, "selecting p9222\n");
+		pdata->chip_id = P9222_CHIP_ID;
 	}
 
 	/* Enable */
@@ -4390,6 +4393,7 @@ MODULE_DEVICE_TABLE(i2c, p9221_charger_id_table);
 #ifdef CONFIG_OF
 static struct of_device_id p9221_charger_match_table[] = {
 	{ .compatible = "idt,p9221",},
+	{ .compatible = "idt,p9222",},
 	{ .compatible = "idt,p9382",},
 	{ .compatible = "idt,p9412",},
 	{},
