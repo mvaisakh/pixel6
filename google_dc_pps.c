@@ -42,17 +42,6 @@
 #define PDO_FIXED_FLAGS \
 	(PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP | PDO_FIXED_USB_COMM)
 
-/*
- * There is a similar one in tcpm.c
- * NOTE: we don't really need to replicate the values in tcpm.c in the
- * internal state, we just need to know to set 2 to the TCPM power supply.
- */
-enum tcpm_psy_online_states {
-	TCPM_PSY_OFFLINE = 0,
-	TCPM_PSY_FIXED_ONLINE,
-	TCPM_PSY_PROG_ONLINE,
-};
-
 #define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
 
 void pps_log(struct pd_pps_data *pps, const char *fmt, ...)
@@ -77,13 +66,14 @@ void pps_init_state(struct pd_pps_data *pps_data)
 {
 	/* pps_data->src_caps can be NULL */
 #if 0 //TODO
-	tcpm_put_partner_src_caps(&pps_data->src_caps);
+	if (pps_data->src_caps)
+		tcpm_put_partner_src_caps(&pps_data->src_caps);
 #endif
-	pr_debug("%s: %s src_caps=%d\n", __func__,
+	pr_debug("%s: %s nr_src_caps=%d\n", __func__,
 		 pps_data->pps_psy ? pps_data->pps_psy->desc->name : "<>",
-		 !!pps_data->src_caps);
+		 pps_data->nr_src_cap);
 
-	pps_data->pd_online = TCPM_PSY_OFFLINE;
+	pps_data->pd_online = PPS_PSY_OFFLINE;
 	pps_data->stage = PPS_DISABLED;
 	pps_data->keep_alive_cnt = 0;
 	pps_data->nr_src_cap = 0;
@@ -104,14 +94,23 @@ void pps_init_state(struct pd_pps_data *pps_data)
 static int pps_check_type(struct pd_pps_data *pps_data)
 {
 	struct power_supply *pps_psy = pps_data->pps_psy;
+	const char *name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
 	union power_supply_propval pval;
 	int ret;
 
+	/* TODO: add POWER_SUPPLY_TYPE_PPS_PORT? */
+	pr_debug("%s: name=%s type=%d\n", __func__, name, pps_psy->desc->type);
+	if (pps_psy->desc->type == POWER_SUPPLY_TYPE_WIRELESS_EXT)
+		return true;
+
 	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_USB_TYPE, &pval);
+	pr_debug("%s: name=%s type=%d ret=%d\n", __func__, name, pval.intval, ret);
 	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_PD_PPS)
 		return true;
-	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_TYPE, &pval);
-	if (ret == 0 && pval.intval == POWER_SUPPLY_TYPE_WIRELESS_EXT)
+	/* NOTE: this keep trying with "slow" adapters, need to add timeout */
+	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_PD)
+		return true;
+	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_C)
 		return true;
 
 	return false;
@@ -157,9 +156,6 @@ int chg_update_capability(struct power_supply *tcpm_psy, unsigned int nr_pdo,
 	return ret;
 }
 
-	return ret;
-}
-
 /* false when not present or error (either way don't run) */
 static unsigned int pps_is_avail(struct pd_pps_data *pps,
 				 struct power_supply *tcpm_psy)
@@ -193,9 +189,9 @@ int pps_ping(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 
 	/* NOTE: the adapter should already be in PROG_ONLINE */
 	rc = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
-			   TCPM_PSY_PROG_ONLINE);
+			   PPS_PSY_PROG_ONLINE);
 	if (rc == 0)
-		pps->pd_online = TCPM_PSY_PROG_ONLINE;
+		pps->pd_online = PPS_PSY_PROG_ONLINE;
 	else if (rc != -EAGAIN && rc != -EOPNOTSUPP)
 		pps_log(pps, "failed to ping, ret = %d", rc);
 
@@ -203,6 +199,7 @@ int pps_ping(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 }
 // EXPORT_SYMBOL_GPL(pps_ping);
 
+/* */
 int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
 	struct tcpm_port *port;
@@ -215,7 +212,7 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 		pps->nr_src_cap = tcpm_get_partner_src_caps(port, &pps->src_caps);
 
 	/* check if this is is a pps_data thingie */
-
+	pr_info("%s: nr_src_cap=%d\n", __func__, pps->nr_src_cap);
 
 	return pps->nr_src_cap;
 }
@@ -233,7 +230,7 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 		return false;
 	}
 
-	if (pd_online != TCPM_PSY_PROG_ONLINE)
+	if (pd_online != PPS_PSY_PROG_ONLINE)
 		goto not_supp;
 
 	/* make the transition to active */
@@ -259,7 +256,7 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 			goto not_supp;
 		}
 
-		pps_data->pd_online = TCPM_PSY_PROG_ONLINE;
+		pps_data->pd_online = PPS_PSY_PROG_ONLINE;
 		pps_data->stage = PPS_ACTIVE;
 	}
 
@@ -279,11 +276,11 @@ static int pps_prog_online(struct pd_pps_data *pps,
 	int ret;
 
 	ret = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
-			    TCPM_PSY_PROG_ONLINE);
+			    PPS_PSY_PROG_ONLINE);
 	if (ret == -EOPNOTSUPP) {
 		pps->stage = PPS_NOTSUPP;
 	} else if (ret == 0) {
-		pps->pd_online = TCPM_PSY_PROG_ONLINE;
+		pps->pd_online = PPS_PSY_PROG_ONLINE;
 		pps->stage = PPS_NONE;
 	}
 
@@ -299,9 +296,9 @@ int pps_prog_offline(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 	if (!pps || !tcpm_psy)
 		return -ENODEV;
 
-	/* pd_online = TCPM_PSY_OFFLINE, stage = PPS_NONE; */
+	/* pd_online = PPS_PSY_OFFLINE, stage = PPS_NONE; */
 	ret = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
-			    TCPM_PSY_FIXED_ONLINE);
+			    PPS_PSY_FIXED_ONLINE);
 	if (ret == -EOPNOTSUPP)
 		ret = 0;
 	if (ret == 0)
@@ -313,6 +310,9 @@ int pps_prog_offline(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 
 void pps_adjust_volt(struct pd_pps_data *pps, int mod)
 {
+	if (!pps)
+		return;
+
 	if (mod > 0) {
 		pps->out_uv = (pps->out_uv + mod) < pps->max_uv ?
 			      (pps->out_uv + mod) : pps->max_uv;
@@ -333,13 +333,13 @@ void pps_adjust_volt(struct pd_pps_data *pps, int mod)
  * return negative on errors or no suitable profile
  * return 0 on successful profile switch
  */
-int pps_switch_profile(struct pd_pps_data *pps, struct power_supply *tcpm_psy,
+int chg_switch_profile(struct pd_pps_data *pps, struct power_supply *tcpm_psy,
 		       bool more_pwr)
 {
-	int i, ret = -ENODATA;
-	u32 pdo;
 	u32 max_mv, max_ma, max_mw;
 	u32 current_mw, current_ma;
+	int i, ret = -ENODATA;
+	u32 pdo;
 
 	if (!pps || !tcpm_psy || pps->nr_src_cap < 2)
 		return -EINVAL;
@@ -438,20 +438,9 @@ DEFINE_SIMPLE_ATTRIBUTE(debug_pps_op_ua_fops,
 
 int pps_init_fs(struct pd_pps_data *pps_data, struct dentry *de)
 {
-	struct power_supply *pps_psy = pps_data->pps_psy;
 
-	if (pps_psy) {
-		char name[32];
-
-		scnprintf(name, sizeof(name), "%s_pps", pps_psy->desc->name);
-
-		pps_data->log = logbuffer_register(name);
-		if (IS_ERR(pps_data->log))
-			pps_data->log = NULL;
-	}
-
-	if (!de)
-		return 0;
+	if (!de || !pps_data)
+		return -EINVAL;
 
 	debugfs_create_file("pps_out_uv", 0600, de, pps_data,
 			    &debug_pps_out_uv_fops);
@@ -467,6 +456,9 @@ int pps_register_logbuffer(struct pd_pps_data *pps_data, const char *name)
 {
 	int ret = 0;
 
+	if (!pps_data || !name)
+		return -EINVAL;
+
 	pps_data->log = logbuffer_register(name);
 	if (IS_ERR(pps_data->log)) {
 		ret = PTR_ERR(pps_data->log);
@@ -475,7 +467,6 @@ int pps_register_logbuffer(struct pd_pps_data *pps_data, const char *name)
 
 	return ret;
 }
-// EXPORT_SYMBOL_GPL(pps_init_fs);
 
 /* ------------------------------------------------------------------------ */
 
@@ -585,14 +576,12 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	const char *psy_name;
 	int ret;
 
-	if (!pps_data || !pps_psy)
+	if (!pps_data || !pps_psy || !dev)
 		return -EINVAL;
 
 	ret = pps_init_snk(pps_data, dev->of_node);
 	if (ret < 0)
 		return ret;
-	if (!pps_data->nr_snk_pdo)
-		pr_err("nr_sink_pdo=%d this is a fake one\n", pps_data->nr_snk_pdo);
 
 	psy_name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
 
@@ -640,23 +629,27 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 	int type_ok, pd_online;
 	unsigned int stage;
 
+	if (!pps)
+		return -EINVAL;
+	if (!pps_psy)
+		pps->stage = PPS_NOTSUPP;
 	/* detection is done for this cycle */
 	if (pps->stage == PPS_NOTSUPP)
 		return 0;
 
 	/*
-	 * 2) pps->pd_online == TCPM_PSY_PROG_ONLINE && stage == PPS_NONE
+	 * 2) pps->pd_online == PPS_PSY_PROG_ONLINE && stage == PPS_NONE
 	 *  If the source really support PPS (set in 1): set stage to
 	 *  PPS_AVAILABLE and reschedule after PD_T_PPS_TIMEOUT
 	 */
-	if (pps->stage == PPS_NONE && pps->pd_online == TCPM_PSY_PROG_ONLINE) {
+	if (pps->stage == PPS_NONE && pps->pd_online == PPS_PSY_PROG_ONLINE) {
 		int rc;
 
 		pps->stage = pps_is_avail(pps, pps_psy);
 		if (pps->stage == PPS_AVAILABLE) {
 			rc = pps_ping(pps, pps_psy);
 			if (rc < 0) {
-				pps->pd_online = TCPM_PSY_FIXED_ONLINE;
+				pps->pd_online = PPS_PSY_FIXED_ONLINE;
 				return 0;
 			}
 
@@ -674,7 +667,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 
 	/*
 	 * no need to retry (error) when I cannot read POWER_SUPPLY_PROP_ONLINE.
-	 * The prop is set to TCPM_PSY_PROG_ONLINE (from TCPM_PSY_FIXED_ONLINE)
+	 * The prop is set to PPS_PSY_PROG_ONLINE (from PPS_PSY_FIXED_ONLINE)
 	 * when usbc_type is POWER_SUPPLY_USB_TYPE_PD_PPS.
 	 */
 	pd_online = GPSY_GET_PROP(pps_psy, POWER_SUPPLY_PROP_ONLINE);
@@ -682,12 +675,12 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 		return 0;
 
 	/*
-	 * 3) pd_online == TCPM_PSY_PROG_ONLINE == pps->pd_online
+	 * 3) pd_online == PPS_PSY_PROG_ONLINE == pps->pd_online
 	 * pps is active now, we are done here. pd_online will change to
-	 * if pd_online is !TCPM_PSY_PROG_ONLINE go back to 1) OR exit.
+	 * if pd_online is !PPS_PSY_PROG_ONLINE go back to 1) OR exit.
 	 */
 	stage = (pd_online == pps->pd_online) &&
-		     (pd_online == TCPM_PSY_PROG_ONLINE) &&
+		     (pd_online == PPS_PSY_PROG_ONLINE) &&
 		     (pps->stage == PPS_AVAILABLE || pps->stage == PPS_ACTIVE) ?
 		     PPS_ACTIVE : PPS_NONE;
 	if (stage != pps->stage) {
@@ -701,13 +694,20 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 		return 0;
 
 	/*
-	 * 1) stage == PPS_NONE && pps->pd_online!=TCPM_PSY_PROG_ONLINE
-	 *  If usbc_type is ok and pd_online is TCPM_PSY_FIXED_ONLINE,
-	 *  set POWER_SUPPLY_PROP_ONLINE to TCPM_PSY_PROG_ONLINE (enable PPS)
+	 * 1) stage == PPS_NONE && pps->pd_online!=PPS_PSY_PROG_ONLINE
+	 *  If usbc_type is ok and pd_online is PPS_PSY_FIXED_ONLINE,
+	 *  set POWER_SUPPLY_PROP_ONLINE to PPS_PSY_PROG_ONLINE (enable PPS)
 	 *  and reschedule in PD_T_PPS_TIMEOUT.
 	 */
 	type_ok = pps_check_type(pps);
-	if (type_ok && pd_online == TCPM_PSY_FIXED_ONLINE) {
+	if (!type_ok) {
+		const char *name = pps_psy->desc->name ? pps_psy->desc->name
+				   : "<>";
+		/* TODO: implement a timout (in the caller?) */
+		pr_debug("%s: %s type not ok\n", __func__, name);
+	}
+
+	if (type_ok && pd_online == PPS_PSY_FIXED_ONLINE) {
 		int rc;
 
 		rc = pps_prog_online(pps, pps_psy);
@@ -724,7 +724,6 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 			pps_log(pps, "work: PROP_ONLINE (%d)", rc);
 			break;
 		}
-
 	}
 
 	/* reset PPS_NOTSUPP with pps_init_state() */
@@ -744,12 +743,12 @@ int pps_keep_alive(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
 	int ret;
 
-	if (!tcpm_psy)
-		return -ENODEV;
+	if (!pps || !tcpm_psy)
+		return -EINVAL;
 
 	ret = pps_ping(pps, tcpm_psy);
 	if (ret < 0) {
-		pps->pd_online = TCPM_PSY_FIXED_ONLINE;
+		pps->pd_online = PPS_PSY_FIXED_ONLINE;
 		pps->keep_alive_cnt = 0;
 		return ret;
 	}
@@ -766,6 +765,9 @@ int pps_check_adapter(struct pd_pps_data *pps,
 {
 	const int scale = 50000; /* HACK */
 	int out_uv, op_ua;
+
+	if (!pps || !tcpm_psy)
+		return -EINVAL;
 
 	out_uv = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
 	op_ua = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_CURRENT_NOW);
@@ -790,7 +792,7 @@ static int pps_set_prop(struct pd_pps_data *pps,
 	if (ret == 0) {
 		pps->keep_alive_cnt = 0;
 	} else if (ret == -EOPNOTSUPP) {
-		pps->pd_online = TCPM_PSY_FIXED_ONLINE;
+		pps->pd_online = PPS_PSY_FIXED_ONLINE;
 		pps->keep_alive_cnt = 0;
 		if (pps->stay_awake)
 			__pm_relax(pps->pps_ws);
@@ -812,6 +814,9 @@ int pps_update_adapter(struct pd_pps_data *pps,
 {
 	int interval = get_boot_sec() - pps->last_update;
 	int ret;
+
+	if (!tcpm_psy)
+		return -EINVAL;
 
 	pps->out_uv = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
 	pps->op_ua = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_CURRENT_NOW);
@@ -896,12 +901,16 @@ int pps_update_adapter(struct pd_pps_data *pps,
 }
 // EXPORT_SYMBOL_GPL(pps_update_adapter);
 
+/* just a wrapper for power_supply_get_by_phandle_array() */
 struct power_supply *pps_get_tcpm_psy(struct device_node *node, size_t size)
 {
 	const char *propname = "google,tcpm-power-supply";
 	struct power_supply *tcpm_psy = NULL;
 	struct power_supply *psy[2];
 	int i, ret;
+
+	if (!node)
+		return ERR_PTR(-EINVAL);
 
 	ret = power_supply_get_by_phandle_array(node, propname, psy,
 						ARRAY_SIZE(psy));
@@ -923,21 +932,23 @@ struct power_supply *pps_get_tcpm_psy(struct device_node *node, size_t size)
 
 /* TODO:  */
 int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
-		    unsigned int ta_max_vol, unsigned int ta_max_cur,
-		    struct power_supply *tcpm_psy)
+		    unsigned int ta_max_vol, unsigned int ta_max_cur)
 {
-	struct tcpm_port *port;
 	const unsigned int max_mw = ta_max_vol * ta_max_cur;
+	struct tcpm_port *port;
+	int ret = -ENODEV;
 
-	port = chg_get_tcpm_port(tcpm_psy);
-	if (!port)
-		return -ENODEV;
-	if (ta_idx > PDO_MAX_OBJECTS)
+	if (!pps_data || !pps_data->pps_psy || ta_idx > PDO_MAX_OBJECTS)
 		return -EINVAL;
 
-	/* max_mw was, now using the max OP_SNK_MW */
-	return tcpm_update_sink_capabilities(port, pps_data->snk_pdo,
-					     ta_idx, max_mw);
+	/* tcpm pport */
+	port = chg_get_tcpm_port(pps_data->pps_psy);
+	if (port)
+		ret = tcpm_update_sink_capabilities(port, pps_data->snk_pdo,
+						    ta_idx, max_mw);
+
+
+	return ret;
 }
 // EXPORT_SYMBOL_GPL(pps_request_pdo);
 
@@ -952,6 +963,9 @@ int pps_get_apdo_max_power(struct pd_pps_data *pps_data, unsigned int *ta_idx,
 	int max_current, max_voltage, max_power;
 	const int ta_max_vol_mv = *ta_max_vol / 1000;
 	int i;
+
+	if (!pps_data)
+		return -EINVAL;
 
 	if (pps_data->nr_src_cap <= 0)
 		return -ENOENT;

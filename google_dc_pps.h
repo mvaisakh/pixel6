@@ -27,6 +27,18 @@
 #define PPS_ERROR_RETRY_MS 	1000
 #define CHG_PPS_VOTER		"pps_chg"
 
+/*
+ * There is a similar one in tcpm.c
+ * NOTE: we don't really need to replicate the values in tcpm.c in the
+ * internal state, we just need to know to set 2 to the TCPM power supply
+ * to enable PPS.
+ */
+enum pps_psy_online_states {
+	PPS_PSY_OFFLINE = 0,
+	PPS_PSY_FIXED_ONLINE,
+	PPS_PSY_PROG_ONLINE,
+};
+
 enum pd_pps_stage {
 	PPS_NOTSUPP = -1,	/* tried and failed or disconnected */
 	PPS_DISABLED = 0,	/* default state, never tried */
@@ -105,7 +117,7 @@ int pps_prog_offline(struct pd_pps_data *pps, struct power_supply *tcpm_psy);
 
 void pps_adjust_volt(struct pd_pps_data *pps, int mod);
 
-int pps_switch_profile(struct pd_pps_data *pps, struct power_supply *tcpm_psy,
+int chg_switch_profile(struct pd_pps_data *pps, struct power_supply *tcpm_psy,
 		       bool more_pwr);
 
 int pps_get_apdo_max_power(struct pd_pps_data *pps, unsigned int *ta_idx,
@@ -124,11 +136,10 @@ void pps_log(struct pd_pps_data *pps, const char *fmt, ...);
 /* probe */
 struct power_supply *pps_get_tcpm_psy(struct device_node *node, size_t size);
 
+
+
 int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
-		    unsigned int ta_max_vol, unsigned int ta_max_cur,
-		    struct power_supply *tcpm_psy);
-
-
+		    unsigned int ta_max_vol, unsigned int ta_max_cur);
 
 /* might just need to be in google_charger */
 int chg_update_capability(struct power_supply *tcpm_psy, unsigned int nr_pdo,

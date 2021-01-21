@@ -1664,7 +1664,7 @@ static int pps_policy(struct chg_drv *chg_drv, int fv_uv, int cc_max,
 	if ((ibatt < (cc_max * ratio) / 100) || flags & GBMS_CS_FLAG_ILIM) {
 
 		if (pps_data->out_uv == pps_data->max_uv) {
-			ret = pps_switch_profile(pps_data, tcpm_psy, true);
+			ret = chg_switch_profile(pps_data, tcpm_psy, true);
 			return (ret == 0) ? -ECANCELED : 0;
 		}
 
@@ -1679,7 +1679,7 @@ static int pps_policy(struct chg_drv *chg_drv, int fv_uv, int cc_max,
 		if (pps_data->keep_alive_cnt < PPS_KEEP_ALIVE_MAX)
 			return 0;
 
-		ret = pps_switch_profile(pps_data, tcpm_psy, false);
+		ret = chg_switch_profile(pps_data, tcpm_psy, false);
 		if (ret == 0)
 			return -ECANCELED;
 
