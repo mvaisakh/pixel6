@@ -514,9 +514,9 @@ typedef enum {
 
 #define MP_FLAG_FACTORY		0xA5	/* /< Full Panel Init done in factory */
 #define MP_FLAG_BOOT		0x5A	/* /< Full Panel Init done at boot */
-#define MP_FLAG_OTHERS		0xFF   /* /< Full Panel Init done somewhere
-					* else
-					*/
+#define MP_FLAG_OTHERS		0xFF	/* /< Full Panel Init done somewhere else */
+#define MP_FLAG_NEED_FPI	0xDF	/* /< Manual firmware update with keep_cx=0
+					 * and Full Panel Init is not executed yet */
 
 /** @}*/
 
