@@ -514,7 +514,7 @@ static inline int reg_to_capacity_uah(u16 val, struct max1720x_chip *chip)
 {
 	const int lsb = max_m5_cap_lsb(chip->model_data);
 
-	return reg_to_micro_amp_h(val, chip->RSense) * lsb;
+	return reg_to_micro_amp_h(val, chip->RSense, lsb);
 }
 
 #if 0
@@ -1448,6 +1448,7 @@ static void batt_ce_capacityfiltered_work(struct work_struct *work)
 	struct max1720x_chip *chip = container_of(work, struct max1720x_chip,
 					    cap_estimate.settle_timer.work);
 	struct gbatt_capacity_estimation *cap_esti = &chip->cap_estimate;
+	const int lsb = max_m5_cap_lsb(chip->model_data);
 	int settle_cc = 0, settle_vfsoc = 0;
 	int delta_cc = 0, delta_vfsoc = 0;
 	int cc_sum = 0, vfsoc_sum = 0;
@@ -1467,7 +1468,7 @@ static void batt_ce_capacityfiltered_work(struct work_struct *work)
 	if (rc < 0)
 		goto ioerr;
 
-	settle_cc = reg_to_micro_amp_h(chip->current_capacity, chip->RSense);
+	settle_cc = reg_to_micro_amp_h(chip->current_capacity, chip->RSense, lsb);
 
 	data = max1720x_get_battery_vfsoc(chip);
 	if (data < 0)
@@ -1545,6 +1546,7 @@ static int batt_ce_init(struct gbatt_capacity_estimation *cap_esti,
 {
 	int rc;
 	u16 vfsoc = 0;
+	const int lsb = max_m5_cap_lsb(chip->model_data);
 
 	rc = max1720x_update_battery_qh_based_capacity(chip);
 	if (rc < 0)
@@ -1556,7 +1558,7 @@ static int batt_ce_init(struct gbatt_capacity_estimation *cap_esti,
 
 	cap_esti->start_vfsoc = vfsoc;
 	cap_esti->start_cc = reg_to_micro_amp_h(chip->current_capacity,
-						chip->RSense) / 1000;
+						chip->RSense, lsb) / 1000;
 	/* Capacity Estimation starts only when the state is NONE */
 	cap_esti->estimate_state = ESTIMATE_NONE;
 	return 0;
@@ -1796,7 +1798,7 @@ static int max1720x_get_property(struct power_supply *psy,
 static void max1720x_fixup_capacity(struct max1720x_chip *chip, int plugged)
 {
 	struct max1720x_drift_data *ddata = &chip->drift_data;
-	int ret, cycle_count;
+	int ret, cycle_count, cap_lsb;
 	u16 data16;
 
 	/* do not execute when POR is set */
@@ -1823,7 +1825,8 @@ static void max1720x_fixup_capacity(struct max1720x_chip *chip, int plugged)
 	}
 
 	/* capacity outliers: fix capacity */
-	ret = max1720x_fixup_dxacc(ddata, &chip->regmap, cycle_count, plugged);
+	cap_lsb = max_m5_cap_lsb(chip->model_data);
+	ret = max1720x_fixup_dxacc(ddata, &chip->regmap, cycle_count, plugged, cap_lsb);
 	if (ret > 0) {
 		chip->dxacc_update_count += 1;
 

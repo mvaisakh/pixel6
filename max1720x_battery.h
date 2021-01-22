@@ -27,17 +27,17 @@
 #define MAX_M5_GAUGE_TYPE	2
 
 /* multiply by 2 when task period = 351 ms */
-static inline int reg_to_micro_amp_h(s16 val, u16 rsense)
+static inline int reg_to_micro_amp_h(s16 val, u16 rsense, int lsb)
 {
 	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */
-	return div_s64((s64) val * 500000, rsense);
+	return div_s64((s64) val * 500000, rsense) * lsb;
 }
 
 /* divide by 2 when task period = 351 ms */
-static inline s16 micro_amp_h_to_reg(int val, u16 rsense)
+static inline s16 micro_amp_h_to_reg(int val, u16 rsense, int lsb)
 {
 	/* LSB: 5.0μVh/RSENSE ; Rsense LSB is 10μΩ */
-	return div_s64((s64)val * rsense, 500000);
+	return div_s64((s64)(val / lsb) * rsense, 500000);
 }
 
 static inline int reg_to_micro_volt(u16 val)
@@ -45,7 +45,6 @@ static inline int reg_to_micro_volt(u16 val)
 	/* LSB: 0.078125mV */
 	return div_u64((u64) val * 78125, 1000);
 }
-
 
 enum max17x0x_reg_tags {
 	MAX17X0X_TAG_avgc,
@@ -276,6 +275,7 @@ extern int max1720x_fixup_comp(struct max1720x_drift_data *ddata,
 extern int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 				struct max17x0x_regmap *map,
 				int cycle_count,
-				int plugged);
+				int plugged,
+				int lsb);
 
 #endif
