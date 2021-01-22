@@ -83,12 +83,13 @@ static void subscribe_work_func(struct work_struct *work)
 	struct lwis_event_subscribe_info *p;
 	unsigned long flags;
 
+	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
 	if (list_empty(&lwis_top_dev->emitted_event_list)) {
 		dev_err(lwis_top_dev->base_dev.dev, "Event list is empty\n");
+		spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 		return;
 	}
 
-	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
 	trigger_event = list_first_entry(&lwis_top_dev->emitted_event_list,
 					 struct lwis_trigger_event_info, node);
 	list_del(&trigger_event->node);
@@ -113,9 +114,13 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_
 				  bool in_irq)
 {
 	struct lwis_top_device *lwis_top_dev = (struct lwis_top_device *)lwis_dev;
+	unsigned long flags;
 	struct lwis_trigger_event_info *trigger_event =
 		kzalloc(sizeof(struct lwis_trigger_event_info), GFP_ATOMIC);
-	unsigned long flags;
+	if (trigger_event == NULL) {
+		dev_err(lwis_top_dev->base_dev.dev, "Allocate trigger_event_info failed");
+		return;
+	}
 
 	trigger_event->trigger_event_id = trigger_event_id;
 	trigger_event->trigger_event_count = trigger_event_count;
