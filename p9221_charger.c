@@ -3928,7 +3928,7 @@ static int p9221_parse_dt(struct device *dev,
 
 	/* Optional VOUT max */
 	pdata->max_vout_mv = P9221_MAX_VOUT_SET_MV_DEFAULT;
-	ret = of_property_read_u32(node, "max_vout_mv", &data);
+	ret = of_property_read_u32(node, "idt,max_vout_mv", &data);
 	if (ret == 0) {
 		if (data < vout_set_min_mv || data > vout_set_max_mv)
 			dev_err(dev, "max_vout_mv out of range %d\n", data);
