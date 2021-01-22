@@ -146,16 +146,19 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 static void s6e3hc3_set_nolp_mode(struct exynos_panel *ctx,
 				  const struct exynos_panel_mode *pmode)
 {
+	unsigned int vrefresh = drm_mode_vrefresh(&pmode->mode);
+	u32 delay_us = mult_frac(1000, 1020, vrefresh);
+
 	if (!ctx->enabled)
 		return;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_off);
-	usleep_range(17000, 17010);
+	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
 	s6e3hc3_write_display_mode(ctx, &pmode->mode);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x02);
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
-	usleep_range(17000, 17010);
+	s6e3hc3_change_frequency(ctx, vrefresh);
+	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
 
 	dev_info(ctx->dev, "exit LP mode\n");

@@ -9,7 +9,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/debugfs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -451,6 +450,7 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 {
 	int i;
 	const struct exynos_binned_lp *binned_lp;
+	struct backlight_device *bl = ctx->bl;
 
 	for (i = 0; i < ctx->desc->num_binned_lp; i++) {
 		binned_lp = &ctx->desc->binned_lp[i];
@@ -462,8 +462,16 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 
 	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
 
+	mutex_lock(&ctx->lp_state_lock);
+	ctx->current_binned_lp = binned_lp;
+	dev_dbg(ctx->dev, "enter lp_%s\n", ctx->current_binned_lp->name);
+	mutex_unlock(&ctx->lp_state_lock);
+
 	exynos_panel_set_backlight_state(ctx,
 		!binned_lp->bl_threshold ? PANEL_STATE_OFF : PANEL_STATE_LP);
+
+	if (bl)
+		sysfs_notify(&bl->dev.kobj, NULL, "lp_state");
 }
 EXPORT_SYMBOL(exynos_panel_set_binned_lp);
 
@@ -839,71 +847,6 @@ static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 };
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t hbm_mode_write(struct file *file, const char *user_buf,
-			      size_t count, loff_t *f_pos)
-{
-	struct seq_file *m = file->private_data;
-	struct exynos_panel *ctx = m->private;
-	const struct exynos_panel_funcs *exynos_panel_func;
-	int ret;
-	bool hbm_en;
-
-	if (!ctx->enabled || !ctx->initialized) {
-		dev_err(ctx->dev, "panel is not enabled\n");
-		return -EPERM;
-	}
-
-	exynos_panel_func = ctx->desc->exynos_panel_func;
-	if (!exynos_panel_func || !exynos_panel_func->set_hbm_mode) {
-		dev_err(ctx->dev, "hbm is not support\n");
-		return -EPERM;
-	}
-
-	ret = kstrtobool_from_user(user_buf, count, &hbm_en);
-	if (ret) {
-		dev_err(ctx->dev, "invalid hbm_mode value\n");
-		return ret;
-	}
-
-	exynos_panel_func->set_hbm_mode(ctx, hbm_en);
-
-	if (ctx->bl)
-		backlight_state_changed(ctx->bl);
-
-	return count;
-}
-
-static int hbm_mode_show(struct seq_file *m, void *data)
-{
-	struct exynos_panel *ctx = m->private;
-
-	seq_printf(m, "%d\n", ctx->hbm_mode);
-
-	return 0;
-}
-
-static int hbm_mode_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, hbm_mode_show, inode->i_private);
-}
-
-static const struct file_operations hbm_mode_fops = {
-	.owner          = THIS_MODULE,
-	.open           = hbm_mode_open,
-	.write          = hbm_mode_write,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
-	.release        = single_release,
-};
-
-static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
-{
-	if (!debugfs_create_file("hbm_mode", 0600, parent, ctx, &hbm_mode_fops))
-		return -ENOMEM;
-
-	return 0;
-}
-
 static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
 				     const void *data, size_t len)
 {
@@ -1120,11 +1063,6 @@ static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
 	ctx->debugfs_entry = NULL;
 }
 #else
-static int hbm_mode_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
-{
-	return 0;
-}
-
 static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 			 struct dentry *parent)
 {
@@ -1162,6 +1100,48 @@ static int exynos_panel_attach_lp_mode(struct exynos_drm_connector *exynos_conn,
 
 	return 0;
 }
+
+static ssize_t hbm_mode_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	bool hbm_en;
+	int ret;
+
+	if (!funcs || !funcs->set_hbm_mode) {
+		dev_err(ctx->dev, "HBM is not supported\n");
+		return -ENOTSUPP;
+	}
+
+	if (!ctx->enabled || !ctx->initialized) {
+		dev_err(ctx->dev, "panel is not enabled\n");
+		return -EPERM;
+	}
+
+	ret = kstrtobool(buf, &hbm_en);
+	if (ret) {
+		dev_err(ctx->dev, "invalid hbm_mode value\n");
+		return ret;
+	}
+
+	funcs->set_hbm_mode(ctx, hbm_en);
+
+	return count;
+}
+
+static ssize_t hbm_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->hbm_mode);
+}
+
+static DEVICE_ATTR_RW(hbm_mode);
 
 static ssize_t local_hbm_mode_store(struct device *dev,
 			       struct device_attribute *attr,
@@ -1270,6 +1250,38 @@ static ssize_t state_show(struct device *dev,
 
 static DEVICE_ATTR_RO(state);
 
+static ssize_t lp_state_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bl);
+	int rc;
+
+	mutex_lock(&ctx->bl_state_lock);
+
+	if (!is_backlight_lp_state(bl)) {
+		dev_warn(ctx->dev, "panel is not in LP mode\n");
+		mutex_unlock(&ctx->bl_state_lock);
+		return -EPERM;
+	}
+
+	if (!ctx->current_binned_lp) {
+		dev_warn(ctx->dev, "LP state is null\n");
+		mutex_unlock(&ctx->bl_state_lock);
+		return -EINVAL;
+	}
+
+	mutex_lock(&ctx->lp_state_lock);
+	rc = scnprintf(buf, PAGE_SIZE, "%s\n", ctx->current_binned_lp->name);
+	mutex_unlock(&ctx->lp_state_lock);
+
+	mutex_unlock(&ctx->bl_state_lock);
+
+	return rc;
+}
+
+static DEVICE_ATTR_RO(lp_state);
+
 static int parse_u32_buf(char *src, size_t src_len, u32 *out, size_t out_len)
 {
 	int rc = 0, cnt = 0;
@@ -1373,9 +1385,11 @@ static ssize_t als_table_show(struct device *dev,
 static DEVICE_ATTR_RW(als_table);
 
 static struct attribute *bl_device_attrs[] = {
+	&dev_attr_hbm_mode.attr,
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
 	&dev_attr_state.attr,
+	&dev_attr_lp_state.attr,
 	&dev_attr_als_table.attr,
 	NULL,
 };
@@ -1408,6 +1422,7 @@ static unsigned long get_backlight_state_from_panel(struct backlight_device *bl,
 		state &= ~(BL_STATE_STANDBY | BL_STATE_LP);
 		break;
 	case PANEL_STATE_LP:
+		state &= ~(BL_STATE_STANDBY);
 		state |= BL_STATE_LP;
 		break;
 	case PANEL_STATE_OFF:
@@ -1511,7 +1526,6 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
 	exynos_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->debugfs_entry);
-	hbm_mode_debugfs_add(ctx, ctx->debugfs_entry);
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
@@ -1744,6 +1758,7 @@ int exynos_panel_probe(struct mipi_dsi_device *dsi)
 	}
 
 	mutex_init(&ctx->bl_state_lock);
+	mutex_init(&ctx->lp_state_lock);
 
 	drm_panel_init(&ctx->panel, dev, ctx->desc->panel_func, DRM_MODE_CONNECTOR_DSI);
 

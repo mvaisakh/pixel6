@@ -223,6 +223,9 @@ struct exynos_panel {
 	struct mutex bl_state_lock;
 	struct exynos_bl_notifier bl_notifier;
 
+	struct mutex lp_state_lock;
+	const struct exynos_binned_lp *current_binned_lp;
+
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];
 	bool is_secondary;
