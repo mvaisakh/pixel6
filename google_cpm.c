@@ -38,8 +38,9 @@
 
 #include <linux/debugfs.h>
 
-#define GCPM_MAX_CHARGERS 4
-#define GCPM_DEFAULT_TA_DC_LIMIT 0
+#define GCPM_MAX_CHARGERS	4
+#define GCPM_DEFAULT_DC_LIMIT_DEMAND	0
+#define GCPM_DEFAULT_DC_LIMIT_VBATT	4350000
 
 /* TODO: move to configuration */
 #define DC_TA_VMAX_MV		9800000
@@ -92,18 +93,23 @@ struct gcpm_drv  {
 	int dc_index;
 	/* dc_charging state */
 	int dc_state;
+
+	/* force check of the DC limit again */
+	bool new_dc_limit;
 	/* force disable */
 	bool taper_control;
+
 	/* policy: power demand limit for DC charging */
-	u32 ta_dc_limit;
+	u32 dc_limit_vbatt;
+	u32 dc_limit_demand;
 
 	/* cc_max and fv_uv are demand from google_charger */
 	int cc_max;
 	int fv_uv;
 
-	struct notifier_block chg_nb;
 	bool init_complete;
 	bool resume_complete;
+	struct notifier_block chg_nb;
 
 	/* tie up to charger mode */
 	struct gvotable_election *gbms_mode;
@@ -113,7 +119,7 @@ struct gcpm_drv  {
 };
 
 /* TODO: place a lock around the operation? */
-static struct power_supply *gcpm_chg_get_active(struct gcpm_drv *gcpm)
+static struct power_supply *gcpm_chg_get_active(const struct gcpm_drv *gcpm)
 {
 	if (gcpm->chg_psy_active == -1)
 		return NULL;
@@ -213,15 +219,37 @@ static uint64_t gcpm_get_charger_state(const struct gcpm_drv *gcpm,
  * Select the DC charger using the thermal policy.
  * NOTE: program target before enabling chaging.
  */
-static int gcpm_chg_dc_select(const struct gcpm_drv *gcpm, int ta_demand)
+static int gcpm_chg_dc_select(const struct gcpm_drv *gcpm)
 {
-	bool dc_req = !gcpm->taper_control && gcpm->ta_dc_limit &&
-		      ta_demand > gcpm->ta_dc_limit;
-	int index = 0; /* 0 is the default */
+	struct power_supply *chg_psy = gcpm_chg_get_active(gcpm);
+	int batt_demand, index = 0; /* 0 is the default */
+
+	/* keep on default */
+	if (gcpm->taper_control || !chg_psy)
+		return 0;
+	if (gcpm->cc_max <= 0 || gcpm->fv_uv <= 0)
+		return 0;
+
+	/* */
+	batt_demand = (gcpm->cc_max / 1000) * (gcpm->fv_uv / 1000);
+	if (batt_demand > gcpm->dc_limit_demand)
+		index = 1;
+	if (index == 0) {
+		int vbatt;
+
+		vbatt = GPSY_GET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
+		if (vbatt > 0 && gcpm->dc_limit_vbatt)
+			index = 1;
+	}
+
+	pr_info("%s: index=%d count=%d demand=%d dc_limit_demand=%d\n",
+		__func__, index, gcpm->chg_psy_count,
+		batt_demand, gcpm->dc_limit_demand);
+
+	if (index >= gcpm->chg_psy_count)
+		index = 0;
 
 	/* could select different modes here depending on capabilities */
-	if (dc_req && gcpm->chg_psy_count > 1)
-		index = 1;
 
 	/* add margin .... debounce etc... */
 
@@ -397,10 +425,9 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 	int ret = 0, index;
 
 	/* might have more than one policy */
+	index = gcpm_chg_dc_select(gcpm);
 	if (gcpm->force_active >= 0)
 		index = gcpm->force_active;
-	else
-		index = gcpm_chg_dc_select(gcpm, gcpm->cc_max * gcpm->fv_uv);
 
 	pr_debug("CHG_CHK: index:%d->%d\n", gcpm->chg_psy_active, index);
 
@@ -798,6 +825,12 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 			break;
 	}
 
+	/* used only for debug */
+	if (gcpm->new_dc_limit) {
+		gcpm->new_dc_limit = false;
+		ta_check = true;
+	}
+
 	/* logic that select the active charging */
 	if (ta_check)
 		gcpm_chg_check(gcpm);
@@ -1056,6 +1089,36 @@ static int gcpm_debug_set_active(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_active_fops, gcpm_debug_get_active,
 			gcpm_debug_set_active, "%llu\n");
 
+
+static int gcpm_debug_dc_limit_demand_show(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	*val = gcpm->dc_limit_demand;
+	return 0;
+}
+
+static int gcpm_debug_dc_limit_demand_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	if (gcpm->dc_limit_demand != intval) {
+		gcpm->dc_limit_demand = intval;
+		gcpm->new_dc_limit = true;
+	}
+
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_dc_limit_demand_fops,
+			gcpm_debug_dc_limit_demand_show,
+                        gcpm_debug_dc_limit_demand_set,
+			"%llu\n");
+
+
 static int gcpm_debug_pps_stage_get(void *data, u64 *val)
 {
 	struct gcpm_drv *gcpm = data;
@@ -1095,7 +1158,8 @@ static struct dentry *gcpm_init_fs(struct gcpm_drv *gcpm)
 		return NULL;
 
 	debugfs_create_file("active", 0644, de, gcpm, &gcpm_debug_active_fops);
-	debugfs_create_u32("dc_ta_limit", 0644, de, &gcpm->ta_dc_limit);
+	debugfs_create_file("dc_limit_demand", 0644, de, gcpm,
+			    &gcpm_debug_dc_limit_demand_fops);
 	debugfs_create_file("pps_stage", 0644, de, gcpm,
 			    &gcpm_debug_pps_stage_fops);
 
@@ -1187,10 +1251,14 @@ static int google_cpm_probe(struct platform_device *pdev)
 			gcpm->dcen_gpio_default, ret);
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node, "google,dc-limit",
-				   &gcpm->ta_dc_limit);
-	if (ret == 0)
-		gcpm->ta_dc_limit = GCPM_DEFAULT_TA_DC_LIMIT;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,dc_limit-demand",
+				   &gcpm->dc_limit_demand);
+	if (ret < 0)
+		gcpm->dc_limit_demand = GCPM_DEFAULT_DC_LIMIT_DEMAND;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,dc_limit-vbatt",
+				   &gcpm->dc_limit_vbatt);
+	if (ret < 0)
+		gcpm->dc_limit_vbatt = GCPM_DEFAULT_DC_LIMIT_VBATT;
 
 	/* sysfs & debug */
 	gcpm->debug_entry = gcpm_init_fs(gcpm);

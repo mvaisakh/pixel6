@@ -29,7 +29,6 @@ struct pca9468_platform_data {
 	unsigned int	chg_mode;
 
 #ifdef CONFIG_THERMAL
-	struct thermal_zone_device *usb_tzd;
 	const char *usb_tz_name;
 #endif
 };

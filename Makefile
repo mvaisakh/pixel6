@@ -7,6 +7,7 @@ GBMS_MODULES =	GOOGLE_BMS \
 		GOOGLE_CHARGER \
 		GOOGLE_CPM \
 		GOOGLE_BEE \
+		GOOGLE_DUAL_BATT_GAUGE \
 		USB_OVERHEAT_MITIGATION \
 		PMIC_MAX77729 \
 		UIC_MAX77729 \
@@ -41,6 +42,9 @@ google-battery-objs += google_ttf.o
 obj-$(CONFIG_GOOGLE_CHARGER) += google-charger.o
 google-charger-objs += google_charger.o
 google-charger-objs += google_dc_pps.o
+
+# google_dual_batt_gauge
+obj-$(CONFIG_GOOGLE_DUAL_BATT_GAUGE)	+= google_dual_batt_gauge.o
 
 # charging policy manager, for devices that have more HW chargers
 # requires google_dc_pps
@@ -107,6 +111,7 @@ CFLAGS_google_ttf.o += -Wno-format
 CFLAGS_google_charger.o += -Wno-enum-conversion
 CFLAGS_google_bms.o += -Wno-enum-conversion
 CFLAGS_google_cpm.o += $(WENUMS)
+CFLAGS_google_dual_batt_gauge.o += $(WENUMS)
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
@@ -116,7 +121,7 @@ KBUILD_OPTIONS += $(foreach m,$(GBMS_MODULES),CONFIG_$(m)=m )
 
 modules:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) W=1 $(KBUILD_OPTIONS) \
-		EXTRA_CFLAGS="$(foreach m,$(GBMS_MODULES),-DCONFIG_$(m)_MODULE)" \
+		EXTRA_CFLAGS="-DDYNAMIC_DEBUG_MODULE $(foreach m,$(GBMS_MODULES),-DCONFIG_$(m)_MODULE)" \
 		$(@)
 
 modules_install clean:

@@ -22,6 +22,7 @@
 #define DCIN_AICL_VOTER                         "DCIN_AICL_VOTER"
 #define P9382A_RTX_VOTER			"RTX_VOTER"
 #define THERMAL_DAEMON_VOTER			"THERMAL_DAEMON_VOTER"
+#define WLC_MFG_GOOGLE				0x72
 #define P9221_DC_ICL_BPP_UA			700000
 #define P9221_DC_ICL_BPP_RAMP_DEFAULT_UA	900000
 #define P9221_DC_ICL_BPP_RAMP_DELAY_DEFAULT_MS	(7 * 60 * 1000)  /* 7 mins */
@@ -327,9 +328,17 @@
 #define P9412_TX_I_API_LIM_REG			0x56
 #define P9412_ALIGN_X_REG			0xB0 /* 1 byte 8 bit raw */
 #define P9412_ALIGN_Y_REG			0xB1 /* 1 byte 8 bit raw */
+#define P9412_PROP_TX_POTEN_PWR_REG		0xC4
+#define P9412_PROP_REQ_PWR_REG			0xC5
+#define P9412_PROP_CURR_PWR_REG			0xC6
+#define P9412_PROP_MODE_PWR_STEP_REG		0xC7
+#define P9412_PROP_MODE_STATUS_REG		0xC8
+#define P9412_PROP_MODE_ERR_STS_REG		0xC9
 #define P9412_VOUT_SET_REG			0x6C /* 2 byte 10 mV */
 #define P9412_DIE_TEMP_REG			0x46 /* 2 byte in C */
 
+#define P9412_CDMODE_STS_REG			0x100
+#define P9412_CDMODE_REQ_REG			0x101
 #define P9412_COM_CHAN_RESET_REG		0x13F
 #define P9412_COM_CHAN_SEND_SIZE_REG		0x140
 #define P9412_COM_CHAN_SEND_IDX_REG		0x142
@@ -348,6 +357,15 @@
 #define P9XXX_INVALID_REG			0xFFFF
 
 #define P9412_TX_CMD_TX_MODE_EN			BIT(7)
+/* For Cap Div mode register */
+#define CDMODE_BYPASS_MODE			BIT(0)
+#define CDMODE_CAP_DIV_MODE			BIT(1)
+/* For cmd register */
+#define INIT_CAP_DIV_CMD			BIT(6)
+#define PROP_MODE_EN_CMD			BIT(8)
+#define PROP_REQ_PWR_CMD			BIT(9)
+/* For INT status register */
+#define PROP_MODE_STAT_INT			BIT(12)
 
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
@@ -472,6 +490,13 @@ struct p9221_charger_data {
 	int				rtx_err;
 	bool				chg_on_rtx;
 	bool				is_rtx_mode;
+	bool				prop_mode_en;
+
+	/* WLC DC when available */
+	u32 				wlc_dc_voltage_now;
+	u32 				wlc_dc_current_now;
+	bool				wlc_dc_enabled;
+	bool				has_wlc_dc;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -517,6 +542,7 @@ struct p9221_charger_data {
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
 	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
+	int (*chip_prop_mode_en)(struct p9221_charger_data *chgr);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,

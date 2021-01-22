@@ -256,9 +256,6 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	struct max77759_foreach_cb_data *cb_data = data;
 	int mode = (long)vote; /* max77759_mode is an int election */
 
-	pr_info("%s: %s : reason=%s mode=%x\n", __func__,
-		 cb_data->reason, reason ? reason : "", mode);
-
 	switch (mode) {
 	/* Direct raw modes last come fist served */
 	case MAX77759_CHGR_MODE_ALL_OFF:
@@ -273,7 +270,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
 		if (cb_data->use_raw)
 			break;
-		pr_info("%s:%d RAW vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d RAW vote=%x\n", __func__, __LINE__, mode);
 		cb_data->raw_value = mode;
 		cb_data->reason = reason;
 		cb_data->use_raw = true;
@@ -283,7 +280,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_BOOST_UNO_ON:
 		if (!cb_data->boost_on || !cb_data->uno_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d BOOST_UNO vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d BOOST_UNO vote=%x\n", __func__, __LINE__, mode);
 		cb_data->boost_on += 1;
 		cb_data->uno_on += 1;
 		break;
@@ -294,7 +291,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_STBY_ON:
 		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d FORCE_OFF vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d FORCE_OFF vote=%x\n", __func__, __LINE__, mode);
 		cb_data->stby_on += 1;
 		break;
 
@@ -302,7 +299,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
 		if (!cb_data->chgr_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d CHGR_BUCK_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d CHGR_BUCK_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->chgr_on += 1;
 		break;
 
@@ -317,26 +314,26 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_USB_OTG_FRS_ON:
 		if (!cb_data->frs_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d FRS_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d FRS_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->frs_on += 1;
 		break;
 	/* USB: boost mode, source, normally external boost */
 	case GBMS_USB_OTG_ON:
 		if (!cb_data->otg_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d OTG_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d OTG_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->otg_on += 1;
 		break;
 	/* DC Charging: mode=0, set CP_EN */
 	case GBMS_CHGR_MODE_CHGR_DC:
 		if (!cb_data->pps_dc)
 			cb_data->reason = reason;
-		pr_info("%s:%d DC_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d DC_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->pps_dc += 1;
 		break;
 
 	default:
-		pr_info("mode=%x not supported\n", mode);
+		pr_err("mode=%x not supported\n", mode);
 		break;
 	}
 
@@ -873,15 +870,14 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
 
-	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
-		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
-		 reg);
-
 	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
 		"boost_on=%d, otg_on=%d, uno_on=%d\n", __func__,
 		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on);
+	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
+		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
+		 reg);
 
 	/* just use raw as is*/
 	if (cb_data.use_raw) {
@@ -1681,14 +1677,16 @@ static int max77759_wd_tickle(struct max77759_chgr_data *data)
 	return ret;
 }
 
-
+/* online is used from DC charging to tickle the watchdog (if enabled) */
 static int max77759_set_online(struct max77759_chgr_data *data, bool online)
 {
 	int ret;
 
-	ret = max77759_wd_tickle(data);
-	if (ret < 0)
-		pr_err("cannot tickle the watchdog\n");
+	if (data->wden) {
+		ret = max77759_wd_tickle(data);
+		if (ret < 0)
+			pr_err("cannot tickle the watchdog\n");
+	}
 
 	if (data->online != online) {
 		ret = gvotable_cast_vote(data->mode_votable, "OFFLINE",
