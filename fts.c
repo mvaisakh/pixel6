@@ -60,7 +60,7 @@
 
 #include <drm/drm_panel.h>
 #include <video/display_timing.h>
-
+#include <samsung/exynos_drm_connector.h>
 
 #include "fts.h"
 #include "fts_lib/ftsCompensation.h"
@@ -5437,13 +5437,38 @@ int fts_set_bus_ref(struct fts_ts_info *info, u16 ref, bool enable)
 	return result;
 }
 
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
+{
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+
+	drm_connector_list_iter_begin(bridge->dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (connector->encoder == bridge->encoder)
+			break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+	return connector;
+}
+
+static bool bridge_is_lp_mode(struct drm_connector *connector)
+{
+	if (connector && connector->state) {
+		struct exynos_drm_connector_state *s =
+			to_exynos_connector_state(connector->state);
+		return s->exynos_mode.is_lp_mode;
+	}
+	return false;
+}
+
 static void panel_bridge_enable(struct drm_bridge *bridge)
 {
 	struct fts_ts_info *info =
 			container_of(bridge, struct fts_ts_info, panel_bridge);
 
 	dev_dbg(info->dev, "%s\n", __func__);
-	fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, true);
+	if (!info->is_panel_lp_mode)
+		fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, true);
 }
 
 static void panel_bridge_disable(struct drm_bridge *bridge)
@@ -5455,14 +5480,24 @@ static void panel_bridge_disable(struct drm_bridge *bridge)
 	fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, false);
 }
 
-#ifdef DYNAMIC_REFRESH_RATE
-static void panel_mode_set(struct drm_bridge *bridge,
-			 struct drm_display_mode *mode,
-			 struct drm_display_mode *adjusted_mode)
+static void panel_bridge_mode_set(struct drm_bridge *bridge,
+				  const struct drm_display_mode *mode,
+				  const struct drm_display_mode *adjusted_mode)
 {
 	struct fts_ts_info *info =
 			container_of(bridge, struct fts_ts_info, panel_bridge);
 
+	dev_dbg(info->dev, "%s\n", __func__);
+
+	if (!info->connector || !info->connector->state) {
+		dev_info(info->dev, "%s: Get bridge connector.\n", __func__);
+		info->connector = get_bridge_connector(bridge);
+	}
+
+	info->is_panel_lp_mode = bridge_is_lp_mode(info->connector);
+	fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, !info->is_panel_lp_mode);
+
+#ifdef DYNAMIC_REFRESH_RATE
 	if (adjusted_mode &&
 	    info->display_refresh_rate != adjusted_mode->vrefresh) {
 		info->display_refresh_rate = adjusted_mode->vrefresh;
@@ -5472,15 +5507,13 @@ static void panel_mode_set(struct drm_bridge *bridge,
 		dev_info(info->dev, "Refresh rate changed to %d Hz.\n",
 			info->display_refresh_rate);
 	}
-}
 #endif
+}
 
 static const struct drm_bridge_funcs panel_bridge_funcs = {
-#ifdef DYNAMIC_REFRESH_RATE
-	.mode_set = panel_mode_set,
-#endif
 	.enable = panel_bridge_enable,
 	.disable = panel_bridge_disable,
+	.mode_set = panel_bridge_mode_set,
 };
 
 static int register_panel_bridge(struct fts_ts_info *info)

@@ -858,6 +858,8 @@ struct fts_ts_info {
 	struct fts_disp_extinfo extinfo;	/* Display extended info */
 
 	struct drm_bridge panel_bridge;
+	struct drm_connector *connector;
+	bool is_panel_lp_mode;
 #ifdef DYNAMIC_REFRESH_RATE
 	int display_refresh_rate;	/* Display rate in Hz */
 #endif
