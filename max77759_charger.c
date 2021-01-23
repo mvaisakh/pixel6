@@ -1050,8 +1050,8 @@ static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 		value = 0x0;
 	else if (current_ua <= 200000)
 		value = 0x03;
-	else if (current_ua > 4000000)
-		value = 0x3F;
+	else if (current_ua >= 4000000)
+		value = 0x3c;
 	else
 		value = 0x3 + (current_ua - 200000) / 66670;
 
