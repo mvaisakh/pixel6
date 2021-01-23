@@ -17,7 +17,6 @@
 #include <drm/drm_bridge.h>
 #include <drm/drm_vblank.h>
 #include <drm/exynos_drm.h>
-#include <drm/exynos_display_common.h>
 
 #include <linux/clk.h>
 #include <linux/component.h>
@@ -111,14 +110,6 @@ static inline u32 win_start_pos(int x, int y)
 static inline u32 win_end_pos(int x, int y,  u32 xres, u32 yres)
 {
 	return (WIN_ENDPTR_Y_F(y + yres - 1) | WIN_ENDPTR_X_F(x + xres - 1));
-}
-
-static inline bool is_tui(const struct drm_crtc_state *crtc_state)
-{
-	if (crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI))
-		return true;
-
-	return false;
 }
 
 /* ARGB value */
@@ -841,7 +832,7 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 
 	decon_info(decon, "%s +\n", __func__);
 
-	if (is_tui(crtc_state))
+	if (exynos_crtc_in_tui(crtc_state))
 		decon_debug(decon, "tui_state : skip power enable\n");
 	else
 		pm_runtime_get_sync(decon->dev);
@@ -931,7 +922,7 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 		}
 	}
 
-	if (is_tui(crtc->base.state))
+	if (exynos_crtc_in_tui(crtc->base.state))
 		decon_debug(decon, "tui_state : skip power disable\n");
 	else
 		pm_runtime_put_sync(decon->dev);
