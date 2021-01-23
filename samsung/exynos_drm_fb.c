@@ -527,20 +527,6 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	drm_atomic_helper_commit_modeset_enables(dev, old_state);
 	DPU_ATRACE_END("modeset");
 
-	for_each_oldnew_connector_in_state(old_state, connector,
-				 old_conn_state, new_conn_state, i) {
-		if (!new_conn_state->writeback_job && is_exynos_drm_connector(connector)) {
-			struct exynos_drm_connector *exynos_connector =
-				to_exynos_connector(connector);
-			const struct exynos_drm_connector_helper_funcs *funcs =
-				exynos_connector->helper_private;
-
-			funcs->atomic_commit(exynos_connector,
-					to_exynos_connector_state(old_conn_state),
-					to_exynos_connector_state(new_conn_state));
-		}
-	}
-
 	DPU_ATRACE_BEGIN("commit_planes");
 	drm_atomic_helper_commit_planes(dev, old_state,
 					DRM_PLANE_COMMIT_ACTIVE_ONLY);
@@ -589,6 +575,20 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 					decon->id, NULL);
 			decon_reg_set_trigger(decon->id, mode,
 					DECON_TRIG_MASK);
+		}
+	}
+
+	for_each_oldnew_connector_in_state(old_state, connector,
+				 old_conn_state, new_conn_state, i) {
+		if (!new_conn_state->writeback_job && is_exynos_drm_connector(connector)) {
+			struct exynos_drm_connector *exynos_connector =
+				to_exynos_connector(connector);
+			const struct exynos_drm_connector_helper_funcs *funcs =
+				exynos_connector->helper_private;
+
+			funcs->atomic_commit(exynos_connector,
+					to_exynos_connector_state(old_conn_state),
+					to_exynos_connector_state(new_conn_state));
 		}
 	}
 

@@ -285,16 +285,26 @@ struct exynos_panel {
 	struct device_node *touch_dev;
 
 	struct {
-		/* indicate if local hbm enabled or not */
-		bool enabled;
-		/* max local hbm on period in ms */
-		u32 max_timeout_ms;
-		/* used to protect local hbm operation */
-		struct mutex lock;
-		/* workqueue used to turn off local hbm if reach max_timeout */
+		struct local_hbm {
+			/* indicate if local hbm enabled or not */
+			bool enabled;
+			/* max local hbm on period in ms */
+			u32 max_timeout_ms;
+			/* used to protect local hbm operation */
+			struct mutex lock;
+			/* work used to turn off local hbm if reach max_timeout */
+			struct delayed_work timeout_work;
+		} local_hbm;
+
+		struct global_hbm {
+			bool update_hbm;
+			bool hbm_mode;
+			bool update_bl;
+			/* send ghbm mipi commands asynchronously after frame start */
+			struct work_struct ghbm_work;
+		} global_hbm;
 		struct workqueue_struct *wq;
-		struct delayed_work timeout_work;
-	} local_hbm;
+	} hbm;
 };
 
 static inline int exynos_dcs_write(struct exynos_panel *ctx, const void *data,

@@ -133,12 +133,12 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 	if (ctx->hbm_mode)
 		val |= S6E3HC3_WRCTRLD_HBM_BIT;
 
-	if (ctx->local_hbm.enabled)
+	if (ctx->hbm.local_hbm.enabled)
 		val |= S6E3HC3_WRCTRLD_LOCAL_HBM_BIT;
 
 	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, local_hbm: %s)\n",
 		__func__, val, ctx->hbm_mode ? "on" : "off",
-		ctx->local_hbm.enabled ? "on" : "off");
+		ctx->hbm.local_hbm.enabled ? "on" : "off");
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 }
@@ -241,13 +241,13 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 	struct drm_mode_config *config;
 	struct drm_crtc *crtc = NULL;
 
-	if (ctx->local_hbm.enabled == local_hbm_en)
+	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
-	mutex_lock(&ctx->local_hbm.lock);
-	ctx->local_hbm.enabled = local_hbm_en;
+	mutex_lock(&ctx->hbm.local_hbm.lock);
+	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
-	mutex_unlock(&ctx->local_hbm.lock);
+	mutex_unlock(&ctx->hbm.local_hbm.lock);
 
 	config = &ctx->exynos_connector.base.dev->mode_config;
 	drm_modeset_lock(&config->connection_mutex, NULL);
