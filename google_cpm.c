@@ -38,6 +38,8 @@
 
 #include <linux/debugfs.h>
 
+#define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
+
 #define GCPM_MAX_CHARGERS	4
 #define GCPM_DEFAULT_DC_LIMIT_DEMAND	0
 #define GCPM_DEFAULT_DC_LIMIT_VBATT	4350000
@@ -106,6 +108,8 @@ struct gcpm_drv  {
 	int dc_index;
 	/* dc_charging state */
 	int dc_state;
+
+	ktime_t dc_start_time;
 
 	/* force check of the DC limit again (debug) */
 	bool new_dc_limit;
@@ -454,10 +458,12 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 	} else if (gcpm->dc_state == DC_DISABLED) {
 		pr_debug("CHG_CHK: DC disabled for the session\n");
 	} else if (gcpm->dc_state == DC_IDLE) {
-		gcpm_pps_online(gcpm);
-
 		pr_debug("CHG_CHK: start DC Charging\n");
+
+		/* reset pps state and re-enable detection */
+		gcpm_pps_online(gcpm);
 		/* TODO: DC_ENABLE or DC_PASSTHROUGH depending on index */
+		gcpm->dc_start_time = get_boot_sec();
 		gcpm->dc_state = DC_ENABLE_PASSTHROUGH;
 		gcpm->dc_index = index;
 		schedule_pps_dc = true;
@@ -475,6 +481,7 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 
 #define PPS_WAIT_RETRY_MS	3000
 #define PPS_ERROR_RETRY_MS	1000
+#define PPS_ACTIVE_TIMEOUT_S	45
 
 enum {
 	PPS_INDEX_NOT_SUPP = -1,
@@ -625,12 +632,19 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		goto pps_dc_reschedule;
 	}
 
-	/* check for one of the sources to come online, <0 when not supported */
+	/*
+	 * Wait until one of the sources come online, <0 when PPS is not
+	 * supported. DC runs only when PPS is active.
+	 */
 	ret = gcpm_pps_work(gcpm);
 	if (ret < 0) {
 		pr_info("PPS_Work: PPS Offline dc_index:%d->0 dc_state=%d\n",
 			gcpm->dc_index, gcpm->dc_state);
 
+		/*
+		 * gcpm->dc_index<=0 cause DC state to be forced to DC_DISABLE
+		 * and PPS is set to offline at the beginning of the loop
+		 */
 		pps_ui = PPS_ERROR_RETRY_MS;
 		gcpm->dc_index = 0;
 		goto pps_dc_reschedule;
@@ -639,17 +653,18 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	/* will have PPS data when one of the sources becomes onliune */
 	pps_data = gcpm_pps_data(gcpm);
 	if (!pps_data) {
-		/*
-		 * Wait for PPS to be enabled: DC run only when PPS is active.
-		 * NOTE: DC state is forced to DC_DISABLE and PPS is set to
-		 * offline at the beginning of the loop when ->dc_index <= 0
-		 */
+		const ktime_t now = get_boot_sec();
 
-		pr_debug("PPS_Work: PPS Wait for source dc_index=%d dc_state=%d\n",
-			gcpm->dc_index, gcpm->dc_state);
+		if (!gcpm->dc_start_time)
+			gcpm->dc_start_time = now;
+		if (now - gcpm->dc_start_time < PPS_ACTIVE_TIMEOUT_S)
+			pps_ui = PPS_WAIT_RETRY_MS;
+
+		pr_debug("PPS_Work: PPS Wait elap=%lld pps_ui=%d, dc_index=%d dc_state=%d\n",
+			 now - gcpm->dc_start_time, pps_ui,
+			 gcpm->dc_index, gcpm->dc_state);
 
 		/* TODO: keep track of time waiting for ACTIVE and give up? */
-		pps_ui = PPS_WAIT_RETRY_MS;
 	} else if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
 		struct power_supply *pps_psy = pps_data->pps_psy;
 
