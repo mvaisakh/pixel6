@@ -961,6 +961,26 @@ static int p9221_get_psy_online(struct p9221_charger_data *charger)
 	return charger->wlc_dc_enabled ? PPS_PSY_PROG_ONLINE : 1;
 }
 
+static int p9221_has_dc_in(struct p9221_charger_data *charger)
+{
+	union power_supply_propval prop;
+	int ret;
+
+	if (!charger->dc_psy)
+		charger->dc_psy = power_supply_get_by_name("dc");
+	if (!charger->dc_psy)
+		return -EINVAL;
+
+	ret = power_supply_get_property(charger->dc_psy,
+					POWER_SUPPLY_PROP_PRESENT, &prop);
+	if (ret < 0) {
+		dev_err(&charger->client->dev,
+			"Error getting charging status: %d\n", ret);
+		return -EINVAL;
+	}
+
+	return prop.intval != 0;
+}
 
 static int p9221_get_property(struct power_supply *psy,
 			      enum power_supply_property prop,
@@ -973,7 +993,9 @@ static int p9221_get_property(struct power_supply *psy,
 	switch (prop) {
 	/* check for field */
 	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = 1;
+		val->intval = p9221_has_dc_in(charger);
+		if (val->intval < 0)
+			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = p9221_get_psy_online(charger);
@@ -1551,25 +1573,6 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 	logbuffer_log(charger->log, "align: state: %s",
 		      align_status_str[charger->align]);
 	schedule_work(&charger->uevent_work);
-}
-
-static int p9221_has_dc_in(struct p9221_charger_data *charger)
-{
-	union power_supply_propval prop;
-	int ret;
-
-	if (!charger->dc_psy)
-		return -EINVAL;
-
-	ret = power_supply_get_property(charger->dc_psy,
-					POWER_SUPPLY_PROP_PRESENT, &prop);
-	if (ret < 0) {
-		dev_err(&charger->client->dev,
-			"Error getting charging status: %d\n", ret);
-		return -EINVAL;
-	}
-
-	return prop.intval != 0;
 }
 
 static int p9221_set_bpp_vout(struct p9221_charger_data *charger)
