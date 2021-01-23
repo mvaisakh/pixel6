@@ -86,7 +86,6 @@ void pps_init_state(struct pd_pps_data *pps_data)
 }
 // EXPORT_SYMBOL_GPL(pps_init_state);
 
-
 /*
  * pps_psy can be tcpm, wireless or gcpm_pps.
  * NOTE: gcpm_pps route the props to the underlying psy
@@ -617,22 +616,40 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 /*
  * This is the first part of the DC/PPS charging state machine.
  * Detect and configure the PPS adapter for the PPS profile.
- * TODO: cleanup the interface
  *
- * returns:
- * . the max update interval pps should vote for
+ * pps->stage is updated to PPS_NONE, PPS_AVAILABLE, PPS_ACTIVE or
+ * PPS_NOTSUPP. Returns:
  * . 0 to disable the PPS update interval voter
  * . <0 for error
+ * . the max update interval pps should request
+ *
+ * The power suppy POWER_SUPPLY_PROP_PRESENT property
  */
 int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 {
-	int type_ok, pd_online;
+	union power_supply_propval pval;
+	int ret, type_ok, pd_online;
 	unsigned int stage;
+	const char *name;
 
 	if (!pps)
 		return -EINVAL;
 	if (!pps_psy)
 		pps->stage = PPS_NOTSUPP;
+
+	name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
+
+	/*
+	 * POWER_SUPPLY_PROP_PRESENT must reports cable (or field)
+	 * NOTE: TCPM doesn't implement this, WLC and GCPM pps do.
+	 */
+	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_PRESENT,
+					&pval);
+	if (ret == 0 && pval.intval == 0)
+		pps->stage = PPS_NOTSUPP;
+	pr_debug("%s: %s pval.intval=%d ret=%d\n", __func__, name,
+		 pval.intval, ret);
+
 	/* detection is done for this cycle */
 	if (pps->stage == PPS_NOTSUPP)
 		return 0;
@@ -700,12 +717,8 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 	 *  and reschedule in PD_T_PPS_TIMEOUT.
 	 */
 	type_ok = pps_check_type(pps);
-	if (!type_ok) {
-		const char *name = pps_psy->desc->name ? pps_psy->desc->name
-				   : "<>";
-		/* TODO: implement a timout (in the caller?) */
+	if (!type_ok)
 		pr_debug("%s: %s type not ok\n", __func__, name);
-	}
 
 	if (type_ok && pd_online == PPS_PSY_FIXED_ONLINE) {
 		int rc;
