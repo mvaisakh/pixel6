@@ -108,13 +108,6 @@ static struct drm_crtc *drm_encoder_get_new_crtc(struct drm_encoder *encoder,
 	return conn_state->crtc;
 }
 
-static bool dsim_encoder_in_tui(struct drm_encoder *encoder, struct drm_atomic_state *state)
-{
-	const struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
-
-	return crtc && exynos_crtc_in_tui(crtc->state);
-}
-
 static void dsim_dump(struct dsim_device *dsim)
 {
 	struct dsim_regs regs;
@@ -263,10 +256,12 @@ static void _dsim_enable(struct dsim_device *dsim)
 static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_state *state)
 {
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
+	struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
+	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
 
 	_dsim_enable(dsim);
 
-	if (!dsim_encoder_in_tui(encoder, state))
+	if (!old_crtc_state || !old_crtc_state->self_refresh_active)
 		dsim_set_te_pinctrl(dsim, 1);
 }
 
@@ -340,10 +335,12 @@ static void _dsim_disable(struct dsim_device *dsim)
 static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_state *state)
 {
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
+	const struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
+	const bool self_refresh_active = crtc && crtc->state && crtc->state->self_refresh_active;
 
 	_dsim_disable(dsim);
 
-	if (!dsim_encoder_in_tui(encoder, state))
+	if (!self_refresh_active)
 		dsim_set_te_pinctrl(dsim, 0);
 }
 
