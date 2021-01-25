@@ -28,6 +28,7 @@ exynos-drm-$(CONFIG_DRM_FBDEV_EMULATION) 	+= exynos_drm_fbdev.o
 exynos-drm-$(CONFIG_DRM_SAMSUNG_DECON)		+= exynos_drm_decon.o
 exynos-drm-$(CONFIG_DRM_SAMSUNG_DPP)		+= exynos_drm_dpp.o
 exynos-drm-$(CONFIG_DRM_SAMSUNG_DSI)		+= exynos_drm_dsim.o
+exynos-drm-$(CONFIG_DRM_SAMSUNG_TUI)		+= exynos_drm_tui.o
 exynos-drm-$(CONFIG_DRM_SAMSUNG_WB)			+= exynos_drm_writeback.o
 
 exynos-drm-$(CONFIG_EXYNOS_BTS)		+= exynos_drm_bts.o
