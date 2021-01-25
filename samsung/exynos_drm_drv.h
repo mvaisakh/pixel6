@@ -108,10 +108,6 @@ struct exynos_hdr_state {
 
 struct exynos_drm_plane_state {
 	struct drm_plane_state base;
-	struct exynos_drm_rect crtc;
-	struct exynos_drm_rect src;
-	unsigned int h_ratio;
-	unsigned int v_ratio;
 	uint32_t blob_id_restriction;
 	uint32_t max_luminance;
 	uint32_t min_luminance;
