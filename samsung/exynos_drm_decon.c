@@ -582,6 +582,17 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	if (new_crtc_state->plane_mask == 0) {
 		const int win_id = decon_get_win_id(new_crtc_state, 0);
 
+		/*
+		 * if the display is already in self refresh mode when being
+		 * enabled without planes, skip the update to keep the same
+		 * self refresh contents
+		 */
+		if (!old_crtc_state->enable &&
+			old_crtc_state->self_refresh_active) {
+			complete_all(&decon->framestart_done);
+			goto skip_update;
+		}
+
 		if (win_id < 0) {
 			decon_warn(decon, "unable to get free win_id=%d mask=0x%x\n",
 				   win_id, new_exynos_crtc_state->reserved_win_mask);
@@ -621,6 +632,7 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	reinit_completion(&decon->framestart_done);
 	spin_unlock_irqrestore(&decon->slock, flags);
 
+skip_update:
 	if (!new_crtc_state->no_vblank)
 		exynos_crtc_handle_event(exynos_crtc);
 
