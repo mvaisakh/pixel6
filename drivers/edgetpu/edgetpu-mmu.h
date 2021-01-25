@@ -10,6 +10,7 @@
 #include <linux/dma-direction.h>
 #include <linux/dma-mapping.h>
 #include <linux/iommu.h>
+#include <linux/scatterlist.h>
 #include <linux/version.h>
 
 #include "edgetpu-internal.h"
@@ -231,8 +232,9 @@ void edgetpu_mmu_remove_translation(struct edgetpu_dev *etdev,
  * allocated using dma_alloc_coherent(), which are mapped appropriately for
  * any downstream IOMMU and must be mapped to the TPU internal MMU as well.
  *
- * If the chip doesn't have an internal MMU then just return the downstream
- * DMA address.
+ * For a chip that doesn't have an internal MMU but has the IOMMU domain AUX
+ * feature, perform the necessary mapping to @context_id and return the
+ * downstream DMA address.
  *
  * Returns zero on error.
  */
@@ -245,6 +247,37 @@ tpu_addr_t edgetpu_mmu_tpu_map(struct edgetpu_dev *etdev, dma_addr_t down_addr,
 void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev,
 			   tpu_addr_t tpu_addr, size_t size,
 			   enum edgetpu_context_id context_id);
+
+/**
+ * Add a TPU mapping towards an SG table.
+ * @sgt: An SG table that is already mapped to @etdev->dev, i.e. dma_map_sg*
+ *       has been called.
+ * @dir: DMA direction of mapping
+ * @context_id: context ID for the mapping
+ * @mmu_flags: the flag or'ed with EDGETPU_MMU_* macros
+ *
+ * Description: For chips with internal MMUs (e.g., Hermosa SMMU), add the
+ * required internal MMU mapping for the TPU to access the DMA addresses of
+ * @sgt.
+ *
+ * For a chip that doesn't have an internal MMU but has the IOMMU domain AUX
+ * feature, perform the necessary mapping to @context_id and return the
+ * downstream DMA address.
+ *
+ * Caller ensures the SG table has DMA addresses as compact as possible, that is
+ * if @sgt->nents is greater than 1 then the DMA addresses are not continuous.
+ *
+ * Returns zero on error.
+ */
+tpu_addr_t edgetpu_mmu_tpu_map_sgt(struct edgetpu_dev *etdev,
+				   struct sg_table *sgt,
+				   enum dma_data_direction dir,
+				   enum edgetpu_context_id context_id,
+				   u32 mmu_flags);
+/* Unmap a TPU mapping created by edgetpu_mmu_tpu_map_sgt */
+void edgetpu_mmu_tpu_unmap_sgt(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
+			       struct sg_table *sgt,
+			       enum edgetpu_context_id context_id);
 
 /*
  * Hints the MMU to use edgetpu_device_dram_alloc() for allocating MMU page

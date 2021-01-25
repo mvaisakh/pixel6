@@ -27,10 +27,6 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu.h"
 
-#if IS_ENABLED(CONFIG_ION_EXYNOS) && IS_ENABLED(CONFIG_EXYNOS_IOVMM)
-#define WORKAROUND_EXYNOS_IOVMM
-#endif
-
 /*
  * Records objects for mapping a dma-buf to an edgetpu_dev.
  */
@@ -38,16 +34,13 @@ struct dmabuf_map_entry {
 	struct dma_buf_attachment *attachment;
 	/* SG table returned by dma_buf_map_attachment() */
 	struct sg_table *sgt;
-#ifdef WORKAROUND_EXYNOS_IOVMM
-	/* modified @sgt for the workaround */
-	struct sg_table *mapped_sgt;
-#endif
-	/* the DMA addresses mapped to */
-	struct {
-		dma_addr_t addr;
-		size_t len;
-	} *dma_addrs;
-	uint n; /* length of @dma_addrs */
+	/*
+	 * The SG table that shrunk from @sgt with region [offset, offset+size],
+	 * where @offset and @size are the arguments in edgetpu_dmabuf_map.
+	 * If @offset for mapping is zero and @size equals the total length of
+	 * @sgt, this table is a duplicate of @sgt.
+	 */
+	struct sg_table shrunk_sgt;
 };
 
 /*
@@ -107,15 +100,16 @@ static int etdev_add_translations(struct edgetpu_dev *etdev,
 	uint i;
 	u64 offset = 0;
 	int ret;
+	struct sg_table *sgt = &entry->shrunk_sgt;
+	struct scatterlist *sg;
 
-	for (i = 0; i < entry->n; i++) {
+	for (sg = sgt->sgl, i = 0; i < sgt->nents; i++, sg = sg_next(sg)) {
 		ret = edgetpu_mmu_add_translation(etdev, tpu_addr + offset,
-						  entry->dma_addrs[i].addr,
-						  entry->dma_addrs[i].len, prot,
-						  ctx_id);
+						  sg_dma_address(sg),
+						  sg_dma_len(sg), prot, ctx_id);
 		if (ret)
 			goto rollback;
-		offset += entry->dma_addrs[i].len;
+		offset += sg_dma_len(sg);
 	}
 	return 0;
 
@@ -141,9 +135,8 @@ static int etdev_map_dmabuf(struct edgetpu_dev *etdev,
 		edgetpu_group_context_id_locked(group);
 	struct dmabuf_map_entry *entry = &dmap->entries[0];
 	tpu_addr_t tpu_addr;
-	int ret;
 
-	if (entry->n == 0) {
+	if (!entry->sgt) {
 		/*
 		 * This could only happen in bulk mappings, when the dmabuf for
 		 * master device is not set (runtime passes EDGETPU_IGNORE_FD).
@@ -152,31 +145,12 @@ static int etdev_map_dmabuf(struct edgetpu_dev *etdev,
 			edgetpu_mmu_alloc(etdev, dmap->size, dmap->mmu_flags);
 		if (!tpu_addr)
 			return -ENOSPC;
-	} else if (entry->n == 1) {
-		/*
-		 * Easy case - only one DMA address, we can use chip-dependent
-		 * tpu_map to map and acquire the TPU VA.
-		 */
-		tpu_addr = edgetpu_mmu_tpu_map(etdev, entry->dma_addrs[0].addr,
-					       dmap->size, dir, ctx_id,
-					       dmap->mmu_flags);
-		if (!tpu_addr)
-			return -ENOSPC;
 	} else {
-		/*
-		 * Maps multiple DMA addresses, only chips with an internal MMU
-		 * can handle this.
-		 */
 		tpu_addr =
-			edgetpu_mmu_alloc(etdev, dmap->size, dmap->mmu_flags);
+			edgetpu_mmu_tpu_map_sgt(etdev, &entry->shrunk_sgt, dir,
+						ctx_id, dmap->mmu_flags);
 		if (!tpu_addr)
 			return -ENOSPC;
-		ret = etdev_add_translations(etdev, tpu_addr, entry, dir,
-					     ctx_id);
-		if (ret) {
-			edgetpu_mmu_free(etdev, tpu_addr, dmap->size);
-			return ret;
-		}
 	}
 
 	*tpu_addr_p = tpu_addr;
@@ -197,15 +171,11 @@ static void etdev_unmap_dmabuf(struct edgetpu_dev *etdev,
 		edgetpu_group_context_id_locked(group);
 	struct dmabuf_map_entry *entry = &dmap->entries[0];
 
-	if (entry->n == 0) {
+	if (!entry->sgt)
 		edgetpu_mmu_free(etdev, tpu_addr, dmap->size);
-	} else if (entry->n == 1) {
-		edgetpu_mmu_tpu_unmap(etdev, tpu_addr, dmap->size, ctx_id);
-	} else {
-		edgetpu_mmu_remove_translation(etdev, tpu_addr, dmap->size,
-					       ctx_id);
-		edgetpu_mmu_free(etdev, tpu_addr, dmap->size);
-	}
+	else
+		edgetpu_mmu_tpu_unmap_sgt(etdev, tpu_addr, &entry->shrunk_sgt,
+					  ctx_id);
 }
 
 /*
@@ -229,7 +199,7 @@ static int group_map_dmabuf(struct edgetpu_device_group *group,
 		return ret;
 	for (i = 1; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		if (dmap->entries[i].n == 0) {
+		if (!dmap->entries[i].sgt) {
 			edgetpu_mmu_reserve(etdev, tpu_addr, dmap->size);
 			continue;
 		}
@@ -245,7 +215,7 @@ err_remove:
 	while (i > 1) {
 		i--;
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		if (dmap->entries[i].n == 0)
+		if (!dmap->entries[i].sgt)
 			edgetpu_mmu_free(etdev, tpu_addr, dmap->size);
 		else
 			edgetpu_mmu_remove_translation(etdev, tpu_addr,
@@ -306,16 +276,7 @@ static void dmabuf_map_callback_release(struct edgetpu_mapping *map)
 	for (i = 0; i < dmap->num_entries; i++) {
 		struct dmabuf_map_entry *entry = &dmap->entries[i];
 
-#ifdef WORKAROUND_EXYNOS_IOVMM
-		if (entry->mapped_sgt) {
-			dma_unmap_sg(entry->attachment->dev,
-				     entry->mapped_sgt->sgl,
-				     entry->mapped_sgt->orig_nents, dir);
-			sg_free_table(entry->mapped_sgt);
-			kfree(entry->mapped_sgt);
-		}
-#endif
-		kfree(entry->dma_addrs);
+		sg_free_table(&entry->shrunk_sgt);
 		if (entry->sgt)
 			dma_buf_unmap_attachment(entry->attachment, entry->sgt,
 						 dir);
@@ -332,16 +293,20 @@ static void dmabuf_map_callback_release(struct edgetpu_mapping *map)
 static void entry_show_dma_addrs(struct dmabuf_map_entry *entry,
 				 struct seq_file *s)
 {
-	if (entry->n == 1) {
-		seq_printf(s, "%pad\n", &entry->dma_addrs[0].addr);
+	struct sg_table *sgt = &entry->shrunk_sgt;
+
+	if (sgt->nents == 1) {
+		seq_printf(s, "%pad\n", &sg_dma_address(sgt->sgl));
 	} else {
 		uint i;
+		struct scatterlist *sg = sgt->sgl;
 
 		seq_puts(s, "[");
-		for (i = 0; i < entry->n; i++) {
+		for (i = 0; i < sgt->nents; i++) {
 			if (i)
 				seq_puts(s, ", ");
-			seq_printf(s, "%pad", &entry->dma_addrs[i].addr);
+			seq_printf(s, "%pad", &sg_dma_address(sg));
+			sg = sg_next(sg);
 		}
 		seq_puts(s, "]\n");
 	}
@@ -436,7 +401,7 @@ static void dmabuf_bulk_map_callback_release(struct edgetpu_mapping *map)
 	for (i = 0; i < group->n_clients; i++) {
 		struct dmabuf_map_entry *entry = &bmap->entries[i];
 
-		kfree(entry->dma_addrs);
+		sg_free_table(&entry->shrunk_sgt);
 		if (entry->sgt)
 			dma_buf_unmap_attachment(entry->attachment, entry->sgt,
 						 dir);
@@ -517,168 +482,118 @@ err_free:
 }
 
 /*
- * Set @entry with one DMA address if we can use that address to present the DMA
- * addresses in @sgt.
- *
- * Returns 0 if succeeded.
- * Returns -EINVAL if the DMA addresses in @sgt is not contiguous.
+ * Duplicates @sgt in region [@offset, @offset + @size] to @out.
+ * Only duplicates the "page" parts in @sgt, DMA addresses and lengths are not
+ * considered.
  */
-static int entry_set_one_dma(struct dmabuf_map_entry *entry,
-			     const struct sg_table *sgt, u64 offset, u64 size)
+static int dup_sgt_in_region(struct sg_table *sgt, u64 offset, u64 size,
+			     struct sg_table *out)
 {
-	int i;
-	struct scatterlist *sg;
-	dma_addr_t addr;
-
-	addr = sg_dma_address(sgt->sgl);
-	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
-		if (sg_dma_len(sg) == 0)
-			break;
-		if (sg_dma_address(sg) != addr)
-			return -EINVAL;
-		addr += sg_dma_len(sg);
-	}
-
-	entry->dma_addrs = kmalloc(sizeof(*entry->dma_addrs), GFP_KERNEL);
-	if (!entry->dma_addrs)
-		return -ENOMEM;
-	entry->n = 1;
-	entry->dma_addrs[0].addr = sg_dma_address(sgt->sgl) + offset;
-	entry->dma_addrs[0].len = size;
-
-	return 0;
-}
-
-#ifdef WORKAROUND_EXYNOS_IOVMM
-
-static struct sg_table *dup_sg_table(const struct sg_table *sgt)
-{
-	struct sg_table *new_sgt;
-	int i;
-	struct scatterlist *sg, *new_sg;
-	int ret;
-
-	new_sgt = kmalloc(sizeof(*new_sgt), GFP_KERNEL);
-	if (!new_sgt)
-		return ERR_PTR(-ENOMEM);
-
-	ret = sg_alloc_table(new_sgt, sgt->nents, GFP_KERNEL);
-	if (ret) {
-		kfree(new_sgt);
-		return ERR_PTR(ret);
-	}
-	new_sg = new_sgt->sgl;
-	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
-		memcpy(new_sg, sg, sizeof(*sg));
-		new_sg = sg_next(new_sg);
-	}
-
-	return new_sgt;
-}
-
-/*
- * Here assumes we are mapping the dmabuf backed by Exynos' ION, which doesn't
- * follow the standard dma-buf framework.
- *
- * This workaround is needed since dma_buf_map_attachment() of Exynos ION
- * doesn't call dma_map_sg(), and it expects drivers call ion_iovmm_map()
- * manually. However our EdgeTPU is not backed by Exynos's IOVMM, so we simply
- * call dma_map_sg() before setting @entry->dma_addrs.
- */
-static int entry_set_dma_addrs(struct dmabuf_map_entry *entry, u64 offset,
-			       u64 size, enum dma_data_direction dir)
-{
-	struct dma_buf_attachment *attach = entry->attachment;
-	struct sg_table *sgt;
-	int ret;
-
-	sgt = dup_sg_table(entry->sgt);
-	if (IS_ERR(sgt))
-		return PTR_ERR(sgt);
-	sgt->nents = dma_map_sg(attach->dev, sgt->sgl, sgt->orig_nents, dir);
-	if (sgt->nents == 0) {
-		dev_err(attach->dev, "%s: dma_map_sg failed", __func__);
-		ret = -EINVAL;
-		goto err_free;
-	}
-	ret = entry_set_one_dma(entry, sgt, offset, size);
-	if (ret) {
-		dev_err(attach->dev,
-			"%s: cannot map to one DMA addr, nents=%u, ret=%d",
-			__func__, sgt->nents, ret);
-		goto err_unmap;
-	}
-	entry->mapped_sgt = sgt;
-
-	return 0;
-
-err_unmap:
-	dma_unmap_sg(attach->dev, sgt->sgl, sgt->orig_nents, dir);
-err_free:
-	sg_free_table(sgt);
-	kfree(sgt);
-	return ret;
-}
-
-#else /* !WORKAROUND_EXYNOS_IOVMM */
-
-/*
- * Allocates @entry->dma_addrs and assigns DMA addresses in @sgt start from
- * @offset with size @size to @entry->dma_addrs.
- */
-static int entry_set_dma_addrs(struct dmabuf_map_entry *entry, u64 offset,
-			       u64 size, enum dma_data_direction dir)
-{
-	struct sg_table *sgt = entry->sgt;
-	struct scatterlist *sg;
-	u64 cur_offset = 0;
 	uint n = 0;
-	uint i;
+	u64 cur_offset = 0;
+	struct scatterlist *sg, *new_sg;
+	int i;
+	int ret;
 
-	if (!entry_set_one_dma(entry, sgt, offset, size))
-		return 0;
-	/* calculate the number of sg covered by [offset, offset + size) */
-	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
-		if (offset < cur_offset + sg_dma_len(sg))
+	/* calculate the number of sg covered */
+	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
+		size_t pg_len = sg->length + sg->offset;
+
+		if (offset < cur_offset + pg_len)
 			n++;
-		if (offset + size <= cur_offset + sg_dma_len(sg))
+		if (offset + size <= cur_offset + pg_len)
 			break;
-		cur_offset += sg_dma_len(sg);
+		cur_offset += pg_len;
 	}
-	if (n == 0)
-		return -EINVAL;
-	entry->dma_addrs =
-		kmalloc_array(n, sizeof(*entry->dma_addrs), GFP_KERNEL);
-	if (!entry->dma_addrs)
-		return -ENOMEM;
-	entry->n = n;
+	ret = sg_alloc_table(out, n, GFP_KERNEL);
+	if (ret)
+		return ret;
 	cur_offset = 0;
-	i = 0;
+	new_sg = out->sgl;
+	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
+		size_t pg_len = sg->length + sg->offset;
+
+		if (offset < cur_offset + pg_len) {
+			struct page *page = sg_page(sg);
+			unsigned int len = pg_len;
+			u64 remain_size = offset + size - cur_offset;
+
+			if (cur_offset < offset) {
+				page = nth_page(page, (offset - cur_offset) >>
+							      PAGE_SHIFT);
+				len -= offset - cur_offset;
+			}
+			if (remain_size < pg_len)
+				len -= pg_len - remain_size;
+			sg_set_page(new_sg, page, len, 0);
+			new_sg = sg_next(new_sg);
+		}
+		if (offset + size <= cur_offset + pg_len)
+			break;
+		cur_offset += pg_len;
+	}
+	return 0;
+}
+
+/*
+ * Copy the DMA addresses and lengths in region [@offset, @offset + @size) from
+ * @sgt to @out.
+ *
+ * The DMA addresses will be condensed when possible.
+ */
+static void shrink_sgt_dma_in_region(struct sg_table *sgt, u64 offset, u64 size,
+				     struct sg_table *out)
+{
+	u64 cur_offset = 0;
+	struct scatterlist *sg, *prv_sg = NULL, *cur_sg;
+
+	cur_sg = out->sgl;
+	out->nents = 0;
 	for (sg = sgt->sgl; sg;
 	     cur_offset += sg_dma_len(sg), sg = sg_next(sg)) {
 		u64 remain_size = offset + size - cur_offset;
+		dma_addr_t dma;
+		size_t len;
 
 		/* hasn't touched the first covered sg */
 		if (offset >= cur_offset + sg_dma_len(sg))
 			continue;
-		entry->dma_addrs[i].addr = sg_dma_address(sg);
-		entry->dma_addrs[i].len = sg_dma_len(sg);
+		dma = sg_dma_address(sg);
+		len = sg_dma_len(sg);
 		/* offset exceeds current sg */
 		if (offset > cur_offset) {
-			entry->dma_addrs[i].addr += offset - cur_offset;
-			entry->dma_addrs[i].len -= offset - cur_offset;
+			dma += offset - cur_offset;
+			len -= offset - cur_offset;
 		}
-		if (remain_size <= sg_dma_len(sg)) {
-			entry->dma_addrs[i].len -= sg_dma_len(sg) - remain_size;
+		if (remain_size < sg_dma_len(sg))
+			len -= sg_dma_len(sg) - remain_size;
+		if (prv_sg &&
+		    sg_dma_address(prv_sg) + sg_dma_len(prv_sg) == dma) {
+			/* merge to previous sg */
+			sg_dma_len(prv_sg) += len;
+		} else {
+			sg_dma_address(cur_sg) = dma;
+			sg_dma_len(cur_sg) = len;
+			prv_sg = cur_sg;
+			cur_sg = sg_next(cur_sg);
+			out->nents++;
+		}
+		if (remain_size <= sg_dma_len(sg))
 			break;
-		}
-		i++;
 	}
-
-	return 0;
 }
 
-#endif /* WORKAROUND_EXYNOS_IOVMM */
+static int entry_set_shrunk_sgt(struct dmabuf_map_entry *entry, u64 offset,
+				u64 size)
+{
+	int ret;
+
+	ret = dup_sgt_in_region(entry->sgt, offset, size, &entry->shrunk_sgt);
+	if (ret)
+		return ret;
+	shrink_sgt_dma_in_region(entry->sgt, offset, size, &entry->shrunk_sgt);
+	return 0;
+}
 
 /*
  * Performs dma_buf_attach + dma_buf_map_attachment of @dmabuf to @etdev, and
@@ -706,7 +621,7 @@ static int etdev_attach_dmabuf_to_entry(struct edgetpu_dev *etdev,
 	}
 	entry->attachment = attachment;
 	entry->sgt = sgt;
-	ret = entry_set_dma_addrs(entry, offset, size, dir);
+	ret = entry_set_shrunk_sgt(entry, offset, size);
 	if (ret)
 		goto err_unmap;
 
