@@ -339,7 +339,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 			ret = register_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_POLL:
-			ret = lwis_entry_poll(lwis_dev, &io_entries[i]);
+			ret = lwis_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
 			break;
 		case LWIS_IO_ENTRY_READ_ASSERT:
 			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i],
@@ -726,22 +726,44 @@ static int ioctl_event_control_get(struct lwis_client *lwis_client,
 }
 
 static int ioctl_event_control_set(struct lwis_client *lwis_client,
-				   struct lwis_event_control __user *msg)
+				   struct lwis_event_control_list __user *msg)
 {
-	unsigned long ret;
-	struct lwis_event_control control;
+	struct lwis_event_control_list k_msg;
+	struct lwis_event_control *k_event_controls;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	int ret, i;
+	size_t buf_size;
 
-	ret = copy_from_user((void *)&control, (void __user *)msg, sizeof(control));
+	ret = copy_from_user((void *)&k_msg, (void __user *)msg,
+			     sizeof(struct lwis_event_control_list));
 	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(control));
-		return -EINVAL;
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
+		return ret;
 	}
 
-	ret = lwis_client_event_control_set(lwis_client, &control);
-	if (ret) {
-		dev_err(lwis_dev->dev, "Failed ot set event 0x%llx\n", control.event_id);
+	/*  Copy event controls from user buffer. */
+	buf_size = sizeof(struct lwis_event_control) * k_msg.num_event_controls;
+	k_event_controls = kzalloc(buf_size, GFP_KERNEL);
+	if (!k_event_controls) {
+		dev_err(lwis_dev->dev, "Failed to allocate event controls\n");
+		return -ENOMEM;
 	}
+	ret = copy_from_user(k_event_controls, (void __user *)k_msg.event_controls, buf_size);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to copy event controls from user\n");
+		goto out;
+	}
+
+	for (i = 0; i < k_msg.num_event_controls; i++) {
+		ret = lwis_client_event_control_set(lwis_client, &k_event_controls[i]);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to apply event control 0x%llx\n",
+				k_event_controls[i].event_id);
+			goto out;
+		}
+	}
+out:
+	kfree(k_event_controls);
 	return ret;
 }
 
@@ -772,8 +794,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 		ret = lwis_client_event_peek_front(lwis_client, &event);
 		if (ret) {
 			if (ret != -ENOENT) {
-				dev_err(lwis_dev->dev,
-					"Error dequeueing event: %ld\n", ret);
+				dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 			}
 			return ret;
 		}
@@ -818,8 +839,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 	 */
 	if (!err) {
 		if (is_error_event) {
-			ret = lwis_client_error_event_pop_front(lwis_client,
-								NULL);
+			ret = lwis_client_error_event_pop_front(lwis_client, NULL);
 		} else {
 			ret = lwis_client_event_pop_front(lwis_client, NULL);
 		}
@@ -1291,7 +1311,7 @@ static int ioctl_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_qos_set
 	}
 
 	ret = copy_from_user((void *)&current_setting, (void __user *)msg,
-		sizeof(struct lwis_qos_setting));
+			     sizeof(struct lwis_qos_setting));
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "failed to copy from user\n");
 		goto out;
@@ -1368,7 +1388,7 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		ret = ioctl_event_control_get(lwis_client, (struct lwis_event_control *)param);
 		break;
 	case LWIS_EVENT_CONTROL_SET:
-		ret = ioctl_event_control_set(lwis_client, (struct lwis_event_control *)param);
+		ret = ioctl_event_control_set(lwis_client, (struct lwis_event_control_list *)param);
 		break;
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client, (struct lwis_event_info *)param);

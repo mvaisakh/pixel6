@@ -263,11 +263,13 @@ struct lwis_client {
 	/* Hash table of transactions keyed by trigger event ID */
 	DECLARE_HASHTABLE(transaction_list, TRANSACTION_HASH_BITS);
 	/* Transaction task-related variables */
+	struct tasklet_struct transaction_tasklet;
 	struct workqueue_struct *transaction_wq;
 	struct work_struct transaction_work;
 	/* Spinlock used to synchronize access to transaction data structs */
 	spinlock_t transaction_lock;
 	/* List of transaction triggers */
+	struct list_head transaction_process_queue_tasklet;
 	struct list_head transaction_process_queue;
 	/* Transaction counter, which also provides transacton ID */
 	int64_t transaction_counter;

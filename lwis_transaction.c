@@ -61,20 +61,26 @@ static struct lwis_transaction_event_list *event_list_find_or_create(struct lwis
 	return (list == NULL) ? event_list_create(client, event_id) : list;
 }
 
-int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
+int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry, bool non_blocking)
 {
 	uint64_t val, start;
+	uint64_t timeout_ms = entry->read_assert.timeout_ms;
 	int ret = 0;
+
+	/* Only read and check once if non_blocking */
+	if (non_blocking) {
+		timeout_ms = 0;
+	}
 
 	/* Read until getting the expected value or timeout */
 	val = ~entry->read_assert.val;
 	start = ktime_to_ms(lwis_get_time());
 	while (val != entry->read_assert.val) {
-		ret = lwis_entry_read_assert(lwis_dev, entry, /*non_blocking=*/false);
+		ret = lwis_entry_read_assert(lwis_dev, entry, non_blocking);
 		if (ret == 0) {
 			break;
 		}
-		if (ktime_to_ms(lwis_get_time()) - start > entry->read_assert.timeout_ms) {
+		if (ktime_to_ms(lwis_get_time()) - start > timeout_ms) {
 			dev_err(lwis_dev->dev, "Polling timed out: block %d offset 0x%llx\n",
 				entry->read_assert.bid, entry->read_assert.offset);
 			return -ETIMEDOUT;
@@ -200,7 +206,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			}
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
-			ret = lwis_entry_poll(lwis_dev, entry);
+			ret = lwis_entry_poll(lwis_dev, entry, in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -270,18 +276,18 @@ static void cancel_transaction(struct lwis_transaction *transaction, int error_c
 	free_transaction(transaction);
 }
 
-static void transaction_work_func(struct work_struct *work)
+static void process_transactions_in_queue(struct lwis_client *client,
+					  struct list_head *transaction_queue, bool in_irq)
 {
 	unsigned long flags;
 	struct lwis_transaction *transaction;
 	struct list_head *it_tran, *it_tran_tmp;
-	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
 	struct list_head pending_events;
 
 	INIT_LIST_HEAD(&pending_events);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
-	list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
+	list_for_each_safe (it_tran, it_tran_tmp, transaction_queue) {
 		transaction = list_entry(it_tran, struct lwis_transaction, process_queue_node);
 		list_del(&transaction->process_queue_node);
 		if (transaction->resp->error_code) {
@@ -289,19 +295,35 @@ static void transaction_work_func(struct work_struct *work)
 					   &pending_events);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
-			process_transaction(client, transaction, &pending_events, /*in_irq=*/false);
+			process_transaction(client, transaction, &pending_events, in_irq);
 			spin_lock_irqsave(&client->transaction_lock, flags);
 		}
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
-	lwis_pending_events_emit(client->lwis_dev, &pending_events,
-				 /*in_irq=*/false);
+	lwis_pending_events_emit(client->lwis_dev, &pending_events, in_irq);
+}
+
+static void transaction_tasklet_func(unsigned long data)
+{
+	struct lwis_client *client = (struct lwis_client *)data;
+
+	process_transactions_in_queue(client, &client->transaction_process_queue_tasklet,
+				      /*in_irq=*/true);
+}
+
+static void transaction_work_func(struct work_struct *work)
+{
+	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
+
+	process_transactions_in_queue(client, &client->transaction_process_queue, /*in_irq=*/false);
 }
 
 int lwis_transaction_init(struct lwis_client *client)
 {
 	spin_lock_init(&client->transaction_lock);
+	INIT_LIST_HEAD(&client->transaction_process_queue_tasklet);
+	tasklet_init(&client->transaction_tasklet, transaction_tasklet_func, (unsigned long)client);
 	INIT_LIST_HEAD(&client->transaction_process_queue);
 	client->transaction_wq = create_workqueue("lwistran");
 	INIT_WORK(&client->transaction_work, transaction_work_func);
@@ -320,6 +342,7 @@ int lwis_transaction_clear(struct lwis_client *client)
 			"Failed to wait for all in-process transactions to complete (%d)\n", ret);
 		return ret;
 	}
+	tasklet_kill(&client->transaction_tasklet);
 	if (client->transaction_wq) {
 		destroy_workqueue(client->transaction_wq);
 	}
@@ -385,8 +408,8 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* Perform client defined clean-up routine. */
 	it_evt_list = event_list_find(client, LWIS_EVENT_ID_CLIENT_CLEANUP |
-				      (int64_t)client->lwis_dev->id <<
-				      LWIS_EVENT_ID_EVENT_CODE_LEN);
+						      (int64_t)client->lwis_dev->id
+							      << LWIS_EVENT_ID_EVENT_CODE_LEN);
 	if (it_evt_list == NULL) {
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		return 0;
@@ -594,6 +617,34 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 	return new_instance;
 }
 
+static void defer_transaction_locked(struct lwis_client *client,
+				     struct lwis_transaction *transaction,
+				     struct list_head *pending_events, bool in_irq,
+				     bool del_event_list_node)
+{
+	unsigned long flags = 0;
+	if (del_event_list_node) {
+		list_del(&transaction->event_list_node);
+	}
+
+	/* I2C read/write cannot be executed in IRQ context */
+	if (in_irq && client->lwis_dev->type == DEVICE_TYPE_I2C) {
+		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
+		return;
+	}
+
+	if (transaction->info.run_in_event_context) {
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
+		process_transaction(client, transaction, pending_events, in_irq);
+		spin_lock_irqsave(&client->transaction_lock, flags);
+	} else if (transaction->info.run_at_real_time) {
+		list_add_tail(&transaction->process_queue_node,
+			      &client->transaction_process_queue_tasklet);
+	} else {
+		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
+	}
+}
+
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   int64_t event_counter, struct list_head *pending_events,
 				   bool in_irq)
@@ -629,18 +680,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 		trigger_counter = transaction->info.trigger_event_counter;
 		if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
 		    trigger_counter == event_counter) {
-			/* I2C read/write cannot be executed in IRQ context */
-			if (transaction->info.run_in_event_context &&
-			    client->lwis_dev->type != DEVICE_TYPE_I2C) {
-				list_del(&transaction->event_list_node);
-				spin_unlock_irqrestore(&client->transaction_lock, flags);
-				process_transaction(client, transaction, pending_events, in_irq);
-				spin_lock_irqsave(&client->transaction_lock, flags);
-			} else {
-				list_add_tail(&transaction->process_queue_node,
-					      &client->transaction_process_queue);
-				list_del(&transaction->event_list_node);
-			}
+			defer_transaction_locked(client, transaction, pending_events, in_irq,
+						 /* del_event_list_node */ true);
 		} else if (trigger_counter == LWIS_EVENT_COUNTER_EVERY_TIME) {
 			new_instance = new_repeating_transaction_iteration(client, transaction);
 			if (!new_instance) {
@@ -650,20 +691,15 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				list_del(&transaction->event_list_node);
 				continue;
 			}
-			/* I2C read/write cannot be executed in IRQ context */
-			if (transaction->info.run_in_event_context &&
-			    client->lwis_dev->type != DEVICE_TYPE_I2C) {
-				spin_unlock_irqrestore(&client->transaction_lock, flags);
-				process_transaction(client, new_instance, pending_events, in_irq);
-				spin_lock_irqsave(&client->transaction_lock, flags);
-			} else {
-				list_add_tail(&new_instance->process_queue_node,
-					      &client->transaction_process_queue);
-			}
+			defer_transaction_locked(client, new_instance, pending_events, in_irq,
+						 /* del_event_list_node */ false);
 		}
 	}
 
 	/* Schedule deferred transactions */
+	if (!list_empty(&client->transaction_process_queue_tasklet)) {
+		tasklet_schedule(&client->transaction_tasklet);
+	}
 	if (!list_empty(&client->transaction_process_queue)) {
 		queue_work(client->transaction_wq, &client->transaction_work);
 	}

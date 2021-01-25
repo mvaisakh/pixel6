@@ -220,7 +220,7 @@ static int process_io_entries(struct lwis_client *client,
 			read_buf += sizeof(struct lwis_periodic_io_result) +
 				    io_result->io_result.num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
-			ret = lwis_entry_poll(lwis_dev, entry);
+			ret = lwis_entry_poll(lwis_dev, entry, /*non_blocking=*/false);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
