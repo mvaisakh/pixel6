@@ -51,6 +51,19 @@ static int p9221_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
 	return chgr->reg_read_16(chgr, P9221R5_EPP_TX_MFG_CODE_REG, code);
 }
 
+static int p9222_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
+				      u16 *code)
+{
+	u8 data;
+	int ret;
+
+	ret = chgr->reg_read_8(chgr, P9222RE_TX_MFG_CODE_REG, &data);
+	if (!ret)
+		*code = (u16)data;
+
+	return ret;
+}
+
 static int p9382_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
 				      u16 *code)
 {
@@ -88,6 +101,19 @@ static int p9412_chip_get_rx_ilim(struct p9221_charger_data *chgr, u32 *ma)
 	return 0;
 }
 
+static int p9222_chip_get_rx_ilim(struct p9221_charger_data *chgr, u32 *ma)
+{
+	int ret;
+	u8 val;
+
+	ret = chgr->reg_read_8(chgr, P9222RE_ILIM_SET_REG, &val);
+	if (ret)
+		return ret;
+
+	*ma = ((val * 100) + 100);
+	return 0;
+}
+
 /*
  * chip_set_rx_ilim
  *
@@ -98,8 +124,11 @@ static int p9221_chip_set_rx_ilim(struct p9221_charger_data *chgr, u32 ma)
 	u8 val;
 
 	/* uA -> 0.1A, offset 0.2A */
-	if (ma < P9221_RX_ILIM_MIN_MA || ma > P9221_RX_ILIM_MAX_MA)
+	if (ma < P9221_RX_ILIM_MIN_MA)
 		return -EINVAL;
+
+	if (ma > P9221_RX_ILIM_MAX_MA)
+		ma = P9221_RX_ILIM_MAX_MA;
 
 	val = (ma / 100) - 2;
 	return chgr->reg_write_8(chgr, P9221R5_ILIM_SET_REG, val);
@@ -114,6 +143,20 @@ static int p9412_chip_set_rx_ilim(struct p9221_charger_data *chgr, u32 ma)
 
 	val = (ma / 100) - 1;
 	return chgr->reg_write_8(chgr, P9221R5_ILIM_SET_REG, val);
+}
+
+static int p9222_chip_set_rx_ilim(struct p9221_charger_data *chgr, u32 ma)
+{
+	u8 val;
+
+	if (ma < P9222_RX_ILIM_MIN_MA)
+		return -EINVAL;
+
+	if (ma > P9222_RX_ILIM_MAX_MA)
+		ma = P9222_RX_ILIM_MAX_MA;
+
+	val = (ma / 100) - 1;
+	return chgr->reg_write_8(chgr, P9222RE_ILIM_SET_REG, val);
 }
 
 /*
@@ -209,6 +252,19 @@ static int p9412_chip_get_die_temp(struct p9221_charger_data *chgr, int *mc)
 	return 0;
 }
 
+static int p9222_chip_get_die_temp(struct p9221_charger_data *chgr, int *mc)
+{
+	int ret;
+	u16 val;
+
+	ret = chgr->reg_read_16(chgr, P9222RE_DIE_TEMP_REG, &val);
+	if (ret)
+		return ret;
+
+	*mc = P9221_C_TO_MILLIC(val);
+	return 0;
+}
+
 /*
  * chip_get_iout
  *
@@ -220,6 +276,19 @@ static int p9xxx_chip_get_iout(struct p9221_charger_data *chgr, u32 *ma)
 	u16 val;
 
 	ret = chgr->reg_read_16(chgr, P9221R5_IOUT_REG, &val);
+	if (ret)
+		return ret;
+
+	*ma = val;
+	return 0;
+}
+
+static int p9222_chip_get_iout(struct p9221_charger_data *chgr, u32 *ma)
+{
+	int ret;
+	u16 val;
+
+	ret = chgr->reg_read_16(chgr, P9222RE_IOUT_REG, &val);
 	if (ret)
 		return ret;
 
@@ -245,6 +314,19 @@ static int p9xxx_chip_get_vout(struct p9221_charger_data *chgr, u32 *mv)
 	return 0;
 }
 
+static int p9222_chip_get_vout(struct p9221_charger_data *chgr, u32 *mv)
+{
+	int ret;
+	u16 val;
+
+	ret = chgr->reg_read_16(chgr, P9222RE_VOUT_REG, &val);
+	if (ret)
+		return ret;
+
+	*mv = val;
+	return 0;
+}
+
 /*
  * chip_get_vrect
  *
@@ -263,6 +345,19 @@ static int p9xxx_chip_get_vrect(struct p9221_charger_data *chgr, u32 *mv)
 	return 0;
 }
 
+static int p9222_chip_get_vrect(struct p9221_charger_data *chgr, u32 *mv)
+{
+	int ret;
+	u16 val;
+
+	ret = chgr->reg_read_16(chgr, P9222RE_VRECT_REG, &val);
+	if (ret)
+		return ret;
+
+	*mv = val;
+	return 0;
+}
+
 /*
  * chip_get_op_freq
  *
@@ -274,6 +369,19 @@ static int p9xxx_chip_get_op_freq(struct p9221_charger_data *chgr, u32 *khz)
 	u16 val;
 
 	ret = chgr->reg_read_16(chgr, P9221R5_OP_FREQ_REG, &val);
+	if (ret)
+		return ret;
+
+	*khz = (u32) val;
+	return 0;
+}
+
+static int p9222_chip_get_op_freq(struct p9221_charger_data *chgr, u32 *khz)
+{
+	int ret;
+	u16 val;
+
+	ret = chgr->reg_read_16(chgr, P9222RE_OP_FREQ_REG, &val);
 	if (ret)
 		return ret;
 
@@ -368,6 +476,26 @@ static int p9221_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
 		*mode = P9412_SYS_OP_MODE_WPC_EXTD;
 	else
 		*mode = P9412_SYS_OP_MODE_AC_MISSING;
+	return 0;
+}
+
+static int p9222_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
+{
+	int ret;
+	u8 val8;
+
+	ret = chgr->reg_read_8(chgr, P9222RE_SYSTEM_MODE_REG, &val8);
+	if (ret)
+		return ret;
+
+	/* map to p9412 values */
+	if (val8 & P9222_SYS_OP_MODE_WPC_BASIC)
+		*mode = P9412_SYS_OP_MODE_WPC_BASIC;
+	else if (val8 & P9222_SYS_OP_MODE_WPC_EXTD)
+		*mode = P9412_SYS_OP_MODE_WPC_EXTD;
+	else
+		*mode = P9412_SYS_OP_MODE_AC_MISSING;
+
 	return 0;
 }
 
@@ -655,6 +783,33 @@ static int p9221_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
 	return ret;
 }
 
+static int p9222_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
+{
+	u16 cur_cmd = 0;
+	int retry;
+	int ret;
+
+	for (retry = 0; retry < P9221_COM_CHAN_RETRIES; retry++) {
+		ret = chgr->reg_read_16(chgr, P9222_COM_REG, &cur_cmd);
+		if (ret == 0 && cur_cmd == 0)
+			break;
+		msleep(25);
+	}
+
+	if (retry >= P9221_COM_CHAN_RETRIES) {
+		dev_err(&chgr->client->dev,
+			"Failed to wait for cmd free %02x\n", cur_cmd);
+		return -EBUSY;
+	}
+
+	ret = chgr->reg_write_16(chgr, P9222_COM_REG, (u16)cmd);
+	if (ret)
+		dev_err(&chgr->client->dev,
+			"Failed to set cmd reg %02x: %d\n", (u16)cmd, ret);
+
+	return ret;
+}
+
 static int p9412_chip_set_cmd_reg(struct p9221_charger_data *chgr, u16 cmd)
 {
 	u16 cur_cmd = 0;
@@ -714,6 +869,21 @@ static int p9221_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 	/* units 0.5 W*/
 	ret = chgr->reg_write_8(chgr,
 				P9221R5_EPP_REQ_NEGOTIATED_POWER_REG, val8);
+	if (ret < 0)
+		dev_err(&chgr->client->dev,
+			"cannot write to EPP_NEG_POWER=%d (%d)\n",
+			val8, ret);
+	return ret;
+}
+
+static int p9222_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
+{
+	int ret;
+	int val8 = P9412_MW_TO_HW(chgr->pdata->epp_rp_value);
+
+	/* units 0.5 W*/
+	ret = chgr->reg_write_8(chgr,
+				P9222RE_EPP_REQ_NEGOTIATED_POWER_REG, val8);
 	if (ret < 0)
 		dev_err(&chgr->client->dev,
 			"cannot write to EPP_NEG_POWER=%d (%d)\n",
@@ -929,7 +1099,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 	chgr->chip_get_vout = p9xxx_chip_get_vout;
 	chgr->chip_set_cmd = p9221_chip_set_cmd_reg;
 	chgr->chip_get_op_freq = p9xxx_chip_get_op_freq;
-	chgr->chip_set_cmd = p9221_chip_set_cmd_reg;
 	chgr->chip_get_vrect = p9xxx_chip_get_vrect;
 
 	switch (chip_id) {
@@ -983,6 +1152,38 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_send_ccreset = p9221_send_ccreset;
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
+		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
+		break;
+	case P9222_CHIP_ID:
+		chgr->chip_get_iout = p9222_chip_get_iout;
+		chgr->chip_get_vout = p9222_chip_get_vout;
+		chgr->chip_get_op_freq = p9222_chip_get_op_freq;
+		chgr->chip_get_vrect = p9222_chip_get_vrect;
+		chgr->chip_set_cmd = p9222_chip_set_cmd_reg;
+
+		chgr->rtx_state = RTX_NOTSUPPORTED;
+		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
+		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
+
+		chgr->chip_get_tx_id = p9221_chip_get_tx_id;
+		chgr->chip_get_tx_mfg_code = p9222_chip_get_tx_mfg_code;
+		chgr->chip_get_rx_ilim = p9222_chip_get_rx_ilim;
+		chgr->chip_set_rx_ilim = p9222_chip_set_rx_ilim;
+		chgr->chip_get_tx_ilim = p9221_chip_get_tx_ilim;
+		chgr->chip_set_tx_ilim = p9221_chip_set_tx_ilim;
+		chgr->chip_get_die_temp = p9222_chip_get_die_temp;
+		chgr->chip_get_vout_max = p9221_chip_get_vout_max;
+		chgr->chip_set_vout_max = p9221_chip_set_vout_max;
+		chgr->chip_tx_mode_en = p9221_chip_tx_mode;
+		chgr->chip_set_data_buf = p9221_set_data_buf;
+		chgr->chip_get_data_buf = p9221_get_data_buf;
+		chgr->chip_get_cc_recv_size = p9221_get_cc_recv_size;
+		chgr->chip_set_cc_send_size = p9221_set_cc_send_size;
+		chgr->chip_get_align_x = p9221_get_align_x;
+		chgr->chip_get_align_y = p9221_get_align_y;
+		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_get_sys_mode = p9222_chip_get_sys_mode;
+		chgr->chip_renegotiate_pwr = p9222_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		break;
 	default:
