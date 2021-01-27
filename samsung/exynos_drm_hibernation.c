@@ -43,25 +43,16 @@ static bool is_camera_operating(struct exynos_hibernation *hiber)
 
 static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
 {
-	return (atomic_read(&hiber->block_cnt) > 0);
-}
-
-static bool is_atc_dimming_operating(struct exynos_hibernation *hiber)
-{
-	if (!hiber->decon->dqe->force_atc_config.en)
-		return false;
-
-	return dqe_reg_dimming_in_progress();
+	return (atomic_read(&hiber->block_cnt) > 0) || (hiber->decon->state != DECON_STATE_ON);
 }
 
 static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 {
 	pr_debug("%s +\n", __func__);
 
-	return (!is_hibernaton_blocked(hiber) &&
-		!is_camera_operating(hiber) &&
+	return (!is_camera_operating(hiber) &&
 		pm_runtime_active(hiber->decon->dev) &&
-		!is_atc_dimming_operating(hiber));
+		!dqe_reg_dimming_in_progress());
 }
 
 static inline void hibernation_block(struct exynos_hibernation *hiber)
@@ -90,7 +81,6 @@ static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
 		return;
 
 	DPU_ATRACE_BEGIN("exynos_hibernation_enter");
-	mutex_lock(&hiber->lock);
 	hibernation_block(hiber);
 
 	if (decon->state != DECON_STATE_ON)
@@ -116,7 +106,6 @@ static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
 
 ret:
 	hibernation_unblock(hiber);
-	mutex_unlock(&hiber->lock);
 	DPU_ATRACE_END("exynos_hibernation_enter");
 
 	pr_debug("%s: DPU power %s -\n", __func__,
@@ -233,14 +222,20 @@ static void exynos_hibernation_handler(struct kthread_work *work)
 
 	pr_debug("Display hibernation handler is called\n");
 
-	/* If hibernation entry condition does NOT meet, just return here */
+	mutex_lock(&hibernation->lock);
+	if (is_hibernaton_blocked(hibernation))
+		goto ret;
+
+	/* If hibernation entry condition does NOT meet, try again later */
 	if (!funcs->check(hibernation)) {
 		kthread_mod_delayed_work(&decon->worker, &hibernation->dwork,
 			msecs_to_jiffies(HIBERNATION_ENTRY_MIN_TIME_MS));
-		return;
+		goto ret;
 	}
 
 	funcs->enter(hibernation);
+ret:
+	mutex_unlock(&hibernation->lock);
 }
 
 struct exynos_hibernation *
