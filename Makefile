@@ -65,15 +65,12 @@ obj-$(CONFIG_CHARGER_MAX77729)	+= max77729_charger.o
 # Muirwoods drivers for the single SSID (max77729_pmic is shared)
 obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
 
-# Secondary charger, needs google_dc_pps
-obj-$(CONFIG_CHARGER_PCA9468)	+= pca9468_charger.o
-
 # Wireless charging
 obj-$(CONFIG_CHARGER_P9221)	+= p9221.o
 p9221-objs += p9221_charger.o
 p9221-objs += p9221_chip.o
 
-# Alternate (untested) standalone for pca9468
+# Standalone for pca9468
 obj-$(CONFIG_PCA9468)		+= pca9468.o
 pca9468-objs += pca9468_charger.o
 pca9468-objs += google_dc_pps.o

@@ -42,6 +42,14 @@
 #define BITS(_end, _start) ((BIT(_end) - BIT(_start)) + BIT(_end))
 #define MASK2SHIFT(_mask)	__ffs(_mask)
 
+/* */
+enum {
+	PPS_INDEX_DISABLED = 0,
+	PPS_INDEX_TCPM = 1,
+	PPS_INDEX_WLC,
+	PPS_INDEX_MAX,
+};
+
 /*
  * Register Map
  */
@@ -493,11 +501,14 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
  * @timer_id: timer id for timer_work
  * @timer_period: timer period for timer_work
  * @last_update_time: last update time after sleep
- * @pps_work: pps work for PPS periodic time
- * @pd: phandle for qualcomm PMI usbpd-phy
+ * @pps_index: psy index
  * @tcpm_psy_name: name of TCPM power supply
  * @tcpm_phandle: lookup for tcpm power supply
+ * @pps_work: pps work for PPS periodic time
  * @pps_data: internal data for dc_pps
+ * @pd: phandle for qualcomm PMI usbpd-phy
+ * @wlc_psy_name: power supply for wlc DC
+ * @wlc_psy: wlc DC ps
  * @mains_online: is AC/DC input connected
  * @charging_state: direct charging state
  * @ret_state: return direct charging state after DC_STATE_ADJUST_TAVOL is done
@@ -539,11 +550,17 @@ struct pca9468_charger {
 	unsigned long		timer_period;
 	unsigned long		last_update_time;
 
-	/*  PPS implementation */
-	struct delayed_work	pps_work;
-	struct power_supply 	*pd;
-	const char 		*tcpm_psy_name;
+	/*  Programmable power supply */
+	int pps_index;		/* 0=disabled, 1=tcpm, 2=wireless */
+
+	/* PPS_wireless */
+	const char 		*wlc_psy_name;
+	struct power_supply 	*wlc_psy;
+	/*  PPS_wired with TCPM */
 	u32			tcpm_phandle;
+	const char 		*tcpm_psy_name;
+	struct power_supply 	*pd;
+	struct delayed_work	pps_work;
 	struct pd_pps_data	pps_data;
 
 	bool			mains_online;
@@ -583,7 +600,6 @@ struct pca9468_charger {
 
 	struct pca9468_platform_data *pdata;
 
-
 #ifdef CONFIG_THERMAL
 	struct thermal_zone_device *usb_tzd;
 #endif
@@ -592,6 +608,20 @@ struct pca9468_charger {
 	u32			debug_address;
 	int			debug_adc_channel;
 };
+
+/* ------------------------------------------------------------------------- */
+
+static struct device_node *pps_find_config(struct device_node * node)
+{
+	struct device_node *temp;
+
+	if (!node)
+		return node;
+	temp = of_parse_phandle(node, "pca9468,google_cpm", 0);
+	if (temp)
+		node = temp;
+	return node;
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -670,19 +700,46 @@ static int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
 	if (pca9468->pd != NULL)
 		goto check_online;
 
-	if (!pca9468->tcpm_phandle)
-		return -ENOENT;
+	if (pca9468->tcpm_psy_name) {
+		tcpm_psy = power_supply_get_by_name(pca9468->tcpm_psy_name);
+		if (!tcpm_psy)
+			return -ENODEV;
 
-	tcpm_psy = pps_get_tcpm_psy(pca9468->dev->of_node, 2);
-	if (IS_ERR(tcpm_psy))
-		return PTR_ERR(tcpm_psy);
-	if (!tcpm_psy) {
-		pca9468->tcpm_phandle = 0;
+		pca9468->pd = tcpm_psy;
+	} else if (pca9468->tcpm_phandle) {
+		struct device_node *node;
+
+		node = pps_find_config(pca9468->dev->of_node);
+		if (!node)
+			return -ENODEV;
+		tcpm_psy = pps_get_tcpm_psy(node, 2);
+		if (IS_ERR(tcpm_psy))
+			return PTR_ERR(tcpm_psy);
+		if (!tcpm_psy) {
+			pca9468->tcpm_phandle = 0;
+			return -ENODEV;
+		}
+
+		pca9468->tcpm_psy_name = tcpm_psy->desc->name;
+		pca9468->pd = tcpm_psy;
+	} else {
+		pr_err("%s: TCPM DC not defined\n", __func__);
 		return -ENODEV;
 	}
 
-	pca9468->tcpm_psy_name = tcpm_psy->desc->name;
-	pca9468->pd = tcpm_psy;
+	/* not needed if tcpm-power-supply is not there */
+	ret = pps_init(&pca9468->pps_data, pca9468->dev, tcpm_psy);
+	if (ret == 0) {
+		const char *logname = "pca9468_tcpm";
+
+		ret = pps_register_logbuffer(&pca9468->pps_data, logname);
+		if (ret < 0)
+
+		pr_info("pca9468: PPS direct available, log:%s\n",
+			ret < 0 ? "none" : logname);
+
+		pps_init_state(&pca9468->pps_data);
+	}
 
 check_online:
 	online = pps_prog_check_online(&pca9468->pps_data, pca9468->pd);
@@ -808,6 +865,7 @@ static int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 		return ret;
 	}
 
+	/* technically already in pda_data since check online does it */
 	ret = pps_get_src_cap(&pca9468->pps_data, pca9468->pd);
 	if (ret < 0)
 		return ret;
@@ -830,52 +888,71 @@ static int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 /******************/
 /* Set RX voltage */
 /******************/
+
+static struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
+{
+	const char *wlc_psy_name = pca9468->wlc_psy_name;
+
+	if (!wlc_psy_name) {
+		dev_err(pca9468->dev, "%s: WLC PS name not defined\n", __func__);
+		wlc_psy_name = "wireless";
+	}
+
+	if (!pca9468->wlc_psy) {
+		struct power_supply *psy;
+
+		/* Get power supply name */
+		psy = power_supply_get_by_name(wlc_psy_name);
+		if (!psy) {
+			dev_err(pca9468->dev, "%s Cannot find %s power supply\n",
+				__func__, wlc_psy_name);
+			return NULL;
+		}
+
+		pca9468->wlc_psy = psy;
+	}
+
+	return pca9468->wlc_psy;
+}
+
 /* Send RX voltage to RX IC */
 /* This function needs some modification by a customer */
 static int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 				   unsigned int msg_type)
 {
-	struct power_supply *psy;
 	union power_supply_propval pro_val;
+	struct power_supply *wlc_psy;
 	int ret = 0;
 
 	mutex_lock(&pca9468->lock);
 
-	if (pca9468->mains_online == false) {
-		/* Vbus reset happened in the previous PD communication */
+	/* Vbus reset happened in the previous PD communication */
+	if (pca9468->mains_online == false)
+		goto out;
+
+	wlc_psy = pca9468_get_rx_psy(pca9468);
+	if (!wlc_psy) {
+		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
+		ret = -ENODEV;
 		goto out;
 	}
 
 	pr_info("%s: rx_vol=%d\n", __func__, pca9468->ta_vol);
 
-	/* Need to implement send RX voltage to wireless RX IC */
-
-	/* The below code should be modified by the customer */
-	/* Get power supply name */
-	psy = power_supply_get_by_name("wireless");
-	if (!psy) {
-		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
-		ret = -ENODEV;
-		return ret;
-	}
-
 	/* Set the RX voltage */
 	pro_val.intval = pca9468->ta_vol;
 
 	/* Set the property */
-	ret = power_supply_set_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					&pro_val);
-	power_supply_put(psy);
-	if (ret < 0) {
-		dev_err(pca9468->dev, "Cannot set RX voltage\n");
-		return ret;
-	}
+	if (ret < 0)
+		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
+			pro_val.intval, ret);
 
 out:
-	if (pca9468->mains_online == false) {
-		/* Vbus reset might happen, check the charging state again */
+	/* Vbus reset might happen, check the charging state again */
+	if (pca9468->mains_online == false)
 		ret = -EINVAL;
-	}
 
 	pr_info("%s: ret=%d\n", __func__, ret);
 	mutex_unlock(&pca9468->lock);
@@ -886,55 +963,54 @@ out:
 /************************/
 /* Get RX max power    */
 /************************/
+
 /* Get the max current/voltage/power of RXIC from the WCRX driver */
-/* This function needs some modification by a customer */
+/* TODO: just ask the ->pd since GCPM will take care of this */
 static int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 {
-	struct power_supply *psy;
 	union power_supply_propval pro_val;
+	struct power_supply *wlc_psy;
 	int ret = 0;
 
-	/* insert code */
-
-	/* Get power supply name */
-	psy = power_supply_get_by_name("wireless");
-	if (!psy) {
-		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
-		ret = -ENODEV;
-		goto error;
-	}
+	wlc_psy = pca9468_get_rx_psy(pca9468);
+	if (!wlc_psy)
+		return -ENODEV;
 
 	/* Get the maximum voltage */
-	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
 					&pro_val);
 	if (ret < 0) {
-		dev_err(pca9468->dev, "Cannot get the maximum RX voltage\n");
-		goto error;
+		dev_err(pca9468->dev, "%s Cannot get the maximum RX voltage (%d)\n",
+			__func__, ret);
+		return ret;
 	}
 
+	/* RX IC cannot support the request maximum voltage */
 	if (pca9468->ta_max_vol > pro_val.intval) {
-		/* RX IC cannot support the request maximum voltage */
-		ret = -EINVAL;
-		goto error;
-	} else {
-		pca9468->ta_max_vol = pro_val.intval;
+		dev_err(pca9468->dev, "%s max %d cannot support ta_max %d voltage\n",
+			__func__, pro_val.intval, pca9468->ta_max_vol);
+		return -EINVAL;
 	}
+
+	pca9468->ta_max_vol = pro_val.intval;
 
 	/* Get the maximum current */
-	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_CURRENT_MAX,
+	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_CURRENT_MAX,
 					&pro_val);
 	if (ret < 0) {
-		dev_err(pca9468->dev, "Cannot get the maximum RX current\n");
-		goto error;
+		dev_err(pca9468->dev, "%s Cannot get the maximum RX current (%d)\n",
+			__func__, ret);
+		return ret;
 	}
 
 	pca9468->ta_max_cur = pro_val.intval;
 	pca9468->ta_max_pwr = (pca9468->ta_max_vol / 1000) *
 			      (pca9468->ta_max_cur / 1000);
 
-error:
-	power_supply_put(psy);
-	return ret;
+	dev_info(pca9468->dev, "%s wlc max_cur=%d max_pwr=%ld\n",
+		 __func__, pca9468->ta_max_cur, pca9468->ta_max_pwr);
+
+	return 0;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -3725,7 +3801,6 @@ error:
 	return ret;
 }
 
-
 /* Preset direct charging configuration */
 static int pca9468_preset_config(struct pca9468_charger *pca9468)
 {
@@ -3837,6 +3912,26 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 	return ret;
 }
 
+static int pca9468_get_ta_type(struct pca9468_charger *pca9468)
+{
+	int ta_type = TA_TYPE_UNKNOWN;
+
+	if (pca9468->pps_index == PPS_INDEX_TCPM) {
+		int ret;
+
+		ret = pca9468_usbpd_setup(pca9468);
+		if (ret != 0) {
+			dev_err(pca9468->dev, "Cannot find the TA %d\n", ret);
+			return ret;
+		}
+
+		ta_type = TA_TYPE_USBPD;
+	} else if (pca9468->pps_index == PPS_INDEX_WLC) {
+		ta_type = TA_TYPE_WIRELESS;
+	}
+
+	return ta_type;
+}
 
 /* Enter direct charging algorithm */
 static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
@@ -3877,19 +3972,14 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	/*
-	 * TODO: determine if we need to use the wireless power supply
-	 * if (pro_val.intval == POWER_SUPPLY_TYPE_WIRELESS) {
-	 *	pca9468->ta_type = TA_TYPE_WIRELESS;
-	 *	pr_info("%s: The current power supply type is WC,
-	 * 		ta_type=%d\n", __func__, pca9468->ta_type);
-	 * } else {
-	 * 	pca9468->ta_type = TA_TYPE_USBPD;
-	 * }
-	 */
-	pca9468->ta_type = TA_TYPE_USBPD;
-	pr_info("%s: The current power supply type is USBPD, ta_type=%d\n",
-		__func__, pca9468->ta_type);
+	pca9468->ta_type = pca9468_get_ta_type(pca9468);
+	pr_info("%s: Current ta_type=%d\n", __func__, pca9468->ta_type);
+	if (pca9468->ta_type == PPS_INDEX_TCPM)
+		pca9468->pdata->chg_mode = CHG_2TO1_DC_MODE;
+	else if (pca9468->ta_type == PPS_INDEX_WLC)
+		pca9468->pdata->chg_mode = CHG_4TO1_DC_MODE;
+	else if (pca9468->ta_type == TA_TYPE_UNKNOWN)
+		return -EINVAL;
 
 	/* wake lock */
 	__pm_stay_awake(pca9468->monitor_wake_lock);
@@ -3900,7 +3990,6 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 	pr_debug("%s: End, ret=%d\n", __func__, ret);
 	return ret;
 }
-
 
 /* Check Vbat minimum level to start direct charging */
 static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
@@ -4151,7 +4240,6 @@ error:
 	return;
 }
 
-
 /* delayed work function for pps periodic timer */
 static void pca9468_pps_request_work(struct work_struct *work)
 {
@@ -4278,7 +4366,6 @@ static int pca9468_hw_init(struct pca9468_charger *pca9468)
 
 	return ret;
 }
-
 
 static irqreturn_t pca9468_interrupt_handler(int irq, void *data)
 {
@@ -4459,7 +4546,6 @@ fail:
 	return ret;
 }
 
-
 /*
  * Returns the input current limit programmed
  * into the charger in uA.
@@ -4530,6 +4616,46 @@ static int get_charging_enabled(struct pca9468_charger *pca9468)
 	return intval;
 }
 
+static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
+{
+	if (index < 0 || index >= PPS_INDEX_MAX)
+		return -EINVAL;
+
+	if (index == 0) {
+		pca9468->pps_index = 0;
+
+		/* Cancel delayed work */
+		cancel_delayed_work(&pca9468->timer_work);
+		cancel_delayed_work(&pca9468->pps_work);
+
+		/* Stop Direct Charging */
+		mutex_lock(&pca9468->lock);
+		pca9468->timer_id = TIMER_ID_NONE;
+		pca9468->timer_period = 0;
+		mutex_unlock(&pca9468->lock);
+		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			msecs_to_jiffies(pca9468->timer_period));
+	} else if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
+		/* Start Direct Charging on Index */
+		pca9468->pps_index = index;
+
+		/* Start 1sec timer for battery check */
+		mutex_lock(&pca9468->lock);
+		pca9468->charging_state = DC_STATE_CHECK_VBAT;
+		pca9468->timer_id = TIMER_VBATMIN_CHECK;
+
+		/* The delay time for PD state goes to PE_SNK_STATE */
+		pca9468->timer_period = 1000;
+		mutex_unlock(&pca9468->lock);
+		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			msecs_to_jiffies(pca9468->timer_period));
+		/* Set the initial charging step */
+		power_supply_changed(pca9468->mains);
+	}
+
+	return 0;
+}
+
 static int pca9468_mains_set_property(struct power_supply *psy,
 				      enum power_supply_property prop,
 				      const union power_supply_propval *val)
@@ -4548,34 +4674,7 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 	/* TODO: locking is wrong */
 	case GBMS_PROP_CHARGING_ENABLED:
-		if (val->intval == 0) {
-			/* Cancel delayed work */
-			cancel_delayed_work(&pca9468->timer_work);
-			cancel_delayed_work(&pca9468->pps_work);
-
-			/* Stop Direct Charging */
-			mutex_lock(&pca9468->lock);
-			pca9468->timer_id = TIMER_ID_NONE;
-			pca9468->timer_period = 0;
-			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
-				msecs_to_jiffies(pca9468->timer_period));
-		} else if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
-			/* Start Direct Charging */
-
-			/* Start 1sec timer for battery check */
-			mutex_lock(&pca9468->lock);
-			pca9468->charging_state = DC_STATE_CHECK_VBAT;
-			pca9468->timer_id = TIMER_VBATMIN_CHECK;
-
-			/* The delay time for PD state goes to PE_SNK_STATE */
-			pca9468->timer_period = 1000;
-			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
-				msecs_to_jiffies(pca9468->timer_period));
-			/* Set the initial charging step */
-			power_supply_changed(pca9468->mains);
-		}
+		ret = set_charging_enabled(pca9468, val->intval);
 		break;
 
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
@@ -5109,6 +5208,24 @@ DEFINE_SIMPLE_ATTRIBUTE(debug_adc_chan_ops, debug_adc_chan_get,
 			debug_adc_chan_set, "%llu\n");
 
 
+static int debug_pps_index_get(void *data, u64 *val)
+{
+	struct pca9468_charger *pca9468 = data;
+
+	*val = pca9468->pps_index;
+	return 0;
+}
+
+static int debug_pps_index_set(void *data, u64 val)
+{
+	struct pca9468_charger *pca9468 = data;
+
+	return set_charging_enabled(pca9468, (int)val);
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(debug_pps_index_ops, debug_pps_index_get,
+			debug_pps_index_set, "%llu\n");
+
 
 static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 {
@@ -5133,8 +5250,47 @@ static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 				  &debug_adc_chan_ops);
 	if (!ent)
 		dev_err(chip->dev, "Couldn't create data debug file\n");
+	ent = debugfs_create_file("pps_index", 0644, chip->debug_root, chip,
+				  &debug_pps_index_ops);
+	if (!ent)
+		dev_err(chip->dev, "Couldn't create pps_index debug file\n");
 
 	return 0;
+}
+
+
+static int pca9468_probe_pps(struct pca9468_charger *pca9468_chg)
+{
+	const char *tmp_name = NULL;
+	bool pps_available = false;
+	struct device_node *node;
+	int ret;
+
+	node = pps_find_config(pca9468_chg->dev->of_node);
+	if (!node)
+		return -ENODEV;
+
+        ret = of_property_read_u32(node, "google,tcpm-power-supply",
+                                   &pca9468_chg->tcpm_phandle);
+       if (ret < 0)
+		pr_warn("pca9468: pca,tcpm-power-supply not defined\n");
+	else
+		pps_available |= true;
+
+	ret = of_property_read_string(node, "google,wlc_dc-power-supply",
+				      &tmp_name);
+	if (ret < 0)
+		pr_warn("pca9468: google,wlc_dc-power-supply not defined\n");
+	if (ret == 0) {
+		pca9468_chg->wlc_psy_name =
+			devm_kstrdup(pca9468_chg->dev, tmp_name, GFP_KERNEL);
+		if (!pca9468_chg->wlc_psy_name)
+			return -ENOMEM;
+
+		pps_available |= true;
+	}
+
+	return pps_available ? 0 : -ENODEV;
 }
 
 static int pca9468_probe(struct i2c_client *client,
@@ -5143,8 +5299,8 @@ static int pca9468_probe(struct i2c_client *client,
 	static char *battery[] = { "pca9468-battery" };
 	struct power_supply_config mains_cfg = {};
 	struct pca9468_platform_data *pdata;
-	struct device *dev = &client->dev;
 	struct pca9468_charger *pca9468_chg;
+	struct device *dev = &client->dev;
 	int ret;
 
 	pr_debug("%s: =========START=========\n", __func__);
@@ -5214,11 +5370,9 @@ static int pca9468_probe(struct i2c_client *client,
 		goto error;
 	}
 
-	ret = of_property_read_u32(pca9468_chg->dev->of_node,
-				   "google,tcpm-power-supply",
-				   &pca9468_chg->tcpm_phandle);
+	ret = pca9468_probe_pps(pca9468_chg);
 	if (ret < 0)
-		pr_warn("pca6468: pca,tcpm-power-supply not defined\n");
+		pr_warn("pca9468: PPS not available (%d)\n", ret);
 
 	ret = pca9468_hw_init(pca9468_chg);
 	if (ret < 0)
@@ -5250,16 +5404,6 @@ static int pca9468_probe(struct i2c_client *client,
 	ret = pca9468_create_debugfs_entries(pca9468_chg);
 	if (ret < 0)
 		dev_err(dev, "error while registering debugfs %d\n", ret);
-
-	/* setup PPS, not needed if tcpm-power-supply is not there */
-	ret = pps_init(&pca9468_chg->pps_data, pca9468_chg->dev);
-	if (ret == 0 && pca9468_chg->debug_root)
-		pps_init_fs(&pca9468_chg->pps_data,
-				pca9468_chg->debug_root);
-	if (ret == 0) {
-		pps_init_state(&pca9468_chg->pps_data);
-		pr_info("pca9468: PPS direct available\n");
-	}
 
 #ifdef CONFIG_DC_STEP_CHARGING
 	ret = pca9468_step_chg_init(pca9468_chg->dev);

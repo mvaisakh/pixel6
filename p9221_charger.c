@@ -24,6 +24,7 @@
 #include "pmic-voter.h" /* TODO(b/163679860): use gvotables */
 #include "p9221_charger.h"
 #include "p9221-dt-bindings.h"
+#include "google_dc_pps.h"
 
 #define P9221R5_OVER_CHECK_NUM		3
 
@@ -42,6 +43,8 @@
 #define WLC_ALIGN_DEFAULT_SCALAR_HIGH_CURRENT	    118
 #define WLC_ALIGN_DEFAULT_OFFSET_LOW_CURRENT	    125000
 #define WLC_ALIGN_DEFAULT_OFFSET_HIGH_CURRENT	    139000
+
+#define PROP_MODE_PWR_DEFAULT	30
 
 #define RTX_BEN_DISABLED	0
 #define RTX_BEN_ON		1
@@ -496,6 +499,20 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
 }
 
+/* TODO: should we also change the state of the load switch etc? */
+static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
+{
+	const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+
+	if (!charger->wlc_dc_enabled)
+		return 0;
+
+	charger->wlc_dc_enabled = false;
+	if (dc_sw_gpio >= 0)
+		gpio_set_value_cansleep(dc_sw_gpio, 0);
+	return 0;
+}
+
 static void p9221_set_offline(struct p9221_charger_data *charger)
 {
 	dev_info(&charger->client->dev, "Set offline\n");
@@ -504,6 +521,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	charger->online = false;
 	charger->force_bpp = false;
 	charger->chg_on_rtx = false;
+	p9221_reset_wlc_dc(charger);
 	charger->prop_mode_en = false;
 
 	/* Reset PP buf so we can get a new serial number next time around */
@@ -530,6 +548,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	if (charger->enabled)
 		mod_delayed_work(system_wq, &charger->dcin_pon_work,
 				 msecs_to_jiffies(P9221_DCIN_PON_DELAY_MS));
+
 }
 
 static void p9221_tx_work(struct work_struct *work)
@@ -933,15 +952,35 @@ static int p9221_get_psy_online(struct p9221_charger_data *charger)
 	pr_debug("%s: suspend=%d, wc_dc=%d\n", __func__, suspend,
 		 charger->wlc_dc_enabled);
 
-	/* TODO: not sure if this needs to be reported with */
+	/* TODO: not sure if this needs to be reported */
 	if (suspend < 0)
 		return suspend;
 	if (suspend || !charger->online || !charger->enabled)
 		return 0;
 
-	return charger->wlc_dc_enabled ? 2 : 1;
+	return charger->wlc_dc_enabled ? PPS_PSY_PROG_ONLINE : 1;
 }
 
+static int p9221_has_dc_in(struct p9221_charger_data *charger)
+{
+	union power_supply_propval prop;
+	int ret;
+
+	if (!charger->dc_psy)
+		charger->dc_psy = power_supply_get_by_name("dc");
+	if (!charger->dc_psy)
+		return -EINVAL;
+
+	ret = power_supply_get_property(charger->dc_psy,
+					POWER_SUPPLY_PROP_PRESENT, &prop);
+	if (ret < 0) {
+		dev_err(&charger->client->dev,
+			"Error getting charging status: %d\n", ret);
+		return -EINVAL;
+	}
+
+	return prop.intval != 0;
+}
 
 static int p9221_get_property(struct power_supply *psy,
 			      enum power_supply_property prop,
@@ -954,7 +993,9 @@ static int p9221_get_property(struct power_supply *psy,
 	switch (prop) {
 	/* check for field */
 	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = 1;
+		val->intval = p9221_has_dc_in(charger);
+		if (val->intval < 0)
+			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = p9221_get_psy_online(charger);
@@ -1073,32 +1114,49 @@ static int p9221_get_property(struct power_supply *psy,
 /* < 0 error, 0 = no changes, > 1 changed */
 static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
-
-	if (online < 0 || (online > 1 && !charger->has_wlc_dc))
+	if (online < 0 || online > PPS_PSY_PROG_ONLINE)
 		return -EINVAL;
 
 	/* online = 2 enable LL, return < 0 if NOT on LL */
-	if (online == 2 && charger->has_wlc_dc) {
+	if (online == PPS_PSY_PROG_ONLINE) {
+		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+
+		pr_info("%s: online=%d, wlc_dc_enabled=%d prop_mode_en=%d\n",
+			__func__, online, charger->wlc_dc_enabled,
+			charger->prop_mode_en);
 		/* Ping? */
-		if (charger->wlc_dc_enabled) {
+		if (charger->wlc_dc_enabled)
 			return 0;
-		} else if (charger->prop_mode_en) {
-			charger->wlc_dc_enabled = true;
-			return 1;
-		} else {
-			return -1;
-		}
-	} else if (online != 2 && charger->has_wlc_dc) {
-		/* Done */
-		if (!charger->wlc_dc_enabled)
-			return 0;
+		/* not there, must return not supp */
+		if (!charger->pdata->has_wlc_dc || !p9221_is_online(charger))
+			return -EOPNOTSUPP;
 
-		charger->wlc_dc_enabled = false;
+		/*
+		 * proprietary mode is enabled at connect ->chip_prop_mode_en()
+		 * (i.e. with p9412_prop_mode_enable())
+		 *
+		 * the script check for proprietary mode when enabling DC_PPS.
+		 * We might want to split this to 2 steps:
+		 *  1) check whether proprietary mode is possible on this
+		 *     adapter and enable it at low power (if required
+		 *     for GPP)
+		 *  2) perform the full sequence when PPS_PSY_PROG_ONLINE
+		 *     is requested.
+		 */
+		if (!charger->prop_mode_en)
+			return -EOPNOTSUPP;
+
+		charger->wlc_dc_enabled = true;
+		if (dc_sw_gpio >= 0)
+			gpio_set_value_cansleep(dc_sw_gpio, 1);
+
 		return 1;
-	}
-
-	if (charger->enabled == !!online)
+	} else if (online != PPS_PSY_PROG_ONLINE && charger->wlc_dc_enabled) {
+		/* TODO: thermals might come in and disable with 0 */
+		p9221_reset_wlc_dc(charger);
+	} else if (charger->enabled == !!online) {
 		return 0;
+	}
 
 	/*
 	 * Asserting the enable line will automatically take bring
@@ -1517,25 +1575,6 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 	schedule_work(&charger->uevent_work);
 }
 
-static int p9221_has_dc_in(struct p9221_charger_data *charger)
-{
-	union power_supply_propval prop;
-	int ret;
-
-	if (!charger->dc_psy)
-		return -EINVAL;
-
-	ret = power_supply_get_property(charger->dc_psy,
-					POWER_SUPPLY_PROP_PRESENT, &prop);
-	if (ret < 0) {
-		dev_err(&charger->client->dev,
-			"Error getting charging status: %d\n", ret);
-		return -EINVAL;
-	}
-
-	return prop.intval != 0;
-}
-
 static int p9221_set_bpp_vout(struct p9221_charger_data *charger)
 {
 	u32 vout_mv;
@@ -1688,7 +1727,9 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 		p9221_write_fod(charger);
 		if (!charger->dc_icl_bpp)
 			p9221_icl_ramp_start(charger);
-		if (charger->chip_prop_mode_en(charger))
+
+		/* I am not sure that this needs to be done all the time */
+		if (charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT))
 			dev_info(&charger->client->dev, "PROP_MODE: enable\n");
 	}
 
@@ -1986,6 +2027,14 @@ static ssize_t p9221_show_status(struct device *dev,
 	ret = charger->chip_get_align_y(charger, &val8);
 	count += p9221_add_buffer(buf, val8, count, ret,
 				  "align_y     : ", "%u\n");
+
+	/* WLC_DC state */
+	if (charger->prop_mode_en) {
+		ret = charger->reg_read_8(charger, P9412_PROP_CURR_PWR_REG,
+					  &val8);
+		count += p9221_add_buffer(buf, val8, count, ret,
+					  "curr_pwr_reg: ", "%02x\n");
+	}
 
 	/* FOD Register */
 	ret = p9221_reg_read_n(charger, P9221R5_FOD_REG, tmp, P9221R5_NUM_FOD);
@@ -2955,6 +3004,34 @@ static ssize_t rtx_store(struct device *dev,
 
 static DEVICE_ATTR_RW(rtx);
 
+
+static ssize_t has_wlc_dc_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", charger->pdata->has_wlc_dc);
+}
+
+/* write 1 to enable boost & switch, write 0 to 0x34, wait for 0x4c==0x4
+ * write 0 to write 0x80 to 0x4E, wait for 0x4c==0, disable boost & switch
+ */
+static ssize_t has_wlc_dc_store(struct device *dev,
+		       struct device_attribute *attr,
+		       const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	charger->pdata->has_wlc_dc = buf[0] == '1';
+	return count;
+}
+
+static DEVICE_ATTR_RW(has_wlc_dc);
+
+
 static struct attribute *rtx_attributes[] = {
 	&dev_attr_rtx_sw.attr,
 	&dev_attr_rtx_boost.attr,
@@ -2994,6 +3071,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_ptmc_id.attr,
 	&dev_attr_ext_ben.attr,
 	&dev_attr_qi_vbus_en.attr,
+	&dev_attr_has_wlc_dc.attr,
 	NULL
 };
 
@@ -3557,9 +3635,12 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 #endif
 	if (irq_src & PROP_MODE_STAT_INT) {
 		u8 mode;
-		charger->chip_get_sys_mode(charger, &mode);
-		if (mode == P9412_SYS_OP_MODE_PROPRIETARY)
+
+		res = charger->chip_get_sys_mode(charger, &mode);
+		if (res == 0 && mode == P9412_SYS_OP_MODE_PROPRIETARY)
 			charger->prop_mode_en = true;
+
+		/* charger->prop_mode_en is reset on disconnect */
 	}
 }
 
@@ -3810,6 +3891,21 @@ static int p9221_parse_dt(struct device *dev,
 	if (ret >= 0)
 		dev_info(dev, "boost gpio:%d\n", pdata->boost_gpio);
 
+	/* DC-PPS */
+	ret = of_get_named_gpio(node, "idt,gpio_dc_switch", 0);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+	pdata->dc_switch_gpio = ret;
+	if (ret >= 0)
+		dev_info(dev, "dc_switch gpio:%d\n", pdata->dc_switch_gpio);
+
+	ret = of_property_read_u32(node, "idt,has_wlc_dc", &data);
+	if (ret == 0)
+		pdata->has_wlc_dc = !!data;
+	else
+		pdata->has_wlc_dc = pdata->chip_id == P9412_CHIP_ID;
+	dev_info(dev, "has_wlc_dc:%d\n", pdata->has_wlc_dc);
+
 	/* Main IRQ */
 	ret = of_get_named_gpio(node, "idt,irq_gpio", 0);
 	if (ret < 0) {
@@ -3835,7 +3931,7 @@ static int p9221_parse_dt(struct device *dev,
 
 	/* Optional VOUT max */
 	pdata->max_vout_mv = P9221_MAX_VOUT_SET_MV_DEFAULT;
-	ret = of_property_read_u32(node, "max_vout_mv", &data);
+	ret = of_property_read_u32(node, "idt,max_vout_mv", &data);
 	if (ret == 0) {
 		if (data < vout_set_min_mv || data > vout_set_max_mv)
 			dev_err(dev, "max_vout_mv out of range %d\n", data);
@@ -4169,8 +4265,6 @@ static int p9221_charger_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	charger->has_wlc_dc = charger->pdata->chip_id == P9412_CHIP_ID;
-
 	/* Default enable */
 	charger->enabled = true;
 	if (charger->pdata->qien_gpio >= 0)
@@ -4191,6 +4285,10 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	if (charger->pdata->ext_ben_gpio >= 0)
 		gpio_direction_output(charger->pdata->ext_ben_gpio, 0);
+
+	if (charger->pdata->dc_switch_gpio >= 0)
+		gpio_direction_output(charger->pdata->dc_switch_gpio, 0);
+
 
 	/* Default to R5+ */
 	charger->cust_id = 5;
