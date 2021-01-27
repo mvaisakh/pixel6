@@ -2443,6 +2443,8 @@ static int max77759_init_vdroop(void *data_)
 	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP2], max77759_vdroop2_work);
 	data->vdroop_counter[VDROOP1] = 0;
 	data->vdroop_counter[VDROOP2] = 0;
+	mutex_init(&data->vdroop_irq_lock[VDROOP1]);
+	mutex_init(&data->vdroop_irq_lock[VDROOP2]);
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &regdata);
 	if (ret < 0)
