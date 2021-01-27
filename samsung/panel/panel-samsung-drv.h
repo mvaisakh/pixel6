@@ -40,6 +40,8 @@
 #define BL_STATE_STANDBY	BL_CORE_FBBLANK
 #define BL_STATE_LP		BIT(30) /* backlight is in LP mode */
 
+#define DEFAULT_GAMMA_STR	"default"
+
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
 	PANEL_STATE_LP,
@@ -130,6 +132,56 @@ struct exynos_panel_funcs {
 	 */
 	void (*mode_set)(struct exynos_panel *exynos_panel,
 			 const struct exynos_panel_mode *mode);
+
+	/**
+	 * @panel_init:
+	 *
+	 * This callback is used to do one time initialization for any panel
+	 * specific functions.
+	 */
+	void (*panel_init)(struct exynos_panel *exynos_panel);
+
+	/**
+	 * @print_gamma:
+	 *
+	 * This callback is used to print the hex dump of gamma address/data
+	 * for the provided mode.
+	 *
+	 * The expected format:
+	 * [gamma address]: [gamma data...]
+	 */
+	void (*print_gamma)(struct seq_file *seq,
+			    const struct drm_display_mode *mode);
+
+	/**
+	 * @gamma_store:
+	 *
+	 * This callback is used to store the user-provided gamma table.
+	 * The user-provided table should include FPS, register, register
+	 * data size and gamma data.
+	 *
+	 * The expected format:
+	 * [FPS1]
+	 * [register1]
+	 * [register1 data size]
+	 * [gamma data]
+	 * [register2]
+	 * [register2 data size]
+	 * [gamma data]
+	 * [FPS2]
+	 * [register1]
+	 * .....
+	 */
+	ssize_t (*gamma_store)(struct exynos_panel *exynos_panel,
+			       const char *buf, size_t len);
+
+	/**
+	 * @restore_native_gamma
+	 *
+	 * This callback is used to replace current gamma table by the
+	 * original gamma.
+	 */
+	ssize_t (*restore_native_gamma)(struct exynos_panel *exynos_panel);
 };
 
 /**
@@ -322,6 +374,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 		dev_err(ctx->dev, "failed to write cmd(%d)\n", ret);	\
 } while (0)
 
+#define for_each_display_mode(i, mode, ctx)			\
+	for (i = 0, mode = &ctx->desc->modes[i].mode;		\
+		i < ctx->desc->num_modes; i++,			\
+		mode = &ctx->desc->modes[i].mode)		\
+
 int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
 int exynos_panel_disable(struct drm_panel *panel);
 int exynos_panel_unprepare(struct drm_panel *panel);
@@ -333,6 +390,8 @@ void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
 			       const struct exynos_dsi_cmd_set *cmd_set);
 void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode);
 void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness);
+int exynos_panel_common_init(struct mipi_dsi_device *dsi,
+				struct exynos_panel *ctx);
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi);
 int exynos_panel_remove(struct mipi_dsi_device *dsi);

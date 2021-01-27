@@ -310,6 +310,7 @@ void decon_reg_set_cwb_enable(u32 id, u32 en);
 /* DECON interrupt control */
 void decon_reg_set_interrupts(u32 id, u32 en);
 int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq);
+int decon_reg_get_fs_interrupt_and_clear(u32 id);
 
 /* DECON SFR dump */
 void __decon_dump(u32 id, struct decon_regs *regs, bool dsc_en);

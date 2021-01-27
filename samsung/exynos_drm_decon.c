@@ -35,6 +35,7 @@
 #include <linux/iommu.h>
 #include <uapi/linux/sched/types.h>
 
+#include <soc/google/exynos-cpupm.h>
 #include <video/videomode.h>
 
 #include <decon_cal.h>
@@ -147,12 +148,26 @@ static void decon_set_color_map(struct decon_device *decon, u32 win_id,
 	decon_debug(decon, "%s -\n", __func__);
 }
 
+static inline bool decon_is_te_enabled(const struct decon_device *decon)
+{
+	return (decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
+		(decon->config.mode.trig_mode == DECON_HW_TRIG);
+}
+
 static int decon_enable_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
 
-	/* TODO : need to write code completely */
-	decon_debug(decon, "%s\n", __func__);
+	decon_debug(decon, "%s +\n", __func__);
+
+	if (decon_is_te_enabled(decon))
+		enable_irq(decon->irq_te);
+	else /* use framestart interrupt to track vsyncs */
+		enable_irq(decon->irq_fs);
+
+	DPU_EVENT_LOG(DPU_EVT_VBLANK_ENABLE, decon->id, NULL);
+
+	decon_debug(decon, "%s -\n", __func__);
 
 	return 0;
 }
@@ -161,8 +176,16 @@ static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
 
-	/* TODO : need to write code completely */
-	decon_debug(decon, "%s\n", __func__);
+	decon_debug(decon, "%s +\n", __func__);
+
+	if (decon_is_te_enabled(decon))
+		disable_irq_nosync(decon->irq_te);
+	else
+		disable_irq_nosync(decon->irq_fs);
+
+	DPU_EVENT_LOG(DPU_EVT_VBLANK_DISABLE, decon->id, NULL);
+
+	decon_debug(decon, "%s -\n", __func__);
 }
 
 static int decon_get_crtc_out_type(const struct drm_crtc_state *crtc_state)
@@ -651,18 +674,23 @@ static void decon_enable_irqs(struct decon_device *decon)
 {
 	decon_reg_set_interrupts(decon->id, 1);
 
-	enable_irq(decon->irq_fs);
 	enable_irq(decon->irq_fd);
 	enable_irq(decon->irq_ext);
-	if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
-			(decon->config.mode.trig_mode == DECON_HW_TRIG))
-		enable_irq(decon->irq_te);
+	if (decon_is_te_enabled(decon))
+		enable_irq(decon->irq_fs);
+	if (decon->irq_ds >= 0)
+		enable_irq(decon->irq_ds);
+	if (decon->irq_de >= 0)
+		enable_irq(decon->irq_de);
 }
 
 static void _decon_enable(struct decon_device *decon)
 {
+	struct drm_crtc *crtc = &decon->crtc->base;
+
 	decon_reg_init(decon->id, &decon->config);
 	decon_enable_irqs(decon);
+	drm_crtc_vblank_get(crtc);
 }
 
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode)
@@ -840,6 +868,7 @@ void decon_exit_hibernation(struct decon_device *decon)
 	decon_debug(decon, "%s +\n", __func__);
 
 	_decon_enable(decon);
+	exynos_dqe_restore_lpd_data(decon->dqe);
 
 	decon->state = DECON_STATE_ON;
 
@@ -848,22 +877,26 @@ void decon_exit_hibernation(struct decon_device *decon)
 
 static void decon_disable_irqs(struct decon_device *decon)
 {
-	disable_irq(decon->irq_fs);
 	disable_irq(decon->irq_fd);
 	disable_irq(decon->irq_ext);
+	if (decon->irq_ds >= 0)
+		disable_irq(decon->irq_ds);
+	if (decon->irq_de >= 0)
+		disable_irq(decon->irq_de);
 	decon_reg_set_interrupts(decon->id, 0);
-	if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
-			(decon->config.mode.trig_mode == DECON_HW_TRIG))
-		disable_irq(decon->irq_te);
+	if (decon_is_te_enabled(decon))
+		disable_irq(decon->irq_fs);
 }
 
 static void _decon_disable(struct decon_device *decon)
 {
-	const struct drm_crtc_state *crtc_state = decon->crtc->base.state;
+	struct drm_crtc *crtc = &decon->crtc->base;
+	const struct drm_crtc_state *crtc_state = crtc->state;
 	bool reset = crtc_state->active_changed || crtc_state->connectors_changed;
 
 	_decon_stop(decon, reset);
 	decon_disable_irqs(decon);
+	drm_crtc_vblank_put(crtc);
 }
 
 void decon_enter_hibernation(struct decon_device *decon)
@@ -1016,16 +1049,28 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 
 	if (irq_sts_reg & DPU_FRAME_DONE_INT_PEND) {
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, decon->id, decon);
-		decon->busy = false;
 		wake_up_interruptible_all(&decon->framedone_wait);
+		exynos_dqe_save_lpd_data(decon->dqe);
 		decon_debug(decon, "%s: frame done\n", __func__);
 	}
 
-	if (irq_sts_reg & DPU_FRAME_START_INT_PEND) {
-		decon->busy = true;
-		complete(&decon->framestart_done);
-		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
-		decon_debug(decon, "%s: frame start\n", __func__);
+	if (irq_sts_reg & INT_PEND_DQE_DIMMING_START) {
+		decon->keep_unmask = true;
+		if (decon->config.mode.op_mode == DECON_COMMAND_MODE)
+			decon_reg_set_trigger(decon->id, &decon->config.mode,
+					DECON_TRIG_UNMASK);
+
+		DPU_EVENT_LOG(DPU_EVT_DIMMING_START, decon->id, NULL);
+	}
+
+	if (irq_sts_reg & INT_PEND_DQE_DIMMING_END) {
+		decon->keep_unmask = false;
+		if (decon->framestart_done.done &&
+				decon->config.mode.op_mode == DECON_COMMAND_MODE)
+			decon_reg_set_trigger(decon->id, &decon->config.mode,
+					DECON_TRIG_MASK);
+
+		DPU_EVENT_LOG(DPU_EVT_DIMMING_END, decon->id, NULL);
 	}
 
 	if (ext_irq & DPU_RESOURCE_CONFLICT_INT_PEND)
@@ -1035,6 +1080,30 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 		decon_err(decon, "%s: timeout irq occurs\n", __func__);
 		decon_dump(decon);
 		WARN_ON(1);
+	}
+
+irq_end:
+	spin_unlock(&decon->slock);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t decon_fs_irq_handler(int irq, void *dev_data)
+{
+	struct decon_device *decon = dev_data;
+	u32 pending_irq;
+
+	spin_lock(&decon->slock);
+	if (decon->state != DECON_STATE_ON)
+		goto irq_end;
+
+	pending_irq = decon_reg_get_fs_interrupt_and_clear(decon->id);
+
+	if (pending_irq & DPU_FRAME_START_INT_PEND) {
+		complete(&decon->framestart_done);
+		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
+		decon_debug(decon, "%s: frame start\n", __func__);
+		if (decon->config.mode.op_mode == DECON_VIDEO_MODE)
+			drm_crtc_handle_vblank(&decon->crtc->base);
 	}
 
 irq_end:
@@ -1257,7 +1326,13 @@ static irqreturn_t decon_te_irq_handler(int irq, void *dev_id)
 {
 	struct decon_device *decon = dev_id;
 
-	if (!decon || decon->state != DECON_STATE_ON)
+	if (!decon)
+		goto end;
+
+	pr_debug("%s: state(%d)\n", __func__, decon->state);
+
+	if (decon->state != DECON_STATE_ON &&
+				decon->state != DECON_STATE_HIBERNATION)
 		goto end;
 
 	DPU_EVENT_LOG(DPU_EVT_TE_INTERRUPT, decon->id, NULL);
@@ -1307,7 +1382,7 @@ static int decon_register_irqs(struct decon_device *decon)
 
 	/* 1: FRAME START */
 	decon->irq_fs = of_irq_get_byname(np, "frame_start");
-	ret = devm_request_irq(dev, decon->irq_fs, decon_irq_handler,
+	ret = devm_request_irq(dev, decon->irq_fs, decon_fs_irq_handler,
 			0, pdev->name, decon);
 	if (ret) {
 		decon_err(decon, "failed to install FRAME START irq\n");
@@ -1334,6 +1409,26 @@ static int decon_register_irqs(struct decon_device *decon)
 		return ret;
 	}
 	disable_irq(decon->irq_ext);
+
+	/* 4: DIMMING START */
+	decon->irq_ds = of_irq_get_byname(np, "dimming_start");
+	if (devm_request_irq(dev, decon->irq_ds, decon_irq_handler,
+			0, pdev->name, decon)) {
+		decon->irq_ds = -1;
+		decon_info(decon, "dimming start irq is not supported\n");
+	} else {
+		disable_irq(decon->irq_ds);
+	}
+
+	/* 5: DIMMING END */
+	decon->irq_de = of_irq_get_byname(np, "dimming_end");
+	if (devm_request_irq(dev, decon->irq_de, decon_irq_handler,
+			0, pdev->name, decon)) {
+		decon->irq_de = -1;
+		decon_info(decon, "dimming end irq is not supported\n");
+	} else {
+		disable_irq(decon->irq_de);
+	}
 
 	decon->irq_te = -1;
 

@@ -46,6 +46,8 @@ static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
 
 static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
 					enum exynos_panel_state panel_state);
+static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
+					   const char **out_buf);
 
 static inline bool in_tui(struct exynos_panel *ctx)
 {
@@ -171,11 +173,11 @@ static int exynos_panel_read_extinfo(struct exynos_panel *ctx)
 
 static int exynos_panel_init(struct exynos_panel *ctx)
 {
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	int ret;
 
 	if (ctx->initialized)
 		return 0;
-
 
 	ret = exynos_panel_read_id(ctx);
 	if (ret)
@@ -184,6 +186,9 @@ static int exynos_panel_init(struct exynos_panel *ctx)
 	ret = exynos_panel_read_extinfo(ctx);
 	if (!ret)
 		ctx->initialized = true;
+
+	if (funcs && funcs->panel_init)
+		funcs->panel_init(ctx);
 
 	return ret;
 }
@@ -614,14 +619,57 @@ static ssize_t panel_name_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", dsi->name);
 }
 
+static ssize_t gamma_store(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	const struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	const struct exynos_panel_funcs *funcs;
+	size_t len, ret;
+	char *input_buf;
+	const char *out_buf;
+
+	if (!ctx->enabled || !ctx->initialized)
+		return -EPERM;
+
+	funcs = ctx->desc->exynos_panel_func;
+	if (!funcs || !funcs->gamma_store)
+		return -EOPNOTSUPP;
+
+	if (!strncmp(buf, DEFAULT_GAMMA_STR, strlen(DEFAULT_GAMMA_STR))) {
+		if (!funcs->restore_native_gamma)
+			return -EOPNOTSUPP;
+		else
+			ret = funcs->restore_native_gamma(ctx);
+
+		return ret ? : count;
+	}
+
+	input_buf = kstrndup(buf, count, GFP_KERNEL);
+	if (!input_buf)
+		return -ENOMEM;
+
+	len = exynos_panel_parse_byte_buf(input_buf, count, &out_buf);
+	kfree(input_buf);
+	if (len <= 0)
+		return len;
+
+	ret = funcs->gamma_store(ctx, out_buf, len);
+	kfree(out_buf);
+
+	return ret ? : count;
+}
+
 static DEVICE_ATTR_RO(serial_number);
 static DEVICE_ATTR_RO(panel_extinfo);
 static DEVICE_ATTR_RO(panel_name);
+static DEVICE_ATTR_WO(gamma);
 
 static const struct attribute *panel_attrs[] = {
 	&dev_attr_serial_number.attr,
 	&dev_attr_panel_extinfo.attr,
 	&dev_attr_panel_name.attr,
+	&dev_attr_gamma.attr,
 	NULL
 };
 
@@ -847,6 +895,37 @@ static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 };
 
 #ifdef CONFIG_DEBUG_FS
+
+static int panel_gamma_show(struct seq_file *m, void *data)
+{
+	struct exynos_panel *ctx = m->private;
+	const struct exynos_panel_funcs *funcs;
+	const struct drm_display_mode *mode;
+	int i;
+
+	funcs = ctx->desc->exynos_panel_func;
+	for_each_display_mode(i, mode, ctx) {
+		seq_printf(m, "\n=== %dhz Mode Gamma ===\n", drm_mode_vrefresh(mode));
+		funcs->print_gamma(m, mode);
+	}
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(panel_gamma);
+
+static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+	if (!funcs)
+		return -EINVAL;
+
+	if (funcs->print_gamma)
+		debugfs_create_file("gamma", 0600, parent, ctx, &panel_gamma_fops);
+
+	return 0;
+}
+
 static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
 				     const void *data, size_t len)
 {
@@ -923,6 +1002,27 @@ static ssize_t parse_byte_buf(u8 *out, size_t len, char *src)
 	return rc ? : i;
 }
 
+static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
+					   const char **out_buf)
+{
+	size_t len = (input_len + 1) / 2;
+	size_t rc;
+	char *out;
+
+	out = kzalloc(len, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	rc = parse_byte_buf(out, len, input_str);
+	if (rc <= 0) {
+		kfree(out);
+		return rc;
+	}
+
+	*out_buf = out;
+
+	return rc;
+}
 
 struct exynos_dsi_reg_data {
 	struct mipi_dsi_device *dsi;
@@ -1063,6 +1163,11 @@ static void exynos_debugfs_panel_remove(struct exynos_panel *ctx)
 	ctx->debugfs_entry = NULL;
 }
 #else
+static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
+{
+	return 0;
+}
+
 static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 			 struct dentry *parent)
 {
@@ -1526,6 +1631,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 
 	exynos_debugfs_panel_add(ctx, connector->debugfs_entry);
 	exynos_dsi_debugfs_add(to_mipi_dsi_device(ctx->dev), ctx->debugfs_entry);
+	panel_debugfs_add(ctx, ctx->debugfs_entry);
 
 	drm_kms_helper_hotplug_event(connector->dev);
 
@@ -1704,19 +1810,15 @@ static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.mode_set = exynos_panel_bridge_mode_set,
 };
 
-int exynos_panel_probe(struct mipi_dsi_device *dsi)
+int exynos_panel_common_init(struct mipi_dsi_device *dsi,
+				struct exynos_panel *ctx)
 {
 	static atomic_t panel_index = ATOMIC_INIT(-1);
 	struct device *dev = &dsi->dev;
-	struct exynos_panel *ctx;
 	int ret = 0;
 	char name[32];
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int i;
-
-	ctx = devm_kzalloc(dev, sizeof(struct exynos_panel), GFP_KERNEL);
-	if (!ctx)
-		return -ENOMEM;
 
 	dev_dbg(dev, "%s +\n", __func__);
 
@@ -1793,6 +1895,18 @@ err_panel:
 	dev_err(ctx->dev, "failed to probe samsung panel driver(%d)\n", ret);
 
 	return ret;
+}
+EXPORT_SYMBOL(exynos_panel_common_init);
+
+int exynos_panel_probe(struct mipi_dsi_device *dsi)
+{
+	struct exynos_panel *ctx;
+
+	ctx = devm_kzalloc(&dsi->dev, sizeof(struct exynos_panel), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	return exynos_panel_common_init(dsi, ctx);
 }
 EXPORT_SYMBOL(exynos_panel_probe);
 

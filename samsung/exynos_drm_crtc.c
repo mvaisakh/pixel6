@@ -35,10 +35,10 @@ static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 
+	drm_crtc_vblank_on(crtc);
+
 	if (exynos_crtc->ops->enable)
 		exynos_crtc->ops->enable(exynos_crtc, old_state);
-
-	drm_crtc_vblank_on(crtc);
 }
 
 static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -47,8 +47,6 @@ static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 
 	drm_atomic_helper_disable_planes_on_crtc(old_state, false);
-
-	drm_crtc_vblank_off(crtc);
 
 	if (exynos_crtc->ops->disable)
 		exynos_crtc->ops->disable(exynos_crtc);
@@ -60,6 +58,8 @@ static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 
 		crtc->state->event = NULL;
 	}
+
+	drm_crtc_vblank_off(crtc);
 }
 
 static void exynos_crtc_update_lut(struct drm_crtc *crtc,
@@ -309,8 +309,7 @@ static void exynos_drm_crtc_reset(struct drm_crtc *crtc)
 	exynos_crtc_state = kzalloc(sizeof(*exynos_crtc_state), GFP_KERNEL);
 	if (exynos_crtc_state) {
 		exynos_crtc_state->dqe.enabled = true;
-		crtc->state = &exynos_crtc_state->base;
-		crtc->state->crtc = crtc;
+		__drm_atomic_helper_crtc_reset(crtc, &exynos_crtc_state->base);
 	} else {
 		pr_err("failed to allocate exynos crtc state\n");
 	}

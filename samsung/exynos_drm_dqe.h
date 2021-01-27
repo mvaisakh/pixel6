@@ -14,6 +14,7 @@
 #define __EXYNOS_DRM_DQE_H__
 
 #include <drm/samsung_drm.h>
+#include <dqe_cal.h>
 
 struct decon_device;
 struct exynos_dqe;
@@ -62,6 +63,8 @@ struct exynos_dqe {
 	const struct exynos_dqe_funcs *funcs;
 	struct exynos_dqe_state state;
 	struct decon_device *decon;
+	struct class *dqe_class;
+	struct device *dev;
 
 	struct dither_debug_override cgc_dither_override;
 	struct dither_debug_override disp_dither_override;
@@ -75,11 +78,18 @@ struct exynos_dqe {
 	struct exynos_matrix force_gamma_matrix;
 
 	bool force_disabled;
+
+	bool verbose_atc;
+	bool dstep_changed;
+	struct exynos_atc force_atc_config;
+	u32 lpd_atc_regs[LPD_ATC_REG_CNT];
 };
 
 void exynos_dqe_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state,
 		u32 width, u32 height);
 void exynos_dqe_reset(struct exynos_dqe *dqe);
 struct exynos_dqe *exynos_dqe_register(struct decon_device *decon);
+void exynos_dqe_save_lpd_data(struct exynos_dqe *dqe);
+void exynos_dqe_restore_lpd_data(struct exynos_dqe *dqe);
 
 #endif /* __EXYNOS_DRM_DQE_H__ */

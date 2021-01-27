@@ -584,7 +584,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		DPU_ATRACE_END("wait_for_frame_start");
 
 		mode = &decon->config.mode;
-		if (mode->op_mode == DECON_COMMAND_MODE) {
+		if (mode->op_mode == DECON_COMMAND_MODE && !decon->keep_unmask) {
 			DPU_EVENT_LOG(DPU_EVT_DECON_TRIG_MASK,
 					decon->id, NULL);
 			decon_reg_set_trigger(decon->id, mode,
