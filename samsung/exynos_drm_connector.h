@@ -14,6 +14,9 @@
 #include <drm/drm_connector.h>
 #include <drm/samsung_drm.h>
 
+#define MIN_WIN_BLOCK_WIDTH	8
+#define MIN_WIN_BLOCK_HEIGHT	1
+
 struct exynos_drm_connector;
 
 struct exynos_drm_connector_properties {
@@ -26,6 +29,7 @@ struct exynos_drm_connector_properties {
 	struct drm_property *dimming_on;
 	struct drm_property *brightness_capability;
 	struct drm_property *brightness_level;
+	struct drm_property *is_partial;
 };
 
 struct exynos_display_dsc {
@@ -33,6 +37,12 @@ struct exynos_display_dsc {
 	unsigned int dsc_count;
 	unsigned int slice_count;
 	unsigned int slice_height;
+};
+
+struct exynos_display_partial {
+	bool enabled;
+	unsigned int min_width;
+	unsigned int min_height;
 };
 
 struct exynos_display_underrun_param {
@@ -107,6 +117,11 @@ struct exynos_drm_connector_state {
 	 *	     This is required for dsi command mode hw trigger.
 	 */
 	int te_gpio;
+
+	/*
+	 * @partial: Specify whether this panel supports partial update feature.
+	 */
+	struct exynos_display_partial partial;
 };
 
 #define to_exynos_connector_state(connector_state) \

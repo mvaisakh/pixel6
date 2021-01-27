@@ -19,7 +19,8 @@ struct decon_device;
 struct exynos_partial;
 
 struct exynos_partial_funcs {
-	int (*init)(struct exynos_partial *partial);
+	int (*init)(struct exynos_partial *partial,
+			const struct exynos_display_partial *partial_mode);
 	struct drm_rect *(*adjust_partial_region)(struct exynos_partial *partial,
 			struct exynos_drm_crtc_state *exynos_crtc_state,
 			struct drm_rect *req);
@@ -41,8 +42,8 @@ struct exynos_partial {
 	const struct exynos_partial_funcs *funcs;
 };
 
-struct exynos_partial *exynos_partial_register(struct decon_device *decon);
-void exynos_partial_initialize(struct exynos_partial *partial);
+struct exynos_partial *exynos_partial_initialize(struct decon_device *decon,
+			const struct exynos_display_partial *partial_mode);
 void exynos_partial_prepare(struct exynos_partial *partial,
 			struct exynos_drm_crtc_state *exynos_crtc_state);
 void exynos_partial_update(struct exynos_partial *partial,

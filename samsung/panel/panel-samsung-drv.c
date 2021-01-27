@@ -772,6 +772,7 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
 	drm_printf(p, "\thbm_on: %s\n", ctx->hbm_mode ? "true" : "false");
 	drm_printf(p, "\tdimming_on: %s\n", ctx->dimming_on ? "true" : "false");
+	drm_printf(p, "\tis_partial: %s\n", desc->is_partial ? "true" : "false");
 }
 
 static int exynos_panel_connector_get_property(
@@ -943,6 +944,25 @@ static bool exynos_panel_is_mode_seamless(const struct exynos_panel *ctx,
 	return funcs->is_mode_seamless(ctx, mode);
 }
 
+static void exynos_panel_set_partial(struct exynos_display_partial *partial,
+			const struct exynos_panel_mode *pmode, bool is_partial)
+{
+	const struct exynos_display_dsc *dsc = &pmode->exynos_mode.dsc;
+	const struct drm_display_mode *mode = &pmode->mode;
+
+	partial->enabled = is_partial;
+	if (!partial->enabled)
+		return;
+
+	if (dsc->enabled) {
+		partial->min_width = DIV_ROUND_UP(mode->hdisplay, dsc->slice_count);
+		partial->min_height = dsc->slice_height;
+	} else {
+		partial->min_width = MIN_WIN_BLOCK_WIDTH;
+		partial->min_height = MIN_WIN_BLOCK_HEIGHT;
+	}
+}
+
 static int exynos_drm_connector_check_mode(struct exynos_panel *ctx,
 					   struct drm_connector_state *connector_state,
 					   const struct drm_display_mode *mode)
@@ -958,6 +978,8 @@ static int exynos_drm_connector_check_mode(struct exynos_panel *ctx,
 
 	exynos_connector_state->seamless_possible = exynos_panel_is_mode_seamless(ctx, pmode);
 	exynos_connector_state->exynos_mode = pmode->exynos_mode;
+	exynos_panel_set_partial(&exynos_connector_state->partial, pmode,
+			ctx->desc->is_partial);
 
 	return 0;
 }
@@ -1826,6 +1848,7 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->brightness_level, 0);
 	drm_object_attach_property(obj, p->hbm_on, 0);
 	drm_object_attach_property(obj, p->dimming_on, 0);
+	drm_object_attach_property(obj, p->is_partial, desc->is_partial);
 
 	if (desc->brt_capability) {
 		ret = exynos_panel_attach_brightness_capability(&ctx->exynos_connector,

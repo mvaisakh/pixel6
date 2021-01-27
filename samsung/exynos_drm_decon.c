@@ -856,6 +856,12 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 		if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
 		    (decon->config.mode.trig_mode == DECON_HW_TRIG))
 			decon_request_te_irq(exynos_crtc, exynos_conn_state);
+
+		if (exynos_conn_state) {
+			const struct exynos_display_partial *p =
+				&exynos_conn_state->partial;
+			decon->partial = exynos_partial_initialize(decon, p);
+		}
 	}
 
 	if (decon->state == DECON_STATE_ON) {
@@ -864,9 +870,6 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 	}
 
 	decon_info(decon, "%s +\n", __func__);
-
-	if (decon->partial)
-		exynos_partial_initialize(decon->partial);
 
 	/* avoid power enable if we were previously in bypass to keep vote balanced */
 	if (old_exynos_crtc_state->bypass)
@@ -1557,8 +1560,6 @@ static int decon_probe(struct platform_device *pdev)
 	decon->hibernation = exynos_hibernation_register(decon);
 
 	decon->dqe = exynos_dqe_register(decon);
-
-	decon->partial = exynos_partial_register(decon);
 
 	ret = component_add(dev, &decon_component_ops);
 	if (ret)

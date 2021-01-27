@@ -17,33 +17,23 @@
 #include "exynos_drm_decon.h"
 #include "exynos_drm_format.h"
 #include "exynos_drm_dsim.h"
+#include "exynos_drm_connector.h"
 #include "cal_common/dsim_cal.h"
 
-#define MIN_WIN_BLOCK_WIDTH	8
-#define MIN_WIN_BLOCK_HEIGHT	1
-
-static int exynos_partial_init(struct exynos_partial *partial)
+static int exynos_partial_init(struct exynos_partial *partial,
+		const struct exynos_display_partial *partial_mode)
 {
-	struct decon_device *decon = partial->decon;
-	struct decon_config *cfg;
+	struct decon_config *cfg = &partial->decon->config;
 
-	if (!decon)
-		return -EFAULT;
+	partial->min_w = partial_mode->min_width;
+	partial->min_h = partial_mode->min_height;
 
-	cfg = &decon->config;
-
-	if (cfg->dsc.enabled) {
-		partial->min_w = cfg->dsc.slice_width;
-		partial->min_h = cfg->dsc.slice_height;
-	} else {
-		partial->min_w = MIN_WIN_BLOCK_WIDTH;
-		partial->min_h = MIN_WIN_BLOCK_HEIGHT;
+	if ((partial->min_w < MIN_WIN_BLOCK_WIDTH) ||
+			(partial->min_h < MIN_WIN_BLOCK_HEIGHT)) {
+		pr_err("invalid min size(%dx%d) of partial update\n",
+				partial->min_w, partial->min_h);
+		return -EINVAL;
 	}
-
-	partial->prev_partial_region.x1 = 0;
-	partial->prev_partial_region.y1 = 0;
-	partial->prev_partial_region.x2 = cfg->image_width;
-	partial->prev_partial_region.y2 = cfg->image_height;
 
 	if ((cfg->image_width % partial->min_w) ||
 			(cfg->image_height % partial->min_h)) {
@@ -52,6 +42,11 @@ static int exynos_partial_init(struct exynos_partial *partial)
 				partial->min_w, partial->min_h);
 		return -EINVAL;
 	}
+
+	partial->prev_partial_region.x1 = 0;
+	partial->prev_partial_region.y1 = 0;
+	partial->prev_partial_region.x2 = cfg->image_width;
+	partial->prev_partial_region.y2 = cfg->image_height;
 
 	return 0;
 }
@@ -379,19 +374,42 @@ static const struct exynos_partial_funcs partial_funcs = {
 	.set_partial_size	 = exynos_partial_set_size,
 };
 
-void exynos_partial_initialize(struct exynos_partial *partial)
+struct exynos_partial *exynos_partial_initialize(struct decon_device *decon,
+			const struct exynos_display_partial *partial_mode)
 {
 	int ret;
+	struct exynos_partial *partial = NULL;
+	struct device *dev = decon->dev;
 
-	ret = partial->funcs->init(partial);
-	if (ret) {
-		partial->decon = NULL;
-		pr_err("failed to initialize partial update\n");
+	if (!partial_mode->enabled) {
+		pr_debug("This panel doesn't support partial update feature\n");
+		return NULL;
 	}
 
-	pr_debug("INIT: min rect(%dx%d)\n",
+	if (!decon->partial) {
+		partial = devm_kzalloc(dev, sizeof(struct exynos_partial),
+				GFP_KERNEL);
+		if (!partial)
+			return NULL;
+
+		partial->decon = decon;
+		partial->funcs = &partial_funcs;
+	} else {
+		partial = decon->partial;
+	}
+
+	ret = partial->funcs->init(partial, partial_mode);
+	if (ret) {
+		pr_err("failed to initialize partial update\n");
+		kfree(partial);
+		return NULL;
+	}
+
+	pr_debug("partial update is initialized: min rect(%dx%d)\n",
 			partial->min_w, partial->min_h);
 	DPU_EVENT_LOG(DPU_EVT_PARTIAL_INIT, partial->decon->id, partial);
+
+	return partial;
 }
 
 static void
@@ -521,28 +539,4 @@ void exynos_partial_restore(struct exynos_partial *partial)
 			partial->prev_partial_region.y1,
 			drm_rect_width(&partial->prev_partial_region),
 			drm_rect_height(&partial->prev_partial_region));
-}
-
-struct exynos_partial *exynos_partial_register(struct decon_device *decon)
-{
-	struct device_node *np;
-	struct device *dev = decon->dev;
-	struct exynos_partial *partial;
-
-	np = dev->of_node;
-	if (!of_property_read_bool(np, "partial-update")) {
-		pr_debug("partial update feature is not supported\n");
-		return NULL;
-	}
-
-	partial = devm_kzalloc(dev, sizeof(struct exynos_partial), GFP_KERNEL);
-	if (!partial)
-		return NULL;
-
-	partial->decon = decon;
-	partial->funcs = &partial_funcs;
-
-	pr_debug("partial update feature is supported\n");
-
-	return partial;
 }

@@ -236,6 +236,11 @@ int exynos_drm_connector_create_properties(struct drm_device *dev)
 	if (IS_ERR(p->lp_mode))
                 return PTR_ERR(p->lp_mode);
 
+	p->is_partial = drm_property_create_bool(dev, DRM_MODE_PROP_IMMUTABLE,
+			"is_partial");
+	if (IS_ERR(p->is_partial))
+		return PTR_ERR(p->is_partial);
+
 	ret = exynos_drm_connector_create_luminance_properties(dev);
 	if (ret)
 		return ret;

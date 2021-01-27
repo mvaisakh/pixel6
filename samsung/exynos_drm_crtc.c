@@ -828,11 +828,9 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 			goto err_crtc;
 	}
 
-	if (decon->partial) {
-		ret = exynos_drm_crtc_create_partial_property(exynos_crtc);
-		if (ret)
-			goto err_crtc;
-	}
+	ret = exynos_drm_crtc_create_partial_property(exynos_crtc);
+	if (ret)
+		goto err_crtc;
 
 	return exynos_crtc;
 
