@@ -46,6 +46,14 @@ static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
 	return (atomic_read(&hiber->block_cnt) > 0);
 }
 
+static bool is_atc_dimming_operating(struct exynos_hibernation *hiber)
+{
+	if (!hiber->decon->dqe->force_atc_config.en)
+		return false;
+
+	return dqe_reg_dimming_in_progress();
+}
+
 static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 {
 	pr_debug("%s +\n", __func__);
@@ -53,7 +61,7 @@ static bool exynos_hibernation_check(struct exynos_hibernation *hiber)
 	return (!is_hibernaton_blocked(hiber) &&
 		!is_camera_operating(hiber) &&
 		pm_runtime_active(hiber->decon->dev) &&
-		!dqe_reg_dimming_in_progress());
+		!is_atc_dimming_operating(hiber));
 }
 
 static inline void hibernation_block(struct exynos_hibernation *hiber)
