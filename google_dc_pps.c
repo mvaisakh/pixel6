@@ -634,8 +634,10 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 
 	if (!pps)
 		return -EINVAL;
-	if (!pps_psy)
+	if (!pps_psy) {
 		pps->stage = PPS_NOTSUPP;
+		return -EINVAL;
+	}
 
 	name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
 
