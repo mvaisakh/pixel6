@@ -99,7 +99,7 @@ static int pps_check_type(struct pd_pps_data *pps_data)
 
 	/* TODO: add POWER_SUPPLY_TYPE_PPS_PORT? */
 	pr_debug("%s: name=%s type=%d\n", __func__, name, pps_psy->desc->type);
-	if (pps_psy->desc->type == POWER_SUPPLY_TYPE_WIRELESS_EXT)
+	if (pps_psy->desc->type == POWER_SUPPLY_TYPE_WIRELESS)
 		return true;
 
 	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_USB_TYPE, &pval);
