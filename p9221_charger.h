@@ -389,6 +389,8 @@
 #define PROP_REQ_PWR_CMD			BIT(9)
 /* For INT status register */
 #define PROP_MODE_STAT_INT			BIT(12)
+/* EPT code */
+#define EPT_END_OF_CHARGE			BIT(0)
 
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
@@ -443,6 +445,7 @@ struct p9221_charger_data {
 	struct votable			*tx_icl_votable;
 	struct votable			*disable_dcin_en_votable;
 	struct votable			*chg_mode_votable;
+	struct votable			*wlc_disable_votable;
 	struct notifier_block		nb;
 	struct mutex			io_lock;
 	struct mutex			cmd_lock;
@@ -546,6 +549,7 @@ struct p9221_charger_data {
 	int (*chip_set_cc_send_size)(struct p9221_charger_data *chgr,
 				     size_t len);
 	int (*chip_send_ccreset)(struct p9221_charger_data *chgr);
+	int (*chip_send_eop)(struct p9221_charger_data *chgr, u8 reason);
 	int (*chip_get_align_x)(struct p9221_charger_data *chgr, u8 *x);
 	int (*chip_get_align_y)(struct p9221_charger_data *chgr, u8 *y);
 

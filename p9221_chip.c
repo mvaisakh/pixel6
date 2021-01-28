@@ -860,6 +860,47 @@ static int p9412_send_ccreset(struct p9221_charger_data *chgr)
 	return -ENOTSUPP;
 }
 
+/* send eop */
+static int p9221_send_eop(struct p9221_charger_data *chgr, u8 reason)
+{
+	int ret;
+
+	dev_info(&chgr->client->dev, "Send EOP reason=%d\n", reason);
+
+	mutex_lock(&chgr->cmd_lock);
+
+	ret = chgr->reg_write_8(chgr, P9221R5_EPT_REG, reason);
+	if (ret == 0)
+		ret = chgr->chip_set_cmd(chgr, P9221R5_COM_SENDEPT);
+
+	mutex_unlock(&chgr->cmd_lock);
+	return ret;
+}
+
+static int p9412_send_eop(struct p9221_charger_data *chgr, u8 reason)
+{
+	int ret = 0;
+
+	dev_info(&chgr->client->dev, "Send EOP reason=%d\n", reason);
+
+	mutex_lock(&chgr->cmd_lock);
+
+	/* Command P9412 to send EPT */
+	ret = chgr->reg_write_8(chgr, P9221R5_EPT_REG, reason);
+	if (ret == 0)
+		ret = chgr->chip_set_cmd(chgr, P9221R5_COM_SENDEPT);
+
+	/* Change P9412 mode to Disable Mode */
+	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, 0);
+	if (ret < 0)
+		dev_err(&chgr->client->dev,
+			"fail to switch cap to disable mode\n");
+
+	mutex_unlock(&chgr->cmd_lock);
+
+	return ret;
+}
+
 /* renegotiate power from charger->pdata->epp_rp_value */
 static int p9221_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 {
@@ -1128,6 +1169,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9412_get_align_x;
 		chgr->chip_get_align_y = p9412_get_align_y;
 		chgr->chip_send_ccreset = p9412_send_ccreset;
+		chgr->chip_send_eop = p9412_send_eop;
 		chgr->chip_get_sys_mode = p9412_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9412_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9412_prop_mode_enable;
@@ -1154,6 +1196,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_send_eop = p9221_send_eop;
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
@@ -1186,6 +1229,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_send_eop = p9221_send_eop;
 		chgr->chip_get_sys_mode = p9222_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9222_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
@@ -1212,6 +1256,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_align_x = p9221_get_align_x;
 		chgr->chip_get_align_y = p9221_get_align_y;
 		chgr->chip_send_ccreset = p9221_send_ccreset;
+		chgr->chip_send_eop = p9221_send_eop;
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;

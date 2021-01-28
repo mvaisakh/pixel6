@@ -416,22 +416,6 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 	return ret;
 }
 
-static int p9221_send_eop(struct p9221_charger_data *charger, u8 reason)
-{
-	int ret;
-
-	dev_info(&charger->client->dev, "Send EOP reason=%d\n", reason);
-
-	mutex_lock(&charger->cmd_lock);
-
-	ret = p9221_reg_write_8(charger, P9221R5_EPT_REG, reason);
-	if (ret == 0)
-		ret = charger->chip_set_cmd(charger, P9221R5_COM_SENDEPT);
-
-	mutex_unlock(&charger->cmd_lock);
-	return ret;
-}
-
 static bool p9221_is_online(const struct p9221_charger_data *charger)
 {
 	return charger->online || charger->ben_state;
@@ -636,10 +620,7 @@ static void p9221_dcin_pon_work(struct work_struct *work)
 #else
 static void p9221_dcin_pon_work(struct work_struct *work)
 {
-	struct p9221_charger_data *charger = container_of(work,
-		struct p9221_charger_data, dcin_pon_work.work);
 
-	gpio_set_value_cansleep(charger->pdata->qien_gpio, 0);
 }
 #endif
 
@@ -1169,7 +1150,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	charger->enabled = !!online;
 	dev_warn(&charger->client->dev, "Set enable %d\n", charger->enabled);
 	if (charger->pdata->qien_gpio >= 0)
-		gpio_set_value(charger->pdata->qien_gpio, charger->enabled);
+		vote(charger->wlc_disable_votable, P9221_WLC_VOTER, charger->enabled, 0);
 
 	return 1;
 }
@@ -3277,7 +3258,7 @@ send_eop:
 	dev_err(&charger->client->dev,
 		"OVER is %04x, sending EOP %d\n", irq_src, reason);
 
-	ret = p9221_send_eop(charger, reason);
+	ret = charger->chip_send_eop(charger, reason);
 	if (ret)
 		dev_err(&charger->client->dev,
 			"Failed to send EOP %d: %d\n", reason, ret);
@@ -4201,6 +4182,22 @@ static int p9382a_tx_icl_vote_callback(struct votable *votable, void *data,
 	return ret;
 }
 
+static int p9221_wlc_disable_callback(struct votable *votable, void *data,
+				      int disable, const char *client)
+{
+	struct p9221_charger_data *charger = data;
+	int ret = 0;
+	u8 reason = EPT_END_OF_CHARGE;
+
+	if (p9221_is_online(charger))
+		ret = charger->chip_send_eop(charger, reason);
+
+	if (charger->pdata->qien_gpio >= 0)
+		gpio_set_value_cansleep(charger->pdata->qien_gpio, disable);
+
+	return ret;
+}
+
 /*
  *  If able to read the chip_id register then we know we are online
  *
@@ -4338,6 +4335,19 @@ static int p9221_charger_probe(struct i2c_client *client,
 		return PTR_ERR(charger->wc_psy);
 	}
 
+	/*
+	 * Create the WLC_DISABLE votable, use for send EPT and pull high
+	 * QI_EN_L
+	 */
+	charger->wlc_disable_votable = create_votable("WLC_DISABLE", VOTE_SET_ANY,
+						      p9221_wlc_disable_callback,
+						      charger);
+	if (IS_ERR(charger->wlc_disable_votable)) {
+		ret = PTR_ERR(charger->wlc_disable_votable);
+		dev_err(&client->dev,
+			"Couldn't create WLC_DISABLE rc=%d\n", ret);
+		charger->wlc_disable_votable = NULL;
+	}
 
 	/*
 	 * Create the RTX_ICL votable, we use this to limit the current that
