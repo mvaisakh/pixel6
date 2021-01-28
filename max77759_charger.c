@@ -1680,7 +1680,7 @@ static int max77759_wd_tickle(struct max77759_chgr_data *data)
 /* online is used from DC charging to tickle the watchdog (if enabled) */
 static int max77759_set_online(struct max77759_chgr_data *data, bool online)
 {
-	int ret;
+	int ret = 0;
 
 	if (data->wden) {
 		ret = max77759_wd_tickle(data);
