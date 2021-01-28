@@ -1,0 +1,13 @@
+config TOUCHSCREEN_TBN
+	tristate "Touch Bus Negotiator for Google Pixel"
+	depends on (TOUCHSCREEN_FTS || TOUCHSCREEN_SEC_TS)
+	help
+	  Say Y here if you have a Google Pixel device. This module enables
+	  support for kernel touch drivers to coordinate bus access with remote
+	  processors (e.g. sensor DSP processor), which is required to enable
+	  low power touch gesture detection in processors other than AP.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called touch_bus_negotiator.
