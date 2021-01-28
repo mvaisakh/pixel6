@@ -848,6 +848,8 @@ static int max77729_psy_get_property(struct power_supply *psy,
 			break;
 
 		case GBMS_PROP_TAPER_CONTROL:
+			ret = 0;
+			break;
 		default:
 			dev_err(data->dev, "property (%d) unsupported.\n", psp);
 			ret = -EINVAL;

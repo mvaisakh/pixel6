@@ -327,9 +327,8 @@ static inline int chg_reset_state(struct chg_drv *chg_drv)
 	/* TODO: handle interaction with PPS code */
 	vote(chg_drv->msc_interval_votable, CHG_PPS_VOTER, false, 0);
 	/* when/if enabled */
-	GPSY_SET_PROP(chg_drv->chg_psy,
-			GBMS_PROP_TAPER_CONTROL,
-			GBMS_TAPER_CONTROL_OFF);
+	GPSY_SET_PROP(chg_drv->chg_psy, GBMS_PROP_TAPER_CONTROL,
+		      GBMS_TAPER_CONTROL_OFF);
 	/* make sure the battery knows that it's disconnected */
 	ret = GPSY_SET_INT64_PROP(chg_drv->bat_psy,
 				  GBMS_PROP_CHARGE_CHARGER_STATE,
@@ -453,7 +452,6 @@ static int chg_set_charger(struct power_supply *chg_psy, int fv_uv, int cc_max)
 {
 	int rc;
 
-	/* TAPER CONTROL is in the charger */
 	rc = GPSY_SET_PROP(chg_psy,
 		POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, cc_max);
 	if (rc != 0) {
@@ -470,13 +468,29 @@ static int chg_set_charger(struct power_supply *chg_psy, int fv_uv, int cc_max)
 	return rc;
 }
 
+
+
 static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 {
-	int rc = 0;
 	struct power_supply *chg_psy = chg_drv->chg_psy;
+	int rc = 0;
+
+	if (!chg_psy)
+		return 0;
 
 	if (chg_drv->fv_uv != fv_uv || chg_drv->cc_max != cc_max) {
+		const int taper_limit = chg_drv->batt_profile_fv_uv >= 0 ?
+					chg_drv->batt_profile_fv_uv : -1;
+		int taper_ctl = GBMS_TAPER_CONTROL_OFF;
 		int fcc = cc_max;
+
+		if (taper_limit > 0 && fv_uv >= taper_limit)
+			taper_ctl = GBMS_TAPER_CONTROL_ON;
+
+		/* GBMS_PROP_TAPER_CONTROL is optional */
+		rc = GPSY_SET_PROP(chg_psy, GBMS_PROP_TAPER_CONTROL, taper_ctl);
+		if (rc < 0)
+			pr_debug("MSC_CHG cannot set taper control rc=%d\n", rc);
 
 		/* when set cc_tolerance needs to be applied to everything */
 		if (chg_drv->chg_cc_tolerance)
@@ -1779,8 +1793,8 @@ msc_reschedule:
 	alarm_start_relative(&chg_drv->chg_wakeup_alarm,
 			     ms_to_ktime(update_interval));
 
-	pr_info("MSC_CHG fv_uv=%d, cc_max=%d, rerun in %d ms (%d)\n",
-		fv_uv, cc_max, update_interval, rc);
+	pr_debug("MSC_CHG fv_uv=%d, cc_max=%d, rerun in %d ms (%d)\n",
+		 fv_uv, cc_max, update_interval, rc);
 
 msc_done:
 	__pm_relax(chg_drv->chg_ws);
@@ -1962,7 +1976,8 @@ static int chg_get_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	return 0;
 }
 
-/* Wireless and wired limits are linked when therm_wlc_override_fcc is true.
+/*
+ * Wireless and wired limits are linked when therm_wlc_override_fcc is true.
  * This means that charging from WLC (wlc_psy is ONLINE) will disable the
  * the thermal vote on MSC_FCC (b/128350180)
  */

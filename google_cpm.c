@@ -774,7 +774,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	switch (psp) {
 	/* do not route to the active charger */
 	case GBMS_PROP_TAPER_CONTROL:
-		taper_control = (pval->intval != 0);
+		taper_control = pval->intval != GBMS_TAPER_CONTROL_OFF;
 		ta_check = taper_control != gcpm->taper_control;
 		gcpm->taper_control = taper_control;
 		route = false;

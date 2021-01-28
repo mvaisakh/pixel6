@@ -22,6 +22,7 @@
 
 enum {
 	GBMS_TAPER_CONTROL_OFF = 0,
+	GBMS_TAPER_CONTROL_ON,
 };
 
 /* Indicates USB Type-C CC connection status */
