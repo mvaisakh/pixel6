@@ -44,6 +44,12 @@
 
 #define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
 
+#define pps_name(pps_psy) \
+	((pps_psy) && (pps_psy)->desc && (pps_psy)->desc->name ? \
+		(pps_psy)->desc->name : "<>")
+
+
+
 void pps_log(struct pd_pps_data *pps, const char *fmt, ...)
 {
 	va_list args;
@@ -65,13 +71,12 @@ void pps_log(struct pd_pps_data *pps, const char *fmt, ...)
 void pps_init_state(struct pd_pps_data *pps_data)
 {
 	/* pps_data->src_caps can be NULL */
-#if 0 //TODO
-	if (pps_data->src_caps)
+	if (pps_data->src_caps) {
+		if (!pps_data->nr_src_cap)
+			pr_err("%s: %s non zero src_caps, zero nr_src_cap\n",
+			       __func__, pps_name(pps_data->pps_psy));
 		tcpm_put_partner_src_caps(&pps_data->src_caps);
-#endif
-	pr_debug("%s: %s nr_src_caps=%d\n", __func__,
-		 pps_data->pps_psy ? pps_data->pps_psy->desc->name : "<>",
-		 pps_data->nr_src_cap);
+	}
 
 	pps_data->pd_online = PPS_PSY_OFFLINE;
 	pps_data->stage = PPS_DISABLED;
@@ -90,23 +95,27 @@ void pps_init_state(struct pd_pps_data *pps_data)
  * pps_psy can be tcpm, wireless or gcpm_pps.
  * NOTE: gcpm_pps route the props to the underlying psy
  */
-static int pps_check_type(struct pd_pps_data *pps_data)
+static int pps_check_type(struct pd_pps_data *pps_data,
+			  struct power_supply *pps_psy)
 {
-	struct power_supply *pps_psy = pps_data->pps_psy;
-	const char *name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
 	union power_supply_propval pval;
 	int ret;
 
+	if (!pps_psy->desc)
+		return -EINVAL;
+
 	/* TODO: add POWER_SUPPLY_TYPE_PPS_PORT? */
-	pr_debug("%s: name=%s type=%d\n", __func__, name, pps_psy->desc->type);
+	pr_debug("%s: name=%s type=%d\n", __func__, pps_name(pps_psy),
+		 pps_psy->desc->type);
 	if (pps_psy->desc->type == POWER_SUPPLY_TYPE_WIRELESS_EXT)
 		return true;
 
+	/* NOTE: this keep trying with "slow" adapters */
 	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_USB_TYPE, &pval);
-	pr_debug("%s: name=%s type=%d ret=%d\n", __func__, name, pval.intval, ret);
+	pr_debug("%s: name=%s type=%d ret=%d\n", __func__, pps_name(pps_psy),
+		 pval.intval, ret);
 	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_PD_PPS)
 		return true;
-	/* NOTE: this keep trying with "slow" adapters, need to add timeout */
 	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_PD)
 		return true;
 	if (ret == 0 && pval.intval == POWER_SUPPLY_USB_TYPE_C)
@@ -203,15 +212,31 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
 	struct tcpm_port *port;
 
-	if (!pps)
+	if (!pps || !tcpm_psy)
 		return -EINVAL;
 
-	port = chg_get_tcpm_port(tcpm_psy);
-	if (port)
-		pps->nr_src_cap = tcpm_get_partner_src_caps(port, &pps->src_caps);
+	if (pps->nr_src_cap && pps->src_caps) {
+		pr_debug("%s: %s using cached nr_src_cap=%d\n", __func__,
+			 pps_name(tcpm_psy), pps->nr_src_cap);
+		return pps->nr_src_cap;
+	}
 
-	/* check if this is is a pps_data thingie */
-	pr_info("%s: nr_src_cap=%d\n", __func__, pps->nr_src_cap);
+	port = chg_get_tcpm_port(tcpm_psy);
+	if (port) {
+		int nr_src_cap;
+
+		if (pps->src_caps)
+			pr_debug("%s: %s warning src_caps!=0, nr_src_cap=%d\n",
+				 __func__, pps_name(tcpm_psy), pps->nr_src_cap);
+
+		nr_src_cap = tcpm_get_partner_src_caps(port, &pps->src_caps);
+		if (nr_src_cap < 0)
+			return nr_src_cap;
+
+		pr_debug("%s: %s found nr_src_cap=%d\n", __func__,
+			 pps_name(tcpm_psy), nr_src_cap);
+		pps->nr_src_cap = nr_src_cap;
+	}
 
 	return pps->nr_src_cap;
 }
@@ -254,6 +279,9 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 			pr_debug("%s: no source caps %d\n", __func__, rc);
 			goto not_supp;
 		}
+
+		pr_debug("%s: online & active nr_src_cap=%d\n",
+			 __func__, pps_data->nr_src_cap);
 
 		pps_data->pd_online = PPS_PSY_PROG_ONLINE;
 		pps_data->stage = PPS_ACTIVE;
@@ -572,7 +600,6 @@ static int pps_init_snk(struct pd_pps_data *pps_data,
 int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	     struct power_supply *pps_psy)
 {
-	const char *psy_name;
 	int ret;
 
 	if (!pps_data || !pps_psy || !dev)
@@ -582,11 +609,9 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	psy_name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
-
 	/* TODO: look in the power supply device node ? maybe? */
 	if (!pps_data->nr_snk_pdo)
-		pr_warn("%s has nr_sink_pdo=0\n", psy_name);
+		pr_warn("%s has nr_sink_pdo=0\n", pps_name(pps_psy));
 
 	/*
 	 * The port needs to ping or update the PPS adapter every 10 seconds
@@ -599,7 +624,8 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	pps_data->stay_awake = of_property_read_bool(dev->of_node,
 						     "google,pps-awake");
 	if (pps_data->stay_awake) {
-		pps_data->pps_ws = wakeup_source_register(NULL, psy_name);
+		pps_data->pps_ws = wakeup_source_register(NULL,
+							  pps_name(pps_psy));
 		if (!pps_data->pps_ws) {
 			pr_err("Failed to register wakeup source\n");
 			return -ENODEV;
@@ -630,7 +656,6 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 	union power_supply_propval pval;
 	int ret, type_ok, pd_online;
 	unsigned int stage;
-	const char *name;
 
 	if (!pps)
 		return -EINVAL;
@@ -639,18 +664,17 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 		return -EINVAL;
 	}
 
-	name = pps_psy->desc->name ? pps_psy->desc->name : "<>";
-
 	/*
 	 * POWER_SUPPLY_PROP_PRESENT must reports cable (or field)
 	 * NOTE: TCPM doesn't implement this, WLC and GCPM pps do.
 	 */
 	ret = power_supply_get_property(pps_psy, POWER_SUPPLY_PROP_PRESENT,
 					&pval);
-	if (ret == 0 && pval.intval == 0)
+	if (ret == 0 && pval.intval == 0) {
+		pr_debug("%s: %s pval.intval=%d ret=%d\n", __func__,
+			 pps_name(pps_psy), pval.intval, ret);
 		pps->stage = PPS_NOTSUPP;
-	pr_debug("%s: %s pval.intval=%d ret=%d\n", __func__, name,
-		 pval.intval, ret);
+	}
 
 	/* detection is done for this cycle */
 	if (pps->stage == PPS_NOTSUPP)
@@ -703,9 +727,9 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 		     (pps->stage == PPS_AVAILABLE || pps->stage == PPS_ACTIVE) ?
 		     PPS_ACTIVE : PPS_NONE;
 	if (stage != pps->stage) {
-		pps_log(pps, "work: pd_online %d->%d stage %d->%d", __func__,
-			pps->pd_online, pd_online,
-			pps->stage, stage);
+		pps_log(pps, "work: pd_online %d->%d stage %d->%d",
+			pps->pd_online, pd_online, pps->stage,
+			stage);
 		pps->stage = stage;
 	}
 
@@ -718,9 +742,9 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 	 *  set POWER_SUPPLY_PROP_ONLINE to PPS_PSY_PROG_ONLINE (enable PPS)
 	 *  and reschedule in PD_T_PPS_TIMEOUT.
 	 */
-	type_ok = pps_check_type(pps);
+	type_ok = pps_check_type(pps, pps_psy);
 	if (!type_ok)
-		pr_debug("%s: %s type not ok\n", __func__, name);
+		pr_debug("%s: %s type not ok\n", __func__, pps_name(pps_psy));
 
 	if (type_ok && pd_online == PPS_PSY_FIXED_ONLINE) {
 		int rc;
@@ -745,8 +769,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 	if (pps->stage == PPS_NOTSUPP) {
 		if (pps->stay_awake)
 			__pm_relax(pps->pps_ws);
-		pps_log(pps, "work: PPS not supported for %s",
-			pps_psy->desc->name);
+		pps_log(pps, "work: PPS not supported");
 	}
 
 	pps->pd_online = pd_online;
@@ -835,16 +858,16 @@ int pps_update_adapter(struct pd_pps_data *pps,
 
 	pps->out_uv = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
 	pps->op_ua = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_CURRENT_NOW);
-	if (pps->out_uv < 0 || pps->op_ua < 0)
+	if (pps->out_uv < 0 || pps->op_ua < 0) {
+		pr_debug("%s: %s error out_uv=%d op_ua=%d\n", __func__,
+			 pps_name(tcpm_psy), pps->out_uv, pps->op_ua);
 		return -EIO;
+	}
 
 	if (pending_uv < 0)
 		pending_uv = pps->out_uv;
 	if (pending_ua < 0)
 		pending_ua = pps->op_ua;
-
-	pr_debug("%s: mv=%d->%d ua=%d->%d interval=%d\n", __func__,
-		pps->out_uv, pending_uv, pps->op_ua, pending_ua, interval);
 
 	/*
 	 * TCPM accepts one change per power negotiation cycle.
@@ -857,8 +880,8 @@ int pps_update_adapter(struct pd_pps_data *pps,
 
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_CURRENT_NOW,
 				   pending_ua, tcpm_psy);
-		pr_debug("%s: SET_UA out_ua %d->%d, ret=%d", __func__,
-			pps->op_ua, pending_ua, ret);
+		pr_debug("%s: %s SET_UA out_ua %d->%d, ret=%d", __func__,
+			pps_name(tcpm_psy), pps->op_ua, pending_ua, ret);
 
 		pps_log(pps, "SET_UA out_ua %d->%d, ret=%d",
 			pps->op_ua, pending_ua, ret);
@@ -878,8 +901,8 @@ int pps_update_adapter(struct pd_pps_data *pps,
 
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 				   pending_uv,  tcpm_psy);
-		pr_debug("%s: SET_UV out_v %d->%d, ret=%d\n", __func__,
-			pps->out_uv, pending_uv, ret);
+		pr_debug("%s: %s SET_UV out_v %d->%d, ret=%d\n", __func__,
+			pps_name(tcpm_psy), pps->out_uv, pending_uv, ret);
 
 		pps_log(pps, "SET_UV out_v %d->%d, ret=%d",
 			pps->out_uv, pending_uv, ret);
@@ -891,17 +914,20 @@ int pps_update_adapter(struct pd_pps_data *pps,
 		}
 
 		if (ret != -EAGAIN && ret != -EOPNOTSUPP)
-			pps_log(pps, "failed to set CURRENT_NOW, ret = %d",
+			pps_log(pps, "failed to set VOLTAGE_NOW, ret = %d",
 				ret);
 
 	} else if (interval < PD_T_PPS_DEADLINE_S) {
+		pr_debug("%s: %s mv=%d->%d ua=%d->%d interval=%d\n", __func__,
+			pps_name(tcpm_psy), pps->out_uv, pending_uv,
+			pps->op_ua, pending_ua, interval);
 		/* TODO: tune this, now assume that PD_T_PPS_TIMEOUT >= 7s */
 		return PD_T_PPS_TIMEOUT - (interval * MSEC_PER_SEC);
 	} else {
 		ret = pps_keep_alive(pps, tcpm_psy);
 
-		pr_debug("%s: KEEP ALIVE out_v %d, op_c %d (%d)", __func__,
-			pps->out_uv, pps->op_ua, ret);
+		pr_debug("%s: %s KEEP ALIVE out_v %d, op_c %d (%d)", __func__,
+			pps_name(tcpm_psy), pps->out_uv, pps->op_ua, ret);
 		pps_log(pps, "KEEP ALIVE out_v %d, op_c %d (%d)",
 			pps->out_uv, pps->op_ua, ret);
 
