@@ -1750,15 +1750,19 @@ out:
   * - F0 = Perform a system reset -> return error_code \n
   * - F1 = Perform a system reset and reenable the sensing and the interrupt
   */
-static ssize_t stm_fts_cmd_store(struct device *dev,
-				struct device_attribute *attr, const char *buf,
-				size_t count)
+static ssize_t stm_fts_cmd_write(struct file *fp, struct kobject *kobj,
+				 struct bin_attribute *battr, char *buf,
+				 loff_t offset, size_t count)
 {
 	u8 result, n = 0;
+	struct device *dev = kobj_to_dev(kobj);
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 	char *p, *temp_buf, *token;
 	size_t token_len = 0;
 	ssize_t retval = count;
+
+	if (offset != 0)
+		return count;
 
 	if (!count) {
 		dev_err(dev, "%s: Invalid input buffer length!\n", __func__);
@@ -1855,14 +1859,16 @@ out:
 	return retval;
 }
 
-static ssize_t stm_fts_cmd_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
+static ssize_t stm_fts_cmd_read(struct file *fp, struct kobject *kobj,
+				struct bin_attribute *battr, char *buf,
+				loff_t offset, size_t count)
 {
 	int res, j, doClean = 0, index = 0;
 	int size = (6 * 2) + 1;
 	int nodes = 0;
 	int init_type = SPECIAL_PANEL_INIT;
-	u8 *all_strbuff = buf;
+	u8 *all_strbuff;
+	struct device *dev = kobj_to_dev(kobj);
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 	const char *limits_file = info->board->limits_name;
 	char *label[2];
@@ -1874,6 +1880,18 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 	u16 ito_max_val[2] = {0x00};
 
 	u8 report = 0;
+
+	if (offset > 0)
+		goto offset_reading;
+
+	if (info->stm_fts_cmd_buff) {
+		memset(info->stm_fts_cmd_buff, 0, MAX_RAWDATA_STR_SIZE);
+		dev_warn(dev, "info->stm_fts_cmd_buff existed.\n");
+	} else {
+		info->stm_fts_cmd_buff = (u8 *)kmalloc(MAX_RAWDATA_STR_SIZE,
+						       GFP_KERNEL);
+	}
+	all_strbuff = info->stm_fts_cmd_buff;
 
 	if (!info) {
 		dev_err(dev, "%s: Unable to access driver data\n", __func__);
@@ -2251,7 +2269,7 @@ static ssize_t stm_fts_cmd_show(struct device *dev,
 END:
 	/* here start the reporting phase, assembling the data
 	  * to send in the file node */
-	size = PAGE_SIZE;
+	size = MAX_RAWDATA_STR_SIZE;
 	index = 0;
 	index += scnprintf(all_strbuff + index, size - index, "{ %08X", res);
 
@@ -2495,6 +2513,24 @@ END:
 
 	fts_set_bus_ref(info, FTS_BUS_REF_SYSFS, false);
 	mutex_unlock(&info->diag_cmd_lock);
+
+	info->stm_fts_cmd_buff_len = index;
+
+offset_reading:
+	if (info->stm_fts_cmd_buff_len == 0) {
+		kfree(info->stm_fts_cmd_buff);
+		info->stm_fts_cmd_buff = NULL;
+		return 0;
+	} else if (info->stm_fts_cmd_buff_len > PAGE_SIZE) {
+		index = PAGE_SIZE;
+	} else {
+		index = info->stm_fts_cmd_buff_len;
+	}
+	dev_info(dev, "%s: remaining length: %lld, offset: %lld.\n", __func__,
+		info->stm_fts_cmd_buff_len, offset);
+
+	memcpy(buf, info->stm_fts_cmd_buff + offset, index);
+	info->stm_fts_cmd_buff_len = info->stm_fts_cmd_buff_len - index;
 
 	return index;
 }
@@ -2761,7 +2797,6 @@ static DEVICE_ATTR_RO(appid);
 static DEVICE_ATTR_RO(mode_active);
 static DEVICE_ATTR_RO(fw_file_test);
 static DEVICE_ATTR_RO(status);
-static DEVICE_ATTR_RW(stm_fts_cmd);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 static DEVICE_ATTR_RW(heatmap_mode);
 #endif
@@ -2802,7 +2837,13 @@ static DEVICE_ATTR_RW(touchsim);
 
 static DEVICE_ATTR_RW(default_mf);
 
-/*  /sys/devices/soc.0/f9928000.i2c/i2c-6/6-0049 */
+static BIN_ATTR_RW(stm_fts_cmd, 0);
+
+static struct bin_attribute *fts_bin_attr_group[] = {
+	&bin_attr_stm_fts_cmd,
+	NULL,
+};
+
 static struct attribute *fts_attr_group[] = {
 	 &dev_attr_infoblock_getdata.attr,
 	&dev_attr_fwupdate.attr,
@@ -2810,7 +2851,6 @@ static struct attribute *fts_attr_group[] = {
 	&dev_attr_mode_active.attr,
 	&dev_attr_fw_file_test.attr,
 	&dev_attr_status.attr,
-	&dev_attr_stm_fts_cmd.attr,
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	&dev_attr_heatmap_mode.attr,
 #endif
@@ -6368,6 +6408,7 @@ static int fts_probe(struct spi_device *client)
 	dev_info(info->dev, "SET Device File Nodes:\n");
 	/* sysfs stuff */
 	info->attrs.attrs = fts_attr_group;
+	info->attrs.bin_attrs = fts_bin_attr_group;
 	error = sysfs_create_group(&client->dev.kobj, &info->attrs);
 	if (error) {
 		dev_err(info->dev, "ERROR: Cannot create sysfs structure!\n");
