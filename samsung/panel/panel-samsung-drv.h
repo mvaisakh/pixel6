@@ -343,6 +343,15 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 }
 
 #define EXYNOS_DSI_CMD(cmd, delay) { sizeof(cmd), cmd, delay }
+#define EXYNOS_DSI_CMD0(cmd) EXYNOS_DSI_CMD(cmd, 0)
+
+#define EXYNOS_DSI_CMD_SEQ_DELAY(delay, seq...) \
+	{ sizeof((const u8 []){seq}), (const u8 []){seq}, delay }
+#define EXYNOS_DSI_CMD_SEQ(seq...) EXYNOS_DSI_CMD_SEQ_DELAY(0, seq)
+
+#define DEFINE_EXYNOS_CMD_SET(name) \
+	const struct exynos_dsi_cmd_set name ## _cmd_set = {			\
+		.num_cmd = ARRAY_SIZE(name ## _cmds), .cmds = name ## _cmds }
 
 #define BINNED_LP_MODE(mode_name, bl_thr, cmdset)	\
 {							\
