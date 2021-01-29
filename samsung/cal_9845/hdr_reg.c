@@ -27,6 +27,8 @@ static struct cal_regs_desc regs_hdr[REGS_DPP_ID_MAX - 1];
 	cal_read_mask(hdr_regs_desc(id), offset, mask)
 #define hdr_write_mask(id, offset, val, mask)	\
 	cal_write_mask(hdr_regs_desc(id), offset, val, mask)
+#define hdr_write_relaxed(id, offset, val)	\
+	cal_write_relaxed(hdr_regs_desc(id), offset, val)
 
 void hdr_regs_desc_init(void __iomem *regs, const char *name, u32 id)
 {
@@ -55,20 +57,20 @@ void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut)
 		return;
 	}
 
-	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_EEN(1),
-			MOD_CTRL_EEN_MASK);
-
 	for (i = 0; i < HDR_EOTF_POSX_LUT_REG_CNT; i++) {
 		val = EOTF_POSX_H(lut->posx[i * 2 + 1]) |
 			EOTF_POSX_L(lut->posx[i * 2]);
-		hdr_write(id, HDR_LSI_L_EOTF_POSX(i), val);
+		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), val);
 		cal_log_debug(0, "POSX[%d]: 0x%x\n", i, val);
 	}
 
 	for (i = 0; i < HDR_EOTF_POSY_LUT_REG_CNT; i++) {
-		hdr_write(id, HDR_LSI_L_EOTF_POSY(i), lut->posy[i]);
+		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSY(i), lut->posy[i]);
 		cal_log_debug(0, "POSY[%d]: 0x%x\n", i, lut->posy[i]);
 	}
+
+	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_EEN(1),
+			MOD_CTRL_EEN_MASK);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -86,22 +88,22 @@ void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut)
 		return;
 	}
 
-	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_OEN(1),
-			MOD_CTRL_OEN_MASK);
-
 	for (i = 0; i < HDR_OETF_POSX_LUT_REG_CNT; i++) {
 		val = OETF_POSX_H(lut->posx[i * 2 + 1]) |
 			OETF_POSX_L(lut->posx[i * 2]);
-		hdr_write(id, HDR_LSI_L_OETF_POSX(i), val);
+		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), val);
 		cal_log_debug(0, "POSX[%d]: 0x%x\n", i, val);
 	}
 
 	for (i = 0; i < HDR_OETF_POSY_LUT_REG_CNT; i++) {
 		val = OETF_POSY_H(lut->posy[i * 2 + 1]) |
 			OETF_POSY_L(lut->posy[i * 2]);
-		hdr_write(id, HDR_LSI_L_OETF_POSY(i), val);
+		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), val);
 		cal_log_debug(0, "POSY[%d]: 0x%x\n", i, val);
 	}
+
+	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_OEN(1),
+			MOD_CTRL_OEN_MASK);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -123,18 +125,18 @@ void hdr_reg_set_gm(u32 id, struct hdr_gm_data *data)
 		return;
 	}
 
-	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_GEN(1),
-			MOD_CTRL_GEN_MASK);
-
 	for (i = 0; i < HDR_GM_COEF_REG_CNT; ++i) {
-		hdr_write(id, HDR_LSI_L_GM_COEF(i), data->coeffs[i]);
+		hdr_write_relaxed(id, HDR_LSI_L_GM_COEF(i), data->coeffs[i]);
 		cal_log_debug(0, "COEFFS[%d]: 0x%x\n", i, data->coeffs[i]);
 	}
 
 	for (i = 0; i < HDR_GM_OFFS_REG_CNT; ++i) {
-		hdr_write(id, HDR_LSI_L_GM_OFFS(i), data->offsets[i]);
+		hdr_write_relaxed(id, HDR_LSI_L_GM_OFFS(i), data->offsets[i]);
 		cal_log_debug(0, "OFFSETS[%d]: 0x%x\n", i, data->offsets[i]);
 	}
+
+	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_GEN(1),
+			MOD_CTRL_GEN_MASK);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -151,32 +153,32 @@ void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 		return;
 	}
 
-	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, ~0, MOD_CTRL_TEN_MASK);
-
 	val = TM_COEFB(tm->coeff_b) | TM_COEFG(tm->coeff_g) |
 		TM_COEFR(tm->coeff_r);
-	hdr_write(id, HDR_LSI_L_TM_COEF, val);
+	hdr_write_relaxed(id, HDR_LSI_L_TM_COEF, val);
 	cal_log_debug(0, "COEFF: 0x%x\n", val);
 
 	val = TM_RNGX_MAXX(tm->rng_x_max) | TM_RNGX_MINX(tm->rng_x_min);
-	hdr_write(id, HDR_LSI_L_TM_RNGX, val);
+	hdr_write_relaxed(id, HDR_LSI_L_TM_RNGX, val);
 	cal_log_debug(0, "RNGX: 0x%x\n", val);
 
 	val = TM_RNGY_MAXY(tm->rng_y_max) | TM_RNGY_MINY(tm->rng_y_min);
-	hdr_write(id, HDR_LSI_L_TM_RNGY, val);
+	hdr_write_relaxed(id, HDR_LSI_L_TM_RNGY, val);
 	cal_log_debug(0, "RNGY: 0x%x\n", val);
 
 	for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT; i++) {
 		val = TM_POSX_H(tm->posx[i * 2 + 1]) |
 			TM_POSX_L(tm->posx[i * 2]);
-		hdr_write(id, HDR_LSI_L_TM_POSX(i), val);
+		hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
 		cal_log_debug(0, "POSX[%d]: 0x%x\n", i, val);
 	}
 
 	for (i = 0; i < HDR_TM_POSY_LUT_REG_CNT; i++) {
-		hdr_write(id, HDR_LSI_L_TM_POSY(i), tm->posy[i]);
+		hdr_write_relaxed(id, HDR_LSI_L_TM_POSY(i), tm->posy[i]);
 		cal_log_debug(0, "POSY[%d]: 0x%x\n", i, tm->posy[i]);
 	}
+
+	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, ~0, MOD_CTRL_TEN_MASK);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }

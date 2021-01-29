@@ -14,6 +14,7 @@
 #include <dqe_cal.h>
 #include <decon_cal.h>
 #include <drm/samsung_drm.h>
+#include <asm/barrier.h>
 
 #include "regs-dqe.h"
 
@@ -37,6 +38,8 @@ static struct cal_regs_dqe regs_dqe;
 		cal_read_mask((&regs_dqe.desc), offset, mask)
 #define dqe_write_mask(offset, val, mask)	\
 		cal_write_mask((&regs_dqe.desc), offset, val, mask)
+#define dqe_read_relaxed(offset)		\
+		cal_read_relaxed((&regs_dqe.desc), offset)
 #define dqe_write_relaxed(offset, val)		\
 		cal_write_relaxed((&regs_dqe.desc), offset, val)
 
@@ -46,12 +49,16 @@ static struct cal_regs_dqe regs_dqe;
 
 #define matrix_offset	(regs_dqe.version > DQE_V1 ? MATRIX_OFFSET_B0 : 0)
 #define matrix_write(offset, val)	dqe_write(offset + matrix_offset, val)
+#define matrix_write_relaxed(offset, val)	\
+		dqe_write_relaxed(offset + matrix_offset, val)
 #define matrix_read_mask(offset, mask)	\
 	dqe_read_mask(offset + matrix_offset, mask)
 
 #define degamma_offset	(regs_dqe.version > DQE_V1 ? DEGAMMA_LUT_OFFSET_B0 : 0)
 #define degamma_read(offset)		dqe_read(offset + degamma_offset)
 #define degamma_write(offset, val)	dqe_write(offset + degamma_offset, val)
+#define degamma_write_relaxed(offset, val)	\
+		dqe_write_relaxed(offset + degamma_offset, val)
 
 #define cgc_offset	(regs_dqe.version > DQE_V1 ? CGC_CON_OFFSET_B0 : 0)
 #define cgc_read_mask(offset, mask)	dqe_read_mask(offset + cgc_offset, mask)
@@ -61,6 +68,8 @@ static struct cal_regs_dqe regs_dqe;
 #define regamma_offset	(regs_dqe.version > DQE_V1 ? REGAMMA_LUT_OFFSET_B0 : 0)
 #define regamma_read(offset)		dqe_read(offset + regamma_offset)
 #define regamma_write(offset, val)	dqe_write(offset + regamma_offset, val)
+#define regamma_write_relaxed(offset, val)	\
+		dqe_write_relaxed(offset + regamma_offset, val)
 
 #define hist_offset	(regs_dqe.version > DQE_V1 ? HIST_OFFSET_B0 : 0)
 #define hist_read(offset)		dqe_read(offset + hist_offset)
@@ -69,6 +78,7 @@ static struct cal_regs_dqe regs_dqe;
 #define hist_write(offset, val)		dqe_write(offset + hist_offset, val)
 #define hist_write_mask(offset, val, mask)	\
 	dqe_write_mask(offset + hist_offset, val, mask)
+#define hist_read_relaxed(offset)	dqe_read_relaxed(offset + hist_offset)
 
 void
 dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver)
@@ -137,14 +147,14 @@ void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut)
 		return;
 	}
 
-	degamma_write(DQE0_DEGAMMA_CON, DEGAMMA_EN);
 	for (i = 0; i < DIV_ROUND_UP(DEGAMMA_LUT_SIZE, 2); ++i) {
 		val = DEGAMMA_LUT_H(lut[i * 2 + 1].red) |
 			DEGAMMA_LUT_L(lut[i * 2].red);
-		degamma_write(DQE0_DEGAMMALUT(i), val);
+		degamma_write_relaxed(DQE0_DEGAMMALUT(i), val);
 
 		cal_log_debug(0, "[%d] 0x%x\n", i, val);
 	}
+	degamma_write(DQE0_DEGAMMA_CON, DEGAMMA_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -183,23 +193,23 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 		return;
 	}
 
-	regamma_write(DQE0_REGAMMA_CON, REGAMMA_EN);
 	for (i = 0; i < DIV_ROUND_UP(REGAMMA_LUT_SIZE, 2); ++i) {
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].red) |
 				REGAMMA_LUT_L(lut[i * 2].red);
-		regamma_write(DQE0_REGAMMALUT_R(i), val);
+		regamma_write_relaxed(DQE0_REGAMMALUT_R(i), val);
 		cal_log_debug(0, "[%d]   red: 0x%x\n", i, val);
 
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].green) |
 				REGAMMA_LUT_L(lut[i * 2].green);
-		regamma_write(DQE0_REGAMMALUT_G(i), val);
+		regamma_write_relaxed(DQE0_REGAMMALUT_G(i), val);
 		cal_log_debug(0, "[%d] green: 0x%x\n", i, val);
 
 		val = REGAMMA_LUT_H(lut[i * 2 + 1].blue) |
 				REGAMMA_LUT_L(lut[i * 2].blue);
-		regamma_write(DQE0_REGAMMALUT_B(i), val);
+		regamma_write_relaxed(DQE0_REGAMMALUT_B(i), val);
 		cal_log_debug(0, "[%d]  blue: 0x%x\n", i, val);
 	}
+	regamma_write(DQE0_REGAMMA_CON, REGAMMA_EN);
 
 	cal_log_debug(0, "%s -\n", __func__);
 }
@@ -412,13 +422,13 @@ void dqe_reg_set_linear_matrix(const struct exynos_matrix *lm)
 		else
 			val = LINEAR_MATRIX_COEFF_H(lm->coeffs[i * 2 + 1]) |
 				LINEAR_MATRIX_COEFF_L(lm->coeffs[i * 2]);
-		matrix_write(DQE0_LINEAR_MATRIX_COEFF(i), val);
+		matrix_write_relaxed(DQE0_LINEAR_MATRIX_COEFF(i), val);
 	}
 
-	matrix_write(DQE0_LINEAR_MATRIX_OFFSET0,
+	matrix_write_relaxed(DQE0_LINEAR_MATRIX_OFFSET0,
 			LINEAR_MATRIX_OFFSET_1(lm->offsets[1]) |
 			LINEAR_MATRIX_OFFSET_0(lm->offsets[0]));
-	matrix_write(DQE0_LINEAR_MATRIX_OFFSET1,
+	matrix_write_relaxed(DQE0_LINEAR_MATRIX_OFFSET1,
 			LINEAR_MATRIX_OFFSET_2(lm->offsets[2]));
 
 	matrix_write(DQE0_LINEAR_MATRIX_CON, LINEAR_MATRIX_EN);
@@ -445,13 +455,13 @@ void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
 		else
 			val = GAMMA_MATRIX_COEFF_H(matrix->coeffs[i * 2 + 1]) |
 				GAMMA_MATRIX_COEFF_L(matrix->coeffs[i * 2]);
-		matrix_write(DQE0_GAMMA_MATRIX_COEFF(i), val);
+		matrix_write_relaxed(DQE0_GAMMA_MATRIX_COEFF(i), val);
 	}
 
-	matrix_write(DQE0_GAMMA_MATRIX_OFFSET0,
+	matrix_write_relaxed(DQE0_GAMMA_MATRIX_OFFSET0,
 			GAMMA_MATRIX_OFFSET_1(matrix->offsets[1]) |
 			GAMMA_MATRIX_OFFSET_0(matrix->offsets[0]));
-	matrix_write(DQE0_GAMMA_MATRIX_OFFSET1,
+	matrix_write_relaxed(DQE0_GAMMA_MATRIX_OFFSET1,
 			GAMMA_MATRIX_OFFSET_2(matrix->offsets[2]));
 
 	matrix_write(DQE0_GAMMA_MATRIX_CON, GAMMA_MATRIX_EN);
@@ -461,43 +471,42 @@ void dqe_reg_set_gamma_matrix(const struct exynos_matrix *matrix)
 
 void dqe_reg_set_atc(const struct exynos_atc *atc)
 {
-	u32 val, mask;
+	u32 val;
 
 	if (!atc) {
 		dqe_write_mask(DQE0_ATC_CONTROL, 0, DQE_ATC_EN_MASK);
 		return;
 	}
 
-	dqe_write_mask(DQE0_ATC_CONTROL, ~0, DQE_ATC_EN_MASK);
-
 	val = ATC_LT(atc->lt) | ATC_NS(atc->ns) | ATC_ST(atc->st) |
 		ATC_ONE_DITHER(atc->dither);
-	dqe_write(DQE0_ATC_GAIN, val);
+	dqe_write_relaxed(DQE0_ATC_GAIN, val);
 
 	val = ATC_PL_W1(atc->pl_w1) | ATC_PL_W2(atc->pl_w2);
-	dqe_write(DQE0_ATC_WEIGHT, val);
+	dqe_write_relaxed(DQE0_ATC_WEIGHT, val);
 
-	dqe_write(DQE0_ATC_CTMODE, atc->ctmode);
-	dqe_write(DQE0_ATC_PPEN, atc->pp_en);
+	dqe_write_relaxed(DQE0_ATC_CTMODE, atc->ctmode);
+	dqe_write_relaxed(DQE0_ATC_PPEN, atc->pp_en);
 
 	val = ATC_TDR_MIN(atc->tdr_min) | ATC_TDR_MAX(atc->tdr_max) |
 		ATC_UPGRADE_ON(atc->upgrade_on);
-	mask = ATC_TDR_MIN_MASK | ATC_TDR_MAX_MASK | ATC_UPGRADE_ON_MASK;
-	dqe_write_mask(DQE0_ATC_TDRMINMAX, val, mask);
+	dqe_write_relaxed(DQE0_ATC_TDRMINMAX, val);
 
-	dqe_write(DQE0_ATC_AMBIENT_LIGHT, atc->ambient_light);
-	dqe_write(DQE0_ATC_BACK_LIGHT, atc->back_light);
-	dqe_write(DQE0_ATC_DSTEP, atc->actual_dstep);
-	dqe_write(DQE0_ATC_SCALE_MODE, atc->scale_mode);
+	dqe_write_relaxed(DQE0_ATC_AMBIENT_LIGHT, atc->ambient_light);
+	dqe_write_relaxed(DQE0_ATC_BACK_LIGHT, atc->back_light);
+	dqe_write_relaxed(DQE0_ATC_DSTEP, atc->actual_dstep);
+	dqe_write_relaxed(DQE0_ATC_SCALE_MODE, atc->scale_mode);
 
 	val = ATC_THRESHOLD_1(atc->threshold_1) |
 		ATC_THRESHOLD_2(atc->threshold_2) |
 		ATC_THRESHOLD_3(atc->threshold_3);
-	dqe_write(DQE0_ATC_THRESHOLD, val);
+	dqe_write_relaxed(DQE0_ATC_THRESHOLD, val);
 
 	val = ATC_GAIN_LIMIT(atc->gain_limit) |
 		ATC_LT_CALC_AB_SHIFT(atc->lt_calc_ab_shift);
-	dqe_write(DQE0_ATC_GAIN_LIMIT, val);
+	dqe_write_relaxed(DQE0_ATC_GAIN_LIMIT, val);
+
+	dqe_write_mask(DQE0_ATC_CONTROL, ~0, DQE_ATC_EN_MASK);
 }
 
 void dqe_reg_print_atc(void)
@@ -588,8 +597,10 @@ void dqe_reg_get_histogram_bins(struct histogram_bins *bins)
 	u32 val;
 
 	for (i = 0; i < regs_cnt; ++i) {
-		val = hist_read(DQE0_HIST_BIN(i));
+		val = hist_read_relaxed(DQE0_HIST_BIN(i));
 		bins->data[i * 2] = HIST_BIN_L_GET(val);
 		bins->data[i * 2 + 1] = HIST_BIN_H_GET(val);
 	}
+
+	rmb();
 }

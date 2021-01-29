@@ -77,16 +77,19 @@ struct cal_regs_desc {
 static inline uint32_t cal_read(struct cal_regs_desc *regs_desc,
 		uint32_t offset)
 {
-	uint32_t val = 0;
-
-	val = readl(regs_desc->regs + offset);
-	return val;
+	return readl(regs_desc->regs + offset);
 }
 
 static inline void cal_write(struct cal_regs_desc *regs_desc,
 		uint32_t offset, uint32_t val)
 {
 	writel(val, regs_desc->regs + offset);
+}
+
+static inline uint32_t cal_read_relaxed(struct cal_regs_desc *regs_desc,
+		uint32_t offset)
+{
+	return readl_relaxed(regs_desc->regs + offset);
 }
 
 static inline void cal_write_relaxed(struct cal_regs_desc *regs_desc,
