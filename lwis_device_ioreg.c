@@ -120,6 +120,7 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	ret = lwis_ioreg_device_setup(ioreg_dev);
 	if (ret) {
 		dev_err(ioreg_dev->base_dev.dev, "Error in IOREG device initialization\n");
+		lwis_base_unprobe((struct lwis_device *)ioreg_dev);
 		goto error_probe;
 	}
 

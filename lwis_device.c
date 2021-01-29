@@ -1125,6 +1125,11 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 			pr_warn("Top device not probed yet");
 	}
 
+	/* Add this instance to the device list */
+	mutex_lock(&core.lock);
+	list_add(&lwis_dev->dev_list, &core.lwis_dev_list);
+	mutex_unlock(&core.lock);
+
 	lwis_dev->plat_dev = plat_dev;
 	ret = lwis_base_setup(lwis_dev);
 	if (ret) {
@@ -1141,11 +1146,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 		goto error_init;
 	}
 
-	/* Add this instance to the device list */
-	mutex_lock(&core.lock);
-	list_add(&lwis_dev->dev_list, &core.lwis_dev_list);
-	mutex_unlock(&core.lock);
-
 	platform_set_drvdata(plat_dev, lwis_dev);
 
 	/* Call platform-specific probe function */
@@ -1160,10 +1160,68 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 
 	/* Error conditions */
 error_init:
+	lwis_base_unprobe(lwis_dev);
 	mutex_lock(&core.lock);
 	idr_remove(core.idr, lwis_dev->id);
 	mutex_unlock(&core.lock);
 	return ret;
+}
+
+/*
+ *  lwis_base_unprobe: Cleanup a device instance
+ */
+void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
+{
+	struct lwis_device *lwis_dev, *temp;
+
+	mutex_lock(&core.lock);
+	list_for_each_entry_safe (lwis_dev, temp, &core.lwis_dev_list, dev_list) {
+		if (lwis_dev == unprobe_lwis_dev) {
+			pr_info("Destroy device %s id %d", lwis_dev->name, lwis_dev->id);
+			lwis_device_debugfs_cleanup(lwis_dev);
+			/* Release device clock list */
+			if (lwis_dev->clocks) {
+				lwis_clock_list_free(lwis_dev->clocks);
+				lwis_dev->clocks = NULL;
+			}
+			/* Release device interrupt list */
+			if (lwis_dev->irqs) {
+				lwis_interrupt_list_free(lwis_dev->irqs);
+				lwis_dev->irqs = NULL;
+			}
+			/* Release device regulator list */
+			if (lwis_dev->regulators) {
+				lwis_regulator_list_free(lwis_dev->regulators);
+				lwis_dev->regulators = NULL;
+			}
+			/* Release device phy list */
+			if (lwis_dev->phys) {
+				lwis_phy_list_free(lwis_dev->phys);
+				lwis_dev->phys = NULL;
+			}
+			/* Release device power sequence list */
+			if (lwis_dev->power_up_sequence) {
+				lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
+				lwis_dev->power_up_sequence = NULL;
+			}
+			if (lwis_dev->power_down_sequence) {
+				lwis_dev_power_seq_list_free(lwis_dev->power_down_sequence);
+				lwis_dev->power_down_sequence = NULL;
+			}
+			/* Release device gpio list */
+			if (lwis_dev->gpios_list) {
+				lwis_gpios_list_free(lwis_dev->gpios_list);
+				lwis_dev->gpios_list = NULL;
+			}
+			/* Destroy device */
+			if (!IS_ERR(lwis_dev->dev)) {
+				device_destroy(core.dev_class,
+					       MKDEV(core.device_major, lwis_dev->id));
+			}
+			list_del(&lwis_dev->dev_list);
+		}
+	}
+	mutex_unlock(&core.lock);
 }
 
 /*
