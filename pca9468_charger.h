@@ -160,6 +160,7 @@ struct pca9468_charger {
 	/* requested charging current and voltage */
 	int			fv_uv;
 	int			cc_max;
+	struct power_supply	*batt_psy;
 
 	/* debug */
 	struct dentry		*debug_root;
