@@ -907,6 +907,58 @@ static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 
 #ifdef CONFIG_DEBUG_FS
 
+static u8 panel_get_cmd_type(const struct exynos_dsi_cmd *cmd)
+{
+	if (cmd->type)
+		return cmd->type;
+
+	switch (cmd->cmd_len) {
+	case 0:
+		return -EINVAL;
+	case 1:
+		return MIPI_DSI_DCS_SHORT_WRITE;
+	case 2:
+		return MIPI_DSI_DCS_SHORT_WRITE_PARAM;
+	default:
+		return MIPI_DSI_DCS_LONG_WRITE;
+	}
+}
+
+static int panel_cmdset_show(struct seq_file *m, void *data)
+{
+	const struct exynos_dsi_cmd_set *cmdset = m->private;
+	const struct exynos_dsi_cmd *cmd;
+	u8 type;
+	int i;
+
+	for (i = 0; i < cmdset->num_cmd; i++) {
+		cmd = &cmdset->cmds[i];
+
+		type = panel_get_cmd_type(cmd);
+		seq_printf(m, "0x%02x ", type);
+		seq_hex_dump(m, "\t", DUMP_PREFIX_NONE, 16, 1, cmd->cmd, cmd->cmd_len, false);
+
+		if (cmd->delay_ms)
+			seq_printf(m, "wait \t%dms\n", cmd->delay_ms);
+	}
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(panel_cmdset);
+
+void exynos_panel_debugfs_create_cmdset(struct exynos_panel *ctx,
+					struct dentry *parent,
+					const struct exynos_dsi_cmd_set *cmdset,
+					const char *name)
+
+{
+	if (!cmdset)
+		return;
+
+	debugfs_create_file(name, 0600, parent, (void *)cmdset, &panel_cmdset_fops);
+}
+EXPORT_SYMBOL(exynos_panel_debugfs_create_cmdset);
+
 static int panel_gamma_show(struct seq_file *m, void *data)
 {
 	struct exynos_panel *ctx = m->private;
@@ -926,13 +978,46 @@ DEFINE_SHOW_ATTRIBUTE(panel_gamma);
 
 static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
 {
-	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	const struct exynos_panel_desc *desc = ctx->desc;
+	const struct exynos_panel_funcs *funcs = desc->exynos_panel_func;
+	struct dentry *root;
 
 	if (!funcs)
 		return -EINVAL;
 
 	if (funcs->print_gamma)
 		debugfs_create_file("gamma", 0600, parent, ctx, &panel_gamma_fops);
+
+	root = debugfs_create_dir("cmdsets", ctx->debugfs_entry);
+	if (!root) {
+		dev_err(ctx->dev, "can't create cmdset dir\n");
+		return -EFAULT;
+	}
+	ctx->debugfs_cmdset_entry = root;
+
+	exynos_panel_debugfs_create_cmdset(ctx, root, desc->off_cmd_set, "off");
+
+	if (desc->lp_mode) {
+		struct dentry *lpd;
+		int i;
+
+		if (desc->binned_lp) {
+			lpd = debugfs_create_dir("lp", root);
+			if (!lpd) {
+				dev_err(ctx->dev, "can't create lp dir\n");
+				return -EFAULT;
+			}
+
+			for (i = 0; i < desc->num_binned_lp; i++) {
+				const struct exynos_binned_lp *b = &desc->binned_lp[i];
+
+				exynos_panel_debugfs_create_cmdset(ctx, lpd, &b->cmd_set, b->name);
+			}
+		} else {
+			lpd = root;
+		}
+		exynos_panel_debugfs_create_cmdset(ctx, lpd, desc->lp_cmd_set, "lp_entry");
+	}
 
 	return 0;
 }

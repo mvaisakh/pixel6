@@ -194,6 +194,7 @@ struct exynos_dsi_cmd {
 	u32 cmd_len;
 	const u8 *cmd;
 	u32 delay_ms;
+	u8 type;
 };
 
 /**
@@ -258,6 +259,7 @@ struct exynos_panel {
 	struct device *dev;
 	struct drm_panel panel;
 	struct dentry *debugfs_entry;
+	struct dentry *debugfs_cmdset_entry;
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *enable_gpio;
 	struct regulator *vci;
@@ -396,6 +398,10 @@ int exynos_panel_prepare(struct drm_panel *panel);
 void exynos_panel_reset(struct exynos_panel *ctx);
 int exynos_panel_set_power(struct exynos_panel *ctx, bool on);
 int exynos_panel_set_brightness(struct exynos_panel *exynos_panel, u16 br);
+void exynos_panel_debugfs_create_cmdset(struct exynos_panel *ctx,
+					struct dentry *parent,
+					const struct exynos_dsi_cmd_set *cmdset,
+					const char *name);
 void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
 			       const struct exynos_dsi_cmd_set *cmd_set);
 void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode);
