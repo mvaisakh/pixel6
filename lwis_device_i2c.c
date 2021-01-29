@@ -211,7 +211,8 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev, "Error in i2c device initialization\n");
-		goto error_probe;
+		/* TODO: need list_del from global list */
+		return ret;
 	}
 
 	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
