@@ -1051,6 +1051,8 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, decon->id, decon);
 		wake_up_interruptible_all(&decon->framedone_wait);
 		exynos_dqe_save_lpd_data(decon->dqe);
+		if (decon->dqe)
+			handle_histogram_event(decon->dqe);
 		decon_debug(decon, "%s: frame done\n", __func__);
 	}
 

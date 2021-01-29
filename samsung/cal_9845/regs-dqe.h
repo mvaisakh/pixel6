@@ -569,6 +569,8 @@
 #define HIST_BIN_L_MASK			(0xFFFF << 0)
 #define HIST_BIN(_x, _v)		((_v) << (0 + (16 * ((_x) & 0x1))))
 #define HIST_BIN_MASK(_x)		(0xFFFF << (0 + (16 * ((_x) & 0x1))))
+#define HIST_BIN_L_GET(_v)		((_v) & HIST_BIN_L_MASK)
+#define HIST_BIN_H_GET(_v)		(((_v) & HIST_BIN_H_MASK) >> 16)
 
 /*----------------------[SECURE_ROI]-----------------------------------------*/
 

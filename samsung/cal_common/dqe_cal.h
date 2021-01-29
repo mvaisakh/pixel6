@@ -37,6 +37,12 @@ enum dqe_dither_type {
 	DISP_DITHER = 1,
 };
 
+enum histogram_state {
+	HISTOGRAM_OFF,
+	HISTOGRAM_FULL,
+	HISTOGRAM_ROI,
+};
+
 struct exynos_atc {
 	bool en;
 	bool dirty;
@@ -85,4 +91,9 @@ void dqe_reg_print_atc(void);
 void dqe_reg_save_lpd_atc(u32 *lpd_atc_regs);
 void dqe_reg_restore_lpd_atc(u32 *lpd_atc_regs);
 bool dqe_reg_dimming_in_progress(void);
+void dqe_reg_set_histogram_roi(struct histogram_roi *roi);
+void dqe_reg_set_histogram_weights(struct histogram_weights *weights);
+void dqe_reg_set_histogram_threshold(u32 threshold);
+void dqe_reg_set_histogram(enum histogram_state state);
+void dqe_reg_get_histogram_bins(struct histogram_bins *bins);
 #endif /* __SAMSUNG_DQE_CAL_H__ */

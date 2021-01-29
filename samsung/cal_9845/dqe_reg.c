@@ -66,6 +66,9 @@ static struct cal_regs_dqe regs_dqe;
 #define hist_read(offset)		dqe_read(offset + hist_offset)
 #define hist_read_mask(offset, mask)	\
 	dqe_read_mask(offset + hist_offset, mask)
+#define hist_write(offset, val)		dqe_write(offset + hist_offset, val)
+#define hist_write_mask(offset, val, mask)	\
+	dqe_write_mask(offset + hist_offset, val, mask)
 
 void
 dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver)
@@ -536,4 +539,57 @@ bool dqe_reg_dimming_in_progress(void)
 {
 	return dqe_read_mask(DQE0_ATC_DIMMING_DONE_INTR,
 			ATC_DIMMING_IN_PROGRESS);
+}
+
+void dqe_reg_set_histogram_roi(struct histogram_roi *roi)
+{
+	u32 val;
+
+	val = HIST_START_X(roi->start_x) | HIST_START_Y(roi->start_y);
+	hist_write(DQE0_HIST_START, val);
+
+	val = HIST_HSIZE(roi->hsize) | HIST_VSIZE(roi->vsize);
+	hist_write(DQE0_HIST_SIZE, val);
+}
+
+void dqe_reg_set_histogram_weights(struct histogram_weights *weights)
+{
+	u32 val;
+
+	val = HIST_WEIGHT_R(weights->weight_r) |
+		HIST_WEIGHT_G(weights->weight_g);
+	hist_write(DQE0_HIST_WEIGHT_0, val);
+	hist_write(DQE0_HIST_WEIGHT_1, HIST_WEIGHT_B(weights->weight_b));
+}
+
+void dqe_reg_set_histogram_threshold(u32 threshold)
+{
+	hist_write(DQE0_HIST_THRESH, threshold);
+}
+
+void dqe_reg_set_histogram(enum histogram_state state)
+{
+	u32 val = 0;
+
+	if (state == HISTOGRAM_OFF)
+		val = 0;
+	else if (state == HISTOGRAM_FULL)
+		val = HIST_EN;
+	else if (state == HISTOGRAM_ROI)
+		val = HIST_EN | HIST_ROI_ON;
+
+	hist_write_mask(DQE0_HIST, val, HIST_EN | HIST_ROI_ON);
+}
+
+void dqe_reg_get_histogram_bins(struct histogram_bins *bins)
+{
+	int regs_cnt = DIV_ROUND_UP(HISTOGRAM_BIN_COUNT, 2);
+	int i;
+	u32 val;
+
+	for (i = 0; i < regs_cnt; ++i) {
+		val = hist_read(DQE0_HIST_BIN(i));
+		bins->data[i * 2] = HIST_BIN_L_GET(val);
+		bins->data[i * 2 + 1] = HIST_BIN_H_GET(val);
+	}
 }

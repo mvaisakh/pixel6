@@ -95,6 +95,11 @@ static void exynos_crtc_update_lut(struct drm_crtc *crtc,
 	else
 		dqe_state->cgc_dither_config = NULL;
 
+	dqe_state->roi = exynos_state->histogram_roi ?
+		exynos_state->histogram_roi->data : NULL;
+	dqe_state->weights = exynos_state->histogram_weights ?
+		exynos_state->histogram_weights->data : NULL;
+
 	if (exynos_state->linear_matrix)
 		dqe_state->linear_matrix = exynos_state->linear_matrix->data;
 	else
@@ -293,6 +298,8 @@ static void exynos_drm_crtc_destroy_state(struct drm_crtc *crtc,
 	drm_property_blob_put(exynos_crtc_state->cgc_dither);
 	drm_property_blob_put(exynos_crtc_state->linear_matrix);
 	drm_property_blob_put(exynos_crtc_state->gamma_matrix);
+	drm_property_blob_put(exynos_crtc_state->histogram_roi);
+	drm_property_blob_put(exynos_crtc_state->histogram_weights);
 	__drm_atomic_helper_crtc_destroy_state(state);
 	kfree(exynos_crtc_state);
 }
@@ -342,6 +349,12 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 
 	if (copy->gamma_matrix)
 		drm_property_blob_get(copy->gamma_matrix);
+
+	if (copy->histogram_roi)
+		drm_property_blob_get(copy->histogram_roi);
+
+	if (copy->histogram_weights)
+		drm_property_blob_get(copy->histogram_weights);
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
@@ -402,6 +415,8 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 		return 0;
 	} else if (property == exynos_crtc->props.dqe_enabled) {
 		exynos_crtc_state->dqe.enabled = val;
+	} else if (property == exynos_crtc->props.histogram_threshold) {
+		exynos_crtc_state->dqe.histogram_threshold = val;
 	} else if (property == exynos_crtc->props.cgc_lut) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_lut, val,
@@ -427,6 +442,14 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 				&exynos_crtc_state->gamma_matrix, val,
 				sizeof(struct exynos_matrix), -1);
 		return ret;
+	} else if (property == exynos_crtc->props.histogram_roi) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->histogram_roi, val,
+				sizeof(struct histogram_roi), -1);
+	} else if (property == exynos_crtc->props.histogram_weights) {
+		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
+				&exynos_crtc_state->histogram_weights, val,
+				sizeof(struct histogram_weights), -1);
 	} else {
 		return -EINVAL;
 	}
@@ -456,6 +479,8 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 		*val = exynos_crtc_state->force_bpc;
 	else if (property == exynos_crtc->props.dqe_enabled)
 		*val = exynos_crtc_state->dqe.enabled;
+	else if (property == exynos_crtc->props.histogram_threshold)
+		*val = exynos_crtc_state->dqe.histogram_threshold;
 	else if (property == exynos_crtc->props.cgc_lut)
 		*val = (exynos_crtc_state->cgc_lut) ?
 			exynos_crtc_state->cgc_lut->base.id : 0;
@@ -471,6 +496,12 @@ static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,
 	else if (property == exynos_crtc->props.gamma_matrix)
 		*val = (exynos_crtc_state->gamma_matrix) ?
 			exynos_crtc_state->gamma_matrix->base.id : 0;
+	else if (property == exynos_crtc->props.histogram_roi)
+		*val = (exynos_crtc_state->histogram_roi) ?
+			exynos_crtc_state->histogram_roi->base.id : 0;
+	else if (property == exynos_crtc->props.histogram_weights)
+		*val = (exynos_crtc_state->histogram_weights) ?
+			exynos_crtc_state->histogram_weights->base.id : 0;
 	else
 		return -EINVAL;
 
@@ -597,6 +628,21 @@ static int exynos_drm_crtc_create_bool(struct drm_crtc *crtc, const char *name,
 	return 0;
 }
 
+static int exynos_drm_crtc_create_range(struct drm_crtc *crtc, const char *name,
+		struct drm_property **prop, uint64_t min, uint64_t max)
+{
+	struct drm_property *p;
+
+	p = drm_property_create_range(crtc->dev, 0, name, min, max);
+	if (!p)
+		return -ENOMEM;
+
+	drm_object_attach_property(&crtc->base, p, 0);
+	*prop = p;
+
+	return 0;
+}
+
 static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
 		struct drm_property **prop)
 {
@@ -612,17 +658,27 @@ static int exynos_drm_crtc_create_blob(struct drm_crtc *crtc, const char *name,
 	return 0;
 }
 
-static int exynos_drm_crtc_create_range(struct drm_crtc *crtc, const char *name,
-		struct drm_property **prop)
+static int exynos_drm_crtc_create_histogram_properties(
+			struct exynos_drm_crtc *exynos_crtc)
 {
-	struct drm_property *p;
+	struct drm_crtc *crtc = &exynos_crtc->base;
+	int ret;
 
-	p = drm_property_create_range(crtc->dev, 0, name, 0, UINT_MAX);
-	if (!p)
-		return -ENOMEM;
+	ret = exynos_drm_crtc_create_blob(crtc, "histogram_roi",
+				&exynos_crtc->props.histogram_roi);
+	if (ret)
+		return ret;
 
-	drm_object_attach_property(&crtc->base, p, 0);
-	*prop = p;
+	ret = exynos_drm_crtc_create_blob(crtc, "histogram_weights",
+				&exynos_crtc->props.histogram_weights);
+	if (ret)
+		return ret;
+
+	ret = exynos_drm_crtc_create_range(crtc, "histogram_threshold",
+				&exynos_crtc->props.histogram_threshold,
+				0, GENMASK(9, 0));
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -664,11 +720,12 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	if (ret)
 		goto err_crtc;
 
-	if (exynos_drm_crtc_create_range(crtc, "ppc", &exynos_crtc->props.ppc))
+	if (exynos_drm_crtc_create_range(crtc, "ppc", &exynos_crtc->props.ppc,
+				0, UINT_MAX))
 		goto err_crtc;
 
 	if (exynos_drm_crtc_create_range(crtc, "max_disp_freq",
-				&exynos_crtc->props.max_disp_freq))
+				&exynos_crtc->props.max_disp_freq, 0, UINT_MAX))
 		goto err_crtc;
 
 	if (decon->dqe) {
@@ -701,6 +758,10 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 
 		ret = exynos_drm_crtc_create_bool(crtc, "dqe_enabled",
 				&exynos_crtc->props.dqe_enabled);
+		if (ret)
+			goto err_crtc;
+
+		ret = exynos_drm_crtc_create_histogram_properties(exynos_crtc);
 		if (ret)
 			goto err_crtc;
 	}

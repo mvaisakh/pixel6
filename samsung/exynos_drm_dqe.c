@@ -62,6 +62,156 @@ exynos_atc_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state)
 			dqe->force_atc_config.actual_dstep);
 }
 
+static struct exynos_drm_pending_histogram_event *create_histogram_event(
+		struct drm_device *dev, struct drm_file *file)
+{
+	struct exynos_drm_pending_histogram_event *e = NULL;
+	int ret;
+
+	e = kzalloc(sizeof(*e), GFP_KERNEL);
+	if (!e)
+		return NULL;
+
+	e->event.base.type = EXYNOS_DRM_HISTOGRAM_EVENT;
+	e->event.base.length = sizeof(e->event);
+
+	ret = drm_event_reserve_init(dev, file, &e->base, &e->event.base);
+	if (ret) {
+		kfree(e);
+		return ERR_PTR(ret);
+	}
+
+	return e;
+}
+
+int histogram_request_ioctl(struct drm_device *dev, void *data,
+				struct drm_file *file)
+{
+	struct drm_mode_object *obj;
+	struct exynos_drm_crtc *exynos_crtc;
+	struct decon_device *decon;
+	struct exynos_dqe *dqe;
+	uint32_t *crtc_id = data;
+
+	obj = drm_mode_object_find(dev, file, *crtc_id, DRM_MODE_OBJECT_CRTC);
+	if (!obj) {
+		pr_err("failed to find crtc object\n");
+		return -ENOENT;
+	}
+
+	exynos_crtc = to_exynos_crtc(obj_to_crtc(obj));
+	drm_mode_object_put(obj);
+
+	decon = exynos_crtc->ctx;
+	dqe = decon->dqe;
+	if (!dqe) {
+		pr_err("failed to get dqe from decon%d\n", decon->id);
+		return -ENODEV;
+	}
+
+	/*
+	 * TODO: Now only one observer is allowed at a time at the moment.
+	 * This will be allowed for multiple observer in the future.
+	 */
+	if (dqe->state.event) {
+		pr_warn("decon%d histogram already registered\n", decon->id);
+		return -EBUSY;
+	}
+	dqe->state.event = create_histogram_event(dev, file);
+	if (IS_ERR_OR_NULL(dqe->state.event)) {
+		dqe->state.event = NULL;
+		pr_err("failed to create a histogram event\n");
+		return -EINVAL;
+	}
+
+	pr_debug("created histogram event(0x%pK) of decon%d\n",
+			dqe->state.event, decon->id);
+
+	return 0;
+}
+
+int histogram_cancel_ioctl(struct drm_device *dev, void *data,
+				struct drm_file *file)
+{
+	struct drm_mode_object *obj;
+	struct exynos_drm_crtc *exynos_crtc;
+	struct decon_device *decon;
+	struct exynos_dqe *dqe;
+	uint32_t *crtc_id = data;
+
+	obj = drm_mode_object_find(dev, file, *crtc_id, DRM_MODE_OBJECT_CRTC);
+	if (!obj) {
+		pr_err("%s: failed to find crtc object\n", __func__);
+		return -ENOENT;
+	}
+
+	exynos_crtc = to_exynos_crtc(obj_to_crtc(obj));
+	drm_mode_object_put(obj);
+
+	decon = exynos_crtc->ctx;
+	dqe = decon->dqe;
+	if (!dqe) {
+		pr_err("%s: failed to get dqe from decon%d\n", __func__,
+				decon->id);
+		return -ENODEV;
+	}
+
+	if (dqe->state.event) {
+		pr_debug("remained event(0x%pK)\n", dqe->state.event);
+		drm_event_cancel_free(dev, &dqe->state.event->base);
+		dqe->state.event = NULL;
+	}
+
+	pr_debug("terminated histogram event of decon%d\n", decon->id);
+
+	return 0;
+}
+
+void handle_histogram_event(struct exynos_dqe *dqe)
+{
+	struct exynos_drm_pending_histogram_event *e = dqe->state.event;
+	struct drm_device *dev = dqe->decon->drm_dev;
+
+	if (!e)
+		return;
+
+	pr_debug("Histogram event(0x%pK) will be handled\n", dqe->state.event);
+	dqe_reg_get_histogram_bins(&e->event.bins);
+	drm_send_event(dev, &e->base);
+	pr_debug("histogram event of decon%d signalled\n", dqe->decon->id);
+	dqe->state.event = NULL;
+}
+
+static void
+exynos_histogram_update(struct exynos_dqe *dqe, struct exynos_dqe_state *state)
+{
+	enum histogram_state hist_state;
+
+	if (dqe->state.roi != state->roi) {
+		dqe_reg_set_histogram_roi(state->roi);
+		dqe->state.roi = state->roi;
+	}
+
+	if (dqe->state.weights != state->weights) {
+		dqe_reg_set_histogram_weights(state->weights);
+		dqe->state.weights = state->weights;
+	}
+
+	if (dqe->state.histogram_threshold != state->histogram_threshold) {
+		dqe_reg_set_histogram_threshold(state->histogram_threshold);
+		dqe->state.histogram_threshold = state->histogram_threshold;
+	}
+
+	if (dqe->state.event && state->roi)
+		hist_state = HISTOGRAM_ROI;
+	else if (dqe->state.event && !state->roi)
+		hist_state = HISTOGRAM_FULL;
+	else
+		hist_state = HISTOGRAM_OFF;
+
+	dqe_reg_set_histogram(hist_state);
+}
+
 static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		struct exynos_dqe_state *state, u32 width, u32 height)
 {
@@ -80,6 +230,8 @@ static void __exynos_dqe_update(struct exynos_dqe *dqe,
 		dqe_reg_init(width, height);
 		dqe->initialized = true;
 	}
+
+	exynos_histogram_update(dqe, state);
 
 	if (dqe->force_lm)
 		state->linear_matrix = &dqe->force_linear_matrix;
@@ -182,6 +334,9 @@ void exynos_dqe_reset(struct exynos_dqe *dqe)
 	dqe->state.cgc_dither_config = NULL;
 	dqe->cgc_first_write = false;
 	dqe->force_atc_config.dirty = true;
+	dqe->state.histogram_threshold = 0;
+	dqe->state.roi = NULL;
+	dqe->state.weights = NULL;
 }
 
 void exynos_dqe_save_lpd_data(struct exynos_dqe *dqe)

@@ -36,6 +36,7 @@
 #include "exynos_drm_gem.h"
 #include "exynos_drm_plane.h"
 #include "exynos_drm_writeback.h"
+#include "exynos_drm_dqe.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/dpu_trace.h>
@@ -567,6 +568,11 @@ static void exynos_drm_lastclose(struct drm_device *dev)
 	exynos_drm_fbdev_restore_mode(dev);
 }
 
+static const struct drm_ioctl_desc exynos_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_REQUEST, histogram_request_ioctl, 0),
+	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_CANCEL, histogram_cancel_ioctl, 0),
+};
+
 static const struct file_operations exynos_drm_driver_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
@@ -592,6 +598,8 @@ static struct drm_driver exynos_drm_driver = {
 	.prime_fd_to_handle	   = drm_gem_prime_fd_to_handle,
 	.gem_prime_import	   = exynos_drm_gem_prime_import,
 	.gem_prime_import_sg_table = exynos_drm_gem_prime_import_sg_table,
+	.ioctls			   = exynos_ioctls,
+	.num_ioctls		   = ARRAY_SIZE(exynos_ioctls),
 	.fops			   = &exynos_drm_driver_fops,
 	.name			   = DRIVER_NAME,
 	.desc			   = DRIVER_DESC,
