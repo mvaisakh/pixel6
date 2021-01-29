@@ -1680,7 +1680,7 @@ static int max77759_wd_tickle(struct max77759_chgr_data *data)
 /* online is used from DC charging to tickle the watchdog (if enabled) */
 static int max77759_set_online(struct max77759_chgr_data *data, bool online)
 {
-	int ret;
+	int ret = 0;
 
 	if (data->wden) {
 		ret = max77759_wd_tickle(data);
@@ -2443,6 +2443,8 @@ static int max77759_init_vdroop(void *data_)
 	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP2], max77759_vdroop2_work);
 	data->vdroop_counter[VDROOP1] = 0;
 	data->vdroop_counter[VDROOP2] = 0;
+	mutex_init(&data->vdroop_irq_lock[VDROOP1]);
+	mutex_init(&data->vdroop_irq_lock[VDROOP2]);
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &regdata);
 	if (ret < 0)
