@@ -84,7 +84,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 		pr_err("No device %d found\n", iminor(node));
 		return -ENODEV;
 	}
-	dev_info(lwis_dev->dev, "Opening instance %d\n", iminor(node));
+	dev_dbg(lwis_dev->dev, "Opening instance %d\n", iminor(node));
 
 	lwis_client = kzalloc(sizeof(struct lwis_client), GFP_KERNEL);
 	if (!lwis_client) {
