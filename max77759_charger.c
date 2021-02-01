@@ -94,6 +94,9 @@ struct max77759_usecase_data {
 
 	int ls2_en;	/* OVP LS2 */
 
+	int vin_valid;	/* MAX20339 STATUS1.vinvalid */
+	int lsw1_status;/* MAX20339 STATUS2.lsw1closed */
+
 	bool init_done;
 };
 
@@ -417,9 +420,12 @@ static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
 	switch (mode) {
 	case 0:
 		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 0);
-		break;
+		ret = gpio_get_value_cansleep(data->uc_data.lsw1_status);
+		return ret == 0 ? 0 : -EIO;
 	case 1:
 		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 1);
+		ret = gpio_get_value_cansleep(data->uc_data.lsw1_status);
+		return ret == 1 ? 0 : -EIO;
 		break;
 	default:
 		return -EINVAL;
@@ -438,6 +444,15 @@ static int max77759_ls2_mode(struct max77759_usecase_data *uc_data, int mode)
 	return 0;
 }
 
+static bool max20339_is_vin_valid(struct max77759_chgr_data *data)
+{
+	if (data->uc_data.vin_valid < 0) {
+		dev_err(data->dev, "vin-valid GPIO not set");
+		return false;
+	}
+
+	return gpio_get_value_cansleep(data->uc_data.vin_valid) == 1;
+}
 
 /* control external boost mode
  * can be done controlling ls1, ls2
@@ -877,6 +892,8 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
 		uc_data->ls2_en = -EPROBE_DEFER;
+		uc_data->lsw1_status = -EPROBE_DEFER;
+		uc_data->vin_valid = -EPROBE_DEFER;
 		return 0;
 	}
 
@@ -889,10 +906,18 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	if (uc_data->ls2_en == -EPROBE_DEFER)
 		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
 
+	if (uc_data->lsw1_status == -EPROBE_DEFER)
+		uc_data->lsw1_status = of_get_named_gpio(node, "max77759,lsw1-status", 0);
+
+	if (uc_data->vin_valid == -EPROBE_DEFER)
+		uc_data->vin_valid = of_get_named_gpio(node, "max77759,vin-valid", 0);
+
 	return uc_data->bst_on != -EPROBE_DEFER &&
 	       uc_data->bst_sel != -EPROBE_DEFER &&
 	       uc_data->ext_bst_ctl != -EPROBE_DEFER &&
-	       uc_data->ls2_en != -EPROBE_DEFER;
+	       uc_data->ls2_en != -EPROBE_DEFER &&
+	       uc_data->lsw1_status != -EPROBE_DEFER &&
+	       uc_data->vin_valid != -EPROBE_DEFER;
 }
 
 /*
