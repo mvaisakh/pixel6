@@ -651,9 +651,29 @@ static int max77759_to_otg_usecase(struct max77759_chgr_data *data,
 		/* Write 0b1 to AO37 SwCntl (0xA).LSw1En */
 		/* TCPCM controls EXT_BST_EN? */
 		ret = max77759_ls_mode(data, 1);
-		if (ret == 0)
+		if (ret == 0) {
+			ret = regmap_write_bits(data->regmap, MAX77759_CHG_CNFG_00,
+						MAX77759_CHG_CNFG_00_MODE_MASK,
+						MAX77759_CHGR_MODE_OTG_BOOST_ON);
+			if (ret < 0) {
+				dev_err(data->dev, "cannot set CNFG_00 to 0xa ret:%d\n", ret);
+				return -EIO;
+			}
+			if (!max20339_is_vin_valid(data)) {
+				dev_err(data->dev, "VIN not VALID");
+				return -EIO;
+			}
 			ret = max77759_ext_mode(data, mode);
-
+			mdelay(5);
+			/*
+			 * Assumption: max77759_to_usecase() will write back cached values to
+			 * CHG_CNFG_00.Mode. At the moment, the cached value at
+			 * max77759_mode_callback is 0. If the cached value changes to someting
+			 * other than 0, then, the code has to be revisited.
+			 */
+		} else {
+			dev_err(data->dev, "cannot close load switch (%d)\n", ret);
+		}
 	} else if (data->use_case == GSU_MODE_USB_OTG) {
 		/*
 		 * OTG source handover: OTG -> OTG_FRS
