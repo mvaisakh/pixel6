@@ -89,7 +89,9 @@ enum {
 struct max77759_usecase_data {
 	int bst_on;	/* */
 	int bst_sel;	/* */
-	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
+	int ext_bst_ctl;/* MW VENDOR_EXTBST_CTRL */
+
+	int ls2_en;	/* OVP LS2 */
 
 	bool init_done;
 };
@@ -331,6 +333,11 @@ static int max77759_foreach_callback(void *data, const char *reason,
 		pr_debug("%s:%d DC_ON vote=%x\n", __func__, __LINE__, mode);
 		cb_data->pps_dc += 1;
 		break;
+	/* WLC Tx */
+	case GBMS_CHGR_MODE_WLC_TX:
+		pr_debug("%s:%d WLC_TX vote=%x\n", __func__, __LINE__, mode);
+		cb_data->wlc_tx += 1;
+		break;
 
 	default:
 		pr_err("mode=%x not supported\n", mode);
@@ -411,6 +418,17 @@ static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
 	return ret;
 }
 
+static int max77759_ls2_mode(struct max77759_usecase_data *uc_data, int mode)
+{
+	pr_info("%s: ls2_en=%d mode=%d\n", __func__, uc_data->ls2_en, mode);
+
+	if (uc_data->ls2_en >= 0)
+		gpio_set_value_cansleep(uc_data->ls2_en, !!mode);
+
+	return 0;
+}
+
+
 /* control external boost mode
  * can be done controlling ls1, ls2
  */
@@ -489,7 +507,7 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			if (ret == 0)
 				ret = max77759_ext_mode(data, 0);
 			if (ret < 0) {
-				dev_err(data->dev, "cannot turn off switches (%d)\n",
+				dev_err(data->dev, "OTG cannot turn off switches (%d)\n",
 					ret);
 				return -EIO;
 			}
@@ -525,8 +543,15 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 	if (!need_stby)
 		return 0;
 
+	/* */
 	if (data->use_case == GSU_MODE_WLC_TX) {
-		/* not yet */
+
+		// disable RTx.
+		ret = max77759_ext_mode(data, 0);
+		if (ret == 0)
+			ret = max77759_ls2_mode(&data->uc_data, 0);
+		if (ret < 0)
+			dev_err(data->dev, "RTX cannot turn off switches (%d)\n", ret);
 	}
 
 	/* transition to STBY (might need to be up) */
@@ -636,6 +661,9 @@ static int max77759_to_usecase(struct max77759_chgr_data *data,
 			return ret;
 		break;
 	case GSU_MODE_WLC_TX:
+		ret = max77759_ls2_mode(&data->uc_data, 1);
+		if (ret == 0)
+			ret = max77759_ext_mode(data, EXT_MODE_OTG_7_5V);
 		break;
 	case GSU_RAW_MODE:
 		/* just write the value to the register */
@@ -700,7 +728,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 	} else if (cb_data->wlc_tx) {
 		/* 7-2 */
 		usecase = GSU_MODE_USB_OTG_WLC_TX;
-		pr_err("%s: GSU_MODE_WLC_TX not yet\n", __func__);
+		pr_err("%s: GSU_MODE_WLC_TX + OTG not yet\n", __func__);
 
 		return -EINVAL;
 	} else if (cb_data->wlc_dc) {
@@ -737,20 +765,39 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 	u8 mode;
 
 	/* consistency check, TOD: add more */
-	if (cb_data->wlc_tx && cb_data->wlc_on) {
-		pr_err("%s: wlc_tx and wlc_rx\n", __func__);
-		return -EINVAL;
+	if (cb_data->wlc_tx) {
+		if (cb_data->wlc_on) {
+			pr_err("%s: wlc_tx and wlc_rx\n", __func__);
+			return -EINVAL;
+		}
+
+		if (cb_data->wlc_dc) {
+			pr_err("%s: wlc_tx and wlc_dc\n", __func__);
+			return -EINVAL;
+		}
 	}
 
 	/* OTG modes override the others */
 	if (cb_data->otg_on || cb_data->frs_on)
 		return max77759_get_otg_usecase(cb_data);
 
-	/* buck_on is wired, wlc_on is wireless */
+	/* buck_on is wired, wlc_on is wireless, might still need rTX */
 	if (!cb_data->buck_on && !cb_data->wlc_on) {
 		mode = MAX77759_CHGR_MODE_ALL_OFF;
+
+		/* Rtx using the internal battery */
 		usecase = GSU_MODE_STANDBY;
+		if (cb_data->wlc_tx)
+			usecase = GSU_MODE_WLC_TX;
+
+	} else if (cb_data->wlc_tx && cb_data->buck_on) {
+
+		usecase = GSU_MODE_WLC_TX;
+		mode = (cb_data->chgr_on) ?
+			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
+			MAX77759_CHGR_MODE_BUCK_ON;
 	} else {
+
 		/* MODE_BUCK_ON is inflow */
 		if (cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
@@ -760,8 +807,14 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			usecase = GSU_MODE_USB_CHG;
 		}
 
-		/* direct charging or off mode */
-		if (cb_data->pps_dc) {
+		/*
+		 * OTG cases for wlcTX handled above, same as !(buck|wlc)_on
+		 * TODO: handle rTx + DC and some more.
+		 * NOTE: mode = if standby 0, if cable charging 5, if otg A
+		 */
+		if (cb_data->wlc_tx) {
+			usecase = GSU_MODE_WLC_TX;
+		} else if (cb_data->pps_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
 		} else if (cb_data->wlc_dc) {
@@ -771,6 +824,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
 		}
+
 
 	}
 
@@ -812,21 +866,23 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_on = -EPROBE_DEFER;
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
+		uc_data->ls2_en = -EPROBE_DEFER;
 		return 0;
 	}
 
 	if (uc_data->bst_on == -EPROBE_DEFER)
 		uc_data->bst_on = of_get_named_gpio(node, "max77759,bst-on", 0);
-
 	if (uc_data->bst_sel == -EPROBE_DEFER)
 		uc_data->bst_sel = of_get_named_gpio(node, "max77759,bst-sel", 0);
-
 	if (uc_data->ext_bst_ctl == -EPROBE_DEFER)
 		uc_data->ext_bst_ctl = of_get_named_gpio(node, "max77759,extbst-ctl", 0);
+	if (uc_data->ls2_en == -EPROBE_DEFER)
+		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
 
 	return uc_data->bst_on != -EPROBE_DEFER &&
 	       uc_data->bst_sel != -EPROBE_DEFER &&
-	       uc_data->ext_bst_ctl != -EPROBE_DEFER;
+	       uc_data->ext_bst_ctl != -EPROBE_DEFER &&
+	       uc_data->ls2_en != -EPROBE_DEFER;
 }
 
 /*
@@ -871,10 +927,10 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
 
 	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d\n", __func__,
+		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d\n", __func__,
 		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
-		cb_data.otg_on, cb_data.uno_on);
+		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx);
 	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
 		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
 		 reg);
