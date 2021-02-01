@@ -42,6 +42,7 @@ struct max77729_chgr_data {
 	struct gvotable_election *dc_icl_votable;
 
 	bool input_suspend;
+	bool online;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *de;
@@ -862,9 +863,12 @@ static int max77729_psy_set_property(struct power_supply *psy,
 {
 	struct max77729_chgr_data *data =
 		(struct max77729_chgr_data *)power_supply_get_drvdata(psy);
-	int ret;
+	int ret = 0;
 
 	switch (psp) {
+		case POWER_SUPPLY_PROP_ONLINE:
+			data->online = pval->intval;
+			break;
 		case POWER_SUPPLY_PROP_CURRENT_MAX:
 			ret = max77729_set_ilim_max_ua(data, pval->intval);
 			pr_info("ilim=%d (%d)\n", pval->intval, ret);
@@ -889,7 +893,6 @@ static int max77729_psy_set_property(struct power_supply *psy,
 							  "USER");
 			break;
 		case GBMS_PROP_TAPER_CONTROL:
-			ret = 0;
 			break;
 		default:
 			dev_err(data->dev, "unsupported property: %d\n", psp);
@@ -912,6 +915,7 @@ static int max77729_psy_property_is_writable(struct power_supply *psy,
 		case POWER_SUPPLY_PROP_VOLTAGE_MAX:	/* same as CHARGE_* */
 		case GBMS_PROP_CHARGE_DISABLE:  /* ext */
 		case GBMS_PROP_TAPER_CONTROL:
+		case POWER_SUPPLY_PROP_ONLINE:
 			writeable = 1;
 			break;
 		default:
