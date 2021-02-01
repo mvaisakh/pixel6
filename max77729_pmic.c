@@ -323,11 +323,11 @@ static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
 			if (!data->ovp_client_data)
 				get_ovp_client_data(data);
 
-			if (data->ovp_client_data)
-				max20339_irq(data->ovp_client_data);
-
 			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
 					  MAX77759_PMIC_UIC_INT1_GPIO6I);
+
+			if (data->ovp_client_data)
+				max20339_irq(data->ovp_client_data);
 		}
 	}
 
