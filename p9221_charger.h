@@ -425,6 +425,7 @@ struct p9221_charger_platform_data {
 	u32				icl_ramp_delay_ms;
 	u16				chip_id;
 	bool				has_wlc_dc;
+	bool				has_rtx;
 
 	u32				alignment_scalar_low_current;
 	u32				alignment_scalar_high_current;
@@ -441,6 +442,7 @@ struct p9221_charger_data {
 	struct votable			*dc_suspend_votable;
 	struct votable			*tx_icl_votable;
 	struct votable			*disable_dcin_en_votable;
+	struct votable			*chg_mode_votable;
 	struct notifier_block		nb;
 	struct mutex			io_lock;
 	struct mutex			cmd_lock;

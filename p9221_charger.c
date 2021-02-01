@@ -25,6 +25,7 @@
 #include "p9221_charger.h"
 #include "p9221-dt-bindings.h"
 #include "google_dc_pps.h"
+#include "google_bms.h"
 
 #define P9221R5_OVER_CHECK_NUM		3
 
@@ -2596,7 +2597,7 @@ static ssize_t rx_lvl_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct p9221_charger_data *charger = i2c_get_clientdata(client);
 
-	if (charger->pdata->switch_gpio < 0)
+	if (!charger->pdata->has_rtx)
 		return -ENODEV;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", charger->rtx_csp);
@@ -2616,7 +2617,7 @@ static ssize_t rtx_status_show(struct device *dev,
 	u8 reg;
 	int ret;
 
-	if (charger->pdata->switch_gpio < 0)
+	if (!charger->pdata->has_rtx)
 		charger->rtx_state = RTX_NOTSUPPORTED;
 
 	if (p9221_is_online(charger)) {
@@ -2647,7 +2648,7 @@ static ssize_t is_rtx_connected_show(struct device *dev,
 	u16 status_reg = 0;
 	bool attached = 0;
 
-	if (charger->pdata->switch_gpio < 0)
+	if (!charger->pdata->has_rtx)
 		return -ENODEV;
 
 	if (charger->ben_state)
@@ -2789,10 +2790,25 @@ static ssize_t p9382_show_rtx_boost(struct device *dev,
 /* assume that we have 2 GPIO to turn on the boost */
 static int p9382_rtx_enable(struct p9221_charger_data *charger, bool enable)
 {
+	int ret = 0;
+
+	/*
+	 * TODO: deprecate the support for rTX on whitefin2 or use a DT entry
+	 * to ignore the votable and use ben+switch
+	 */
+	if (!charger->chg_mode_votable)
+		charger->chg_mode_votable = find_votable(GBMS_MODE_VOTABLE);
+	if (charger->chg_mode_votable) {
+		ret = vote(charger->chg_mode_votable, P9221_WLC_VOTER, enable,
+			   GBMS_CHGR_MODE_WLC_TX);
+		return ret;
+	}
+
 	if (charger->pdata->ben_gpio >= 0)
 		gpio_set_value_cansleep(charger->pdata->ben_gpio, enable);
 	if (charger->pdata->switch_gpio >= 0)
 		gpio_set_value_cansleep(charger->pdata->switch_gpio, enable);
+
 	/* some systems provide additional boost_gpio for charging level */
 	if (charger->pdata->boost_gpio >= 0)
 		gpio_set_value_cansleep(charger->pdata->boost_gpio, enable);
@@ -2858,6 +2874,23 @@ static ssize_t p9382_set_rtx_boost(struct device *dev,
 
 static DEVICE_ATTR(rtx_boost, 0644, p9382_show_rtx_boost, p9382_set_rtx_boost);
 
+static int p9382_disable_dcin_en(struct p9221_charger_data *charger, bool enable)
+{
+	int ret;
+
+	if (!charger->disable_dcin_en_votable)
+		charger->disable_dcin_en_votable = find_votable("DC_SUSPEND");
+	if (!charger->disable_dcin_en_votable)
+		return 0;
+
+	ret = vote(charger->disable_dcin_en_votable, P9221_WLC_VOTER, enable, 0);
+	if (ret == 0)
+		return 0;
+
+	dev_err(&charger->client->dev, "Could not vote DISABLE_DCIN_EN (%d)\n", ret);
+	return ret;
+}
+
 static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 {
 	int ret = 0, tx_icl = -1;
@@ -2872,8 +2905,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 		if (ret < 0)
 			goto exit;
 
-		ret = vote(charger->disable_dcin_en_votable,
-			   P9221_WLC_VOTER, false, 0);
+		ret = p9382_disable_dcin_en(charger, false);
 		if (ret)
 			dev_err(&charger->client->dev,
 				"fail to enable dcin, ret=%d\n", ret);
@@ -2888,7 +2920,10 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			goto exit;
 		}
 
-		/* Check if WLC online */
+		/*
+		 * Check if WLC online
+		 * NOTE: when used CHARGER_MODE will also prevent this.
+		 */
 		if (charger->online) {
 			dev_err(&charger->client->dev,
 				"rTX is not allowed during WLC\n");
@@ -2901,20 +2936,10 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 		 * DCIN_EN votable will not be available on all systems.
 		 * if it is there, it is needed.
 		 */
-		if (!charger->disable_dcin_en_votable) {
-			charger->disable_dcin_en_votable =
-				find_votable("DISABLE_DCIN_EN");
-		}
-
-		if (charger->disable_dcin_en_votable) {
-			ret = vote(charger->disable_dcin_en_votable,
-				   P9221_WLC_VOTER, true, 0);
-			if (ret) {
-				dev_err(&charger->client->dev,
-					"Could not vote DISABLE_DCIN_EN, skip enable rTX mode %d\n",
-					ret);
-				goto exit;
-			}
+		ret = p9382_disable_dcin_en(charger, true);
+		if (ret) {
+			dev_err(&charger->client->dev, "cannot enable rTX mode %d\n", ret);
+			goto exit;
 		}
 
 		charger->com_busy = false;
@@ -2935,8 +2960,8 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			logbuffer_log(charger->rtx_log,
 				      "cannot enter rTX mode (%d)\n", ret);
 			p9382_ben_cfg(charger, RTX_BEN_DISABLED);
-			vote(charger->disable_dcin_en_votable, P9221_WLC_VOTER,
-			     false, 0);
+
+			ret = p9382_disable_dcin_en(charger, false);
 			goto exit;
 		}
 
@@ -3859,6 +3884,16 @@ static int p9221_parse_dt(struct device *dev,
 					pdata->slct_gpio, pdata->slct_value);
 	}
 
+	/* RTx: idt,gpio_ben / idt,gpio_switch / idt,gpio_boost */
+	ret = of_property_read_u32(node, "idt,has_rtx", &data);
+	if (ret == 0)
+		pdata->has_rtx = !!data;
+	else
+		pdata->has_rtx =
+		    ((pdata->chip_id == P9412_CHIP_ID) ||
+		     (pdata->chip_id == P9382A_CHIP_ID));
+	dev_info(dev, "has_rtx:%d\n", pdata->has_rtx);
+
 	/* boost enable, power WLC IC from device */
 	ret = of_get_named_gpio(node, "idt,gpio_ben", 0);
 	if (ret == -EPROBE_DEFER)
@@ -3866,15 +3901,6 @@ static int p9221_parse_dt(struct device *dev,
 	pdata->ben_gpio = ret;
 	if (ret >= 0)
 		dev_info(dev, "ben gpio:%d\n", pdata->ben_gpio);
-
-	ret = of_get_named_gpio(node, "idt,gpio_extben", 0);
-	if (ret == -EPROBE_DEFER)
-		return ret;
-	pdata->ext_ben_gpio = ret;
-	if (ret >= 0) {
-		ret = gpio_request(pdata->ext_ben_gpio, "wc_ref");
-		dev_info(dev, "ext ben gpio:%d, ret=%d\n", pdata->ext_ben_gpio, ret);
-	}
 
 	ret = of_get_named_gpio(node, "idt,gpio_switch", 0);
 	if (ret == -EPROBE_DEFER)
@@ -3890,6 +3916,15 @@ static int p9221_parse_dt(struct device *dev,
 	pdata->boost_gpio = ret;
 	if (ret >= 0)
 		dev_info(dev, "boost gpio:%d\n", pdata->boost_gpio);
+
+	ret = of_get_named_gpio(node, "idt,gpio_extben", 0);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+	pdata->ext_ben_gpio = ret;
+	if (ret >= 0) {
+		ret = gpio_request(pdata->ext_ben_gpio, "wc_ref");
+		dev_info(dev, "ext ben gpio:%d, ret=%d\n", pdata->ext_ben_gpio, ret);
+	}
 
 	/* DC-PPS */
 	ret = of_get_named_gpio(node, "idt,gpio_dc_switch", 0);
@@ -4308,7 +4343,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	 * Create the RTX_ICL votable, we use this to limit the current that
 	 * is taken for RTx mode
 	 */
-	if (charger->pdata->switch_gpio >= 0) {
+	if (charger->pdata->has_rtx) {
 		charger->tx_icl_votable = create_votable("TX_ICL", VOTE_MIN,
 					p9382a_tx_icl_vote_callback, charger);
 		if (IS_ERR(charger->tx_icl_votable)) {
@@ -4338,6 +4373,10 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->dc_suspend_votable = find_votable("DC_SUSPEND");
 	if (!charger->dc_suspend_votable)
 		dev_warn(&charger->client->dev, "Could not find DC_SUSPEND votable\n");
+
+	charger->chg_mode_votable = find_votable(GBMS_MODE_VOTABLE);
+	if (!charger->chg_mode_votable)
+		dev_warn(&charger->client->dev, "Could not find %s votable\n", GBMS_MODE_VOTABLE);
 
 	/* Ramping on BPP is optional */
 	if (charger->pdata->icl_ramp_delay_ms != -1) {
@@ -4409,7 +4448,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	if (ret) {
 		dev_info(&client->dev, "sysfs_create_group failed\n");
 	}
-	if (charger->pdata->switch_gpio >= 0) {
+	if (charger->pdata->has_rtx) {
 		ret = sysfs_create_group(&charger->dev->kobj, &rtx_attr_group);
 		if (ret)
 			dev_info(&client->dev, "rtx sysfs_create_group failed\n");
