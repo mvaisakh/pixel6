@@ -73,7 +73,7 @@ enum max17xxx_nvram {
 };
 
 enum max17xxx_command_bits {
-	MAX17XXX_COMMAND_NV_RECALL 	  = 0xE001,
+	MAX17XXX_COMMAND_NV_RECALL	  = 0xE001,
 };
 
 /* Capacity Estimation */
@@ -2868,7 +2868,7 @@ BATTERY_DEBUG_ATTRIBUTE(debug_reglog_writes_fops,
 			debug_get_reglog_writes, NULL);
 
 static ssize_t max1720x_show_custom_model(struct file *filp, char __user *buf,
-				          size_t count, loff_t *ppos)
+					  size_t count, loff_t *ppos)
 {
 	struct max1720x_chip *chip = (struct max1720x_chip *)filp->private_data;
 	char *tmp;
@@ -2954,7 +2954,7 @@ DEFINE_SIMPLE_ATTRIBUTE(debug_sync_model_fops, NULL, debug_sync_model, "%llu\n")
 
 
 static ssize_t max1720x_show_debug_data(struct file *filp, char __user *buf,
-				        size_t count, loff_t *ppos)
+					size_t count, loff_t *ppos)
 {
 	struct max1720x_chip *chip = (struct max1720x_chip *)filp->private_data;
 	char msg[8];
@@ -3005,7 +3005,7 @@ BATTERY_DEBUG_ATTRIBUTE(debug_reg_data_fops, max1720x_show_debug_data,
  *	val->intval = chip->cap_estimate.delta_cc_sum;
  *	break;
  * case POWER_SUPPLY_PROP_DELTA_VFSOC_SUM:
- * 	val->intval = chip->cap_estimate.delta_vfsoc_sum;
+ *	val->intval = chip->cap_estimate.delta_vfsoc_sum;
  *	break;
  */
 
@@ -4640,9 +4640,6 @@ static int max1720x_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	if (of_property_read_bool(dev->of_node, "maxim,psy-type-unknown"))
-		chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
-
 	psy_cfg.drv_data = chip;
 	psy_cfg.of_node = chip->dev->of_node;
 
@@ -4655,12 +4652,15 @@ static int max1720x_probe(struct i2c_client *client,
 
 	pr_info("max1720x_psy_desc.name=%s\n",chip->max1720x_psy_desc.name);
 
-	chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_BATTERY,
-	chip->max1720x_psy_desc.get_property = max1720x_get_property,
-	chip->max1720x_psy_desc.set_property = max1720x_set_property,
-	chip->max1720x_psy_desc.property_is_writeable = max1720x_property_is_writeable,
-	chip->max1720x_psy_desc.properties = max1720x_battery_props,
-	chip->max1720x_psy_desc.num_properties = ARRAY_SIZE(max1720x_battery_props),
+	chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_BATTERY;
+	chip->max1720x_psy_desc.get_property = max1720x_get_property;
+	chip->max1720x_psy_desc.set_property = max1720x_set_property;
+	chip->max1720x_psy_desc.property_is_writeable = max1720x_property_is_writeable;
+	chip->max1720x_psy_desc.properties = max1720x_battery_props;
+	chip->max1720x_psy_desc.num_properties = ARRAY_SIZE(max1720x_battery_props);
+
+	if (of_property_read_bool(dev->of_node, "maxim,psy-type-unknown"))
+		chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
 
 	chip->psy = devm_power_supply_register(dev, &chip->max1720x_psy_desc,
 					       &psy_cfg);
