@@ -1361,6 +1361,9 @@ static int chg_set_chg_suspend(void *data, u64 val)
 		return rc;
 	}
 
+	if (chg_drv->chg_psy)
+		power_supply_changed(chg_drv->chg_psy);
+
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(chg_cs_fops, chg_get_chg_suspend,
