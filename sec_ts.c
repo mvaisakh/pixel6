@@ -13,6 +13,7 @@
 struct sec_ts_data *tsp_info;
 
 #include "sec_ts.h"
+#include <samsung/exynos_drm_connector.h>
 
 /* Switch GPIO values */
 #define SEC_SWITCH_GPIO_VALUE_SLPI_MASTER	1
@@ -5090,8 +5091,8 @@ int sec_ts_set_bus_ref(struct sec_ts_data *ts, u16 ref, bool enable)
 
 	if ((enable && (ts->bus_refmask & ref)) ||
 	    (!enable && !(ts->bus_refmask & ref))) {
-		input_info(true, &ts->client->dev,
-			"%s: reference is unexpectedly set: mask=0x%04X, ref=0x%04X, enable=%d.\n",
+		input_dbg(true, &ts->client->dev,
+			"%s: reference is unexpectedly set: mask=0x%04X, ref=0x%04X, enable=%d\n",
 			__func__, ts->bus_refmask, ref, enable);
 		mutex_unlock(&ts->bus_mutex);
 		return -EINVAL;
@@ -5128,27 +5129,78 @@ int sec_ts_set_bus_ref(struct sec_ts_data *ts, u16 ref, bool enable)
 	return result;
 }
 
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
+{
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+
+	drm_connector_list_iter_begin(bridge->dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (connector->encoder == bridge->encoder)
+			break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+	return connector;
+}
+
+static bool bridge_is_lp_mode(struct drm_connector *connector)
+{
+	if (connector && connector->state) {
+		struct exynos_drm_connector_state *s =
+			to_exynos_connector_state(connector->state);
+		return s->exynos_mode.is_lp_mode;
+	}
+	return false;
+}
+
 static void panel_bridge_enable(struct drm_bridge *bridge)
 {
 	struct sec_ts_data *ts =
-			container_of(bridge, struct sec_ts_data, panel_bridge);
+		container_of(bridge, struct sec_ts_data, panel_bridge);
 
 	pr_debug("%s\n", __func__);
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
+	if (!ts->is_panel_lp_mode)
+		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
 }
 
 static void panel_bridge_disable(struct drm_bridge *bridge)
 {
 	struct sec_ts_data *ts =
-			container_of(bridge, struct sec_ts_data, panel_bridge);
+		container_of(bridge, struct sec_ts_data, panel_bridge);
 
 	pr_debug("%s\n", __func__);
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, false);
 }
 
+static void panel_bridge_mode_set(struct drm_bridge *bridge,
+				  const struct drm_display_mode *mode,
+				  const struct drm_display_mode *adjusted_mode)
+{
+	struct sec_ts_data *ts =
+		container_of(bridge, struct sec_ts_data, panel_bridge);
+
+	if (!ts->connector || !ts->connector->state)
+		ts->connector = get_bridge_connector(bridge);
+
+	ts->is_panel_lp_mode = bridge_is_lp_mode(ts->connector);
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, !ts->is_panel_lp_mode);
+
+	if (adjusted_mode) {
+		int vrefresh = drm_mode_vrefresh(adjusted_mode);
+
+		if (ts->display_refresh_rate != vrefresh) {
+			input_dbg(true, &ts->client->dev,
+				"%s: refresh rate(Hz) changed to %d from %d\n",
+				__func__,  vrefresh, ts->display_refresh_rate);
+			ts->display_refresh_rate = vrefresh;
+		}
+	}
+}
+
 static const struct drm_bridge_funcs panel_bridge_funcs = {
 	.enable = panel_bridge_enable,
 	.disable = panel_bridge_disable,
+	.mode_set = panel_bridge_mode_set,
 };
 
 static int register_panel_bridge(struct sec_ts_data *ts)

@@ -870,6 +870,9 @@ struct sec_ts_data {
 	struct mutex eventlock;
 
 	struct drm_bridge panel_bridge;
+	struct drm_connector *connector;
+	bool is_panel_lp_mode;
+	int display_refresh_rate;	/* Display rate in Hz */
 
 	struct pm_qos_request pm_qos_req;
 
