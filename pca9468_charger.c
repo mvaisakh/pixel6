@@ -632,7 +632,7 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return -EIO;
 
-	pr_info("%s: RCP check, STS_B=0x%x\n",	__func__, reg_val);
+	pr_debug("%s: RCP check, STS_B=0x%x\n",	__func__, reg_val);
 
 	/* Check Active status */
 	if (reg_val & PCA9468_BIT_ACTIVE_STATE_STS) {
@@ -704,7 +704,7 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 			ret = -EINVAL;
 		}
 
-		pr_info("%s: Active Status=%d\n", __func__, ret);
+		pr_debug("%s: Active Status=%d\n", __func__, ret);
 		return ret;
 	}
 
@@ -746,7 +746,7 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: Not Active Status=%d\n", __func__, ret);
+	pr_debug("%s: Not Active Status=%d\n", __func__, ret);
 	return -EINVAL;
 }
 
@@ -775,7 +775,7 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: CCMODE Status=%d\n", __func__, ret);
+	pr_debug("%s: CCMODE Status=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -806,7 +806,7 @@ static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: CVMODE Status=%d\n", __func__, ret);
+	pr_debug("%s: CVMODE Status=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -2573,7 +2573,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: End, ret=%d\n", __func__, ret);
+	pr_debug("%s: End, ret=%d\n", __func__, ret);
 	return ret;
 }
 

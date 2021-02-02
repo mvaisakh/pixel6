@@ -228,7 +228,7 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		return ret;
 	}
 
-	pr_info("%s: tcpm_psy_ok=%d pd_online=%d pps_stage=%d charging_state=%u",
+	pr_debug("%s: tcpm_psy_ok=%d pd_online=%d pps_stage=%d charging_state=%u",
 		__func__,  tcpm_psy != 0,  pps_data->pd_online,
 		pps_data->stage, pca9468->charging_state);
 
