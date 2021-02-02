@@ -387,13 +387,13 @@ static const char *get_event_name(enum dpu_event_type type)
 	return events[type];
 }
 
-static void dpu_event_log_print(const struct decon_device *decon, struct drm_printer *p)
+static void dpu_event_log_print(const struct decon_device *decon, struct drm_printer *p,
+				size_t max_logs)
 {
 	int idx = atomic_read(&decon->d.event_log_idx);
 	struct dpu_log *log;
 	int latest = idx % dpu_event_log_max;
 	struct timespec64 ts;
-	ktime_t prev_ktime;
 	const char *str_comp;
 	char buf[LOG_BUF_SIZE];
 	int len;
@@ -406,15 +406,14 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 	drm_printf(p, "----------------------------------------------------\n");
 
 	/* Seek a oldest from current index */
-	if (dpu_event_print_max > dpu_event_log_max)
-		dpu_event_print_max = dpu_event_log_max;
+	if (max_logs > dpu_event_log_max)
+		max_logs = dpu_event_log_max;
 
-	if (idx < dpu_event_print_max)
+	if (idx < max_logs)
 		idx = 0;
 	else
-		idx = (idx - dpu_event_print_max) % dpu_event_log_max;
+		idx = (idx - max_logs) % dpu_event_log_max;
 
-	prev_ktime = ktime_set(0, 0);
 	do {
 		if (++idx >= dpu_event_log_max)
 			idx = 0;
@@ -425,15 +424,12 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 		/* TIME */
 		ts = ktime_to_timespec64(log->time);
 
-		len = scnprintf(buf, sizeof(buf), "[%6lld.%06ld] ", ts.tv_sec,
-				ts.tv_nsec / NSEC_PER_USEC);
-
 		/* If there is no timestamp, then exit directly */
 		if (!ts.tv_sec)
 			break;
 
-		len += scnprintf(buf + len, sizeof(buf) - len,  "%20s",
-				get_event_name(log->type));
+		len = scnprintf(buf, sizeof(buf), "[%6lld.%06ld] %20s", ts.tv_sec,
+				ts.tv_nsec / NSEC_PER_USEC, get_event_name(log->type));
 
 		switch (log->type) {
 		case DPU_EVT_DECON_RSC_OCCUPANCY:
@@ -528,7 +524,7 @@ static int dpu_debug_event_show(struct seq_file *s, void *unused)
 	struct decon_device *decon = s->private;
 	struct drm_printer p = drm_seq_file_printer(s);
 
-	dpu_event_log_print(decon, &p);
+	dpu_event_log_print(decon, &p, dpu_event_log_max);
 	return 0;
 }
 
@@ -881,7 +877,7 @@ void decon_dump_all(struct decon_device *decon)
 
 	pr_info("DPU power %s state\n", active ? "on" : "off");
 
-	dpu_event_log_print(decon, &p);
+	dpu_event_log_print(decon, &p, dpu_event_print_max);
 
 	if (active)
 		decon_dump(decon);
