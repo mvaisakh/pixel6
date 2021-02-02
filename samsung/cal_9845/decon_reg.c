@@ -2111,34 +2111,21 @@ static void decon_reg_read_resource_status(u32 id, u32 opt)
 int decon_reg_get_interrupt_and_clear(u32 id, u32 *ext_irq)
 {
 	u32 val, val1;
-	u32 reg_id;
+	u32 mask = INT_PEND_DQE_DIMMING_START | INT_PEND_DQE_DIMMING_END |
+		INT_PEND_FRAME_DONE | INT_PEND_EXTRA;
 
-	reg_id = DECON_INT_PEND;
-	val = decon_read(id, reg_id);
-
-	if (val & INT_PEND_DQE_DIMMING_END)
-		decon_write(id, reg_id, INT_PEND_DQE_DIMMING_END);
-
-	if (val & INT_PEND_DQE_DIMMING_START)
-		decon_write(id, reg_id, INT_PEND_DQE_DIMMING_START);
-
-	if (val & INT_PEND_FRAME_DONE)
-		decon_write(id, reg_id, INT_PEND_FRAME_DONE);
+	val = decon_read_mask(id, DECON_INT_PEND, mask);
+	if (val)
+		decon_write(id, DECON_INT_PEND, val);
 
 	if (val & INT_PEND_EXTRA) {
-		decon_write(id, reg_id, INT_PEND_EXTRA);
-
-		reg_id = DECON_INT_PEND_EXTRA;
-		val1 = decon_read(id, reg_id);
+		mask = INT_PEND_RESOURCE_CONFLICT | INT_EN_TIME_OUT;
+		val1 = decon_read_mask(id, DECON_INT_PEND_EXTRA, mask);
+		decon_write(id, DECON_INT_PEND_EXTRA, val1);
 		*ext_irq = val1;
 
-		if (val1 & INT_PEND_RESOURCE_CONFLICT) {
-			decon_write(id, reg_id, INT_PEND_RESOURCE_CONFLICT);
+		if (val1 & INT_PEND_RESOURCE_CONFLICT)
 			decon_reg_read_resource_status(id, 0);
-		}
-
-		if (val1 & INT_EN_TIME_OUT)
-			decon_write(id, reg_id, INT_EN_TIME_OUT);
 	}
 
 	return val;
@@ -2148,9 +2135,9 @@ int decon_reg_get_fs_interrupt_and_clear(u32 id)
 {
 	u32 val;
 
-	val = decon_read(id, DECON_INT_PEND);
-	if (val & INT_PEND_FRAME_START)
-		decon_write(id, DECON_INT_PEND, INT_PEND_FRAME_START);
+	val = decon_read_mask(id, DECON_INT_PEND, INT_PEND_FRAME_START);
+	if (val)
+		decon_write(id, DECON_INT_PEND, val);
 
 	return val;
 }
