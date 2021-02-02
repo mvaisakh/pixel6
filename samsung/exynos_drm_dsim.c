@@ -98,6 +98,9 @@ static void dsim_dump(struct dsim_device *dsim)
 
 	dsim_info(dsim, "=== DSIM SFR DUMP ===\n");
 
+	if (dsim->state != DSIM_STATE_HSCLKEN)
+		return;
+
 	regs.regs = dsim->res.regs;
 	regs.ss_regs = dsim->res.ss_reg_base;
 	regs.phy_regs = dsim->res.phy_regs;
@@ -284,7 +287,6 @@ static void dsim_disable(struct drm_encoder *encoder)
 
 	/* Wait for current read & write CMDs. */
 	mutex_lock(&dsim->cmd_lock);
-	del_timer(&dsim->cmd_timer);
 	dsim->state = DSIM_STATE_SUSPEND;
 	mutex_unlock(&dsim->cmd_lock);
 	mutex_unlock(&dsim->state_lock);
@@ -1222,10 +1224,15 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 
 	int_src = dsim_reg_get_int_and_clear(dsim->id);
 	if (int_src & DSIM_INTSRC_SFR_PH_FIFO_EMPTY) {
-		del_timer(&dsim->cmd_timer);
 		complete(&dsim->ph_wr_comp);
 		dsim_debug(dsim, "PH_FIFO_EMPTY irq occurs\n");
 	}
+
+	if (int_src & DSIM_INTSRC_SFR_PL_FIFO_EMPTY) {
+		complete(&dsim->pl_wr_comp);
+		dsim_debug(dsim, "PL_FIFO_EMPTY irq occurs\n");
+	}
+
 	if (int_src & DSIM_INTSRC_RX_DATA_DONE)
 		complete(&dsim->rd_comp);
 	if (int_src & DSIM_INTSRC_FRAME_DONE) {
@@ -1378,271 +1385,173 @@ static int dsim_host_detach(struct mipi_dsi_host *host,
 	return 0;
 }
 
-static void dsim_cmd_fail_detector(struct timer_list *arg)
+static int __dsim_wait_for_ph_fifo_empty(struct dsim_device *dsim)
 {
-	struct dsim_device *dsim = from_timer(dsim, arg, cmd_timer);
-
-	dsim_debug(dsim, "%s +\n", __func__);
-
-	if (dsim->state != DSIM_STATE_HSCLKEN) {
-		dsim_err(dsim, "%s: DSIM is not ready. state(%d)\n", __func__,
-				dsim->state);
-		goto exit;
-	}
-
-	/* If already FIFO empty even though the timer is no pending */
-	if (!timer_pending(&dsim->cmd_timer)
-			&& dsim_reg_header_fifo_is_empty(dsim->id)) {
-		reinit_completion(&dsim->ph_wr_comp);
-		dsim_reg_clear_int(dsim->id, DSIM_INTSRC_SFR_PH_FIFO_EMPTY);
-		goto exit;
-	}
-
-exit:
-	dsim_debug(dsim, "%s -\n", __func__);
-}
-
-static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim,
-		bool must_wait)
-{
-	int ret = 0;
-
-	if (!must_wait) {
-		/* timer is running, but already command is transferred */
-		if (dsim_reg_header_fifo_is_empty(dsim->id))
-			del_timer(&dsim->cmd_timer);
-
-		dsim_debug(dsim, "Doesn't need to wait fifo_completion\n");
-		return ret;
-	}
-
-	del_timer(&dsim->cmd_timer);
-	dsim_debug(dsim, "Waiting for fifo_completion...\n");
+	dsim_debug(dsim, "wait for packet header fifo empty\n");
 
 	if (!wait_for_completion_timeout(&dsim->ph_wr_comp, MIPI_WR_TIMEOUT)) {
 		if (dsim_reg_header_fifo_is_empty(dsim->id)) {
-			reinit_completion(&dsim->ph_wr_comp);
 			dsim_reg_clear_int(dsim->id,
 					DSIM_INTSRC_SFR_PH_FIFO_EMPTY);
 			return 0;
 		}
-		ret = -ETIMEDOUT;
+
+		dsim_warn(dsim, "timeout: packet header fifo empty\n");
+		return -ETIMEDOUT;
 	}
 
-	if ((dsim->state == DSIM_STATE_HSCLKEN) && (ret == -ETIMEDOUT))
-		dsim_err(dsim, "have timed out\n");
+	return 0;
+}
+
+static int __dsim_wait_for_pl_fifo_empty(struct dsim_device *dsim)
+{
+	dsim_debug(dsim, "wait for packet payload fifo empty\n");
+
+	if (!wait_for_completion_timeout(&dsim->pl_wr_comp, MIPI_WR_TIMEOUT)) {
+		if (dsim_reg_payload_fifo_is_empty(dsim->id)) {
+			dsim_reg_clear_int(dsim->id,
+					DSIM_INTSRC_SFR_PL_FIFO_EMPTY);
+			return 0;
+		}
+
+		dsim_warn(dsim, "timeout: packet payload fifo empty\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim, bool is_long)
+{
+	int ret;
+
+	if (is_long)
+		ret = __dsim_wait_for_pl_fifo_empty(dsim);
+	else
+		ret = __dsim_wait_for_ph_fifo_empty(dsim);
+
+	if (ret)
+		dsim_dump(dsim);
 
 	return ret;
 }
 
-static void dsim_long_data_wr(struct dsim_device *dsim, unsigned long d0,
-		u32 d1)
+static void
+dsim_write_payload(struct dsim_device *dsim, const u8* buf, size_t len)
 {
-	unsigned int data_cnt = 0, payload = 0;
+	const u8 *p = buf;
+	const u8 *end = buf + len;
+	u32 payload;
 
-	/* in case that data count is more then 4 */
-	for (data_cnt = 0; data_cnt < d1; data_cnt += 4) {
-		/*
-		 * after sending 4bytes per one time,
-		 * send remainder data less then 4.
-		 */
-		if ((d1 - data_cnt) < 4) {
-			if ((d1 - data_cnt) == 3) {
-				payload = *(u8 *)(d0 + data_cnt) |
-				    (*(u8 *)(d0 + (data_cnt + 1))) << 8 |
-					(*(u8 *)(d0 + (data_cnt + 2))) << 16;
-			dsim_debug(dsim, "count = 3 payload = %x, %x %x %x\n",
-				payload, *(u8 *)(d0 + data_cnt),
-				*(u8 *)(d0 + (data_cnt + 1)),
-				*(u8 *)(d0 + (data_cnt + 2)));
-			} else if ((d1 - data_cnt) == 2) {
-				payload = *(u8 *)(d0 + data_cnt) |
-					(*(u8 *)(d0 + (data_cnt + 1))) << 8;
-			dsim_debug(dsim, "count = 2 payload = %x, %x %x\n",
-				payload,
-				*(u8 *)(d0 + data_cnt),
-				*(u8 *)(d0 + (data_cnt + 1)));
-			} else if ((d1 - data_cnt) == 1) {
-				payload = *(u8 *)(d0 + data_cnt);
-			}
+	dsim_debug(dsim, "payload length(%lu)\n", len);
 
-			dsim_reg_wr_tx_payload(dsim->id, payload);
-		/* send 4bytes per one time. */
-		} else {
-			payload = *(u8 *)(d0 + data_cnt) |
-				(*(u8 *)(d0 + (data_cnt + 1))) << 8 |
-				(*(u8 *)(d0 + (data_cnt + 2))) << 16 |
-				(*(u8 *)(d0 + (data_cnt + 3))) << 24;
+	while (p < end) {
+		size_t pkt_size = min_t(size_t, 4, end - p);
 
-			dsim_debug(dsim, "count = 4 payload = %x, %x %x %x %x\n",
-				payload, *(u8 *)(d0 + data_cnt),
-				*(u8 *)(d0 + (data_cnt + 1)),
-				*(u8 *)(d0 + (data_cnt + 2)),
-				*(u8 *)(d0 + (data_cnt + 3)));
+		if (pkt_size >= 4)
+			payload = p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
+		else if (pkt_size == 3)
+			payload = p[0] | p[1] << 8 | p[2] << 16;
+		else if (pkt_size == 2)
+			payload = p[0] | p[1] << 8;
+		else if (pkt_size == 1)
+			payload = p[0];
 
-			dsim_reg_wr_tx_payload(dsim->id, payload);
-		}
+		dsim_reg_wr_tx_payload(dsim->id, payload);
+		dsim_debug(dsim, "payload: 0x%x\n", payload);
+
+		p += pkt_size;
 	}
 }
 
-static bool dsim_fifo_empty_needed(struct dsim_device *dsim,
-		unsigned int data_id, unsigned long data0)
+static void __dsim_write_data(struct dsim_device *dsim,
+				const struct mipi_dsi_msg *msg, bool is_long)
 {
-	/* read case or partial update command */
-	if (data_id == MIPI_DSI_DCS_READ
-			|| data0 == MIPI_DCS_SET_COLUMN_ADDRESS
-			|| data0 == MIPI_DCS_SET_PAGE_ADDRESS) {
-		dsim_debug(dsim, "id:%d, data=%ld\n", data_id, data0);
-		return true;
-	}
+	struct mipi_dsi_packet packet;
 
-	/* Check a FIFO level whether writable or not */
-	if (!dsim_reg_is_writable_fifo_state(dsim->id))
-		return true;
+	mipi_dsi_create_packet(&packet, msg);
 
-	return false;
+	if (is_long)
+		dsim_write_payload(dsim, packet.payload, packet.payload_length);
+	dsim_reg_wr_tx_header(dsim->id, packet.header[0], packet.header[1],
+						packet.header[2], false);
 }
 
-static int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0,
-		u32 d1)
+static int
+dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 {
-	int ret = 0;
-	bool must_wait = true;
-	const struct decon_device *decon = dsim_get_decon(dsim);
+	bool is_long = mipi_dsi_packet_format_is_long(msg->type);
+	const u8 *tx_buf = msg->tx_buf;
 
-	mutex_lock(&dsim->cmd_lock);
 	if (dsim->state != DSIM_STATE_HSCLKEN) {
 		dsim_err(dsim, "Not ready(%d)\n", dsim->state);
-		ret = -EINVAL;
-		goto err_exit;
+		return -EINVAL;
 	}
 
-	if (decon)
-		DPU_EVENT_LOG_CMD(decon->id, dsim, id, d0);
+	DPU_EVENT_LOG_CMD(dsim, msg->type, tx_buf[0], msg->tx_len);
 
-	reinit_completion(&dsim->ph_wr_comp);
 	dsim_reg_clear_int(dsim->id, DSIM_INTSRC_SFR_PH_FIFO_EMPTY);
 
-	/* Run write-fail dectector */
-	mod_timer(&dsim->cmd_timer, jiffies + MIPI_WR_TIMEOUT);
+	reinit_completion(is_long ? &dsim->pl_wr_comp : &dsim->ph_wr_comp);
 
-	switch (id) {
-	/* short packet types of packet types for command. */
-	case MIPI_DSI_GENERIC_SHORT_WRITE_0_PARAM:
-	case MIPI_DSI_GENERIC_SHORT_WRITE_1_PARAM:
-	case MIPI_DSI_GENERIC_SHORT_WRITE_2_PARAM:
-	case MIPI_DSI_DCS_SHORT_WRITE:
-	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
-	case MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE:
-	case MIPI_DSI_COMPRESSION_MODE:
-	case MIPI_DSI_COLOR_MODE_OFF:
-	case MIPI_DSI_COLOR_MODE_ON:
-	case MIPI_DSI_SHUTDOWN_PERIPHERAL:
-	case MIPI_DSI_TURN_ON_PERIPHERAL:
-		dsim_reg_wr_tx_header(dsim->id, id, d0, d1, false);
-		must_wait = dsim_fifo_empty_needed(dsim, id, d0);
-		break;
+	__dsim_write_data(dsim, msg, is_long);
 
-	case MIPI_DSI_GENERIC_READ_REQUEST_0_PARAM:
-	case MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM:
-	case MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM:
-	case MIPI_DSI_DCS_READ:
-		dsim_reg_wr_tx_header(dsim->id, id, d0, d1, true);
-		must_wait = dsim_fifo_empty_needed(dsim, id, d0);
-		break;
-
-	/* long packet types of packet types for command. */
-	case MIPI_DSI_GENERIC_LONG_WRITE:
-	case MIPI_DSI_DCS_LONG_WRITE:
-	case MIPI_DSI_PICTURE_PARAMETER_SET:
-		dsim_long_data_wr(dsim, d0, d1);
-		dsim_reg_wr_tx_header(dsim->id, id, d1 & 0xff,
-				(d1 & 0xff00) >> 8, false);
-		must_wait = dsim_fifo_empty_needed(dsim, id, *(u8 *)d0);
-		break;
-
-	default:
-		dsim_info(dsim, "data id %x is not supported.\n", id);
-		ret = -EINVAL;
-	}
-
-	ret = dsim_wait_for_cmd_fifo_empty(dsim, must_wait);
-	if (ret < 0)
-		dsim_err(dsim, "ID(%d): DSIM cmd wr timeout 0x%lx\n", id, d0);
-
-err_exit:
-	mutex_unlock(&dsim->cmd_lock);
-
-	return ret;
+	return dsim_wait_for_cmd_fifo_empty(dsim, is_long);
 }
 
-static int dsim_wr_data(struct dsim_device *dsim, u32 type, const u8 data[],
-		u32 len)
+static int
+dsim_req_read_command(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 {
-	u32 t;
-	int ret = 0;
+	struct mipi_dsi_packet packet;
 
-	switch (len) {
-	case 0:
-		return -EINVAL;
-	case 1:
-		t = type ? type : MIPI_DSI_DCS_SHORT_WRITE;
-		ret = dsim_write_data(dsim, t, (unsigned long)data[0], 0);
-		break;
-	case 2:
-		t = type ? type : MIPI_DSI_DCS_SHORT_WRITE_PARAM;
-		ret = dsim_write_data(dsim, t, (unsigned long)data[0],
-				(u32)data[1]);
-		break;
-	default:
-		t = type ? type : MIPI_DSI_DCS_LONG_WRITE;
-		ret = dsim_write_data(dsim, t, (unsigned long)data, len);
-		break;
-	}
+	dsim_reg_clear_int(dsim->id, DSIM_INTSRC_SFR_PH_FIFO_EMPTY);
+	reinit_completion(&dsim->ph_wr_comp);
 
-	return ret;
+	/* set the maximum packet size returned */
+	dsim_reg_wr_tx_header(dsim->id, MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE,
+			msg->rx_len, 0, false);
+
+	/* read request */
+	mipi_dsi_create_packet(&packet, msg);
+	dsim_reg_wr_tx_header(dsim->id, packet.header[0], packet.header[1],
+						packet.header[2], true);
+
+	return dsim_wait_for_cmd_fifo_empty(dsim, false);
 }
 
-#define DSIM_RX_PHK_HEADER_SIZE	4
-static int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt,
-		u8 *buf)
+static int
+dsim_read_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 {
 	u32 rx_fifo, rx_size = 0;
 	int i = 0, ret = 0;
+	u8 *rx_buf = msg->rx_buf;
 
 	if (dsim->state != DSIM_STATE_HSCLKEN) {
 		dsim_err(dsim, "Not ready(%d)\n", dsim->state);
 		return -EINVAL;
 	}
 
-	if (cnt > DSIM_RX_FIFO_MAX_DEPTH * 4 - DSIM_RX_PHK_HEADER_SIZE) {
-		dsim_err(dsim, "requested rx size is wrong(%d)\n", cnt);
+	if (msg->rx_len > MAX_RX_FIFO) {
+		dsim_err(dsim, "invalid rx len(%lu) max(%d)\n", msg->rx_len,
+				MAX_RX_FIFO);
 		return -EINVAL;
 	}
-
-	dsim_debug(dsim, "type[0x%x], cmd[0x%x], rx cnt[%d]\n", id, addr, cnt);
 
 	/* Init RX FIFO before read and clear DSIM_INTSRC */
 	dsim_reg_clear_int(dsim->id, DSIM_INTSRC_RX_DATA_DONE);
 
 	reinit_completion(&dsim->rd_comp);
 
-	/* Set the maximum packet size returned */
-	dsim_write_data(dsim,
-		MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE, cnt, 0);
-
-	/* Read request */
-	if (id == MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM)
-		dsim_write_data(dsim, id, addr & 0xff, (addr >> 8) & 0xff);
-	else
-		dsim_write_data(dsim, id, addr, 0);
+	ret = dsim_req_read_command(dsim, msg);
+	if (ret) {
+		dsim_err(dsim, "failed to request dsi read command\n");
+		return ret;
+	}
 
 	if (!wait_for_completion_timeout(&dsim->rd_comp, MIPI_RD_TIMEOUT)) {
 		dsim_err(dsim, "read timeout\n");
 		return -ETIMEDOUT;
 	}
-
-	mutex_lock(&dsim->cmd_lock);
 
 	rx_fifo = dsim_reg_get_rx_fifo(dsim->id);
 	dsim_debug(dsim, "rx fifo:0x%8x, response:0x%x, rx_size:%d\n", rx_fifo,
@@ -1654,7 +1563,7 @@ static int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt,
 		ret = dsim_reg_rx_err_handler(dsim->id, rx_fifo);
 		if (ret < 0) {
 			dsim_dump(dsim);
-			goto exit;
+			return ret;
 		}
 		break;
 	case MIPI_DSI_RX_END_OF_TRANSMISSION:
@@ -1662,12 +1571,12 @@ static int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt,
 		break;
 	case MIPI_DSI_RX_DCS_SHORT_READ_RESPONSE_2BYTE:
 	case MIPI_DSI_RX_GENERIC_SHORT_READ_RESPONSE_2BYTE:
-		buf[1] = (rx_fifo >> 16) & 0xff;
+		rx_buf[1] = (rx_fifo >> 16) & 0xff;
 	case MIPI_DSI_RX_DCS_SHORT_READ_RESPONSE_1BYTE:
 	case MIPI_DSI_RX_GENERIC_SHORT_READ_RESPONSE_1BYTE:
-		buf[0] = (rx_fifo >> 8) & 0xff;
+		rx_buf[0] = (rx_fifo >> 8) & 0xff;
 		dsim_debug(dsim, "short packet was received\n");
-		rx_size = cnt;
+		rx_size = msg->rx_len;
 		break;
 	case MIPI_DSI_RX_DCS_LONG_READ_RESPONSE:
 	case MIPI_DSI_RX_GENERIC_LONG_READ_RESPONSE:
@@ -1682,46 +1591,22 @@ static int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt,
 			dsim_debug(dsim, "payload: 0x%x i=%d max=%d\n", rx_fifo,
 					i, rx_max);
 			for (; i < rx_max; i++, rx_fifo >>= 8)
-				buf[i] = rx_fifo & 0xff;
+				rx_buf[i] = rx_fifo & 0xff;
 		}
 		break;
 	default:
 		dsim_err(dsim, "packet format is invalid.\n");
 		dsim_dump(dsim);
-		ret = -EBUSY;
-		goto exit;
+		return -EBUSY;
 	}
 
 	if (!dsim_reg_rx_fifo_is_empty(dsim->id)) {
 		dsim_err(dsim, "RX FIFO is not empty\n");
 		dsim_dump(dsim);
-		ret = -EBUSY;
-	} else  {
-		ret = rx_size;
+		return -EBUSY;
 	}
-exit:
-	mutex_unlock(&dsim->cmd_lock);
 
-	return ret;
-}
-
-static int dsim_rd_data(struct dsim_device *dsim, u32 type, const u8 tx_data[],
-		u8 rx_data[], u32 rx_len)
-{
-	u32 cmd = 0;
-
-	switch (type) {
-	case MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM:
-		cmd = tx_data[1] << 8;
-	case MIPI_DSI_DCS_READ:
-	case MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM:
-		cmd |= tx_data[0];
-	case MIPI_DSI_GENERIC_READ_REQUEST_0_PARAM:
-		break;
-	default:
-		dsim_err(dsim, "Invalid rx type (%d)\n", type);
-	}
-	return dsim_read_data(dsim, type, cmd, rx_len, rx_data);
+	return rx_size;
 }
 
 static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
@@ -1733,18 +1618,21 @@ static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
 
 	hibernation_block_exit(decon->hibernation);
 
+	mutex_lock(&dsim->cmd_lock);
+
 	switch (msg->type) {
 	case MIPI_DSI_DCS_READ:
 	case MIPI_DSI_GENERIC_READ_REQUEST_0_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM:
-		ret = dsim_rd_data(dsim, msg->type, msg->tx_buf,
-				   msg->rx_buf, msg->rx_len);
+		ret = dsim_read_data(dsim, msg);
 		break;
 	default:
-		ret = dsim_wr_data(dsim, msg->type, msg->tx_buf, msg->tx_len);
+		ret = dsim_write_data(dsim, msg);
 		break;
 	}
+
+	mutex_unlock(&dsim->cmd_lock);
 
 	hibernation_unblock_enter(decon->hibernation);
 
@@ -2058,6 +1946,7 @@ static int dsim_probe(struct platform_device *pdev)
 	mutex_init(&dsim->cmd_lock);
 	mutex_init(&dsim->state_lock);
 	init_completion(&dsim->ph_wr_comp);
+	init_completion(&dsim->pl_wr_comp);
 	init_completion(&dsim->rd_comp);
 
 	ret = dsim_init_resources(dsim);
@@ -2077,8 +1966,6 @@ static int dsim_probe(struct platform_device *pdev)
 		dsim_err(dsim, "failed to add sysfs hs_clock entries\n");
 
 	platform_set_drvdata(pdev, &dsim->encoder);
-
-	timer_setup(&dsim->cmd_timer, dsim_cmd_fail_detector, 0);
 
 #if defined(CONFIG_CPU_IDLE)
 	dsim->idle_ip_index = exynos_get_idle_ip_index(dev_name(&pdev->dev));

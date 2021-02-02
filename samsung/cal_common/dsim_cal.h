@@ -56,6 +56,9 @@
 #define DSIM_V_ACTIVE	2
 #define DSIM_VFP	3
 
+#define RX_PHK_HEADER_SIZE	4
+#define MAX_RX_FIFO		((64 * 4) - RX_PHK_HEADER_SIZE)
+
 enum dsim_regs_id {
 	REGS_DSIM0_ID = 0,
 	REGS_DSIM1_ID,
@@ -208,12 +211,10 @@ int dsim_reg_get_int_and_clear(u32 id);
 void dsim_reg_clear_int(u32 id, u32 int_src);
 
 /* DSIM read/write command control */
-void dsim_reg_wr_tx_header(u32 id, u32 d_id, unsigned long d0, u32 d1, u32 bta);
+void dsim_reg_wr_tx_header(u32 id, u8 di, u8 d0, u8 d1, bool bta);
 void dsim_reg_wr_tx_payload(u32 id, u32 payload);
 u32 dsim_reg_header_fifo_is_empty(u32 id);
-bool dsim_reg_is_writable_fifo_state(u32 id);
 u32 dsim_reg_payload_fifo_is_empty(u32 id);
-bool dsim_reg_is_writable_ph_fifo_state(u32 id);
 u32 dsim_reg_get_rx_fifo(u32 id);
 u32 dsim_reg_rx_fifo_is_empty(u32 id);
 int dsim_reg_rx_err_handler(u32 id, u32 rx_fifo);

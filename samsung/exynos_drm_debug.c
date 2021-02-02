@@ -246,26 +246,25 @@ extern void *return_address(int);
  * DPU_EVENT_LOG_CMD() - store DSIM command information
  * @index: event log index
  * @dsim: pointer to dsim device structure
- * @cmd_id : DSIM command id
- * @data: command buffer data
+ * @type : DSIM command id
+ * @d0: data0 in command buffer
+ * @len: length of payload
  *
  * Stores command id and first data in command buffer and return addresses
  * in callstack which lets you know who called this function.
  */
-void DPU_EVENT_LOG_CMD(int index, struct dsim_device *dsim, u32 cmd_id,
-		unsigned long data)
+void
+DPU_EVENT_LOG_CMD(struct dsim_device *dsim, u8 type, u8 d0, u16 len)
 {
-	struct decon_device *decon;
+	struct decon_device *decon = (struct decon_device *)dsim_get_decon(dsim);
 	struct dpu_log *log;
 	unsigned long flags;
 	int idx, i;
 
-	if (index < 0) {
-		DRM_ERROR("%s: decon id is not valid(%d)\n", __func__, index);
+	if (!decon) {
+		pr_err("%s: invalid decon\n", __func__);
 		return;
 	}
-
-	decon = get_decon_drvdata(index);
 
 	if (IS_ERR_OR_NULL(decon->d.event_log))
 		return;
@@ -278,11 +277,9 @@ void DPU_EVENT_LOG_CMD(int index, struct dsim_device *dsim, u32 cmd_id,
 	log->type = DPU_EVT_DSIM_COMMAND;
 	log->time = ktime_get();
 
-	log->data.cmd.id = cmd_id;
-	if (cmd_id == MIPI_DSI_DCS_LONG_WRITE)
-		log->data.cmd.buf = *(u8 *)(data);
-	else
-		log->data.cmd.buf = (u8)data;
+	log->data.cmd.id = type;
+	log->data.cmd.d0 = d0;
+	log->data.cmd.len = len;
 
 	for (i = 0; i < DPU_CALLSTACK_MAX; i++)
 		log->data.cmd.caller[i] =
@@ -444,8 +441,9 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 			break;
 		case DPU_EVT_DSIM_COMMAND:
 			scnprintf(buf + len, sizeof(buf) - len,
-					"\tCMD_ID: 0x%x\tDATA[0]: 0x%x",
-					log->data.cmd.id, log->data.cmd.buf);
+					"\tCMD_ID: 0x%x\tDATA[0]: 0x%x len: %d",
+					log->data.cmd.id, log->data.cmd.d0,
+					log->data.cmd.len);
 			break;
 		case DPU_EVT_DPP_FRAMEDONE:
 			scnprintf(buf + len, sizeof(buf) - len,

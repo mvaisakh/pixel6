@@ -71,7 +71,6 @@ static struct cal_regs_desc regs_desc[REGS_DSIM_TYPE_MAX][MAX_DSI_CNT];
 #define DSIM_LP_RX_TIMEOUT		0xffff
 #define DSIM_MULTI_PACKET_CNT		0xffff
 #define DSIM_PLL_STABLE_TIME		0x682A
-#define DSIM_FIFOCTRL_THRESHOLD		0x1 /* 1 ~ 32 */
 #define DSIM_PH_FIFOCTRL_THRESHOLD	32 /* 1 ~ 32 */
 
 #define PLL_SLEEP_CNT_MULT		450
@@ -2228,12 +2227,17 @@ void dsim_reg_clear_int(u32 id, u32 int_src)
 	dsim_write(id, DSIM_INTSRC, int_src);
 }
 
-void dsim_reg_wr_tx_header(u32 id, u32 d_id, unsigned long d0, u32 d1, u32 bta)
+/*
+ * @di: Data Identifier
+ * @d0: Data0
+ * @d1: Data1
+ * @bta: Bus Turn Around
+ */
+void dsim_reg_wr_tx_header(u32 id, u8 di, u8 d0, u8 d1, bool bta)
 {
-	u32 val = DSIM_PKTHDR_BTA_TYPE(bta) | DSIM_PKTHDR_ID(d_id) |
-		DSIM_PKTHDR_DATA0(d0) | DSIM_PKTHDR_DATA1(d1);
-
-	dsim_write_mask(id, DSIM_PKTHDR, val, DSIM_PKTHDR_DATA);
+	dsim_write(id, DSIM_PKTHDR, DSIM_PKTHDR_BTA_TYPE(bta) |
+			DSIM_PKTHDR_ID(di) | DSIM_PKTHDR_DATA0(d0) |
+			DSIM_PKTHDR_DATA1(d1));
 }
 
 void dsim_reg_wr_tx_payload(u32 id, u32 payload)
@@ -2246,29 +2250,9 @@ u32 dsim_reg_header_fifo_is_empty(u32 id)
 	return dsim_read_mask(id, DSIM_FIFOCTRL, DSIM_FIFOCTRL_EMPTY_PH_SFR);
 }
 
-bool dsim_reg_is_writable_fifo_state(u32 id)
-{
-	u32 val = dsim_read(id, DSIM_FIFOCTRL);
-	bool ret;
-
-	ret = DSIM_FIFOCTRL_NUMBER_OF_PH_SFR_GET(val) < DSIM_FIFOCTRL_THRESHOLD;
-
-	return ret;
-}
-
 u32 dsim_reg_payload_fifo_is_empty(u32 id)
 {
-
 	return dsim_read_mask(id, DSIM_FIFOCTRL, DSIM_FIFOCTRL_EMPTY_PL_SFR);
-}
-
-bool dsim_reg_is_writable_ph_fifo_state(u32 id)
-{
-	u32 val = dsim_read(id, DSIM_FIFOCTRL);
-
-	val = DSIM_FIFOCTRL_NUMBER_OF_PH_SFR_GET(val);
-
-	return val < DSIM_PH_FIFOCTRL_THRESHOLD;
 }
 
 u32 dsim_reg_get_rx_fifo(u32 id)

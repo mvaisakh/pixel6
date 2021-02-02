@@ -87,8 +87,8 @@ struct dsim_device {
 	struct mutex cmd_lock;
 	struct mutex state_lock;
 	struct completion ph_wr_comp;
+	struct completion pl_wr_comp;
 	struct completion rd_comp;
-	struct timer_list cmd_timer;
 
 	enum dsim_state state;
 
@@ -110,8 +110,6 @@ extern struct dsim_device *dsim_drvdata[MAX_DSI_CNT];
 
 #define MIPI_WR_TIMEOUT				msecs_to_jiffies(50)
 #define MIPI_RD_TIMEOUT				msecs_to_jiffies(100)
-
-#define DSIM_RX_FIFO_MAX_DEPTH			64
 
 struct decon_device;
 
