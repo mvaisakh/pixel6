@@ -1895,9 +1895,13 @@ static void global_hbm_work(struct work_struct *work)
 	struct exynos_panel *ctx =
 			 container_of(work, struct exynos_panel, hbm.global_hbm.ghbm_work);
 	const struct exynos_panel_funcs *exynos_panel_func;
+	u32 delay_us = ctx->current_mode->exynos_mode.vblank_usec;
+	/* considering the variation */
+	delay_us = delay_us * 105 / 100;
 
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
+	usleep_range(delay_us, delay_us + 100);
 	if (ctx->hbm.global_hbm.update_hbm) {
 		exynos_panel_func = ctx->desc->exynos_panel_func;
 		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.global_hbm.hbm_mode);
