@@ -256,7 +256,7 @@ static int gcpm_dc_enable(struct gcpm_drv *gcpm, bool enabled)
  * DC_IDLE (i.e. this can be used to reset dc_state from DC_DISABLED).
  * NOTE: call with a lock around gcpm->chg_psy_lock
  */
-static int gcpm_dc_stop(struct gcpm_drv *gcpm)
+static int gcpm_dc_stop(struct gcpm_drv *gcpm, int final_state)
 {
 	int ret;
 
@@ -284,7 +284,7 @@ static int gcpm_dc_stop(struct gcpm_drv *gcpm)
 		}
 		/* Fall Through */
 	default:
-		gcpm->dc_state = DC_IDLE;
+		gcpm->dc_state = final_state;
 		ret = 0;
 		break;
 	}
@@ -450,9 +450,8 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 		 dc_ena, gcpm->dc_state, gcpm->dc_index, index);
 	if (!dc_ena) {
 
-		if (gcpm->dc_index) {
+		if (gcpm->dc_index > 0) {
 			schedule_pps_dc = true;
-			gcpm->dc_state = DC_IDLE;
 			gcpm->dc_index = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
@@ -610,13 +609,11 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		const int tgt_state = gcpm->dc_index < 0 ?
 				      DC_DISABLED : DC_IDLE;
 
-		/* try to disable DC, gcpm_chg_check() will re-enable if idle */
+		/* disable DC, gcpm_chg_check() might re-enable if idle */
 		if (dc_state != tgt_state)
-			ret = gcpm_dc_stop(gcpm);
-		if (gcpm->dc_state == DC_IDLE && tgt_state == DC_DISABLED)
-			gcpm->dc_state = DC_DISABLED;
+			ret = gcpm_dc_stop(gcpm, tgt_state);
 		if (gcpm->dc_state != tgt_state) {
-			pr_err("PPS_DC: fail disable dc_state=%d->%d (%d)\n",
+			pr_err("PPS_DC: retry disable dc_state=%d->%d (%d)\n",
 				dc_state, gcpm->dc_state, ret);
 			pps_ui = DC_ERROR_RETRY_MS;
 		} else {
