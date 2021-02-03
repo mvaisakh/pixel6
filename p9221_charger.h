@@ -378,6 +378,7 @@
 #define P9412_RN_STATUS_ERROR			BIT(2)
 
 #define P9XXX_INVALID_REG			0xFFFF
+#define P9XXX_INT_CLEAR_MASK			0xFFFF
 
 #define P9412_TX_CMD_TX_MODE_EN			BIT(7)
 /* For Cap Div mode register */
@@ -572,7 +573,7 @@ struct p9221_charger_data {
 
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
 	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
-	int (*chip_prop_mode_en)(struct p9221_charger_data *chgr, int req_pwr);
+	bool (*chip_prop_mode_en)(struct p9221_charger_data *chgr, int req_pwr);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,

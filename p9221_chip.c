@@ -1028,16 +1028,15 @@ out:
 }
 
 /* For high power mode */
-static int p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	return -ENOTSUPP;
 }
 
-/* TODO: bool unless you return an error code */
-static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	int ret, loops;
-	u8 val8, cdmode, pwr_stp, mode_sts, err_sts, prop_cur_pwr;
+	u8 val8, cdmode, txpwr, pwr_stp, mode_sts, err_sts, prop_cur_pwr, prop_req_pwr;
 
 	ret = chgr->chip_get_sys_mode(chgr, &val8);
 	if (ret) {
@@ -1058,27 +1057,29 @@ static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
                 return 0;
 	}
 
-	/* Step 1: enable Cap Div mode */
-	/* write 0x2 to 0x101 (capacitor divider mode req reg) */
-	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, CDMODE_CAP_DIV_MODE);
+	/*
+	 * Step 1: clear all interrupts:
+	 * write 0xFFFF to 0x3A then write 0x20 to 0x4E
+	 */
+	mutex_lock(&chgr->cmd_lock);
+
+	ret = chgr->reg_write_16(chgr,
+				 P9221R5_INT_CLEAR_REG, P9XXX_INT_CLEAR_MASK);
+	if (ret == 0)
+		ret = chgr->chip_set_cmd(chgr, P9221_COM_CLEAR_INT_MASK);
 	if (ret) {
-		dev_err(&chgr->client->dev,
-                        "PROP_MODE: fail to enable Cap Div mode\n");
+		dev_err(&chgr->client->dev, "Failed to reset INT: %d\n", ret);
+		mutex_unlock(&chgr->cmd_lock);
 		goto err_exit;
 	}
 
-	/* write 0x40(bit6) to 0x4E (initiate capacitor divider command) */
-	ret = p9412_chip_set_cmd_reg(chgr, INIT_CAP_DIV_CMD);
-	if (ret) {
-		dev_err(&chgr->client->dev,
-			"PROP_MODE: fail to send INIT_CAP_DIV_CMD\n");
-		goto err_exit;
-	}
+	mutex_unlock(&chgr->cmd_lock);
 
 	msleep(50);
 
-	/* Step 2: enable proprietary mode */
-	/* write 0x01 to 0x4F (Enable Proprietary Mode) 0x4E bit8*/
+	/*
+	 * Step 2: Enable Proprietary Mode: write 0x01 to 0x4F (0x4E bit8)
+	 */
 	ret = p9412_chip_set_cmd_reg(chgr, PROP_MODE_EN_CMD);
 	if (ret) {
 		dev_err(&chgr->client->dev,
@@ -1086,6 +1087,11 @@ static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		goto err_exit;
 	}
 
+	msleep(50);
+
+	/*
+	 * Step 3: wait for PropModeStat interrupt, register 0x37[4]
+	 */
 	/* 60 * 50 = 3 secs */
 	for (loops = 60 ; loops ; loops--) {
 		if (chgr->prop_mode_en) {
@@ -1098,15 +1104,60 @@ static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	if (!chgr->prop_mode_en)
 		goto err_exit;
 
-	/* Step 3: requested power(30W) */
-	/* Write requested power(30W) to register 0xC5 (0.5W units)*/
+	/*
+	 * Step 4: enable Cap Divider configuration:
+	 * write 0x02 to 0x101 then write 0x40 to 0x4E
+	 */
+	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, CDMODE_CAP_DIV_MODE);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+                        "PROP_MODE: fail to enable Cap Div mode\n");
+		goto err_exit;
+	}
+	ret = p9412_chip_set_cmd_reg(chgr, INIT_CAP_DIV_CMD);
+	if (ret) {
+		dev_err(&chgr->client->dev,
+			"PROP_MODE: fail to send INIT_CAP_DIV_CMD\n");
+		goto err_exit;
+	}
+
+	msleep(50);
+
+	/* verify the change to Cap Divider mode */
+	for (loops = 30 ; loops ; loops--) {
+		ret = chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
+		if ((ret == 0) && (cdmode & CDMODE_CAP_DIV_MODE))
+			break;
+		if (ret < 0)
+			goto err_exit;
+		msleep(100);
+	}
+	if (!(cdmode & CDMODE_CAP_DIV_MODE))
+		goto err_exit;
+
+	/*
+	 * Step 5: Read TX potential power register (0xC4)
+	 * [TX max power capability] in 0.5W units
+	 */
+	ret = chgr->reg_read_8(chgr, P9412_PROP_TX_POTEN_PWR_REG, &txpwr);
+	if (ret == 0)
+		dev_info(&chgr->client->dev,
+			 "PROP_MODE: Tx potential power=%02x\n", txpwr);
+	else
+		goto err_exit;
+
+	/*
+	 * Step 6: Request xx W Neg power by writing 0xC5,
+	 * then write 0x02 to 0x4F
+	 */
 	ret = chgr->reg_write_8(chgr, P9412_PROP_REQ_PWR_REG, req_pwr * 2);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to write pwr req register\n");
 		goto err_exit;
+	} else {
+		dev_info(&chgr->client->dev, "request power=%dW\n", req_pwr);
 	}
-
 	/* Request power from TX based on PropReqPwr (0xC5) */
 	ret = p9412_chip_set_cmd_reg(chgr, PROP_REQ_PWR_CMD);
 	if (ret) {
@@ -1114,6 +1165,7 @@ static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 			"PROP_MODE: fail to send PROP_REQ_PWR_CMD\n");
 		goto err_exit;
 	}
+
 	msleep(50);
 
 err_exit:
@@ -1124,15 +1176,20 @@ err_exit:
 	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_STATUS_REG, &mode_sts);
 	ret |= chgr->reg_read_8(chgr, P9412_PROP_MODE_ERR_STS_REG, &err_sts);
 	ret |= chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
+	ret |= chgr->reg_read_8(chgr, P9412_PROP_REQ_PWR_REG, &prop_req_pwr);
 
-	/* TODO: report current negotiated power */
-	pr_debug("%s PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,cdmode=%02x,pwr_stp=%02x,prop_cur_pwr=%02x",
-		 __func__, chgr->prop_mode_en, val8, mode_sts, err_sts, cdmode, pwr_stp, prop_cur_pwr);
+	pr_debug("%s PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,"
+		 "cdmode=%02x,pwr_stp=%02x,req_pwr=%02x,prop_cur_pwr=%02x",
+		 __func__, chgr->prop_mode_en, val8, mode_sts, err_sts,
+		 cdmode, pwr_stp, prop_req_pwr, prop_cur_pwr);
 
 	if (!ret) {
 		dev_info(&chgr->client->dev,
-			 "PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,cdmode=%02x,pwr_stp=%02x,prop_cur_pwr=%02x",
-			 chgr->prop_mode_en, val8, mode_sts, err_sts, cdmode, pwr_stp, prop_cur_pwr);
+			 "PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,"
+			 "err_sts=%02x,cdmode=%02x,pwr_stp=%02x,"
+			 "req_pwr=%02x,prop_cur_pwr=%02x",
+			 chgr->prop_mode_en, val8, mode_sts, err_sts,
+			 cdmode, pwr_stp, prop_req_pwr, prop_cur_pwr);
 	}
 
 	return chgr->prop_mode_en;
