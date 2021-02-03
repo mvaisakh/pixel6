@@ -224,14 +224,6 @@ int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 			     u32 size, enum dma_data_direction dir);
 
 /*
- * Sends an ACK command and expects a response.
- * Can be used to test the firmware is running.
- *
- * Returns 0 if successful
- */
-int edgetpu_kci_ack(struct edgetpu_kci *kci);
-
-/*
  * Sends a FIRMWARE_INFO command and expects a response with a
  * edgetpu_fw_info struct filled out, including what firmware type is running,
  * along with build CL and time.
@@ -245,8 +237,13 @@ int edgetpu_kci_ack(struct edgetpu_kci *kci);
 enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info);
 
-/* Retrieve usage tracking data from firmware, update info on host. */
-void edgetpu_kci_update_usage(struct edgetpu_dev *etdev);
+/*
+ * Retrieve usage tracking data from firmware, update info on host.
+ * Also used as a watchdog ping to firmware.
+ *
+ * Returns KCI response code on success or < 0 on error (typically -ETIMEDOUT).
+ */
+int edgetpu_kci_update_usage(struct edgetpu_dev *etdev);
 
 /*
  * Sends the "Map Log Buffer" command and waits for remote response.

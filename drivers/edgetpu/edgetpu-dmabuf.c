@@ -643,7 +643,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	struct dma_buf *dmabuf;
 	edgetpu_map_flag_t flags = arg->flags;
 	const u64 offset = arg->offset;
-	const u64 size = arg->size;
+	const u64 size = PAGE_ALIGN(arg->size);
 	const enum dma_data_direction dir =
 		edgetpu_host_dma_dir(flags & EDGETPU_MAP_DIR_MASK);
 	struct edgetpu_dev *etdev;
@@ -795,14 +795,14 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 			bmap->dmabufs[i] = dmabuf;
 		}
 	}
-	bmap->size = arg->size;
+	bmap->size = PAGE_ALIGN(arg->size);
 	for (i = 0; i < group->n_clients; i++) {
 		if (!bmap->dmabufs[i])
 			continue;
 		etdev = edgetpu_device_group_nth_etdev(group, i);
 		ret = etdev_attach_dmabuf_to_entry(etdev, bmap->dmabufs[i],
 						   &bmap->entries[i], 0,
-						   arg->size, dir);
+						   bmap->size, dir);
 		if (ret)
 			goto err_release_bmap;
 	}

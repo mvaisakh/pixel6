@@ -55,9 +55,9 @@ static void sw_wdt_work(struct work_struct *work)
 		container_of(dwork, struct edgetpu_sw_wdt, dwork);
 	struct edgetpu_dev *etdev = etdev_sw_wdt->etdev;
 
-	/* ping f/w */
+	/* Ping f/w, and grab updated usage stats while we're at it. */
 	etdev_dbg(etdev, "sw wdt: pinging firmware\n");
-	ret = edgetpu_kci_ack(etdev->kci);
+	ret = edgetpu_kci_update_usage(etdev);
 	if (ret)
 		etdev_dbg(etdev, "sw-watchdog ping resp:%d\n", ret);
 	if (ret == -ETIMEDOUT) {

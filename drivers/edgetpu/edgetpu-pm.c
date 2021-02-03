@@ -188,7 +188,8 @@ static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
 		}
 	}
 	/* Phase 2: Request state */
-	edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL, state | PREQ);
+	edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL,
+			     (state << PSTATE_SHIFT) | PREQ);
 	SIM_PCHANNEL(etdev);
 
 	/* don't wait for state accept if STATE RUN */
@@ -200,7 +201,7 @@ static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
 				     (val & PACCEPT) || (val & PDENY));
 	if (val & PDENY) {
 		edgetpu_dev_write_32(etdev, EDGETPU_REG_POWER_CONTROL,
-				     val & !state);
+				     val & ~(state << PSTATE_SHIFT));
 		etdev_dbg(etdev, "p-channel state change request denied\n");
 		deny = true;
 	}

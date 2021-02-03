@@ -12,7 +12,7 @@
 
 /* Header struct in the metric buffer. */
 /* Must be kept in sync with firmware struct UsageTrackerHeader */
-struct usage_tracker_header {
+struct edgetpu_usage_header {
 	uint32_t num_metrics;		/* Number of metrics being reported */
 	uint32_t metric_size;		/* Size of each metric struct */
 };
@@ -31,21 +31,45 @@ struct tpu_usage {
 	uint32_t duration_us;
 };
 
+/*
+ * An enum to represent the different components we can track metrics for.
+ * Must be kept in sync with firmware struct Component.
+ */
+enum edgetpu_usage_component {
+	/* The device as a whole (TPU, R52, DMA330, etc.) */
+	EDGETPU_USAGE_COMPONENT_DEVICE = 0,
+	/* Just the TPU core (scalar core and tiles) */
+	EDGETPU_USAGE_COMPONENT_TPU = 1,
+	EDGETPU_USAGE_COMPONENT_COUNT = 2, /* number of components above */
+};
+
+/*
+ * Encapsulates information about activity of a component.
+ * Must be kept in sync with firmware struct ComponentActivity.
+ */
+struct edgetpu_component_activity {
+	enum edgetpu_usage_component component;
+	/* Utilization as a percentage since the last read. */
+	int32_t utilization;
+};
+
 /* Must be kept in sync with firmware enum class UsageTrackerMetric::Type */
-enum usage_tracker_metric_type {
-	metric_type_reserved = 0,
-	metric_type_tpu_usage = 1,
+enum edgetpu_usage_metric_type {
+	EDGETPU_METRIC_TYPE_RESERVED = 0,
+	EDGETPU_METRIC_TYPE_TPU_USAGE = 1,
+	EDGETPU_METRIC_TYPE_COMPONENT_ACTIVITY = 2,
 };
 
 /*
  * Encapsulates a single metric reported to the kernel.
  * Must be kept in sync with firmware struct UsageTrackerMetric.
  */
-struct usage_tracker_metric {
+struct edgetpu_usage_metric {
 	uint32_t type;
 	uint8_t reserved[4];
 	union {
 		struct tpu_usage tpu_usage;
+		struct edgetpu_component_activity component_activity;
 	};
 };
 
@@ -53,6 +77,8 @@ struct usage_tracker_metric {
 
 struct edgetpu_usage_stats {
 	DECLARE_HASHTABLE(uid_hash_table, UID_HASH_BITS);
+	/* component utilization values reported by firmware */
+	int32_t component_utilization[EDGETPU_USAGE_COMPONENT_COUNT];
 	struct mutex usage_stats_lock;
 };
 
