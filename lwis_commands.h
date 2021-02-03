@@ -310,6 +310,10 @@ struct lwis_qos_setting {
 	int32_t device_id;
 	// Target clock family.
 	enum lwis_clock_family clock_family;
+	// read BW
+	int64_t read_bw;
+	// write BW
+	int64_t write_bw;
 };
 
 struct lwis_dpm_qos_requirements {

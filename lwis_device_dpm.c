@@ -43,6 +43,9 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *qos_setting)
 {
 	int ret = 0;
+	int64_t peak_bw = 0;
+	int64_t read_bw = 0;
+	int64_t write_bw = 0;
 	struct lwis_device *target_dev = lwis_find_dev_by_id(qos_setting->device_id);
 	if (!target_dev) {
 		dev_err(lwis_dev->dev, "Can't find device by id: %d\n", qos_setting->device_id);
@@ -52,15 +55,12 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	switch (qos_setting->clock_family) {
 	case CLOCK_FAMILY_MIF:
 	case CLOCK_FAMILY_INT:
-		/* TODO(spethchang): Refactor UAPI for bts bandwidth update.
-		 * Currently use legacy API for bandwidth update. The user side
-		 * should set kbytes/second as total bandwidth to frequency_hz
-		 * and set clock family to CLOCK_FAMILY_MIF for bts bandwidth
-		 * update.
-		 */
-		ret = lwis_platform_update_bts(target_dev, qos_setting->frequency_hz / 8,
-					       qos_setting->frequency_hz / 2,
-					       qos_setting->frequency_hz / 2);
+		read_bw = (qos_setting->read_bw > 0) ? qos_setting->read_bw :
+						       qos_setting->frequency_hz / 2;
+		write_bw = (qos_setting->write_bw > 0) ? qos_setting->write_bw :
+							 qos_setting->frequency_hz / 2;
+		peak_bw = ((read_bw > write_bw) ? read_bw : write_bw) / 4;
+		ret = lwis_platform_update_bts(target_dev, peak_bw, read_bw, write_bw);
 		if (ret < 0) {
 			dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 		}
