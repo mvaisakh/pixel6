@@ -102,6 +102,8 @@ struct dsim_device {
 	struct dsim_pll_param *current_pll_param;
 
 	int idle_ip_index;
+	u8 total_pend_ph;
+	u16 total_pend_pl;
 };
 
 extern struct dsim_device *dsim_drvdata[MAX_DSI_CNT];

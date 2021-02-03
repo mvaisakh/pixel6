@@ -252,6 +252,8 @@ void dsim_enter_ulps(struct dsim_device *dsim)
 
 	/* Wait for current read & write CMDs. */
 	mutex_lock(&dsim->cmd_lock);
+	if (WARN_ON(dsim_reg_has_pend_cmd(dsim->id)))
+		dsim_dump(dsim);
 	dsim->state = DSIM_STATE_ULPS;
 	mutex_unlock(&dsim->cmd_lock);
 
@@ -289,6 +291,9 @@ static void dsim_disable(struct drm_encoder *encoder)
 	mutex_lock(&dsim->cmd_lock);
 	dsim->state = DSIM_STATE_SUSPEND;
 	mutex_unlock(&dsim->cmd_lock);
+
+	WARN_ON(dsim_reg_has_pend_cmd(dsim->id));
+
 	mutex_unlock(&dsim->state_lock);
 
 	dsim_set_te_pinctrl(dsim, 0);
@@ -1475,12 +1480,15 @@ static void __dsim_write_data(struct dsim_device *dsim,
 		dsim_write_payload(dsim, packet.payload, packet.payload_length);
 	dsim_reg_wr_tx_header(dsim->id, packet.header[0], packet.header[1],
 						packet.header[2], false);
+
+	dsim_debug(dsim, "header(0x%x 0x%x 0x%x) size(%lu) ph fifo(%d)\n",
+			packet.header[0], packet.header[1], packet.header[2],
+			packet.size, dsim_reg_get_ph_cnt(dsim->id));
 }
 
-static int
-dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
+static int dsim_write_single_cmd_unlocked(struct dsim_device *dsim,
+				const struct mipi_dsi_msg *msg, bool is_long)
 {
-	bool is_long = mipi_dsi_packet_format_is_long(msg->type);
 	const u8 *tx_buf = msg->tx_buf;
 
 	if (dsim->state != DSIM_STATE_HSCLKEN) {
@@ -1497,6 +1505,134 @@ dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 	__dsim_write_data(dsim, msg, is_long);
 
 	return dsim_wait_for_cmd_fifo_empty(dsim, is_long);
+}
+
+/*
+ *		      <-- ACTIVE -->
+ * data transfer ---|-**************------------------|--
+ *				       <-CMD ALLOW->
+ * CMD LOCK       __|-----------------|_____________|---
+ *
+ * TE PROTECT       <------- TE PROTECT ON -------->
+ *
+ * ready allow	    <---- ready allow ---->|<-1ms->|
+ *
+ * It is important to set packet-go ready to high to send multiple commnads
+ * within one vblank interval at the same time. Because as soon as it becomes
+ * high, the piled commands will start transmission. The ready_allow_period is
+ * defined so that the stacked commands would not be sent in two vblank
+ * intervals. The ready_allow_period is set from start of vblank to end of
+ * CMD ALLOW period - 1ms. The 1ms is enough time to send the stacked commands
+ * at once.
+ */
+#define PKTGO_READY_MARGIN_NS	1000000
+static void need_wait_vblank(struct dsim_device *dsim)
+{
+	const struct decon_device *decon = dsim_get_decon(dsim);
+	struct drm_vblank_crtc *vblank;
+	struct drm_crtc *crtc;
+	ktime_t last_vblanktime, diff, cur_time;
+	int ready_allow_period;
+
+	if (!decon)
+		return;
+
+	crtc = &decon->crtc->base;
+	if (!crtc)
+		return;
+
+	vblank = &crtc->dev->vblank[crtc->index];
+	ready_allow_period =
+		mult_frac(vblank->framedur_ns, 95, 100) - PKTGO_READY_MARGIN_NS;
+
+	drm_crtc_vblank_count_and_time(crtc, &last_vblanktime);
+	cur_time = ktime_get();
+	diff = ktime_sub_ns(cur_time, last_vblanktime);
+
+	dsim_debug(dsim, "last(%lld) cur(%lld) diff(%lld) ready allow period(%d)\n",
+			last_vblanktime, cur_time, diff, ready_allow_period);
+
+	if (diff > ready_allow_period)
+		drm_crtc_wait_one_vblank(crtc);
+}
+
+#define PL_FIFO_THRESHOLD	mult_frac(MAX_PL_FIFO, 75, 100) /* 75% */
+#define IS_LAST(flags)		(((flags) & MIPI_DSI_MSG_LASTCOMMAND) != 0)
+static int
+dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
+{
+	int ret = 0;
+	const struct decon_device *decon = dsim_get_decon(dsim);
+	u16 flags = msg->flags;
+	bool is_long = mipi_dsi_packet_format_is_long(msg->type);
+
+	if (dsim->config.mode == DSIM_VIDEO_MODE) {
+		ret = dsim_write_single_cmd_unlocked(dsim, msg, is_long);
+		goto err;
+	}
+
+	if (((dsim->total_pend_pl + msg->tx_len) > MAX_PL_FIFO) ||
+			(dsim->total_pend_ph == MAX_PH_FIFO)) {
+		dsim_err(dsim, "fifo would be full. ph(%u) pl(%lu) max(%d/%d)\n",
+				dsim->total_pend_ph,
+				dsim->total_pend_pl + msg->tx_len,
+				MAX_PH_FIFO, MAX_PL_FIFO);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	if (!IS_LAST(msg->flags) &&
+		(((dsim->total_pend_ph + 1) == MAX_PH_FIFO) ||
+		((dsim->total_pend_pl + msg->tx_len) > PL_FIFO_THRESHOLD))) {
+		dsim_warn(dsim, "warning. changed last command. pend pl/pl(%u,%u)\n",
+				dsim->total_pend_ph, dsim->total_pend_pl);
+		flags |= MIPI_DSI_MSG_LASTCOMMAND;
+	}
+
+	dsim_debug(dsim, "%s last command\n", IS_LAST(flags) ? "" : "Not");
+
+	if (IS_LAST(flags)) {
+		if (dsim->total_pend_ph) {
+			reinit_completion(is_long ?
+					&dsim->pl_wr_comp : &dsim->ph_wr_comp);
+
+			__dsim_write_data(dsim, msg, is_long);
+
+			need_wait_vblank(dsim);
+
+			dsim_reg_ready_packetgo(dsim->id, true);
+			dsim_debug(dsim, "packet go ready\n");
+
+			ret = dsim_wait_for_cmd_fifo_empty(dsim, is_long);
+			if (ret) {
+				if (decon)
+					hibernation_unblock_enter(decon->hibernation);
+				return ret;
+			}
+
+			dsim_reg_enable_packetgo(dsim->id, false);
+			dsim->total_pend_ph = 0;
+			dsim->total_pend_pl = 0;
+			if (decon)
+				hibernation_unblock_enter(decon->hibernation);
+		} else {
+			ret = dsim_write_single_cmd_unlocked(dsim, msg, is_long);
+		}
+	} else {
+		if (!dsim->total_pend_ph) {
+			if (decon)
+				hibernation_block_exit(decon->hibernation);
+			dsim_reg_enable_packetgo(dsim->id, true);
+		}
+		dsim->total_pend_ph++;
+		dsim->total_pend_pl += ALIGN(msg->tx_len, 4);
+		__dsim_write_data(dsim, msg, is_long);
+		dsim_debug(dsim, "total pending packet header(%u) payload(%u)\n",
+				dsim->total_pend_ph, dsim->total_pend_pl);
+	}
+
+err:
+	return ret;
 }
 
 static int

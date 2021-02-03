@@ -58,6 +58,8 @@
 
 #define RX_PHK_HEADER_SIZE	4
 #define MAX_RX_FIFO		((64 * 4) - RX_PHK_HEADER_SIZE)
+#define MAX_PH_FIFO		32
+#define MAX_PL_FIFO		2048
 
 enum dsim_regs_id {
 	REGS_DSIM0_ID = 0,
@@ -218,6 +220,8 @@ u32 dsim_reg_payload_fifo_is_empty(u32 id);
 u32 dsim_reg_get_rx_fifo(u32 id);
 u32 dsim_reg_rx_fifo_is_empty(u32 id);
 int dsim_reg_rx_err_handler(u32 id, u32 rx_fifo);
+u32 dsim_reg_get_ph_cnt(u32 id);
+bool dsim_reg_has_pend_cmd(u32 id);
 
 /* For reading DSIM shadow SFR */
 void dsim_reg_enable_shadow_read(u32 id, u32 en);
@@ -242,5 +246,8 @@ void __dsim_dump(u32 id, struct dsim_regs *regs);
 u32 diag_dsim_dphy_reg_read_mask(u32 id, u16 offset, u32 mask);
 u32 diag_dsim_dphy_extra_reg_read_mask(u32 id, u16 offset, u32 mask);
 int dsim_dphy_diag_mask_from_range(uint8_t start, uint8_t end, uint32_t *mask);
+
+void dsim_reg_enable_packetgo(u32 id, u32 en);
+void dsim_reg_ready_packetgo(u32 id, u32 en);
 
 #endif /* __SAMSUNG_DSIM_CAL_H__ */

@@ -1238,12 +1238,18 @@ static void dsim_reg_enable_clocklane(u32 id, u32 en)
 				DSIM_CLK_CTRL_CLKLANE_ONOFF);
 }
 
-static void dsim_reg_enable_packetgo(u32 id, u32 en)
+void dsim_reg_enable_packetgo(u32 id, u32 en)
 {
 	u32 val = en ? ~0 : 0;
 
-	dsim_write_mask(id, DSIM_CMD_CONFIG, val,
-				DSIM_CMD_CONFIG_PKT_GO_EN);
+	dsim_write_mask(id, DSIM_CMD_CONFIG, val, DSIM_CMD_CONFIG_PKT_GO_EN);
+}
+
+void dsim_reg_ready_packetgo(u32 id, u32 en)
+{
+	u32 val = en ? ~0 : 0;
+
+	dsim_write_mask(id, DSIM_CMD_CONFIG, val, DSIM_CMD_CONFIG_PKT_GO_RDY);
 }
 
 static void dsim_reg_enable_multi_cmd_packet(u32 id, u32 en)
@@ -2250,9 +2256,20 @@ u32 dsim_reg_header_fifo_is_empty(u32 id)
 	return dsim_read_mask(id, DSIM_FIFOCTRL, DSIM_FIFOCTRL_EMPTY_PH_SFR);
 }
 
+u32 dsim_reg_get_ph_cnt(u32 id)
+{
+	return DSIM_FIFOCTRL_NUMBER_OF_PH_SFR_GET(dsim_read(id, DSIM_FIFOCTRL));
+}
+
 u32 dsim_reg_payload_fifo_is_empty(u32 id)
 {
 	return dsim_read_mask(id, DSIM_FIFOCTRL, DSIM_FIFOCTRL_EMPTY_PL_SFR);
+}
+
+bool dsim_reg_has_pend_cmd(u32 id)
+{
+	return !dsim_reg_header_fifo_is_empty(id) ||
+		!dsim_reg_payload_fifo_is_empty(id);
 }
 
 u32 dsim_reg_get_rx_fifo(u32 id)
