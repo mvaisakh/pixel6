@@ -3814,6 +3814,13 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 	switch (prop) {
 
 	case POWER_SUPPLY_PROP_ONLINE:
+		if (val->intval == 0) {
+			ret = pca9468_stop_charging(pca9468);
+			if (ret < 0)
+				pr_err("%s: cannot stop charging (%d)\n",
+				       __func__, ret);
+		}
+
 		pca9468->mains_online = val->intval;
 		break;
 
