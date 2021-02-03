@@ -174,7 +174,10 @@ static int gcpm_chg_offline(struct gcpm_drv *gcpm)
 	if (!chg_psy)
 		return 0;
 
-	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
+	/* OFFLINE should stop charging, this make sure that it does */
+	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 0);
+	if (ret == 0)
+		ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
 	if (ret == 0)
 		gcpm->chg_psy_active = -1;
 
