@@ -49,7 +49,7 @@
 #include "fts_lib/ftsHardware.h"
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-#include <linux/input/touch_bus_negotiator.h>
+#include <touch_bus_negotiator.h>
 #endif
 
 #include <linux/proc_fs.h>
