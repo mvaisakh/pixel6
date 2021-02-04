@@ -1023,7 +1023,7 @@ static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
 }
 
 static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
-				     const void *data, size_t len)
+				     const void *data, size_t len, u16 flags)
 {
 	const struct mipi_dsi_host_ops *ops = dsi->host->ops;
 	struct mipi_dsi_msg msg = {
@@ -1036,16 +1036,16 @@ static ssize_t exynos_dsi_dcs_transfer(struct mipi_dsi_device *dsi, u8 type,
 	if (!ops || !ops->transfer)
 		return -ENOSYS;
 
+	msg.flags = flags;
 	if (dsi->mode_flags & MIPI_DSI_MODE_LPM)
 		msg.flags |= MIPI_DSI_MSG_USE_LPM;
-	msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
 
 	return ops->transfer(dsi->host, &msg);
 }
 
 
 static ssize_t exynos_dsi_dcs_write_buffer(struct mipi_dsi_device *dsi,
-				  const void *data, size_t len)
+				  const void *data, size_t len, u16 flags)
 {
 	u8 type;
 
@@ -1066,7 +1066,7 @@ static ssize_t exynos_dsi_dcs_write_buffer(struct mipi_dsi_device *dsi,
 		break;
 	}
 
-	return exynos_dsi_dcs_transfer(dsi, type, data, len);
+	return exynos_dsi_dcs_transfer(dsi, type, data, len, flags);
 }
 
 static int exynos_dsi_name_show(struct seq_file *m, void *data)
@@ -1124,6 +1124,7 @@ struct exynos_dsi_reg_data {
 	struct mipi_dsi_device *dsi;
 	u8 address;
 	u8 type;
+	u16 flags;
 	size_t count;
 };
 
@@ -1155,9 +1156,10 @@ static ssize_t exynos_dsi_payload_write(struct file *file,
 		ret = -EINVAL;
 	} else if (reg_data->type) {
 		ret = exynos_dsi_dcs_transfer(reg_data->dsi, reg_data->type,
-					    payload, ret);
+					    payload, ret, reg_data->flags);
 	} else {
-		ret = exynos_dsi_dcs_write_buffer(reg_data->dsi, payload, ret);
+		ret = exynos_dsi_dcs_write_buffer(reg_data->dsi, payload, ret,
+						reg_data->flags);
 	}
 
 	kfree(buf);
@@ -1221,10 +1223,12 @@ static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 		return -ENOMEM;
 
 	reg_data->dsi = dsi;
+	reg_data->flags = MIPI_DSI_MSG_LASTCOMMAND;
 
 	debugfs_create_u8("address", 0600, reg_root, &reg_data->address);
 	debugfs_create_u8("type", 0600, reg_root, &reg_data->type);
 	debugfs_create_size_t("count", 0600, reg_root, &reg_data->count);
+	debugfs_create_u16("flags", 0600, reg_root, &reg_data->flags);
 	debugfs_create_file("payload", 0600, reg_root, reg_data,
 			    &exynos_dsi_payload_fops);
 
