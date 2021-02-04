@@ -370,6 +370,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	ret = lwis_top_device_setup(top_dev);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev, "Error in top device initialization\n");
+		lwis_base_unprobe((struct lwis_device *)top_dev);
 		goto error_probe;
 	}
 

@@ -755,7 +755,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	}
 	strlcpy(lwis_dev->name, name_str, LWIS_MAX_NAME_STRING_LEN);
 
-	pr_info("Device tree entry [%s] - begin\n", lwis_dev->name);
+	pr_debug("Device tree entry [%s] - begin\n", lwis_dev->name);
 
 	ret = parse_gpios(lwis_dev, "shared-enable", &lwis_dev->shared_enable_gpios_present);
 	if (ret) {
@@ -833,7 +833,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 
 	dev_node->data = lwis_dev;
 
-	pr_info("Device tree entry [%s] - end\n", lwis_dev->name);
+	pr_debug("Device tree entry [%s] - end\n", lwis_dev->name);
 
 	return ret;
 }

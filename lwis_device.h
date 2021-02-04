@@ -299,6 +299,11 @@ struct lwis_client {
 int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_dev);
 
 /*
+ *  lwis_base_unprobe: Cleanup a device instance
+ */
+void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev);
+
+/*
  * Find LWIS top device
  */
 struct lwis_device *lwis_find_top_dev(void);

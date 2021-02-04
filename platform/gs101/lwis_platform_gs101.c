@@ -321,8 +321,9 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
-		dev_info(lwis_dev->dev, "Updated bandwidth to bts, peak: %u, read: %u, write: %u\n",
-			 bw_kb_peak, bw_kb_read, bw_kb_write);
+		dev_info(lwis_dev->dev,
+			 "Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u\n",
+			 lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write);
 	}
 	return ret;
 }
