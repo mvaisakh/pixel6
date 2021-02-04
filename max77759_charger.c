@@ -256,7 +256,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_USB_BUCK_ON:
 		if (!cb_data->buck_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->buck_on += 1;
 		break;
 	/* USB: OTG, source, fast role swap case */
@@ -282,6 +282,8 @@ static int max77759_foreach_callback(void *data, const char *reason,
 		break;
 	/* WLC Tx */
 	case GBMS_CHGR_MODE_WLC_TX:
+		if (!cb_data->wlc_tx)
+			cb_data->reason = reason;
 		pr_debug("%s:%d WLC_TX vote=%x\n", __func__, __LINE__, mode);
 		cb_data->wlc_tx += 1;
 		break;
@@ -460,8 +462,8 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			break;
 	}
 
-	pr_info("%s: use_case=%d->%d need_stby=%x\n", __func__,
-		data->use_case, use_case, need_stby);
+	pr_debug("%s: use_case=%d->%d need_stby=%x\n", __func__,
+		 data->use_case, use_case, need_stby);
 
 	if (!need_stby)
 		return 0;
@@ -847,6 +849,7 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	struct max77759_usecase_data *uc_data = &data->uc_data;
 	struct max77759_foreach_cb_data cb_data = { 0 };
 	int use_case, ret;
+	bool nope;
 	u8 reg;
 
 	/* reason and value are the last voted on */
@@ -876,16 +879,24 @@ static void max77759_mode_callback(struct gvotable_election *el,
 
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
+	nope = !cb_data.use_raw && !cb_data.stby_on && !cb_data.pps_dc &&
+	       !cb_data.chgr_on && !cb_data.buck_on&& ! cb_data.boost_on &&
+	       !cb_data.otg_on && !cb_data.uno_on && !cb_data.wlc_tx &&
+	       !cb_data.wlc_on;
+	if (nope) {
+		pr_debug("%s: nope callback\n", __func__);
+		goto unlock_done;
+	}
 
 	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d inflow=%d\n",
-		__func__,
-		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
+		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_on=%d inflow=%d\n",
+		__func__, cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx,
-		!cb_data.inflow_off);
-	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
-		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
+		cb_data.wlc_on, !cb_data.inflow_off);
+	pr_debug("%s: max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
+		 __func__, cb_data.raw_value,
+		 cb_data.reason ? cb_data.reason : "",
 		 reg);
 
 	/* just use raw as is*/
