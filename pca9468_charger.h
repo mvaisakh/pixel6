@@ -94,6 +94,7 @@ struct pca9468_platform_data {
  * @debug_root: debug entry
  * @debug_address: debug register address
  * @debug_adc_channel: ADC channel to read
+ * @init_done: true when initialization is complete
  */
 struct pca9468_charger {
 	struct wakeup_source	*monitor_wake_lock;
@@ -128,7 +129,6 @@ struct pca9468_charger {
 
 	bool			req_new_iin;
 	bool			req_new_vfloat;
-
 
 	unsigned int		new_iin;
 	unsigned int		new_vfloat;
@@ -167,6 +167,7 @@ struct pca9468_charger {
 	u32			debug_address;
 	int			debug_adc_channel;
 
+	bool			init_done;
 /* Google Integration END */
 };
 

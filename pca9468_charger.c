@@ -3930,6 +3930,8 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 	pr_debug("%s: =========START=========\n", __func__);
 	pr_debug("%s: prop=%d, val=%d\n", __func__, prop, val->intval);
+	if (!pca9468->init_done)
+		return -EAGAIN;
 
 	switch (prop) {
 
@@ -4017,6 +4019,9 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 	struct pca9468_charger *pca9468 = power_supply_get_drvdata(psy);
 	union gbms_charger_state chg_state;
 	int intval, ret = 0;
+
+	if (!pca9468->init_done)
+		return -EAGAIN;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -4571,7 +4576,7 @@ static int pca9468_probe(struct i2c_client *client,
 		}
 	}
 #endif
-
+	pca9468_chg->init_done = true;
 	pr_info("pca9468: probe_done\n");
 	pr_debug("%s: =========END=========\n", __func__);
 	return 0;
