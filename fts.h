@@ -268,6 +268,8 @@ struct heatmap_report {
 					  * the shell in the normal file nodes
 					  **/
 
+#define MAX_RAWDATA_STR_SIZE	PAGE_SIZE * 3
+
 /* Encapsulate display extinfo
  *
  * For some panels, it is insufficient to simply detect the panel ID and load
@@ -954,6 +956,8 @@ struct fts_ts_info {
 	/* pointer to an array of bytes used to store the result of the
 	 * function executed */
 	u8 *driver_test_buff;
+	u8 *stm_fts_cmd_buff;
+	loff_t stm_fts_cmd_buff_len;
 
 	/* buffer used to store the message info received */
 	char buf_chunk[CHUNK_PROC];

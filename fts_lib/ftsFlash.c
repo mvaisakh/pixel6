@@ -1108,7 +1108,7 @@ start:
 	}
 
 	for (res = 0; res < EXTERNAL_RELEASE_INFO_SIZE; res++) {
-		if (fw.externalRelease[res] != systemInfo.u8_releaseInfo[res]) {
+		if (fw.externalRelease[res] != info->systemInfo.u8_releaseInfo[res]) {
 			/* External release is printed during readSysInfo */
 			dev_info(info->dev, "  Firmware in the chip different from the one that was burn!\n");
 			return ERROR_FLASH_BURN_FAILED;
