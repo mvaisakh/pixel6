@@ -32,6 +32,7 @@
 #define MAX_REGULATORS		3
 #define MAX_HDR_FORMATS		4
 #define MAX_BL_RANGES		10
+#define MAX_TE2_TYPE		10
 
 #define HDR_DOLBY_VISION	BIT(1)
 #define HDR_HDR10		BIT(2)
@@ -60,6 +61,13 @@ enum exynos_panel_state {
 
 struct exynos_panel;
 
+struct exynos_panel_te2_timing {
+	/* @rising_edge: vertical start point */
+	u16 rising_edge;
+	/* @falling_edge: vertical end point */
+	u16 falling_edge;
+};
+
 /**
  * struct exynos_panel_mode - panel mode info
  */
@@ -72,6 +80,9 @@ struct exynos_panel_mode {
 
 	/* @priv_data: per mode panel driver private data */
 	const void *priv_data;
+
+	/* @te2_timing: TE2 signal timing */
+	struct exynos_panel_te2_timing te2_timing;
 };
 
 struct exynos_panel_funcs {
@@ -212,6 +223,34 @@ struct exynos_panel_funcs {
 	 * This callback is used to get panel HW revision from panel_extinfo.
 	 */
 	u32 (*get_panel_rev)(u32 id);
+
+	/**
+	 * @get_te2_edges:
+	 *
+	 * This callback is used to get the rising and falling edges of TE2 signal.
+	 * The input buf is used to store the results in string.
+	 */
+	ssize_t (*get_te2_edges)(struct exynos_panel *exynos_panel,
+				 char *buf, bool lp_mode);
+
+	/**
+	 * @configure_te2_edges:
+	 *
+	 * This callback is used to configure the rising and falling edges of TE2
+	 * signal. The input timings include the values we need to configure.
+	 */
+	int (*configure_te2_edges)(struct exynos_panel *exynos_panel,
+				   u32 *timings, bool lp_mode);
+
+	/**
+	 * @update_te2:
+	 *
+	 * This callback is used to update the TE2 signal via DCS commands.
+	 * This should be called when the display state is changed between
+	 * normal and LP modes, or the refresh rate and LP brightness are
+	 * changed.
+	 */
+	void (*update_te2)(struct exynos_panel *exynos_panel);
 };
 
 /**
@@ -244,11 +283,13 @@ struct exynos_dsi_cmd_set {
  * @name:         Name of this binned lp mode.
  * @bl_threshold: Max brightness supported by this mode
  * @cmd_set:      A dsi command sequence to enter this mode.
+ * @te2_timing:   TE2 signal timing.
  */
 struct exynos_binned_lp {
 	const char *name;
 	u32 bl_threshold;
 	struct exynos_dsi_cmd_set cmd_set;
+	struct exynos_panel_te2_timing te2_timing;
 };
 
 struct exynos_panel_desc {
@@ -288,6 +329,20 @@ struct exynos_bl_notifier {
 	u32 current_range;
 };
 
+struct te2_mode_data {
+	/* @mode: normal or LP mode data */
+	const struct drm_display_mode *mode;
+	/* @binned_lp: LP mode data */
+	const struct exynos_binned_lp *binned_lp;
+	/* @timing: normal or LP mode timing */
+	struct exynos_panel_te2_timing timing;
+};
+
+struct te2_data {
+	struct te2_mode_data mode_data[MAX_TE2_TYPE];
+	struct mutex timing_lock;
+};
+
 struct exynos_panel {
 	struct device *dev;
 	struct drm_panel panel;
@@ -322,6 +377,8 @@ struct exynos_panel {
 	bool is_secondary;
 
 	struct device_node *touch_dev;
+
+	struct te2_data te2;
 
 	struct {
 		struct local_hbm {
@@ -400,7 +457,9 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	.name = mode_name,				\
 	.bl_threshold = bl_thr,				\
 	{ .num_cmd = ARRAY_SIZE(cmdset),		\
-	  .cmds = cmdset }				\
+	  .cmds = cmdset },				\
+	{ .rising_edge = 0,				\
+	  .falling_edge = 0 }				\
 }
 
 #define EXYNOS_DCS_WRITE_SEQ(ctx, seq...) do {				\
@@ -442,6 +501,23 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 		i < ctx->desc->num_modes; i++,			\
 		mode = &ctx->desc->modes[i].mode)		\
 
+#define for_each_exynos_binned_lp(i, binned_lp, ctx)		\
+	for (i = 0, binned_lp = &ctx->desc->binned_lp[i];	\
+		i < ctx->desc->num_binned_lp; i++,		\
+		binned_lp = &ctx->desc->binned_lp[i])		\
+
+#define for_each_te2_timing(ctx, lp_mode, data, i)					\
+	for (data = ctx->te2.mode_data + (!(lp_mode) ? 0 : (ctx)->desc->num_modes),	\
+	i = !(lp_mode) ? (ctx)->desc->num_modes : (ctx)->desc->num_binned_lp - 1;	\
+	i > 0;										\
+	i--, data++)									\
+
+int exynos_panel_configure_te2_edges(struct exynos_panel *ctx,
+				     u32 *timings, bool lp_mode);
+ssize_t exynos_panel_get_te2_edges(struct exynos_panel *ctx,
+				   char *buf, bool lp_mode);
+int exynos_panel_get_current_mode_te2(struct exynos_panel *ctx,
+				      struct exynos_panel_te2_timing *timing);
 int exynos_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
 int exynos_panel_disable(struct drm_panel *panel);
 int exynos_panel_unprepare(struct drm_panel *panel);

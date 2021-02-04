@@ -48,6 +48,7 @@ static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
 					enum exynos_panel_state panel_state);
 static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
 					   const char **out_buf);
+static int parse_u32_buf(char *src, size_t src_len, u32 *out, size_t out_len);
 
 static inline bool is_backlight_off_state(const struct backlight_device *bl)
 {
@@ -62,6 +63,117 @@ static inline bool is_backlight_lp_state(const struct backlight_device *bl)
 static void backlight_state_changed(struct backlight_device *bl)
 {
 	sysfs_notify(&bl->dev.kobj, NULL, "state");
+}
+
+int exynos_panel_configure_te2_edges(struct exynos_panel *ctx,
+				     u32 *timings, bool lp_mode)
+{
+	struct te2_mode_data *data;
+	const u32 *t;
+	int i;
+
+	if (!ctx || !timings)
+		return -EINVAL;
+
+	t = timings;
+
+	for_each_te2_timing(ctx, lp_mode, data, i) {
+		data->timing.rising_edge = t[0];
+		data->timing.falling_edge = t[1];
+		t += 2;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(exynos_panel_configure_te2_edges);
+
+ssize_t exynos_panel_get_te2_edges(struct exynos_panel *ctx,
+				   char *buf, bool lp_mode)
+{
+	struct te2_mode_data *data;
+	size_t len = 0;
+	int i;
+
+	if (!ctx)
+		return -EINVAL;
+
+	for_each_te2_timing(ctx, lp_mode, data, i) {
+		len += scnprintf(buf + len, PAGE_SIZE - len, "%dx%d@%d",
+				 data->mode->hdisplay, data->mode->vdisplay,
+				 drm_mode_vrefresh(data->mode));
+
+		if (data->binned_lp)
+			len += scnprintf(buf + len, PAGE_SIZE - len, "-lp_%s",
+					 data->binned_lp->name);
+
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 " rising %u falling %u\n",
+				 data->timing.rising_edge,
+				 data->timing.falling_edge);
+	}
+
+	return len;
+}
+EXPORT_SYMBOL(exynos_panel_get_te2_edges);
+
+int exynos_panel_get_current_mode_te2(struct exynos_panel *ctx,
+				      struct exynos_panel_te2_timing *timing)
+{
+	struct te2_mode_data *data;
+	const struct drm_display_mode *mode;
+	u32 bl_th = 0;
+	bool lp_mode;
+	int i;
+
+	if (!ctx)
+		return -EINVAL;
+
+	if (!ctx->current_mode)
+		return -EAGAIN;
+
+	if (ctx->desc->num_binned_lp && !ctx->current_binned_lp)
+		return -EAGAIN;
+
+	mode = &ctx->current_mode->mode;
+	if (ctx->current_binned_lp)
+		bl_th = ctx->current_binned_lp->bl_threshold;
+	lp_mode = ctx->current_mode->exynos_mode.is_lp_mode;
+
+	for_each_te2_timing(ctx, lp_mode, data, i) {
+		if (data->mode != mode)
+			continue;
+
+		if (data->binned_lp && data->binned_lp->bl_threshold != bl_th)
+			continue;
+
+		timing->rising_edge = data->timing.rising_edge;
+		timing->falling_edge = data->timing.falling_edge;
+
+		dev_dbg(ctx->dev,
+			"found TE2 timing %s at %dHz: rising %u falling %u\n",
+			!lp_mode ? "normal" : "LP", drm_mode_vrefresh(mode),
+			timing->rising_edge, timing->falling_edge);
+
+		return 0;
+	}
+
+	dev_warn(ctx->dev, "failed to find %s TE2 timing at %dHz\n",
+		 !lp_mode ? "normal" : "LP", drm_mode_vrefresh(mode));
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL(exynos_panel_get_current_mode_te2);
+
+static void exynos_panel_update_te2(struct exynos_panel *ctx)
+{
+	if (!ctx->initialized || !ctx->desc->exynos_panel_func->update_te2)
+		return;
+
+	mutex_lock(&ctx->te2.timing_lock);
+
+	ctx->desc->exynos_panel_func->update_te2(ctx);
+
+	mutex_unlock(&ctx->te2.timing_lock);
 }
 
 static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
@@ -223,6 +335,8 @@ int exynos_panel_init(struct exynos_panel *ctx)
 
 	if (funcs && funcs->panel_init)
 		funcs->panel_init(ctx);
+
+	exynos_panel_update_te2(ctx);
 
 	return ret;
 }
@@ -554,6 +668,8 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 
 	if (bl)
 		sysfs_notify(&bl->dev.kobj, NULL, "lp_state");
+
+	exynos_panel_update_te2(ctx);
 }
 EXPORT_SYMBOL(exynos_panel_set_binned_lp);
 
@@ -737,16 +853,156 @@ static ssize_t gamma_store(struct device *dev, struct device_attribute *attr,
 	return ret ? : count;
 }
 
+static ssize_t set_te2_timing(struct exynos_panel *ctx, size_t count,
+			      const char *buf, bool lp_mode)
+{
+	char *buf_dup;
+	ssize_t type_len, data_len;
+	u32 timing[MAX_TE2_TYPE * 2] = {0};
+
+	if (!ctx->desc->exynos_panel_func->configure_te2_edges ||
+	    !ctx->desc->exynos_panel_func->update_te2)
+		return -EINVAL;
+
+	if (!count)
+		return -EINVAL;
+
+	buf_dup = kstrndup(buf, count, GFP_KERNEL);
+	if (!buf_dup)
+		return -ENOMEM;
+
+	type_len = lp_mode ? (ctx->desc->num_binned_lp - 1) :
+			     ctx->desc->num_modes;
+	data_len = parse_u32_buf(buf_dup, count + 1, timing, type_len * 2);
+	if (data_len != type_len * 2) {
+		dev_warn(ctx->dev,
+			 "invalid number of TE2 %s timing: expected %ld but actual %ld\n",
+			 lp_mode ? "LP" : "normal",
+			 type_len * 2, data_len);
+		kfree(buf_dup);
+		return -EINVAL;
+	}
+
+	ctx->desc->exynos_panel_func->configure_te2_edges(ctx, timing, lp_mode);
+	ctx->desc->exynos_panel_func->update_te2(ctx);
+
+	kfree(buf_dup);
+
+	return count;
+}
+
+static ssize_t get_te2_timing(struct exynos_panel *ctx, char *buf, bool lp_mode)
+{
+	if (!ctx->desc->exynos_panel_func->get_te2_edges)
+		return -EPERM;
+
+	return ctx->desc->exynos_panel_func->get_te2_edges(ctx, buf, lp_mode);
+}
+
+static ssize_t te2_timing_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	ssize_t ret;
+
+	if (!ctx->initialized)
+		return -EAGAIN;
+
+	mutex_lock(&ctx->te2.timing_lock);
+
+	ret = set_te2_timing(ctx, count, buf, false);
+	if (ret < 0)
+		dev_err(ctx->dev,
+			"failed to set normal mode TE2 timing: ret %ld\n", ret);
+
+	mutex_unlock(&ctx->te2.timing_lock);
+
+	return ret;
+}
+
+static ssize_t te2_timing_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	ssize_t ret;
+
+	if (!ctx->initialized)
+		return -EAGAIN;
+
+	mutex_lock(&ctx->te2.timing_lock);
+
+	ret = get_te2_timing(ctx, buf, false);
+	if (ret < 0)
+		dev_err(ctx->dev,
+			"failed to get normal mode TE2 timing: ret %ld\n", ret);
+
+	mutex_unlock(&ctx->te2.timing_lock);
+
+	return ret;
+}
+
+static ssize_t te2_lp_timing_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	ssize_t ret;
+
+	if (!ctx->initialized)
+		return -EAGAIN;
+
+	mutex_lock(&ctx->te2.timing_lock);
+
+	ret = set_te2_timing(ctx, count, buf, true);
+	if (ret < 0)
+		dev_err(ctx->dev,
+			"failed to set LP mode TE2 timing: ret %ld\n", ret);
+
+	mutex_unlock(&ctx->te2.timing_lock);
+
+	return ret;
+}
+
+static ssize_t te2_lp_timing_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	ssize_t ret;
+
+	if (!ctx->initialized)
+		return -EAGAIN;
+
+	mutex_lock(&ctx->te2.timing_lock);
+
+	ret = get_te2_timing(ctx, buf, true);
+	if (ret < 0)
+		dev_err(ctx->dev,
+			"failed to get LP mode TE2 timing: ret %ld\n", ret);
+
+	mutex_unlock(&ctx->te2.timing_lock);
+
+	return ret;
+}
+
 static DEVICE_ATTR_RO(serial_number);
 static DEVICE_ATTR_RO(panel_extinfo);
 static DEVICE_ATTR_RO(panel_name);
 static DEVICE_ATTR_WO(gamma);
+static DEVICE_ATTR_RW(te2_timing);
+static DEVICE_ATTR_RW(te2_lp_timing);
 
 static const struct attribute *panel_attrs[] = {
 	&dev_attr_serial_number.attr,
 	&dev_attr_panel_extinfo.attr,
 	&dev_attr_panel_name.attr,
 	&dev_attr_gamma.attr,
+	&dev_attr_te2_timing.attr,
+	&dev_attr_te2_lp_timing.attr,
 	NULL
 };
 
@@ -1970,6 +2226,8 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 skip_enable:
 	exynos_panel_set_backlight_state(ctx, pmode->exynos_mode.is_lp_mode ?
 					 PANEL_STATE_LP : PANEL_STATE_ON);
+
+	exynos_panel_update_te2(ctx);
 }
 
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
@@ -2078,6 +2336,9 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 	}
 	ctx->current_mode = pmode;
 
+	if (!pmode->exynos_mode.is_lp_mode)
+		exynos_panel_update_te2(ctx);
+
 	if (need_update_backlight && ctx->bl)
 		backlight_update_status(ctx->bl);
 
@@ -2127,6 +2388,39 @@ static void local_hbm_data_init(struct exynos_panel *ctx)
 	else {
 		INIT_DELAYED_WORK(&ctx->hbm.local_hbm.timeout_work, local_hbm_timeout_work);
 		INIT_WORK(&ctx->hbm.global_hbm.ghbm_work, global_hbm_work);
+	}
+}
+
+static void exynos_panel_te2_init(struct exynos_panel *ctx)
+{
+	struct te2_mode_data *data;
+	const struct exynos_binned_lp *binned_lp;
+	int i;
+	int lp_idx = ctx->desc->num_modes;
+
+	mutex_init(&ctx->te2.timing_lock);
+
+	for (i = 0; i < ctx->desc->num_modes; i++) {
+		const struct exynos_panel_mode *pmode = &ctx->desc->modes[i];
+
+		data = &ctx->te2.mode_data[i];
+		data->mode = &pmode->mode;
+		data->timing.rising_edge = pmode->te2_timing.rising_edge;
+		data->timing.falling_edge = pmode->te2_timing.falling_edge;
+	}
+
+	for_each_exynos_binned_lp(i, binned_lp, ctx) {
+		/* ignore the first binned entry (off) */
+		if (i == 0)
+			continue;
+
+		data = &ctx->te2.mode_data[i - 1 + lp_idx];
+		data->mode = &ctx->desc->lp_mode->mode;
+		data->binned_lp = binned_lp;
+		data->timing.rising_edge =
+				binned_lp->te2_timing.rising_edge;
+		data->timing.falling_edge =
+				binned_lp->te2_timing.falling_edge;
 	}
 }
 
@@ -2181,6 +2475,11 @@ int exynos_panel_common_init(struct mipi_dsi_device *dsi,
 	if (exynos_panel_func && (exynos_panel_func->set_hbm_mode
 				  || exynos_panel_func->set_local_hbm_mode))
 		local_hbm_data_init(ctx);
+
+	if (exynos_panel_func && exynos_panel_func->get_te2_edges &&
+	    exynos_panel_func->configure_te2_edges &&
+	    exynos_panel_func->update_te2)
+		exynos_panel_te2_init(ctx);
 
 	if (ctx->desc->bl_num_ranges) {
 		ctx->bl_notifier.num_ranges = ctx->desc->bl_num_ranges;
