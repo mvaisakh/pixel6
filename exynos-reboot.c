@@ -38,6 +38,7 @@ static u32 cold_reboot_offset, cold_reboot_trigger;
 static u32 reboot_cmd_offset;
 static u32 shutdown_offset, shutdown_trigger;
 static phys_addr_t pmu_alive_base;
+static bool rsbm_supported;
 
 static void exynos_power_off(void)
 {
@@ -104,14 +105,6 @@ static void exynos_power_off(void)
 #define REBOOT_MODE_FACTORY		(0xFD)
 #define REBOOT_MODE_RECOVERY		(0xFF)
 
-static bool target_bms_rsbm_supported(void)
-{
-	u32 data;
-	int ret = gbms_storage_read(GBMS_TAG_RSBM, &data, sizeof(data));
-
-	return (ret != -ENOENT);
-}
-
 static void exynos_reboot_mode_set(u32 val)
 {
 	int ret;
@@ -126,7 +119,7 @@ static void exynos_reboot_mode_set(u32 val)
 		regmap_write(pmureg, reboot_cmd_offset, val);
 	}
 
-	if (s2mpg10_get_rev_id() > S2MPG10_EVT0 && target_bms_rsbm_supported()) {
+	if (s2mpg10_get_rev_id() > S2MPG10_EVT0 && rsbm_supported) {
 		reboot_mode = val | BMS_RSBM_VALID;
 		ret = gbms_storage_write(GBMS_TAG_RSBM, &reboot_mode, sizeof(reboot_mode));
 		if (ret < 0)
@@ -158,6 +151,16 @@ static void exynos_reboot_parse(const char *cmd)
 static int exynos_reboot_handler(struct notifier_block *nb,
 				  unsigned long mode, void *cmd)
 {
+	u32 data;
+	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_RSBM, &data, sizeof(data));
+	if (ret < 0)
+		pr_err("%s(): failed to read gbms storage: %d(%d)\n", __func__,
+			GBMS_TAG_RSBM, ret);
+
+	rsbm_supported = ret != -ENOENT;
+
 	exynos_reboot_parse(cmd);
 
 	return NOTIFY_DONE;
@@ -179,7 +182,7 @@ static int exynos_restart_handler(struct notifier_block *this, unsigned long mod
 	pr_emerg("%s: Exynos SoC reset right now\n", __func__);
 
 	if (s2mpg10_get_rev_id() == S2MPG10_EVT0 ||
-	    !target_bms_rsbm_supported() ||
+	    !rsbm_supported ||
 	    dbg_snapshot_get_panic_status()) {
 		ret = set_priv_reg(pmu_alive_base + warm_reboot_offset, warm_reboot_trigger);
 
