@@ -2246,6 +2246,21 @@ static ssize_t cycle_counts_show(struct device *dev,
 
 static const DEVICE_ATTR_RW(cycle_counts);
 
+/* Was POWER_SUPPLY_PROP_RESISTANCE */
+static ssize_t resistance_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buff)
+{
+	u32 data;
+	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_BRES, &data, sizeof(data));
+
+	return scnprintf(buff, PAGE_SIZE, "%d\n", ret < 0 ? ret : data);
+}
+
+static const DEVICE_ATTR_RO(resistance);
+
 /* Was POWER_SUPPLY_PROP_RESISTANCE_AVG */
 static ssize_t resistance_avg_show(struct device *dev,
 				   struct device_attribute *attr,
@@ -2854,6 +2869,12 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 		dev_err(&batt_drv->psy->dev,
 			"Failed to create chage_full_estimate\n");
 
+	ret = device_create_file(&batt_drv->psy->dev,
+				 &dev_attr_resistance);
+	if (ret)
+		dev_err(&batt_drv->psy->dev,
+			"Failed to create resistance\n");
+
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
 		return 0;
@@ -3313,6 +3334,7 @@ static enum power_supply_property gbatt_battery_props[] = {
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,	/* No need for this? */
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,		/* 23 */
+	POWER_SUPPLY_PROP_VOLTAGE_OCV,
 
 	/*  hard limit to 26 */
 };
