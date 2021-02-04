@@ -2935,35 +2935,22 @@ static int sec_ts_power(void *data, bool on)
 		}
 	}
 
-	if (pdata->regulator_vdd && (vdd_enabled != on)) {
-		ret = (on) ? regulator_enable(pdata->regulator_vdd) :
-			regulator_disable(pdata->regulator_vdd);
-		if (ret)
-			input_err(true, &ts->client->dev,
-				"%s: Failed to control vdd: %d\n",
-				__func__, ret);
-		else {
-			sec_ts_delay(1);
-			vdd_enabled = on;
-		}
-	}
-
-	if (pdata->regulator_avdd && (avdd_enabled != on)) {
-		ret = (on) ? regulator_enable(pdata->regulator_avdd) :
-			regulator_disable(pdata->regulator_avdd);
-		if (ret)
-			input_err(true, &ts->client->dev,
-				"%s: Failed to control avdd: %d\n",
-				__func__, ret);
-		else
-			avdd_enabled = on;
-	}
-
 	if (pdata->regulator_vdd) {
-		input_info(true, &ts->client->dev, "%s: %s: vdd:%s\n",
-			__func__, on ? "on" : "off",
-			regulator_is_enabled(pdata->regulator_vdd) ?
-			"on" : "off");
+		if (vdd_enabled != on){
+			ret = (on) ? regulator_enable(pdata->regulator_vdd) :
+				regulator_disable(pdata->regulator_vdd);
+			if (ret)
+				input_err(true, &ts->client->dev,
+					"%s: Failed to control vdd: %d\n",
+					__func__, ret);
+			else {
+				input_info(true, &ts->client->dev, "%s: %s vdd\n",
+					__func__, on ? "enable" : "disable");
+				sec_ts_delay(on ? 1 : 4);
+				vdd_enabled = on;
+			}
+		}
+
 		if (!vdd_enabled) {
 			regulator_put(pdata->regulator_vdd);
 			pdata->regulator_vdd = NULL;
@@ -2971,10 +2958,20 @@ static int sec_ts_power(void *data, bool on)
 	}
 
 	if (pdata->regulator_avdd) {
-		input_info(true, &ts->client->dev, "%s: %s: avdd:%s\n",
-			__func__, on ? "on" : "off",
-			regulator_is_enabled(pdata->regulator_avdd) ?
-			"on" : "off");
+		if (avdd_enabled != on) {
+			ret = (on) ? regulator_enable(pdata->regulator_avdd) :
+				regulator_disable(pdata->regulator_avdd);
+			if (ret)
+				input_err(true, &ts->client->dev,
+					"%s: Failed to control avdd: %d\n",
+					__func__, ret);
+			else {
+				input_info(true, &ts->client->dev, "%s: %s avdd\n",
+					__func__, on ? "enable" : "disable");
+				avdd_enabled = on;
+			}
+		}
+
 		if (!avdd_enabled) {
 			regulator_put(pdata->regulator_avdd);
 			pdata->regulator_avdd = NULL;
