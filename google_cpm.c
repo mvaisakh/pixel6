@@ -174,7 +174,10 @@ static int gcpm_chg_offline(struct gcpm_drv *gcpm)
 	if (!chg_psy)
 		return 0;
 
-	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
+	/* OFFLINE should stop charging, this make sure that it does */
+	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 0);
+	if (ret == 0)
+		ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
 	if (ret == 0)
 		gcpm->chg_psy_active = -1;
 
@@ -256,7 +259,7 @@ static int gcpm_dc_enable(struct gcpm_drv *gcpm, bool enabled)
  * DC_IDLE (i.e. this can be used to reset dc_state from DC_DISABLED).
  * NOTE: call with a lock around gcpm->chg_psy_lock
  */
-static int gcpm_dc_stop(struct gcpm_drv *gcpm)
+static int gcpm_dc_stop(struct gcpm_drv *gcpm, int final_state)
 {
 	int ret;
 
@@ -284,7 +287,7 @@ static int gcpm_dc_stop(struct gcpm_drv *gcpm)
 		}
 		/* Fall Through */
 	default:
-		gcpm->dc_state = DC_IDLE;
+		gcpm->dc_state = final_state;
 		ret = 0;
 		break;
 	}
@@ -450,9 +453,8 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 		 dc_ena, gcpm->dc_state, gcpm->dc_index, index);
 	if (!dc_ena) {
 
-		if (gcpm->dc_index) {
+		if (gcpm->dc_index > 0) {
 			schedule_pps_dc = true;
-			gcpm->dc_state = DC_IDLE;
 			gcpm->dc_index = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
@@ -610,13 +612,11 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		const int tgt_state = gcpm->dc_index < 0 ?
 				      DC_DISABLED : DC_IDLE;
 
-		/* try to disable DC, gcpm_chg_check() will re-enable if idle */
+		/* disable DC, gcpm_chg_check() might re-enable if idle */
 		if (dc_state != tgt_state)
-			ret = gcpm_dc_stop(gcpm);
-		if (gcpm->dc_state == DC_IDLE && tgt_state == DC_DISABLED)
-			gcpm->dc_state = DC_DISABLED;
+			ret = gcpm_dc_stop(gcpm, tgt_state);
 		if (gcpm->dc_state != tgt_state) {
-			pr_err("PPS_DC: fail disable dc_state=%d->%d (%d)\n",
+			pr_err("PPS_DC: retry disable dc_state=%d->%d (%d)\n",
 				dc_state, gcpm->dc_state, ret);
 			pps_ui = DC_ERROR_RETRY_MS;
 		} else {
@@ -774,7 +774,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	switch (psp) {
 	/* do not route to the active charger */
 	case GBMS_PROP_TAPER_CONTROL:
-		taper_control = (pval->intval != 0);
+		taper_control = pval->intval != GBMS_TAPER_CONTROL_OFF;
 		ta_check = taper_control != gcpm->taper_control;
 		gcpm->taper_control = taper_control;
 		route = false;

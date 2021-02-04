@@ -63,9 +63,10 @@ enum max77759_charger_modes {
 
 /* internal system values */
 enum {
-	GBMS_CHGR_MODE_STBY_ON	    = 0x10 + MAX77759_CHGR_MODE_ALL_OFF,
-	GBMS_CHGR_MODE_CHGR_BUCK_ON = 0x10 + MAX77759_CHGR_MODE_CHGR_BUCK_ON,
-	GBMS_CHGR_MODE_BOOST_UNO_ON = 0x10 + MAX77759_CHGR_MODE_BOOST_UNO_ON,
+	GBMS_CHGR_MODE_STBY_ON		= 0x10 + MAX77759_CHGR_MODE_ALL_OFF,
+	GBMS_CHGR_MODE_INFLOW_OFF	= 0x11 + MAX77759_CHGR_MODE_ALL_OFF,
+	GBMS_CHGR_MODE_CHGR_BUCK_ON	= 0x10 + MAX77759_CHGR_MODE_CHGR_BUCK_ON,
+	GBMS_CHGR_MODE_BOOST_UNO_ON	= 0x10 + MAX77759_CHGR_MODE_BOOST_UNO_ON,
 };
 
 #define MAX77759_DEFAULT_MODE	MAX77759_CHGR_MODE_ALL_OFF
@@ -89,7 +90,12 @@ enum {
 struct max77759_usecase_data {
 	int bst_on;	/* */
 	int bst_sel;	/* */
-	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
+	int ext_bst_ctl;/* MW VENDOR_EXTBST_CTRL */
+
+	int ls2_en;	/* OVP LS2 */
+
+	int vin_valid;	/* MAX20339 STATUS1.vinvalid */
+	int lsw1_status;/* MAX20339 STATUS2.lsw1closed */
 
 	bool init_done;
 };
@@ -134,6 +140,9 @@ struct max77759_chgr_data {
 	int fship_dtls;
 	bool online;
 	bool wden;
+
+	/* debug interface, register to read or write */
+	u32 debug_reg_address;
 
 	/* thermal */
 	struct thermal_zone_device *tz_vdroop[VDROOP_MAX];
@@ -228,6 +237,7 @@ struct max77759_foreach_cb_data {
 
 	bool chgr_on;	/* CC_MAX != 0 */
 	bool stby_on;	/* on disconnect */
+	bool inflow_off;
 
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
 
@@ -270,7 +280,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
 		if (cb_data->use_raw)
 			break;
-		pr_debug("%s:%d RAW vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d RAW vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->raw_value = mode;
 		cb_data->reason = reason;
 		cb_data->use_raw = true;
@@ -280,7 +290,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_BOOST_UNO_ON:
 		if (!cb_data->boost_on || !cb_data->uno_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d BOOST_UNO vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d BOOST_UNO vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->boost_on += 1;
 		cb_data->uno_on += 1;
 		break;
@@ -291,15 +301,20 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_STBY_ON:
 		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FORCE_OFF vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->stby_on += 1;
 		break;
-
+	case GBMS_CHGR_MODE_INFLOW_OFF:
+		if (!cb_data->inflow_off)
+			cb_data->reason = reason;
+		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		cb_data->inflow_off += 1;
+		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
 	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
 		if (!cb_data->chgr_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d CHGR_BUCK_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d CHGR_BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->chgr_on += 1;
 		break;
 
@@ -307,29 +322,34 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_USB_BUCK_ON:
 		if (!cb_data->buck_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d BUCK_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_info("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->buck_on += 1;
 		break;
 	/* USB: OTG, source, fast role swap case */
 	case GBMS_USB_OTG_FRS_ON:
 		if (!cb_data->frs_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FRS_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d FRS_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->frs_on += 1;
 		break;
 	/* USB: boost mode, source, normally external boost */
 	case GBMS_USB_OTG_ON:
 		if (!cb_data->otg_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d OTG_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d OTG_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->otg_on += 1;
 		break;
 	/* DC Charging: mode=0, set CP_EN */
 	case GBMS_CHGR_MODE_CHGR_DC:
 		if (!cb_data->pps_dc)
 			cb_data->reason = reason;
-		pr_debug("%s:%d DC_ON vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d DC_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->pps_dc += 1;
+		break;
+	/* WLC Tx */
+	case GBMS_CHGR_MODE_WLC_TX:
+		pr_debug("%s:%d WLC_TX vote=%x\n", __func__, __LINE__, mode);
+		cb_data->wlc_tx += 1;
 		break;
 
 	default:
@@ -400,15 +420,38 @@ static int max77759_ls_mode(struct max77759_chgr_data *data, int mode)
 	switch (mode) {
 	case 0:
 		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 0);
-		break;
+		ret = gpio_get_value_cansleep(data->uc_data.lsw1_status);
+		return ret == 0 ? 0 : -EIO;
 	case 1:
 		gpio_set_value_cansleep(data->uc_data.ext_bst_ctl, 1);
+		ret = gpio_get_value_cansleep(data->uc_data.lsw1_status);
+		return ret == 1 ? 0 : -EIO;
 		break;
 	default:
 		return -EINVAL;
 	}
 
 	return ret;
+}
+
+static int max77759_ls2_mode(struct max77759_usecase_data *uc_data, int mode)
+{
+	pr_info("%s: ls2_en=%d mode=%d\n", __func__, uc_data->ls2_en, mode);
+
+	if (uc_data->ls2_en >= 0)
+		gpio_set_value_cansleep(uc_data->ls2_en, !!mode);
+
+	return 0;
+}
+
+static bool max20339_is_vin_valid(struct max77759_chgr_data *data)
+{
+	if (data->uc_data.vin_valid < 0) {
+		dev_err(data->dev, "vin-valid GPIO not set");
+		return false;
+	}
+
+	return gpio_get_value_cansleep(data->uc_data.vin_valid) == 1;
 }
 
 /* control external boost mode
@@ -489,7 +532,7 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			if (ret == 0)
 				ret = max77759_ext_mode(data, 0);
 			if (ret < 0) {
-				dev_err(data->dev, "cannot turn off switches (%d)\n",
+				dev_err(data->dev, "OTG cannot turn off switches (%d)\n",
 					ret);
 				return -EIO;
 			}
@@ -525,8 +568,15 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 	if (!need_stby)
 		return 0;
 
+	/* */
 	if (data->use_case == GSU_MODE_WLC_TX) {
-		/* not yet */
+
+		// disable RTx.
+		ret = max77759_ext_mode(data, 0);
+		if (ret == 0)
+			ret = max77759_ls2_mode(&data->uc_data, 0);
+		if (ret < 0)
+			dev_err(data->dev, "RTX cannot turn off switches (%d)\n", ret);
 	}
 
 	/* transition to STBY (might need to be up) */
@@ -601,9 +651,29 @@ static int max77759_to_otg_usecase(struct max77759_chgr_data *data,
 		/* Write 0b1 to AO37 SwCntl (0xA).LSw1En */
 		/* TCPCM controls EXT_BST_EN? */
 		ret = max77759_ls_mode(data, 1);
-		if (ret == 0)
+		if (ret == 0) {
+			ret = regmap_write_bits(data->regmap, MAX77759_CHG_CNFG_00,
+						MAX77759_CHG_CNFG_00_MODE_MASK,
+						MAX77759_CHGR_MODE_OTG_BOOST_ON);
+			if (ret < 0) {
+				dev_err(data->dev, "cannot set CNFG_00 to 0xa ret:%d\n", ret);
+				return -EIO;
+			}
+			if (!max20339_is_vin_valid(data)) {
+				dev_err(data->dev, "VIN not VALID");
+				return -EIO;
+			}
 			ret = max77759_ext_mode(data, mode);
-
+			mdelay(5);
+			/*
+			 * Assumption: max77759_to_usecase() will write back cached values to
+			 * CHG_CNFG_00.Mode. At the moment, the cached value at
+			 * max77759_mode_callback is 0. If the cached value changes to someting
+			 * other than 0, then, the code has to be revisited.
+			 */
+		} else {
+			dev_err(data->dev, "cannot close load switch (%d)\n", ret);
+		}
 	} else if (data->use_case == GSU_MODE_USB_OTG) {
 		/*
 		 * OTG source handover: OTG -> OTG_FRS
@@ -636,6 +706,9 @@ static int max77759_to_usecase(struct max77759_chgr_data *data,
 			return ret;
 		break;
 	case GSU_MODE_WLC_TX:
+		ret = max77759_ls2_mode(&data->uc_data, 1);
+		if (ret == 0)
+			ret = max77759_ext_mode(data, EXT_MODE_OTG_7_5V);
 		break;
 	case GSU_RAW_MODE:
 		/* just write the value to the register */
@@ -700,7 +773,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 	} else if (cb_data->wlc_tx) {
 		/* 7-2 */
 		usecase = GSU_MODE_USB_OTG_WLC_TX;
-		pr_err("%s: GSU_MODE_WLC_TX not yet\n", __func__);
+		pr_err("%s: GSU_MODE_WLC_TX + OTG not yet\n", __func__);
 
 		return -EINVAL;
 	} else if (cb_data->wlc_dc) {
@@ -733,24 +806,44 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
  */
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
+	const int buck_on = cb_data->inflow_off ? 0 : cb_data->buck_on;
 	int usecase;
 	u8 mode;
 
 	/* consistency check, TOD: add more */
-	if (cb_data->wlc_tx && cb_data->wlc_on) {
-		pr_err("%s: wlc_tx and wlc_rx\n", __func__);
-		return -EINVAL;
+	if (cb_data->wlc_tx) {
+		if (cb_data->wlc_on) {
+			pr_err("%s: wlc_tx and wlc_rx\n", __func__);
+			return -EINVAL;
+		}
+
+		if (cb_data->wlc_dc) {
+			pr_err("%s: wlc_tx and wlc_dc\n", __func__);
+			return -EINVAL;
+		}
 	}
 
 	/* OTG modes override the others */
 	if (cb_data->otg_on || cb_data->frs_on)
 		return max77759_get_otg_usecase(cb_data);
 
-	/* buck_on is wired, wlc_on is wireless */
-	if (!cb_data->buck_on && !cb_data->wlc_on) {
+	/* buck_on is wired, wlc_on is wireless, might still need rTX */
+	if (!buck_on && !cb_data->wlc_on) {
 		mode = MAX77759_CHGR_MODE_ALL_OFF;
+
+		/* Rtx using the internal battery */
 		usecase = GSU_MODE_STANDBY;
+		if (cb_data->wlc_tx)
+			usecase = GSU_MODE_WLC_TX;
+
+	} else if (cb_data->wlc_tx && buck_on) {
+
+		usecase = GSU_MODE_WLC_TX;
+		mode = (cb_data->chgr_on) ?
+			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
+			MAX77759_CHGR_MODE_BUCK_ON;
 	} else {
+
 		/* MODE_BUCK_ON is inflow */
 		if (cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
@@ -760,14 +853,20 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			usecase = GSU_MODE_USB_CHG;
 		}
 
-		/* direct charging or off mode */
-		if (cb_data->pps_dc) {
+		/*
+		 * OTG cases for wlcTX handled above, same as !(buck|wlc)_on
+		 * TODO: handle rTx + DC and some more.
+		 * NOTE: mode = if standby 0, if cable charging 5, if otg A
+		 */
+		if (cb_data->wlc_tx) {
+			usecase = GSU_MODE_WLC_TX;
+		} else if (cb_data->pps_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
 		} else if (cb_data->wlc_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
-		} else if (cb_data->stby_on) {
+		} else if (cb_data->stby_on && !cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
 		}
@@ -812,21 +911,33 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_on = -EPROBE_DEFER;
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
+		uc_data->ls2_en = -EPROBE_DEFER;
+		uc_data->lsw1_status = -EPROBE_DEFER;
+		uc_data->vin_valid = -EPROBE_DEFER;
 		return 0;
 	}
 
 	if (uc_data->bst_on == -EPROBE_DEFER)
 		uc_data->bst_on = of_get_named_gpio(node, "max77759,bst-on", 0);
-
 	if (uc_data->bst_sel == -EPROBE_DEFER)
 		uc_data->bst_sel = of_get_named_gpio(node, "max77759,bst-sel", 0);
-
 	if (uc_data->ext_bst_ctl == -EPROBE_DEFER)
 		uc_data->ext_bst_ctl = of_get_named_gpio(node, "max77759,extbst-ctl", 0);
+	if (uc_data->ls2_en == -EPROBE_DEFER)
+		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
+
+	if (uc_data->lsw1_status == -EPROBE_DEFER)
+		uc_data->lsw1_status = of_get_named_gpio(node, "max77759,lsw1-status", 0);
+
+	if (uc_data->vin_valid == -EPROBE_DEFER)
+		uc_data->vin_valid = of_get_named_gpio(node, "max77759,vin-valid", 0);
 
 	return uc_data->bst_on != -EPROBE_DEFER &&
 	       uc_data->bst_sel != -EPROBE_DEFER &&
-	       uc_data->ext_bst_ctl != -EPROBE_DEFER;
+	       uc_data->ext_bst_ctl != -EPROBE_DEFER &&
+	       uc_data->ls2_en != -EPROBE_DEFER &&
+	       uc_data->lsw1_status != -EPROBE_DEFER &&
+	       uc_data->vin_valid != -EPROBE_DEFER;
 }
 
 /*
@@ -871,10 +982,12 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
 
 	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d\n", __func__,
+		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d inflow=%d\n",
+		__func__,
 		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
-		cb_data.otg_on, cb_data.uno_on);
+		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx,
+		!cb_data.inflow_off);
 	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
 		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
 		 reg);
@@ -950,7 +1063,7 @@ static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
 	return ret;
 }
 
-/* called from gcpm, DC_SUSPEND and for CC_MAX == 0 */
+/* called from gcpm and for CC_MAX == 0 */
 static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
@@ -968,17 +1081,31 @@ static int max77759_set_charge_disable(struct max77759_chgr_data *data,
 				  enabled);
 }
 
+/* google_charger on disconnect */
+static int max77759_set_input_suspend(struct max77759_chgr_data *data,
+				      int enabled, const char *reason)
+{
+	return gvotable_cast_vote(data->mode_votable, reason,
+				  (void*)GBMS_CHGR_MODE_INFLOW_OFF,
+				  enabled);
+}
+
 /* turn off CHGIN_INSEL: works when max77559 registers are not protected */
 static int max77759_chgin_input_suspend(struct max77759_chgr_data *data,
 					bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_CHGINSEL_SHIFT;
+	int ret;
 
 	data->chgin_input_suspend = enabled; /* cache */
 
-	return max77759_reg_update(data, MAX77759_CHG_CNFG_12,
-				   MAX77759_CHG_CNFG_12_CHGINSEL_MASK,
-				   value);
+	ret = max77759_reg_update(data, MAX77759_CHG_CNFG_12,
+				  MAX77759_CHG_CNFG_12_CHGINSEL_MASK,
+				  value);
+	if (ret == 0)
+		ret = max77759_set_input_suspend(data, enabled, "CHGIN_SUSP");
+
+	return ret;
 }
 
 /* turn off WCIN_INSEL: works when max77559 registers are not protected */
@@ -986,12 +1113,17 @@ static int max77759_wcin_input_suspend(struct max77759_chgr_data *data,
 				       bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_WCINSEL_SHIFT;
+	int ret;
 
 	data->wcin_input_suspend = enabled; /* cache */
 
-	return max77759_reg_update(data, MAX77759_CHG_CNFG_12,
+	ret =  max77759_reg_update(data, MAX77759_CHG_CNFG_12,
 				   MAX77759_CHG_CNFG_12_WCINSEL_MASK,
 				   value);
+	if (ret == 0)
+		ret = max77759_set_input_suspend(data, enabled, "CHGIN_SUSP");
+
+	return ret;
 }
 
 static int max77759_set_regulation_voltage(struct max77759_chgr_data *data,
@@ -2130,6 +2262,30 @@ static int input_mask_clear_set(void *d, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(input_mask_clear_fops, NULL, input_mask_clear_set, "%llu\n");
 
+static int max77759_chg_debug_reg_read(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	u8 reg = 0;
+	int ret;
+
+	ret = max77759_reg_read(data->regmap, data->debug_reg_address, &reg);
+	if (ret)
+		return ret;
+
+	*val = reg;
+	return 0;
+}
+
+static int max77759_chg_debug_reg_write(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	u8 reg = (u8) val;
+
+	pr_warn("debug write reg 0x%x, 0x%x", data->debug_reg_address, reg);
+	return max77759_reg_write(data->regmap, data->debug_reg_address, reg);
+}
+DEFINE_SIMPLE_ATTRIBUTE(debug_reg_rw_fops, max77759_chg_debug_reg_read,
+			max77759_chg_debug_reg_write, "%02llx\n");
 
 static int dbg_init_fs(struct max77759_chgr_data *data)
 {
@@ -2169,6 +2325,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	debugfs_create_file("input_mask_clear", 0600, data->de, data,
 			    &input_mask_clear_fops);
 
+	debugfs_create_u32("address", 0600, data->de, &data->debug_reg_address);
+	debugfs_create_file("data", 0600, data->de, data, &debug_reg_rw_fops);
 	return 0;
 }
 

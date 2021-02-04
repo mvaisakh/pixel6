@@ -10,24 +10,18 @@
  */
 
 #include <linux/err.h>
-#include <linux/kernel.h>
 #include <linux/version.h>
-#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
-#include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/of_irq.h>
 #include <linux/of_device.h>
-#include <linux/pm_runtime.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
 #include <linux/rtc.h>
-#include <linux/debugfs.h>
-#include <linux/thermal.h>
 
-#include "gbms_power_supply.h"
+#include "pca9468_regs.h"
 #include "pca9468_charger.h"
 
 #if defined (CONFIG_OF)
@@ -35,267 +29,7 @@
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
 
-/* Google integration */
-#include "google_bms.h"
-#include "google_dc_pps.h"
 
-#define BITS(_end, _start) ((BIT(_end) - BIT(_start)) + BIT(_end))
-#define MASK2SHIFT(_mask)	__ffs(_mask)
-
-/* */
-enum {
-	PPS_INDEX_DISABLED = 0,
-	PPS_INDEX_TCPM = 1,
-	PPS_INDEX_WLC,
-	PPS_INDEX_MAX,
-};
-
-/*
- * Register Map
- */
-#define PCA9468_REG_DEVICE_INFO 	0x00	/* Device ID, revision */
-#define PCA9468_BIT_DEV_REV		BITS(7, 4)
-#define PCA9468_BIT_DEV_ID		BITS(3, 0)
-#define PCA9468_DEVICE_ID		0x18	/* Default ID */
-
-#define PCA9468_REG_INT1		0x01
-#define PCA9468_BIT_V_OK_INT		BIT(7)
-#define PCA9468_BIT_NTC_TEMP_INT	BIT(6)
-#define PCA9468_BIT_CHG_PHASE_INT	BIT(5)
-#define PCA9468_BIT_CTRL_LIMIT_INT	BIT(3)
-#define PCA9468_BIT_TEMP_REG_INT	BIT(2)
-#define PCA9468_BIT_ADC_DONE_INT	BIT(1)
-#define PCA9468_BIT_TIMER_INT		BIT(0)
-
-#define PCA9468_REG_INT1_MSK		0x02
-#define PCA9468_BIT_V_OK_M		BIT(7)
-#define PCA9468_BIT_NTC_TEMP_M		BIT(6)
-#define PCA9468_BIT_CHG_PHASE_M		BIT(5)
-#define PCA9468_BIT_RESERVED_M		BIT(4)
-#define PCA9468_BIT_CTRL_LIMIT_M	BIT(3)
-#define PCA9468_BIT_TEMP_REG_M		BIT(2)
-#define PCA9468_BIT_ADC_DONE_M		BIT(1)
-#define PCA9468_BIT_TIMER_M		BIT(0)
-
-#define PCA9468_REG_INT1_STS		0x03
-#define PCA9468_BIT_V_OK_STS		BIT(7)
-#define PCA9468_BIT_NTC_TEMP_STS	BIT(6)
-#define PCA9468_BIT_CHG_PHASE_STS	BIT(5)
-#define PCA9468_BIT_CTRL_LIMIT_STS	BIT(3)
-#define PCA9468_BIT_TEMP_REG_STS	BIT(2)
-#define PCA9468_BIT_ADC_DONE_STS	BIT(1)
-#define PCA9468_BIT_TIMER_STS		BIT(0)
-
-#define PCA9468_REG_STS_A		0x04
-#define PCA9468_BIT_IIN_LOOP_STS	BIT(7)
-#define PCA9468_BIT_CHG_LOOP_STS	BIT(6)	/* not in pca9468 */
-#define PCA9468_BIT_VFLT_LOOP_STS	BIT(5)
-#define PCA9468_BIT_CFLY_SHORT_STS	BIT(4)
-#define PCA9468_BIT_VOUT_UV_STS		BIT(3)
-#define PCA9468_BIT_VBAT_OV_STS		BIT(2)
-#define PCA9468_BIT_VIN_OV_STS		BIT(1)
-#define PCA9468_BIT_VIN_UV_STS		BIT(0)
-
-#define PCA9468_REG_STS_B		0x05
-#define PCA9468_BIT_BATT_MISS_STS	BIT(7)
-#define PCA9468_BIT_OCP_FAST_STS	BIT(6)
-#define PCA9468_BIT_OCP_AVG_STS		BIT(5)
-#define PCA9468_BIT_ACTIVE_STATE_STS	BIT(4)
-#define PCA9468_BIT_SHUTDOWN_STATE_STS	BIT(3)
-#define PCA9468_BIT_STANDBY_STATE_STS	BIT(2)
-#define PCA9468_BIT_CHARGE_TIMER_STS	BIT(1)
-#define PCA9468_BIT_WATCHDOG_TIMER_STS	BIT(0)
-
-#define PCA9468_REG_STS_C		0x06	/* IIN status */
-#define PCA9468_BIT_IIN_STS		BITS(7, 2)
-
-#define PCA9468_REG_STS_D		0x07	/* ICHG status */
-#define PCA9468_BIT_ICHG_STS		BITS(7, 1)
-
-#define PCA9468_REG_STS_ADC_1		0x08
-#define PCA9468_BIT_ADC_IIN7_0		BITS(7, 0)
-
-#define PCA9468_REG_STS_ADC_2		0x09
-#define PCA9468_BIT_ADC_IOUT5_0		BITS(7, 2)
-#define PCA9468_BIT_ADC_IIN9_8		BITS(1, 0)
-
-#define PCA9468_REG_STS_ADC_3		0x0A
-#define PCA9468_BIT_ADC_VIN3_0		BITS(7, 4)
-#define PCA9468_BIT_ADC_IOUT9_6		BITS(3, 0)
-
-#define PCA9468_REG_STS_ADC_4		0x0B
-#define PCA9468_BIT_ADC_VOUT1_0		BITS(7, 6)
-#define PCA9468_BIT_ADC_VIN9_4		BITS(5, 0)
-
-#define PCA9468_REG_STS_ADC_5		0x0C
-#define PCA9468_BIT_ADC_VOUT9_2		BITS(7, 0)
-
-#define PCA9468_REG_STS_ADC_6		0x0D
-#define PCA9468_BIT_ADC_VBAT7_0		BITS(7, 0)
-
-#define PCA9468_REG_STS_ADC_7		0x0E
-#define PCA9468_BIT_ADC_DIETEMP5_0	BITS(7, 2)
-#define PCA9468_BIT_ADC_VBAT9_8		BITS(1, 0)
-
-#define PCA9468_REG_STS_ADC_8		0x0F
-#define PCA9468_BIT_ADC_NTCV3_0		BITS(7, 4)
-#define PCA9468_BIT_ADC_DIETEMP9_6	BITS(3, 0)
-
-#define PCA9468_REG_STS_ADC_9		0x10
-#define PCA9468_BIT_ADC_NTCV9_4		BITS(5, 0)
-
-/*
- * Charge current cannot be in PCA9468.
-#define PCA9468_REG_ICHG_CTRL		0x20
-#define PCA9468_BIT_ICHG_SS		BIT(7)
-#define PCA9468_BIT_ICHG_CFG		BITS(6, 0)
- */
-
-#define PCA9468_REG_IIN_CTRL		0x21	/* Input current */
-#define PCA9468_BIT_LIMIT_INCREMENT_EN	BIT(7)
-#define PCA9468_BIT_IIN_SS		BIT(6)
-#define PCA9468_BIT_IIN_CFG		BITS(5, 0)
-
-#define PCA9468_REG_START_CTRL		0x22	/* device init and config */
-#define PCA9468_BIT_SNSRES		BIT(7)
-#define PCA9468_BIT_EN_CFG		BIT(6)
-#define PCA9468_BIT_STANDBY_EN		BIT(5)
-#define PCA9468_BIT_REV_IIN_DET		BIT(4)
-#define PCA9468_BIT_FSW_CFG		BITS(3, 0)
-
-#define PCA9468_REG_ADC_CTRL		0x23	/* ADC configuration */
-#define PCA9468_BIT_FORCE_ADC_MODE	BITS(7, 6)
-#define PCA9468_BIT_ADC_SHUTDOWN_CFG	BIT(5)
-#define PCA9468_BIT_HIBERNATE_DELAY	BITS(4, 3)
-
-#define PCA9468_REG_ADC_CFG		0x24	/* ADC channel configuration */
-#define PCA9468_BIT_CH7_EN		BIT(7)
-#define PCA9468_BIT_CH6_EN		BIT(6)
-#define PCA9468_BIT_CH5_EN		BIT(5)
-#define PCA9468_BIT_CH4_EN		BIT(4)
-#define PCA9468_BIT_CH3_EN		BIT(3)
-#define PCA9468_BIT_CH2_EN		BIT(2)
-#define PCA9468_BIT_CH1_EN		BIT(1)
-
-#define PCA9468_REG_TEMP_CTRL		0x25	/* Temperature configuration */
-#define PCA9468_BIT_TEMP_REG		BITS(7, 6)
-#define PCA9468_BIT_TEMP_DELTA		BITS(5, 4)
-#define PCA9468_BIT_TEMP_REG_EN		BIT(3)
-#define PCA9468_BIT_NTC_PROTECTION_EN	BIT(2)
-#define PCA9468_BIT_TEMP_MAX_EN		BIT(1)
-
-#define PCA9468_REG_PWR_COLLAPSE	0x26	/* Power collapse cfg */
-#define PCA9468_BIT_UV_DELTA		BITS(7, 6)
-#define PCA9468_BIT_IIN_FORCE_COUNT	BIT(4)
-#define PCA9468_BIT_BAT_MISS_DET_EN	BIT(3)
-
-#define PCA9468_REG_V_FLOAT		0x27	/* Voltage regulation */
-#define PCA9468_BIT_V_FLOAT		BITS(7, 0)
-
-#define PCA9468_REG_SAFETY_CTRL		0x28	/* Safety configuration */
-#define PCA9468_BIT_WATCHDOG_EN		BIT(7)
-#define PCA9468_BIT_WATCHDOG_CFG	BITS(6, 5)
-#define PCA9468_BIT_CHG_TIMER_EN	BIT(4)
-#define PCA9468_BIT_CHG_TIMER_CFG	BITS(3, 2)
-#define PCA9468_BIT_OV_DELTA		BITS(1, 0)
-
-#define PCA9468_REG_NTC_TH_1		0x29	/* Thermistor threshold  */
-#define PCA9468_BIT_NTC_THRESHOLD7_0	BITS(7, 0)
-
-#define PCA9468_REG_NTC_TH_2		0x2A	/* Thermistor threshold  */
-#define PCA9468_BIT_NTC_THRESHOLD9_8	BITS(1, 0)
-
-#define PCA9468_REG_ADC_ACCESS		0x30
-
-#define PCA9468_REG_ADC_ADJUST		0x31
-#define PCA9468_BIT_ADC_GAIN		BITS(7, 4)
-
-#define PCA9468_REG_ADC_IMPROVE		0x3D
-#define PCA9468_BIT_ADC_IIN_IMP		BIT(3)
-
-#define PCA9468_REG_ADC_MODE		0x3F
-#define PCA9468_BIT_ADC_MODE		BIT(4)
-
-#define PCA9468_MAX_REGISTER		0x4F
-
-
-/* input current step, unit - uA */
-#define PCA9468_IIN_CFG_STEP		100000
-/* input current, unit - uA */
-#define PCA9468_IIN_CFG(input_curr)	((input_curr) / PCA9468_IIN_CFG_STEP)
-/* charging current, uint - uA  */
-#define PCA9468_ICHG_CFG(_chg_current)	((_chg_current) / 100000)
-/* v_float voltage, unit - uV */
-#define PCA9468_V_FLOAT(_v_float)	(((_v_float) / 1000 - 3725) / 5)
-
-#define PCA9468_SNSRES_5mOhm		0x00
-#define PCA9468_SNSRES_10mOhm		PCA9468_BIT_SNSRES
-
-#define PCA9468_NTC_TH_STEP		2346	/* 2.346mV, unit - uV */
-
-/* VIN over voltage setting from 2*VOUT */
-enum {
-	OV_DELTA_10P,
-	OV_DELTA_30P,
-	OV_DELTA_20P,
-	OV_DELTA_40P,
-};
-
-/* Switching frequency */
-enum {
-	FSW_CFG_833KHZ,
-	FSW_CFG_893KHZ,
-	FSW_CFG_935KHZ,
-	FSW_CFG_980KHZ,
-	FSW_CFG_1020KHZ,
-	FSW_CFG_1080KHZ,
-	FSW_CFG_1120KHZ,
-	FSW_CFG_1160KHZ,
-	FSW_CFG_440KHZ,
-	FSW_CFG_490KHZ,
-	FSW_CFG_540KHZ,
-	FSW_CFG_590KHZ,
-	FSW_CFG_630KHZ,
-	FSW_CFG_680KHZ,
-	FSW_CFG_730KHZ,
-	FSW_CFG_780KHZ
-};
-
-/* Enable pin polarity selection */
-#define PCA9468_EN_ACTIVE_H	0x00
-#define PCA9468_EN_ACTIVE_L	PCA9468_BIT_EN_CFG
-#define PCA9468_STANDBY_FORCED	PCA9468_BIT_STANDBY_EN
-#define PCA9468_STANDBY_DONOT	0
-
-/* ADC Channel */
-enum {
-	ADCCH_VOUT = 1,
-	ADCCH_VIN,
-	ADCCH_VBAT,	/* 3 */
-	ADCCH_ICHG,
-	ADCCH_IIN,	/* 5 */
-	ADCCH_DIETEMP,	/* 6 */
-	ADCCH_NTC,
-	ADCCH_MAX
-};
-
-/* ADC step */
-#define VIN_STEP	16000	/* 16mV(16000uV) LSB, Range(0V ~ 16.368V) */
-#define VBAT_STEP	5000	/* 5mV(5000uV) LSB, Range(0V ~ 5.115V) */
-#define IIN_STEP	4890 	/* 4.89mA(4890uA) LSB, Range(0A ~ 5A) */
-#define ICHG_STEP	9780 	/* 9.78mA(9780uA) LSB, Range(0A ~ 10A) */
-#define DIETEMP_STEP  	435	/* 0.435C LSB, Range(-25C ~ 160C) */
-#define DIETEMP_DENOM	1000	/* 1000, denominator */
-#define DIETEMP_MIN 	-25  	/* -25C */
-#define DIETEMP_MAX	160	/* 160C */
-#define VOUT_STEP	5000 	/* 5mV(5000uV) LSB, Range(0V ~ 5.115V) */
-#define NTCV_STEP	2346 	/* 2.346mV(2346uV) LSB, Range(0V ~ 2.4V) */
-#define ADC_IIN_OFFSET	900000	/* 900mA */
-#define NTC_CURVE_THRESHOLD	185
-#define NTC_CURVE_1_BASE	960
-#define NTC_CURVE_1_SHIFT	2
-#define NTC_CURVE_2_BASE	730
-#define NTC_CURVE_2_SHIFT	3
 
 /* adc_gain bit[7:4] of reg 0x31 - 2's complement */
 static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
@@ -403,23 +137,6 @@ enum {
 	REG_STS_MAX
 };
 
-/* Direct Charging State */
-enum {
-	DC_STATE_NO_CHARGING,	/* No charging */
-	DC_STATE_CHECK_VBAT,	/* Check min battery level */
-	DC_STATE_PRESET_DC, 	/* Preset TA voltage/current for DC */
-	DC_STATE_CHECK_ACTIVE,	/* Check active status before Adjust CC mode */
-	DC_STATE_ADJUST_CC,	/* Adjust CC mode */
-	DC_STATE_CC_MODE,	/* Check CC mode status */
-	DC_STATE_START_CV,	/* Start CV mode */
-	DC_STATE_CV_MODE,	/* Check CV mode status */
-	DC_STATE_CHARGING_DONE,	/* Charging Done */
-	DC_STATE_ADJUST_TAVOL,	/* Adjust TA voltage, new TA current < 1000mA */
-	DC_STATE_ADJUST_TACUR,	/* Adjust TA current, new TA current < 1000mA */
-	DC_STATE_MAX,
-};
-
-
 /* CC Mode Status */
 enum {
 	CCMODE_CHG_LOOP,	/* TODO: There is no such thing */
@@ -455,563 +172,18 @@ enum {
 	TIMER_ADJUST_TACUR,
 };
 
-/* PD Message Type */
-enum {
-	PD_MSG_REQUEST_APDO,
-	PD_MSG_REQUEST_FIXED_PDO,
-	WCRX_REQUEST_VOLTAGE,
-};
 
 /* TA increment Type */
 enum {
 	INC_NONE,	/* No increment */
-	INC_TA_VOL, /* TA voltage increment */
-	INC_TA_CUR, /* TA current increment */
-};
-
-
-/* TA Type for the direct charging */
-enum {
-	TA_TYPE_UNKNOWN,
-	TA_TYPE_USBPD,
-	TA_TYPE_WIRELESS,
-};
-
-/* Direct Charging Mode for the direct charging */
-enum {
-	CHG_NO_DC_MODE,
-	CHG_2TO1_DC_MODE,
-	CHG_4TO1_DC_MODE,
+	INC_TA_VOL,	/* TA voltage increment */
+	INC_TA_CUR,	/* TA current increment */
 };
 
 /* IIN offset as the switching frequency in uA*/
 static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
 			      13470, 5460, 6050, 6580, 7150, 7670, 8230, 8720,
 			      9260};
-
-/**
- * struct pca9468_charger - pca9468 charger instance
- * @monitor_wake_lock: lock to enter the suspend mode
- * @lock: protects concurrent access to online variables
- * @dev: pointer to device
- * @regmap: pointer to driver regmap
- * @mains: power_supply instance for AC/DC power
- * @dc_wq: work queue for the algorithm and monitor timer
- * @timer_work: timer work for charging
- * @timer_id: timer id for timer_work
- * @timer_period: timer period for timer_work
- * @last_update_time: last update time after sleep
- * @pps_index: psy index
- * @tcpm_psy_name: name of TCPM power supply
- * @tcpm_phandle: lookup for tcpm power supply
- * @pps_work: pps work for PPS periodic time
- * @pps_data: internal data for dc_pps
- * @pd: phandle for qualcomm PMI usbpd-phy
- * @wlc_psy_name: power supply for wlc DC
- * @wlc_psy: wlc DC ps
- * @mains_online: is AC/DC input connected
- * @charging_state: direct charging state
- * @ret_state: return direct charging state after DC_STATE_ADJUST_TAVOL is done
- * @iin_cc: input current for the direct charging in cc mode, uA
- * @ta_cur: AC/DC(TA) current, uA
- * @ta_vol: AC/DC(TA) voltage, uV
- * @ta_objpos: AC/DC(TA) PDO object position
- * @ta_max_cur: TA maximum current of APDO, uA
- * @ta_max_vol: TA maximum voltage for the direct charging, uV
- * @ta_max_pwr: TA maximum power, uW
- * @prev_iin: Previous IIN ADC of PCA9468, uA
- * @prev_inc: Previous TA voltage or current increment factor
- * @req_new_iin: Request for new input current limit, true or false
- * @req_new_vfloat: Request for new vfloat, true or false
- * @fv_uv: requested float voltage
- * @cc_max: requested charge current max
- * @new_iin: New request input current limit, uA
- * @new_vfloat: New request vfloat, uV
- * @adc_comp_gain: adc gain for compensation
- * @retry_cnt: retry counter for re-starting charging if charging stop happens
- * @ta_type: TA type for the direct charging, USBPD TA or Wireless Charger.
- * @chg_mode: supported DC charging mode 2:1 or 4:1 mode
- * @pdata: pointer to platform data
- * @usb_tzd: device for thermal zone
- * @debug_root: debug entry
- * @debug_address: debug register address
- * @debug_adc_channel: ADC channel to read
- */
-struct pca9468_charger {
-	struct wakeup_source	*monitor_wake_lock;
-	struct mutex		lock;
-	struct device		*dev;
-	struct regmap		*regmap;
-	struct power_supply	*mains;
-
-	struct workqueue_struct	*dc_wq;
-	struct delayed_work	timer_work;
-	unsigned int		timer_id;
-	unsigned long		timer_period;
-	unsigned long		last_update_time;
-
-	/*  Programmable power supply */
-	int pps_index;		/* 0=disabled, 1=tcpm, 2=wireless */
-
-	/* PPS_wireless */
-	const char 		*wlc_psy_name;
-	struct power_supply 	*wlc_psy;
-	/*  PPS_wired with TCPM */
-	u32			tcpm_phandle;
-	const char 		*tcpm_psy_name;
-	struct power_supply 	*pd;
-	struct delayed_work	pps_work;
-	struct pd_pps_data	pps_data;
-
-	bool			mains_online;
-	unsigned int 		charging_state;
-	unsigned int		ret_state;
-
-	unsigned int		iin_cc;
-
-	unsigned int		ta_cur;
-	unsigned int		ta_vol;
-	unsigned int		ta_objpos;
-
-	/* same as pps_data */
-	unsigned int		ta_max_cur;
-	unsigned int		ta_max_vol;
-	unsigned long		ta_max_pwr;
-
-	unsigned int		prev_iin;
-	unsigned int		prev_inc;
-
-	bool			req_new_iin;
-	bool			req_new_vfloat;
-
-	/* requested charging current and voltage */
-	int			fv_uv;
-	int			cc_max;
-
-	unsigned int		new_iin;
-	unsigned int		new_vfloat;
-
-	int			adc_comp_gain;
-
-	int			retry_cnt;
-
-	int			ta_type;
-	unsigned int		chg_mode;
-
-	struct pca9468_platform_data *pdata;
-
-#ifdef CONFIG_THERMAL
-	struct thermal_zone_device *usb_tzd;
-#endif
-	/* debug */
-	struct dentry		*debug_root;
-	u32			debug_address;
-	int			debug_adc_channel;
-};
-
-/* ------------------------------------------------------------------------- */
-
-static struct device_node *pps_find_config(struct device_node * node)
-{
-	struct device_node *temp;
-
-	if (!node)
-		return node;
-	temp = of_parse_phandle(node, "pca9468,google_cpm", 0);
-	if (temp)
-		node = temp;
-	return node;
-}
-
-/* ------------------------------------------------------------------------- */
-
-/* Configure GCPM not needed */
-static int pca9468_set_switching_charger(bool enable,
-					 unsigned int input_current,
-					 unsigned int charging_current,
-					 unsigned int vfloat)
-{
-	int ret = 0;
-
-	/* handled in GCPM */
-
-	pr_debug("%s: End, ret=%d\n", __func__, ret);
-	return ret;
-}
-
-/* force OFF, handled in GCPM */
-static int pca9468_get_swc_property(enum power_supply_property prop,
-				    union power_supply_propval *val)
-{
-	int ret = 0;
-
-
-	switch (prop) {
-	case GBMS_PROP_CHARGING_ENABLED:
-		val->intval = 0;
-		break;
-	default:
-		pr_err("%s: cannot set prop %d\n", __func__, prop);
-		break;
-	}
-
-	pr_debug("%s: End, ret=%d\n", __func__, ret);
-	return ret;
-}
-
-/* ------------------------------------------------------------------------ */
-
-/* switch PDO if needed */
-static int pca9468_request_pdo(struct pca9468_charger *pca9468)
-{
-	int ret = 0;
-
-	pr_debug("%s: ta_objpos=%u, ta_vol=%u, ta_cur=%u\n", __func__,
-		  pca9468->ta_objpos, pca9468->ta_vol, pca9468->ta_cur);
-
-	/*
-	 * the reference implementation call pps_request_pdo() twice with a
-	 * 100 ms delay between the calls when the function returns -EBUSY:
-	 *
-	 * 	ret = pps_request_pdo(&pca9468->pps_data, pca9468->ta_objpos,
-	 *				pca9468->ta_vol, pca9468->ta_cur,
-	 * 				pca9468->pd);
-	 *
-	 * The wrapper in google_dc_pps route the calls to the tcpm engine
-	 * via tcpm_update_sink_capabilities(). The sync capabilities are
-	 * in pps_data, ->ta_objpos select the (A)PDO index, ->ta_vol and
-	 * ->ta_cur are the desired TA voltage and current.
-	 *
-	 * this is now handled by pps_update_adapter()
-	 *
-	 * TODO: verify the timing and make sure that there are no races that
-	 * cause the targets
-	 */
-
-	return ret;
-}
-
-static int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
-{
-	struct power_supply *tcpm_psy;
-	bool online;
-	int ret = 0;
-
-	if (pca9468->pd != NULL)
-		goto check_online;
-
-	if (pca9468->tcpm_psy_name) {
-		tcpm_psy = power_supply_get_by_name(pca9468->tcpm_psy_name);
-		if (!tcpm_psy)
-			return -ENODEV;
-
-		pca9468->pd = tcpm_psy;
-	} else if (pca9468->tcpm_phandle) {
-		struct device_node *node;
-
-		node = pps_find_config(pca9468->dev->of_node);
-		if (!node)
-			return -ENODEV;
-		tcpm_psy = pps_get_tcpm_psy(node, 2);
-		if (IS_ERR(tcpm_psy))
-			return PTR_ERR(tcpm_psy);
-		if (!tcpm_psy) {
-			pca9468->tcpm_phandle = 0;
-			return -ENODEV;
-		}
-
-		pca9468->tcpm_psy_name = tcpm_psy->desc->name;
-		pca9468->pd = tcpm_psy;
-	} else {
-		pr_err("%s: TCPM DC not defined\n", __func__);
-		return -ENODEV;
-	}
-
-	/* not needed if tcpm-power-supply is not there */
-	ret = pps_init(&pca9468->pps_data, pca9468->dev, tcpm_psy);
-	if (ret == 0) {
-		const char *logname = "pca9468_tcpm";
-
-		ret = pps_register_logbuffer(&pca9468->pps_data, logname);
-		if (ret < 0)
-
-		pr_info("pca9468: PPS direct available, log:%s\n",
-			ret < 0 ? "none" : logname);
-
-		pps_init_state(&pca9468->pps_data);
-	}
-
-check_online:
-	online = pps_prog_check_online(&pca9468->pps_data, pca9468->pd);
-	if (!online)
-		return -ENODEV;
-
-	return ret;
-}
-
-
-/* Send Request message to the source */
-/* call holding mutex_lock(&pca9468->lock); */
-static int pca9468_send_pd_message(struct pca9468_charger *pca9468,
-				   unsigned int msg_type)
-{
-	struct pd_pps_data *pps_data = &pca9468->pps_data;
-	struct power_supply *tcpm_psy = pca9468->pd;
-	bool online;
-	int pps_ui;
-	int ret;
-
-	mutex_lock(&pca9468->lock);
-
-	if (!tcpm_psy || (pca9468->charging_state == DC_STATE_NO_CHARGING &&
-	    msg_type == PD_MSG_REQUEST_APDO) || !pca9468->mains_online) {
-		pr_debug("%s: failure tcpm_psy_ok=%d charging_state=%u online=%d",
-			__func__,  tcpm_psy != 0, pca9468->charging_state,
-			pca9468->mains_online);
-		mutex_unlock(&pca9468->lock);
-		return -EINVAL;
-	}
-
-	/* false when offline (0) or not in prog (1) mode */
-	online = pps_prog_check_online(&pca9468->pps_data, tcpm_psy);
-	if (!online) {
-		pr_debug("%s: not online", __func__);
-		mutex_unlock(&pca9468->lock);
-		return -EINVAL;
-	}
-
-	/* request offline */
-	if (msg_type == PD_MSG_REQUEST_FIXED_PDO) {
-		ret = pps_prog_offline(&pca9468->pps_data, tcpm_psy);
-		pr_debug("%s: requesting offline ret=%d\n", __func__, ret);
-		/* TODO: reset state? */
-		mutex_unlock(&pca9468->lock);
-		return ret;
-	}
-
-	pr_info("%s: tcpm_psy_ok=%d pd_online=%d pps_stage=%d charging_state=%u",
-		__func__,  tcpm_psy != 0,  pps_data->pd_online,
-		pps_data->stage, pca9468->charging_state);
-
-	if (pca9468->pps_data.stage == PPS_ACTIVE) {
-
-		/* not sure I need to do this */
-		ret = pca9468_request_pdo(pca9468);
-		if (ret == 0) {
-			const int pre_out_uv = pps_data->out_uv;
-			const int pre_out_ua = pps_data->op_ua;
-
-			pr_debug("%s: ta_vol=%u, ta_cur=%u, ta_objpos=%u\n",
-				__func__, pca9468->ta_vol, pca9468->ta_cur,
-				pca9468->ta_objpos);
-
-			pps_ui = pps_update_adapter(&pca9468->pps_data,
-						    pca9468->ta_vol,
-						    pca9468->ta_cur,
-						    tcpm_psy);
-
-			pr_info("%s: out_uv=%d %d->%d, out_ua=%d %d->%d (%d)\n",
-				__func__,
-				pps_data->out_uv, pre_out_uv, pca9468->ta_vol,
-				pps_data->op_ua, pre_out_ua,  pca9468->ta_cur,
-				pps_ui);
-
-			if (pps_ui < 0)
-				pps_ui = 1000;
-		} else {
-			pr_debug("%s: request_pdo failed ret=%d\n",
-				 __func__, ret);
-			pps_ui = 1000;
-		}
-
-	} else {
-		ret = pps_keep_alive(pps_data, tcpm_psy);
-		if (ret == 0)
-			pps_ui = PD_T_PPS_TIMEOUT;
-
-		pr_debug("%s: keep alive ret=%d\n", __func__, ret);
-	}
-
-	if (((pca9468->charging_state == DC_STATE_NO_CHARGING) &&
-		(msg_type == PD_MSG_REQUEST_APDO)) ||
-		(pca9468->mains_online == false)) {
-
-		/*
-		 *  Vbus reset might occour even when PD comms is successful.
-		 * Check again.
-		 */
-		pps_ui = -EINVAL;
-	}
-
-	pr_debug("%s: pps_ui = %d\n", __func__, pps_ui);
-	if (pps_ui > 0)
-		schedule_delayed_work(&pca9468->pps_work, msecs_to_jiffies(pps_ui));
-
-	mutex_unlock(&pca9468->lock);
-	return pps_ui;
-}
-
-/* Get the max current/voltage/power of APDO from the CC/PD driver */
-/* This function needs some modification by a customer */
-static int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
-{
-	int ret = 0;
-
-	/* check the phandle */
-	ret = pca9468_usbpd_setup(pca9468);
-	if (ret != 0) {
-		dev_err(pca9468->dev, "cannot find TCPM %d\n", ret);
-		pca9468->pd = NULL;
-		return ret;
-	}
-
-	/* technically already in pda_data since check online does it */
-	ret = pps_get_src_cap(&pca9468->pps_data, pca9468->pd);
-	if (ret < 0)
-		return ret;
-
-	ret = pps_get_apdo_max_power(&pca9468->pps_data, &pca9468->ta_objpos,
-				     &pca9468->ta_max_vol, &pca9468->ta_max_cur,
-				     &pca9468->ta_max_pwr);
-	if (ret < 0) {
-		pr_err("cannot determine the apdo max power ret = %d\n", ret);
-		return ret;
-	}
-
-	pr_info("%s APDO pos=%u max_v=%u max_c=%u max_pwr=%lu\n", __func__,
-		pca9468->ta_objpos, pca9468->ta_max_vol, pca9468->ta_max_cur,
-		pca9468->ta_max_pwr);
-
-	return 0;
-}
-
-/******************/
-/* Set RX voltage */
-/******************/
-
-static struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
-{
-	const char *wlc_psy_name = pca9468->wlc_psy_name;
-
-	if (!wlc_psy_name) {
-		dev_err(pca9468->dev, "%s: WLC PS name not defined\n", __func__);
-		wlc_psy_name = "wireless";
-	}
-
-	if (!pca9468->wlc_psy) {
-		struct power_supply *psy;
-
-		/* Get power supply name */
-		psy = power_supply_get_by_name(wlc_psy_name);
-		if (!psy) {
-			dev_err(pca9468->dev, "%s Cannot find %s power supply\n",
-				__func__, wlc_psy_name);
-			return NULL;
-		}
-
-		pca9468->wlc_psy = psy;
-	}
-
-	return pca9468->wlc_psy;
-}
-
-/* Send RX voltage to RX IC */
-/* This function needs some modification by a customer */
-static int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
-				   unsigned int msg_type)
-{
-	union power_supply_propval pro_val;
-	struct power_supply *wlc_psy;
-	int ret = 0;
-
-	mutex_lock(&pca9468->lock);
-
-	/* Vbus reset happened in the previous PD communication */
-	if (pca9468->mains_online == false)
-		goto out;
-
-	wlc_psy = pca9468_get_rx_psy(pca9468);
-	if (!wlc_psy) {
-		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
-		ret = -ENODEV;
-		goto out;
-	}
-
-	pr_info("%s: rx_vol=%d\n", __func__, pca9468->ta_vol);
-
-	/* Set the RX voltage */
-	pro_val.intval = pca9468->ta_vol;
-
-	/* Set the property */
-	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
-					&pro_val);
-	if (ret < 0)
-		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
-			pro_val.intval, ret);
-
-out:
-	/* Vbus reset might happen, check the charging state again */
-	if (pca9468->mains_online == false)
-		ret = -EINVAL;
-
-	pr_info("%s: ret=%d\n", __func__, ret);
-	mutex_unlock(&pca9468->lock);
-	return ret;
-}
-
-
-/************************/
-/* Get RX max power    */
-/************************/
-
-/* Get the max current/voltage/power of RXIC from the WCRX driver */
-/* TODO: just ask the ->pd since GCPM will take care of this */
-static int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
-{
-	union power_supply_propval pro_val;
-	struct power_supply *wlc_psy;
-	int ret = 0;
-
-	wlc_psy = pca9468_get_rx_psy(pca9468);
-	if (!wlc_psy)
-		return -ENODEV;
-
-	/* Get the maximum voltage */
-	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
-					&pro_val);
-	if (ret < 0) {
-		dev_err(pca9468->dev, "%s Cannot get the maximum RX voltage (%d)\n",
-			__func__, ret);
-		return ret;
-	}
-
-	/* RX IC cannot support the request maximum voltage */
-	if (pca9468->ta_max_vol > pro_val.intval) {
-		dev_err(pca9468->dev, "%s max %d cannot support ta_max %d voltage\n",
-			__func__, pro_val.intval, pca9468->ta_max_vol);
-		return -EINVAL;
-	}
-
-	pca9468->ta_max_vol = pro_val.intval;
-
-	/* Get the maximum current */
-	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_CURRENT_MAX,
-					&pro_val);
-	if (ret < 0) {
-		dev_err(pca9468->dev, "%s Cannot get the maximum RX current (%d)\n",
-			__func__, ret);
-		return ret;
-	}
-
-	pca9468->ta_max_cur = pro_val.intval;
-	pca9468->ta_max_pwr = (pca9468->ta_max_vol / 1000) *
-			      (pca9468->ta_max_cur / 1000);
-
-	dev_info(pca9468->dev, "%s wlc max_cur=%d max_pwr=%ld\n",
-		 __func__, pca9468->ta_max_cur, pca9468->ta_max_pwr);
-
-	return 0;
-}
 
 /* ------------------------------------------------------------------------ */
 
@@ -1460,7 +632,7 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return -EIO;
 
-	pr_info("%s: RCP check, STS_B=0x%x\n",	__func__, reg_val);
+	pr_debug("%s: RCP check, STS_B=0x%x\n",	__func__, reg_val);
 
 	/* Check Active status */
 	if (reg_val & PCA9468_BIT_ACTIVE_STATE_STS) {
@@ -1532,7 +704,7 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 			ret = -EINVAL;
 		}
 
-		pr_info("%s: Active Status=%d\n", __func__, ret);
+		pr_debug("%s: Active Status=%d\n", __func__, ret);
 		return ret;
 	}
 
@@ -1574,7 +746,7 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: Not Active Status=%d\n", __func__, ret);
+	pr_debug("%s: Not Active Status=%d\n", __func__, ret);
 	return -EINVAL;
 }
 
@@ -1603,7 +775,7 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: CCMODE Status=%d\n", __func__, ret);
+	pr_debug("%s: CCMODE Status=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -1634,7 +806,7 @@ static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: CVMODE Status=%d\n", __func__, ret);
+	pr_debug("%s: CVMODE Status=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -3401,7 +2573,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 	}
 
 error:
-	pr_info("%s: End, ret=%d\n", __func__, ret);
+	pr_debug("%s: End, ret=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -3912,27 +3084,6 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 	return ret;
 }
 
-static int pca9468_get_ta_type(struct pca9468_charger *pca9468)
-{
-	int ta_type = TA_TYPE_UNKNOWN;
-
-	if (pca9468->pps_index == PPS_INDEX_TCPM) {
-		int ret;
-
-		ret = pca9468_usbpd_setup(pca9468);
-		if (ret != 0) {
-			dev_err(pca9468->dev, "Cannot find the TA %d\n", ret);
-			return ret;
-		}
-
-		ta_type = TA_TYPE_USBPD;
-	} else if (pca9468->pps_index == PPS_INDEX_WLC) {
-		ta_type = TA_TYPE_WIRELESS;
-	}
-
-	return ta_type;
-}
-
 /* Enter direct charging algorithm */
 static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 {
@@ -3972,14 +3123,11 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	pca9468->ta_type = pca9468_get_ta_type(pca9468);
-	pr_info("%s: Current ta_type=%d\n", __func__, pca9468->ta_type);
-	if (pca9468->ta_type == PPS_INDEX_TCPM)
-		pca9468->pdata->chg_mode = CHG_2TO1_DC_MODE;
-	else if (pca9468->ta_type == PPS_INDEX_WLC)
-		pca9468->pdata->chg_mode = CHG_4TO1_DC_MODE;
-	else if (pca9468->ta_type == TA_TYPE_UNKNOWN)
-		return -EINVAL;
+	ret = pca9468_set_ta_type(pca9468);
+	pr_info("%s: Current ta_type=%d, chg_mode=%d\n", __func__,
+		pca9468->ta_type, pca9468->pdata->chg_mode);
+	if (ret < 0)
+		return ret;
 
 	/* wake lock */
 	__pm_stay_awake(pca9468->monitor_wake_lock);
@@ -4546,11 +3694,8 @@ fail:
 	return ret;
 }
 
-/*
- * Returns the input current limit programmed
- * into the charger in uA.
- */
-static int get_input_current_limit(struct pca9468_charger *pca9468)
+/* Returns the input current limit programmed into the charger in uA. */
+int pca9468_input_current_limit(struct pca9468_charger *pca9468)
 {
 	int ret, intval;
 	unsigned int val;
@@ -4669,6 +3814,13 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 	switch (prop) {
 
 	case POWER_SUPPLY_PROP_ONLINE:
+		if (val->intval == 0) {
+			ret = pca9468_stop_charging(pca9468);
+			if (ret < 0)
+				pr_err("%s: cannot stop charging (%d)\n",
+				       __func__, ret);
+		}
+
 		pca9468->mains_online = val->intval;
 		break;
 
@@ -4693,7 +3845,12 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		}
 		break;
 
-	/* pcaA9468 cannot control charging current directly. */
+	/*
+	 * pcaA9468 cannot control charging current directly.
+	 * NOTE: using POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX as
+	 * new_iin, might be wise to use it to CALCULATE iin given the
+	 * current state.
+	 */
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
@@ -4722,117 +3879,6 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 	pr_debug("%s: End, ret=%d\n", __func__, ret);
 	return ret;
-}
-
-static int pca9468_get_charge_type(struct pca9468_charger *pca9468)
-{
-	int ret, sts;
-
-	if (!pca9468->mains_online)
-		return POWER_SUPPLY_CHARGE_TYPE_NONE;
-
-	ret = regmap_read(pca9468->regmap, PCA9468_REG_STS_A, &sts);
-	if (ret < 0)
-		return ret;
-
-	pr_debug("%s: sts_a=%0x2\n", __func__, sts);
-
-	/* Use SW state for now */
-	switch (pca9468->charging_state) {
-	case DC_STATE_ADJUST_CC:
-	case DC_STATE_CC_MODE:
-		return POWER_SUPPLY_CHARGE_TYPE_FAST;
-	case DC_STATE_START_CV:
-	case DC_STATE_CV_MODE:
-		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
-	case DC_STATE_CHARGING_DONE:
-		break;
-	}
-
-	return POWER_SUPPLY_CHARGE_TYPE_NONE;
-}
-
-#define PCA9468_NOT_CHARGING \
-	(PCA9468_BIT_SHUTDOWN_STATE_STS | PCA9468_BIT_STANDBY_STATE_STS)
-#define PCA9468_ANY_CHARGING_LOOP \
-	(PCA9468_BIT_CHG_LOOP_STS | PCA9468_BIT_IIN_LOOP_STS | \
-	PCA9468_BIT_VFLT_LOOP_STS)
-
-static int pca9468_get_status(struct pca9468_charger *pca9468)
-{
-	u8 val[8];
-	int ret;
-
-	ret = regmap_bulk_read(pca9468->regmap, PCA9468_REG_INT1_STS,
-			       &val[PCA9468_REG_INT1_STS], 5);
-	if (ret < 0) {
-		pr_debug("%s: ioerr=%d", __func__, ret);
-		return POWER_SUPPLY_STATUS_UNKNOWN;
-	}
-
-	pr_debug("%s: int1_sts=0x%x,sts_a=0x%x,sts_b=0x%x,sts_c=0x%x,sts_d=0x%x\n",
-		 __func__,  val[3], val[4], val[5], val[6], val[7]);
-
-	if ((val[PCA9468_REG_STS_B] & PCA9468_BIT_ACTIVE_STATE_STS) == 0 ||
-	    (val[PCA9468_REG_INT1_STS] & PCA9468_BIT_V_OK_STS) == 0) {
-		const bool online = pca9468->mains_online;
-
-		/* no disconnect during charger transition */
-		return online ? POWER_SUPPLY_STATUS_NOT_CHARGING :
-		       POWER_SUPPLY_STATUS_DISCHARGING;
-	}
-
-	/* Use SW state (for now) */
-	switch (pca9468->charging_state) {
-	case DC_STATE_NO_CHARGING:
-	case DC_STATE_CHECK_VBAT:
-	case DC_STATE_PRESET_DC:
-	case DC_STATE_CHECK_ACTIVE: /* last state really */
-		return POWER_SUPPLY_STATUS_NOT_CHARGING;
-	case DC_STATE_ADJUST_CC:
-	case DC_STATE_CC_MODE:
-	case DC_STATE_START_CV:
-	case DC_STATE_CV_MODE:
-		return POWER_SUPPLY_STATUS_CHARGING;
-	case DC_STATE_CHARGING_DONE:
-	default:
-		break;
-	}
-
-	return POWER_SUPPLY_STATUS_UNKNOWN;
-}
-
-#define PCA9468_PRESENT_MASK \
-	(PCA9468_BIT_ACTIVE_STATE_STS | PCA9468_BIT_STANDBY_STATE_STS)
-
-static int pca9468_is_present(struct pca9468_charger *pca9468)
-{
-	int sts = 0;
-
-	regmap_read(pca9468->regmap, PCA9468_REG_STS_B, &sts);
-	return !!(sts & PCA9468_PRESENT_MASK);
-}
-
-static int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
-				      union gbms_charger_state *chg_state)
-{
-	chg_state->v = 0;
-	chg_state->f.chg_status = pca9468_get_status(pca9468);
-	chg_state->f.chg_type = pca9468_get_charge_type(pca9468);
-	chg_state->f.flags = gbms_gen_chg_flags(chg_state->f.chg_status,
-						chg_state->f.chg_type);
-
-	/* chg_state->f.vchrg == 0, disable tier matching */
-
-	if (chg_state->f.chg_status != POWER_SUPPLY_STATUS_DISCHARGING) {
-		int rc;
-
-		rc = get_input_current_limit(pca9468);
-		if (rc > 0)
-			chg_state->f.icl = rc / 1000;
-	}
-
-	return 0;
 }
 
 static int pca9468_mains_get_property(struct power_supply *psy,
@@ -4884,7 +3930,7 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 		break;
 
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		ret = get_input_current_limit(pca9468);
+		ret = pca9468_input_current_limit(pca9468);
 		if (ret < 0)
 			return ret;
 		val->intval = ret;
@@ -4948,7 +3994,7 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 		break;
 
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		ret = get_input_current_limit(pca9468);
+		ret = pca9468_input_current_limit(pca9468);
 		if (ret < 0)
 			return ret;
 		val->intval = ret;
@@ -5258,40 +4304,6 @@ static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 	return 0;
 }
 
-
-static int pca9468_probe_pps(struct pca9468_charger *pca9468_chg)
-{
-	const char *tmp_name = NULL;
-	bool pps_available = false;
-	struct device_node *node;
-	int ret;
-
-	node = pps_find_config(pca9468_chg->dev->of_node);
-	if (!node)
-		return -ENODEV;
-
-        ret = of_property_read_u32(node, "google,tcpm-power-supply",
-                                   &pca9468_chg->tcpm_phandle);
-       if (ret < 0)
-		pr_warn("pca9468: pca,tcpm-power-supply not defined\n");
-	else
-		pps_available |= true;
-
-	ret = of_property_read_string(node, "google,wlc_dc-power-supply",
-				      &tmp_name);
-	if (ret < 0)
-		pr_warn("pca9468: google,wlc_dc-power-supply not defined\n");
-	if (ret == 0) {
-		pca9468_chg->wlc_psy_name =
-			devm_kstrdup(pca9468_chg->dev, tmp_name, GFP_KERNEL);
-		if (!pca9468_chg->wlc_psy_name)
-			return -ENOMEM;
-
-		pps_available |= true;
-	}
-
-	return pps_available ? 0 : -ENODEV;
-}
 
 static int pca9468_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)

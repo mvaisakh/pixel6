@@ -113,6 +113,9 @@ struct max77729_pmic_data {
 	struct dentry *de;
 
 	struct delayed_work storage_init_work;
+
+	/* debug interface, register to read or write */
+	u32 debug_reg_address;
 };
 
 static bool max77729_pmic_is_reg(struct device *dev, unsigned int reg)
@@ -320,11 +323,11 @@ static irqreturn_t max777x9_pmic_irq(int irq, void *ptr)
 			if (!data->ovp_client_data)
 				get_ovp_client_data(data);
 
-			if (data->ovp_client_data)
-				max20339_irq(data->ovp_client_data);
-
 			max77729_pmic_wr8(data, MAX77759_PMIC_UIC_INT1,
 					  MAX77759_PMIC_UIC_INT1_GPIO6I);
+
+			if (data->ovp_client_data)
+				max20339_irq(data->ovp_client_data);
 		}
 	}
 
@@ -631,6 +634,30 @@ static int debug_batt_thm_conn_get(void *d, u64 *val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(debug_batt_thm_conn_fops, debug_batt_thm_conn_get, NULL, "%llu\n");
 
+static int max777x9_pmic_debug_reg_read(void *d, u64 *val)
+{
+	struct max77729_pmic_data *data = d;
+	u8 reg = 0;
+	int ret;
+
+	ret = max77729_pmic_rd8(data, data->debug_reg_address, &reg);
+	if (ret)
+		return ret;
+	*val = reg;
+	return 0;
+}
+
+static int max777x9_pmic_debug_reg_write(void *d, u64 val)
+{
+	struct max77729_pmic_data *data = d;
+	u8 reg = (u8) val;
+
+	pr_warn("debug write reg 0x%x, 0x%x", data->debug_reg_address, reg);
+	return max77729_pmic_wr8(data, data->debug_reg_address, reg);
+}
+DEFINE_SIMPLE_ATTRIBUTE(debug_reg_rw_fops, max777x9_pmic_debug_reg_read,
+			max777x9_pmic_debug_reg_write, "%02llx\n");
+
 static int max77759_pmic_storage_iter(int index, gbms_tag_t *tag, void *ptr)
 {
 	if (index < 0 || index > (GBMS_TAG_RRS7 - GBMS_TAG_RRS0))
@@ -720,6 +747,9 @@ static int dbg_init_fs(struct max77729_pmic_data *data)
 			    &debug_batt_id_fops);
 	debugfs_create_file("batt_thm_conn", 0400, data->de, data,
 			    &debug_batt_thm_conn_fops);
+
+	debugfs_create_u32("address", 0600, data->de, &data->debug_reg_address);
+	debugfs_create_file("data", 0600, data->de, data, &debug_reg_rw_fops);
 
 	return 0;
 }

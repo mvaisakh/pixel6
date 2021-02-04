@@ -18,7 +18,10 @@
 #include "max20339.h"
 
 #define MAX20339_STATUS1			0x1
+#define MAX20339_STATUS1_VINVALID		BIT(5)
 #define MAX20339_STATUS2			0x2
+#define MAX20339_STATUS_SWITCH_CLOSED		BIT(0)
+
 #define MAX20339_STATUS3			0x3
 #define MAX20339_INT1				0x4
 #define MAX20339_INT2				0x5
@@ -46,14 +49,19 @@
 #define MAX20338_SW_CNTL_LSW2_OV_EN_MASK	0x20
 
 #define MAX20339_MIN_GPIO			0
-#define MAX20339_MAX_GPIO			1
-#define MAX20339_NUM_GPIOS			2
+#define MAX20339_MAX_GPIO			3
+#define MAX20339_NUM_GPIOS			4
 #define MAX20339_LSW1_OFF			0
 #define MAX20339_LSW2_OFF			1
+#define MAX20339_LSW1_STATUS_OFF		2
+#define MAX20339_VIN_VALID_OFF			3
+
+#define MAX20339_GPIO_GET_TIMEOUT_MS		100
 
 struct max20339_ovp {
 	struct i2c_client *client;
 	struct regmap *regmap;
+	wait_queue_head_t gpio_get_wq;
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
 #endif
@@ -84,6 +92,8 @@ void max20339_irq(void *data)
 
 	if (!ovp)
 		return;
+
+	wake_up_all(&ovp->gpio_get_wq);
 
 	dev = &ovp->client->dev;
 	ret = regmap_bulk_read(ovp->regmap, MAX20339_STATUS1, buf, ARRAY_SIZE(buf));
@@ -155,33 +165,80 @@ static int max20339_gpio_get_direction(struct gpio_chip *chip,
 	return GPIOF_DIR_OUT;
 }
 
+static bool max20339_is_lsw_closed(struct max20339_ovp *ovp, int offset)
+{
+	int ret;
+	unsigned int val;
+
+	ret = regmap_read(ovp->regmap, offset ==  MAX20339_LSW1_OFF ? MAX20339_STATUS2 :
+			  MAX20339_STATUS3, &val);
+	if (ret < 0)
+		return false;
+	return val & MAX20339_STATUS_SWITCH_CLOSED;
+}
+
+static bool max20339_is_vin_valid(struct max20339_ovp *ovp)
+{
+	int ret;
+	unsigned int val;
+
+	ret = regmap_read(ovp->regmap, MAX20339_STATUS1, &val);
+	if (ret < 0)
+		return false;
+
+	return (val & MAX20339_STATUS_SWITCH_CLOSED) != 0;
+}
+
 static int max20339_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
 	int ret;
 	unsigned int val;
 	u8 mask;
 	u8 shift;
+	int reg;
 	struct max20339_ovp *ovp = gpiochip_get_data(chip);
 
 	switch (offset) {
 	case MAX20339_LSW1_OFF:
 		mask = MAX20339_SW_CNTL_LSW1_EN_MASK;
 		shift = MAX20339_SW_CNTL_LSW1_EN_SHIFT;
+		reg = MAX20339_SW_CNTL_REG;
 		break;
 	case MAX20339_LSW2_OFF:
 		mask = MAX20339_SW_CNTL_LSW2_EN_MASK;
 		shift = MAX20339_SW_CNTL_LSW2_EN_SHIFT;
+		reg = MAX20339_SW_CNTL_REG;
+		break;
+	case MAX20339_LSW1_STATUS_OFF:
+		reg = MAX20339_STATUS2;
+		break;
+	case MAX20339_VIN_VALID_OFF:
+		reg = MAX20339_STATUS1;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	ret = regmap_read(ovp->regmap, MAX20339_SW_CNTL_REG, &val);
+	ret = regmap_read(ovp->regmap, reg, &val);
 	if (ret < 0) {
-		dev_err(&ovp->client->dev, "SW_CNTL read error: ret %d\n", ret);
+		dev_err(&ovp->client->dev, "%x read error: ret %d\n", reg, ret);
 		return ret;
 	}
 
+	if (offset == MAX20339_LSW1_STATUS_OFF) {
+		if (val & MAX20339_STATUS_SWITCH_CLOSED)
+			return 1;
+		wait_event_timeout(ovp->gpio_get_wq,
+				   max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF),
+				   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
+		return max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) ? 1 : 0;
+	} else if (offset == MAX20339_VIN_VALID_OFF) {
+		if (val & MAX20339_STATUS1_VINVALID)
+			return 1;
+		wait_event_timeout(ovp->gpio_get_wq, max20339_is_vin_valid(ovp),
+				   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
+		return max20339_is_vin_valid(ovp) ? 1 : 0;
+	}
 	return (val & mask) >> shift;
 }
 
@@ -252,6 +309,7 @@ static int max20339_probe(struct i2c_client *client,
 
 	max20339_init_regs(ovp->regmap, &client->dev);
 	i2c_set_clientdata(client, ovp);
+	init_waitqueue_head(&ovp->gpio_get_wq);
 
 	/* Read to clear interrupts */
 	max20339_irq(ovp);

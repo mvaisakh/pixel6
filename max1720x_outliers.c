@@ -141,7 +141,8 @@ static int max1720x_capacity_check(int fullcapnom, int cycle_count,
 int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 			 struct max17x0x_regmap *map,
 			 int cycle_count,
-			 int plugged)
+			 int plugged,
+			 int lsb)
 {
 	u16 temp, vfsoc = 0, repsoc = 0, fullcapnom, mixcap, repcap, fcrep;
 	int capacity, new_capacity;
@@ -155,8 +156,7 @@ int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 	if (err < 0)
 		return err;
 
-	/* TODO: fix for TaskPeriod == 351ms b/177099997 */
-	capacity = reg_to_micro_amp_h(fullcapnom, ddata->rsense) / 1000;
+	capacity = reg_to_micro_amp_h(fullcapnom, ddata->rsense, lsb) / 1000;
 
 	/* return the expected FCN, done if the same of th eold one */
 	new_capacity = max1720x_capacity_check(capacity, cycle_count, ddata);
@@ -170,7 +170,7 @@ int max1720x_fixup_dxacc(struct max1720x_drift_data *ddata,
 	 */
 
 	/* TODO: fix for TaskPeriod == 351ms b/177099997 */
-	fcrep = micro_amp_h_to_reg(new_capacity * 1000, ddata->rsense);
+	fcrep = micro_amp_h_to_reg(new_capacity * 1000, ddata->rsense, lsb);
 	dqacc = fcrep >> 4;
 	dpacc = 0xc80;
 

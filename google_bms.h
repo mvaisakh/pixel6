@@ -334,6 +334,8 @@ enum gbms_charger_modes {
 	GBMS_USB_BUCK_ON	= 0x30,
 	GBMS_USB_OTG_ON 	= 0x31,
 	GBMS_USB_OTG_FRS_ON	= 0x32,
+
+	GBMS_CHGR_MODE_WLC_TX	= 0x40,
 };
 
 #define GBMS_MODE_VOTABLE "CHARGER_MODE"

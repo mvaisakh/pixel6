@@ -73,6 +73,7 @@ p9221-objs += p9221_chip.o
 # Standalone for pca9468
 obj-$(CONFIG_PCA9468)		+= pca9468.o
 pca9468-objs += pca9468_charger.o
+pca9468-objs += pca9468_gbms_pps.o
 pca9468-objs += google_dc_pps.o
 
 # Alternate (untested) standalone for max77729f sans FG
@@ -103,6 +104,7 @@ CFLAGS_max77759_charger.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max77729_charger.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max1720x_battery.o += $(WENUMS)
 CFLAGS_pca9468_charger.o += $(WENUMS)
+CFLAGS_pca9468_gbms_pps.o += $(WENUMS)
 CFLAGS_google_battery.o += $(WENUMS)
 CFLAGS_google_ttf.o += -Wno-format
 CFLAGS_google_charger.o += -Wno-enum-conversion
