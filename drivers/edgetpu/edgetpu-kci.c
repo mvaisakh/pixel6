@@ -568,15 +568,6 @@ int edgetpu_kci_unmap_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
-int edgetpu_kci_ack(struct edgetpu_kci *kci)
-{
-	struct edgetpu_command_element cmd = {
-		.code = KCI_CODE_ACK,
-	};
-
-	return edgetpu_kci_send_cmd(kci, &cmd);
-}
-
 int edgetpu_kci_map_log_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 			       u32 size)
 {
@@ -688,8 +679,8 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 
 	/* If allocation failed still try handshake without full fw_info */
 	if (ret) {
-		etdev_warn(etdev, "%s: failed to allocate fw info buffer",
-			   __func__);
+		etdev_warn(etdev, "%s: error setting up fw info buffer: %d",
+			   __func__, ret);
 		memset(fw_info, 0, sizeof(*fw_info));
 	} else {
 		memset(mem.vaddr, 0, sizeof(*fw_info));
@@ -731,7 +722,7 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	return flavor;
 }
 
-void edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
+int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 {
 #define EDGETPU_USAGE_BUFFER_SIZE	4096
 	struct edgetpu_command_element cmd = {
@@ -751,22 +742,23 @@ void edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 	if (ret) {
 		etdev_warn_once(etdev, "%s: failed to allocate usage buffer",
 				__func__);
-		return;
+		return ret;
 	}
 
 	cmd.dma.address = mem.tpu_addr;
 	cmd.dma.size = EDGETPU_USAGE_BUFFER_SIZE;
-	memset(mem.vaddr, 0, sizeof(struct usage_tracker_header));
+	memset(mem.vaddr, 0, sizeof(struct edgetpu_usage_header));
 	ret = edgetpu_kci_send_cmd_return_resp(etdev->kci, &cmd, &resp);
 
 	if (ret == KCI_ERROR_UNIMPLEMENTED || ret == KCI_ERROR_UNAVAILABLE)
 		etdev_dbg(etdev, "firmware does not report usage\n");
 	else if (ret == KCI_ERROR_OK)
 		edgetpu_usage_stats_process_buffer(etdev, mem.vaddr);
-	else
+	else if (ret != -ETIMEDOUT)
 		etdev_warn_once(etdev, "%s: error %d", __func__, ret);
 
 	edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
+	return ret;
 }
 
 /* debugfs mappings dump */

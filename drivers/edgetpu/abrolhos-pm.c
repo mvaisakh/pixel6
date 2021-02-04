@@ -434,7 +434,8 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 }
 
 static void
-abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
+abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
+			      struct edgetpu_dev *etdev,
 			      struct abrolhos_platform_dev *edgetpu_pdev)
 {
 	if (!edgetpu_pchannel_power_down(etdev, false))
@@ -449,6 +450,8 @@ abrolhos_pm_shutdown_firmware(struct edgetpu_dev *etdev,
 
 	cancel_work_sync(&etdev->kci->work);
 	etdev_warn(etdev, "Forcing shutdown through power policy\n");
+	/* Request GSA shutdown to make sure the R52 core is reset */
+	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
 	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
 	pm_runtime_put_sync(etdev->dev);
 	/*
@@ -483,7 +486,8 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	if (etdev->kci && edgetpu_firmware_status_locked(etdev) == FW_VALID) {
 		/* Update usage stats before we power off fw. */
 		edgetpu_kci_update_usage(etdev);
-		abrolhos_pm_shutdown_firmware(etdev, edgetpu_pdev);
+		abrolhos_pm_shutdown_firmware(edgetpu_pdev, etdev,
+					      edgetpu_pdev);
 		cancel_work_sync(&etdev->kci->work);
 	}
 

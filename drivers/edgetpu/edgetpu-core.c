@@ -33,6 +33,10 @@
 #include "edgetpu-usage-stats.h"
 #include "edgetpu.h"
 
+#define UNLOCK(client) mutex_unlock(&client->group_lock)
+#define LOCK_IN_GROUP(client)                           \
+	({ mutex_lock(&client->group_lock); client->group ? 0 : -EINVAL; })
+
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
 
 /* TODO(b/156444816): Check permission. */
@@ -98,7 +102,7 @@ static const struct vm_operations_struct edgetpu_vma_ops = {
 /* Map exported device CSRs or queue into user space. */
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 {
-	int ret;
+	int ret = 0;
 
 	if (vma->vm_start & ~PAGE_MASK) {
 		etdev_dbg(client->etdev,
@@ -137,19 +141,17 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 		return edgetpu_mmap_telemetry_buffer(
 			client->etdev, EDGETPU_TELEMETRY_TRACE, vma);
 
-	mutex_lock(&client->group_lock);
-	if (!client->group) {
-		mutex_unlock(&client->group_lock);
-		return -EINVAL;
-	}
-
 	switch (vma->vm_pgoff) {
 	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
 		mutex_lock(&client->wakelock.lock);
-		if (!client->wakelock.req_count)
+		if (!client->wakelock.req_count) {
 			ret = -EAGAIN;
-		else
-			ret = edgetpu_mmap_csr(client->group, vma);
+		} else {
+			ret = LOCK_IN_GROUP(client);
+			if (!ret)
+				ret = edgetpu_mmap_csr(client->group, vma);
+			UNLOCK(client);
+		}
 		if (!ret)
 			client->wakelock.csr_map_count++;
 		etdev_dbg(client->etdev, "%s: mmap CSRS. count = %u ret = %d\n",
@@ -157,17 +159,23 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 		mutex_unlock(&client->wakelock.lock);
 		break;
 	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
-		ret = edgetpu_mmap_queue(client->group, MAILBOX_CMD_QUEUE, vma);
+		ret = LOCK_IN_GROUP(client);
+		if (!ret)
+			ret = edgetpu_mmap_queue(client->group,
+						 MAILBOX_CMD_QUEUE, vma);
+		UNLOCK(client);
 		break;
 	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
-		ret = edgetpu_mmap_queue(client->group, MAILBOX_RESP_QUEUE,
-					 vma);
+		ret = LOCK_IN_GROUP(client);
+		if (!ret)
+			ret = edgetpu_mmap_queue(client->group,
+						 MAILBOX_RESP_QUEUE, vma);
+		UNLOCK(client);
 		break;
 	default:
 		ret = -EINVAL;
 		break;
 	}
-	mutex_unlock(&client->group_lock);
 	return ret;
 }
 

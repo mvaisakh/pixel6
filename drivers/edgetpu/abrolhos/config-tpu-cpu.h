@@ -20,7 +20,8 @@
 
 /* Power Control signals for P-channel interface. */
 #define EDGETPU_REG_POWER_CONTROL			0xA0008
-#define PSTATE						(1 << 0)
+#define PSTATE_SHIFT					0
+#define PSTATE						(1 << PSTATE_SHIFT)
 #define PREQ						(1 << 1)
 #define PDENY						(1 << 2)
 #define PACCEPT						(1 << 3)
