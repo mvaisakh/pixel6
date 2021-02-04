@@ -287,6 +287,8 @@ struct exynos_panel {
 	struct regulator *vci;
 	struct regulator *vddi;
 	struct regulator *vddd;
+	struct regulator *vddr_en;
+	struct regulator *vddr;
 	struct exynos_drm_connector exynos_connector;
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;

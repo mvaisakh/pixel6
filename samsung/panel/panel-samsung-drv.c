@@ -113,6 +113,18 @@ static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 		ctx->vddd = reg;
 	}
 
+	reg = devm_regulator_get_optional(dev, "vddr_en");
+	if (!PTR_ERR_OR_ZERO(reg)) {
+		dev_dbg(ctx->dev, "panel vddr_en found\n");
+		ctx->vddr_en = reg;
+	}
+
+	reg = devm_regulator_get_optional(dev, "vddr");
+	if (!PTR_ERR_OR_ZERO(reg)) {
+		dev_dbg(ctx->dev, "panel vddr found\n");
+		ctx->vddr = reg;
+	}
+
 	return 0;
 }
 
@@ -272,10 +284,43 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 				return ret;
 			}
 		}
+
+		if (ctx->vddr_en) {
+			ret = regulator_enable(ctx->vddr_en);
+			if (ret) {
+				dev_err(ctx->dev, "vddr_en enable failed\n");
+				return ret;
+			}
+			usleep_range(2 * 1000, 2 * 1000 + 10);
+		}
+
+		if (ctx->vddr) {
+			ret = regulator_enable(ctx->vddr);
+			if (ret) {
+				dev_err(ctx->dev, "vddr enable failed\n");
+				return ret;
+			}
+		}
 	} else {
 		gpiod_set_value(ctx->reset_gpio, 0);
 		if (ctx->enable_gpio)
 			gpiod_set_value(ctx->enable_gpio, 0);
+
+		if (ctx->vddr) {
+			ret = regulator_disable(ctx->vddr);
+			if (ret) {
+				dev_err(ctx->dev, "vddr disable failed\n");
+				return ret;
+			}
+		}
+
+		if (ctx->vddr_en) {
+			ret = regulator_disable(ctx->vddr_en);
+			if (ret) {
+				dev_err(ctx->dev, "vddr_en disable failed\n");
+				return ret;
+			}
+		}
 
 		if (ctx->vddd) {
 			ret = regulator_disable(ctx->vddd);
