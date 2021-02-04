@@ -4074,7 +4074,8 @@ static const struct regmap_config pca9468_regmap = {
 
 static const struct power_supply_desc pca9468_mains_desc = {
 	.name		= "pca9468-mains",
-	.type		= POWER_SUPPLY_TYPE_MAINS,
+	/* b/179246019 will not look online to Android */
+	.type		= POWER_SUPPLY_TYPE_UNKNOWN,
 	.get_property	= pca9468_mains_get_property,
 	.set_property 	= pca9468_mains_set_property,
 	.properties	= pca9468_mains_properties,
