@@ -12,6 +12,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/module.h>
+#include <linux/delay.h>
 #include "gbms_storage.h"
 
 #define BATT_TOTAL_HIST_LEN	928
@@ -33,6 +34,13 @@
 #define BATT_EEPROM_TAG_HIST_LEN	BATT_ONE_HIST_LEN
 #define BATT_EEPROM_TAG_BGPN_OFFSET	0x03
 #define BATT_EEPROM_TAG_BGPN_LEN	GBMS_BGPN_LEN
+
+/*
+ * I2C error when try to write continuous data.
+ * Add delay before write to wait previous internal write complete
+ * http://b/179235291#comment8
+ */
+#define BATT_WAIT_INTERNAL_WRITE_MS	1
 
 static int gbee_storage_info(gbms_tag_t tag, size_t *addr, size_t *count,
 			    void *ptr)
@@ -131,7 +139,7 @@ static int gbee_storage_write(gbms_tag_t tag, const void *buff, size_t size,
 {
 	struct nvmem_device *nvmem = ptr;
 	size_t offset = 0, len = 0;
-	int ret;
+	int ret, write_size = 0;
 
 	if ((tag != GBMS_TAG_DINF) && (tag != GBMS_TAG_GMSR) &&
 	    (tag != GBMS_TAG_BCNT))
@@ -143,9 +151,15 @@ static int gbee_storage_write(gbms_tag_t tag, const void *buff, size_t size,
 	if (size > len)
 		return -ENOMEM;
 
-	ret = nvmem_device_write(nvmem, offset, size, (void *)buff);
-	if (ret == 0)
-		ret = size;
+	for (write_size = 0; write_size < size; write_size++) {
+		ret = nvmem_device_write(nvmem, write_size + offset, 1,
+					 &((char *)buff)[write_size]);
+		if (ret < 0)
+			return ret;
+		msleep(BATT_WAIT_INTERNAL_WRITE_MS);
+	}
+
+	ret = size;
 
 	return ret;
 }
@@ -200,7 +214,7 @@ static int gbee_storage_write_data(gbms_tag_t tag, const void *data,
 {
 	struct nvmem_device *nvmem = ptr;
 	size_t offset = 0, len = 0;
-	int ret;
+	int ret, write_size = 0;
 
 	switch (tag) {
 	case GBMS_TAG_HIST:
@@ -226,9 +240,15 @@ static int gbee_storage_write_data(gbms_tag_t tag, const void *data,
 
 	offset += len * idx;
 
-	ret = nvmem_device_write(nvmem, offset, len, (void *)data);
-	if (ret == 0)
-		ret = len;
+	for (write_size = 0; write_size < len; write_size++) {
+		ret = nvmem_device_write(nvmem, write_size + offset, 1,
+					 &((char *)data)[write_size]);
+		if (ret < 0)
+			return ret;
+		msleep(BATT_WAIT_INTERNAL_WRITE_MS);
+	}
+
+	ret = len;
 
 	return ret;
 }
