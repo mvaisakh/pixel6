@@ -384,9 +384,13 @@ int exynos_panel_disable(struct drm_panel *panel)
 	ctx->hbm_mode = false;
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
-	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode) {
-		ctx->local_hbm.enabled = false;
-		cancel_delayed_work_sync(&ctx->local_hbm.timeout_work);
+	if (exynos_panel_func) {
+		if (exynos_panel_func->set_local_hbm_mode) {
+			ctx->hbm.local_hbm.enabled = false;
+			cancel_delayed_work_sync(&ctx->hbm.local_hbm.timeout_work);
+		}
+		if (exynos_panel_func->set_hbm_mode)
+			cancel_work_sync(&ctx->hbm.global_hbm.ghbm_work);
 	}
 
 	exynos_panel_send_cmd_set(ctx, ctx->desc->off_cmd_set);
@@ -755,16 +759,23 @@ static void exynos_panel_connector_atomic_commit(
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	const struct exynos_panel_funcs *exynos_panel_func;
 
-	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
-		ctx->bl->props.brightness = exynos_new_state->brightness_level;
-		backlight_update_status(ctx->bl);
-	}
-
+	ctx->hbm.global_hbm.update_hbm = false;
+	ctx->hbm.global_hbm.update_bl = false;
 	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
 		exynos_panel_func = ctx->desc->exynos_panel_func;
-		if (exynos_panel_func && exynos_panel_func->set_hbm_mode)
-			exynos_panel_func->set_hbm_mode(ctx, exynos_new_state->hbm_on);
+		if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
+			ctx->hbm.global_hbm.update_hbm = true;
+			ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
+		}
 	}
+
+	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		ctx->bl->props.brightness = exynos_new_state->brightness_level;
+		ctx->hbm.global_hbm.update_bl = true;
+	}
+
+	if (ctx->hbm.global_hbm.update_hbm || ctx->hbm.global_hbm.update_bl)
+		queue_work(ctx->hbm.wq, &ctx->hbm.global_hbm.ghbm_work);
 }
 
 static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
@@ -1270,11 +1281,11 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, local_hbm_en);
 	if (local_hbm_en) {
-		queue_delayed_work(ctx->local_hbm.wq,
-			 &ctx->local_hbm.timeout_work,
-			 msecs_to_jiffies(ctx->local_hbm.max_timeout_ms));
+		queue_delayed_work(ctx->hbm.wq,
+			 &ctx->hbm.local_hbm.timeout_work,
+			 msecs_to_jiffies(ctx->hbm.local_hbm.max_timeout_ms));
 	} else {
-		cancel_delayed_work(&ctx->local_hbm.timeout_work);
+		cancel_delayed_work(&ctx->hbm.local_hbm.timeout_work);
 	}
 
 	return count;
@@ -1286,7 +1297,7 @@ static ssize_t local_hbm_mode_show(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->local_hbm.enabled);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->hbm.local_hbm.enabled);
 }
 static DEVICE_ATTR_RW(local_hbm_mode);
 
@@ -1298,7 +1309,7 @@ static ssize_t local_hbm_max_timeout_store(struct device *dev,
 	struct exynos_panel *ctx = bl_get_data(bd);
 	int ret;
 
-	ret = kstrtou32(buf, 0, &ctx->local_hbm.max_timeout_ms);
+	ret = kstrtou32(buf, 0, &ctx->hbm.local_hbm.max_timeout_ms);
 	if (ret) {
 		dev_err(ctx->dev, "invalid local_hbm_max_timeout_ms value\n");
 		return ret;
@@ -1313,7 +1324,7 @@ static ssize_t local_hbm_max_timeout_show(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->local_hbm.max_timeout_ms);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->hbm.local_hbm.max_timeout_ms);
 }
 
 static DEVICE_ATTR_RW(local_hbm_max_timeout);
@@ -1780,24 +1791,42 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 static void local_hbm_timeout_work(struct work_struct *work)
 {
 	struct exynos_panel *ctx =
-			 container_of(work, struct exynos_panel, local_hbm.timeout_work.work);
+			 container_of(work, struct exynos_panel, hbm.local_hbm.timeout_work.work);
 
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, false);
 }
 
+static void global_hbm_work(struct work_struct *work)
+{
+	struct exynos_panel *ctx =
+			 container_of(work, struct exynos_panel, hbm.global_hbm.ghbm_work);
+	const struct exynos_panel_funcs *exynos_panel_func;
+
+	dev_dbg(ctx->dev, "%s\n", __func__);
+
+	if (ctx->hbm.global_hbm.update_hbm) {
+		exynos_panel_func = ctx->desc->exynos_panel_func;
+		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.global_hbm.hbm_mode);
+	}
+
+	if (ctx->hbm.global_hbm.update_bl)
+		backlight_update_status(ctx->bl);
+}
+
 static void local_hbm_data_init(struct exynos_panel *ctx)
 {
-	mutex_init(&ctx->local_hbm.lock);
-	ctx->local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
-	ctx->local_hbm.enabled = false;
-	ctx->local_hbm.wq =
-		create_singlethread_workqueue("local_hbm_workq");
-	if (!ctx->local_hbm.wq)
-		dev_err(ctx->dev, "failed to create local hbm workq!\n");
-	else
-		INIT_DELAYED_WORK(&ctx->local_hbm.timeout_work, local_hbm_timeout_work);
+	mutex_init(&ctx->hbm.local_hbm.lock);
+	ctx->hbm.local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
+	ctx->hbm.local_hbm.enabled = false;
+	ctx->hbm.wq = create_singlethread_workqueue("hbm_workq");
+	if (!ctx->hbm.wq)
+		dev_err(ctx->dev, "failed to create hbm workq!\n");
+	else {
+		INIT_DELAYED_WORK(&ctx->hbm.local_hbm.timeout_work, local_hbm_timeout_work);
+		INIT_WORK(&ctx->hbm.global_hbm.ghbm_work, global_hbm_work);
+	}
 }
 
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
@@ -1845,7 +1874,8 @@ int exynos_panel_common_init(struct mipi_dsi_device *dsi,
 	ctx->bl->props.brightness = ctx->desc->dft_brightness;
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
-	if (exynos_panel_func && exynos_panel_func->set_local_hbm_mode)
+	if (exynos_panel_func && (exynos_panel_func->set_hbm_mode
+				  || exynos_panel_func->set_local_hbm_mode))
 		local_hbm_data_init(ctx);
 
 	if (ctx->desc->bl_num_ranges) {

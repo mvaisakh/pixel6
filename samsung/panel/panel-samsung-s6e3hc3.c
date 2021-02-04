@@ -133,12 +133,12 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 	if (ctx->hbm_mode)
 		val |= S6E3HC3_WRCTRLD_HBM_BIT;
 
-	if (ctx->local_hbm.enabled)
+	if (ctx->hbm.local_hbm.enabled)
 		val |= S6E3HC3_WRCTRLD_LOCAL_HBM_BIT;
 
 	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, local_hbm: %s)\n",
 		__func__, val, ctx->hbm_mode ? "on" : "off",
-		ctx->local_hbm.enabled ? "on" : "off");
+		ctx->hbm.local_hbm.enabled ? "on" : "off");
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 }
@@ -241,13 +241,13 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 	struct drm_mode_config *config;
 	struct drm_crtc *crtc = NULL;
 
-	if (ctx->local_hbm.enabled == local_hbm_en)
+	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
-	mutex_lock(&ctx->local_hbm.lock);
-	ctx->local_hbm.enabled = local_hbm_en;
+	mutex_lock(&ctx->hbm.local_hbm.lock);
+	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
-	mutex_unlock(&ctx->local_hbm.lock);
+	mutex_unlock(&ctx->hbm.local_hbm.lock);
 
 	config = &ctx->exynos_connector.base.dev->mode_config;
 	drm_modeset_lock(&config->connection_mutex, NULL);
@@ -397,12 +397,44 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.mode_set = s6e3hc3_mode_set,
 };
 
+const struct brightness_capability s6e3hc3_brightness_capability = {
+	.normal = {
+		.nits = {
+			.min = 2,
+			.max = 500,
+		},
+		.level = {
+			.min = 4,
+			.max = 2047,
+		},
+		.percentage = {
+			.min = 0,
+			.max = 80,
+		},
+	},
+	.hbm = {
+		.nits = {
+			.min = 550,
+			.max = 800,
+		},
+		.level = {
+			.min = 3311,
+			.max = 4095,
+		},
+		.percentage = {
+			.min = 80,
+			.max = 100,
+		},
+	},
+};
+
 const struct exynos_panel_desc samsung_s6e3hc3 = {
 	.dsc_pps = PPS_SETTING,
 	.dsc_pps_len = ARRAY_SIZE(PPS_SETTING),
 	.data_lane_cnt = 4,
 	.max_brightness = 2047,
 	.dft_brightness = 1023,
+	.brt_capability = &s6e3hc3_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
 	.hdr_formats = BIT(2),
 	.max_luminance = 5400000,
