@@ -1335,23 +1335,24 @@ static int gcpm_pps_psy_get_property(struct power_supply *psy,
 	mutex_lock(&gcpm->chg_psy_lock);
 
 	pps_data = gcpm_pps_data(gcpm);
-	if (!pps_data || !pps_data->pps_psy) {
-		pr_debug("%s: no target prop=%d ret=%d\n", __func__, prop, ret);
-		mutex_unlock(&gcpm->chg_psy_lock);
-		return -EAGAIN;
+	if (pps_data && pps_data->pps_psy) {
+		ret = power_supply_get_property(pps_data->pps_psy, prop, val);
+		pr_debug("%s: prop=%d val=%d ret=%d\n", __func__,
+			 prop, val->intval, ret);
+		goto done;
 	}
 
 	switch (prop) {
+	case POWER_SUPPLY_PROP_USB_TYPE:
+		val->intval = POWER_SUPPLY_USB_TYPE_UNKNOWN;
+		break;
 	default:
-		ret = power_supply_get_property(pps_data->pps_psy, prop, val);
+		val->intval = 0;
 		break;
 	}
 
+done:
 	mutex_unlock(&gcpm->chg_psy_lock);
-
-	pr_debug("%s: prop=%d val=%d ret=%d\n", __func__,
-		 prop, val->intval, ret);
-
 	return ret;
 }
 
@@ -1385,6 +1386,7 @@ static int gcpm_pps_psy_is_writeable(struct power_supply *psy,
 }
 
 static enum power_supply_usb_type gcpm_pps_usb_types[] = {
+	POWER_SUPPLY_USB_TYPE_UNKNOWN,
 	POWER_SUPPLY_USB_TYPE_PD_PPS
 };
 
