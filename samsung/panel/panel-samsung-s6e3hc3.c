@@ -314,7 +314,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 		},
 		.exynos_mode = {
 			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-			.vblank_usec = 120,
+			.vblank_usec = 8451,
 			.bpc = 8,
 			.dsc = {
 				.enabled = true,
@@ -343,7 +343,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 		},
 		.exynos_mode = {
 			.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-			.vblank_usec = 120,
+			.vblank_usec = 123,
 			.bpc = 8,
 			.dsc = {
 				.enabled = true,
@@ -375,7 +375,7 @@ static const struct exynos_panel_mode s6e3hc3_lp_mode = {
 	},
 	.exynos_mode = {
 		.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS,
-		.vblank_usec = 120,
+		.vblank_usec = 25115,
 		.bpc = 8,
 		.dsc = {
 			.enabled = true,
