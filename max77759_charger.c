@@ -1301,6 +1301,7 @@ static enum power_supply_property max77759_wcin_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
@@ -1373,6 +1374,43 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 	return rc;
 }
 
+static int max77759_find_fg(struct max77759_chgr_data *data)
+{
+	struct device_node *dn;
+
+	if (data->fg_i2c_client)
+		return 0;
+
+	dn = of_parse_phandle(data->dev->of_node, "max77759,max_m5", 0);
+	if (!dn)
+		return -ENXIO;
+
+	data->fg_i2c_client = of_find_i2c_device_by_node(dn);
+	if (!data->fg_i2c_client)
+		return -EAGAIN;
+
+	return 0;
+}
+
+#define MAX77759_WCIN_RAW_TO_UA	156
+
+/* only valid in mode 5, 6, 7, e, f */
+static int max77759_wcin_current_now(struct max77759_chgr_data *data, int *iic)
+{
+	int ret, iic_raw;
+
+	ret = max77759_find_fg(data);
+	if (ret < 0)
+		return ret;
+
+	ret = max_m5_read_actual_input_current_ua(data->fg_i2c_client, &iic_raw);
+	if (ret < 0)
+		return ret;
+
+	*iic = iic_raw * MAX77759_WCIN_RAW_TO_UA;
+	return 0;
+}
+
 static int max77759_wcin_get_prop(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  union power_supply_propval *val)
@@ -1395,6 +1433,11 @@ static int max77759_wcin_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		rc = max77759_wcin_voltage_max(chgr, val);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		val->intval = 0;
+		if (max77759_wcin_is_online(chgr))
+			rc = max77759_wcin_current_now(chgr, &val->intval);
 		break;
 	default:
 		return -EINVAL;
@@ -1676,34 +1719,23 @@ static int max77759_find_pmic(struct max77759_chgr_data *data)
 	return !!data->pmic_i2c_client;
 }
 
-static int max77759_find_fg(struct max77759_chgr_data *data)
-{
-	struct device_node *dn;
-
-	if (data->fg_i2c_client)
-		return 0;
-
-	dn = of_parse_phandle(data->dev->of_node, "max77759,max_m5", 0);
-	if (!dn)
-		return -ENXIO;
-
-	data->fg_i2c_client = of_find_i2c_device_by_node(dn);
-	if (!data->fg_i2c_client)
-		return -EAGAIN;
-
-	return 0;
-}
+#define MAX77759_CHGIN_RAW_TO_UA	125
 
 /* only valid in mode 5, 6, 7, e, f */
-static int max77759_read_iic_from_fg(struct max77759_chgr_data *data, int *iic)
+static int max77759_chgin_current_now(struct max77759_chgr_data *data, int *iic)
 {
-	int ret;
+	int ret, iic_raw;
 
 	ret = max77759_find_fg(data);
 	if (ret < 0)
 		return ret;
 
-	return max_m5_read_actual_input_current_ua(data->fg_i2c_client, iic);
+	ret = max_m5_read_actual_input_current_ua(data->fg_i2c_client, &iic_raw);
+	if (ret < 0)
+		return ret;
+
+	*iic = iic_raw * MAX77759_CHGIN_RAW_TO_UA;
+	return 0;
 }
 
 static int max77759_wd_tickle(struct max77759_chgr_data *data)
@@ -1867,7 +1899,10 @@ static int max77759_psy_get_property(struct power_supply *psy,
 			dev_err(data->dev, "cannot read voltage now=%d\n", rc);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		rc = max77759_read_iic_from_fg(data, &pval->intval);
+		if (max77759_wcin_is_online(data))
+			rc = max77759_wcin_current_now(data, &pval->intval);
+		else
+			rc = max77759_chgin_current_now(data, &pval->intval);
 		if (rc < 0)
 			pval->intval = -1;
 		break;
