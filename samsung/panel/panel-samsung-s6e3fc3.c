@@ -111,9 +111,10 @@ static const struct exynos_dsi_cmd s6e3fc3_4_pwm_cmds[] = {
 static DEFINE_EXYNOS_CMD_SET(s6e3fc3_4_pwm);
 
 static const struct exynos_binned_lp s6e3fc3_binned_lp[] = {
-	BINNED_LP_MODE("off",     0, s6e3fc3_lp_off_cmds),
-	BINNED_LP_MODE("low",    80, s6e3fc3_lp_low_cmds),
-	BINNED_LP_MODE("high", 2047, s6e3fc3_lp_high_cmds)
+	BINNED_LP_MODE("off", 0, s6e3fc3_lp_off_cmds),
+	/* rising time = delay = 0, falling time = delay + width = 0 + 16 */
+	BINNED_LP_MODE_TIMING("low", 80, s6e3fc3_lp_low_cmds, 0, 0 + 16),
+	BINNED_LP_MODE_TIMING("high", 2047, s6e3fc3_lp_high_cmds, 0, 0 + 16)
 };
 
 static const struct exynos_dsi_cmd s6e3fc3_init_cmds[] = {
@@ -153,6 +154,88 @@ static const struct exynos_dsi_cmd s6e3fc3_init_cmds[] = {
 	EXYNOS_DSI_CMD0(test_key_off_f0)
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3fc3_init);
+
+static void s6e3fc3_get_te2_setting(struct exynos_panel_te2_timing *timing,
+				    u8 *setting)
+{
+	u8 delay_low_byte, delay_high_byte;
+	u8 width_low_byte, width_high_byte;
+	u32 rising, falling;
+
+	if (!timing || !setting)
+		return;
+
+	rising = timing->rising_edge;
+	falling = timing->falling_edge;
+
+	delay_low_byte = rising & 0xFF;
+	delay_high_byte = (rising >> 8) & 0xF;
+	width_low_byte = (falling - rising) & 0xFF;
+	width_high_byte = ((falling - rising) >> 8) & 0xF;
+
+	setting[0] = (delay_high_byte << 4) | width_high_byte;
+	setting[1] = delay_low_byte;
+	setting[2] = width_low_byte;
+}
+
+static void s6e3fc3_update_te2(struct exynos_panel *ctx)
+{
+	struct exynos_panel_te2_timing timing;
+	u8 setting[2][4] = {
+		{0xCB, 0x00, 0x00, 0x30}, // normal 60Hz
+		{0xCB, 0x00, 0x00, 0x30}, // normal 90Hz
+	};
+	u8 lp_setting[4] = {0xCB, 0x00, 0x00, 0x10}; // lp low/high
+	int ret, i;
+
+	if (!ctx)
+		return;
+
+	/* normal mode */
+	for (i = 0; i < 2; i++) {
+		timing.rising_edge = ctx->te2.mode_data[i].timing.rising_edge;
+		timing.falling_edge = ctx->te2.mode_data[i].timing.falling_edge;
+
+		s6e3fc3_get_te2_setting(&timing, &setting[i][1]);
+
+		dev_dbg(ctx->dev, "TE2 updated normal %dHz: 0xcb 0x%x 0x%x 0x%x\n",
+			(i == 0) ? 60 : 90,
+			setting[i][1], setting[i][2], setting[i][3]);
+	}
+
+	/* LP mode */
+	if (ctx->current_mode->exynos_mode.is_lp_mode) {
+		ret = exynos_panel_get_current_mode_te2(ctx, &timing);
+		if (!ret)
+			s6e3fc3_get_te2_setting(&timing, &lp_setting[1]);
+		else if (ret == -EAGAIN)
+			dev_dbg(ctx->dev,
+				"Panel is not ready, use default setting\n");
+		else
+			return;
+
+		dev_dbg(ctx->dev, "TE2 updated LP: 0xcb 0x%x 0x%x 0x%x\n",
+			lp_setting[1], lp_setting[2], lp_setting[3]);
+	}
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_on_f0);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para  */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xCC); /* global para 10bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x26, 0xF2); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x03, 0x14); /* TE2 on */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0xAF, 0xCB); /* global para */
+	EXYNOS_DCS_WRITE_TABLE(ctx, setting[0]); /* 60Hz control */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x01, 0x2F, 0xCB); /* global para */
+	EXYNOS_DCS_WRITE_TABLE(ctx, setting[1]); /* 90Hz control */
+	if (ctx->current_mode->exynos_mode.is_lp_mode) {
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x01, 0xAF, 0xCB); /* global para */
+		EXYNOS_DCS_WRITE_TABLE(ctx, lp_setting); /* HLPM mode */
+	}
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x28, 0xF2); /* global para */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xC4); /* global para 8bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF7, 0x0F); /* LTPS update */
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_off_f0);
+}
 
 static void s6e3fc3_change_frequency(struct exynos_panel *ctx,
 				     unsigned int vrefresh)
@@ -373,6 +456,10 @@ static const struct exynos_panel_mode s6e3fc3_modes[] = {
 			},
 			.underrun_param = &underrun_param,
 		},
+		.te2_timing = {
+			.rising_edge = 0,
+			.falling_edge = 0 + 48,
+		},
 	},
 	{
 		/* 1080x2400 @ 90Hz */
@@ -401,6 +488,10 @@ static const struct exynos_panel_mode s6e3fc3_modes[] = {
 				.slice_height = 48,
 			},
 			.underrun_param = &underrun_param,
+		},
+		.te2_timing = {
+			.rising_edge = 0,
+			.falling_edge = 0 + 48,
 		},
 	},
 };
@@ -458,6 +549,9 @@ static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.mode_set = s6e3fc3_mode_set,
 	.panel_init = s6e3fc3_panel_init,
 	.get_panel_rev = s6e3fc3_get_panel_rev,
+	.get_te2_edges = exynos_panel_get_te2_edges,
+	.configure_te2_edges = exynos_panel_configure_te2_edges,
+	.update_te2 = s6e3fc3_update_te2,
 };
 
 const struct brightness_capability s6e3fc3_brightness_capability = {

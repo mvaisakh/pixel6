@@ -462,6 +462,16 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	  .falling_edge = 0 }				\
 }
 
+#define BINNED_LP_MODE_TIMING(mode_name, bl_thr, cmdset, rising, falling)	\
+{										\
+	.name = mode_name,							\
+	.bl_threshold = bl_thr,							\
+	{ .num_cmd = ARRAY_SIZE(cmdset),					\
+	  .cmds = cmdset },							\
+	{ .rising_edge = rising,						\
+	  .falling_edge = falling }						\
+}
+
 #define EXYNOS_DCS_WRITE_SEQ(ctx, seq...) do {				\
 	u8 d[] = { seq };						\
 	int ret;							\
