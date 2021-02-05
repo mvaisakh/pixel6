@@ -8888,10 +8888,14 @@ static int cs40l2x_create_led(struct cs40l2x_private *cs40l2x)
 	struct led_classdev *led_dev = &cs40l2x->led_dev;
 	struct device *dev = cs40l2x->dev;
 
-	led_dev->name = CS40L2X_DEVICE_NAME;
 	led_dev->max_brightness = LED_FULL;
 	led_dev->brightness_set = cs40l2x_vibe_brightness_set;
 	led_dev->default_trigger = "transient";
+
+	if (cs40l2x->pdata.unique_device_name != NULL)
+		led_dev->name = cs40l2x->pdata.unique_device_name;
+	else
+		led_dev->name = CS40L2X_DEVICE_NAME;
 
 	ret = led_classdev_register(dev, led_dev);
 	if (ret) {
@@ -11543,6 +11547,16 @@ static int cs40l2x_handle_of_data(struct i2c_client *i2c_client,
 	}
 	pdata->boost_ipk = out_val;
 
+	ret = of_property_read_u32(np, "cirrus,unique-device", &out_val);
+	if (!ret) {
+		if (out_val == CS40L2X_2ND_VIB)
+			pdata->unique_device_name = CS40L2X_DUAL_NAME;
+		else if (out_val == CS40L2X_3RD_VIB)
+			pdata->unique_device_name = CS40L2X_TRI_NAME;
+		else if (out_val == CS40L2X_4TH_VIB)
+			pdata->unique_device_name = CS40L2X_QUAD_NAME;
+	}
+
 	ret = of_property_read_u32(np, "cirrus,boost-ctl-millivolt", &out_val);
 	if (!ret)
 		pdata->boost_ctl = out_val | CS40L2X_PDATA_PRESENT;
@@ -12165,8 +12179,7 @@ static struct regmap_config cs40l2x_regmap = {
 	.cache_type = REGCACHE_NONE,
 };
 
-
-static const struct mfd_cell cs40l2x_devs[] = {
+static struct mfd_cell cs40l2x_devs[] = {
 	{ .name = "cs40l2x-codec" },
 };
 
@@ -12390,6 +12403,9 @@ static int cs40l2x_i2c_probe(struct i2c_client *i2c_client,
 	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 			cs40l2x->fw_desc->fw_file, dev, GFP_KERNEL, cs40l2x,
 			cs40l2x_firmware_load);
+
+	if (cs40l2x->pdata.unique_device_name != NULL)
+		cs40l2x_devs->name = cs40l2x->pdata.unique_device_name;
 
 	ret = devm_mfd_add_devices(dev, PLATFORM_DEVID_NONE, cs40l2x_devs,
 				ARRAY_SIZE(cs40l2x_devs), NULL, 0, NULL);
