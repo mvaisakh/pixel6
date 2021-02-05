@@ -10,65 +10,41 @@
 
 #include <linux/slab.h>
 
-#include <linux/iommu.h>
-#include <linux/ion.h>
 #include <linux/dma-buf.h>
+#include <linux/dma-heap.h>
 #include "lwis_commands.h"
 #include "lwis_init.h"
 #include "lwis_platform.h"
 #include "lwis_platform_dma.h"
-#include <linux/dma-heap.h>
-
-#define ION_SYSTEM_HEAP_NAME "ion_system_heap"
-#define ION_SECURE_FACERAW_HEAP_NAME "farawimg_heap"
-#define ION_EXYNOS_FLAG_PROTECTED (1 << 16)
-
-static unsigned int lwis_platform_get_heapmask_by_name(const char *heap_name)
-{
-	struct ion_heap_data data[ION_NUM_MAX_HEAPS];
-	int i, num_heaps = ion_query_heaps_kernel(NULL, 0);
-
-	ion_query_heaps_kernel((struct ion_heap_data *)data, num_heaps);
-
-	if (!heap_name) {
-		pr_err("Heap name is NULL\n");
-		return 0;
-	}
-
-	for (i = 0; i < num_heaps; ++i) {
-		if (!strncmp(data[i].name, heap_name, MAX_HEAP_NAME)) {
-			break;
-		}
-	}
-
-	if (i == num_heaps) {
-		pr_err("Heap %s is not found\n", heap_name);
-		return 0;
-	}
-
-	return 1 << data[i].heap_id;
-}
-
 struct dma_buf *lwis_platform_dma_buffer_alloc(size_t len, unsigned int flags)
 {
-	unsigned int ion_flags = 0;
-	unsigned int heapmask;
-	const char *heapname = ION_SYSTEM_HEAP_NAME;
+	const char *heap_name;
+	struct dma_heap *heap;
+	struct dma_buf *dmabuf;
 
-	if (flags & LWIS_DMA_BUFFER_CACHED) {
-		ion_flags |= ION_FLAG_CACHED;
+	if ((flags & LWIS_DMA_BUFFER_SECURE) && IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION))
+		heap_name = "farawimg-secure";
+	else if (flags & LWIS_DMA_BUFFER_CACHED)
+		heap_name = "system";
+	else
+		heap_name = "system-uncached";
+
+	heap = dma_heap_find(heap_name);
+	if (!heap) {
+		pr_err("Could not find %s DMA-BUF heap\n", heap_name);
+		return NULL;
 	}
 
-#if IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
-	if ((flags & LWIS_DMA_BUFFER_SECURE) != 0) {
-		heapname = ION_SECURE_FACERAW_HEAP_NAME;
-		ion_flags |= ION_EXYNOS_FLAG_PROTECTED;
+	dmabuf = dma_heap_buffer_alloc(heap, len, O_RDWR, 0);
+	if (IS_ERR_OR_NULL(dmabuf)) {
+		pr_err("DMA-BUF heap failed to alloc %#zx bytes. Error code %lu\n",
+		       len, PTR_ERR(dmabuf));
+		dmabuf = NULL;
 	}
-#endif
 
-	heapmask = lwis_platform_get_heapmask_by_name(heapname);
+	dma_heap_put(heap);
 
-	return ion_alloc(len, heapmask, ion_flags);
+	return dmabuf;
 }
 
 dma_addr_t lwis_platform_dma_buffer_map(struct lwis_device *lwis_dev,
