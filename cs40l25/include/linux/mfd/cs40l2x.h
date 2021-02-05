@@ -1073,6 +1073,13 @@
 #define CS40L2X_MAX_WLEN		4096
 
 #define CS40L2X_DEVICE_NAME		"vibrator"
+#define CS40L2X_DUAL_NAME		"vibrator_dual"
+#define CS40L2X_TRI_NAME		"vibrator_tri"
+#define CS40L2X_QUAD_NAME		"vibrator_quad"
+
+#define CS40L2X_2ND_VIB			2
+#define CS40L2X_3RD_VIB			3
+#define CS40L2X_4TH_VIB			4
 
 #define CS40L2X_NUM_FW_FAMS		8
 #define CS40L2X_FW_ID_ORIG		0x1400A7
