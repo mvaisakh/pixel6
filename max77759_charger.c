@@ -2056,6 +2056,37 @@ static int vdp2_stp_bst_set(void *d, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(vdp2_stp_bst_fops, vdp2_stp_bst_get, vdp2_stp_bst_set, "%llu\n");
 
+static int bat_oilo_get(void *d, u64 *val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret = 0;
+	u8 chg_cnfg14;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_14, &chg_cnfg14);
+	if (ret < 0)
+		return -EIO;
+
+	*val = chg_cnfg14;
+	return 0;
+}
+
+static int bat_oilo_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret;
+
+	if (val > 0xf)
+		return -EINVAL;
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_14, (u8) val);
+	if (ret < 0)
+		return -EIO;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(bat_oilo_fops, bat_oilo_get, bat_oilo_set, "0x%llx\n");
+
 static int sys_uvlo1_get(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -2064,7 +2095,7 @@ static int sys_uvlo1_get(void *d, u64 *val)
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &chg_cnfg15);
 	if (ret < 0)
-		return -ENODEV;
+		return -EIO;
 
 	*val = chg_cnfg15;
 	return 0;
@@ -2075,16 +2106,16 @@ static int sys_uvlo1_set(void *d, u64 val)
 	struct max77759_chgr_data *data = d;
 	int ret;
 
-	if ((val >= 0) && (val <= 0xF))
+	if (val > 0xf)
 		return -EINVAL;
 
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_15, (u8) val);
 	if (ret < 0)
-		return ret;
+		return -EIO;
 
 	data->vdroop_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
-	return ret;
+	return 0;
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo1_fops, sys_uvlo1_get, sys_uvlo1_set, "0x%llx\n");
@@ -2097,7 +2128,7 @@ static int sys_uvlo2_get(void *d, u64 *val)
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_16, &chg_cnfg16);
 	if (ret < 0)
-		return -ENODEV;
+		return -EIO;
 
 	*val = chg_cnfg16;
 	return 0;
@@ -2108,15 +2139,16 @@ static int sys_uvlo2_set(void *d, u64 val)
 	struct max77759_chgr_data *data = d;
 	int ret;
 
-	if ((val >= 0) && (val <= 0xF))
+	if (val > 0xf)
 		return -EINVAL;
+
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_16, (u8) val);
 	if (ret < 0)
-		return ret;
+		return -EIO;
 
 	data->vdroop_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
-	return ret;
+	return 0;
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%llx\n");
@@ -2215,6 +2247,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 			    &sys_uvlo1_fops);
 	debugfs_create_file("sys_uvlo2", 0600, data->de, data,
 			    &sys_uvlo2_fops);
+	debugfs_create_file("bat_oilo", 0600, data->de, data,
+			    &bat_oilo_fops);
 	debugfs_create_file("input_mask_clear", 0600, data->de, data,
 			    &input_mask_clear_fops);
 
