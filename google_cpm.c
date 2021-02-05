@@ -941,15 +941,20 @@ static int gcpm_psy_changed(struct notifier_block *nb, unsigned long action,
 		/* route upstream when the charger active and found */
 		if (gcpm->chg_psy_avail[index])
 			power_supply_changed(gcpm->psy);
-		mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+
+		/* tickle the PPS loop if enabled */
+		if (gcpm->dc_index > 0)
+			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
 	} else if (strcmp(psy->desc->name, gcpm->chg_psy_names[0]) == 0) {
-		/* something is up with the default charger */
-		mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+		/* tickle the PPS loop if enabled */
+		if (gcpm->dc_index > 0)
+			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
 	} else if (gcpm->tcpm_psy_name &&
 	      !strcmp(psy->desc->name, gcpm->tcpm_psy_name))
 	{
-		/* kick off PPS */
-		mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+		/* tickle the PPS loop if enabled */
+		if (gcpm->dc_index > 0)
+			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
 	}
 
 	return NOTIFY_OK;
