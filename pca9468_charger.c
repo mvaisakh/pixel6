@@ -1863,9 +1863,14 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468)
 
 	/* Check whether the previous request is done */
 	} else if (pca9468->req_new_iin) {
+
+		/* same as previous request nevermind */
+		if (pca9468->iin_cc == pca9468->new_iin)
+			return 0;
+
 		/* The previous request is not done yet */
-		pr_err("%s: current=%d new_iin=%d \n", __func__,
-		       pca9468->iin_cc, pca9468->new_iin);
+		pr_err("%s: cannot request new iin current=%d new_iin=%d \n",
+			__func__, pca9468->iin_cc, pca9468->new_iin);
 		return -EBUSY;
 	}
 
@@ -1932,9 +1937,13 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 
 	/* Check whether the previous request is done */
 	} else if (pca9468->req_new_vfloat) {
+
+		if (pca9468->new_vfloat == pca9468->pdata->v_float)
+			return 0;
+
 		/* The previous request is not done yet */
-		pr_err("%s: There is the previous request for New vfloat\n",
-		       __func__);
+		pr_err("%s: cannot request for vfloat, current=%d new_request=%d\n",
+		       __func__, pca9468->pdata->v_float, pca9468->new_vfloat);
 		return -EBUSY;
 	}
 
@@ -1957,8 +1966,8 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 		if (pca9468->new_vfloat <= vbat) {
 			/* The new VBAT is lower than the current VBAT */
 			/* return invalid error */
-			pr_err("%s: New vfloat is lower than VBAT ADC\n",
-			       __func__);
+			pr_err("%s: New vfloat=%d is lower than VBAT=%d ADC\n",
+			       __func__, pca9468->new_vfloat, vbat);
 			return -EINVAL;
 		}
 
