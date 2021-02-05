@@ -349,11 +349,11 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 	/* vote on MODE */
 	ret = gcpm_dc_enable(gcpm, true);
 	if (ret < 0) {
-		pr_info("PPS_DC: dc_ready failed=%d\n", ret);
+		pr_err("PPS_DC: dc_ready failed=%d\n", ret);
 		return ret;
 	}
 
-	pr_info("PPS_DC: dc_ready ok state=%d fv_uv=%d cc_max=%d, out_ua=%d\n",
+	pr_debug("PPS_DC: dc_ready ok state=%d fv_uv=%d cc_max=%d, out_ua=%d\n",
 		gcpm->dc_state, gcpm->fv_uv, gcpm->cc_max, gcpm->out_ua);
 
 	return 0;
@@ -417,6 +417,7 @@ static bool gcpm_chg_dc_check_enable(const struct gcpm_drv *gcpm, int index)
 	return index == GCPM_INDEX_DC_ENABLE;
 }
 
+/* */
 static void gcpm_pps_online(struct gcpm_drv *gcpm)
 {
 	/* reset setpoint */
@@ -462,9 +463,9 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 			gcpm->dc_index = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
-		pr_debug("CHG_CHK: DC disabled for the session\n");
+		pr_debug("CHG_CHK: PPS_Work disabled for the session\n");
 	} else if (gcpm->dc_state == DC_IDLE) {
-		pr_info("PPS_Work: start DC Charging for dc_index=%d\n", index);
+		pr_info("CHG_CHK: start PPS_Work for dc_index=%d\n", index);
 
 		/* reset pps state to re-enable detection */
 		gcpm_pps_online(gcpm);
@@ -489,9 +490,12 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 #define DC_RUN_DELAY_MS		5000
 #define DC_ERROR_RETRY_MS	PPS_ERROR_RETRY_MS
 
-#define PPS_WAIT_RETRY_MS	3000
+#define PPS_PROG_TIMEOUT_S	10
+#define PPS_PROG_RETRY_MS	5000
+#define PPS_ACTIVE_RETRY_MS	1500
+#define PPS_ACTIVE_TIMEOUT_S	25
+
 #define PPS_ERROR_RETRY_MS	1000
-#define PPS_ACTIVE_TIMEOUT_S	45
 
 enum {
 	PPS_INDEX_NOT_SUPP = -1,
@@ -513,16 +517,15 @@ static struct pd_pps_data *gcpm_pps_data(struct gcpm_drv *gcpm)
 }
 
 /*
- * DC depends on PPS so run PPS first.
- * - read source capabilities when stage transition from PPS_NONE to
- *   PPS_AVAILABLE (NOTE: pd_online=TCPM_PSY_PROG_ONLINE in this case)
+ * Pick the first PPS source that transition to PPS_ACTIVE:
  *
- * DISABLED => NONE -> AVAILABLE -> ACTIVE -> DISABLED
- *	    -> DISABLED
- * 	    -> NOTSUPP
+ * ->stage ==
+ *	DISABLED => NONE -> AVAILABLE -> ACTIVE -> DISABLED
+ *		 -> DISABLED
+ *		 -> NOTSUPP
  *
- * return NULL until a PPS source becomes valid.
- * TODO: set gcpm->pps_data to the gpm
+ * return 0 if needs to continue polling, -ENODEV if none of the sources
+ * support pps.
  */
 static int gcpm_pps_work(struct gcpm_drv *gcpm)
 {
@@ -536,6 +539,7 @@ static int gcpm_pps_work(struct gcpm_drv *gcpm)
 		pps_ui = pps_work(pps_data, pps_data->pps_psy);
 		if (pps_ui >= 0 && pps_data->stage == PPS_ACTIVE)
 			pps_index = PPS_INDEX_TCPM;
+
 		if (pps_data->pd_online < PPS_PSY_PROG_ONLINE)
 			pr_debug("PPS_Work: TCPM Wait pps_ui=%d online=%d, stage=%d\n",
 				pps_ui, pps_data->pd_online, pps_data->stage);
@@ -558,6 +562,11 @@ static int gcpm_pps_work(struct gcpm_drv *gcpm)
 		not_supported += 1;
 	}
 
+	pr_debug("PPS_Work: tcpm[online=%d, stage=%d] wlc[online=%d, stage=%d] ns=%d pps_index=%d\n",
+		 gcpm->tcpm_pps_data.pd_online, gcpm->tcpm_pps_data.stage,
+		 gcpm->wlc_pps_data.pd_online, gcpm->wlc_pps_data.stage,
+		 not_supported, pps_index);
+
 	/* 2 sources */
 	if (not_supported == PPS_INDEX_MAX)
 		return -ENODEV;
@@ -566,6 +575,7 @@ static int gcpm_pps_work(struct gcpm_drv *gcpm)
 	if (gcpm->pps_index != pps_index)
 		pr_debug("PPS_Work: pps_index %d->%d\n",
 			gcpm->pps_index, pps_index);
+	/* went away! */
 	if (gcpm->pps_index && !pps_index)
 		ret = -ENODEV;
 
@@ -604,6 +614,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 {
 	struct gcpm_drv *gcpm =
 		container_of(work, struct gcpm_drv, pps_work.work);
+	const ktime_t now = get_boot_sec();
 	struct pd_pps_data *pps_data;
 	int ret, pps_ui = -ENODEV;
 
@@ -617,73 +628,103 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	/* disconnect, gcpm_chg_check() and most errors reset ->dc_index */
 	if (gcpm->dc_index <= 0) {
 		const int dc_state = gcpm->dc_state;
-		const int tgt_state = gcpm->dc_index < 0 ?
-				      DC_DISABLED : DC_IDLE;
 
-		pr_info("PPS_Work: Done dc_index:?->%d dc_state=%d->%d\n",
-			gcpm->dc_index, gcpm->dc_state, tgt_state);
-
-		/* disable DC, gcpm_chg_check() might re-enable if idle */
-		if (dc_state != tgt_state)
-			ret = gcpm_dc_stop(gcpm, tgt_state);
-		if (gcpm->dc_state != tgt_state) {
-			pr_err("PPS_DC: retry disable dc_state=%d->%d (%d)\n",
-				dc_state, gcpm->dc_state, ret);
-			pps_ui = DC_ERROR_RETRY_MS;
-		} else {
-			/* and then disable PPS as well */
-			ret = gcpm_pps_offline(gcpm);
-			if (ret < 0) {
-				pr_err("PPS_DC: fail offline (%d)\n", ret);
-				pps_ui = PPS_ERROR_RETRY_MS;
-			}
+		if (dc_state <= DC_IDLE) {
+			pr_warn("PPS_Work: spurious dc_index=%d dc_state=%d\n",
+				gcpm->dc_index, dc_state);
+			goto pps_dc_done;
 		}
 
-		/* default pps_ui == -ENODEV */
+		/* First disable DC */
+		ret = gcpm_dc_stop(gcpm, DC_DISABLED);
+		if (ret < 0) {
+			pr_err("PPS_Work: retry disable dc_state=%d->%d (%d)\n",
+				dc_state, gcpm->dc_state, ret);
+			pps_ui = DC_ERROR_RETRY_MS;
+			goto pps_dc_reschedule;
+		}
+
+		/* and then disable PPS */
+		ret = gcpm_pps_offline(gcpm);
+		if (ret < 0) {
+			pr_err("PPS_Work: fail pps offline dc_state=%d (%d)\n",
+				gcpm->dc_state, ret);
+			pps_ui = PPS_ERROR_RETRY_MS;
+			goto pps_dc_reschedule;
+		}
+
+		/* and then re-enable if not disabled for session */
+		if (gcpm->dc_index == 0)
+			gcpm->dc_state = DC_IDLE;
+
+		pr_info("PPS_Work: Done dc_state=%d\n", gcpm->dc_state);
+		goto pps_dc_done;
+	}
+
+
+	if (!gcpm->dc_start_time)
+		gcpm->dc_start_time = now;
+
+	/*
+	 * Wait until one of the sources come online, <0 when PPS is not
+	 * supported from ANY source. Deadline at PPS_PROG_TIMEOUT_S.
+	 */
+	ret = gcpm_pps_work(gcpm);
+	if (ret < 0) {
+
+		if (now - gcpm->dc_start_time < PPS_PROG_TIMEOUT_S) {
+			/* retry for the session  */
+			pps_ui = PPS_PROG_RETRY_MS;
+			gcpm_pps_online(gcpm);
+		} else {
+			/* TODO: abort for the session  */
+			pr_err("PPS_Work: PROG timeout dc_state=%d (%d)\n",
+				gcpm->dc_state, ret);
+			pps_ui = PPS_ERROR_RETRY_MS;
+			gcpm->dc_index = 0;
+		}
+
 		goto pps_dc_reschedule;
 	}
 
 	/*
-	 * Wait until one of the sources come online, <0 when PPS is not
-	 * supported. DC runs only when PPS is active.
+	 * DC runs only when PPS is active: abort for the session if a source
+	 * went PROG_ONLINE but !active within PPS_ACTIVE_TIMEOUT_S.
 	 */
-	ret = gcpm_pps_work(gcpm);
-	if (ret < 0) {
-		/*
-		 * gcpm->dc_index<=0 cause DC state to be forced to DC_DISABLE
-		 * and PPS is set to offline at the beginning of the loop
-		 */
-		pr_info("PPS_Work: PPS timeout dc_index:%d->0 dc_state=%d->?\n",
-			 gcpm->dc_index, gcpm->dc_state);
-		pps_ui = PPS_ERROR_RETRY_MS;
-		gcpm->dc_index = 0;
+	pps_data = gcpm_pps_data(gcpm);
+	if (!pps_data) {
+
+		if (now - gcpm->dc_start_time < PPS_ACTIVE_TIMEOUT_S) {
+			/* give more time to turn online  */
+			pps_ui = PPS_ACTIVE_RETRY_MS;
+		} else {
+			pr_err("PPS_Work: ACTIVE timeout dc_state=%d (%d)\n",
+				gcpm->dc_state, ret);
+			/* TODO: abort for the session  */
+			pps_ui = PPS_ERROR_RETRY_MS;
+			gcpm->dc_index = 0;
+		}
+
 		goto pps_dc_reschedule;
 	}
 
-	/* will have PPS data when one of the sources becomes online */
-	pps_data = gcpm_pps_data(gcpm);
-	if (!pps_data) {
-		const ktime_t now = get_boot_sec();
-
-		if (!gcpm->dc_start_time)
-			gcpm->dc_start_time = now;
-		if (now - gcpm->dc_start_time < PPS_ACTIVE_TIMEOUT_S)
-			pps_ui = PPS_WAIT_RETRY_MS;
-
-		pr_debug("PPS_Work: PPS Wait elap=%lld pps_ui=%d, dc_index=%d dc_state=%d\n",
-			 now - gcpm->dc_start_time, pps_ui,
-			 gcpm->dc_index, gcpm->dc_state);
-
-		/* TODO: keep track of time waiting for ACTIVE and give up? */
-	} else if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
+	if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
 		struct power_supply *pps_psy = pps_data->pps_psy;
 
 		/* steady on PPS, DC is about to be enabled */
 		pps_ui = pps_update_adapter(pps_data, -1, -1, pps_psy);
-		if (pps_ui < 0)
-			pps_ui = DC_ERROR_RETRY_MS;
+		if (pps_ui < 0) {
+			pr_err("PPS_Work: pps update dc_state=%d (%d)\n",
+				gcpm->dc_state, pps_ui);
+			pps_ui = PPS_ERROR_RETRY_MS;
+		}
 
-		/* TODO: handoff handling of PPS to the DC charger */
+		/*
+		 * offine current adapter and start new. Charging is enabled
+		 * in DC_PASSTHROUGH setting GBMS_PROP_CHARGING_ENABLED to
+		 * the PPS source.
+		 * NOTE: There are a bunch of interesting recovery scenarios.
+		 */
 		ret = gcpm_chg_offline(gcpm);
 		if (ret == 0)
 			ret = gcpm_dc_start(gcpm, gcpm->dc_index);
@@ -697,45 +738,44 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		const int pps_index = gcpm->pps_index;
 		struct power_supply *dc_psy;
 
+		/* TOOD: check for limits (battery voltage too) */
+
 		dc_psy = gcpm_chg_get_active(gcpm);
 		if (!dc_psy) {
-			/* TODO: somethign went wrong, exit from it */
 			pr_err("PPS_Work: no adapter while in DC_PASSTHROUGH\n");
 			pps_ui = DC_ERROR_RETRY_MS;
-		} else {
-			/* Keep enabling charging and pinging the watchdog */
-			ret = GPSY_SET_PROP(dc_psy, GBMS_PROP_CHARGING_ENABLED,
-					    pps_index);
-			if (ret == 0) {
-				ret = gcpm_chg_ping(gcpm, 0, 0);
-				if (ret < 0)
-					pr_err("PPS_DC: ping failed with %d\n",
-					       ret);
-
-				/* keep running to ping the adapters */
-				pps_ui = DC_RUN_DELAY_MS;
-			} else if (ret == -EBUSY) {
-				pps_ui = DC_ERROR_RETRY_MS;
-			} else {
-				pr_err("PPS_Work: cannot enable DC_charging (%d)\n",
-				       ret);
-
-				ret = gcpm_chg_set_online(gcpm, 0);
-				if (ret < 0) {
-					pr_err("PPS_Work: online default %d\n", ret);
-					pps_ui = DC_ERROR_RETRY_MS;
-				} else {
-					pr_err("PPS_Work: dc offline\n");
-					pps_ui = 0;
-				}
-			}
+			goto pps_dc_reschedule;
 		}
 
-	} else if (pps_data) {
+		/* Confirm the pps source, ping the watchdog */
+		ret = GPSY_SET_PROP(dc_psy, GBMS_PROP_CHARGING_ENABLED,
+					pps_index);
+		if (ret == 0) {
+			ret = gcpm_chg_ping(gcpm, 0, 0);
+			if (ret < 0)
+				pr_err("PPS_Work: ping failed with %d\n", ret);
+
+			/* keep running to ping the adapters */
+			pps_ui = DC_RUN_DELAY_MS;
+		} else if (ret == -EBUSY) {
+			pps_ui = DC_ERROR_RETRY_MS;
+		} else {
+			pr_err("PPS_Work: cannot enable DC_charging (%d)\n",
+				ret);
+
+			ret = gcpm_chg_set_online(gcpm, 0);
+			if (ret < 0) {
+				pr_err("PPS_Work: online default %d\n", ret);
+				pps_ui = DC_ERROR_RETRY_MS;
+			} else {
+				pr_err("PPS_Work: dc offline\n");
+				pps_ui = 0;
+			}
+		}
 	} else {
 		struct power_supply *pps_psy = pps_data->pps_psy;
 
-		/* steady on PPS, if DC is not enabled */
+		/* steady on PPS, if DC state is DC_ENABLE or DC_RUNNING */
 		pps_ui = pps_update_adapter(pps_data, -1, -1, pps_psy);
 
 		pr_info("PPS_Work: STEADY pd_online=%d pps_ui=%d dc_ena=%d dc_state=%d\n",
@@ -757,6 +797,7 @@ pps_dc_reschedule:
 				      msecs_to_jiffies(pps_ui));
 	}
 
+pps_dc_done:
 	mutex_unlock(&gcpm->chg_psy_lock);
 }
 
