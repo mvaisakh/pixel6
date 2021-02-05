@@ -73,9 +73,9 @@
 #undef USE_POR_AFTER_I2C_RETRY
 #undef USE_POR_AFTER_SPI_RETRY
 #undef USER_OPEN_DWORK
-#undef USE_PRESSURE_SENSOR //TODO: check this
-#undef PAT_CONTROL //TODO: check this
-#undef USE_CHARGER_WORK    /* Workaround for b/142669861 */
+#undef USE_PRESSURE_SENSOR
+#undef PAT_CONTROL
+#define USE_CHARGER_WORK
 #undef USE_STIM_PAD
 #undef USE_SPEC_CHECK
 
@@ -870,6 +870,9 @@ struct sec_ts_data {
 	struct mutex eventlock;
 
 	struct drm_bridge panel_bridge;
+	struct drm_connector *connector;
+	bool is_panel_lp_mode;
+	int display_refresh_rate;	/* Display rate in Hz */
 
 	struct pm_qos_request pm_qos_req;
 

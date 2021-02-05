@@ -5,6 +5,7 @@ else
 endif
 
 KBUILD_OPTIONS += CONFIG_TOUCHSCREEN_SEC_TS=m
+EXTRA_CFLAGS = -I$(KERNEL_SRC)/../google-modules/display
 
 modules modules_install clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) $(@)
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) EXTRA_CFLAGS="$(EXTRA_CFLAGS)" $(@)

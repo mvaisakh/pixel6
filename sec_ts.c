@@ -13,6 +13,7 @@
 struct sec_ts_data *tsp_info;
 
 #include "sec_ts.h"
+#include <samsung/exynos_drm_connector.h>
 
 /* Switch GPIO values */
 #define SEC_SWITCH_GPIO_VALUE_SLPI_MASTER	1
@@ -50,23 +51,23 @@ int sec_ts_spi_delay(u8 reg)
 {
 	switch (reg) {
 	case SEC_TS_READ_TOUCH_RAWDATA:
-		return 400;
+		return 500;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	case SEC_TS_CMD_HEATMAP_READ:
 		return 500;
 #endif
 	case SEC_TS_READ_ALL_EVENT:
-		return 500;
+		return 550;
 	case SEC_TS_READ_CSRAM_RTDP_DATA:
-		return 500;
+		return 550;
 	case SEC_TS_CAAT_READ_STORED_DATA:
-		return 500;
+		return 550;
 	case SEC_TS_CMD_FLASH_READ_DATA:
-		return 1800;
+		return 2000;
 	case SEC_TS_READ_FIRMWARE_INTEGRITY:
 		return 20*1000;
 	case SEC_TS_READ_SELFTEST_RESULT:
-		return 3500;
+		return 4000;
 	default: return 100;
 	}
 }
@@ -2934,35 +2935,22 @@ static int sec_ts_power(void *data, bool on)
 		}
 	}
 
-	if (pdata->regulator_vdd && (vdd_enabled != on)) {
-		ret = (on) ? regulator_enable(pdata->regulator_vdd) :
-			regulator_disable(pdata->regulator_vdd);
-		if (ret)
-			input_err(true, &ts->client->dev,
-				"%s: Failed to control vdd: %d\n",
-				__func__, ret);
-		else {
-			sec_ts_delay(1);
-			vdd_enabled = on;
-		}
-	}
-
-	if (pdata->regulator_avdd && (avdd_enabled != on)) {
-		ret = (on) ? regulator_enable(pdata->regulator_avdd) :
-			regulator_disable(pdata->regulator_avdd);
-		if (ret)
-			input_err(true, &ts->client->dev,
-				"%s: Failed to control avdd: %d\n",
-				__func__, ret);
-		else
-			avdd_enabled = on;
-	}
-
 	if (pdata->regulator_vdd) {
-		input_info(true, &ts->client->dev, "%s: %s: vdd:%s\n",
-			__func__, on ? "on" : "off",
-			regulator_is_enabled(pdata->regulator_vdd) ?
-			"on" : "off");
+		if (vdd_enabled != on){
+			ret = (on) ? regulator_enable(pdata->regulator_vdd) :
+				regulator_disable(pdata->regulator_vdd);
+			if (ret)
+				input_err(true, &ts->client->dev,
+					"%s: Failed to control vdd: %d\n",
+					__func__, ret);
+			else {
+				input_info(true, &ts->client->dev, "%s: %s vdd\n",
+					__func__, on ? "enable" : "disable");
+				sec_ts_delay(on ? 1 : 4);
+				vdd_enabled = on;
+			}
+		}
+
 		if (!vdd_enabled) {
 			regulator_put(pdata->regulator_vdd);
 			pdata->regulator_vdd = NULL;
@@ -2970,10 +2958,20 @@ static int sec_ts_power(void *data, bool on)
 	}
 
 	if (pdata->regulator_avdd) {
-		input_info(true, &ts->client->dev, "%s: %s: avdd:%s\n",
-			__func__, on ? "on" : "off",
-			regulator_is_enabled(pdata->regulator_avdd) ?
-			"on" : "off");
+		if (avdd_enabled != on) {
+			ret = (on) ? regulator_enable(pdata->regulator_avdd) :
+				regulator_disable(pdata->regulator_avdd);
+			if (ret)
+				input_err(true, &ts->client->dev,
+					"%s: Failed to control avdd: %d\n",
+					__func__, ret);
+			else {
+				input_info(true, &ts->client->dev, "%s: %s avdd\n",
+					__func__, on ? "enable" : "disable");
+				avdd_enabled = on;
+			}
+		}
+
 		if (!avdd_enabled) {
 			regulator_put(pdata->regulator_avdd);
 			pdata->regulator_avdd = NULL;
@@ -4492,7 +4490,7 @@ static int sec_ts_remove(struct spi_device *client)
 	/* Force the bus active throughout removal of the client */
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FORCE_ACTIVE, true);
 
-	/* power_supply_unreg_notifier(&ts->psy_nb); */
+	power_supply_unreg_notifier(&ts->psy_nb);
 
 	cancel_work_sync(&ts->suspend_work);
 	cancel_work_sync(&ts->resume_work);
@@ -5090,8 +5088,8 @@ int sec_ts_set_bus_ref(struct sec_ts_data *ts, u16 ref, bool enable)
 
 	if ((enable && (ts->bus_refmask & ref)) ||
 	    (!enable && !(ts->bus_refmask & ref))) {
-		input_info(true, &ts->client->dev,
-			"%s: reference is unexpectedly set: mask=0x%04X, ref=0x%04X, enable=%d.\n",
+		input_dbg(true, &ts->client->dev,
+			"%s: reference is unexpectedly set: mask=0x%04X, ref=0x%04X, enable=%d\n",
 			__func__, ts->bus_refmask, ref, enable);
 		mutex_unlock(&ts->bus_mutex);
 		return -EINVAL;
@@ -5128,27 +5126,78 @@ int sec_ts_set_bus_ref(struct sec_ts_data *ts, u16 ref, bool enable)
 	return result;
 }
 
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
+{
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+
+	drm_connector_list_iter_begin(bridge->dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (connector->encoder == bridge->encoder)
+			break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+	return connector;
+}
+
+static bool bridge_is_lp_mode(struct drm_connector *connector)
+{
+	if (connector && connector->state) {
+		struct exynos_drm_connector_state *s =
+			to_exynos_connector_state(connector->state);
+		return s->exynos_mode.is_lp_mode;
+	}
+	return false;
+}
+
 static void panel_bridge_enable(struct drm_bridge *bridge)
 {
 	struct sec_ts_data *ts =
-			container_of(bridge, struct sec_ts_data, panel_bridge);
+		container_of(bridge, struct sec_ts_data, panel_bridge);
 
 	pr_debug("%s\n", __func__);
-	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
+	if (!ts->is_panel_lp_mode)
+		sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, true);
 }
 
 static void panel_bridge_disable(struct drm_bridge *bridge)
 {
 	struct sec_ts_data *ts =
-			container_of(bridge, struct sec_ts_data, panel_bridge);
+		container_of(bridge, struct sec_ts_data, panel_bridge);
 
 	pr_debug("%s\n", __func__);
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, false);
 }
 
+static void panel_bridge_mode_set(struct drm_bridge *bridge,
+				  const struct drm_display_mode *mode,
+				  const struct drm_display_mode *adjusted_mode)
+{
+	struct sec_ts_data *ts =
+		container_of(bridge, struct sec_ts_data, panel_bridge);
+
+	if (!ts->connector || !ts->connector->state)
+		ts->connector = get_bridge_connector(bridge);
+
+	ts->is_panel_lp_mode = bridge_is_lp_mode(ts->connector);
+	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SCREEN_ON, !ts->is_panel_lp_mode);
+
+	if (adjusted_mode) {
+		int vrefresh = drm_mode_vrefresh(adjusted_mode);
+
+		if (ts->display_refresh_rate != vrefresh) {
+			input_dbg(true, &ts->client->dev,
+				"%s: refresh rate(Hz) changed to %d from %d\n",
+				__func__,  vrefresh, ts->display_refresh_rate);
+			ts->display_refresh_rate = vrefresh;
+		}
+	}
+}
+
 static const struct drm_bridge_funcs panel_bridge_funcs = {
 	.enable = panel_bridge_enable,
 	.disable = panel_bridge_disable,
+	.mode_set = panel_bridge_mode_set,
 };
 
 static int register_panel_bridge(struct sec_ts_data *ts)
