@@ -4490,7 +4490,7 @@ static int sec_ts_remove(struct spi_device *client)
 	/* Force the bus active throughout removal of the client */
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FORCE_ACTIVE, true);
 
-	/* power_supply_unreg_notifier(&ts->psy_nb); */
+	power_supply_unreg_notifier(&ts->psy_nb);
 
 	cancel_work_sync(&ts->suspend_work);
 	cancel_work_sync(&ts->resume_work);
