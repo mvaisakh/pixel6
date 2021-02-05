@@ -4590,9 +4590,8 @@ static int fts_identify_panel(struct fts_ts_info *info)
 	// --------------------------------------------------------------------
 get_panel_info_failed:
 	name = NULL;
-	if (info->board->panel)
-		of_property_read_string_index(np, "st,firmware_names",
-					      panel_index, &name);
+	of_property_read_string_index(np, "st,firmware_names",
+				      panel_index, &name);
 	if (!name)
 		info->board->fw_name = PATH_FILE_FW;
 	else
@@ -4600,9 +4599,8 @@ get_panel_info_failed:
 	dev_info(info->dev, "firmware name = %s\n", info->board->fw_name);
 
 	name = NULL;
-	if (info->board->panel)
-		of_property_read_string_index(np, "st,limits_names",
-					      panel_index, &name);
+	of_property_read_string_index(np, "st,limits_names",
+				      panel_index, &name);
 	if (!name)
 		info->board->limits_name = LIMITS_FILE;
 	else
