@@ -443,13 +443,13 @@ static int p9221_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
 
 	/* map to p9412 values */
 	if (val8 & P9221R5_MODE_WPCMODE)
-		*mode = P9412_SYS_OP_MODE_WPC_BASIC;
+		*mode = P9XXX_SYS_OP_MODE_WPC_BASIC;
 	else if (val8 & P9382A_MODE_TXMODE)
-		*mode = P9412_SYS_OP_MODE_TX_MODE;
+		*mode = P9XXX_SYS_OP_MODE_TX_MODE;
 	else if (val8 & P9221R5_MODE_EXTENDED)
-		*mode = P9412_SYS_OP_MODE_WPC_EXTD;
+		*mode = P9XXX_SYS_OP_MODE_WPC_EXTD;
 	else
-		*mode = P9412_SYS_OP_MODE_AC_MISSING;
+		*mode = P9XXX_SYS_OP_MODE_AC_MISSING;
 	return 0;
 }
 
@@ -464,11 +464,11 @@ static int p9222_chip_get_sys_mode(struct p9221_charger_data *chgr, u8 *mode)
 
 	/* map to p9412 values */
 	if (val8 & P9222_SYS_OP_MODE_WPC_BASIC)
-		*mode = P9412_SYS_OP_MODE_WPC_BASIC;
+		*mode = P9XXX_SYS_OP_MODE_WPC_BASIC;
 	else if (val8 & P9222_SYS_OP_MODE_WPC_EXTD)
-		*mode = P9412_SYS_OP_MODE_WPC_EXTD;
+		*mode = P9XXX_SYS_OP_MODE_WPC_EXTD;
 	else
-		*mode = P9412_SYS_OP_MODE_AC_MISSING;
+		*mode = P9XXX_SYS_OP_MODE_AC_MISSING;
 
 	return 0;
 }
@@ -715,7 +715,7 @@ static int p9412_chip_tx_mode(struct p9221_charger_data *chgr, bool enable)
 			return ret;
 		}
 
-		ret = p9382_wait_for_mode(chgr, P9412_SYS_OP_MODE_TX_MODE);
+		ret = p9382_wait_for_mode(chgr, P9XXX_SYS_OP_MODE_TX_MODE);
 		if (ret)
 			logbuffer_log(chgr->rtx_log,
 				      "error waiting for tx_mode (%d)", ret);
@@ -920,7 +920,7 @@ static int p9412_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 	if (ret)
 		goto out;
 
-	if (val8 != P9412_SYS_OP_MODE_WPC_EXTD)
+	if (val8 != P9XXX_SYS_OP_MODE_WPC_EXTD)
 		return 0;
 
 	logbuffer_log(chgr->log, "%s: WPC renegotiation", __func__);
@@ -1019,7 +1019,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		return 0;
 	}
 
-	if (val8 == P9412_SYS_OP_MODE_PROPRIETARY) {
+	if (val8 == P9XXX_SYS_OP_MODE_PROPRIETARY) {
 		chgr->prop_mode_en = true;
 		goto err_exit;
 	}
@@ -1167,6 +1167,98 @@ err_exit:
 	}
 
 	return chgr->prop_mode_en;
+}
+
+void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id)
+{
+	chgr->ints.mode_changed_bit = P9221R5_STAT_MODECHANGED;
+	chgr->ints.vrecton_bit = P9221R5_STAT_VRECTON;
+	chgr->ints.vout_changed_bit = P9221R5_STAT_VOUTCHANGED;
+
+	switch (chip_id) {
+	case P9412_CHIP_ID:
+		chgr->ints.over_curr_bit = P9412_STAT_OVC;
+		chgr->ints.over_volt_bit = 0;      /* TODO: b/181191668*/
+		chgr->ints.over_temp_bit = P9412_STAT_OVT;
+		chgr->ints.over_uv_bit = 0;
+		chgr->ints.cc_send_busy_bit = 0;
+		chgr->ints.cc_data_rcvd_bit = P9412_STAT_CCDATARCVD;
+		chgr->ints.pp_rcvd_bit = 0;
+		chgr->ints.cc_error_bit = 0;
+		chgr->ints.cc_reset_bit = 0;
+		chgr->ints.propmode_stat_bit = P9412_PROP_MODE_STAT_INT;
+		chgr->ints.cdmode_change_bit = P9412_CDMODE_CHANGE_INT;
+
+		chgr->ints.hard_ocp_bit = P9412_STAT_OVC;
+		chgr->ints.tx_conflict_bit = P9412_STAT_TXCONFLICT;
+		chgr->ints.csp_bit = 0;
+		chgr->ints.rx_connected_bit = P9412_STAT_RXCONNECTED;
+		break;
+	case P9382A_CHIP_ID:
+		chgr->ints.over_curr_bit = P9221R5_STAT_OVC;
+		chgr->ints.over_volt_bit = P9221R5_STAT_OVV;
+		chgr->ints.over_temp_bit = P9221R5_STAT_OVT;
+		chgr->ints.over_uv_bit = P9221R5_STAT_UV;
+		chgr->ints.cc_send_busy_bit = P9221R5_STAT_CCSENDBUSY;
+		chgr->ints.cc_data_rcvd_bit = P9221R5_STAT_CCDATARCVD;
+		chgr->ints.pp_rcvd_bit = P9221R5_STAT_PPRCVD;
+		chgr->ints.cc_error_bit = P9221R5_STAT_CCERROR;
+		chgr->ints.cc_reset_bit = P9221R5_STAT_CCRESET;
+		chgr->ints.propmode_stat_bit = 0;
+		chgr->ints.cdmode_change_bit = 0;
+
+		chgr->ints.hard_ocp_bit = P9382_STAT_HARD_OCP;
+		chgr->ints.tx_conflict_bit = P9382_STAT_TXCONFLICT;
+		chgr->ints.csp_bit = P9382_STAT_CSP;
+		chgr->ints.rx_connected_bit = P9382_STAT_RXCONNECTED;
+		break;
+	case P9222_CHIP_ID:
+		chgr->ints.over_curr_bit = P9222_STAT_OVC;
+		chgr->ints.over_volt_bit = P9222_STAT_OVV;
+		chgr->ints.over_temp_bit = P9222_STAT_OVT;
+		chgr->ints.over_uv_bit = 0;
+		chgr->ints.cc_send_busy_bit = P9221R5_STAT_CCSENDBUSY;
+		chgr->ints.cc_data_rcvd_bit = P9221R5_STAT_CCDATARCVD;
+		chgr->ints.pp_rcvd_bit = P9222_STAT_PPRCVD;
+		chgr->ints.cc_error_bit = P9222_STAT_CCERROR;
+		chgr->ints.cc_reset_bit = 0;
+		chgr->ints.propmode_stat_bit = 0;
+		chgr->ints.cdmode_change_bit = 0;
+
+		chgr->ints.hard_ocp_bit = 0;
+		chgr->ints.tx_conflict_bit = 0;
+		chgr->ints.csp_bit = 0;
+		chgr->ints.rx_connected_bit = 0;
+		break;
+	default:
+		chgr->ints.over_curr_bit = P9221R5_STAT_OVC;
+		chgr->ints.over_volt_bit = P9221R5_STAT_OVV;
+		chgr->ints.over_temp_bit = P9221R5_STAT_OVT;
+		chgr->ints.over_uv_bit = P9221R5_STAT_UV;
+		chgr->ints.cc_send_busy_bit = P9221R5_STAT_CCSENDBUSY;
+		chgr->ints.cc_data_rcvd_bit = P9221R5_STAT_CCDATARCVD;
+		chgr->ints.pp_rcvd_bit = P9221R5_STAT_PPRCVD;
+		chgr->ints.cc_error_bit = P9221R5_STAT_CCERROR;
+		chgr->ints.cc_reset_bit = P9221R5_STAT_CCRESET;
+		chgr->ints.propmode_stat_bit = 0;
+		chgr->ints.cdmode_change_bit = 0;
+
+		chgr->ints.hard_ocp_bit = 0;
+		chgr->ints.tx_conflict_bit = 0;
+		chgr->ints.csp_bit = 0;
+		chgr->ints.rx_connected_bit = 0;
+		break;
+	}
+
+	chgr->ints.stat_limit_mask = (chgr->ints.cc_send_busy_bit |
+				      chgr->ints.over_uv_bit |
+				      chgr->ints.over_temp_bit |
+				      chgr->ints.over_volt_bit |
+				      chgr->ints.over_curr_bit);
+	chgr->ints.stat_cc_mask = (chgr->ints.cc_reset_bit |
+				   chgr->ints.pp_rcvd_bit |
+				   chgr->ints.cc_error_bit |
+				   chgr->ints.cc_data_rcvd_bit);
 }
 
 void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)

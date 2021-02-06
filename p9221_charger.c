@@ -220,8 +220,8 @@ static bool p9221_is_epp(struct p9221_charger_data *charger)
 
 	ret = charger->chip_get_sys_mode(charger, &reg);
 	if (ret == 0)
-		return ((reg == P9412_SYS_OP_MODE_WPC_EXTD) ||
-			(reg == P9412_SYS_OP_MODE_PROPRIETARY));
+		return ((reg == P9XXX_SYS_OP_MODE_WPC_EXTD) ||
+			(reg == P9XXX_SYS_OP_MODE_PROPRIETARY));
 
 	dev_err(&charger->client->dev, "Could not read mode: %d\n",
 		ret);
@@ -1339,22 +1339,22 @@ static int p9221_enable_interrupts(struct p9221_charger_data *charger)
 		/* enable necessary INT for RTx mode */
 		mask = P9382_STAT_RTX_MASK;
 	} else {
-		mask = P9221R5_STAT_LIMIT_MASK | P9221R5_STAT_CC_MASK |
-		       P9221_STAT_VRECT;
+		mask = charger->ints.stat_limit_mask | charger->ints.stat_cc_mask |
+		       charger->ints.vrecton_bit;
 
 		if (charger->pdata->needs_dcin_reset ==
 						P9221_WC_DC_RESET_VOUTCHANGED)
-			mask |= P9221R5_STAT_VOUTCHANGED;
+			mask |= charger->ints.vout_changed_bit;
 		if (charger->pdata->needs_dcin_reset ==
 						P9221_WC_DC_RESET_MODECHANGED)
-			mask |= P9221R5_STAT_MODECHANGED;
+			mask |= charger->ints.mode_changed_bit;
 	}
 	ret = p9221_clear_interrupts(charger, mask);
 	if (ret)
 		dev_err(&charger->client->dev,
 			"Could not clear interrupts: %d\n", ret);
 
-	ret = p9221_reg_write_8(charger, P9221_INT_ENABLE_REG, mask);
+	ret = p9221_reg_write_16(charger, P9221_INT_ENABLE_REG, mask);
 	if (ret)
 		dev_err(&charger->client->dev,
 			"Could not enable interrupts: %d\n", ret);
@@ -1641,7 +1641,7 @@ static int p9221_notifier_check_neg_power(struct p9221_charger_data *charger)
 	}
 
 	/* VOUT for standard BPP comes much earlier that VOUT for EPP */
-	if (!(status_reg & P9221_STAT_VOUT))
+	if (!(status_reg & charger->ints.vout_changed_bit))
 		return 1;
 
 	/* normal BPP TX or EPP at less than 10W */
@@ -2616,7 +2616,7 @@ static ssize_t rtx_status_show(struct device *dev,
 	if (p9221_is_online(charger)) {
 		charger->rtx_state = RTX_DISABLED;
 		ret = charger->chip_get_sys_mode(charger, &reg);
-		if ((ret == 0) && (reg == P9412_SYS_OP_MODE_TX_MODE))
+		if ((ret == 0) && (reg == P9XXX_SYS_OP_MODE_TX_MODE))
 			charger->rtx_state = RTX_ACTIVE;
 	} else {
 		/* FIXME: b/147213330
@@ -3185,17 +3185,17 @@ static void p9221_over_handle(struct p9221_charger_data *charger,
 
 	dev_err(&charger->client->dev, "Received OVER INT: %02x\n", irq_src);
 
-	if (irq_src & P9221R5_STAT_OVV) {
+	if (irq_src & charger->ints.over_volt_bit) {
 		reason = P9221_EOP_OVER_VOLT;
 		goto send_eop;
 	}
 
-	if (irq_src & P9221R5_STAT_OVT) {
+	if (irq_src & charger->ints.over_temp_bit) {
 		reason = P9221_EOP_OVER_TEMP;
 		goto send_eop;
 	}
 
-	if ((irq_src & P9221R5_STAT_UV) && !(irq_src & P9221R5_STAT_OVC))
+	if ((irq_src & charger->ints.over_uv_bit) && !(irq_src & charger->ints.over_curr_bit))
 		return;
 
 	/* Overcurrent, reduce ICL and poll to absorb any transients */
@@ -3221,7 +3221,7 @@ static void p9221_over_handle(struct p9221_charger_data *charger,
 	reason = P9221_EOP_OVER_CURRENT;
 	for (i = 0; i < P9221R5_OVER_CHECK_NUM; i++) {
 		ret = p9221_clear_interrupts(charger,
-					     irq_src & P9221R5_STAT_LIMIT_MASK);
+					     irq_src & charger->ints.stat_limit_mask);
 		msleep(50);
 		if (ret)
 			continue;
@@ -3245,7 +3245,7 @@ static void p9221_over_handle(struct p9221_charger_data *charger,
 			continue;
 		}
 
-		if ((irq_src & P9221R5_STAT_OVC) == 0) {
+		if ((irq_src & charger->ints.over_curr_bit) == 0) {
 			print_current_samples(charger, iout_val, i + 1);
 			dev_info(&charger->client->dev,
 				 "OVER condition %04x cleared after %d tries\n",
@@ -3350,10 +3350,9 @@ static void p9382_rtx_work(struct work_struct *work)
 		return;
 
 	/* Check if RTx mode is auto turn off */
-	ret = p9221_reg_read_8(charger, P9221R5_SYSTEM_MODE_REG,
-			       &mode_reg);
+	ret = charger->chip_get_sys_mode(charger, &mode_reg);
 	if (ret == 0) {
-		if (charger->is_rtx_mode && !(mode_reg & P9382A_MODE_TXMODE)) {
+		if (charger->is_rtx_mode && !(mode_reg & P9XXX_SYS_OP_MODE_TX_MODE)) {
 			logbuffer_log(charger->rtx_log,
 				      "is_rtx_on: ben=%d, mode=%02x",
 				      charger->ben_state, mode_reg);
@@ -3373,8 +3372,14 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	u8 mode_reg, csp_reg;
 	u16 status_reg;
 	bool attached = 0;
+	const u16 mode_changed_bit = charger->ints.mode_changed_bit;
+	const u16 cc_send_busy_bit = charger->ints.cc_send_busy_bit;
+	const u16 hard_ocp_bit = charger->ints.hard_ocp_bit;
+	const u16 tx_conflict_bit = charger->ints.tx_conflict_bit;
+	const u16 rx_connected_bit = charger->ints.rx_connected_bit;
+	const u16 csp_bit = charger->ints.csp_bit;
 
-	if (irq_src & P9221R5_STAT_MODECHANGED) {
+	if (irq_src & mode_changed_bit) {
 		ret = charger->chip_get_sys_mode(charger, &mode_reg);
 		if (ret) {
 			dev_err(&charger->client->dev,
@@ -3382,7 +3387,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 				ret);
 			return;
 		}
-		if (mode_reg & P9382A_MODE_TXMODE) {
+		if (mode_reg == P9XXX_SYS_OP_MODE_TX_MODE) {
 			charger->is_rtx_mode = true;
 			pm_stay_awake(charger->dev);
 			cancel_delayed_work_sync(&charger->rtx_work);
@@ -3404,12 +3409,11 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		return;
 	}
 
-	if (irq_src & P9221R5_STAT_CCSENDBUSY) {
+	if (irq_src & cc_send_busy_bit)
 		charger->com_busy = false;
-	}
 
-	if (irq_src & (P9382_STAT_HARD_OCP | P9382_STAT_TXCONFLICT)) {
-		if (irq_src & P9382_STAT_HARD_OCP)
+	if (irq_src & (hard_ocp_bit | tx_conflict_bit)) {
+		if (irq_src & hard_ocp_bit)
 			charger->rtx_err = RTX_HARD_OCP;
 		else
 			charger->rtx_err = RTX_TX_CONFLICT;
@@ -3423,8 +3427,8 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		p9382_set_rtx(charger, false);
 	}
 
-	if (irq_src & P9382_STAT_RXCONNECTED) {
-		attached = status_reg & P9382_STAT_RXCONNECTED;
+	if (irq_src & rx_connected_bit) {
+		attached = status_reg & rx_connected_bit;
 		logbuffer_log(charger->rtx_log,
 			      "Rx is %s. STATUS_REG=%04x",
 			      attached ? "connected" : "disconnect",
@@ -3440,18 +3444,16 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		}
 	}
 
-	if (irq_src & P9382_STAT_CSP) {
-		if (status_reg & P9382_STAT_CSP) {
-			ret = p9221_reg_read_8(charger, P9382A_CHARGE_STAT_REG,
-					       &csp_reg);
-			if (ret) {
-				logbuffer_log(charger->rtx_log,
-					      "failed to read CSP_REG reg: %d",
-					      ret);
-			} else {
-				charger->rtx_csp = csp_reg;
-				schedule_work(&charger->uevent_work);
-			}
+	if ((irq_src & csp_bit) && (status_reg & csp_bit)) {
+		ret = p9221_reg_read_8(charger, P9382A_CHARGE_STAT_REG,
+				       &csp_reg);
+		if (ret) {
+			logbuffer_log(charger->rtx_log,
+				      "failed to read CSP_REG reg: %d",
+				      ret);
+		} else {
+			charger->rtx_csp = csp_reg;
+			schedule_work(&charger->uevent_work);
 		}
 	}
 }
@@ -3473,7 +3475,7 @@ static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
 	 * dc reset as well.
 	 */
 	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_MODECHANGED &&
-	    (irq_src & P9221R5_STAT_MODECHANGED || !irq_src)) {
+	    (irq_src & charger->ints.mode_changed_bit || !irq_src)) {
 		u8 mode_reg = 0;
 		int res;
 
@@ -3492,13 +3494,13 @@ static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
 
 		dev_info(&charger->client->dev,
 			 "P9221_SYSTEM_MODE_REG reg: %02x\n", mode_reg);
-		return !(mode_reg == P9412_SYS_OP_MODE_WPC_EXTD ||
-			 mode_reg == P9412_SYS_OP_MODE_PROPRIETARY ||
-			 mode_reg == P9412_SYS_OP_MODE_WPC_BASIC);
+		return !(mode_reg == P9XXX_SYS_OP_MODE_WPC_EXTD ||
+			 mode_reg == P9XXX_SYS_OP_MODE_PROPRIETARY ||
+			 mode_reg == P9XXX_SYS_OP_MODE_WPC_BASIC);
 	}
 
 	if (charger->pdata->needs_dcin_reset == P9221_WC_DC_RESET_VOUTCHANGED &&
-	    irq_src & P9221R5_STAT_VOUTCHANGED) {
+	    irq_src & charger->ints.vout_changed_bit) {
 		u16 status_reg = 0;
 		int res;
 
@@ -3511,7 +3513,7 @@ static bool p9221_dc_reset_needed(struct p9221_charger_data *charger,
 
 		dev_info(&charger->client->dev,
 			 "P9221_STATUS_REG reg: %04x\n", status_reg);
-		return !(status_reg & P9221_STAT_VOUT);
+		return !(status_reg & charger->ints.vout_changed_bit);
 	}
 
 	return false;
@@ -3558,11 +3560,11 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 
 	p9221_check_dc_reset(charger, irq_src);
 
-	if (irq_src & P9221R5_STAT_LIMIT_MASK)
+	if (irq_src & charger->ints.stat_limit_mask)
 		p9221_over_handle(charger, irq_src);
 
 	/* Receive complete */
-	if (irq_src & P9221R5_STAT_CCDATARCVD) {
+	if (irq_src & charger->ints.cc_data_rcvd_bit) {
 		size_t rxlen = 0;
 
 		res = charger->chip_get_cc_recv_size(charger, &rxlen);
@@ -3586,7 +3588,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	}
 
 	/* Send complete */
-	if (irq_src & P9221R5_STAT_CCSENDBUSY) {
+	if (irq_src & charger->ints.cc_send_busy_bit) {
 		charger->tx_busy = false;
 		charger->tx_done = true;
 		cancel_delayed_work(&charger->tx_work);
@@ -3595,7 +3597,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	}
 
 	/* Proprietary packet */
-	if (irq_src & P9221R5_STAT_PPRCVD) {
+	if (irq_src & charger->ints.pp_rcvd_bit) {
 		const size_t maxsz = sizeof(charger->pp_buf) * 3 + 1;
 		char s[maxsz];
 		u8 tmp, buff[sizeof(charger->pp_buf)], crc;
@@ -3645,17 +3647,16 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 			}
 		}
 	}
-/* TODO: bit 12 use for PropModeStat_INT p9412 */
-#if 0
+
 	/* CC Reset complete */
-	if (irq_src & P9221R5_STAT_CCRESET)
+	if (irq_src & charger->ints.cc_reset_bit)
 		p9221_abort_transfers(charger);
-#endif
-	if (irq_src & PROP_MODE_STAT_INT) {
+
+	if (irq_src & charger->ints.propmode_stat_bit) {
 		u8 mode;
 
 		res = charger->chip_get_sys_mode(charger, &mode);
-		if (res == 0 && mode == P9412_SYS_OP_MODE_PROPRIETARY)
+		if (res == 0 && mode == P9XXX_SYS_OP_MODE_PROPRIETARY)
 			charger->prop_mode_en = true;
 
 		/* charger->prop_mode_en is reset on disconnect */
@@ -3710,7 +3711,7 @@ static irqreturn_t p9221_irq_thread(int irq, void *irq_data)
 		goto out;
 	}
 
-	if (irq_src & P9221_STAT_VRECT) {
+	if (irq_src & charger->ints.vrecton_bit) {
 		dev_info(&charger->client->dev,
 			"Received VRECTON, online=%d\n", charger->online);
 		if (!charger->online) {
@@ -4303,6 +4304,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->reg_write_16 = p9221_reg_write_16;
 	/* then from *_chip.c -> *_charger.c */
 	p9221_chip_init_params(charger, charger->pdata->chip_id);
+	p9221_chip_init_interrupt_bits(charger, charger->pdata->chip_id);
 	ret = p9221_chip_init_funcs(charger, charger->pdata->chip_id);
 	if (ret) {
 		dev_err(&client->dev,

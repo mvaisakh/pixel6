@@ -279,6 +279,15 @@
 
 
 /*
+ * Interrupt/Status flags for P9222
+ */
+#define P9222_STAT_CCERROR			BIT(0)
+#define P9222_STAT_OVT				BIT(2)
+#define P9222_STAT_OVC				BIT(3)
+#define P9222_STAT_OVV				BIT(4)
+#define P9222_STAT_PPRCVD			BIT(15)
+
+/*
  * P9382 unique registers
  */
 #define P9382A_I2C_ADDRESS			0x3b
@@ -345,12 +354,12 @@
 #define P9412_CHIP_ID				0x9412
 
 /* P9221R5_SYSTEM_MODE_REG(0x4C) values for P9412 */
-#define P9412_SYS_OP_MODE_AC_MISSING		0x00 /* AC Missing */
-#define P9412_SYS_OP_MODE_WPC_BASIC		0x01 /* WPC Basic Protocol */
-#define P9412_SYS_OP_MODE_WPC_EXTD		0x02 /* WPC Extended Protocol */
-#define P9412_SYS_OP_MODE_PROPRIETARY		0x03 /* Renesas Prop. Protocol */
-#define P9412_SYS_OP_MODE_TX_MODE		0x08 /* TX Mode */
-#define P9412_SYS_OP_MODE_TX_FOD		0x09 /* TX FOD (Stop) */
+#define P9XXX_SYS_OP_MODE_AC_MISSING		0x00 /* AC Missing */
+#define P9XXX_SYS_OP_MODE_WPC_BASIC		0x01 /* WPC Basic Protocol */
+#define P9XXX_SYS_OP_MODE_WPC_EXTD		0x02 /* WPC Extended Protocol */
+#define P9XXX_SYS_OP_MODE_PROPRIETARY		0x03 /* Renesas Prop. Protocol */
+#define P9XXX_SYS_OP_MODE_TX_MODE		0x08 /* TX Mode */
+#define P9XXX_SYS_OP_MODE_TX_FOD		0x09 /* TX FOD (Stop) */
 
 #define P9412_TX_CMD_REG			0x4D
 #define P9412_TX_I_API_LIM_REG			0x56
@@ -395,7 +404,14 @@
 #define PROP_MODE_EN_CMD			BIT(8)
 #define PROP_REQ_PWR_CMD			BIT(9)
 /* For INT status register */
-#define PROP_MODE_STAT_INT			BIT(12)
+#define P9412_STAT_CCDATARCVD			BIT(15)
+#define P9412_PROP_MODE_STAT_INT		BIT(12)
+#define P9412_CDMODE_CHANGE_INT			BIT(11)
+#define P9412_STAT_OVV				BIT(4)
+#define P9412_STAT_OVC				BIT(3)
+#define P9412_STAT_OVT				BIT(2)
+#define P9412_STAT_RXCONNECTED			BIT(11)
+#define P9412_STAT_TXCONFLICT			BIT(1)
 /* EPT code */
 #define EPT_END_OF_CHARGE			BIT(0)
 
@@ -442,9 +458,35 @@ struct p9221_charger_platform_data {
 	u32				alignment_offset_high_current;
 };
 
+struct p9221_charger_ints_bit {
+	/* Rx mode */
+	u16				over_curr_bit;
+	u16				over_volt_bit;
+	u16				over_temp_bit;
+	u16				over_uv_bit;
+	u16				mode_changed_bit;
+	u16				vrecton_bit;
+	u16				vout_changed_bit;
+	u16				cc_send_busy_bit;
+	u16				cc_data_rcvd_bit;
+	u16				pp_rcvd_bit;
+	u16				cc_error_bit;
+	u16				cc_reset_bit;
+	u16				propmode_stat_bit;
+	u16				cdmode_change_bit;
+	u16				stat_limit_mask;
+	u16				stat_cc_mask;
+	/* Tx mode */
+	u16				hard_ocp_bit;
+	u16				tx_conflict_bit;
+	u16				csp_bit;
+	u16				rx_connected_bit;
+};
+
 struct p9221_charger_data {
 	struct i2c_client		*client;
 	struct p9221_charger_platform_data *pdata;
+	struct p9221_charger_ints_bit	ints;
 	struct power_supply		*wc_psy;
 	struct power_supply		*dc_psy;
 	struct votable			*dc_icl_votable;
@@ -587,6 +629,8 @@ extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
 				 u16 chip_id);
 extern void p9221_chip_init_params(struct p9221_charger_data *charger,
 				   u16 chip_id);
+extern void p9221_chip_init_interrupt_bits(struct p9221_charger_data *charger,
+					   u16 chip_id);
 
 enum p9382_rtx_state {
 	RTX_NOTSUPPORTED = 0,
