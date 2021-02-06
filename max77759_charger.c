@@ -235,13 +235,13 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_STBY_ON:
 		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d STBY_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->stby_on += 1;
 		break;
 	case GBMS_CHGR_MODE_INFLOW_OFF:
 		if (!cb_data->inflow_off)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d INFLOW_OFF vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->inflow_off += 1;
 		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
