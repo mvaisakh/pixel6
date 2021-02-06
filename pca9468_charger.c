@@ -94,7 +94,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* IIN_CC adc offset for accuracy */
 #define PCA9468_IIN_ADC_OFFSET		20000	/* uA */
 /* IIN_CC compensation offset */
-#define PCA9468_IIN_CC_COMP_OFFSET	50000	/* uA */
+#define PCA9468_IIN_CC_COMP_OFFSET	200000	/* uA */
 /* IIN_CC compensation offset in Power Limit Mode(Constant Power) TA */
 #define PCA9468_IIN_CC_COMP_OFFSET_CP	20000	/* uA */
 /* TA maximum voltage that can support CC in Constant Power Mode */
@@ -178,6 +178,12 @@ enum {
 	INC_NONE,	/* No increment */
 	INC_TA_VOL,	/* TA voltage increment */
 	INC_TA_CUR,	/* TA current increment */
+};
+
+/* BATT info Type */
+enum {
+	BATT_CURRENT,
+	BATT_VOLTAGE,
 };
 
 /* IIN offset as the switching frequency in uA*/
@@ -750,6 +756,41 @@ error:
 	return -EINVAL;
 }
 
+static int pca9468_get_batt_info(struct pca9468_charger *pca9468, int info_type, int *info)
+{
+	int ret = -EINVAL;
+	union power_supply_propval val;
+	enum power_supply_property psp;
+
+	switch (info_type) {
+		case BATT_CURRENT:
+			psp = POWER_SUPPLY_PROP_CURRENT_NOW;
+			break;
+		case BATT_VOLTAGE:
+			psp = POWER_SUPPLY_PROP_VOLTAGE_NOW;
+			break;
+		default:
+			pr_debug("%s: not supported info type %d\n", __func__, info_type);
+			return ret;
+	};
+
+	if (!pca9468->batt_psy)
+		pca9468->batt_psy = power_supply_get_by_name("battery");
+	if (pca9468->batt_psy) {
+		ret = power_supply_get_property(pca9468->batt_psy, psp, &val);
+		if (ret) {
+			pr_debug("%s: batt psy get info %d failed %d\n", __func__,
+				 info_type, ret);
+			return ret;
+		}
+
+		*info = val.intval;
+	}
+	return ret;
+}
+
+#define FCC_TOLERANCE_RATIO		95
+#define FCC_POWER_INCREASE_THRESHOLD	90
 /* Check CC Mode status */
 static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 {
@@ -772,6 +813,28 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 		ret = CCMODE_IIN_LOOP;
 	} else {
 		ret = CCMODE_LOOP_INACTIVE;
+	}
+
+	if (ret == CCMODE_LOOP_INACTIVE) {
+		int ibat = -EINVAL, vbat = -EINVAL;
+		int rc = -ENODEV;
+
+		rc = pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat);
+		if (rc)
+			goto error;
+
+		rc = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
+		if (rc)
+			goto error;
+
+		/* Battery OV/OC check */
+		if ((ibat > ((pca9468->cc_max * FCC_TOLERANCE_RATIO) / 100)) ||
+		    (vbat > pca9468->fv_uv)) {
+			ret = CCMODE_IIN_LOOP;
+			pr_err("%s: ibat:%d, cc_max:%d , vbat:%d, fv:%d, force CCMODE_IIN_LOOP\n",
+				 __func__, ibat, pca9468->cc_max,
+				 vbat, pca9468->fv_uv);
+		}
 	}
 
 error:
@@ -904,12 +967,17 @@ error:
 /* Compensate TA current for the target input current */
 static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 {
-	int iin;
+	int iin, ibat;
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat)) {
+		/* skip ibat check when failed to get ibat*/
+		ibat = pca9468->cc_max;
+	}
 
-	pr_debug("%s: iin=%d\n", __func__, iin);
+	pr_debug("%s: iin=%d, iin_cc=%d, ibat=%d, cc_max=%d\n", __func__,
+		 iin, pca9468->iin_cc, ibat, pca9468->cc_max);
 
 	/* Compare IIN ADC with target input current */
 	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
@@ -945,7 +1013,8 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
+		  (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
 
 		/* compare IIN ADC with previous IIN ADC + 20mA */
 		if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
@@ -1144,14 +1213,20 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 /* Compensate TA current for constant power mode */
 static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 {
-	int iin;
+	int iin, ibat;
 	unsigned int val;
 	unsigned int iin_apdo;
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat)) {
+		/* skip ibat check when failed to get ibat */
+		ibat = pca9468->cc_max;
+	}
 
-	pr_debug("%s: iin=%d\n", __func__, iin);
+
+	pr_debug("%s: iin=%d, iin_cc=%d, ibat=%d, cc_max=%d\n", __func__,
+		 iin, pca9468->iin_cc, ibat, pca9468->cc_max);
 
 	/* Compare IIN ADC with target input current */
 	if (iin > (pca9468->pdata->iin_cfg + PCA9468_IIN_CC_COMP_OFFSET)) {
@@ -1164,7 +1239,8 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET_CP)) {
+	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET_CP)) ||
+		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
 
 		/* TA current is lower than the target input current */
 		/* IIN_ADC < IIN_CC -20mA */
@@ -1257,7 +1333,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 /* Compensate TA voltage for the target input current */
 static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 {
-	int iin;
+	int iin, ibat;
 
 	pr_debug("%s: ======START=======\n", __func__);
 	pr_debug("%s: = charging_state=%u == \n", __func__,
@@ -1265,8 +1341,13 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat)) {
+		/* skip ibat check when failed to get ibat */
+		ibat = pca9468->cc_max;
+	}
 
-	pr_debug("%s: iin=%d\n", __func__, iin);
+	pr_debug("%s: iin=%d, iin_cc=%d, ibat=%d, cc_max=%d\n", __func__,
+		 iin, pca9468->iin_cc, ibat, pca9468->cc_max);
 
 	/* Compare IIN ADC with target input current */
 	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
@@ -1281,7 +1362,8 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
+		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
 		/* TA current is lower than the target input current */
 		/* Compare TA max voltage */
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
@@ -1344,14 +1426,19 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 /* Compensate RX voltage for the target input current */
 static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 {
-	int iin;
+	int iin, ibat;
 
 	pr_debug("%s: ======START=======\n", __func__);
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat)) {
+		/* skip ibat check */
+		ibat = pca9468->cc_max;
+	}
 
-	pr_debug("%s: iin=%d\n", __func__, iin);
+	pr_debug("%s: iin=%d, iin_cc=%d, ibat=%d, cc_max=%d\n", __func__,
+		 iin, pca9468->iin_cc, ibat, pca9468->cc_max);
 
 	/* Compare IIN ADC with target input current */
 	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
@@ -1366,7 +1453,8 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
+		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
 		/* RX current is lower than the target input current */
 		/* Compare RX max voltage */
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
@@ -1995,6 +2083,29 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 error:
 	pr_debug("%s: ret=%d\n", __func__, ret);
 	return ret;
+}
+
+/* Set new FCC */
+static int pca9468_set_new_cc_max(struct pca9468_charger *pca9468)
+{
+	/* Check the charging state */
+	if ((pca9468->charging_state == DC_STATE_CC_MODE) ||
+	    (pca9468->charging_state == DC_STATE_CV_MODE) ||
+	    (pca9468->charging_state == DC_STATE_CHARGING_DONE)) {
+
+		pca9468->charging_state = DC_STATE_ADJUST_CC;
+		mutex_lock(&pca9468->lock);
+		pca9468->timer_id = TIMER_ADJUST_CCMODE;
+		pca9468->timer_period = 0;
+		mutex_unlock(&pca9468->lock);
+		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+				   msecs_to_jiffies(pca9468->timer_period));
+	} else {
+		/* Wait for next valid state */
+		pr_debug("%s: Not support new cc_max yet in charging state=%d\n",
+			 __func__, pca9468->charging_state);
+	}
+	return 0;
 }
 
 /* 2:1 Direct Charging Adjust CC MODE control */
@@ -3848,11 +3959,21 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 	/*
 	 * pcaA9468 cannot control charging current directly.
 	 * NOTE: using POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX as
-	 * new_iin, might be wise to use it to CALCULATE iin given the
-	 * current state.
+	 * cc_max for battery oc monitoring.
 	 */
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+		if (val->intval < 0) {
+			pr_debug("%s: ignore negative cc_max  %d\n",
+				 __func__, val->intval);
+		} else if (val->intval != pca9468->cc_max) {
+			pr_debug("%s: new cc_max=%u->%d\n", __func__,
+				 pca9468->cc_max, val->intval);
+			pca9468->cc_max = val->intval;
+			ret = pca9468_set_new_cc_max(pca9468);
+		}
+		break;
+
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
 		if (val->intval < 0) {
@@ -3863,7 +3984,6 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 				 pca9468->new_iin, val->intval);
 
 			/* request new input current */
-			pca9468->cc_max = val->intval;
 			pca9468->new_iin = val->intval;
 			ret = pca9468_set_new_iin(pca9468);
 		}
@@ -4074,7 +4194,8 @@ static const struct regmap_config pca9468_regmap = {
 
 static const struct power_supply_desc pca9468_mains_desc = {
 	.name		= "pca9468-mains",
-	.type		= POWER_SUPPLY_TYPE_MAINS,
+	/* b/179246019 will not look online to Android */
+	.type		= POWER_SUPPLY_TYPE_UNKNOWN,
 	.get_property	= pca9468_mains_get_property,
 	.set_property 	= pca9468_mains_set_property,
 	.properties	= pca9468_mains_properties,

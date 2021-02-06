@@ -1003,17 +1003,25 @@ static int p9221_get_property(struct power_supply *psy,
 			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		if (!charger->dc_icl_votable)
-			return -EAGAIN;
+		if (charger->wlc_dc_enabled) {
+			ret = charger->chip_get_rx_ilim(charger, &temp);
+			if (ret == 0)
+				charger->wlc_dc_current_now = temp * 1000; /* mA to uA */
 
-		ret = get_effective_result(charger->dc_icl_votable);
-		if (ret < 0)
-			break;
+			val->intval = ret ? : charger->wlc_dc_current_now;
+		} else {
+			if (!charger->dc_icl_votable)
+				return -EAGAIN;
 
-		val->intval = ret;
+			ret = get_effective_result(charger->dc_icl_votable);
+			if (ret < 0)
+				break;
 
-		/* success */
-		ret = 0;
+			val->intval = ret;
+
+			/* success */
+			ret = 0;
+		}
 		break;
 #ifdef CONFIG_QC_COMPAT
 	case POWER_SUPPLY_PROP_AICL_DELAY:
