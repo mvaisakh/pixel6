@@ -196,6 +196,8 @@ static int gcpm_chg_set_online(struct gcpm_drv *gcpm, int index)
 
 	if (index < 0 || index >= gcpm->chg_psy_count)
 		return -ERANGE;
+	if (index == index_old)
+		return 0;
 
 	if (!gcpm->chg_psy_avail[index]) {
 		pr_err("invalid index %d\n", index);
