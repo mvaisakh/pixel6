@@ -250,38 +250,41 @@ static void max20339_gpio_set(struct gpio_chip *chip,
 	bool change;
 	u8 mask;
 	u8 shift;
-	u8 int_reg; /* regulator to poll for update */
+	u8 status_reg; /* status register to poll for update */
 	u8 closed_fld; /* field to read for closed change */
+	u8 sw_cntl_reg;
 	int i;
 	struct max20339_ovp *ovp = gpiochip_get_data(chip);
 
 	switch (offset) {
 	case MAX20339_LSW1_OFF:
+		sw_cntl_reg = MAX20339_SW_CNTL_REG;
 		mask = MAX20339_SW_CNTL_LSW1_EN_MASK;
 		shift = MAX20339_SW_CNTL_LSW1_EN_SHIFT;
-		int_reg = MAX20339_INT2_REG;
-		closed_fld = MAX20339_INT2_LSW1CLOSEDI;
+		status_reg = MAX20339_STATUS2;
+		closed_fld = MAX20339_STATUS_SWITCH_CLOSED;
 		break;
 	case MAX20339_LSW2_OFF:
+		sw_cntl_reg = MAX20339_SW_CNTL_REG;
 		mask = MAX20339_SW_CNTL_LSW2_EN_MASK;
 		shift = MAX20339_SW_CNTL_LSW2_EN_SHIFT;
-		int_reg = MAX20339_INT3_REG;
-		closed_fld = MAX20339_INT3_LSW2CLOSEDI;
+		status_reg = MAX20339_STATUS3;
+		closed_fld = MAX20339_STATUS_SWITCH_CLOSED;
 		break;
 	default:
 		return;
 	}
 
 	tmp = (!!value << shift);
-	ret = regmap_update_bits_base(ovp->regmap, MAX20339_SW_CNTL_REG, mask,  tmp,
+	ret = regmap_update_bits_base(ovp->regmap, sw_cntl_reg, mask,  tmp,
 				      &change, false, false);
 	if (ret < 0)
 		dev_err(&ovp->client->dev, "SW_CNTL update error: ret %d\n", ret);
 
 	/* poll until update seen */
 	for (i = 0; i < MAX20339_POLL_ATTEMPTS; i++) {
-		ret = regmap_read(ovp->regmap, int_reg, &tmp);
-		if (tmp & closed_fld)
+		ret = regmap_read(ovp->regmap, status_reg, &tmp);
+		if (tmp & closed_fld == value)
 			break;
 		mdelay(20);
 	}
