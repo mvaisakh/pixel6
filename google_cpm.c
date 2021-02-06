@@ -438,8 +438,7 @@ static void gcpm_pps_online(struct gcpm_drv *gcpm)
  */
 static int gcpm_chg_check(struct gcpm_drv *gcpm)
 {
-	bool schedule_pps_dc = false;
-	int ret = 0, index;
+	int index, schedule_pps_interval = -1;
 	bool dc_ena;
 
 	index = gcpm_chg_dc_select(gcpm);
@@ -456,8 +455,10 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 		 dc_ena, gcpm->dc_state, gcpm->dc_index, index);
 	if (!dc_ena) {
 
-		if (gcpm->dc_state > DC_IDLE) {
-			schedule_pps_dc = true;
+		if (gcpm->dc_state > DC_IDLE && gcpm->dc_index > 0) {
+			pr_info("CHG_CHK: stop PPS_Work for dc_index=%d\n",
+				gcpm->dc_index);
+			schedule_pps_interval = 0;
 			gcpm->dc_index = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
@@ -465,19 +466,23 @@ static int gcpm_chg_check(struct gcpm_drv *gcpm)
 	} else if (gcpm->dc_state == DC_IDLE) {
 		pr_info("PPS_Work: start DC Charging for dc_index=%d\n", index);
 
-		/* reset pps state and re-enable detection */
+		/* reset pps state to re-enable detection */
 		gcpm_pps_online(gcpm);
+
 		/* TODO: DC_ENABLE or DC_PASSTHROUGH depending on index */
-		gcpm->dc_start_time = get_boot_sec();
 		gcpm->dc_state = DC_ENABLE_PASSTHROUGH;
 		gcpm->dc_index = index;
-		schedule_pps_dc = true;
+
+		/* grace period of 5000ms */
+		schedule_pps_interval = 5000;
+		gcpm->dc_start_time = 0;
 	}
 
-	if (schedule_pps_dc)
-		mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+	if (schedule_pps_interval >= 0)
+		mod_delayed_work(system_wq, &gcpm->pps_work,
+				 msecs_to_jiffies(schedule_pps_interval));
 
-	return ret;
+	return 0;
 }
 
 /* DC_ERROR_RETRY_MS <= DC_RUN_DELAY_MS */
