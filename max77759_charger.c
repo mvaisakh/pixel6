@@ -403,6 +403,10 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 	bool need_stby = false;
 	int ret;
 
+	/* no sbby if remaining in the same use case */
+	if (data->use_case == use_case)
+		return 0;
+
 	switch (data->use_case) {
 		case GSU_MODE_USB_CHG:
 			need_stby = use_case != GSU_MODE_USB_CHG_WLC_TX &&
