@@ -709,11 +709,12 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int buck_on = cb_data->inflow_off ? 0 : cb_data->buck_on;
+	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
 	u8 mode;
 
 	/* consistency check, TOD: add more */
-	if (cb_data->wlc_tx) {
+	if (wlc_tx) {
 		if (cb_data->wlc_on) {
 			pr_err("%s: wlc_tx and wlc_rx\n", __func__);
 			return -EINVAL;
@@ -722,6 +723,11 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (cb_data->wlc_dc) {
 			pr_err("%s: wlc_tx and wlc_dc\n", __func__);
 			return -EINVAL;
+		}
+
+		if (cb_data->pps_dc) {
+			pr_warn("%s: no wlc_tx with pps_dc\n", __func__);
+			wlc_tx = 0;
 		}
 	}
 
@@ -735,11 +741,12 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 		/* Rtx using the internal battery */
 		usecase = GSU_MODE_STANDBY;
-		if (cb_data->wlc_tx)
+		if (wlc_tx)
 			usecase = GSU_MODE_WLC_TX;
 
-	} else if (cb_data->wlc_tx && buck_on) {
+	} else if (buck_on && wlc_tx) {
 
+		/* pps_dc + wlc_tx handled up */
 		usecase = GSU_MODE_WLC_TX;
 		mode = (cb_data->chgr_on) ?
 			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
@@ -760,14 +767,15 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		 * TODO: handle rTx + DC and some more.
 		 * NOTE: mode = if standby 0, if cable charging 5, if otg A
 		 */
-		if (cb_data->wlc_tx) {
-			usecase = GSU_MODE_WLC_TX;
-		} else if (cb_data->pps_dc) {
+		if (cb_data->pps_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
 		} else if (cb_data->wlc_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
+		} else if (wlc_tx) {
+			/* buck_on or inflow_off */
+			usecase = GSU_MODE_WLC_TX;
 		} else if (cb_data->stby_on && !cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
