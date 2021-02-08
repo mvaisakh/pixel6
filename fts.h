@@ -34,7 +34,7 @@
 
 #include <linux/device.h>
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-#include <linux/input/heatmap.h>
+#include <heatmap.h>
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 #include <linux/input/touch_offload.h>
