@@ -242,12 +242,28 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 }
 // EXPORT_SYMBOL_GPL(pps_get_src_cap);
 
-/* assume that we are already online and in PPS stage */
+bool pps_check_online(struct pd_pps_data *pps_data)
+{
+	if (!pps_data || !pps_data->pps_psy)
+		return false;
+
+	return GPSY_GET_PROP(pps_data->pps_psy, POWER_SUPPLY_PROP_ONLINE) ==
+	       PPS_PSY_PROG_ONLINE;
+}
+
+/*
+ * bail if not online and PROG, query source caps and advance to ACTIVE
+ * if not there.
+ */
 bool pps_prog_check_online(struct pd_pps_data *pps_data,
 			  struct power_supply *tcpm_psy)
 {
 	int pd_online = 0;
 
+	if (!pps_data || !tcpm_psy)
+		return -ENODEV;
+
+	/* TODO: use pps_check_online() instead */
 	pd_online = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE);
 	if (pd_online == 0) {
 		pps_init_state(pps_data);
