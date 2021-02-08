@@ -1,3 +1,11 @@
+config TOUCHSCREEN_HEATMAP
+	tristate "Heatmap support for touchscreen"
+	depends on (TOUCHSCREEN_FTS || TOUCHSCREEN_SEC_TS)
+	select VIDEOBUF2_VMALLOC
+	help
+	  Do not explicitly select this option. The drivers that utilize
+	  this module must select this in their Kconfig.
+
 config TOUCHSCREEN_TBN
 	tristate "Touch Bus Negotiator for Google Pixel"
 	depends on (TOUCHSCREEN_FTS || TOUCHSCREEN_SEC_TS)
