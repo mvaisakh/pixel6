@@ -92,6 +92,7 @@ struct max77759_chgr_data {
 	struct dentry *de;
 	atomic_t sysuvlo1_cnt;
 	atomic_t sysuvlo2_cnt;
+	atomic_t batoilo_cnt;
 
 	atomic_t insel_cnt;
 
@@ -1996,6 +1997,17 @@ static ssize_t show_sysuvlo2_cnt(struct device *dev,
 
 static DEVICE_ATTR(sysuvlo2_cnt, 0444, show_sysuvlo2_cnt, NULL);
 
+static ssize_t show_batoilo_cnt(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct max77759_chgr_data *data = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 atomic_read(&data->batoilo_cnt));
+}
+
+static DEVICE_ATTR(batoilo_cnt, 0444, show_batoilo_cnt, NULL);
+
 static int vdroop2_ok_get(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -2248,6 +2260,9 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	ret = device_create_file(data->dev, &dev_attr_sysuvlo2_cnt);
 	if (ret != 0)
 		pr_err("Failed to create sysuvlo2_cnt, ret=%d\n", ret);
+	ret = device_create_file(data->dev, &dev_attr_batoilo_cnt);
+	if (ret != 0)
+		pr_err("Failed to create bat_oilo_cnt, ret=%d\n", ret);
 
 	data->de = debugfs_create_dir("max77759_chg", 0);
 	if (IS_ERR_OR_NULL(data->de))
@@ -2257,6 +2272,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 				&data->sysuvlo1_cnt);
 	debugfs_create_atomic_t("sysuvlo2_cnt", 0644, data->de,
 				&data->sysuvlo2_cnt);
+	debugfs_create_atomic_t("batoilo_cnt", 0644, data->de,
+				&data->batoilo_cnt);
 	debugfs_create_atomic_t("insel_cnt", 0644, data->de,
 				&data->insel_cnt);
 
@@ -2410,6 +2427,9 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		atomic_inc(&data->sysuvlo2_cnt);
 		max77759_vdroop_irq_work(data, VDROOP2);
 	}
+
+	if (chg_int[1] & MAX77759_CHG_INT2_BAT_OILO_I)
+		atomic_inc(&data->batoilo_cnt);
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
@@ -2623,6 +2643,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	mutex_init(&data->io_lock);
 	atomic_set(&data->sysuvlo1_cnt, 0);
 	atomic_set(&data->sysuvlo2_cnt, 0);
+	atomic_set(&data->batoilo_cnt, 0);
 	atomic_set(&data->insel_cnt, 0);
 	i2c_set_clientdata(client, data);
 
