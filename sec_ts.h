@@ -24,7 +24,7 @@
 #include <linux/spi/spi.h>
 #include <linux/input.h>
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-#include <linux/input/heatmap.h>
+#include <heatmap.h>
 #endif
 #include <linux/input/mt.h>
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
