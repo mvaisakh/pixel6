@@ -59,6 +59,9 @@ struct exynos_panel_mode {
 
 	/* @exynos_mode: exynos driver specific mode info */
 	struct exynos_display_mode exynos_mode;
+
+	/* @priv_data: per mode panel driver private data */
+	const void *priv_data;
 };
 
 struct exynos_panel_funcs {
