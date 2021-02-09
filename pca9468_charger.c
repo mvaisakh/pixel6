@@ -194,7 +194,7 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
 /* ------------------------------------------------------------------------ */
 
 /* ADC Read function, return uV or uA */
-static int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
+int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
 {
 	u8 reg_data[2];
 	u16 raw_adc = 0;
