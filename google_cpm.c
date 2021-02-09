@@ -969,12 +969,16 @@ static struct power_supply_desc gcpm_psy_desc = {
 	.num_properties = ARRAY_SIZE(gcpm_psy_properties),
 };
 
+#define gcpm_psy_changed_tickle_pps(gcpm) \
+	((gcpm)->dc_state == DC_PASSTHROUGH || (gcpm)->dc_state == DC_RUNNING)
+
 static int gcpm_psy_changed(struct notifier_block *nb, unsigned long action,
 			    void *data)
 {
 	struct gcpm_drv *gcpm = container_of(nb, struct gcpm_drv, chg_nb);
 	const int index = gcpm->chg_psy_active;
 	struct power_supply *psy = data;
+	bool tickle_pps_work = false;
 
 	if (index == -1)
 		return NOTIFY_OK;
@@ -988,20 +992,25 @@ static int gcpm_psy_changed(struct notifier_block *nb, unsigned long action,
 		if (gcpm->chg_psy_avail[index])
 			power_supply_changed(gcpm->psy);
 
-		/* tickle the PPS loop if enabled */
-		if (gcpm->dc_index > 0)
-			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+		tickle_pps_work = gcpm_psy_changed_tickle_pps(gcpm);
 	} else if (strcmp(psy->desc->name, gcpm->chg_psy_names[0]) == 0) {
-		/* tickle the PPS loop if enabled */
-		if (gcpm->dc_index > 0)
-			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+		/* possibly JEITA or other violation, check PPS */
+		tickle_pps_work = gcpm_psy_changed_tickle_pps(gcpm);
 	} else if (gcpm->tcpm_psy_name &&
-	      !strcmp(psy->desc->name, gcpm->tcpm_psy_name))
-	{
-		/* tickle the PPS loop if enabled */
-		if (gcpm->dc_index > 0)
-			mod_delayed_work(system_wq, &gcpm->pps_work, 0);
+		   !strcmp(psy->desc->name, gcpm->tcpm_psy_name)) {
+
+		/* from tcpm source (even if not selected) */
+		tickle_pps_work = gcpm_psy_changed_tickle_pps(gcpm);
+	} else if (gcpm->wlc_dc_name &&
+	      !strcmp(psy->desc->name, gcpm->wlc_dc_name)) {
+
+		/* from wc source (even if not selected) */
+		tickle_pps_work = gcpm_psy_changed_tickle_pps(gcpm);
 	}
+
+	/* should tickle the PPS loop only when is running */
+	if (tickle_pps_work)
+		mod_delayed_work(system_wq, &gcpm->pps_work, 0);
 
 	return NOTIFY_OK;
 }
