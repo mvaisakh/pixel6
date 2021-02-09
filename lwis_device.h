@@ -94,6 +94,8 @@ struct lwis_device_subclass_operations {
 	 * Called with lwis_dev->lock locked and IRQs disabled */
 	int (*event_emitted)(struct lwis_device *lwis_dev, int64_t event_id, void **payload_ptrptr,
 			     size_t *payload_size_ptr);
+	/* Called by lwis_device when device closes */
+	int (*close)(struct lwis_device *lwis_dev);
 };
 
 /*

@@ -206,6 +206,10 @@ static int lwis_release(struct inode *node, struct file *fp)
 		}
 		/* Release device event states if no more client is using */
 		lwis_device_event_states_clear_locked(lwis_dev);
+		/* Call device type specific close routines. */
+		if (lwis_dev->vops.close != NULL) {
+			lwis_dev->vops.close(lwis_dev);
+		}
 	}
 
 	mutex_unlock(&lwis_dev->client_lock);

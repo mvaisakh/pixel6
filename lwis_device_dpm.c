@@ -28,6 +28,7 @@ static struct lwis_device_subclass_operations dpm_vops = {
 	.device_disable = NULL,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
+	.close = NULL,
 };
 
 static struct lwis_event_subscribe_operations dpm_subscribe_ops = {

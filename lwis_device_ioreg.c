@@ -42,6 +42,7 @@ static struct lwis_device_subclass_operations ioreg_vops = {
 	.device_disable = lwis_ioreg_device_disable,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
+	.close = NULL,
 };
 
 static struct lwis_event_subscribe_operations ioreg_subscribe_ops = {

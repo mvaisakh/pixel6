@@ -44,6 +44,7 @@ static struct lwis_device_subclass_operations i2c_vops = {
 	.device_disable = lwis_i2c_device_disable,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
+	.close = NULL,
 };
 
 static struct lwis_event_subscribe_operations i2c_subscribe_ops = {

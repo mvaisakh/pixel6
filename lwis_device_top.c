@@ -36,6 +36,7 @@ static struct lwis_device_subclass_operations top_vops = {
 	.device_disable = NULL,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
+	.close = NULL,
 };
 
 static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigger_event_id,
