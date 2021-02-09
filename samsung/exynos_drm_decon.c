@@ -1715,6 +1715,7 @@ static int decon_probe(struct platform_device *pdev)
 	sched_setscheduler_nocheck(decon->thread, SCHED_FIFO, &param);
 
 	decon->hibernation = exynos_hibernation_register(decon);
+	exynos_recovery_register(decon);
 
 	decon->dqe = exynos_dqe_register(decon);
 

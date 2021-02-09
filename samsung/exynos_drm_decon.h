@@ -40,6 +40,7 @@
 
 #include "exynos_drm_fb.h"
 #include "exynos_drm_hibernation.h"
+#include "exynos_drm_recovery.h"
 #include "exynos_drm_writeback.h"
 #include "exynos_drm_partial.h"
 
@@ -427,6 +428,7 @@ struct decon_device {
 	struct task_struct		*thread;
 	struct kthread_worker		worker;
 	struct kthread_work		early_wakeup_work;
+	struct exynos_recovery		recovery;
 
 	u32				irq_fs;	/* frame start irq number*/
 	u32				irq_fd;	/* frame done irq number*/
@@ -552,6 +554,14 @@ static inline bool is_power_on(struct drm_device *drm_dev)
 	}
 
 	return ret;
+}
+
+static inline void decon_trigger_recovery(struct decon_device *decon)
+{
+	struct exynos_recovery *recovery = &decon->recovery;
+
+	atomic_inc(&recovery->recovering);
+	kthread_queue_work(&decon->worker, &recovery->work);
 }
 
 #endif /* __EXYNOS_DRM_DECON_H__ */

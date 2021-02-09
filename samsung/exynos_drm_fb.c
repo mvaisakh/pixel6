@@ -555,7 +555,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state, new_crtc_state, i) {
 		struct decon_mode *mode;
 		struct drm_crtc_commit *commit = new_crtc_state->commit;
-		int fps;
+		int fps, recovering;
 
 		decon = crtc_to_decon(crtc);
 
@@ -572,9 +572,11 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		DPU_ATRACE_BEGIN("wait_for_crtc_flip");
 		if (!wait_for_completion_timeout(&commit->flip_done, fps_timeout(fps))) {
 			DPU_EVENT_LOG(DPU_EVT_FRAMESTART_TIMEOUT, decon->id, NULL);
-			pr_warn("decon%u framestart timeout (%d fps)\n",
-					decon->id, fps);
-			decon_dump_all(decon);
+			recovering = atomic_read(&decon->recovery.recovering);
+			pr_warn("decon%u framestart timeout (%d fps). recovering(%d)\n",
+					decon->id, fps, recovering);
+			if (!recovering)
+				decon_dump_all(decon);
 
 			decon_force_vblank_event(decon);
 		}

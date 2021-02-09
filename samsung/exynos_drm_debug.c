@@ -1312,6 +1312,39 @@ static const struct file_operations hibernation_fops = {
 	.release = seq_release,
 };
 
+static int recovery_show(struct seq_file *s, void *unused)
+{
+	struct decon_device *decon = s->private;
+
+	seq_printf(s, "%d\n", decon->recovery.count);
+
+	return 0;
+}
+
+static int recovery_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, recovery_show, inode->i_private);
+}
+
+static ssize_t recovery_write(struct file *file, const char *user_buf,
+			      size_t count, loff_t *f_pos)
+{
+	struct seq_file *s = file->private_data;
+	struct decon_device *decon = s->private;
+
+	decon_trigger_recovery(decon);
+
+	return count;
+}
+
+static const struct file_operations recovery_fops = {
+	.open = recovery_open,
+	.read = seq_read,
+	.write = recovery_write,
+	.llseek = seq_lseek,
+	.release = seq_release,
+};
+
 int dpu_init_debug(struct decon_device *decon)
 {
 	int i;
@@ -1356,6 +1389,13 @@ int dpu_init_debug(struct decon_device *decon)
 	if (decon->hibernation)
 		debugfs_create_file("hibernation", 0664, crtc->debugfs_entry, decon,
 				&hibernation_fops);
+
+	if (!debugfs_create_file("recovery", 0644, crtc->debugfs_entry, decon,
+				&recovery_fops)) {
+		DRM_ERROR("failed to create debugfs recovery file\n");
+		goto err_debugfs;
+	}
+
 	debugfs_create_u32("underrun_cnt", 0664, crtc->debugfs_entry, &decon->d.underrun_cnt);
 	debugfs_create_u32("crc_cnt", 0444, crtc->debugfs_entry, &decon->d.crc_cnt);
 	debugfs_create_u32("ecc_cnt", 0444, crtc->debugfs_entry, &decon->d.ecc_cnt);
