@@ -21,6 +21,8 @@
 #define MAX20339_STATUS1_VINVALID		BIT(5)
 #define MAX20339_STATUS2			0x2
 #define MAX20339_STATUS_SWITCH_CLOSED		BIT(0)
+#define MAX20339_STATUS2_SWITCH_CLOSED_SHIFT	0
+#define MAX20339_STATUS2_SWITCH_CLOSED_MASK	0x1
 
 #define MAX20339_STATUS3			0x3
 #define MAX20339_INT1				0x4
@@ -52,13 +54,15 @@
 #define MAX20338_SW_CNTL_LSW2_OV_EN_MASK	0x20
 
 #define MAX20339_MIN_GPIO			0
-#define MAX20339_MAX_GPIO			4
-#define MAX20339_NUM_GPIOS			5
+#define MAX20339_MAX_GPIO			7
+#define MAX20339_NUM_GPIOS			7
 #define MAX20339_LSW1_OFF			0
 #define MAX20339_LSW2_OFF			1
 #define MAX20339_LSW1_STATUS_OFF		2
 #define MAX20339_VIN_VALID_OFF			3
 #define MAX20339_IN_CTR_SWEN_OFF		4
+#define MAX20339_LSW1_IS_OPEN_OFF		5
+#define MAX20339_LSW1_IS_CLOSED_OFF		6
 
 #define MAX20339_GPIO_GET_TIMEOUT_MS		100
 
@@ -174,11 +178,36 @@ static bool max20339_is_lsw_closed(struct max20339_ovp *ovp, int offset)
 	int ret;
 	unsigned int val;
 
-	ret = regmap_read(ovp->regmap, offset ==  MAX20339_LSW1_OFF ? MAX20339_STATUS2 :
-			  MAX20339_STATUS3, &val);
+	ret = regmap_read(ovp->regmap, offset ==  MAX20339_LSW1_OFF ?
+			  MAX20339_STATUS2 : MAX20339_STATUS3, &val);
 	if (ret < 0)
 		return false;
-	return val & MAX20339_STATUS_SWITCH_CLOSED;
+
+	return (val & MAX20339_STATUS_SWITCH_CLOSED) != 0;
+}
+
+/* 1 same as state, 0 not same */
+static int max20339_test_lsw1_state(struct max20339_ovp *ovp, int state)
+{
+	unsigned int val;
+	bool closed;
+	int ret;
+
+	ret = regmap_read(ovp->regmap, MAX20339_STATUS2, &val);
+	if (ret < 0)
+		return ret;
+
+	closed = (val & MAX20339_STATUS_SWITCH_CLOSED) != 0;
+	if (closed == state)
+		return 1;
+
+	ret = wait_event_timeout(ovp->gpio_get_wq,
+			   max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) == state,
+			   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
+	if (!ret)
+		dev_warn(&ovp->client->dev, "Timeout for lsw1==%d\n", state);
+
+	return max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) == state;
 }
 
 static bool max20339_is_vin_valid(struct max20339_ovp *ovp)
@@ -195,12 +224,10 @@ static bool max20339_is_vin_valid(struct max20339_ovp *ovp)
 
 static int max20339_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
-	int ret;
-	unsigned int val;
-	u8 mask;
-	u8 shift;
-	int reg;
 	struct max20339_ovp *ovp = gpiochip_get_data(chip);
+	unsigned int val;
+	u8 mask, shift;
+	int ret, reg;
 
 	switch (offset) {
 	case MAX20339_LSW1_OFF:
@@ -214,11 +241,17 @@ static int max20339_gpio_get(struct gpio_chip *chip, unsigned int offset)
 		reg = MAX20339_SW_CNTL_REG;
 		break;
 	case MAX20339_LSW1_STATUS_OFF:
+		mask = MAX20339_STATUS2_SWITCH_CLOSED_MASK;
+		shift = MAX20339_STATUS2_SWITCH_CLOSED_SHIFT;
 		reg = MAX20339_STATUS2;
 		break;
 	case MAX20339_VIN_VALID_OFF:
 		reg = MAX20339_STATUS1;
 		break;
+	case MAX20339_LSW1_IS_OPEN_OFF:
+		return max20339_test_lsw1_state(ovp, 0);
+	case MAX20339_LSW1_IS_CLOSED_OFF:
+		return max20339_test_lsw1_state(ovp, 1);
 	default:
 		return -EINVAL;
 	}
@@ -229,20 +262,17 @@ static int max20339_gpio_get(struct gpio_chip *chip, unsigned int offset)
 		return ret;
 	}
 
-	if (offset == MAX20339_LSW1_STATUS_OFF) {
-		if (val & MAX20339_STATUS_SWITCH_CLOSED)
-			return 1;
-		wait_event_timeout(ovp->gpio_get_wq,
-				   max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF),
-				   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
-		return max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) ? 1 : 0;
-	} else if (offset == MAX20339_VIN_VALID_OFF) {
+	/* only checked for valid */
+       if (offset == MAX20339_VIN_VALID_OFF) {
+
 		if (val & MAX20339_STATUS1_VINVALID)
 			return 1;
+
 		wait_event_timeout(ovp->gpio_get_wq, max20339_is_vin_valid(ovp),
 				   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
 		return max20339_is_vin_valid(ovp) ? 1 : 0;
 	}
+
 	return (val & mask) >> shift;
 }
 
