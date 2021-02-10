@@ -297,37 +297,39 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	return 0;
 }
 
-
-
 /* control VENDOR_EXTBST_CTRL (from TCPCI module) */
 static int max77759_ls_mode(struct max77759_usecase_data *uc_data, int mode)
 {
-	int ret = 0;
+	int ret;
 
-	pr_debug("%s: mode=%d ext_bst_ctl=%d lsw1_status=%d\n", __func__, mode,
-		uc_data->ext_bst_ctl, uc_data->lsw1_status);
+	pr_debug("%s: mode=%d ext_bst_ctl=%d lsw1_ok=%d\n", __func__, mode,
+		uc_data->ext_bst_ctl, !!uc_data->lsw1_is_closed +
+		!!uc_data->lsw1_is_open);
 
 	if (uc_data->ext_bst_ctl < 0)
 		return 0;
+	if (uc_data->lsw1_is_open < 0 || uc_data->lsw1_is_closed < 0)
+		return 0;
 
+	/* VENDOR_EXTBST_CTRL control LSW1, the read will check the state */
+	gpio_set_value_cansleep(uc_data->ext_bst_ctl, mode);
+
+	/* ret <= 0 if *_is* is not true and > 1 if true */
 	switch (mode) {
 	case 0:
-		gpio_set_value_cansleep(uc_data->ext_bst_ctl, 0);
-		if (uc_data->lsw1_status)
-		      ret = gpio_get_value_cansleep(uc_data->lsw1_status);
-
-		return ret == 0 ? 0 : -EIO;
+		/* the OVP open right away */
+		ret = gpio_get_value_cansleep(uc_data->lsw1_is_open);
+		break;
 	case 1:
-		gpio_set_value_cansleep(uc_data->ext_bst_ctl, 1);
-		if (uc_data->lsw1_status)
-			ret = gpio_get_value_cansleep(uc_data->lsw1_status);
-
-		return ret == 1 ? 0 : -EIO;
+		/* it takes 11 ms to turn on the OVP */
+		msleep(11);
+		ret = gpio_get_value_cansleep(uc_data->lsw1_is_closed);
+		break;
 	default:
 		return -EINVAL;
 	}
 
-	return ret;
+	return (ret <= 0) ? -EIO : 0;
 }
 
 static int max77759_ls2_mode(struct max77759_usecase_data *uc_data, int mode)
@@ -340,15 +342,15 @@ static int max77759_ls2_mode(struct max77759_usecase_data *uc_data, int mode)
 	return 0;
 }
 
-static bool max20339_is_vin_valid(struct max77759_usecase_data *uc_data)
+static bool max77759_is_vin_valid(struct max77759_usecase_data *uc_data)
 {
 
-	if (uc_data->vin_valid < 0) {
+	if (uc_data->vin_is_valid < 0) {
 		pr_err("%s: vin-valid GPIO not set\n", __func__);
 		return false;
 	}
 
-	return gpio_get_value_cansleep(uc_data->vin_valid) == 1;
+	return gpio_get_value_cansleep(uc_data->vin_is_valid) == 1;
 }
 
 /* control external boost mode
@@ -432,7 +434,6 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			if (use_case == GSU_MODE_USB_OTG_FRS)
 				break;
 
-			/* missing setting EXT_BST_EN in MW (TCPM) */
 			ret = max77759_ls_mode(uc_data, 0);
 			if (ret == 0)
 				ret = max77759_ext_mode(uc_data, 0);
@@ -562,7 +563,7 @@ static int max77759_to_otg_usecase(struct max77759_chgr_data *data,
 				dev_err(data->dev, "cannot set CNFG_00 to 0xa ret:%d\n", ret);
 				return -EIO;
 			}
-			if (!max20339_is_vin_valid(uc_data)) {
+			if (!max77759_is_vin_valid(uc_data)) {
 				dev_err(data->dev, "VIN not VALID");
 				return -EIO;
 			}
@@ -823,8 +824,9 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
 		uc_data->ls2_en = -EPROBE_DEFER;
-		uc_data->lsw1_status = -EPROBE_DEFER;
-		uc_data->vin_valid = -EPROBE_DEFER;
+		uc_data->lsw1_is_closed = -EPROBE_DEFER;
+		uc_data->lsw1_is_open = -EPROBE_DEFER;
+		uc_data->vin_is_valid = -EPROBE_DEFER;
 		return 0;
 	}
 
@@ -837,18 +839,21 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	if (uc_data->ls2_en == -EPROBE_DEFER)
 		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
 
-	if (uc_data->lsw1_status == -EPROBE_DEFER)
-		uc_data->lsw1_status = of_get_named_gpio(node, "max77759,lsw1-status", 0);
+	if (uc_data->lsw1_is_closed == -EPROBE_DEFER)
+		uc_data->lsw1_is_closed = of_get_named_gpio(node, "max77759,lsw1-is_closed", 0);
+	if (uc_data->lsw1_is_open == -EPROBE_DEFER)
+		uc_data->lsw1_is_open = of_get_named_gpio(node, "max77759,lsw1-is_open", 0);
 
-	if (uc_data->vin_valid == -EPROBE_DEFER)
-		uc_data->vin_valid = of_get_named_gpio(node, "max77759,vin-valid", 0);
+	if (uc_data->vin_is_valid == -EPROBE_DEFER)
+		uc_data->vin_is_valid = of_get_named_gpio(node, "max77759,vin-is_valid", 0);
 
 	return uc_data->bst_on != -EPROBE_DEFER &&
 	       uc_data->bst_sel != -EPROBE_DEFER &&
 	       uc_data->ext_bst_ctl != -EPROBE_DEFER &&
 	       uc_data->ls2_en != -EPROBE_DEFER &&
-	       uc_data->lsw1_status != -EPROBE_DEFER &&
-	       uc_data->vin_valid != -EPROBE_DEFER;
+	       uc_data->lsw1_is_closed != -EPROBE_DEFER &&
+	       uc_data->lsw1_is_open != -EPROBE_DEFER &&
+	       uc_data->vin_is_valid != -EPROBE_DEFER;
 }
 
 /*
