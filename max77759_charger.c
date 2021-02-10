@@ -215,7 +215,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
 		if (cb_data->use_raw)
 			break;
-		pr_debug("%s:%d RAW vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: RAW vote=0x%x\n", __func__, mode);
 		cb_data->raw_value = mode;
 		cb_data->reason = reason;
 		cb_data->use_raw = true;
@@ -225,7 +225,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_BOOST_UNO_ON:
 		if (!cb_data->boost_on || !cb_data->uno_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d BOOST_UNO vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: BOOST_UNO vote=0x%x\n", __func__, mode);
 		cb_data->boost_on += 1;
 		cb_data->uno_on += 1;
 		break;
@@ -236,20 +236,20 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_STBY_ON:
 		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d STBY_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: STBY_ON vote=0x%x\n", __func__, mode);
 		cb_data->stby_on += 1;
 		break;
 	case GBMS_CHGR_MODE_INFLOW_OFF:
 		if (!cb_data->inflow_off)
 			cb_data->reason = reason;
-		pr_debug("%s:%d INFLOW_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: INFLOW_OFF vote=0x%x\n", __func__, mode);
 		cb_data->inflow_off += 1;
 		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
 	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
 		if (!cb_data->chgr_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d CHGR_BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: CHGR_BUCK_ON vote=0x%x\n", __func__, mode);
 		cb_data->chgr_on += 1;
 		break;
 
@@ -257,35 +257,35 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_USB_BUCK_ON:
 		if (!cb_data->buck_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: BUCK_ON vote=0x%x\n", __func__, mode);
 		cb_data->buck_on += 1;
 		break;
 	/* USB: OTG, source, fast role swap case */
 	case GBMS_USB_OTG_FRS_ON:
 		if (!cb_data->frs_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FRS_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: FRS_ON vote=0x%x\n", __func__, mode);
 		cb_data->frs_on += 1;
 		break;
 	/* USB: boost mode, source, normally external boost */
 	case GBMS_USB_OTG_ON:
 		if (!cb_data->otg_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d OTG_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: OTG_ON vote=0x%x\n", __func__, mode);
 		cb_data->otg_on += 1;
 		break;
 	/* DC Charging: mode=0, set CP_EN */
 	case GBMS_CHGR_MODE_CHGR_DC:
 		if (!cb_data->pps_dc)
 			cb_data->reason = reason;
-		pr_debug("%s:%d DC_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: DC_ON vote=0x%x\n", __func__, mode);
 		cb_data->pps_dc += 1;
 		break;
 	/* WLC Tx */
 	case GBMS_CHGR_MODE_WLC_TX:
 		if (!cb_data->wlc_tx)
 			cb_data->reason = reason;
-		pr_debug("%s:%d WLC_TX vote=%x\n", __func__, __LINE__, mode);
+		pr_debug("%s: WLC_TX vote=%x\n", __func__, mode);
 		cb_data->wlc_tx += 1;
 		break;
 
@@ -1512,10 +1512,8 @@ static int max77759_init_wcin_psy(struct max77759_chgr_data *data)
 	wcin_cfg.of_node = data->dev->of_node;
 	data->wcin_psy = devm_power_supply_register(
 		data->dev, &max77759_wcin_psy_desc, &wcin_cfg);
-	if (IS_ERR(data->wcin_psy)) {
-		pr_err("Couldn't register wlc power supply\n");
+	if (IS_ERR(data->wcin_psy))
 		return PTR_ERR(data->wcin_psy);
-	}
 
 	return 0;
 }
@@ -2754,9 +2752,11 @@ static int max77759_charger_probe(struct i2c_client *client,
 	data->init_complete = 1;
 	data->resume_complete = 1;
 
-	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
-	max77759_init_wcin_psy(data);
+	ret = max77759_init_wcin_psy(data);
+	if (ret < 0)
+		pr_err("Couldn't register dc power supply (%d)\n", ret);
 
+	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	return 0;
 }
 
