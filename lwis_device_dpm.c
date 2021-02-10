@@ -56,11 +56,11 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	switch (qos_setting->clock_family) {
 	case CLOCK_FAMILY_MIF:
 	case CLOCK_FAMILY_INT:
-		read_bw = (qos_setting->read_bw > 0) ? qos_setting->read_bw :
-						       qos_setting->frequency_hz / 2;
-		write_bw = (qos_setting->write_bw > 0) ? qos_setting->write_bw :
-							 qos_setting->frequency_hz / 2;
-		peak_bw = ((read_bw > write_bw) ? read_bw : write_bw) / 4;
+		read_bw = qos_setting->read_bw;
+		write_bw = qos_setting->write_bw;
+		peak_bw = (qos_setting->peak_bw > 0) ?
+				  qos_setting->peak_bw :
+				  ((read_bw > write_bw) ? read_bw : write_bw) / 4;
 		ret = lwis_platform_update_bts(target_dev, peak_bw, read_bw, write_bw);
 		if (ret < 0) {
 			dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
