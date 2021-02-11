@@ -1350,21 +1350,19 @@ static int decon_request_te_irq(struct exynos_drm_crtc *exynos_crtc,
 				const struct exynos_drm_connector_state *exynos_conn_state)
 {
 	struct decon_device *decon = exynos_crtc->ctx;
-	char name[32];
 	int ret, irq;
 
 	if (WARN_ON(!exynos_conn_state))
 		return -EINVAL;
 
 	WARN(decon->irq_te >= 0, "unbalanced te irq\n");
-	scnprintf(name, sizeof(name), "decon%d_te", decon->id);
 
 	irq = gpio_to_irq(exynos_conn_state->te_gpio);
 
-	decon_info(decon, "TE irq number(%d)\n", irq);
+	decon_debug(decon, "TE irq number(%d)\n", irq);
 	irq_set_status_flags(irq, IRQ_DISABLE_UNLAZY);
-	ret = devm_request_irq(decon->dev, irq, decon_te_irq_handler, IRQF_TRIGGER_RISING, name,
-			       decon);
+	ret = devm_request_irq(decon->dev, irq, decon_te_irq_handler, IRQF_TRIGGER_RISING,
+			       exynos_crtc->base.name, decon);
 	if (!ret) {
 		disable_irq(irq);
 		decon->irq_te = irq;

@@ -225,8 +225,9 @@ enum dpu_event_type {
 
 #define DPU_CALLSTACK_MAX 10
 struct dpu_log_dsim_cmd {
-	u32 id;
-	u8 buf;
+	u8 id;
+	u8 d0;
+	u16 len;
 	void *caller[DPU_CALLSTACK_MAX];
 };
 
@@ -377,8 +378,7 @@ void decon_dump_all(struct decon_device *decon);
 int dpu_init_debug(struct decon_device *decon);
 void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv);
 void DPU_EVENT_LOG_ATOMIC_COMMIT(int index);
-void DPU_EVENT_LOG_CMD(int index, struct dsim_device *dsim, u32 cmd_id,
-		unsigned long data);
+void DPU_EVENT_LOG_CMD(struct dsim_device *dsim, u8 type, u8 d0, u16 len);
 
 void decon_enter_hibernation(struct decon_device *decon);
 void decon_exit_hibernation(struct decon_device *decon);
