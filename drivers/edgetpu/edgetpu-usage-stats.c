@@ -13,7 +13,7 @@
 #include "edgetpu-usage-stats.h"
 
 #if IS_ENABLED(CONFIG_ABROLHOS)
-
+//TODO(b/179343138): Implement for Janeiro
 #include "abrolhos-pm.h"
 
 static enum tpu_pwr_state tpu_states_arr[] = {
@@ -184,10 +184,10 @@ static ssize_t tpu_usage_show(struct device *dev,
 
 	for (i = 0; i < NUM_TPU_STATES; i++)
 		ret += scnprintf(buf + ret, PAGE_SIZE - ret, " %d",
-#if IS_ENABLED(CONFIG_HERMOSA)
-				 tpu_states_display[i]);
-#else
+#if IS_ENABLED(CONFIG_ABROLHOS)
 				 tpu_states_arr[i]);
+#else
+				 tpu_states_display[i]);
 #endif
 
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");

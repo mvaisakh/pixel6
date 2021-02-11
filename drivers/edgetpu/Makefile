@@ -13,12 +13,18 @@ else
 	ccflags-y       += -DGIT_REPO_TAG=\"Not\ a\ git\ repository\"
 endif
 
-edgetpu-fw-objs := edgetpu-firmware-util.o edgetpu-shared-fw.o edgetpu-firmware.o
-edgetpu-objs	:= edgetpu-core.o edgetpu-mailbox.o edgetpu-kci.o edgetpu-device-group.o edgetpu-telemetry.o edgetpu-mapping.o edgetpu-dmabuf.o edgetpu-async.o edgetpu-iremap-pool.o edgetpu-sw-watchdog.o $(edgetpu-fw-objs)
+edgetpu-fw-objs := edgetpu-firmware-util.o edgetpu-firmware.o edgetpu-shared-fw.o
+edgetpu-objs	:= edgetpu-async.o edgetpu-dmabuf.o edgetpu-iremap-pool.o \
+		   edgetpu-kci.o edgetpu-mailbox.o edgetpu-mapping.o \
+		   edgetpu-sw-watchdog.o edgetpu-telemetry.o \
+		   $(edgetpu-fw-objs)
 
-edgetpu-mobile-objs := edgetpu-google-iommu.o $(edgetpu-objs)
-
-abrolhos-objs	:= abrolhos-device.o abrolhos-firmware.o edgetpu-fs.o abrolhos-platform.o abrolhos-thermal.o abrolhos-pm.o abrolhos-debug-dump.o abrolhos-usage-stats.o $(edgetpu-mobile-objs)
+abrolhos-objs	:= abrolhos-core.o abrolhos-debug-dump.o \
+		   abrolhos-device-group.o abrolhos-device.o \
+		   abrolhos-firmware.o abrolhos-fs.o abrolhos-iommu.o \
+		   abrolhos-platform.o abrolhos-pm.o abrolhos-thermal.o \
+		   abrolhos-usage-stats.o \
+		   $(edgetpu-objs)
 
 KBUILD_OPTIONS += CONFIG_ABROLHOS=m
 
