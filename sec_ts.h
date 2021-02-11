@@ -28,7 +28,7 @@
 #endif
 #include <linux/input/mt.h>
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-#include <linux/input/touch_offload.h>
+#include <touch_offload.h>
 #endif
 #include "sec_cmd.h"
 #include <linux/interrupt.h>
