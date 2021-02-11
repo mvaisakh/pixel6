@@ -37,7 +37,7 @@
 #include <heatmap.h>
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-#include <linux/input/touch_offload.h>
+#include <touch_offload.h>
 #endif
 #include <linux/pm_qos.h>
 #include <drm/drm_bridge.h>

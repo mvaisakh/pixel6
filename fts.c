@@ -5907,6 +5907,9 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	struct display_timing timing;
 	struct device_node *np = dev->of_node;
 	u32 coords[2];
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+	u8 offload_id[4];
+#endif
 
 	if (of_property_read_u8_array(np, "st,dchip_id", bdata->dchip_id, 2)) {
 		dev_err(dev, "st,dchip_id not found. Use default DCHIP_ID <0x%02X 0x%02X>.\n",
