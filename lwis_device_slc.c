@@ -44,6 +44,7 @@ static struct lwis_device_subclass_operations slc_vops = {
 	.device_disable = lwis_slc_disable,
 	.event_enable = NULL,
 	.event_flags_updated = NULL,
+	.close = NULL,
 };
 
 static struct lwis_event_subscribe_operations slc_subscribe_ops = {

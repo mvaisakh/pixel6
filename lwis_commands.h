@@ -314,6 +314,8 @@ struct lwis_qos_setting {
 	int64_t read_bw;
 	// write BW
 	int64_t write_bw;
+	// peak BW
+	int64_t peak_bw;
 };
 
 struct lwis_dpm_qos_requirements {

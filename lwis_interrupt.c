@@ -172,18 +172,14 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 
 		/* This is to detect if there are extra bits set in the source
 		 * than what we have enabled for (i.e. mask register) */
+		/* Currently these are set to debug logs as some hardware blocks might behave differently
+		 * and trigger these, which would result in unintentional log spew in ISRs. */
 		if ((mask_value | source_value) != mask_value) {
-			/*
-			 * TODO(b/165830995): Change this to
-			 * dev_warn_ratelimited when spurious interrupts are
-			 * fixed in the system.
-			 */
 			dev_dbg(irq->lwis_dev->dev,
 				"%s: Spurious interrupt? mask 0x%llx src 0x%llx reset 0x%llx\n",
 				irq->name, mask_value, source_value, reset_value);
 		} else {
-			dev_warn_ratelimited(
-				irq->lwis_dev->dev,
+			dev_dbg(irq->lwis_dev->dev,
 				"%s: Mismatched hw interrupt and LWIS event enable? mask 0x%llx src 0x%llx reset 0x%llx\n",
 				irq->name, mask_value, source_value, reset_value);
 		}
