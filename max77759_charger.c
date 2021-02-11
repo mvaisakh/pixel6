@@ -92,6 +92,7 @@ struct max77759_chgr_data {
 	struct dentry *de;
 	atomic_t sysuvlo1_cnt;
 	atomic_t sysuvlo2_cnt;
+	atomic_t batoilo_cnt;
 
 	atomic_t insel_cnt;
 
@@ -235,13 +236,13 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_STBY_ON:
 		if (!cb_data->stby_on)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d STBY_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->stby_on += 1;
 		break;
 	case GBMS_CHGR_MODE_INFLOW_OFF:
 		if (!cb_data->inflow_off)
 			cb_data->reason = reason;
-		pr_debug("%s:%d FORCE_OFF vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d INFLOW_OFF vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->inflow_off += 1;
 		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
@@ -256,7 +257,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_USB_BUCK_ON:
 		if (!cb_data->buck_on)
 			cb_data->reason = reason;
-		pr_info("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
+		pr_debug("%s:%d BUCK_ON vote=0x%x\n", __func__, __LINE__, mode);
 		cb_data->buck_on += 1;
 		break;
 	/* USB: OTG, source, fast role swap case */
@@ -282,6 +283,8 @@ static int max77759_foreach_callback(void *data, const char *reason,
 		break;
 	/* WLC Tx */
 	case GBMS_CHGR_MODE_WLC_TX:
+		if (!cb_data->wlc_tx)
+			cb_data->reason = reason;
 		pr_debug("%s:%d WLC_TX vote=%x\n", __func__, __LINE__, mode);
 		cb_data->wlc_tx += 1;
 		break;
@@ -401,6 +404,10 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 	bool need_stby = false;
 	int ret;
 
+	/* no sbby if remaining in the same use case */
+	if (data->use_case == use_case)
+		return 0;
+
 	switch (data->use_case) {
 		case GSU_MODE_USB_CHG:
 			need_stby = use_case != GSU_MODE_USB_CHG_WLC_TX &&
@@ -460,8 +467,8 @@ static int max77759_to_standby(struct max77759_chgr_data *data, int use_case)
 			break;
 	}
 
-	pr_info("%s: use_case=%d->%d need_stby=%x\n", __func__,
-		data->use_case, use_case, need_stby);
+	pr_debug("%s: use_case=%d->%d need_stby=%x\n", __func__,
+		 data->use_case, use_case, need_stby);
 
 	if (!need_stby)
 		return 0;
@@ -703,11 +710,12 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int buck_on = cb_data->inflow_off ? 0 : cb_data->buck_on;
+	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
 	u8 mode;
 
 	/* consistency check, TOD: add more */
-	if (cb_data->wlc_tx) {
+	if (wlc_tx) {
 		if (cb_data->wlc_on) {
 			pr_err("%s: wlc_tx and wlc_rx\n", __func__);
 			return -EINVAL;
@@ -716,6 +724,11 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (cb_data->wlc_dc) {
 			pr_err("%s: wlc_tx and wlc_dc\n", __func__);
 			return -EINVAL;
+		}
+
+		if (cb_data->pps_dc) {
+			pr_warn("%s: no wlc_tx with pps_dc\n", __func__);
+			wlc_tx = 0;
 		}
 	}
 
@@ -729,11 +742,12 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 		/* Rtx using the internal battery */
 		usecase = GSU_MODE_STANDBY;
-		if (cb_data->wlc_tx)
+		if (wlc_tx)
 			usecase = GSU_MODE_WLC_TX;
 
-	} else if (cb_data->wlc_tx && buck_on) {
+	} else if (buck_on && wlc_tx) {
 
+		/* pps_dc + wlc_tx handled up */
 		usecase = GSU_MODE_WLC_TX;
 		mode = (cb_data->chgr_on) ?
 			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
@@ -754,14 +768,15 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		 * TODO: handle rTx + DC and some more.
 		 * NOTE: mode = if standby 0, if cable charging 5, if otg A
 		 */
-		if (cb_data->wlc_tx) {
-			usecase = GSU_MODE_WLC_TX;
-		} else if (cb_data->pps_dc) {
+		if (cb_data->pps_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
 		} else if (cb_data->wlc_dc) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
+		} else if (wlc_tx) {
+			/* buck_on or inflow_off */
+			usecase = GSU_MODE_WLC_TX;
 		} else if (cb_data->stby_on && !cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
@@ -847,6 +862,7 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	struct max77759_usecase_data *uc_data = &data->uc_data;
 	struct max77759_foreach_cb_data cb_data = { 0 };
 	int use_case, ret;
+	bool nope;
 	u8 reg;
 
 	/* reason and value are the last voted on */
@@ -876,16 +892,24 @@ static void max77759_mode_callback(struct gvotable_election *el,
 
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
+	nope = !cb_data.use_raw && !cb_data.stby_on && !cb_data.pps_dc &&
+	       !cb_data.chgr_on && !cb_data.buck_on&& ! cb_data.boost_on &&
+	       !cb_data.otg_on && !cb_data.uno_on && !cb_data.wlc_tx &&
+	       !cb_data.wlc_on;
+	if (nope) {
+		pr_debug("%s: nope callback\n", __func__);
+		goto unlock_done;
+	}
 
 	dev_info(data->dev, "%s: raw=%d stby_on=%d, pps_dc=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d inflow=%d\n",
-		__func__,
-		cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
+		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_on=%d inflow=%d\n",
+		__func__, cb_data.use_raw, cb_data.stby_on, cb_data.pps_dc,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx,
-		!cb_data.inflow_off);
-	dev_info(data->dev, "max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
-		 cb_data.raw_value, cb_data.reason ? cb_data.reason : "",
+		cb_data.wlc_on, !cb_data.inflow_off);
+	pr_debug("%s: max77759_charger: CHARGER_MODE=%d reason=%s reg:%x\n",
+		 __func__, cb_data.raw_value,
+		 cb_data.reason ? cb_data.reason : "",
 		 reg);
 
 	/* just use raw as is*/
@@ -1976,6 +2000,17 @@ static ssize_t show_sysuvlo2_cnt(struct device *dev,
 
 static DEVICE_ATTR(sysuvlo2_cnt, 0444, show_sysuvlo2_cnt, NULL);
 
+static ssize_t show_batoilo_cnt(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct max77759_chgr_data *data = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 atomic_read(&data->batoilo_cnt));
+}
+
+static DEVICE_ATTR(batoilo_cnt, 0444, show_batoilo_cnt, NULL);
+
 static int vdroop2_ok_get(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -2228,6 +2263,9 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	ret = device_create_file(data->dev, &dev_attr_sysuvlo2_cnt);
 	if (ret != 0)
 		pr_err("Failed to create sysuvlo2_cnt, ret=%d\n", ret);
+	ret = device_create_file(data->dev, &dev_attr_batoilo_cnt);
+	if (ret != 0)
+		pr_err("Failed to create bat_oilo_cnt, ret=%d\n", ret);
 
 	data->de = debugfs_create_dir("max77759_chg", 0);
 	if (IS_ERR_OR_NULL(data->de))
@@ -2237,6 +2275,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 				&data->sysuvlo1_cnt);
 	debugfs_create_atomic_t("sysuvlo2_cnt", 0644, data->de,
 				&data->sysuvlo2_cnt);
+	debugfs_create_atomic_t("batoilo_cnt", 0644, data->de,
+				&data->batoilo_cnt);
 	debugfs_create_atomic_t("insel_cnt", 0644, data->de,
 				&data->insel_cnt);
 
@@ -2390,6 +2430,9 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		atomic_inc(&data->sysuvlo2_cnt);
 		max77759_vdroop_irq_work(data, VDROOP2);
 	}
+
+	if (chg_int[1] & MAX77759_CHG_INT2_BAT_OILO_I)
+		atomic_inc(&data->batoilo_cnt);
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
@@ -2603,6 +2646,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	mutex_init(&data->io_lock);
 	atomic_set(&data->sysuvlo1_cnt, 0);
 	atomic_set(&data->sysuvlo2_cnt, 0);
+	atomic_set(&data->batoilo_cnt, 0);
 	atomic_set(&data->insel_cnt, 0);
 	i2c_set_clientdata(client, data);
 

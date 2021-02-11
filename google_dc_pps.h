@@ -124,6 +124,7 @@ int pps_get_apdo_max_power(struct pd_pps_data *pps, unsigned int *ta_idx,
 			   unsigned int *ta_max_vol, unsigned int *ta_max_cur,
 			   unsigned long *ta_max_pwr);
 
+bool pps_check_online(struct pd_pps_data *pps_data);
 bool pps_prog_check_online(struct pd_pps_data *pps_data,
 			   struct power_supply *tcpm_psy);
 

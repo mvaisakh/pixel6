@@ -194,7 +194,7 @@ static int iin_fsw_cfg[16] = { 9990, 10540, 11010, 11520, 12000, 12520, 12990,
 /* ------------------------------------------------------------------------ */
 
 /* ADC Read function, return uV or uA */
-static int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
+int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch)
 {
 	u8 reg_data[2];
 	u16 raw_adc = 0;
@@ -1863,9 +1863,14 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468)
 
 	/* Check whether the previous request is done */
 	} else if (pca9468->req_new_iin) {
+
+		/* same as previous request nevermind */
+		if (pca9468->iin_cc == pca9468->new_iin)
+			return 0;
+
 		/* The previous request is not done yet */
-		pr_err("%s: current=%d new_iin=%d \n", __func__,
-		       pca9468->iin_cc, pca9468->new_iin);
+		pr_err("%s: cannot request new iin current=%d new_iin=%d \n",
+			__func__, pca9468->iin_cc, pca9468->new_iin);
 		return -EBUSY;
 	}
 
@@ -1932,9 +1937,13 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 
 	/* Check whether the previous request is done */
 	} else if (pca9468->req_new_vfloat) {
+
+		if (pca9468->new_vfloat == pca9468->pdata->v_float)
+			return 0;
+
 		/* The previous request is not done yet */
-		pr_err("%s: There is the previous request for New vfloat\n",
-		       __func__);
+		pr_err("%s: cannot request for vfloat, current=%d new_request=%d\n",
+		       __func__, pca9468->pdata->v_float, pca9468->new_vfloat);
 		return -EBUSY;
 	}
 
@@ -1957,8 +1966,8 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 		if (pca9468->new_vfloat <= vbat) {
 			/* The new VBAT is lower than the current VBAT */
 			/* return invalid error */
-			pr_err("%s: New vfloat is lower than VBAT ADC\n",
-			       __func__);
+			pr_err("%s: New vfloat=%d is lower than VBAT=%d ADC\n",
+			       __func__, pca9468->new_vfloat, vbat);
 			return -EINVAL;
 		}
 
@@ -3921,6 +3930,8 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 	pr_debug("%s: =========START=========\n", __func__);
 	pr_debug("%s: prop=%d, val=%d\n", __func__, prop, val->intval);
+	if (!pca9468->init_done)
+		return -EAGAIN;
 
 	switch (prop) {
 
@@ -4008,6 +4019,9 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 	struct pca9468_charger *pca9468 = power_supply_get_drvdata(psy);
 	union gbms_charger_state chg_state;
 	int intval, ret = 0;
+
+	if (!pca9468->init_done)
+		return -EAGAIN;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -4562,7 +4576,7 @@ static int pca9468_probe(struct i2c_client *client,
 		}
 	}
 #endif
-
+	pca9468_chg->init_done = true;
 	pr_info("pca9468: probe_done\n");
 	pr_debug("%s: =========END=========\n", __func__);
 	return 0;

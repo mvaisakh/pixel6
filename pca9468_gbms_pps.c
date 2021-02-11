@@ -582,13 +582,17 @@ int pca9468_is_present(struct pca9468_charger *pca9468)
 int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
 				      union gbms_charger_state *chg_state)
 {
+	int vchrg;
+
 	chg_state->v = 0;
 	chg_state->f.chg_status = pca9468_get_status(pca9468);
 	chg_state->f.chg_type = pca9468_get_charge_type(pca9468);
 	chg_state->f.flags = gbms_gen_chg_flags(chg_state->f.chg_status,
 						chg_state->f.chg_type);
 
-	/* chg_state->f.vchrg == 0, disable tier matching */
+	vchrg = pca9468_read_adc(pca9468, ADCCH_VBAT);
+	if (vchrg > 0)
+		chg_state->f.vchrg = vchrg / 1000;
 
 	if (chg_state->f.chg_status != POWER_SUPPLY_STATUS_DISCHARGING) {
 		int rc;

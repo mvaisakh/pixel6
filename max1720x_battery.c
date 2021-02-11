@@ -168,6 +168,7 @@ struct max1720x_chip {
 	int batt_id;
 	int batt_id_defer_cnt;
 	int cycle_count;
+	int cycle_count_offset;
 
 	bool init_complete;
 	bool resume_complete;
@@ -486,10 +487,15 @@ static inline int reg_to_resistance_micro_ohms(s16 val, u16 rsense)
 	return div_s64((s64) val * 1000 * rsense, 4096);
 }
 
-static inline int reg_to_cycles(s16 val)
+static inline int reg_to_cycles(s16 val, int gauge_type)
 {
-	/* LSB: 16% of one cycle */
-	return DIV_ROUND_CLOSEST((int) val * 16, 100);
+	if (gauge_type == MAX_M5_GAUGE_TYPE) {
+		/* LSB: 1% of one cycle */
+		return DIV_ROUND_CLOSEST((int) val, 100);
+	} else {
+		/* LSB: 16% of one cycle */
+		return DIV_ROUND_CLOSEST((int) val * 16, 100);
+	}
 }
 
 static inline int reg_to_seconds(s16 val)
@@ -1214,6 +1220,63 @@ static void max1720x_handle_update_nconvgcfg(struct max1720x_chip *chip,
 	mutex_unlock(&chip->convgcfg_lock);
 }
 
+#define EEPROM_CC_OVERFLOW_BIT	BIT(15)
+static void max1720x_restore_battery_cycle(struct max1720x_chip *chip)
+{
+	int ret = 0;
+	u16 eeprom_cycle, reg_cycle;
+
+	if (chip->gauge_type != MAX_M5_GAUGE_TYPE)
+		return;
+
+	ret = REGMAP_READ(&chip->regmap, MAX1720X_CYCLES, &reg_cycle);
+	if (ret < 0) {
+		dev_info(chip->dev, "Fail to read reg %#x, ret=%d",
+				MAX1720X_CYCLES, ret);
+		return;
+	}
+
+	ret = gbms_storage_read(GBMS_TAG_CNHS, &eeprom_cycle, sizeof(eeprom_cycle));
+	if (ret < 0) {
+		dev_info(chip->dev, "Fail to read eeprom cycle count, ret=%d", ret);
+		return;
+	}
+
+	if (eeprom_cycle == 0xFFFF) { /* empty storage */
+		reg_cycle /= 2;	/* save half value to record over 655 cycles case */
+		ret = gbms_storage_write(GBMS_TAG_CNHS, &reg_cycle, sizeof(reg_cycle));
+		if (ret < 0)
+			dev_info(chip->dev, "Fail to write eeprom cycle, ret=%d", ret);
+		dev_info(chip->dev, "update eeprom:%d", reg_cycle);
+	} else {
+		eeprom_cycle = (eeprom_cycle & 0x7FFF) << 1;
+		dev_info(chip->dev, "reg_cycle:%d, eeprom_cycle:%d, update:%c",
+			reg_cycle, eeprom_cycle, eeprom_cycle > reg_cycle ? 'Y' : 'N');
+		if (eeprom_cycle > reg_cycle)
+			REGMAP_WRITE(&chip->regmap, MAX1720X_CYCLES, eeprom_cycle);
+	}
+}
+
+static void max1720x_save_battery_cycle(u16 reg_cycle)
+{
+	u16 eeprom_cycle;
+	int ret;
+
+	ret = gbms_storage_read(GBMS_TAG_CNHS, &eeprom_cycle, sizeof(eeprom_cycle));
+	if (ret < 0)
+		return;
+
+	reg_cycle /= 2;	/* save half value to record over 655 cycles case */
+	if (reg_cycle < eeprom_cycle)
+		reg_cycle |= EEPROM_CC_OVERFLOW_BIT;
+	if (reg_cycle > eeprom_cycle) {
+		pr_info("update eeprom cycle %d -> %d", eeprom_cycle, reg_cycle);
+		ret = gbms_storage_write(GBMS_TAG_CNHS, &reg_cycle, sizeof(reg_cycle));
+		if (ret < 0)
+			pr_info("Fail to write %d eeprom cycle count, ret=%d", reg_cycle, ret);
+	}
+}
+
 #define MAXIM_CYCLE_COUNT_RESET 655
 #define MAX17201_HIST_CYCLE_COUNT_OFFSET	0x4
 #define MAX17201_HIST_TIME_OFFSET		0xf
@@ -1225,14 +1288,52 @@ static void max1720x_handle_update_nconvgcfg(struct max1720x_chip *chip,
  * count if the fuel gauge history has an entry with 0 cycles and
  * non 0 time-in-field.
  */
-static int max1720x_get_cycle_count_offset(const struct max1720x_chip *chip)
+static int max1720x_get_cycle_count_offset(struct max1720x_chip *chip)
 {
 	int offset = 0;
-
 	/*
 	 * uses history on devices that have it (max1720x), use EEPROM
 	 * in others. it might be written in terms of storage.
 	 */
+	if (chip->gauge_type == MAX_M5_GAUGE_TYPE) {
+		u16 eeprom_cycle;
+		int ret;
+
+		ret = gbms_storage_read(GBMS_TAG_CNHS, &eeprom_cycle, sizeof(eeprom_cycle));
+		if (ret < 0)
+			return 0;
+
+		if (eeprom_cycle & EEPROM_CC_OVERFLOW_BIT)
+			offset = MAXIM_CYCLE_COUNT_RESET;
+	} else {
+		int i, history_count;
+		struct max1720x_history hi;
+
+		if (!chip->history_page_size)
+			return 0;
+
+		mutex_lock(&chip->history_lock);
+		history_count = max1720x_history_read(chip, &hi);
+		if (history_count < 0) {
+			mutex_unlock(&chip->history_lock);
+			return 0;
+		}
+		for (i = 0; i < history_count; i++) {
+			u16 *entry = &hi.history[i * chip->history_page_size];
+
+			if (entry[MAX17201_HIST_CYCLE_COUNT_OFFSET] == 0 &&
+			    entry[MAX17201_HIST_TIME_OFFSET] != 0) {
+				offset += MAXIM_CYCLE_COUNT_RESET;
+				break;
+			}
+		}
+		mutex_unlock(&chip->history_lock);
+
+		dev_dbg(chip->dev, "history_count=%d page_size=%d i=%d offset=%d\n",
+			history_count, chip->history_page_size, i, offset);
+
+		max1720x_history_free(&hi);
+	}
 
 	return offset;
 }
@@ -1246,12 +1347,18 @@ static int max1720x_get_cycle_count(struct max1720x_chip *chip)
 	if (err < 0)
 		return err;
 
-	cycle_count = reg_to_cycles(temp);
-	if (chip->cycle_count == -1 || cycle_count < chip->cycle_count)
-		cycle_count += max1720x_get_cycle_count_offset(chip);
+	cycle_count = reg_to_cycles(temp, chip->gauge_type);
+	if ((chip->cycle_count == -1) ||
+	    ((cycle_count + chip->cycle_count_offset) < chip->cycle_count))
+		chip->cycle_count_offset =
+			max1720x_get_cycle_count_offset(chip);
 
-	chip->cycle_count = cycle_count;
-	return cycle_count;
+	if (chip->gauge_type == MAX_M5_GAUGE_TYPE)
+		max1720x_save_battery_cycle(temp);
+
+	chip->cycle_count = cycle_count + chip->cycle_count_offset;
+
+	return chip->cycle_count;
 }
 
 static void max1720x_handle_update_empty_voltage(struct max1720x_chip *chip,
@@ -3749,6 +3856,8 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 
 
 	max1720x_restore_battery_qh_capacity(chip);
+
+	max1720x_restore_battery_cycle(chip);
 
 	return 0;
 }

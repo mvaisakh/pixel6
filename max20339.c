@@ -29,8 +29,11 @@
 #define MAX20339_INTMASK1			0x7
 #define MAX20339_OVLOSEL			0x11
 #define MAX20339_OVLOSEL_INOVLOSEL_14_5		0x2
-#define MAX20339_IN_CTR				0x10
-#define MAX20339_IN_CTR_IN_SWEN_FORCE_ON	0x3
+#define MAX20339_IN_CTR_REG			0x10
+#define MAX20339_IN_CTR_SWEN_SHIFT		0
+#define MAX20339_IN_CTR_SWEN_MASK		GENMASK(1, 0)
+#define MAX20339_IN_CTR_SWEN_FORCE_ON		0x3
+#define MAX20339_IN_CTR_SWEN_FORCE_OFF		0x0
 
 #define MAX20339_POLL_ATTEMPTS			10
 #define MAX20339_INT2_REG			0x5
@@ -49,12 +52,13 @@
 #define MAX20338_SW_CNTL_LSW2_OV_EN_MASK	0x20
 
 #define MAX20339_MIN_GPIO			0
-#define MAX20339_MAX_GPIO			3
-#define MAX20339_NUM_GPIOS			4
+#define MAX20339_MAX_GPIO			4
+#define MAX20339_NUM_GPIOS			5
 #define MAX20339_LSW1_OFF			0
 #define MAX20339_LSW2_OFF			1
 #define MAX20339_LSW1_STATUS_OFF		2
 #define MAX20339_VIN_VALID_OFF			3
+#define MAX20339_IN_CTR_SWEN_OFF		4
 
 #define MAX20339_GPIO_GET_TIMEOUT_MS		100
 
@@ -127,7 +131,7 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 		return ret;
 	}
 
-	ret = regmap_read(regmap, MAX20339_IN_CTR, &val);
+	ret = regmap_read(regmap, MAX20339_IN_CTR_REG, &val);
 	if (ret < 0) {
 		dev_err(dev, "IN_CTR read error: ret %d\n", ret);
 		return ret;
@@ -136,14 +140,14 @@ static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 	dev_info(dev, "IN_CTR default: %#x\n", val);
 
 	/* Disable & enable to make OVLOSEL reflect */
-	ret = regmap_write(regmap, MAX20339_IN_CTR, 0);
+	ret = regmap_write(regmap, MAX20339_IN_CTR_REG, 0);
 	if (ret < 0) {
 		dev_err(dev, "IN_CTR write error: ret %d\n", ret);
 		return ret;
 	}
 
 	/* Enable Force on while re-enabling the switch */
-	ret = regmap_write(regmap, MAX20339_IN_CTR, val | MAX20339_IN_CTR_IN_SWEN_FORCE_ON);
+	ret = regmap_write(regmap, MAX20339_IN_CTR_REG, val | MAX20339_IN_CTR_SWEN_FORCE_ON);
 	if (ret < 0) {
 		dev_err(dev, "IN_CTR write error: ret %d\n", ret);
 		return ret;
@@ -249,39 +253,44 @@ static void max20339_gpio_set(struct gpio_chip *chip,
 	unsigned int tmp;
 	bool change;
 	u8 mask;
-	u8 shift;
-	u8 int_reg; /* regulator to poll for update */
-	u8 closed_fld; /* field to read for closed change */
+	u8 status_reg; /* status register to poll for update */
+	u8 sw_cntl_reg;
 	int i;
 	struct max20339_ovp *ovp = gpiochip_get_data(chip);
 
+	dev_dbg(&ovp->client->dev, "%s %d", __func__, value);
 	switch (offset) {
 	case MAX20339_LSW1_OFF:
+		sw_cntl_reg = MAX20339_SW_CNTL_REG;
 		mask = MAX20339_SW_CNTL_LSW1_EN_MASK;
-		shift = MAX20339_SW_CNTL_LSW1_EN_SHIFT;
-		int_reg = MAX20339_INT2_REG;
-		closed_fld = MAX20339_INT2_LSW1CLOSEDI;
+		status_reg = MAX20339_STATUS2;
+		tmp = (!!value << MAX20339_SW_CNTL_LSW1_EN_SHIFT);
 		break;
 	case MAX20339_LSW2_OFF:
+		sw_cntl_reg = MAX20339_SW_CNTL_REG;
 		mask = MAX20339_SW_CNTL_LSW2_EN_MASK;
-		shift = MAX20339_SW_CNTL_LSW2_EN_SHIFT;
-		int_reg = MAX20339_INT3_REG;
-		closed_fld = MAX20339_INT3_LSW2CLOSEDI;
+		status_reg = MAX20339_STATUS3;
+		tmp = (!!value << MAX20339_SW_CNTL_LSW2_EN_SHIFT);
+		break;
+	case MAX20339_IN_CTR_SWEN_OFF:
+		sw_cntl_reg = MAX20339_IN_CTR_REG;
+		mask = MAX20339_IN_CTR_SWEN_MASK;
+		status_reg = MAX20339_STATUS1;
+		tmp = value ? MAX20339_IN_CTR_SWEN_FORCE_ON : MAX20339_IN_CTR_SWEN_FORCE_OFF;
 		break;
 	default:
 		return;
 	}
 
-	tmp = (!!value << shift);
-	ret = regmap_update_bits_base(ovp->regmap, MAX20339_SW_CNTL_REG, mask,  tmp,
+	ret = regmap_update_bits_base(ovp->regmap, sw_cntl_reg, mask,  tmp,
 				      &change, false, false);
 	if (ret < 0)
 		dev_err(&ovp->client->dev, "SW_CNTL update error: ret %d\n", ret);
 
 	/* poll until update seen */
 	for (i = 0; i < MAX20339_POLL_ATTEMPTS; i++) {
-		ret = regmap_read(ovp->regmap, int_reg, &tmp);
-		if (tmp & closed_fld)
+		ret = regmap_read(ovp->regmap, status_reg, &tmp);
+		if ((tmp & MAX20339_STATUS_SWITCH_CLOSED) == value)
 			break;
 		mdelay(20);
 	}
