@@ -361,7 +361,7 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 {
 	union power_supply_propval pro_val;
 	struct power_supply *wlc_psy;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	mutex_lock(&pca9468->lock);
 
@@ -376,24 +376,21 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 		goto out;
 	}
 
-	pr_info("%s: rx_vol=%d\n", __func__, pca9468->ta_vol);
-
-	/* Set the RX voltage */
 	pro_val.intval = pca9468->ta_vol;
-
-	/* Set the property */
 	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					&pro_val);
+	pr_debug("rx_vol=%d ret=%d\n", pca9468->ta_vol, ret);
 	if (ret < 0)
 		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
 			pro_val.intval, ret);
 
-out:
 	/* Vbus reset might happen, check the charging state again */
-	if (pca9468->mains_online == false)
+	if (pca9468->mains_online == false) {
+		pr_warn("%s: mains offline\n", __func__);
 		ret = -EINVAL;
+	}
 
-	pr_info("%s: ret=%d\n", __func__, ret);
+out:
 	mutex_unlock(&pca9468->lock);
 	return ret;
 }
