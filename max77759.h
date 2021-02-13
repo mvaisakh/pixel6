@@ -130,8 +130,9 @@ struct max77759_usecase_data {
 
 	int ls2_en;	/* OVP LS2 */
 
-	int vin_valid;	/* MAX20339 STATUS1.vinvalid */
-	int lsw1_status;/* MAX20339 STATUS2.lsw1closed */
+	int vin_is_valid;	/* MAX20339 STATUS1.vinvalid */
+	int lsw1_is_open;	/* MAX20339 STATUS2.lsw1open */
+	int lsw1_is_closed;	/* MAX20339 STATUS2.lsw1closed */
 
 	bool init_done;
 };

@@ -58,7 +58,7 @@ static void dump_model(struct device *dev, u16 *data, int count)
 }
 
 /* input current is in the fuel gauge */
-int max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic)
+int max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic_raw)
 {
 	struct max_m5_data *m5_data = max1720x_get_model_data(client);
 	unsigned long sum = 0;
@@ -79,7 +79,7 @@ int max_m5_read_actual_input_current_ua(struct i2c_client *client, int *iic)
 		sum += tmp;
 	}
 
-	*iic  = (sum * 125) / loops;
+	*iic_raw  = sum / loops;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(max_m5_read_actual_input_current_ua);
