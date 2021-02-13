@@ -872,7 +872,7 @@ static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger)
 
 	if (p9221_is_epp(charger)) {
 		ret = charger->chip_get_tx_id(charger, &tx_id);
-		if (ret)
+		if (ret && ret != -ENOTSUPP)
 			dev_err(&charger->client->dev,
 				"Failed to read txid %d\n", ret);
 	} else {
