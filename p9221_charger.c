@@ -1053,7 +1053,7 @@ static int p9221_get_property(struct power_supply *psy,
 			break;
 
 		if (charger->wlc_dc_enabled) {
-			ret = charger->chip_get_vout_max(charger, &temp);
+			ret = charger->chip_get_vout(charger, &temp);
 			if (ret == 0)
 				charger->wlc_dc_voltage_now = temp * 1000; /* mV to uV */
 		} else {
