@@ -21,7 +21,6 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_modes.h>
-#include <drm/exynos_display_common.h>
 #include <drm/drm_vblank.h>
 
 #include <linux/clk.h>
@@ -91,6 +90,30 @@ MODULE_DEVICE_TABLE(of, dsim_of_match);
 
 static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t hs_clock_mhz,
 		uint32_t *underrun);
+
+static struct drm_crtc *drm_encoder_get_new_crtc(struct drm_encoder *encoder,
+						 struct drm_atomic_state *state)
+{
+	struct drm_connector *connector;
+	const struct drm_connector_state *conn_state;
+
+	connector = drm_atomic_get_new_connector_for_encoder(state, encoder);
+	if (!connector)
+		return NULL;
+
+	conn_state = drm_atomic_get_new_connector_state(state, connector);
+	if (!conn_state)
+		return NULL;
+
+	return conn_state->crtc;
+}
+
+static bool dsim_encoder_in_tui(struct drm_encoder *encoder, struct drm_atomic_state *state)
+{
+	const struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
+
+	return crtc && exynos_crtc_in_tui(crtc->state);
+}
 
 static void dsim_dump(struct dsim_device *dsim)
 {
@@ -199,9 +222,8 @@ static void dsim_set_te_pinctrl(struct dsim_device *dsim, bool en)
 		dsim_err(dsim, "failed to control decon TE(%d)\n", en);
 }
 
-static void dsim_enable(struct drm_encoder *encoder)
+static void _dsim_enable(struct dsim_device *dsim)
 {
-	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
 	mutex_lock(&dsim->state_lock);
@@ -227,8 +249,6 @@ static void dsim_enable(struct drm_encoder *encoder)
 	enable_irq(dsim->irq);
 	mutex_unlock(&dsim->state_lock);
 
-	dsim_set_te_pinctrl(dsim, 1);
-
 #if defined(DSIM_BIST)
 	dsim_reg_set_bist(dsim->id, true, DSIM_GRAY_GRADATION);
 	dsim_dump(dsim);
@@ -238,6 +258,16 @@ static void dsim_enable(struct drm_encoder *encoder)
 		DPU_EVENT_LOG(DPU_EVT_DSIM_ENABLED, decon->id, dsim);
 
 	dsim_debug(dsim, "%s -\n", __func__);
+}
+
+static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_state *state)
+{
+	struct dsim_device *dsim = encoder_to_dsim(encoder);
+
+	_dsim_enable(dsim);
+
+	if (!dsim_encoder_in_tui(encoder, state))
+		dsim_set_te_pinctrl(dsim, 1);
 }
 
 void dsim_enter_ulps(struct dsim_device *dsim)
@@ -270,9 +300,8 @@ void dsim_enter_ulps(struct dsim_device *dsim)
 	dsim_debug(dsim, "%s -\n", __func__);
 }
 
-static void dsim_disable(struct drm_encoder *encoder)
+static void _dsim_disable(struct dsim_device *dsim)
 {
-	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
 	dsim_debug(dsim, "%s +\n", __func__);
@@ -296,8 +325,6 @@ static void dsim_disable(struct drm_encoder *encoder)
 
 	mutex_unlock(&dsim->state_lock);
 
-	dsim_set_te_pinctrl(dsim, 0);
-
 	dsim_phy_power_off(dsim);
 
 #if defined(CONFIG_CPU_IDLE)
@@ -308,6 +335,16 @@ static void dsim_disable(struct drm_encoder *encoder)
 		DPU_EVENT_LOG(DPU_EVT_DSIM_DISABLED, decon->id, dsim);
 
 	dsim_debug(dsim, "%s -\n", __func__);
+}
+
+static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_state *state)
+{
+	struct dsim_device *dsim = encoder_to_dsim(encoder);
+
+	_dsim_disable(dsim);
+
+	if (!dsim_encoder_in_tui(encoder, state))
+		dsim_set_te_pinctrl(dsim, 0);
 }
 
 static void dsim_modes_release(struct dsim_pll_params *pll_params)
@@ -972,8 +1009,8 @@ static int dsim_atomic_check(struct drm_encoder *encoder,
 static const struct drm_encoder_helper_funcs dsim_encoder_helper_funcs = {
 	.mode_valid = dsim_mode_valid,
 	.atomic_mode_set = dsim_atomic_mode_set,
-	.enable = dsim_enable,
-	.disable = dsim_disable,
+	.atomic_enable = dsim_encoder_enable,
+	.atomic_disable = dsim_encoder_disable,
 	.atomic_check = dsim_atomic_check,
 };
 
@@ -1364,6 +1401,10 @@ static int dsim_host_attach(struct mipi_dsi_host *host,
 		dsim->dsi_device = device;
 	}
 
+	ret = sysfs_create_link(&device->dev.kobj, &host->dev->kobj, "dsim");
+	if (ret)
+		dev_warn(&device->dev, "unable to link %s sysfs (%d)\n", "dsim", ret);
+
 	dsim_debug(dsim, "%s -\n", __func__);
 
 	return ret;
@@ -1376,7 +1417,7 @@ static int dsim_host_detach(struct mipi_dsi_host *host,
 
 	dsim_info(dsim, "%s +\n", __func__);
 
-	dsim_disable(&dsim->encoder);
+	_dsim_disable(dsim);
 	if (dsim->panel_bridge) {
 		struct drm_bridge *bridge = dsim->panel_bridge;
 
@@ -1386,6 +1427,7 @@ static int dsim_host_detach(struct mipi_dsi_host *host,
 	}
 	dsim->dsi_device = NULL;
 
+	sysfs_remove_link(&device->dev.kobj, "dsim");
 	dsim_info(dsim, "%s -\n", __func__);
 	return 0;
 }
@@ -1893,7 +1935,7 @@ static int dsim_calc_underrun(const struct dsim_device *dsim, uint32_t hs_clock_
 	return 0;
 }
 
-static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
+static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock, bool apply_now)
 {
 	int ret;
 	struct stdphy_pms pms;
@@ -1931,7 +1973,7 @@ static int dsim_set_hs_clock(struct dsim_device *dsim, unsigned int hs_clock)
 	pll_param->cmd_underrun_cnt = lp_underrun;
 	dsim_update_clock_config(dsim, pll_param);
 
-	if (dsim->state != DSIM_STATE_HSCLKEN)
+	if (!apply_now || dsim->state != DSIM_STATE_HSCLKEN)
 		goto out;
 
 	/* Restart dsim to apply new clock settings */
@@ -1977,13 +2019,13 @@ static ssize_t bist_mode_store(struct device *dev,
 	bist_en = bist_mode > 0;
 
 	if (bist_en && dsim->state == DSIM_STATE_SUSPEND)
-		dsim_enable(&dsim->encoder);
+		_dsim_enable(dsim);
 
 	dsim_reg_set_bist(dsim->id, bist_en, bist_mode - 1);
 	dsim->bist_mode = bist_mode;
 
 	if (!bist_en && dsim->state == DSIM_STATE_HSCLKEN)
-		dsim_disable(&dsim->encoder);
+		_dsim_disable(dsim);
 
 	dsim_info(dsim, "0:Disable 1:ColorBar 2:GRAY Gradient 3:UserDefined\n");
 	dsim_info(dsim, "4:Prbs7 Random (%d)\n", dsim->bist_mode);
@@ -2008,13 +2050,30 @@ static ssize_t hs_clock_store(struct device *dev,
 	struct dsim_device *dsim = dev_get_drvdata(dev);
 	int rc;
 	unsigned int hs_clock;
+	bool apply_now = true;
 
-	rc = kstrtouint(buf, 0, &hs_clock);
+	char params[32];
+	char *hs_clk_str;
+	char *apply_now_str;
+	char *p = params;
+
+	strlcpy(params, buf, sizeof(params));
+	hs_clk_str = strsep(&p, " ");
+	apply_now_str = strsep(&p, " ");
+
+	if (apply_now_str) {
+		rc = kstrtobool(apply_now_str, &apply_now);
+		if (rc < 0)
+		    return rc;
+	}
+
+	rc = kstrtouint(hs_clk_str, 0, &hs_clock);
 	if (rc < 0)
 		return rc;
 
-	/* hs_clock unit: MHz */
-	rc = dsim_set_hs_clock(dsim, hs_clock);
+	/* ddr hs_clock unit: MHz */
+	dsim_info(dsim, "%s: hs clock %u, apply now: %u\n", __func__, hs_clock, apply_now);
+	rc = dsim_set_hs_clock(dsim, hs_clock, apply_now);
 	if (rc < 0)
 		return rc;
 

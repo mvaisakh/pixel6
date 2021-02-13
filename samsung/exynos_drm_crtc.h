@@ -16,6 +16,8 @@
 #ifndef _EXYNOS_DRM_CRTC_H_
 #define _EXYNOS_DRM_CRTC_H_
 
+#include <drm/exynos_display_common.h>
+
 #include "exynos_drm_drv.h"
 
 #define HAL_COLOR_MODE_NATIVE				0
@@ -57,5 +59,10 @@ uint32_t exynos_drm_get_possible_crtcs(const struct drm_encoder *encoder,
 void exynos_drm_crtc_te_handler(struct drm_crtc *crtc);
 
 void exynos_crtc_handle_event(struct exynos_drm_crtc *exynos_crtc);
+
+static inline bool exynos_crtc_in_tui(const struct drm_crtc_state *crtc_state)
+{
+	return crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI);
+}
 
 #endif

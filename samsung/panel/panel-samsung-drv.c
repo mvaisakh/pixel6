@@ -1892,7 +1892,8 @@ static void global_hbm_work(struct work_struct *work)
 	struct exynos_panel *ctx =
 			 container_of(work, struct exynos_panel, hbm.global_hbm.ghbm_work);
 	const struct exynos_panel_funcs *exynos_panel_func;
-	u32 delay_us = ctx->current_mode->exynos_mode.vblank_usec;
+	/* TODO: Change to ctx->current_mode->exynos_mode.vblank_usec when it's ready */
+	u32 delay_us = USEC_PER_SEC / drm_mode_vrefresh(&ctx->current_mode->mode) / 2;
 	/* considering the variation */
 	delay_us = delay_us * 105 / 100;
 
