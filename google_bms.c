@@ -41,8 +41,17 @@
 #define GBMS_DEFAULT_CV_TIER_SWITCH_CNT 3
 #define GBMS_DEFAULT_CV_OTV_MARGIN      0
 
+/* same as POWER_SUPPLY_CHARGE_TYPE_TEXT */
 static const char *psy_chgt_str[] = {
-	"Unknown", "None", "Trickle", "Fast", "Taper"
+	[POWER_SUPPLY_CHARGE_TYPE_UNKNOWN]	= "Unknown",
+	[POWER_SUPPLY_CHARGE_TYPE_NONE]		= "N/A",
+	[POWER_SUPPLY_CHARGE_TYPE_TRICKLE]	= "Trickle",
+	[POWER_SUPPLY_CHARGE_TYPE_FAST]		= "Fast",
+	[POWER_SUPPLY_CHARGE_TYPE_STANDARD]	= "Standard",
+	[POWER_SUPPLY_CHARGE_TYPE_ADAPTIVE]	= "Adaptive",
+	[POWER_SUPPLY_CHARGE_TYPE_CUSTOM]	= "Custom",
+	[POWER_SUPPLY_CHARGE_TYPE_LONGLIFE]	= "Long Life",
+	[POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT]	= "Taper",
 };
 
 const char *gbms_chg_type_s(int cgh_type)
@@ -53,6 +62,7 @@ const char *gbms_chg_type_s(int cgh_type)
 }
 EXPORT_SYMBOL_GPL(gbms_chg_type_s);
 
+/* same as POWER_SUPPLY_STATUS_TEXT */
 static const char *psy_chgs_str[] = {
 	"Unknown", "Charging", "Discharging", "Not Charging", "Full"
 };
