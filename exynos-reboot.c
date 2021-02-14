@@ -192,7 +192,7 @@ static int exynos_restart_handler(struct notifier_block *this, unsigned long mod
 	} else {
 		pr_emerg("Set PS_HOLD Low.\n");
 		mdelay(2);
-		regmap_update_bits(pmureg, cold_reboot_offset, cold_reboot_trigger, 0);
+		rmw_priv_reg(pmu_alive_base + cold_reboot_offset, cold_reboot_trigger, 0);
 	}
 
 	while (1)
