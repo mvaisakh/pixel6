@@ -24,7 +24,7 @@
 #include <linux/videodev2_exynos_media.h>
 #include <linux/dma-buf.h>
 #include <linux/soc/samsung/exynos-smc.h>
-#include <linux/ion.h>
+#include <linux/dma-heap.h>
 
 #include <hdr_cal.h>
 #include <regs-dpp.h>
@@ -161,6 +161,7 @@ void dpp_dump(struct dpp_device *dpp)
 
 static dma_addr_t dpp_alloc_map_buf_test(void)
 {
+	struct dma_heap *dma_heap;
 	struct dma_buf *buf;
 	struct dma_buf_attachment *attachment;
 	struct sg_table *sg_table;
@@ -172,15 +173,23 @@ static dma_addr_t dpp_alloc_map_buf_test(void)
 	struct exynos_drm_private *priv = drm_dev->dev_private;
 
 	size = PAGE_ALIGN(1440 * 3040 * 4);
-	buf = ion_alloc(size, ION_HEAP_SYSTEM, 0);
+	dma_heap = dma_heap_find("system");
+	if (!dma_heap) {
+		pr_err("Failed to find DMA-BUF system heap\n");
+		return -EINVAL;
+	}
+
+	buf = dma_heap_buffer_alloc(dma_heap, size, O_RDWR, 0);
+	dma_heap_put(dma_heap);
 	if (IS_ERR(buf)) {
-		pr_err("failed to allocate test buffer memory\n");
+		pr_err("Failed to allocate %#zx bytes from DMA-BUF system heap\n", size);
 		return PTR_ERR(buf);
 	}
 
 	vaddr = dma_buf_vmap(buf);
 	if (!vaddr) {
 		pr_err("failed to vmap buffer\n");
+		dma_buf_put(buf);
 		return -EINVAL;
 	}
 
@@ -191,18 +200,21 @@ static dma_addr_t dpp_alloc_map_buf_test(void)
 	attachment = dma_buf_attach(buf, priv->iommu_client);
 	if (IS_ERR_OR_NULL(attachment)) {
 		pr_err("failed to attach dma_buf\n");
+		dma_buf_put(buf);
 		return -EINVAL;
 	}
 
 	sg_table = dma_buf_map_attachment(attachment, DMA_TO_DEVICE);
 	if (IS_ERR_OR_NULL(sg_table)) {
 		pr_err("failed to map attachment\n");
+		dma_buf_put(buf);
 		return -EINVAL;
 	}
 
 	dma_addr = sg_dma_address(sg_table->sgl);
 	if (IS_ERR_VALUE(dma_addr)) {
 		pr_err("failed to map iovmm\n");
+		dma_buf_put(buf);
 		return -EINVAL;
 	}
 

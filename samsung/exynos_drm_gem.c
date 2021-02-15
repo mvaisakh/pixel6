@@ -17,7 +17,7 @@
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/mm_types.h>
-#include <linux/ion.h>
+#include <linux/dma-heap.h>
 
 #include "exynos_drm_dsim.h"
 #include "exynos_drm_gem.h"
@@ -95,6 +95,7 @@ static int exynos_drm_gem_create(struct drm_device *dev, struct drm_file *filep,
 				 size_t size, unsigned int flags,
 				 unsigned int *gem_handle)
 {
+	struct dma_heap *dma_heap;
 	struct dma_buf *dmabuf;
 	struct drm_gem_object *obj;
 	int ret;
@@ -104,15 +105,22 @@ static int exynos_drm_gem_create(struct drm_device *dev, struct drm_file *filep,
 		return -EINVAL;
 	}
 
-	dmabuf = ion_alloc(size, ION_HEAP_SYSTEM, 0);
-	if (IS_ERR_OR_NULL(dmabuf)) {
-		pr_err("ION Failed to alloc %#zx bytes\n", size);
+	dma_heap = dma_heap_find("system");
+	if (!dma_heap) {
+		pr_err("Failed to find DMA-BUF system heap\n");
+		return -EINVAL;
+	}
+
+	dmabuf = dma_heap_buffer_alloc(dma_heap, size, O_RDWR, 0);
+	dma_heap_put(dma_heap);
+	if (IS_ERR(dmabuf)) {
+		pr_err("Failed to allocate %#zx bytes from DMA-BUF system heap\n", size);
 		return PTR_ERR(dmabuf);
 	}
 
 	obj = exynos_drm_gem_prime_import(dev, dmabuf);
 	if (IS_ERR(obj)) {
-		pr_err("Unable to import created ION buffer\n");
+		pr_err("Unable to import created DMA-BUF heap buffer\n");
 		ret = PTR_ERR(obj);
 	} else {
 		struct exynos_drm_gem *exynos_gem_obj = to_exynos_gem(obj);
