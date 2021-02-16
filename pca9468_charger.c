@@ -789,8 +789,8 @@ static int pca9468_get_batt_info(struct pca9468_charger *pca9468, int info_type,
 	return ret;
 }
 
-#define FCC_TOLERANCE_RATIO		95
-#define FCC_POWER_INCREASE_THRESHOLD	90
+#define FCC_TOLERANCE_RATIO		99
+#define FCC_POWER_INCREASE_THRESHOLD	97
 
 /* Check CC Mode status */
 static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
