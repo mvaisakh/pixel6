@@ -1472,14 +1472,19 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 			    int *vbatt_idx, int *fv_uv,
 			    int *update_interval)
 {
-	int msc_state = MSC_NONE;
-	const bool match_enable = batt_drv->chg_state.f.vchrg != 0;
 	const struct gbms_chg_profile *profile = &batt_drv->chg_profile;
 	const int vtier = profile->volt_limits[*vbatt_idx];
 	const int chg_type = batt_drv->chg_state.f.chg_type;
 	const int utv_margin = profile->cv_range_accuracy;
 	const int otv_margin = profile->cv_otv_margin;
 	const int switch_cnt = profile->cv_tier_switch_cnt;
+	int vchg = batt_drv->chg_state.f.vchrg;
+	int msc_state = MSC_NONE;
+	bool match_enable;
+
+	if (batt_drv->chg_state.f.flags & GBMS_CS_FLAG_NOCOMP)
+		vchg = 0;
+	match_enable = vchg != 0;
 
 	if ((vbatt - vtier) > otv_margin) {
 		/* OVER: vbatt over vtier for more than margin */
@@ -1538,20 +1543,20 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		 * data might not be consistent (b/110318684)
 		 * NOTE: could add PID loop for management of thermals
 		 */
-		const int vchrg = batt_drv->chg_state.f.vchrg * 1000;
+		const int vchrg_ua = vchg * 1000;
 
 		msc_state = MSC_FAST;
 
 		/* invalid or 0 vchg disable IDROP compensation */
-		if (vchrg <= 0) {
+		if (vchrg_ua <= 0) {
 			/* could keep it steady instead */
 			*fv_uv = vtier;
-		} else if (vchrg > vbatt) {
+		} else if (vchrg_ua > vbatt) {
 			*fv_uv = gbms_msc_round_fv_uv(profile, vtier,
-				vtier + (vchrg - vbatt));
+				vtier + (vchrg_ua - vbatt));
 		}
 
-		/* no tier switch during fast charge */
+		/* no tier switch in fast charge (TODO unless close to tier) */
 		if (batt_drv->checked_cv_cnt == 0)
 			batt_drv->checked_cv_cnt = 1;
 
