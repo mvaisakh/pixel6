@@ -208,6 +208,46 @@ static int exynos_atomic_check_windows(struct drm_device *dev, struct drm_atomic
 	return 0;
 }
 
+static void exynos_atomic_prepare_partial_update(struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	struct exynos_drm_crtc_state *old_exynos_crtc_state, *new_exynos_crtc_state;
+	struct decon_device *decon;
+	struct exynos_partial *partial;
+	int i;
+
+	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
+		decon = to_exynos_crtc(crtc)->ctx;
+
+		if (!new_crtc_state->active)
+			continue;
+
+		if (drm_atomic_crtc_needs_modeset(new_crtc_state)) {
+			const struct exynos_drm_connector_state *exynos_conn_state =
+				crtc_get_exynos_connector_state(state, new_crtc_state);
+
+			if (exynos_conn_state) {
+				const struct exynos_display_partial *p =
+					&exynos_conn_state->partial;
+
+				decon->partial = exynos_partial_initialize(decon,
+						p, &new_crtc_state->mode);
+			}
+		}
+
+		partial = decon->partial;
+		if (!partial)
+			continue;
+
+		new_exynos_crtc_state = to_exynos_crtc_state(new_crtc_state);
+		old_exynos_crtc_state = to_exynos_crtc_state(old_crtc_state);
+
+		exynos_partial_prepare(partial, old_exynos_crtc_state,
+						new_exynos_crtc_state);
+	}
+}
+
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
@@ -222,6 +262,8 @@ int exynos_atomic_check(struct drm_device *dev,
 	ret = drm_atomic_helper_check_modeset(dev, state);
 	if (ret)
 		return ret;
+
+	exynos_atomic_prepare_partial_update(state);
 
 	ret = drm_atomic_normalize_zpos(dev, state);
 	if (ret)

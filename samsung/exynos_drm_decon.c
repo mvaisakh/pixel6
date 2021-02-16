@@ -633,8 +633,9 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 				width, height);
 	}
 
-	if (partial && new_exynos_crtc_state->partial)
-		exynos_partial_update(partial, new_exynos_crtc_state);
+	if (partial)
+		exynos_partial_update(partial, &old_exynos_crtc_state->partial_region,
+				&new_exynos_crtc_state->partial_region);
 
 	decon_reg_all_win_shadow_update_req(decon->id);
 
@@ -856,12 +857,6 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 		if ((decon->config.mode.op_mode == DECON_COMMAND_MODE) &&
 		    (decon->config.mode.trig_mode == DECON_HW_TRIG))
 			decon_request_te_irq(exynos_crtc, exynos_conn_state);
-
-		if (exynos_conn_state) {
-			const struct exynos_display_partial *p =
-				&exynos_conn_state->partial;
-			decon->partial = exynos_partial_initialize(decon, p);
-		}
 	}
 
 	if (decon->state == DECON_STATE_ON) {

@@ -289,7 +289,6 @@ struct dpu_log_partial {
 	struct drm_rect prev;
 	struct drm_rect req;
 	struct drm_rect adj;
-	bool need_partial_update;
 	bool reconfigure;
 };
 

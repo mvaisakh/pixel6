@@ -21,6 +21,7 @@
 #include "exynos_drm_fb.h"
 #include "exynos_drm_format.h"
 #include "exynos_drm_plane.h"
+#include "exynos_drm_decon.h"
 
 static struct drm_plane_state *
 exynos_drm_plane_duplicate_state(struct drm_plane *plane)
@@ -307,6 +308,8 @@ static int exynos_plane_atomic_check(struct drm_plane *plane,
 						to_exynos_plane_state(state);
 	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
 	struct drm_crtc_state *new_crtc_state;
+	struct exynos_drm_crtc_state *new_exynos_crtc_state;
+	struct decon_device *decon;
 	int ret = 0;
 
 	DRM_DEBUG("%s +\n", __func__);
@@ -325,9 +328,15 @@ static int exynos_plane_atomic_check(struct drm_plane *plane,
 	if (ret)
 		return ret;
 
+	new_exynos_crtc_state = to_exynos_crtc_state(new_crtc_state);
+	decon = to_exynos_crtc(state->crtc)->ctx;
+	if (decon->partial && new_exynos_crtc_state->needs_reconfigure)
+		exynos_partial_reconfig_coords(decon->partial, state,
+				&new_exynos_crtc_state->partial_region);
+
 	exynos_plane_update_hdr_params(exynos_state);
 
-	if (dpp->check) {
+	if (dpp->check && state->visible) {
 		ret = dpp->check(dpp, exynos_state);
 		if (ret)
 			return ret;

@@ -34,22 +34,11 @@ static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 					  struct drm_crtc_state *old_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct exynos_drm_crtc_state *exynos_state;
-	struct decon_device *decon = exynos_crtc->ctx;
-	struct exynos_partial *partial = decon->partial;
 
 	drm_crtc_vblank_on(crtc);
 
 	if (exynos_crtc->ops->enable)
 		exynos_crtc->ops->enable(exynos_crtc, old_state);
-
-	exynos_state = to_exynos_crtc_state(crtc->state);
-	if (partial && exynos_state->partial) {
-		exynos_state->partial_region.x1 = 0;
-		exynos_state->partial_region.y1 = 0;
-		exynos_state->partial_region.x2 = decon->config.image_width;
-		exynos_state->partial_region.y2 = decon->config.image_height;
-	}
 }
 
 static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -185,16 +174,9 @@ static void exynos_crtc_atomic_begin(struct drm_crtc *crtc,
 				     struct drm_crtc_state *old_crtc_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct exynos_drm_crtc_state *exynos_state;
-	struct decon_device *decon = exynos_crtc->ctx;
-	struct exynos_partial *partial = decon->partial;
 
 	if (exynos_crtc->ops->atomic_begin)
 		exynos_crtc->ops->atomic_begin(exynos_crtc);
-
-	exynos_state = to_exynos_crtc_state(crtc->state);
-	if (partial && exynos_state->partial)
-		exynos_partial_prepare(partial, exynos_state);
 }
 
 static void exynos_crtc_atomic_flush(struct drm_crtc *crtc,

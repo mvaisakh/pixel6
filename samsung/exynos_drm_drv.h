@@ -249,7 +249,7 @@ struct exynos_drm_crtc_state {
 	unsigned int visible_win_mask;
 	struct drm_rect partial_region;
 	struct drm_property_blob *partial;
-	bool need_partial_update;
+	bool needs_reconfigure;
 };
 
 static inline struct exynos_drm_crtc_state *

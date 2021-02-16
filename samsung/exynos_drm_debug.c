@@ -83,6 +83,7 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	struct dpu_log *log;
 	struct drm_crtc_state *crtc_state;
 	struct exynos_partial *partial;
+	struct drm_rect *partial_region;
 	unsigned long flags;
 	int idx;
 	bool skip_excessive = true;
@@ -195,9 +196,10 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		memcpy(&log->data.partial, priv, sizeof(struct dpu_log_partial));
 		break;
 	case DPU_EVT_PARTIAL_RESTORE:
-		partial = priv;
-		memcpy(&log->data.partial.prev, &partial->prev_partial_region,
-				sizeof(struct drm_rect));
+	case DPU_EVT_PARTIAL_UPDATE:
+		partial_region = priv;
+		memcpy(&log->data.partial.prev, partial_region,
+					sizeof(struct drm_rect));
 		break;
 	case DPU_EVT_DSIM_CRC:
 		log->data.value = decon->d.crc_cnt;
@@ -383,8 +385,7 @@ static int dpu_print_log_partial(char *buf, int len, struct dpu_log_partial *p)
 			p->prev.x1, p->prev.y1,
 			drm_rect_width(&p->prev), drm_rect_height(&p->prev));
 	return scnprintf(buf + len, LOG_BUF_SIZE - len,
-			" update(%d) reconfig(%d)",
-			p->need_partial_update, p->reconfigure);
+			" reconfig(%d)", p->reconfigure);
 }
 
 static const char *get_event_name(enum dpu_event_type type)
@@ -537,6 +538,7 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 					&log->data.partial);
 			break;
 		case DPU_EVT_PARTIAL_RESTORE:
+		case DPU_EVT_PARTIAL_UPDATE:
 			scnprintf(buf + len, sizeof(buf) - len,
 				"\t[%d %d %d %d]",
 				log->data.partial.prev.x1,
