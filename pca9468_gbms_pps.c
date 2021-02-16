@@ -379,7 +379,7 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 	pro_val.intval = pca9468->ta_vol;
 	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					&pro_val);
-	pr_debug("rx_vol=%d ret=%d\n", pca9468->ta_vol, ret);
+	pr_debug("%s: rx_vol=%d ret=%d\n", __func__, pca9468->ta_vol, ret);
 	if (ret < 0)
 		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
 			pro_val.intval, ret);
@@ -493,20 +493,30 @@ int pca9468_get_charge_type(struct pca9468_charger *pca9468)
 	if (!pca9468->mains_online)
 		return POWER_SUPPLY_CHARGE_TYPE_NONE;
 
+	/*
+	 * HW will reports PCA9468_BIT_IIN_LOOP_STS (CC) or
+	 * PCA9468_BIT_VFLT_LOOP_STS (CV) or inactive (i.e. openloop).
+	 */
 	ret = regmap_read(pca9468->regmap, PCA9468_REG_STS_A, &sts);
 	if (ret < 0)
 		return ret;
 
-	pr_debug("%s: sts_a=%0x2\n", __func__, sts);
+	pr_debug("%s: sts_a=%0x2 VFLT=%d IIN=%d charging_state=%d\n",
+		__func__, sts, !!(sts & PCA9468_BIT_VFLT_LOOP_STS),
+		 !!(sts & PCA9468_BIT_IIN_LOOP_STS),
+		 pca9468->charging_state);
 
 	/* Use SW state for now */
 	switch (pca9468->charging_state) {
 	case DC_STATE_ADJUST_CC:
 	case DC_STATE_CC_MODE:
+	case DC_STATE_ADJUST_TAVOL:
+	case DC_STATE_ADJUST_TACUR:
 		return POWER_SUPPLY_CHARGE_TYPE_FAST;
 	case DC_STATE_START_CV:
 	case DC_STATE_CV_MODE:
 		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
+	case DC_STATE_CHECK_ACTIVE: /* in preset */
 	case DC_STATE_CHARGING_DONE:
 		break;
 	}
@@ -549,7 +559,7 @@ int pca9468_get_status(struct pca9468_charger *pca9468)
 	case DC_STATE_NO_CHARGING:
 	case DC_STATE_CHECK_VBAT:
 	case DC_STATE_PRESET_DC:
-	case DC_STATE_CHECK_ACTIVE: /* last state really */
+	case DC_STATE_CHECK_ACTIVE:
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
 	case DC_STATE_ADJUST_CC:
 	case DC_STATE_CC_MODE:
