@@ -448,15 +448,22 @@ static int info_wlc_state(union gbms_ce_adapter_details *ad,
 }
 
 /* NOTE: do not call this directly */
-static int chg_set_charger(struct power_supply *chg_psy, int fv_uv, int cc_max)
+static int chg_set_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 {
+	struct power_supply *chg_psy = chg_drv->chg_psy;
 	int rc;
 
-	rc = GPSY_SET_PROP(chg_psy,
-		POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, cc_max);
-	if (rc != 0) {
-		pr_err("MSC_CHG cannot set charging current rc=%d\n", rc);
-		return -EIO;
+	/*
+	 *   when cc_max < chg_drv->cc_max, set current, voltage
+	 *   when cc_max > chg_drv->cc_max, set voltage, current
+	 */
+	if (cc_max < chg_drv->cc_max) {
+		rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
+				   cc_max);
+		if (rc != 0) {
+			pr_err("MSC_CHG cannot set charging current rc=%d\n", rc);
+			return -EIO;
+		}
 	}
 
 	rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, fv_uv);
@@ -465,10 +472,17 @@ static int chg_set_charger(struct power_supply *chg_psy, int fv_uv, int cc_max)
 		return -EIO;
 	}
 
+	if (cc_max > chg_drv->cc_max) {
+		rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
+				   cc_max);
+		if (rc != 0) {
+			pr_err("MSC_CHG cannot set charging current rc=%d\n", rc);
+			return -EIO;
+		}
+	}
+
 	return rc;
 }
-
-
 
 static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 {
@@ -481,6 +495,7 @@ static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 	if (chg_drv->fv_uv != fv_uv || chg_drv->cc_max != cc_max) {
 		const int taper_limit = chg_drv->batt_profile_fv_uv >= 0 ?
 					chg_drv->batt_profile_fv_uv : -1;
+		const int chg_cc_tolerance = chg_drv->chg_cc_tolerance;
 		int taper_ctl = GBMS_TAPER_CONTROL_OFF;
 		int fcc = cc_max;
 
@@ -494,14 +509,9 @@ static int chg_update_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 
 		/* when set cc_tolerance needs to be applied to everything */
 		if (chg_drv->chg_cc_tolerance)
-			fcc = (cc_max / 1000) *
-			      (1000 - chg_drv->chg_cc_tolerance);
+			fcc = (cc_max / 1000) * (1000 - chg_cc_tolerance);
 
-		/* TODO:
-		 *   when cc_max < chg_drv->cc_max, set current, voltage
-		 *   when cc_max > chg_drv->cc_max, set voltage, current
-		 */
-		rc = chg_set_charger(chg_psy, fv_uv, fcc);
+		rc = chg_set_charger(chg_drv, fv_uv, fcc);
 		if (rc == 0) {
 			pr_info("MSC_CHG fv_uv=%d->%d cc_max=%d->%d rc=%d\n",
 				chg_drv->fv_uv, fv_uv,
