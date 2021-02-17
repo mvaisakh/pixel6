@@ -807,7 +807,7 @@ static void _decon_stop(struct decon_device *decon, bool reset)
 
 	decon_reg_stop(decon->id, &decon->config, reset, decon->bts.fps);
 
-	if (reset)
+	if (reset && decon->dqe)
 		exynos_dqe_reset(decon->dqe);
 }
 
