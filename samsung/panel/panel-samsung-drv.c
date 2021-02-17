@@ -1423,7 +1423,7 @@ static ssize_t state_show(struct device *dev,
 
 	mutex_unlock(&ctx->bl_state_lock);
 
-	if (show_mode) {
+	if (show_mode && ctx->current_mode) {
 		const struct exynos_panel_mode *pmode = ctx->current_mode;
 
 		rc = snprintf(buf, PAGE_SIZE, "%s: %dx%d@%d\n", statestr,
@@ -1774,15 +1774,16 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 
 	/* this handles the case where panel may be enabled while booting already */
 	if (ctx->enabled && !exynos_panel_init(ctx))
-		return;
+		goto skip_enable;
 
 	if (old_crtc_state && old_crtc_state->self_refresh_active) {
 		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
-		return;
+		goto skip_enable;
 	}
 
 	drm_panel_enable(&ctx->panel);
 
+skip_enable:
 	exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 }
 
@@ -1872,7 +1873,8 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 	dsi->mode_flags = pmode->exynos_mode.mode_flags;
 
 	if (funcs) {
-		const bool was_lp_mode = ctx->current_mode->exynos_mode.is_lp_mode;
+		const bool was_lp_mode = ctx->current_mode &&
+					 ctx->current_mode->exynos_mode.is_lp_mode;
 		const bool is_lp_mode = pmode->exynos_mode.is_lp_mode;
 
 		if (is_lp_mode && funcs->set_lp_mode) {
