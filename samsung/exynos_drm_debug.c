@@ -775,6 +775,55 @@ err:
 	debugfs_remove_recursive(dent_dir);
 }
 
+static int hibernation_show(struct seq_file *s, void *unused)
+{
+	struct decon_device *decon = s->private;
+	struct exynos_hibernation *hiber = decon->hibernation;
+
+	seq_printf(s, "%s, block_cnt(%d)\n",
+			hiber->enabled ? "enabled" : "disabled",
+			atomic_read(&hiber->block_cnt));
+
+	return 0;
+}
+
+static int hibernation_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hibernation_show, inode->i_private);
+}
+
+static ssize_t hibernation_write(struct file *file, const char __user *buffer,
+			   size_t len, loff_t *ppos)
+{
+
+	struct seq_file *s = file->private_data;
+	struct decon_device *decon = s->private;
+	struct exynos_hibernation *hiber = decon->hibernation;
+	bool en;
+
+	if (kstrtobool_from_user(buffer, len, &en))
+		return len;
+
+	if (!en) {
+		/* force hibernation exit if currently hibernating */
+		hibernation_block_exit(hiber);
+		hiber->enabled = false;
+		hibernation_unblock_enter(hiber);
+	} else {
+		hiber->enabled = en;
+	}
+
+	return len;
+}
+
+static const struct file_operations hibernation_fops = {
+	.open = hibernation_open,
+	.read = seq_read,
+	.write = hibernation_write,
+	.llseek = seq_lseek,
+	.release = seq_release,
+};
+
 int dpu_init_debug(struct decon_device *decon)
 {
 	int i;
@@ -816,6 +865,8 @@ int dpu_init_debug(struct decon_device *decon)
 		goto err_event_log;
 	}
 
+	debugfs_create_file("hibernation", 0664, crtc->debugfs_entry, decon,
+			&hibernation_fops);
 	debugfs_create_u32("underrun_cnt", 0664, crtc->debugfs_entry, &decon->d.underrun_cnt);
 	debugfs_create_u32("crc_cnt", 0444, crtc->debugfs_entry, &decon->d.crc_cnt);
 	debugfs_create_u32("ecc_cnt", 0444, crtc->debugfs_entry, &decon->d.ecc_cnt);

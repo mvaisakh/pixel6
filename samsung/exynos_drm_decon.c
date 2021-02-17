@@ -806,11 +806,15 @@ static void _decon_stop(struct decon_device *decon, bool reset)
 	}
 
 	decon_reg_stop(decon->id, &decon->config, reset, decon->bts.fps);
+
+	if (reset)
+		exynos_dqe_reset(decon->dqe);
 }
 
 static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_state *old_crtc_state)
 {
 	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
+	struct exynos_drm_crtc_state *old_exynos_crtc_state = to_exynos_crtc_state(old_crtc_state);
 	struct decon_device *decon = exynos_crtc->ctx;
 
 	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
@@ -832,12 +836,13 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 
 	decon_info(decon, "%s +\n", __func__);
 
-	if (exynos_crtc_in_tui(crtc_state))
-		decon_debug(decon, "tui_state : skip power enable\n");
+	/* avoid power enable if we were previously in bypass to keep vote balanced */
+	if (old_exynos_crtc_state->bypass)
+		decon_debug(decon, "bypass mode : skip power enable\n");
 	else
 		pm_runtime_get_sync(decon->dev);
 
-	if (decon->state == DECON_STATE_INIT)
+	if ((decon->state == DECON_STATE_INIT) || old_exynos_crtc_state->bypass)
 		_decon_stop(decon, true);
 
 	_decon_enable(decon);
@@ -907,6 +912,7 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_device *decon = crtc->ctx;
 	struct drm_crtc_state *crtc_state = crtc->base.state;
+	struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
 
 	if (decon->state == DECON_STATE_OFF)
 		return;
@@ -922,8 +928,8 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 		}
 	}
 
-	if (exynos_crtc_in_tui(crtc->base.state))
-		decon_debug(decon, "tui_state : skip power disable\n");
+	if (exynos_crtc_state->bypass)
+		decon_debug(decon, "bypass mode : skip power disable\n");
 	else
 		pm_runtime_put_sync(decon->dev);
 

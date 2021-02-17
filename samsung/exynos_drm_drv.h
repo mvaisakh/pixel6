@@ -248,6 +248,11 @@ struct exynos_drm_crtc_state {
 	struct drm_property_blob *histogram_weights;
 	enum exynos_drm_writeback_type wb_type;
 	u8 seamless_mode_changed : 1;
+	/**
+	 * @bypass: when in this mode any DPU programming is bypassed but all
+	 *          power/regulators are kept enabled
+	 */
+	u8 bypass : 1;
 	unsigned int reserved_win_mask;
 };
 

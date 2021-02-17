@@ -26,8 +26,6 @@
 #include <drm/drm_probe_helper.h>
 #include <video/mipi_display.h>
 
-#include <drm/exynos_display_common.h>
-
 #include "../exynos_drm_connector.h"
 #include "panel-samsung-drv.h"
 
@@ -48,21 +46,6 @@ static void exynos_panel_set_backlight_state(struct exynos_panel *ctx,
 					enum exynos_panel_state panel_state);
 static ssize_t exynos_panel_parse_byte_buf(char *input_str, size_t input_len,
 					   const char **out_buf);
-
-static inline bool in_tui(struct exynos_panel *ctx)
-{
-	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
-
-	if (conn_state && conn_state->crtc) {
-		const struct drm_crtc_state *crtc_state =
-						conn_state->crtc->state;
-
-		if (crtc_state && (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI))
-			return true;
-	}
-
-	return false;
-}
 
 static inline bool is_backlight_off_state(const struct backlight_device *bl)
 {
@@ -1723,6 +1706,7 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 	drm_connector_attach_encoder(connector, bridge->encoder);
 	connector->funcs->reset(connector);
 	connector->status = connector_status_connected;
+	connector->state->self_refresh_aware = true;
 
 	ret = sysfs_create_link(&connector->kdev->kobj, &ctx->dev->kobj,
 				"panel");
@@ -1762,16 +1746,31 @@ static void exynos_panel_bridge_detach(struct drm_bridge *bridge)
 	drm_connector_cleanup(&ctx->exynos_connector.base);
 }
 
-static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
+static const struct drm_crtc_state *exynos_panel_get_old_crtc_state(struct exynos_panel *ctx,
+								    struct drm_atomic_state *state)
+{
+	const struct drm_connector_state *old_conn_state;
+
+	old_conn_state = drm_atomic_get_old_connector_state(state, &ctx->exynos_connector.base);
+	if (!old_conn_state || !old_conn_state->crtc)
+		return NULL;
+
+	return drm_atomic_get_old_crtc_state(state, old_conn_state->crtc);
+}
+
+static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
+				       struct drm_bridge_state *old_bridge_state)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	struct drm_atomic_state *state = old_bridge_state->base.state;
+	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
 
 	/* this handles the case where panel may be enabled while booting already */
 	if (ctx->enabled && !exynos_panel_init(ctx))
 		return;
 
-	if (in_tui(ctx)) {
-		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
+	if (old_crtc_state && old_crtc_state->self_refresh_active) {
+		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
 		return;
 	}
 
@@ -1780,39 +1779,50 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge)
 	exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
 }
 
-static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
+					   struct drm_bridge_state *old_bridge_state)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	struct drm_atomic_state *state = old_bridge_state->base.state;
+	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
 
 	if (ctx->enabled)
 		return;
 
-	if (in_tui(ctx)) {
-		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
+	if (old_crtc_state && old_crtc_state->self_refresh_active) {
+		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
 		return;
 	}
 
 	drm_panel_prepare(&ctx->panel);
 }
 
-static void exynos_panel_bridge_disable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_disable(struct drm_bridge *bridge,
+					struct drm_bridge_state *old_bridge_state)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
+	const bool self_refresh_active = conn_state->crtc && conn_state->crtc->state &&
+		conn_state->crtc->state->self_refresh_active;
 
-	if (in_tui(ctx)) {
-		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
+	if (self_refresh_active) {
+		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
 		return;
 	}
 
 	drm_panel_disable(&ctx->panel);
 }
 
-static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge)
+static void exynos_panel_bridge_post_disable(struct drm_bridge *bridge,
+					     struct drm_bridge_state *old_bridge_state)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	const struct drm_connector_state *conn_state = ctx->exynos_connector.base.state;
+	const bool self_refresh_active = conn_state->crtc && conn_state->crtc->state &&
+		conn_state->crtc->state->self_refresh_active;
 
-	if (in_tui(ctx)) {
-		dev_info(ctx->dev, "tui state : skip %s\n", __func__);
+	if (self_refresh_active) {
+		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
 		return;
 	}
 
@@ -1926,10 +1936,13 @@ static void local_hbm_data_init(struct exynos_panel *ctx)
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.attach = exynos_panel_bridge_attach,
 	.detach = exynos_panel_bridge_detach,
-	.pre_enable = exynos_panel_bridge_pre_enable,
-	.enable = exynos_panel_bridge_enable,
-	.disable = exynos_panel_bridge_disable,
-	.post_disable = exynos_panel_bridge_post_disable,
+	.atomic_pre_enable = exynos_panel_bridge_pre_enable,
+	.atomic_enable = exynos_panel_bridge_enable,
+	.atomic_disable = exynos_panel_bridge_disable,
+	.atomic_post_disable = exynos_panel_bridge_post_disable,
+	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+	.atomic_reset = drm_atomic_helper_bridge_reset,
 	.mode_set = exynos_panel_bridge_mode_set,
 };
 

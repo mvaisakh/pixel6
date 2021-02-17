@@ -71,17 +71,17 @@ static int emul_enable(struct drm_panel *panel)
 
 static const struct exynos_panel_mode emul_modes[] = {
 	{
-		/* 1440x3120 @ 60 */
+		/* 1440x2960 @ 60 */
 		.mode = {
-			.clock = 283680,
+			.clock = 269280,
 			.hdisplay = 1440,
 			.hsync_start = 1440 + 32,
 			.hsync_end = 1440 + 32 + 12,
 			.htotal = 1440 + 32 + 12 + 16,
-			.vdisplay = 3120,
-			.vsync_start = 3120 + 12,
-			.vsync_end = 3120 + 12 + 4,
-			.vtotal = 3120 + 12 + 4 + 16,
+			.vdisplay = 2960,
+			.vsync_start = 2960 + 12,
+			.vsync_end = 2960 + 12 + 4,
+			.vtotal = 2960 + 12 + 4 + 16,
 			.flags = 0,
 			.width_mm = 80,
 			.height_mm = 120,
@@ -93,22 +93,22 @@ static const struct exynos_panel_mode emul_modes[] = {
 				.enabled = true,
 				.dsc_count = 2,
 				.slice_count = 2,
-				.slice_height = 65,
+				.slice_height = 40,
 			},
 		},
 	},
 	{
-		/* 1440x3120 @ 120 */
+		/* 1440x2960 @ 120 */
 		.mode = {
-			.clock = 567360,
+			.clock = 538560,
 			.hdisplay = 1440,
 			.hsync_start = 1440 + 32,
 			.hsync_end = 1440 + 32 + 12,
 			.htotal = 1440 + 32 + 12 + 16,
-			.vdisplay = 3120,
-			.vsync_start = 3120 + 12,
-			.vsync_end = 3120 + 12 + 4,
-			.vtotal = 3120 + 12 + 4 + 16,
+			.vdisplay = 2960,
+			.vsync_start = 2960 + 12,
+			.vsync_end = 2960 + 12 + 4,
+			.vtotal = 2960 + 12 + 4 + 16,
 			.flags = 0,
 			.width_mm = 80,
 			.height_mm = 120,
@@ -120,7 +120,7 @@ static const struct exynos_panel_mode emul_modes[] = {
 				.enabled = true,
 				.dsc_count = 2,
 				.slice_count = 2,
-				.slice_height = 65,
+				.slice_height = 40,
 			},
 		},
 	},

@@ -25,7 +25,6 @@
 #include <drm/drm_vblank.h>
 
 #include <drm/exynos_drm.h>
-#include <drm/exynos_display_common.h>
 
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_decon.h"
@@ -383,39 +382,34 @@ int exynos_atomic_enter_tui(void)
 	struct drm_plane *plane;
 	struct drm_crtc_state *crtc_state;
 	struct drm_crtc *crtc;
+	struct drm_connector *conn;
+	struct drm_connector_state *conn_state;
 	struct exynos_drm_private *private = dev->dev_private;
+	u32 tui_crtc_mask = 0;
 
 	pr_debug("%s +\n", __func__);
 
-	drm_modeset_acquire_init(&ctx, 0);
-	drm_modeset_lock_all_ctx(dev, &ctx);
+	if (private->tui_enabled)
+		return -EBUSY;
 
-	hibernation_block_exit(decon->hibernation);
+	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx, 0, ret);
 
 	state = drm_atomic_helper_duplicate_state(dev, &ctx);
 	if (IS_ERR(state))
-		goto  err_dup;
+		goto err_dup;
 
 	mode_config->suspend_state = state;
 
 	state = drm_atomic_state_alloc(dev);
-	if (!state)
-		return -ENOMEM;
+	if (!state) {
+		ret = -ENOMEM;
+		goto err_state_alloc;
+	}
 
 	state->acquire_ctx = &ctx;
 
-	/*
-	 * the private flag was set to protect panel and power ctrl
-	 * during tui transition.
-	 */
 	drm_for_each_crtc(crtc, dev) {
-		struct drm_display_mode tui_mode;
-
-		if (!crtc->state || !crtc->state->enable)
-			continue;
-
-		drm_mode_copy(&tui_mode, &crtc->state->mode);
-		tui_mode.private_flags |= EXYNOS_DISPLAY_MODE_FLAG_TUI;
+		struct exynos_drm_crtc_state *exynos_crtc_state;
 
 		crtc_state = drm_atomic_get_crtc_state(state, crtc);
 		if (IS_ERR(crtc_state)) {
@@ -423,15 +417,41 @@ int exynos_atomic_enter_tui(void)
 			goto err;
 		}
 
-		crtc_state->active = false;
+		if (!crtc_state->enable || !crtc_state->active)
+			continue;
 
-		ret = drm_atomic_set_mode_for_crtc(crtc_state, &tui_mode);
-		if (ret != 0)
-			goto err;
+		exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+
+		exynos_crtc_state->bypass = true;
+		/*
+		 * set crtc in self refresh, this will keep power/regulators
+		 * enabled but disable everything else
+		 */
+		crtc_state->self_refresh_active = true;
+		crtc_state->active = false;
+		tui_crtc_mask |= drm_crtc_mask(crtc);
 
 		ret = drm_atomic_add_affected_planes(state, crtc);
 		if (ret < 0)
 			goto err;
+
+		ret = drm_atomic_add_affected_connectors(state, crtc);
+		if (ret)
+			goto err;
+	}
+
+	if (!tui_crtc_mask) {
+		pr_err("%s:unable to enter tui without any active crtcs\n", __func__);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	for_each_new_connector_in_state(state, conn, conn_state, i) {
+		if (!conn_state->self_refresh_aware &&
+		    (conn->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)) {
+			pr_warn("%s: %s doesn't support self refresh\n", __func__, conn->name);
+			goto err;
+		}
 	}
 
 	for_each_new_plane_in_state(state, plane, plane_state, i) {
@@ -444,13 +464,18 @@ int exynos_atomic_enter_tui(void)
 
 	ret = drm_atomic_commit(state);
 
-	private->tui_enabled = true;
+	if (!ret)
+		private->tui_enabled = true;
 err:
 	drm_atomic_state_put(state);
+
+err_state_alloc:
+	if (ret) {
+		drm_atomic_state_put(mode_config->suspend_state);
+		mode_config->suspend_state = NULL;
+	}
 err_dup:
-	hibernation_unblock_enter(decon->hibernation);
-	drm_modeset_drop_locks(&ctx);
-	drm_modeset_acquire_fini(&ctx);
+	DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
 	pr_debug("%s -\n", __func__);
 
 	return ret;
@@ -458,82 +483,40 @@ err_dup:
 
 int exynos_atomic_exit_tui(void)
 {
-	int ret, i;
+	int ret;
 	struct decon_device *decon = get_decon_drvdata(0);
 	struct drm_device *dev = decon->drm_dev;
 	struct drm_atomic_state *state;
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct drm_modeset_acquire_ctx ctx;
-	struct drm_crtc_state *new_crtc_state;
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *crtc_state;
 	struct exynos_drm_private *private = dev->dev_private;
 
 	pr_debug("%s +\n", __func__);
 
-	/* if necessary, fix up suspend atomic state. */
-	state = mode_config->suspend_state;
-	if (!state) {
-		pr_err("there is not suspend_state\n");
+	if (!private->tui_enabled) {
+		pr_err("%s: not in tui\n", __func__);
 		return -EINVAL;
 	}
 
-	drm_mode_config_reset(dev);
+	state = mode_config->suspend_state;
+	if (!state) {
+		pr_err("%s: there is no suspend_state\n", __func__);
+		return -EINVAL;
+	}
 
-	drm_modeset_acquire_init(&ctx, 0);
-
-	drm_modeset_lock_all_ctx(dev, &ctx);
+	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx, 0, ret);
 
 	private->tui_enabled = false;
 
-	/*
-	 * the private flag was set to protect panel and power ctrl
-	 * during tui transition.
-	 */
-	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
-		struct drm_display_mode tui_mode;
-
-		if (!new_crtc_state->enable)
-			continue;
-
-		drm_mode_copy(&tui_mode, &new_crtc_state->mode);
-		tui_mode.private_flags |= EXYNOS_DISPLAY_MODE_FLAG_TUI;
-
-		ret = drm_atomic_set_mode_for_crtc(new_crtc_state, &tui_mode);
-		if (ret != 0)
-			goto err;
-	}
-
 	ret = drm_atomic_helper_commit_duplicated_state(state, &ctx);
-	if (ret < 0) {
-		pr_err("failed to atomic commit suspend_state(0x%x)\n", ret);
-		goto err;
-	}
+	if (ret < 0)
+		pr_err("%s: failed to atomic commit suspend_state(0x%x)\n", __func__, ret);
+	else
+		mode_config->suspend_state = NULL;
 
-	mode_config->suspend_state = NULL;
-
-	drm_for_each_crtc(crtc, dev) {
-		struct drm_display_mode tui_mode;
-
-		if (!crtc->state || !crtc->state->enable)
-			continue;
-
-		crtc_state = crtc->state;
-
-		if (crtc_state->mode.private_flags & EXYNOS_DISPLAY_MODE_FLAG_TUI) {
-			drm_mode_copy(&tui_mode, &crtc_state->adjusted_mode);
-			tui_mode.private_flags &= ~EXYNOS_DISPLAY_MODE_FLAG_TUI;
-
-			ret = drm_atomic_set_mode_for_crtc(crtc_state, &tui_mode);
-			if (ret != 0)
-				goto err;
-		}
-	}
-
-err:
-	drm_atomic_state_put(state);
-	drm_modeset_drop_locks(&ctx);
-	drm_modeset_acquire_fini(&ctx);
+	DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
+	if (!ret)
+		drm_atomic_state_put(state);
 
 	pr_debug("%s -\n", __func__);
 	return ret;
