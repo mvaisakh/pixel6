@@ -83,7 +83,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* TA voltage threshold starting Adjust CC mode */
 #define PCA9468_TA_MIN_VOL_CCADJ	8500000	/* 8000000uV --> 8500000uV */
 
-#define PCA9468_TA_VOL_PRE_OFFSET	600000	 /* uV */
+#define PCA9468_TA_VOL_PRE_OFFSET	500000	 /* uV */
 /* Adjust CC mode TA voltage step */
 #define PCA9468_TA_VOL_STEP_ADJ_CC	40000	/* uV */
 /* Pre CV mode TA voltage step */
