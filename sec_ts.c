@@ -4991,12 +4991,16 @@ static void sec_ts_charger_work(struct work_struct *work)
 	}
 
 	/* wlc case */
-	ret = power_supply_get_property(ts->wireless_psy,
+	wlc_online = false;
+	if (ts->wireless_psy != NULL) {
+		ret = power_supply_get_property(ts->wireless_psy,
 					POWER_SUPPLY_PROP_ONLINE, &prop);
-	if (ret == 0) {
-		wlc_online = !!prop.intval;
-		if (wlc_online)
-			charger_mode = SEC_TS_BIT_CHARGER_MODE_WIRELESS_CHARGER;
+		if (ret == 0) {
+			wlc_online = !!prop.intval;
+			if (wlc_online)
+				charger_mode =
+				    SEC_TS_BIT_CHARGER_MODE_WIRELESS_CHARGER;
+		}
 	}
 
 	/* rtx case */
@@ -5247,7 +5251,6 @@ static int sec_ts_psy_cb(struct notifier_block *nb,
 	pr_debug("%s: val %lu", __func__, val);
 
 	if (val != PSY_EVENT_PROP_CHANGED ||
-	    ts->wireless_psy == NULL ||
 	    ts->usb_psy == NULL ||
 	    (ts->wireless_psy != data && ts->usb_psy != data) ||
 	    ts->ignore_charger_nb == 1)
@@ -5263,7 +5266,7 @@ static int sec_ts_psy_cb(struct notifier_block *nb,
 		}
 	}
 
-	if (ts->wireless_psy == data) {
+	if (ts->wireless_psy != NULL && ts->wireless_psy == data) {
 		/* keep wlc mode after usb plug in during wlc online */
 		if (ts->wlc_online == true &&
 		    ts->usb_present == false &&
