@@ -3914,13 +3914,18 @@ static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 		pca9468->charging_state = DC_STATE_CHECK_VBAT;
 		pca9468->timer_id = TIMER_VBATMIN_CHECK;
 
-		/* The delay time for PD state goes to PE_SNK_STATE */
-		pca9468->timer_period = 1000;
+		/* PD is alredy in PE_SNK_STATE */
+		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			msecs_to_jiffies(pca9468->timer_period));
+
 		/* Set the initial charging step */
 		power_supply_changed(pca9468->mains);
+	} else {
+		pr_debug("%s: ping pps_idx=%d charging_state=%d timer_id=%d\n",
+			 __func__, pca9468->pps_index, pca9468->charging_state,
+			 pca9468->timer_id);
 	}
 
 	return 0;
