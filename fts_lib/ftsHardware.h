@@ -144,8 +144,15 @@
 						 * in the .ftb file */
 #define FW_BIN_CONFIG_ID_OFFSET		20	/* /< offset of the config id in
 						 * the .ftb file */
-#define FW_CX_VERSION			(16 + 4)/* CX version offset in sec2 of
-						 * FW */
+#define FW_CX_VERSION			(16 + 4)	/* CX version offset in
+							 * sec2 of FW */
+#define FW_CX_AFE_VERSION		(FW_CX_VERSION + 4)	/* CX afe
+								 * version
+								 * offset
+								 * in sec2 of
+								 * FW */
+#define FW_CFG_AFE_VERSION		21	/* cfg afe version offset
+						 * in sec1 of FW */
 /** @} */
 
 /* FIFO */

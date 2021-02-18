@@ -478,17 +478,33 @@ int parseBinFile(struct fts_ts_info *info, u8 *fw_data, int fw_size,
 
 		index += FW_BYTES_ALIGN;
 		memcpy(fwData->data, &fw_data[index], dimension);
-		if (fwData->sec2_size != 0)
+		if (fwData->sec2_size != 0) {
 			u8ToU16(&fwData->data[fwData->sec0_size +
-					      fwData->sec1_size +
-					      FW_CX_VERSION], &fwData->cx_ver);
-
-		else {
-			dev_err(info->dev, "parseBinFile: Initialize cx_ver to default value!\n");
+					     fwData->sec1_size +
+					FW_CX_VERSION], &fwData->cx_ver);
+			fwData->cx_afe_ver = fwData->data[fwData->sec0_size +
+						fwData->sec1_size +
+						FW_CX_AFE_VERSION];
+		} else {
+			dev_info(info->dev, "parseBinFile: Initialize cx_ver "
+				 "and cx_afe_ver to default value!\n");
 			fwData->cx_ver = info->systemInfo.u16_cxVer;
+			fwData->cx_afe_ver = info->systemInfo.u8_cxAfeVer;
 		}
-
-		dev_info(info->dev, "parseBinFile: CX Version = %04X\n", fwData->cx_ver);
+		if (fwData->sec1_size != 0)
+			fwData->cfg_afe_ver = fwData->data[fwData->sec0_size +
+						FW_CFG_AFE_VERSION];
+		else {
+			dev_info(info->dev, "parseBinFile: Initialize cfg_ver to "
+				 "default value from sysinfo!\n");
+			fwData->cfg_afe_ver = info->systemInfo.u8_cfgAfeVer;
+		}
+		dev_info(info->dev, "parseBinFile: CX Version = %04X\n",
+			 fwData->cx_ver);
+		dev_info(info->dev, "parseBinFile: CX AFE Version = %02X\n",
+			fwData->cx_afe_ver);
+		dev_info(info->dev, "parseBinFile: CFG AFE Version = %02X\n",
+			 fwData->cfg_afe_ver);
 
 		fwData->data_size = dimension;
 		index = FLASH_ORG_INFO_INDEX;

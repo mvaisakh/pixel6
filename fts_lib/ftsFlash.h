@@ -92,6 +92,8 @@ typedef struct {
 	u16 fw_ver;	/* /< FW version of the FW file */
 	u16 config_ver;	/* Config version of the FW file */
 	u16 cx_ver;	/* /< Cx version of the FW file */
+	u8 cfg_afe_ver;	/* /< Cx afe version of the FW file */
+	u8 cx_afe_ver;	/* /< Cfg afe version of the FW file */
 	u8 externalRelease[EXTERNAL_RELEASE_INFO_SIZE];	/* /< External Release
 							 * Info of the FW file
 							 * */

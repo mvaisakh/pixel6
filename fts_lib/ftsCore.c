@@ -520,6 +520,8 @@ int defaultSysInfo(struct fts_ts_info *info, int i2cError)
 
 	info->systemInfo.u8_scrRxLen = 0;
 	info->systemInfo.u8_scrTxLen = 0;
+	info->systemInfo.u8_cxAfeVer = 0;
+	info->systemInfo.u8_cfgAfeVer = 0;
 
 	dev_info(info->dev, "default System Info DONE!\n");
 	return OK;
