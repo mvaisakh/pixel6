@@ -921,6 +921,25 @@ static ssize_t max1720x_model_set_state(struct device *dev,
 static DEVICE_ATTR(m5_model_state, 0640, max1720x_model_show_state,
 		   max1720x_model_set_state);
 
+static ssize_t gmsr_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buff)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct max1720x_chip *chip = power_supply_get_drvdata(psy);
+	ssize_t len = 0;
+
+	if (chip->gauge_type != MAX_M5_GAUGE_TYPE)
+		return -EINVAL;
+
+	mutex_lock(&chip->model_lock);
+	len = max_m5_gmsr_state_cstr(&buff[len], PAGE_SIZE);
+	mutex_unlock(&chip->model_lock);
+
+	return len;
+}
+
+static const DEVICE_ATTR_RO(gmsr);
 
 /* Was POWER_SUPPLY_PROP_RESISTANCE_ID */
 static ssize_t resistance_id_show(struct device *dev,
@@ -3440,7 +3459,7 @@ static void max1720x_model_work(struct work_struct *work)
 	struct max1720x_chip *chip = container_of(work, struct max1720x_chip,
 						  model_work.work);
 	bool new_model = false;
-	int rc;
+	int rc, cycle_count;
 
 	if (!chip->model_data)
 		return;
@@ -3458,9 +3477,16 @@ static void max1720x_model_work(struct work_struct *work)
 				 rc);
 
 			/* TODO: keep trying to clear POR if the above fail */
-			chip->model_reload = MAX_M5_LOAD_MODEL_IDLE;
-			chip->model_ok = true;
-			new_model = true;
+
+			max1720x_restore_battery_cycle(chip);
+			cycle_count = max1720x_get_cycle_count(chip);
+			if (cycle_count >= 0) {
+				chip->model_reload = MAX_M5_LOAD_MODEL_IDLE;
+				chip->model_ok = true;
+				new_model = true;
+				/* saved new value in max1720x_set_next_update */
+				chip->model_next_update = cycle_count > 0 ? cycle_count - 1 : 0;
+			}
 		} else if (rc != -EAGAIN) {
 			chip->model_reload = MAX_M5_LOAD_MODEL_DISABLED;
 			chip->model_ok = false;
@@ -3655,11 +3681,18 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 	}
 
 	if (!max_m5_fg_model_check_version(chip->model_data)) {
+		if (max_m5_needs_reset_model_data(chip->model_data)) {
+			ret = max_m5_reset_state_data(chip->model_data);
+			if (ret < 0)
+				dev_err(chip->dev, "GMSR: failed to erase RC2 saved model data"
+						   " ret=%d\n", ret);
+			else
+				dev_warn(chip->dev, "GMSR: RC2 model data erased\n");
+		}
+
 		ret = max1720x_full_reset(chip);
 		if (ret == 0)
 			ret = max_m5_model_read_state(chip->model_data);
-
-		/* TODO: invalidate GSMR data when switching from RC2->RC1 */
 
 		dev_warn(chip->dev, "FG Version Changed, Reset (%d), Will Reload\n",
 			 ret);
@@ -3845,6 +3878,8 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 				   MAX1720X_STATUS_BI, 0x0);
 	}
 
+	max1720x_restore_battery_cycle(chip);
+
 	/* max_m5 triggers loading of the model in the irq handler on POR */
 	if (!por && chip->gauge_type == MAX_M5_GAUGE_TYPE) {
 		ret = max1720x_init_max_m5(chip);
@@ -3860,8 +3895,6 @@ static int max1720x_init_chip(struct max1720x_chip *chip)
 
 
 	max1720x_restore_battery_qh_capacity(chip);
-
-	max1720x_restore_battery_cycle(chip);
 
 	return 0;
 }
@@ -4801,6 +4834,11 @@ static int max1720x_probe(struct i2c_client *client,
 	ret = device_create_file(&chip->psy->dev, &dev_attr_resistance);
 	if (ret)
 		dev_err(dev, "Failed to create resistance attribute\n");
+
+	/* Read GMSR */
+	ret = device_create_file(&chip->psy->dev, &dev_attr_gmsr);
+	if (ret)
+		dev_err(dev, "Failed to create gmsr attribute\n");
 
 	/*
 	 * TODO:

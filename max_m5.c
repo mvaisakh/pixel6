@@ -27,7 +27,6 @@
 #include "google_psy.h"
 #include <misc/logbuffer.h>
 
-#include "max_m5_reg.h"
 #include "max_m5.h"
 
 #ifdef CONFIG_DEBUG_FS
@@ -378,6 +377,49 @@ static int max_m5_model_write_version(const struct max_m5_data *m5_data,
 	return ret;
 }
 
+static int max_m5_model_read_rc(const struct max_m5_data *m5_data)
+{
+	u16 learncfg;
+	int ret;
+
+	ret = REGMAP_READ(m5_data->regmap, MAX_M5_LEARNCFG, &learncfg);
+	if (ret < 0)
+		return ret;
+
+	return (learncfg & MAX_M5_LEARNCFG_RC_VER);
+}
+
+int max_m5_reset_state_data(struct max_m5_data *m5_data)
+{
+	struct model_state_save data;
+	int ret = 0;
+
+	memset(&data, 0xff, sizeof(data));
+
+	ret = gbms_storage_write(GBMS_TAG_GMSR, &data, sizeof(data));
+	if (ret < 0)
+		dev_warn(m5_data->dev, "Erase GMSR fail (%d)\n", ret);
+
+	return ret;
+}
+
+int max_m5_needs_reset_model_data(const struct max_m5_data *m5_data)
+{
+	int read_rc, para_rc;
+
+	read_rc = max_m5_model_read_rc(m5_data);
+	if (read_rc < 0)
+		return 0;
+
+	para_rc = m5_data->parameters.learncfg & MAX_M5_LEARNCFG_RC_VER;
+
+	/* RC2 -> RC1 */
+	if (read_rc == MAX_M5_LEARNCFG_RC2 && para_rc == MAX_M5_LEARNCFG_RC1)
+		return 1;
+
+	return 0;
+}
+
 /* convert taskperiod to the scaling factor for capacity */
 static int max_m5_period2caplsb(u16 taskperiod)
 {
@@ -699,6 +741,32 @@ ssize_t max_m5_model_state_cstr(char *buf, int max,
 			 m5_data->mixcap);
 	len += scnprintf(&buf[len], max - len,"%02x:%02x\n", MAX_M5_CV_HALFTIME,
 			 m5_data->halftime);
+
+	return len;
+}
+
+ssize_t max_m5_gmsr_state_cstr(char *buf, int max)
+{
+	struct model_state_save saved_data;
+	int ret = 0, len = 0;
+
+	ret = gbms_storage_read(GBMS_TAG_GMSR, &saved_data, GBMS_GMSR_LEN);
+	if (ret < 0)
+		return ret;
+
+	len = scnprintf(&buf[len], max - len,
+			"rcomp0     :%04X\ntempco     :%04X\n"
+			"fullcaprep :%04X\ncycles     :%04X\n"
+			"fullcapnom :%04X\nqresidual00:%04X\n"
+			"qresidual10:%04X\nqresidual20:%04X\n"
+			"qresidual30:%04X\nmixcap     :%04X\n"
+			"halftime   :%04X\n",
+			saved_data.rcomp0, saved_data.tempco,
+			saved_data.fullcaprep, saved_data.cycles,
+			saved_data.fullcapnom, saved_data.qresidual00,
+			saved_data.qresidual10, saved_data.qresidual20,
+			saved_data.qresidual30, saved_data.mixcap,
+			saved_data.halftime);
 
 	return len;
 }

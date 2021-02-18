@@ -17,6 +17,7 @@
 #define MAX_M5_H_
 
 #include "max1720x_battery.h"
+#include "max_m5_reg.h"
 
 #define MAX_M5_I2C_ADDR 0x6C
 
@@ -122,6 +123,8 @@ struct max_m5_data {
 
 int max_m5_model_read_version(const struct max_m5_data *m5_data);
 int max_m5_model_get_cap_lsb(const struct max_m5_data *m5_data);
+int max_m5_reset_state_data(struct max_m5_data *m5_data);
+int max_m5_needs_reset_model_data(const struct max_m5_data *m5_data);
 
 /*
  * max_m5 might use the low 8 bits of devname to keep the model version number
@@ -186,6 +189,9 @@ int max_m5_model_state_sscan(struct max_m5_data *m5_data, const char *buf,
 int max_m5_fg_model_sscan(struct max_m5_data *m5_data, const char *buf,
 			  int max);
 int max_m5_fg_model_cstr(char *buf, int max, const struct max_m5_data *m5_data);
+
+/* read saved value */
+ssize_t max_m5_gmsr_state_cstr(char *buf, int max);
 
 /** ------------------------------------------------------------------------ */
 
