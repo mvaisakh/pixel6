@@ -595,6 +595,7 @@ int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
 	chg_state->f.chg_type = pca9468_get_charge_type(pca9468);
 	chg_state->f.flags = gbms_gen_chg_flags(chg_state->f.chg_status,
 						chg_state->f.chg_type);
+	chg_state->f.flags |= GBMS_CS_FLAG_NOCOMP;
 
 	vchrg = pca9468_read_adc(pca9468, ADCCH_VBAT);
 	if (vchrg > 0)
