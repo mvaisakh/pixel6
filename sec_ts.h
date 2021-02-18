@@ -139,7 +139,6 @@
 #define SEC_TS_DEFAULT_FW_NAME		"tsp_sec/sec_hero.fw"
 #define SEC_TS_DEFAULT_BL_NAME		"tsp_sec/s6smc41_blupdate_img_REL.bin"
 #define SEC_TS_DEFAULT_PARA_NAME	"tsp_sec/s6smc41_para_REL_DGA0_V0106_150114_193317.bin"
-#define SEC_TS_DEFAULT_UMS_FW		"/sdcard/Firmware/TSP/lsi.bin"
 #define SEC_TS_DEFAULT_FFU_FW		"ffu_tsp.bin"
 #define SEC_TS_MAX_FW_PATH		64
 #define SEC_TS_FW_BLK_SIZE_MAX		(512)
