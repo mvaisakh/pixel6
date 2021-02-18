@@ -188,9 +188,6 @@ check_online:
 	return ret;
 }
 
-
-/* Send Request message to the source */
-/* call holding mutex_lock(&pca9468->lock); */
 int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 				   unsigned int msg_type)
 {
@@ -248,19 +245,20 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 						    pca9468->ta_vol,
 						    pca9468->ta_cur,
 						    tcpm_psy);
-
 			pr_debug("%s: out_uv=%d %d->%d, out_ua=%d %d->%d (%d)\n",
 				 __func__,
 				 pps_data->out_uv, pre_out_uv, pca9468->ta_vol,
 				 pps_data->op_ua, pre_out_ua, pca9468->ta_cur,
 				 pps_ui);
 
+			if (pps_ui == 0)
+				pps_ui = PCA9468_PDMSG_WAIT_T;
 			if (pps_ui < 0)
-				pps_ui = 1000;
+				pps_ui = PCA9468_PDMSG_RETRY_T;
 		} else {
 			pr_debug("%s: request_pdo failed ret=%d\n",
 				 __func__, ret);
-			pps_ui = 1000;
+			pps_ui = PCA9468_PDMSG_RETRY_T;
 		}
 
 	} else {
@@ -282,6 +280,7 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		pps_ui = -EINVAL;
 	}
 
+	/* PPS_Work: will reschedule */
 	pr_debug("%s: pps_ui = %d\n", __func__, pps_ui);
 	if (pps_ui > 0)
 		schedule_delayed_work(&pca9468->pps_work, msecs_to_jiffies(pps_ui));
