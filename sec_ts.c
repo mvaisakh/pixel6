@@ -2240,6 +2240,90 @@ static void sec_ts_offload_set_running(struct sec_ts_data *ts, bool running)
 
 #endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
 
+
+static void sec_ts_read_vendor_event(struct sec_ts_data *ts,
+					struct sec_ts_event_status *p_event_status)
+{
+	if (p_event_status->stype ==
+		TYPE_STATUS_EVENT_VENDOR_INFO) {
+
+		struct sec_ts_event_hopping *p_hopping_event;
+
+		u8 status_id =
+			p_event_status->status_id;
+		u8 status_data_1 =
+			p_event_status->status_data_1;
+		u8 status_data_2 =
+			p_event_status->status_data_2;
+
+		switch (status_id) {
+		case SEC_TS_EVENT_STATUS_ID_HOPPING:
+			p_hopping_event =
+				(struct sec_ts_event_hopping *)p_event_status;
+
+			input_info(true,
+				&ts->client->dev,
+				"STATUS: hopping %d -> %d by %d with lvl %#x %#x\n",
+					p_hopping_event->prev_id,
+					p_hopping_event->id,
+					p_hopping_event->cause,
+					p_hopping_event->noise_lvl[0],
+					p_hopping_event->noise_lvl[1]);
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_REPORT_RATE:
+			if (ts->debug)
+				input_info(true,
+					&ts->client->dev,
+					"STATUS: rate %d -> %d\n",
+					status_data_2, status_data_1);
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_WLC:
+			input_info(true,
+				&ts->client->dev,
+				"STATUS: wlc mode change to %x\n",
+				status_data_1);
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_NOISE:
+			input_info(true,
+				&ts->client->dev,
+				"STATUS: noise mode change to %x\n",
+				status_data_1);
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_GRIP:
+			input_info(true,
+				&ts->client->dev,
+				"STATUS: detect grip %s!\n",
+				(status_data_1) ?
+				"enter" : "leave");
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_PALM:
+			input_info(true,
+				&ts->client->dev,
+				"STATUS: detect palm!\n");
+			break;
+
+		default:
+			break;
+		}
+	} else {
+		input_info(true, &ts->client->dev,
+				"STATUS: %#x %#x %#x %#x %#x %#x %#x %#x\n",
+				p_event_status->data[0],
+				p_event_status->data[1],
+				p_event_status->data[2],
+				p_event_status->data[3],
+				p_event_status->data[4],
+				p_event_status->data[5],
+				p_event_status->data[6],
+				p_event_status->data[7]);
+	}
+}
+
 #define MAX_EVENT_COUNT 32
 static void sec_ts_read_event(struct sec_ts_data *ts)
 {
@@ -2297,7 +2381,7 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 		return;
 	}
 
-	if (ts->temp == 0x01)
+	if (ts->debug == 0x01)
 		input_info(true, &ts->client->dev,
 			"ONE: %02X %02X %02X %02X %02X %02X %02X %02X\n",
 			read_event_buff[0][0], read_event_buff[0][1],
@@ -2346,7 +2430,7 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 		event_buff = read_event_buff[curr_pos];
 		event_id = event_buff[0] & 0x3;
 
-		if (ts->temp == 0x01)
+		if (ts->debug == 0x01)
 			input_info(true, &ts->client->dev,
 				 "ALL: %02X %02X %02X %02X %02X %02X %02X %02X\n",
 				event_buff[0], event_buff[1], event_buff[2],
@@ -2358,66 +2442,8 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 			p_event_status =
 				(struct sec_ts_event_status *)event_buff;
 
-			/* tchsta == 0 && ttype == 0 && eid == 0 : buffer empty
-			 **/
-			if (p_event_status->stype > 0) {
-				/* Demote 'vendor' messages */
-				if (p_event_status->stype ==
-					TYPE_STATUS_EVENT_VENDOR_INFO) {
-					u8 status_id =
-						p_event_status->status_id;
-					u8 status_data_1 =
-						p_event_status->status_data_1;
-
-					input_dbg(true, &ts->client->dev,
-						"%s: STATUS %x %x %x %x %x %x %x %x\n",
-						__func__, event_buff[0],
-						event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4],
-						event_buff[5], event_buff[6],
-						event_buff[7]);
-
-					switch (status_id) {
-					case SEC_TS_EVENT_STATUS_ID_WLC:
-						input_info(true,
-							&ts->client->dev,
-							"STATUS: wlc mode change to %x\n",
-							status_data_1);
-						break;
-
-					case SEC_TS_EVENT_STATUS_ID_NOISE:
-						input_info(true,
-							&ts->client->dev,
-							"STATUS: noise mode change to %x\n",
-							status_data_1);
-						break;
-
-					case SEC_TS_EVENT_STATUS_ID_GRIP:
-						input_info(true,
-							&ts->client->dev,
-							"STATUS: detect grip %s!\n",
-							(status_data_1) ?
-							"enter" : "leave");
-						break;
-
-					case SEC_TS_EVENT_STATUS_ID_PALM:
-						input_info(true,
-							&ts->client->dev,
-							"STATUS: detect palm!\n");
-						break;
-
-					default:
-						break;
-					}
-				} else
-					input_info(true, &ts->client->dev,
-						"%s: STATUS %x %x %x %x %x %x %x %x\n",
-						__func__, event_buff[0],
-						event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4],
-						event_buff[5], event_buff[6],
-						event_buff[7]);
-			}
+			if (p_event_status->stype)
+				sec_ts_read_vendor_event(ts, p_event_status);
 
 			if ((p_event_status->stype ==
 					TYPE_STATUS_EVENT_INFO) &&
