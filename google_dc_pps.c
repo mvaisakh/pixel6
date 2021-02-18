@@ -891,9 +891,6 @@ int pps_update_adapter(struct pd_pps_data *pps,
 	 *       the values.
 	 */
 	if (pps->op_ua != pending_ua) {
-		if (interval * 1000 < PPS_UPDATE_DELAY_MS)
-			return PPS_UPDATE_DELAY_MS;
-
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_CURRENT_NOW,
 				   pending_ua, tcpm_psy);
 		pr_debug("%s: %s SET_UA out_ua %d->%d, ret=%d", __func__,
@@ -905,6 +902,11 @@ int pps_update_adapter(struct pd_pps_data *pps,
 		if (ret == 0) {
 			pps->last_update = get_boot_sec();
 			pps->op_ua = pending_ua;
+
+			/* voltage is pending too */
+			if (pps->out_uv != pending_uv)
+				return 0;
+
 			return PD_T_PPS_TIMEOUT;
 		}
 
@@ -912,9 +914,6 @@ int pps_update_adapter(struct pd_pps_data *pps,
 			pps_log(pps, "failed to set CURRENT_NOW, ret = %d",
 				ret);
 	} else if (pps->out_uv != pending_uv) {
-		if (interval * 1000 < PPS_UPDATE_DELAY_MS)
-			return PPS_UPDATE_DELAY_MS;
-
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 				   pending_uv,  tcpm_psy);
 		pr_debug("%s: %s SET_UV out_v %d->%d, ret=%d\n", __func__,
