@@ -991,6 +991,7 @@ error:
 static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 {
 	int iin, ibat;
+	const ibat_limit = (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100;
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
@@ -1037,7 +1038,11 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 
 	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
-		  (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
+		  ibat < ibat_limit) {
+
+		if (ibat < ibat_limit)
+			pr_debug("%s: ibatt=%d limit=%d\n",
+				__func__, ibat, ibat_limit);
 
 		/* compare IIN ADC with previous IIN ADC + 20mA */
 		if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
@@ -1239,6 +1244,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 	int iin, ibat;
 	unsigned int val;
 	unsigned int iin_apdo;
+	const ibat_limit = (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100;
 
 	/* Read IIN ADC */
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
@@ -1262,7 +1268,11 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET_CP)) ||
-		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
+		   (ibat < ibat_limit)) {
+
+		if (ibat < ibat_limit)
+			pr_debug("%s: ibatt=%d limit=%d\n", __func__,
+				 ibat, ibat_limit);
 
 		/* TA current is lower than the target input current */
 		/* IIN_ADC < IIN_CC -20mA */
@@ -1356,6 +1366,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 {
 	int iin, ibat;
+	const ibat_limit = (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100;
 
 	pr_debug("%s: ======START=======\n", __func__);
 	pr_debug("%s: = charging_state=%u == \n", __func__,
@@ -1385,7 +1396,12 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
-		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
+		   ibat < ibat_limit) {
+
+		if (ibat < ibat_limit)
+			pr_debug("%s: ibatt=%d limit=%d\n",
+				__func__, ibat, ibat_limit);
+
 		/* TA current is lower than the target input current */
 		/* Compare TA max voltage */
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
@@ -1449,6 +1465,7 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 {
 	int iin, ibat;
+	const ibat_limit = (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100;
 
 	pr_debug("%s: ======START=======\n", __func__);
 
@@ -1476,7 +1493,12 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
-		   (ibat < (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100)) {
+		   ibat < ibat_limit) {
+
+		if (ibat < ibat_limit)
+			pr_debug("%s: ibatt=%d limit=%d\n",
+				__func__, ibat, ibat_limit);
+
 		/* RX current is lower than the target input current */
 		/* Compare RX max voltage */
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
