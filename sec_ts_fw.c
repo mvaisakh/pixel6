@@ -17,7 +17,7 @@
 
 enum {
 	BUILT_IN = 0,
-	UMS,
+	UMS, /* deprecated */
 	BL,
 	FFU,
 };
@@ -1429,7 +1429,7 @@ int sec_ts_firmware_update_on_hidden_menu(struct sec_ts_data *ts,
 	 * argument represent what is source of firmware like below.
 	 *
 	 * 0 : [BUILT_IN] Getting firmware which is for user.
-	 * 1 : [UMS] Getting firmware from sd card.
+	 * 1 : (deprecated) [UMS] Getting firmware from sd card.
 	 * 2 : none
 	 * 3 : [FFU] Getting firmware from air.
 	 */

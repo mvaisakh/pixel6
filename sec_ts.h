@@ -139,7 +139,6 @@
 #define SEC_TS_DEFAULT_FW_NAME		"tsp_sec/sec_hero.fw"
 #define SEC_TS_DEFAULT_BL_NAME		"tsp_sec/s6smc41_blupdate_img_REL.bin"
 #define SEC_TS_DEFAULT_PARA_NAME	"tsp_sec/s6smc41_para_REL_DGA0_V0106_150114_193317.bin"
-#define SEC_TS_DEFAULT_UMS_FW		"/sdcard/Firmware/TSP/lsi.bin"
 #define SEC_TS_DEFAULT_FFU_FW		"ffu_tsp.bin"
 #define SEC_TS_MAX_FW_PATH		64
 #define SEC_TS_FW_BLK_SIZE_MAX		(512)
@@ -748,24 +747,31 @@ struct sec_ts_gesture_status {
 
 
 /* status id for sec_ts event */
-#define SEC_TS_EVENT_STATUS_ID_NOISE	0x64
-#define SEC_TS_EVENT_STATUS_ID_WLC	0x66
-#define SEC_TS_EVENT_STATUS_ID_GRIP	0x69
-#define SEC_TS_EVENT_STATUS_ID_PALM	0x70
+#define SEC_TS_EVENT_STATUS_ID_HOPPING		0x33
+#define SEC_TS_EVENT_STATUS_ID_REPORT_RATE	0x34
+#define SEC_TS_EVENT_STATUS_ID_NOISE		0x64
+#define SEC_TS_EVENT_STATUS_ID_WLC		0x66
+#define SEC_TS_EVENT_STATUS_ID_GRIP		0x69
+#define SEC_TS_EVENT_STATUS_ID_PALM		0x70
 
 /* 8 byte */
 struct sec_ts_event_status {
-	u8 eid:2;
-	u8 stype:4;
-	u8 sf:2;
-	u8 status_id;
-	u8 status_data_1;
-	u8 status_data_2;
-	u8 status_data_3;
-	u8 status_data_4;
-	u8 status_data_5;
-	u8 left_event_5_0:6;
-	u8 reserved_2:2;
+	union {
+		struct {
+			u8 eid:2;
+			u8 stype:4;
+			u8 sf:2;
+			u8 status_id;
+			u8 status_data_1;
+			u8 status_data_2;
+			u8 status_data_3;
+			u8 status_data_4;
+			u8 status_data_5;
+			u8 left_event_5_0:6;
+			u8 reserved_2:2;
+		}  __packed;
+		u8 data[8];
+	};
 } __packed;
 
 /* 8 byte */
@@ -783,6 +789,20 @@ struct sec_ts_event_coordinate {
 	u8 ttype_3_2:2;
 	u8 left_event:6;
 	u8 ttype_1_0:2;
+} __packed;
+
+/* 8 byte */
+struct sec_ts_event_hopping {
+	u8 eid:2;
+	u8 stype:4;
+	u8 sf:2;
+	u8 event_id;
+	u8 id:4;
+	u8 cause: 4;
+	u8 prev_id;
+	u8 noise_lvl[2];
+	u8 reserved_6;
+	u8 reserved_7;
 } __packed;
 
 /* not fixed */
@@ -996,7 +1016,7 @@ struct sec_ts_data {
 	short pressure_right;
 	u8 pressure_user_level;
 #endif
-	int temp;
+	int debug;
 
 	int fs_postcal_mean;
 

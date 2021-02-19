@@ -8085,7 +8085,7 @@ static void debug(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	ts->temp = sec->cmd_param[0];
+	ts->debug = sec->cmd_param[0];
 
 	snprintf(buff, sizeof(buff), "%s", "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
