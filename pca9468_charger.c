@@ -1965,16 +1965,14 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 		unsigned int vmin = PCA9468_TA_MIN_VOL_PRESET * pca9468->chg_mode;
 		unsigned int cc_max = pca9468->ta_max_cur * pca9468->chg_mode;
 
-		/* Read VBAT ADC */
 		vbat = pca9468_read_adc(pca9468, ADCCH_VBAT);
-
-		/* Compare the new VBAT with the current VBAT */
 		if (pca9468->new_vfloat <= vbat) {
 			/* The new VBAT is lower than the current VBAT */
 			/* return invalid error */
-			pr_err("%s: New vfloat=%d is lower than VBAT=%d ADC\n",
-			       __func__, pca9468->new_vfloat, vbat);
-			return -EINVAL;
+			pr_err("%s: New vfloat=%d, current=%d is lower than VBAT=%d ADC\n",
+			       __func__, pca9468->new_vfloat, pca9468->pdata->v_float,
+			        vbat);
+			return 0;
 		}
 
 		/* cancel delayed_work */
