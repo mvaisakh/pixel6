@@ -208,6 +208,11 @@ enum {
 	CHG_4TO1_DC_MODE,
 };
 
+/* PPS timers */
+#define PCA9468_PDMSG_WAIT_T	250	/* 250ms */
+#define PCA9468_PDMSG_RETRY_T	1000	/* 1000ms */
+#define PCA9468_PPS_PERIODIC_T	10000	/* 10000ms */
+
 /* - Core driver  ---------------------------- */
 
 int pca9468_read_adc(struct pca9468_charger *pca9468, u8 adc_ch);

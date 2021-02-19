@@ -40,9 +40,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 #define PCA9468_CCMODE_CHECK1_T	5000	/* 10000ms -> 500ms */
 #define PCA9468_CCMODE_CHECK2_T	5000	/* 5000ms */
 #define PCA9468_CVMODE_CHECK_T 	10000	/* 10000ms */
-#define PCA9468_PDMSG_WAIT_T	200	/* 200ms */
 #define PCA4968_ENABLE_DELAY_T	150	/* 150ms */
-#define PCA9468_PPS_PERIODIC_T	10000	/* 10000ms */
 #define PCA9468_CVMODE_CHECK2_T	1000	/* 1000ms */
 
 /* Battery Threshold */
@@ -85,7 +83,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* TA voltage threshold starting Adjust CC mode */
 #define PCA9468_TA_MIN_VOL_CCADJ	8500000	/* 8000000uV --> 8500000uV */
 
-#define PCA9468_TA_VOL_PRE_OFFSET	600000	 /* uV */
+#define PCA9468_TA_VOL_PRE_OFFSET	500000	 /* uV */
 /* Adjust CC mode TA voltage step */
 #define PCA9468_TA_VOL_STEP_ADJ_CC	40000	/* uV */
 /* Pre CV mode TA voltage step */
@@ -789,11 +787,13 @@ static int pca9468_get_batt_info(struct pca9468_charger *pca9468, int info_type,
 	return ret;
 }
 
-#define FCC_TOLERANCE_RATIO		95
-#define FCC_POWER_INCREASE_THRESHOLD	90
+#define FCC_TOLERANCE_RATIO		99
+#define FCC_POWER_INCREASE_THRESHOLD	97
+
 /* Check CC Mode status */
 static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 {
+	int ibat = -EINVAL, vbat = -EINVAL, rc;
 	unsigned int reg_val;
 	int ret;
 
@@ -815,26 +815,28 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 		ret = CCMODE_LOOP_INACTIVE;
 	}
 
-	if (ret == CCMODE_LOOP_INACTIVE) {
-		int ibat = -EINVAL, vbat = -EINVAL;
-		int rc = -ENODEV;
-
-		rc = pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat);
-		if (rc)
-			goto error;
-
+	/* TODO: use the delta to adjust the TA offset */
+	rc = pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat);
+	if (rc == 0)
 		rc = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
-		if (rc)
-			goto error;
+	pr_debug("%s: status=%d ibat:%d, cc_max:%d , vbat:%d, fv:%d\n",
+		 __func__, ret, ibat, pca9468->cc_max, vbat, pca9468->fv_uv);
+	if (rc)
+		goto error;
+
+	if (ret == CCMODE_LOOP_INACTIVE) {
 
 		/* Battery OV/OC check */
-		if ((ibat > ((pca9468->cc_max * FCC_TOLERANCE_RATIO) / 100)) ||
-		    (vbat > pca9468->fv_uv)) {
+		if (ibat > ((pca9468->cc_max * FCC_TOLERANCE_RATIO) / 100)) {
+			pr_err("%s: force CCMODE_IIN_LOOP ibatt %d->%d\n", __func__,
+			       ret, CCMODE_IIN_LOOP);
 			ret = CCMODE_IIN_LOOP;
-			pr_err("%s: ibat:%d, cc_max:%d , vbat:%d, fv:%d, force CCMODE_IIN_LOOP\n",
-				 __func__, ibat, pca9468->cc_max,
-				 vbat, pca9468->fv_uv);
+		} else if (vbat > pca9468->fv_uv) {
+			pr_err("%s: force CCMODE_IIN_LOOP fv_uv %d->%d\n", __func__,
+			       ret, CCMODE_IIN_LOOP);
+			ret = CCMODE_IIN_LOOP;
 		}
+
 	}
 
 error:
@@ -1223,7 +1225,6 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		/* skip ibat check when failed to get ibat */
 		ibat = pca9468->cc_max;
 	}
-
 
 	pr_debug("%s: iin=%d, iin_cc=%d, ibat=%d, cc_max=%d\n", __func__,
 		 iin, pca9468->iin_cc, ibat, pca9468->cc_max);
@@ -1856,13 +1857,15 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468)
 	pr_debug("%s: new_iin=%d\n", __func__, pca9468->new_iin);
 
 	/* Check the charging state */
-	if ((pca9468->charging_state == DC_STATE_NO_CHARGING) ||
-		(pca9468->charging_state == DC_STATE_CHECK_VBAT)) {
+	if (pca9468->charging_state == DC_STATE_NO_CHARGING ||
+	    pca9468->charging_state == DC_STATE_CHECK_VBAT) {
 		/* Apply new iin when the direct charging is started */
 		pca9468->pdata->iin_cfg = pca9468->new_iin;
+		return 0;
+	}
 
 	/* Check whether the previous request is done */
-	} else if (pca9468->req_new_iin) {
+	if (pca9468->req_new_iin) {
 
 		/* same as previous request nevermind */
 		if (pca9468->iin_cc == pca9468->new_iin)
@@ -1890,6 +1893,8 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468)
 		pca9468->iin_cc = pca9468->new_iin;
 		/* Save return state */
 		pca9468->ret_state = pca9468->charging_state;
+
+		pr_debug("charging_state=%d\n", pca9468->charging_state);
 
 		/* Check the TA type first */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
@@ -1930,13 +1935,14 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 	unsigned int val;
 
 	/* Check the charging state */
-	if ((pca9468->charging_state == DC_STATE_NO_CHARGING) ||
-		(pca9468->charging_state == DC_STATE_CHECK_VBAT)) {
+	if (pca9468->charging_state == DC_STATE_NO_CHARGING ||
+	    pca9468->charging_state == DC_STATE_CHECK_VBAT) {
 		/* Apply new vfloat when the direct charging is started */
 		pca9468->pdata->v_float = pca9468->new_vfloat;
+		return 0;
+	}
 
-	/* Check whether the previous request is done */
-	} else if (pca9468->req_new_vfloat) {
+	if (pca9468->req_new_vfloat) {
 
 		if (pca9468->new_vfloat == pca9468->pdata->v_float)
 			return 0;
@@ -2029,10 +2035,8 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 			 */
 
 			/* Calculate new TA max voltage */
-			val = pca9468->iin_cc / (PD_MSG_TA_CUR_STEP *
-			      pca9468->chg_mode);
-			pca9468->iin_cc = val * (PD_MSG_TA_CUR_STEP *
-					  pca9468->chg_mode);
+			val = pca9468->iin_cc / (PD_MSG_TA_CUR_STEP * pca9468->chg_mode);
+			pca9468->iin_cc = val * (PD_MSG_TA_CUR_STEP * pca9468->chg_mode);
 			/*
 			 * TA_MAX_VOL = MIN[PCA9468_TA_MAX_VOL,
 			 * 		(TA_MAX_PWR/IIN_CC)]
@@ -2114,6 +2118,7 @@ static int pca9468_set_new_cc_max(struct pca9468_charger *pca9468)
 		pr_debug("%s: Not support new cc_max yet in charging state=%d\n",
 			 __func__, pca9468->charging_state);
 	}
+
 	return 0;
 }
 
@@ -3909,13 +3914,18 @@ static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 		pca9468->charging_state = DC_STATE_CHECK_VBAT;
 		pca9468->timer_id = TIMER_VBATMIN_CHECK;
 
-		/* The delay time for PD state goes to PE_SNK_STATE */
-		pca9468->timer_period = 1000;
+		/* PD is alredy in PE_SNK_STATE */
+		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			msecs_to_jiffies(pca9468->timer_period));
+
 		/* Set the initial charging step */
 		power_supply_changed(pca9468->mains);
+	} else {
+		pr_debug("%s: ping pps_idx=%d charging_state=%d timer_id=%d\n",
+			 __func__, pca9468->pps_index, pca9468->charging_state,
+			 pca9468->timer_id);
 	}
 
 	return 0;

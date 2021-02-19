@@ -188,9 +188,6 @@ check_online:
 	return ret;
 }
 
-
-/* Send Request message to the source */
-/* call holding mutex_lock(&pca9468->lock); */
 int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 				   unsigned int msg_type)
 {
@@ -248,19 +245,20 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 						    pca9468->ta_vol,
 						    pca9468->ta_cur,
 						    tcpm_psy);
-
 			pr_debug("%s: out_uv=%d %d->%d, out_ua=%d %d->%d (%d)\n",
 				 __func__,
 				 pps_data->out_uv, pre_out_uv, pca9468->ta_vol,
 				 pps_data->op_ua, pre_out_ua, pca9468->ta_cur,
 				 pps_ui);
 
+			if (pps_ui == 0)
+				pps_ui = PCA9468_PDMSG_WAIT_T;
 			if (pps_ui < 0)
-				pps_ui = 1000;
+				pps_ui = PCA9468_PDMSG_RETRY_T;
 		} else {
 			pr_debug("%s: request_pdo failed ret=%d\n",
 				 __func__, ret);
-			pps_ui = 1000;
+			pps_ui = PCA9468_PDMSG_RETRY_T;
 		}
 
 	} else {
@@ -282,6 +280,7 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		pps_ui = -EINVAL;
 	}
 
+	/* PPS_Work: will reschedule */
 	pr_debug("%s: pps_ui = %d\n", __func__, pps_ui);
 	if (pps_ui > 0)
 		schedule_delayed_work(&pca9468->pps_work, msecs_to_jiffies(pps_ui));
@@ -361,7 +360,7 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 {
 	union power_supply_propval pro_val;
 	struct power_supply *wlc_psy;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	mutex_lock(&pca9468->lock);
 
@@ -376,24 +375,21 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 		goto out;
 	}
 
-	pr_info("%s: rx_vol=%d\n", __func__, pca9468->ta_vol);
-
-	/* Set the RX voltage */
 	pro_val.intval = pca9468->ta_vol;
-
-	/* Set the property */
 	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					&pro_val);
+	pr_debug("%s: rx_vol=%d ret=%d\n", __func__, pca9468->ta_vol, ret);
 	if (ret < 0)
 		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
 			pro_val.intval, ret);
 
-out:
 	/* Vbus reset might happen, check the charging state again */
-	if (pca9468->mains_online == false)
+	if (pca9468->mains_online == false) {
+		pr_warn("%s: mains offline\n", __func__);
 		ret = -EINVAL;
+	}
 
-	pr_info("%s: ret=%d\n", __func__, ret);
+out:
 	mutex_unlock(&pca9468->lock);
 	return ret;
 }
@@ -496,20 +492,30 @@ int pca9468_get_charge_type(struct pca9468_charger *pca9468)
 	if (!pca9468->mains_online)
 		return POWER_SUPPLY_CHARGE_TYPE_NONE;
 
+	/*
+	 * HW will reports PCA9468_BIT_IIN_LOOP_STS (CC) or
+	 * PCA9468_BIT_VFLT_LOOP_STS (CV) or inactive (i.e. openloop).
+	 */
 	ret = regmap_read(pca9468->regmap, PCA9468_REG_STS_A, &sts);
 	if (ret < 0)
 		return ret;
 
-	pr_debug("%s: sts_a=%0x2\n", __func__, sts);
+	pr_debug("%s: sts_a=%0x2 VFLT=%d IIN=%d charging_state=%d\n",
+		__func__, sts, !!(sts & PCA9468_BIT_VFLT_LOOP_STS),
+		 !!(sts & PCA9468_BIT_IIN_LOOP_STS),
+		 pca9468->charging_state);
 
 	/* Use SW state for now */
 	switch (pca9468->charging_state) {
 	case DC_STATE_ADJUST_CC:
 	case DC_STATE_CC_MODE:
+	case DC_STATE_ADJUST_TAVOL:
+	case DC_STATE_ADJUST_TACUR:
 		return POWER_SUPPLY_CHARGE_TYPE_FAST;
 	case DC_STATE_START_CV:
 	case DC_STATE_CV_MODE:
 		return POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT;
+	case DC_STATE_CHECK_ACTIVE: /* in preset */
 	case DC_STATE_CHARGING_DONE:
 		break;
 	}
@@ -552,7 +558,7 @@ int pca9468_get_status(struct pca9468_charger *pca9468)
 	case DC_STATE_NO_CHARGING:
 	case DC_STATE_CHECK_VBAT:
 	case DC_STATE_PRESET_DC:
-	case DC_STATE_CHECK_ACTIVE: /* last state really */
+	case DC_STATE_CHECK_ACTIVE:
 		return POWER_SUPPLY_STATUS_NOT_CHARGING;
 	case DC_STATE_ADJUST_CC:
 	case DC_STATE_CC_MODE:

@@ -225,6 +225,7 @@ struct gbms_charging_event {
 #define GBMS_CS_FLAG_CC       	(1 << 2)
 #define GBMS_CS_FLAG_CV       	(1 << 3)
 #define GBMS_CS_FLAG_ILIM       (1 << 4)
+#define GBMS_CS_FLAG_NOCOMP     (1 << 5)
 
 union gbms_charger_state {
 	uint64_t v;
