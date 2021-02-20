@@ -354,7 +354,7 @@ static int pca9468_set_vfloat(struct pca9468_charger *pca9468,
 
 	pr_debug("%s: vfloat=%u\n", __func__, v_float);
 
-	/* v float voltage */
+	/* v float voltage (10 mV) resolution */
 	val = PCA9468_V_FLOAT(v_float);
 
 	ret = regmap_write(pca9468->regmap, PCA9468_REG_V_FLOAT, val);
@@ -790,6 +790,8 @@ static int pca9468_get_batt_info(struct pca9468_charger *pca9468, int info_type,
 #define FCC_TOLERANCE_RATIO		99
 #define FCC_POWER_INCREASE_THRESHOLD	97
 
+static int get_const_charge_voltage(struct pca9468_charger *pca9468);
+
 /* Check CC Mode status */
 static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 {
@@ -837,6 +839,25 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 			ret = CCMODE_IIN_LOOP;
 		}
 
+	} else {
+		int rc = 1, v_float, delta = 0;
+		const int delta_limit = 100000; /* reduce at high voltage */
+		const int delta_offset = 25000; /* headroom */
+
+		v_float = get_const_charge_voltage(pca9468);
+		if (v_float > 0)
+			delta = pca9468->fv_uv - vbat;
+		if (delta > 0)
+			delta += delta_offset;
+		if (delta > delta_limit)
+			delta = delta_limit;
+
+		/* will reset on disconnect */
+		if (pca9468->fv_uv + delta > v_float)
+			rc = pca9468_set_vfloat(pca9468, pca9468->fv_uv + delta);
+
+		pr_debug("%s: fv_uv=%d v_float=%d delta=%d actual=%d (%d)\n", __func__,
+			 pca9468->fv_uv, v_float, delta, pca9468->fv_uv + delta ,rc);
 	}
 
 error:
@@ -2903,9 +2924,9 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 	/* Compare VBAT with VBAT ADC */
 	if (vbat > pca9468->pdata->v_float)	{
 		/* Invalid battery voltage to start direct charging */
-		pr_err("%s: vbat adc is higher than VFLOAT\n", __func__);
-		ret = -EINVAL;
-		goto error;
+		pr_err("%s: vbat adc=%d is higher than VFLOAT=%d\n", __func__,
+			vbat, pca9468->pdata->v_float);
+		pca9468->pdata->v_float = vbat;
 	}
 
 	/* Check the TA type and set the charging mode */
@@ -3963,13 +3984,17 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		if (val->intval < 0) {
 			pr_debug("%s: ignore negative vfloat %d\n",
 				 __func__, val->intval);
-		} else if (val->intval != pca9468->new_vfloat) {
+			break;
+		}
+
+		if (val->intval != pca9468->fv_uv) {
 			pr_debug("%s: new_vfloat=%u->%d\n", __func__,
 				 pca9468->new_vfloat, val->intval);
 
-			/* race with pca9468_set_new_vfloat(pca9468) */
 			pca9468->fv_uv = val->intval;
-			pca9468->new_vfloat = val->intval;
+
+			/* race with pca9468_set_new_vfloat(pca9468) */
+			pca9468->new_vfloat = val->intval + 50000;
 			ret = pca9468_set_new_vfloat(pca9468);
 		}
 		break;
