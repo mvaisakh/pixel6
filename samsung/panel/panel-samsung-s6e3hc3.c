@@ -79,9 +79,10 @@ static const struct exynos_dsi_cmd s6e3hc3_lp_high_cmds[] = {
 };
 
 static const struct exynos_binned_lp s6e3hc3_binned_lp[] = {
-	BINNED_LP_MODE("off",     0, s6e3hc3_lp_off_cmds),
-	BINNED_LP_MODE("low",    80, s6e3hc3_lp_low_cmds),
-	BINNED_LP_MODE("high", 2047, s6e3hc3_lp_high_cmds)
+	BINNED_LP_MODE("off", 0, s6e3hc3_lp_off_cmds),
+	/* rising time = 0, falling time = 48 */
+	BINNED_LP_MODE_TIMING("low", 80, s6e3hc3_lp_low_cmds, 0, 48),
+	BINNED_LP_MODE_TIMING("high", 2047, s6e3hc3_lp_high_cmds, 0, 48)
 };
 
 static const u8 freq_update[] = { 0xF7, 0x0F };
@@ -127,6 +128,47 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_120_cmds[] = {
 	EXYNOS_DSI_CMD0(freq_update),
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120);
+
+static void s6e3hc3_update_te2(struct exynos_panel *ctx)
+{
+	struct exynos_panel_te2_timing timing;
+	/* TODO: change option dynamically */
+	const u8 option[3] = {0xB9, 0x00, 0x31}; /* default changeable TE2 */
+	u8 width[7] = {0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30}; /* default timing */
+	u32 rising, falling;
+	int ret;
+
+	if (!ctx)
+		return;
+
+	ret = exynos_panel_get_current_mode_te2(ctx, &timing);
+	if (!ret) {
+		rising = timing.rising_edge;
+		falling = timing.falling_edge;
+
+		width[1] = (rising >> 8) & 0xF;
+		width[2] = rising & 0xFF;
+		width[3] = width[4] = 0;
+		width[5] = (falling >> 8) & 0xF;
+		width[6] = falling & 0xFF;
+	} else if (ret == -EAGAIN) {
+		dev_dbg(ctx->dev, "Panel is not ready, use default setting\n");
+	} else {
+		return;
+	}
+
+	dev_dbg(ctx->dev,
+		"TE2 updated: option changeable, width 0xb9 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		width[1], width[2], width[3], width[4], width[5], width[6]);
+
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x4F, 0xF2);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x0D);
+	EXYNOS_DCS_WRITE_TABLE(ctx, option);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x14, 0xB9);
+	EXYNOS_DCS_WRITE_TABLE(ctx, width);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
+}
 
 static void s6e3hc3_change_frequency(struct exynos_panel *ctx,
 				     const struct exynos_panel_mode *pmode)
@@ -378,6 +420,10 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 			.underrun_param = &underrun_param,
 		},
 		.priv_data = &s6e3hc3_mode_60_cmd_set,
+		.te2_timing = {
+			.rising_edge = 0,
+			.falling_edge = 48,
+		},
 	},
 	{
 		/* 1440x3120 @ 120Hz */
@@ -408,6 +454,10 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 			.underrun_param = &underrun_param,
 		},
 		.priv_data = &s6e3hc3_mode_120_cmd_set,
+		.te2_timing = {
+			.rising_edge = 0,
+			.falling_edge = 48,
+		},
 	},
 };
 
@@ -463,6 +513,9 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.mode_set = s6e3hc3_mode_set,
 	.panel_init = s6e3hc3_panel_init,
 	.get_panel_rev = s6e3hc3_get_panel_rev,
+	.get_te2_edges = exynos_panel_get_te2_edges,
+	.configure_te2_edges = exynos_panel_configure_te2_edges,
+	.update_te2 = s6e3hc3_update_te2,
 };
 
 const struct brightness_capability s6e3hc3_brightness_capability = {
