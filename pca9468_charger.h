@@ -95,6 +95,8 @@ struct pca9468_platform_data {
  * @debug_address: debug register address
  * @debug_adc_channel: ADC channel to read
  * @init_done: true when initialization is complete
+ * @dc_start_time: start time (sec since boot) of the DC session
+ * @irdrop_comp_ok: when true clear GBMS_CS_FLAG_NOCOMP in flags
  */
 struct pca9468_charger {
 	struct wakeup_source	*monitor_wake_lock;
@@ -168,6 +170,9 @@ struct pca9468_charger {
 	int			debug_adc_channel;
 
 	bool			init_done;
+
+	ktime_t dc_start_time;
+	bool irdrop_comp_ok;
 /* Google Integration END */
 };
 

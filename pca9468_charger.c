@@ -2009,8 +2009,7 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 		/* save the current iin_cc in iin_cfg */
 		pca9468->pdata->iin_cfg = pca9468->iin_cc;
 		pca9468->pdata->iin_cfg = min(pca9468->pdata->iin_cfg, cc_max);
-		ret = pca9468_set_input_current(pca9468,
-						pca9468->pdata->iin_cfg);
+		ret = pca9468_set_input_current(pca9468, pca9468->pdata->iin_cfg);
 		if (ret < 0)
 			goto error;
 
@@ -3904,6 +3903,9 @@ static int get_charging_enabled(struct pca9468_charger *pca9468)
 	return intval;
 }
 
+#define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
+
+
 static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 {
 	if (index < 0 || index >= PPS_INDEX_MAX)
@@ -3912,7 +3914,6 @@ static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 	if (index == 0) {
 		pca9468->pps_index = 0;
 
-		/* Cancel delayed work */
 		cancel_delayed_work(&pca9468->timer_work);
 		cancel_delayed_work(&pca9468->pps_work);
 
@@ -3925,6 +3926,8 @@ static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 			msecs_to_jiffies(pca9468->timer_period));
 	} else if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
 		/* Start Direct Charging on Index */
+		pca9468->dc_start_time = get_boot_sec();
+		pca9468->irdrop_comp_ok = false;
 		pca9468->pps_index = index;
 
 		/* Start 1sec timer for battery check */
@@ -4009,7 +4012,10 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		if (val->intval < 0) {
 			pr_debug("%s: ignore negative cc_max  %d\n",
 				 __func__, val->intval);
-		} else if (val->intval != pca9468->cc_max) {
+			break;
+		}
+
+		if (val->intval != pca9468->cc_max) {
 			pr_debug("%s: new cc_max=%u->%d\n", __func__,
 				 pca9468->cc_max, val->intval);
 			pca9468->cc_max = val->intval;
@@ -4022,7 +4028,10 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 		if (val->intval < 0) {
 			pr_debug("%s: ignore negative iin %d\n",
 				 __func__, val->intval);
-		} else if (val->intval != pca9468->new_iin) {
+			break;
+		}
+
+		if (val->intval != pca9468->new_iin) {
 			pr_debug("%s: new_iin=%u->%d\n", __func__,
 				 pca9468->new_iin, val->intval);
 
@@ -4128,8 +4137,11 @@ static int pca9468_mains_get_property(struct power_supply *psy,
 
 	case GBMS_PROP_CHARGE_CHARGER_STATE:
 		ret = pca9468_get_chg_chgr_state(pca9468, &chg_state);
-		if (ret == 0)
-			gbms_propval_int64val(val) = chg_state.v;
+		if (ret < 0)
+			return ret;
+		if (pca9468->irdrop_comp_ok)
+			chg_state.f.flags &= ~GBMS_CS_FLAG_NOCOMP;
+		gbms_propval_int64val(val) = chg_state.v;
 		break;
 
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
@@ -4467,6 +4479,9 @@ static int pca9468_create_debugfs_entries(struct pca9468_charger *chip)
 				  &debug_pps_index_ops);
 	if (!ent)
 		dev_err(chip->dev, "Couldn't create pps_index debug file\n");
+
+	debugfs_create_bool("irdrop_comp", 0644, chip->debug_root,
+			    &chip->irdrop_comp_ok);
 
 	return 0;
 }
