@@ -367,7 +367,8 @@
 #define P9412_COM_CHAN_SEND_IDX_REG		0x142
 #define P9412_COM_CHAN_RECV_SIZE_REG		0x144
 #define P9412_COM_CHAN_RECV_IDX_REG		0x146
-#define P9412_COM_CHAN_STATUS_REG		0x146
+#define P9412_COM_CHAN_STATUS_REG		0x148
+#define P9412_PROP_TX_ID_REG			0x154
 
 #define P9412_DATA_BUF_START			0x0800
 #define P9412_DATA_BUF_SIZE			0x0800 /* 2048 bytes */
@@ -528,6 +529,9 @@ struct p9221_charger_data {
 	u32 				wlc_dc_current_now;
 	bool				wlc_dc_enabled;
 
+	u16				reg_tx_id_addr;
+	u16				reg_tx_mfg_code_addr;
+
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
 	int (*reg_read_8)(struct p9221_charger_data *chgr, u16 reg,
@@ -555,8 +559,6 @@ struct p9221_charger_data {
 	int (*chip_get_align_y)(struct p9221_charger_data *chgr, u8 *y);
 
 
-	int (*chip_get_tx_id)(struct p9221_charger_data *chgr, u32 *id);
-	int (*chip_get_tx_mfg_code)(struct p9221_charger_data *chgr, u16 *code);
 	int (*chip_get_vout)(struct p9221_charger_data *chgr, u32 *mv);
 	int (*chip_get_iout)(struct p9221_charger_data *chgr, u32 *ma);
 	int (*chip_get_op_freq)(struct p9221_charger_data *chgr, u32 *khz);
@@ -578,6 +580,8 @@ struct p9221_charger_data {
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
 				 u16 chip_id);
+extern void p9221_chip_init_params(struct p9221_charger_data *charger,
+				   u16 chip_id);
 
 enum p9382_rtx_state {
 	RTX_NOTSUPPORTED = 0,
@@ -606,4 +610,8 @@ enum p9382_rtx_err {
 #define P9412_MW_TO_HW(mw) (((mw) * 2) / 1000) /* mw -> 0.5 W units */
 #define P9412_HW_TO_MW(hw) (((hw) / 2) * 1000) /* 0.5 W units -> mw */
 
+#define p9xxx_chip_get_tx_id(chgr, id) (chgr->reg_tx_id_addr < 0 ? \
+      -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_tx_id_addr, id, sizeof(*id)))
+#define p9xxx_chip_get_tx_mfg_code(chgr, code) (chgr->reg_tx_mfg_code_addr < 0 ? \
+      -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_tx_mfg_code_addr, code, sizeof(*code)))
 #endif /* __P9221_CHARGER_H__ */

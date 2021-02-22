@@ -210,7 +210,7 @@ static bool p9221_is_epp(struct p9221_charger_data *charger)
 	 *  check once more if mfg == 0.
 	 */
 	if (charger->mfg == 0) {
-		ret = charger->chip_get_tx_mfg_code(charger, &charger->mfg);
+		ret = p9xxx_chip_get_tx_mfg_code(charger, &charger->mfg);
 		if (ret < 0)
 			dev_err(&charger->client->dev,
 				"cannot read MFG_CODE (%d)\n", ret);
@@ -800,7 +800,7 @@ static void p9221_align_work(struct work_struct *work)
 	if (charger->alignment_capable == ALIGN_MFG_CHECKING) {
 		charger->mfg_check_count += 1;
 
-		res = charger->chip_get_tx_mfg_code(charger, &charger->mfg);
+		res = p9xxx_chip_get_tx_mfg_code(charger, &charger->mfg);
 		if (res < 0) {
 			dev_err(&charger->client->dev,
 				"cannot read MFG_CODE (%d)\n", res);
@@ -871,7 +871,7 @@ static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger)
 	pm_runtime_put_sync(charger->dev);
 
 	if (p9221_is_epp(charger)) {
-		ret = charger->chip_get_tx_id(charger, &tx_id);
+		ret = p9xxx_chip_get_tx_id(charger, &tx_id);
 		if (ret && ret != -ENOTSUPP)
 			dev_err(&charger->client->dev,
 				"Failed to read txid %d\n", ret);
@@ -908,7 +908,7 @@ static int p9382_get_ptmc_id_str(char *buffer, int len,
 	}
 	pm_runtime_put_sync(charger->dev);
 
-	ret = charger->chip_get_tx_mfg_code(charger, &ptmc_id);
+	ret = p9xxx_chip_get_tx_mfg_code(charger, &ptmc_id);
 	if (ret) {
 		dev_err(&charger->client->dev,
 			"Failed to read device prmc %d\n", ret);
@@ -1613,7 +1613,7 @@ static int p9221_notifier_check_neg_power(struct p9221_charger_data *charger)
 	if (np8 >= P9221_NEG_POWER_10W) {
 		u16 mfg;
 
-		ret = charger->chip_get_tx_mfg_code(charger, &mfg);
+		ret = p9xxx_chip_get_tx_mfg_code(charger, &mfg);
 		if (ret < 0) {
 			dev_err(&charger->client->dev,
 				"cannot read MFG_CODE (%d)\n", ret);
@@ -2005,7 +2005,7 @@ static ssize_t p9221_show_status(struct device *dev,
 			   "tx_len      : %d\n", charger->tx_len);
 	count += scnprintf(buf + count, PAGE_SIZE - count,
 			   "rx_len      : %d\n", charger->rx_len);
-	charger->chip_get_tx_id(charger, &tx_id);
+	p9xxx_chip_get_tx_id(charger, &tx_id);
 	count += scnprintf(buf + count, PAGE_SIZE - count,
 			   "tx_id       : %08x (%s)\n", tx_id,
 			   p9221_get_tx_id_str(charger));
@@ -4298,6 +4298,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->reg_write_8 = p9221_reg_write_8;
 	charger->reg_write_16 = p9221_reg_write_16;
 	/* then from *_chip.c -> *_charger.c */
+	p9221_chip_init_params(charger, charger->pdata->chip_id);
 	ret = p9221_chip_init_funcs(charger, charger->pdata->chip_id);
 	if (ret) {
 		dev_err(&client->dev,

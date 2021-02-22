@@ -21,56 +21,6 @@
 
 /* Simple Chip Specific Accessors */
 /*
- * chip_get_tx_id
- *
- *   Get the 4 byte proprietary tx code of the transmitter.
- */
-static int p9221_chip_get_tx_id(struct p9221_charger_data *chgr, u32 *id)
-{
-	return chgr->reg_read_n(chgr, P9221R5_PROP_TX_ID_REG, id, sizeof(*id));
-}
-
-static int p9382_chip_get_tx_id(struct p9221_charger_data *chgr, u32 *id)
-{
-	return chgr->reg_read_n(chgr, P9382_PROP_TX_ID_REG, id, sizeof(*id));
-}
-
-static int p9412_chip_get_tx_id(struct p9221_charger_data *chgr, u32 *id)
-{
-	return -ENOTSUPP;
-}
-
-/*
- * chip_get_tx_mfg_code
- *
- *   Get the manufacturer code (WPC ID) of the other side of the communication.
- */
-static int p9221_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
-				      u16 *code)
-{
-	return chgr->reg_read_16(chgr, P9221R5_EPP_TX_MFG_CODE_REG, code);
-}
-
-static int p9222_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
-				      u16 *code)
-{
-	u8 data;
-	int ret;
-
-	ret = chgr->reg_read_8(chgr, P9222RE_TX_MFG_CODE_REG, &data);
-	if (!ret)
-		*code = (u16)data;
-
-	return ret;
-}
-
-static int p9382_chip_get_tx_mfg_code(struct p9221_charger_data *chgr,
-				      u16 *code)
-{
-	return chgr->reg_read_16(chgr, P9382_EPP_TX_MFG_CODE_REG, code);
-}
-
-/*
  * chip_get_rx_ilim
  *
  *   Get the receive current limit (mA).
@@ -1050,7 +1000,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		goto err_exit;
 	}
 
-	ret = chgr->chip_get_tx_mfg_code(chgr, &chgr->mfg);
+	ret = p9xxx_chip_get_tx_mfg_code(chgr, &chgr->mfg);
 	if (chgr->mfg != WLC_MFG_GOOGLE) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: mfg code =%02x\n", chgr->mfg);
@@ -1195,6 +1145,28 @@ err_exit:
 	return chgr->prop_mode_en;
 }
 
+void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
+{
+	switch (chip_id) {
+	case P9412_CHIP_ID:
+		chgr->reg_tx_id_addr = P9412_PROP_TX_ID_REG;
+		chgr->reg_tx_mfg_code_addr = P9382_EPP_TX_MFG_CODE_REG;
+		break;
+	case P9382A_CHIP_ID:
+		chgr->reg_tx_id_addr = P9382_PROP_TX_ID_REG;
+		chgr->reg_tx_mfg_code_addr = P9382_EPP_TX_MFG_CODE_REG;
+		break;
+	case P9222_CHIP_ID:
+		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
+		chgr->reg_tx_mfg_code_addr = P9222RE_TX_MFG_CODE_REG;
+		break;
+	default:
+		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
+		chgr->reg_tx_mfg_code_addr = P9221R5_EPP_TX_MFG_CODE_REG;
+		break;
+	}
+}
+
 int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 {
 	chgr->chip_get_iout = p9xxx_chip_get_iout;
@@ -1209,8 +1181,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->rx_buf_size = P9412_DATA_BUF_SIZE;
 		chgr->tx_buf_size = P9412_DATA_BUF_SIZE;
 
-		chgr->chip_get_tx_id = p9412_chip_get_tx_id;
-		chgr->chip_get_tx_mfg_code = p9382_chip_get_tx_mfg_code;
 		chgr->chip_get_rx_ilim = p9412_chip_get_rx_ilim;
 		chgr->chip_set_rx_ilim = p9412_chip_set_rx_ilim;
 		chgr->chip_get_tx_ilim = p9412_chip_get_tx_ilim;
@@ -1236,8 +1206,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
 		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
 
-		chgr->chip_get_tx_id = p9382_chip_get_tx_id;
-		chgr->chip_get_tx_mfg_code = p9382_chip_get_tx_mfg_code;
 		chgr->chip_get_rx_ilim = p9221_chip_get_rx_ilim;
 		chgr->chip_set_rx_ilim = p9221_chip_set_rx_ilim;
 		chgr->chip_get_tx_ilim = p9382_chip_get_tx_ilim;
@@ -1269,8 +1237,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
 		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
 
-		chgr->chip_get_tx_id = p9221_chip_get_tx_id;
-		chgr->chip_get_tx_mfg_code = p9222_chip_get_tx_mfg_code;
 		chgr->chip_get_rx_ilim = p9222_chip_get_rx_ilim;
 		chgr->chip_set_rx_ilim = p9222_chip_set_rx_ilim;
 		chgr->chip_get_tx_ilim = p9221_chip_get_tx_ilim;
@@ -1296,8 +1262,6 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->rx_buf_size = P9221R5_DATA_RECV_BUF_SIZE;
 		chgr->tx_buf_size = P9221R5_DATA_SEND_BUF_SIZE;
 
-		chgr->chip_get_tx_id = p9221_chip_get_tx_id;
-		chgr->chip_get_tx_mfg_code = p9221_chip_get_tx_mfg_code;
 		chgr->chip_get_rx_ilim = p9221_chip_get_rx_ilim;
 		chgr->chip_set_rx_ilim = p9221_chip_set_rx_ilim;
 		chgr->chip_get_tx_ilim = p9221_chip_get_tx_ilim;
