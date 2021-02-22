@@ -3267,8 +3267,7 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 /* Check Vbat minimum level to start direct charging */
 static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 {
-	unsigned int vbat;
-	int ret;
+	int ret, vbat;
 	union power_supply_propval val;
 
 	pr_debug("%s: =========START=========\n", __func__);
