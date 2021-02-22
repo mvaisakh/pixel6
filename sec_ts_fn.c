@@ -246,7 +246,7 @@ static void set_palm_detection_enable(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[4] = { 0 };
 	u8 para = 0x0;
-	u8 ret = 0;
+	int ret;
 
 	input_info(true, &ts->client->dev,
 		"%s: %d\n", __func__, sec->cmd_param[0]);
@@ -292,7 +292,7 @@ static void set_grip_detection_enable(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[4] = { 0 };
 	u8 para = 0x0;
-	u8 ret = 0;
+	int ret;
 
 	input_info(true, &ts->client->dev,
 		"%s: %d\n", __func__, sec->cmd_param[0]);
@@ -338,7 +338,7 @@ static void set_wet_mode_enable(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[4] = { 0 };
 	u8 para = 0x0;
-	u8 ret = 0;
+	int ret;
 
 	input_info(true, &ts->client->dev,
 		"%s: %d\n", __func__, sec->cmd_param[0]);
@@ -384,7 +384,7 @@ static void set_noise_mode_enable(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[4] = { 0 };
 	u8 para = 0x0;
-	u8 ret = 0;
+	int ret;
 
 	input_info(true, &ts->client->dev,
 		"%s: %d\n", __func__, sec->cmd_param[0]);
@@ -430,7 +430,7 @@ static void set_continuous_report_enable(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[4] = { 0 };
 	u8 para = 0x0;
-	u8 ret = 0;
+	int ret;
 
 	input_info(true, &ts->client->dev,
 		"%s: %d\n", __func__, sec->cmd_param[0]);
