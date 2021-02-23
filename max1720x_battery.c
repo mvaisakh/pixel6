@@ -1730,14 +1730,15 @@ static int max1720x_get_property(struct power_supply *psy,
 	u16 data = 0;
 	int idata;
 
+	mutex_lock(&chip->model_lock);
+
 	pm_runtime_get_sync(chip->dev);
 	if (!chip->init_complete || !chip->resume_complete) {
 		pm_runtime_put_sync(chip->dev);
+		mutex_unlock(&chip->model_lock);
 		return -EAGAIN;
 	}
 	pm_runtime_put_sync(chip->dev);
-
-	mutex_lock(&chip->model_lock);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
