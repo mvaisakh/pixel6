@@ -27,6 +27,7 @@
 #include <linux/thermal.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/regulator/pmic_class.h>
 #include <misc/gvotable.h>
 #include "gbms_power_supply.h"
 #include "google_bms.h"
@@ -64,6 +65,12 @@ enum PMIC_VDROOP_SENSOR {
 #define CHGR_DTLS_OFF_JEITA				0x0c
 #define CHGR_DTLS_OFF_TEMP				0x0d
 
+struct uvilo_stats {
+	ktime_t _time;
+	int capacity;
+	int voltage;
+};
+
 struct max77759_chgr_data {
 	struct device *dev;
 	struct power_supply *psy;
@@ -93,6 +100,9 @@ struct max77759_chgr_data {
 	atomic_t sysuvlo1_cnt;
 	atomic_t sysuvlo2_cnt;
 	atomic_t batoilo_cnt;
+	struct uvilo_stats sysuvlo1;
+	struct uvilo_stats sysuvlo2;
+	struct uvilo_stats batoilo;
 
 	atomic_t insel_cnt;
 	bool insel_clear;	/* when set, irq clears CHGINSEL_MASK */
@@ -2448,6 +2458,44 @@ static void max77759_vdroop_irq_work(void *data, int id)
 	mutex_unlock(&chg_data->vdroop_irq_lock[id]);
 }
 
+static int uvilo_read_stats(struct uvilo_stats *dst, struct power_supply *psy)
+{
+	union power_supply_propval ret = {0};
+	int err = 0;
+
+	if (!dst || !psy)
+		return -EINVAL;
+
+	dst->_time = ktime_to_ms(ktime_get());
+	err = power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &ret);
+	if (err < 0)
+		dst->capacity = -1;
+	else
+		dst->capacity = ret.intval;
+	err = power_supply_get_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &ret);
+	if (err < 0)
+		dst->voltage = -1;
+	else
+		dst->voltage = ret.intval;
+
+	return (dst->capacity == -1 || dst->voltage == -1) ? -EIO : 0;
+}
+
+static int max77759_get_property(struct max77759_chgr_data *data, int property)
+{
+	union power_supply_propval ret = {0};
+	int err = 0;
+
+	if (!data)
+		return -EIO;
+	err = power_supply_get_property(data->psy, property, &ret);
+	if (err) {
+		dev_err(data->dev, "Fail to get property: %d, %d\n", property, err);
+		return err;
+	}
+	return ret.intval;
+}
+
 static irqreturn_t max77759_chgr_irq(int irq, void *client)
 {
 	struct max77759_chgr_data *data = client;
@@ -2484,6 +2532,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: SYS_UVLO1\n", __func__);
 
 		atomic_inc(&data->sysuvlo1_cnt);
+		uvilo_read_stats(&data->sysuvlo1, data->psy);
 		max77759_vdroop_irq_work(data, VDROOP1);
 	}
 
@@ -2491,6 +2540,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: SYS_UVLO2\n", __func__);
 
 		atomic_inc(&data->sysuvlo2_cnt);
+		uvilo_read_stats(&data->sysuvlo2, data->psy);
 		max77759_vdroop_irq_work(data, VDROOP2);
 	}
 
@@ -2498,6 +2548,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: BAT_OILO\n", __func__);
 
 		atomic_inc(&data->batoilo_cnt);
+		uvilo_read_stats(&data->batoilo, data->psy);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
@@ -2685,6 +2736,31 @@ static int max77759_init_vdroop(void *data_)
 	return 0;
 }
 
+static ssize_t triggered_stats_show(struct device *dev, struct device_attribute *attr,
+                                    char *buf)
+{
+	struct max77759_chgr_data *data = dev_get_drvdata(dev);
+	int len = 0;
+
+	len = scnprintf(buf, PAGE_SIZE, "%-10s\t%s\t%s\t%s\t%s\n",
+			"Source", "Count", "Last Triggered", "Last SOC", "Last Voltage");
+
+	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "VDROOP1",
+			 atomic_read(&data->sysuvlo1_cnt),
+			 data->sysuvlo1._time, data->sysuvlo1.capacity, data->sysuvlo1.voltage);
+	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "VDROOP2",
+			 atomic_read(&data->sysuvlo2_cnt),
+			 data->sysuvlo2._time, data->sysuvlo2.capacity, data->sysuvlo2.voltage);
+	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "BATOILO",
+			 atomic_read(&data->batoilo_cnt),
+			 data->batoilo._time, data->batoilo.capacity, data->batoilo.voltage);
+
+	return len;
+}
+
+
+static DEVICE_ATTR_RO(triggered_stats);
+
 static int max77759_charger_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
 {
@@ -2790,6 +2866,11 @@ static int max77759_charger_probe(struct i2c_client *client,
 	ret = max77759_init_wcin_psy(data);
 	if (ret < 0)
 		pr_err("Couldn't register dc power supply (%d)\n", ret);
+	data->dev = pmic_device_create(data, "max77759-mitigation");
+	ret = device_create_file(data->dev, &dev_attr_triggered_stats);
+	if (ret)
+		dev_err(dev, "Failed to create device file, %s\n",
+			dev_attr_triggered_stats.attr.name);
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	return 0;
