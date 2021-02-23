@@ -204,6 +204,8 @@ static int lwis_release(struct inode *node, struct file *fp)
 			lwis_platform_update_bts(lwis_dev, /*bw_peak=*/0,
 						 /*bw_read=*/0, /*bw_write=*/0);
 		}
+		/* remove voted qos */
+		lwis_platform_remove_qos(lwis_dev);
 		/* Release device event states if no more client is using */
 		lwis_device_event_states_clear_locked(lwis_dev);
 	}

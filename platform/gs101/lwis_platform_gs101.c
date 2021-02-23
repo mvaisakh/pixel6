@@ -138,16 +138,15 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev, "Failed to enable core clock\n");
 			return ret;
 		}
-	}
-
-	/* TODO(b/173493818): We currently see some stability issue on specific device
-	 * and sensor due to INT clock vote to 100 MHz. Set the minimum INT requirement
-	 * to 200Mhz for now.
-	 */
-	ret = lwis_platform_update_qos(lwis_dev, 200000, CLOCK_FAMILY_INT);
-	if (ret < 0) {
-		dev_err(lwis_dev->dev, "Failed to initial INT clock\n");
-		return ret;
+		/* TODO(b/173493818): We currently see some stability issue on specific device
+		 * and sensor due to INT clock vote to 100 MHz. Set the minimum INT requirement
+		 * to 200Mhz for now.
+		 */
+		ret = lwis_platform_update_qos(lwis_dev, 200000, CLOCK_FAMILY_INT);
+		if (ret < 0) {
+			dev_err(lwis_dev->dev, "Failed to initial INT clock\n");
+			return ret;
+		}
 	}
 
 	if (lwis_dev->bts_scenario_name) {
@@ -278,28 +277,17 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		exynos_pm_qos_remove_request(&platform->pm_qos_hpg);
 	}
 #endif
-
-	switch (lwis_dev->clock_family) {
-	case CLOCK_FAMILY_INTCAM:
-		if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam)) {
-			exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
-		}
-		break;
-	case CLOCK_FAMILY_CAM:
-		if (exynos_pm_qos_request_active(&platform->pm_qos_cam)) {
-			exynos_pm_qos_remove_request(&platform->pm_qos_cam);
-		}
-		break;
-	case CLOCK_FAMILY_TNR:
-#if defined(CONFIG_SOC_GS101)
-		if (exynos_pm_qos_request_active(&platform->pm_qos_tnr)) {
-			exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
-		}
-#endif
-		break;
-	default:
-		break;
+	if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
 	}
+	if (exynos_pm_qos_request_active(&platform->pm_qos_cam)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_cam);
+	}
+#if defined(CONFIG_SOC_GS101)
+	if (exynos_pm_qos_request_active(&platform->pm_qos_tnr)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
+	}
+#endif
 	return 0;
 }
 
