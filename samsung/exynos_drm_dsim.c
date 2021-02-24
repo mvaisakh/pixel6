@@ -1514,12 +1514,12 @@ static int __dsim_wait_for_pl_fifo_empty(struct dsim_device *dsim)
 
 static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim, bool is_long)
 {
-	int ret;
+	int ret = 0;
 
 	if (is_long)
 		ret = __dsim_wait_for_pl_fifo_empty(dsim);
-	else
-		ret = __dsim_wait_for_ph_fifo_empty(dsim);
+
+	ret |= __dsim_wait_for_ph_fifo_empty(dsim);
 
 	if (ret)
 		dsim_dump(dsim);
