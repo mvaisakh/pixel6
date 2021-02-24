@@ -1063,15 +1063,19 @@ static int p9221_get_property(struct power_supply *psy,
 		val->intval = ret ? : temp * 1000; /* mV to uV */
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
-		ret = p9221_ready_to_read(charger);
-		if (!ret) {
-			u32 mv;
+		if (charger->wlc_dc_enabled) {
+			val->intval = charger->pdata->max_vout_mv * 1000; /* mV to uV */
+		} else {
+			ret = p9221_ready_to_read(charger);
+			if (!ret) {
+				u32 mv;
 
-			ret = charger->chip_get_vout_max(charger, &mv);
-			if (ret)
-				val->intval = ret;
-			else
-				val->intval = mv * 1000; /* mv to uV */
+				ret = charger->chip_get_vout_max(charger, &mv);
+				if (ret)
+					val->intval = ret;
+				else
+					val->intval = mv * 1000; /* mv to uV */
+			}
 		}
 		break;
 
