@@ -6015,12 +6015,12 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	}
 #endif
 
-	bdata->proc_dir_name = NULL;
-	of_property_read_string(np, "st,proc_dir_name",
-				&bdata->proc_dir_name);
-	if(!bdata->proc_dir_name)
-		bdata->proc_dir_name = "fts";
-	dev_info(dev, "proc_dir_name = %s\n", bdata->proc_dir_name);
+	bdata->device_name = NULL;
+	of_property_read_string(np, "st,device_name",
+				&bdata->device_name);
+	if(!bdata->device_name)
+		bdata->device_name = FTS_TS_DRV_NAME;
+	dev_info(dev, "device_name = %s\n", bdata->device_name);
 
 	return OK;
 }
@@ -6176,10 +6176,11 @@ static int fts_probe(struct spi_device *client)
 		goto ProbeErrorExit_5;
 	}
 	info->input_dev->dev.parent = &client->dev;
-	info->input_dev->name = FTS_TS_DRV_NAME;
+	info->input_dev->name = info->board->device_name;
 	scnprintf(info->fts_ts_phys, sizeof(info->fts_ts_phys), "%s/input0",
 		 info->input_dev->name);
 	info->input_dev->phys = info->fts_ts_phys;
+	info->input_dev->uniq = info->input_dev->name;
 	info->input_dev->id.bustype = bus_type;
 	info->input_dev->id.vendor = 0x0001;
 	info->input_dev->id.product = 0x0002;
