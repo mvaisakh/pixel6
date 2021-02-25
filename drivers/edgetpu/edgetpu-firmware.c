@@ -495,16 +495,22 @@ ssize_t edgetpu_firmware_get_name(struct edgetpu_dev *etdev, char *buf,
 	const char *fw_name;
 
 	if (!et_fw)
-		return -ENODEV;
+		goto fw_none;
 
 	mutex_lock(&et_fw->p->fw_desc_lock);
+	if (edgetpu_firmware_status_locked(etdev) != FW_VALID)
+		goto unlock_fw_none;
 	fw_name = et_fw->p->fw_desc.buf.name;
-	if (fw_name)
-		ret = scnprintf(buf, buflen, "%s\n", fw_name);
-	else
-		ret = -ENODATA;
+	if (!fw_name)
+		goto unlock_fw_none;
+	ret = scnprintf(buf, buflen, "%s\n", fw_name);
 	mutex_unlock(&et_fw->p->fw_desc_lock);
 	return ret;
+
+unlock_fw_none:
+	mutex_unlock(&et_fw->p->fw_desc_lock);
+fw_none:
+	return scnprintf(buf, buflen, "[none]\n");
 }
 
 static ssize_t load_firmware_show(

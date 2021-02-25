@@ -136,6 +136,7 @@ struct edgetpu_client {
 struct edgetpu_mapping;
 struct edgetpu_mailbox_manager;
 struct edgetpu_kci;
+struct edgetpu_kci_response_element;
 struct edgetpu_telemetry_ctx;
 struct edgetpu_mempool;
 
@@ -331,6 +332,14 @@ void edgetpu_setup_mmu(struct edgetpu_dev *etdev);
 
 /* Read TPU timestamp */
 u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev);
+
+/*
+ * Handle chip-specific incoming requests from firmware over KCI
+ * Note: This will get called from the system's work queue.
+ * Code should not block for extended periods of time
+ */
+void edgetpu_chip_handle_reverse_kci(struct edgetpu_dev *etdev,
+				     struct edgetpu_kci_response_element *resp);
 
 /* Device -> Core API */
 

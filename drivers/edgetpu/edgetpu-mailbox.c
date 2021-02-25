@@ -611,10 +611,10 @@ void edgetpu_mailbox_remove_all(struct edgetpu_mailbox_manager *mgr)
 }
 
 /*
- * The interrupt handler for mailboxes.
+ * The interrupt handler for KCI and VII mailboxes.
  *
- * This handler loops through mailboxes with an interrupt pending and invokes
- * their IRQ handlers.
+ * This handler loops through such mailboxes with an interrupt pending and
+ *  invokes their IRQ handlers.
  */
 irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr)
 {
@@ -625,7 +625,7 @@ irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr)
 		return IRQ_NONE;
 
 	read_lock(&mgr->mailboxes_lock);
-	for (i = 0; i < mgr->num_mailbox; i++) {
+	for (i = 0; i < mgr->vii_index_to; i++) {
 		mailbox = mgr->mailboxes[i];
 		if (!mailbox)
 			continue;

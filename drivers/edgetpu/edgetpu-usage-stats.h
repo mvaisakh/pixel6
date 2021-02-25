@@ -83,6 +83,8 @@ struct edgetpu_usage_stats {
 };
 
 int edgetpu_usage_add(struct edgetpu_dev *etdev, struct tpu_usage *tpu_usage);
+int edgetpu_usage_get_utilization(struct edgetpu_dev *etdev,
+				  enum edgetpu_usage_component component);
 void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf);
 void edgetpu_usage_stats_init(struct edgetpu_dev *etdev);
 void edgetpu_usage_stats_exit(struct edgetpu_dev *etdev);

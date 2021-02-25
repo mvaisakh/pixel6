@@ -817,9 +817,9 @@ static void dump_mboxes(struct seq_file *s, struct edgetpu_dev *etdev)
 	enum edgetpu_csrs base;
 	uint32_t val;
 	int mbox_id;
-	int n_p2p_mbox_dump = min(EDGETPU_NUM_P2P_MAILBOXES, 2);
+	int n_p2p_mbox_dump = EDGETPU_NUM_P2P_MAILBOXES;
 
-	/* Dump VII mailboxes plus 2 P2P (if any) + KCI. */
+	/* Dump VII mailboxes plus P2P (if any) + KCI. */
 	for (mbox_id = 0, base = EDGETPU_MBOX_BASE;
 	     mbox_id < EDGETPU_NUM_VII_MAILBOXES + n_p2p_mbox_dump + 1;
 	     mbox_id++, base += EDGETPU_MBOX_CSRS_SIZE) {

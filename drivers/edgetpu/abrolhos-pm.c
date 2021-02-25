@@ -5,6 +5,7 @@
  * Copyright (C) 2020 Google, Inc.
  */
 
+#include <linux/atomic.h>
 #include <linux/delay.h>
 #include <linux/gsa/gsa_tpu.h>
 #include <linux/module.h>
@@ -20,7 +21,26 @@
 #include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
 
+#include "soc/google/exynos_pm_qos.h"
+#include "soc/google/bts.h"
+
 #include "edgetpu-pm.c"
+
+/*
+ * Encode INT/MIF values as a 16 bit pair in the 32-bit return value
+ * (in units of MHz, to provide enough range)
+ */
+#define PM_QOS_INT_SHIFT		(16)
+#define PM_QOS_MIF_MASK			(0xFFFF)
+#define PM_QOS_FACTOR			(1000)
+
+/* INT/MIF requests for memory bandwidth */
+static struct exynos_pm_qos_request int_min;
+static struct exynos_pm_qos_request mif_min;
+
+/* BTS */
+static unsigned int performance_scenario;
+static atomic64_t scenario_count = ATOMIC_INIT(0);
 
 /* Default power state: the lowest power state that keeps firmware running */
 static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
@@ -448,7 +468,7 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 	    !edgetpu_pchannel_power_down(etdev, false))
 		return;
 
-	cancel_work_sync(&etdev->kci->work);
+	edgetpu_kci_cancel_work_queues(etdev->kci);
 	etdev_warn(etdev, "Forcing shutdown through power policy\n");
 	/* Request GSA shutdown to make sure the R52 core is reset */
 	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
@@ -465,6 +485,24 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_ACTIVE_OD);
 }
 
+static void abrolhos_pm_cleanup_bts_scenario(struct edgetpu_dev *etdev)
+{
+	if (!performance_scenario)
+		return;
+	while (atomic64_fetch_dec(&scenario_count) > 0) {
+		int ret = bts_del_scenario(performance_scenario);
+
+		if (ret) {
+			atomic64_set(&scenario_count, 0);
+			etdev_warn_once(
+				etdev,
+				"error %d in cleaning up BTS scenario %u\n",
+				ret, performance_scenario);
+			return;
+		}
+	}
+}
+
 static void abrolhos_power_down(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
@@ -473,6 +511,12 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	int res;
 
 	etdev_info(etdev, "Powering down\n");
+
+	/* Remove our vote for INT/MIF state (if any) */
+	exynos_pm_qos_update_request(&int_min, 0);
+	exynos_pm_qos_update_request(&mif_min, 0);
+
+	abrolhos_pm_cleanup_bts_scenario(etdev);
 
 	if (abrolhos_pwr_state_get(etdev->dev, &val)) {
 		etdev_warn(etdev, "Failed to read current power state\n");
@@ -488,7 +532,7 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 		edgetpu_kci_update_usage(etdev);
 		abrolhos_pm_shutdown_firmware(edgetpu_pdev, etdev,
 					      edgetpu_pdev);
-		cancel_work_sync(&etdev->kci->work);
+		edgetpu_kci_cancel_work_queues(etdev->kci);
 	}
 
 	res = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
@@ -561,10 +605,82 @@ static struct edgetpu_pm_handlers abrolhos_pm_handlers = {
 
 int abrolhos_pm_create(struct edgetpu_dev *etdev)
 {
+	exynos_pm_qos_add_request(&int_min, PM_QOS_DEVICE_THROUGHPUT, 0);
+	exynos_pm_qos_add_request(&mif_min, PM_QOS_BUS_THROUGHPUT, 0);
+
+	performance_scenario = bts_get_scenindex("tpu_performance");
+
+	if (!performance_scenario)
+		etdev_warn(etdev, "tpu_performance BTS scenario not found\n");
+
 	return edgetpu_pm_create(etdev, &abrolhos_pm_handlers);
 }
 
 void abrolhos_pm_destroy(struct edgetpu_dev *etdev)
 {
+	abrolhos_pm_cleanup_bts_scenario(etdev);
+	exynos_pm_qos_remove_request(&int_min);
+	exynos_pm_qos_remove_request(&mif_min);
+
 	edgetpu_pm_destroy(etdev);
+}
+
+void abrolhos_pm_set_pm_qos(struct edgetpu_dev *etdev, u32 pm_qos_val)
+{
+	s32 int_val = (pm_qos_val >> PM_QOS_INT_SHIFT) * PM_QOS_FACTOR;
+	s32 mif_val = (pm_qos_val & PM_QOS_MIF_MASK) * PM_QOS_FACTOR;
+
+	etdev_dbg(etdev, "%s: pm_qos request - int = %d mif = %d\n", __func__,
+		  int_val, mif_val);
+
+	exynos_pm_qos_update_request(&int_min, int_val);
+	exynos_pm_qos_update_request(&mif_min, mif_val);
+}
+
+static void abrolhos_pm_activate_bts_scenario(struct edgetpu_dev *etdev)
+{
+	/* bts_add_scenario() keeps track of reference count internally.*/
+	int ret;
+
+	if (!performance_scenario)
+		return;
+	ret = bts_add_scenario(performance_scenario);
+	if (ret)
+		etdev_warn_once(etdev, "error %d adding BTS scenario %u\n", ret,
+				performance_scenario);
+	else
+		atomic64_inc(&scenario_count);
+}
+
+static void abrolhos_pm_deactivate_bts_scenario(struct edgetpu_dev *etdev)
+{
+	/* bts_del_scenario() keeps track of reference count internally.*/
+	int ret;
+
+	if (!performance_scenario)
+		return;
+	ret = bts_del_scenario(performance_scenario);
+	if (ret)
+		etdev_warn_once(etdev, "error %d deleting BTS scenario %u\n",
+				ret, performance_scenario);
+	else
+		atomic64_dec(&scenario_count);
+}
+
+void abrolhos_pm_set_bts(struct edgetpu_dev *etdev, u32 bts_val)
+{
+	etdev_dbg(etdev, "%s: bts request - val = %u\n", __func__, bts_val);
+
+	switch (bts_val) {
+	case 0:
+		abrolhos_pm_deactivate_bts_scenario(etdev);
+		break;
+	case 1:
+		abrolhos_pm_activate_bts_scenario(etdev);
+		break;
+	default:
+		etdev_warn(etdev, "%s: invalid BTS request value: %u\n",
+			   __func__, bts_val);
+		break;
+	}
 }

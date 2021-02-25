@@ -14,6 +14,8 @@
 #define STATE_RUN					0
 #define EDGETPU_PCHANNEL_STATE_CHANGE_TIMEOUT		1000	/* 1 ms */
 #define EDGETPU_PCHANNEL_STATE_CHANGE_RETRIES		10
+#define EDGETPU_PCHANNEL_RETRY_DELAY_MIN		900
+#define EDGETPU_PCHANNEL_RETRY_DELAY_MAX		1000
 
 struct edgetpu_pm_private;
 struct edgetpu_pm;

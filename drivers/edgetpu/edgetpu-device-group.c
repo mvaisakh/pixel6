@@ -814,6 +814,28 @@ bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout)
 	return ret;
 }
 
+/* parameter to be used in async iova mapping jobs */
+struct iova_mapping_worker_param {
+	struct edgetpu_device_group *group;
+	struct edgetpu_host_map *hmap;
+	uint idx;
+};
+
+static int edgetpu_map_iova_sgt_worker(struct iova_mapping_worker_param *param)
+{
+	struct edgetpu_device_group *group = param->group;
+	uint i = param->idx;
+	struct edgetpu_host_map *hmap = param->hmap;
+	const struct edgetpu_mapping *map = &hmap->map;
+	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
+	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
+
+	edgetpu_mmu_reserve(etdev, map->alloc_iova, map->alloc_size);
+	return edgetpu_mmu_map_iova_sgt(etdev, map->device_address,
+					&hmap->sg_tables[i], map->dir,
+					ctx_id);
+}
+
 /*
  * Requests all devices except the leader in @group to map
  * @hmap->map.device_address -> corresponding @hmap->sg_tables[].
@@ -827,34 +849,66 @@ bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout)
 static int edgetpu_device_group_map_iova_sgt(struct edgetpu_device_group *group,
 					     struct edgetpu_host_map *hmap)
 {
-	struct edgetpu_dev *etdev;
-	const struct edgetpu_mapping *map = &hmap->map;
-	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
 	uint i;
 	int ret;
+	int val;
+	const struct edgetpu_mapping *map = &hmap->map;
+	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
+	struct edgetpu_async_ctx *ctx;
+	struct iova_mapping_worker_param *params;
 
-	for (i = 1; i < group->n_clients; i++) {
-		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_mmu_reserve(etdev, map->alloc_iova, map->alloc_size);
-		ret = edgetpu_mmu_map_iova_sgt(etdev, map->device_address,
-					       &hmap->sg_tables[i], map->dir,
-					       ctx_id);
-		if (ret)
-			goto rollback;
+	/* only leader in @group */
+	if (group->n_clients == 1) {
+		ret = 0;
+		goto out;
 	}
-
-	return 0;
+	ctx = edgetpu_async_alloc_ctx();
+	params = kmalloc_array(group->n_clients - 1, sizeof(*params),
+			       GFP_KERNEL);
+	if (!params || !ctx) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
+	for (i = 0; i < group->n_clients - 1; i++) {
+		params[i].hmap = hmap;
+		params[i].group = group;
+		params[i].idx = i + 1;
+		ret = edgetpu_async_add_job(
+			ctx, &params[i],
+			(edgetpu_async_job_t)edgetpu_map_iova_sgt_worker);
+		if (ret)
+			goto out_free;
+	}
+	ret = edgetpu_async_wait(ctx);
+	if (ret)
+		goto out_free;
+	for_each_async_ret(ctx, val, i) {
+		if (val) {
+			ret = val;
+			goto rollback;
+		}
+	}
+	goto out_free;
 
 rollback:
-	while (i > 1) {
-		i--;
-		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_mmu_unmap_iova_sgt_attrs(etdev, map->device_address,
-						 &hmap->sg_tables[i], map->dir,
-						 ctx_id,
-						 DMA_ATTR_SKIP_CPU_SYNC);
-		edgetpu_mmu_free(etdev, map->alloc_iova, map->alloc_size);
+	for_each_async_ret(ctx, val, i) {
+		if (val == 0) {
+			struct edgetpu_dev *etdev;
+			int idx = i + 1;
+
+			etdev = edgetpu_device_group_nth_etdev(group, idx);
+			edgetpu_mmu_unmap_iova_sgt_attrs(
+				etdev, map->device_address,
+				&hmap->sg_tables[idx], map->dir, ctx_id,
+				DMA_ATTR_SKIP_CPU_SYNC);
+			edgetpu_mmu_free(etdev, map->alloc_iova,
+					 map->alloc_size);
+		}
 	}
+out_free:
+	edgetpu_async_free_ctx(ctx);
+	kfree(params);
+out:
 	return ret;
 }
 
@@ -1239,7 +1293,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 
 	mutex_unlock(&group->lock);
 	arg->device_address = map->device_address;
-
+	kfree(pages);
 	return 0;
 
 error_release_map:

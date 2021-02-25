@@ -7,6 +7,7 @@
 #ifndef __ABROLHOS_PM_H__
 #define __ABROLHOS_PM_H__
 
+#include "edgetpu-kci.h"
 #include "edgetpu-internal.h"
 
 /* Can't build out of tree with acpm_dvfs unless kernel supports ACPM */
@@ -66,8 +67,16 @@ enum tpu_pwr_state {
 	TPU_ACTIVE_OD  = 1230000,
 };
 
-#define TPU_POLICY_MAX	TPU_ACTIVE_OD
+/*
+ * Request codes from firmware
+ * Values must match with firmware code base
+ */
+enum abrolhos_reverse_kci_code {
+	RKCI_CODE_PM_QOS = RKCI_CHIP_CODE_FIRST + 1,
+	RKCI_CODE_BTS = RKCI_CHIP_CODE_FIRST + 2,
+};
 
+#define TPU_POLICY_MAX	TPU_ACTIVE_OD
 
 #define TPU_ACPM_DOMAIN			7
 
@@ -150,5 +159,8 @@ int abrolhos_pm_create(struct edgetpu_dev *etdev);
 
 void abrolhos_pm_destroy(struct edgetpu_dev *etdev);
 
+void abrolhos_pm_set_pm_qos(struct edgetpu_dev *etdev, u32 pm_qos_val);
+
+void abrolhos_pm_set_bts(struct edgetpu_dev *etdev, u32 bts_val);
 
 #endif /* __ABROLHOS_PM_H__ */

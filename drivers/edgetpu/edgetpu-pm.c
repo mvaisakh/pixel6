@@ -241,6 +241,10 @@ int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev, bool wait_on_pactive)
 	do {
 		ret = pchannel_state_change_request(etdev, STATE_SHUTDOWN);
 		tries--;
+		/* Throttle the retry */
+		if (tries && ret == -EACCES)
+			usleep_range(EDGETPU_PCHANNEL_RETRY_DELAY_MIN,
+				     EDGETPU_PCHANNEL_RETRY_DELAY_MAX);
 	} while (ret && tries);
 
 	if (ret)

@@ -13,6 +13,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
+#include <linux/version.h>
 
 #include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
@@ -141,6 +142,9 @@ static int edgetpu_state2power_internal(unsigned long state, u32 *power,
 }
 
 static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+				       struct thermal_zone_device *tz,
+#endif
 				       u32 *power)
 {
 	unsigned long state_original;
@@ -152,6 +156,9 @@ static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
 }
 
 static int edgetpu_state2power(struct thermal_cooling_device *cdev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+			       struct thermal_zone_device *tz,
+#endif
 			       unsigned long state, u32 *power)
 {
 	struct edgetpu_thermal *cooling = cdev->devdata;
@@ -167,6 +174,9 @@ static int edgetpu_state2power(struct thermal_cooling_device *cdev,
 }
 
 static int edgetpu_power2state(struct thermal_cooling_device *cdev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+			       struct thermal_zone_device *tz,
+#endif
 			       u32 power, unsigned long *state)
 {
 	int i;

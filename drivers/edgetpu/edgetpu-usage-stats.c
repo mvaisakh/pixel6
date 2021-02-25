@@ -167,6 +167,22 @@ void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 	}
 }
 
+int edgetpu_usage_get_utilization(struct edgetpu_dev *etdev,
+				  enum edgetpu_usage_component component)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+	int32_t val;
+
+	if (component >= EDGETPU_USAGE_COMPONENT_COUNT)
+		return -1;
+	edgetpu_kci_update_usage(etdev);
+	mutex_lock(&ustats->usage_stats_lock);
+	val = ustats->component_utilization[component];
+	ustats->component_utilization[component] = 0;
+	mutex_unlock(&ustats->usage_stats_lock);
+	return val;
+}
+
 static ssize_t tpu_usage_show(struct device *dev,
 			      struct device_attribute *attr,
 			      char *buf)
@@ -247,14 +263,10 @@ static ssize_t device_utilization_show(struct device *dev,
 				       char *buf)
 {
 	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
-	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
 	int32_t val;
 
-	edgetpu_kci_update_usage(etdev);
-	mutex_lock(&ustats->usage_stats_lock);
-	val = ustats->component_utilization[EDGETPU_USAGE_COMPONENT_DEVICE];
-	ustats->component_utilization[EDGETPU_USAGE_COMPONENT_DEVICE] = 0;
-	mutex_unlock(&ustats->usage_stats_lock);
+	val = edgetpu_usage_get_utilization(
+			etdev, EDGETPU_USAGE_COMPONENT_DEVICE);
 	return scnprintf(buf, PAGE_SIZE, "%d\n", val);
 }
 static DEVICE_ATTR_RO(device_utilization);
@@ -264,14 +276,10 @@ static ssize_t tpu_utilization_show(struct device *dev,
 				    char *buf)
 {
 	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
-	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
 	int32_t val;
 
-	edgetpu_kci_update_usage(etdev);
-	mutex_lock(&ustats->usage_stats_lock);
-	val = ustats->component_utilization[EDGETPU_USAGE_COMPONENT_TPU];
-	ustats->component_utilization[EDGETPU_USAGE_COMPONENT_TPU] = 0;
-	mutex_unlock(&ustats->usage_stats_lock);
+	val = edgetpu_usage_get_utilization(
+			etdev, EDGETPU_USAGE_COMPONENT_TPU);
 	return scnprintf(buf, PAGE_SIZE, "%d\n", val);
 }
 static DEVICE_ATTR_RO(tpu_utilization);

@@ -6,6 +6,7 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
+#include <linux/circ_buf.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h> /* dmam_alloc_coherent */
 #include <linux/errno.h>
@@ -74,6 +75,97 @@ static void edgetpu_kci_free_queue(struct edgetpu_dev *etdev,
 	edgetpu_iremap_free(etdev, mem, EDGETPU_CONTEXT_KCI);
 }
 
+/* Handle one incoming request from firmware */
+static void
+edgetpu_reverse_kci_consume_response(struct edgetpu_dev *etdev,
+				     struct edgetpu_kci_response_element *resp)
+{
+	if (resp->code <= RKCI_CHIP_CODE_LAST) {
+		edgetpu_chip_handle_reverse_kci(etdev, resp);
+		return;
+	}
+	/* We don't have any generic reverse KCI codes yet */
+	etdev_warn(etdev, "%s: Unrecognized KCI request: %u\n", __func__,
+		   resp->code);
+}
+
+/* Remove one element from the circular buffer */
+static int
+edgetpu_reverse_kci_remove_response(struct edgetpu_reverse_kci *rkci,
+				    struct edgetpu_kci_response_element *resp)
+{
+	unsigned long head, tail;
+	int ret = 0;
+
+	spin_lock(&rkci->consumer_lock);
+
+	/*
+	 * Prevents the compiler from discarding and reloading its cached value
+	 * additionally forces the CPU to order against subsequent memory
+	 * references.
+	 * Shamelessly stolen from:
+	 * https://www.kernel.org/doc/html/latest/core-api/circular-buffers.html
+	 */
+	head = smp_load_acquire(&rkci->head);
+	tail = rkci->tail;
+	if (CIRC_CNT(head, tail, REVERSE_KCI_BUFFER_SIZE) >= 1) {
+		*resp = rkci->buffer[tail];
+		tail = (tail + 1) & (REVERSE_KCI_BUFFER_SIZE - 1);
+		ret = 1;
+		smp_store_release(&rkci->tail, tail);
+	}
+	spin_unlock(&rkci->consumer_lock);
+	return ret;
+}
+
+/* Worker for incoming requests from firmware */
+static void edgetpu_reverse_kci_work(struct work_struct *work)
+{
+	struct edgetpu_kci_response_element resp;
+	struct edgetpu_reverse_kci *rkci =
+		container_of(work, struct edgetpu_reverse_kci, work);
+	struct edgetpu_kci *kci = container_of(rkci, struct edgetpu_kci, rkci);
+
+	while (edgetpu_reverse_kci_remove_response(rkci, &resp))
+		edgetpu_reverse_kci_consume_response(kci->mailbox->etdev,
+						     &resp);
+}
+
+/*
+ * Add an incoming request from firmware to the circular buffer and
+ * schedule the work queue for processing
+ */
+static int edgetpu_reverse_kci_add_response(
+	struct edgetpu_kci *kci,
+	const struct edgetpu_kci_response_element *resp)
+{
+	struct edgetpu_reverse_kci *rkci = &kci->rkci;
+	unsigned long head, tail;
+	int ret = 0;
+
+	spin_lock(&rkci->producer_lock);
+	head = rkci->head;
+	tail = READ_ONCE(rkci->tail);
+	if (CIRC_SPACE(head, tail, REVERSE_KCI_BUFFER_SIZE) >= 1) {
+		rkci->buffer[head] = *resp;
+		smp_store_release(&rkci->head,
+				  (head + 1) & (REVERSE_KCI_BUFFER_SIZE - 1));
+		schedule_work(&rkci->work);
+	} else {
+		ret = -ENOSPC;
+	}
+	spin_unlock(&rkci->producer_lock);
+	return ret;
+}
+
+/* Initialize the Reverse KCI handler */
+static void edgetpu_reverse_kci_init(struct edgetpu_reverse_kci *rkci)
+{
+	spin_lock_init(&rkci->producer_lock);
+	spin_lock_init(&rkci->consumer_lock);
+	INIT_WORK(&rkci->work, edgetpu_reverse_kci_work);
+}
+
 /*
  * Pops the wait_list until the sequence number of @resp is found, and copies
  * @resp to the found entry.
@@ -118,11 +210,24 @@ static void edgetpu_kci_consume_wait_list(
 	spin_unlock(&kci->wait_list_lock);
 }
 
-/* Handler of a response. */
-static void edgetpu_kci_handle_response(
-		struct edgetpu_kci *kci,
-		const struct edgetpu_kci_response_element *resp)
+/*
+ * Handler of a response.
+ * if seq has the MSB set, forward the response to the reverse KCI handler
+ */
+static void
+edgetpu_kci_handle_response(struct edgetpu_kci *kci,
+			    const struct edgetpu_kci_response_element *resp)
 {
+	if (resp->seq & KCI_REVERSE_FLAG) {
+		int ret = edgetpu_reverse_kci_add_response(kci, resp);
+
+		if (ret)
+			etdev_warn(
+				kci->mailbox->etdev,
+				"Failed to handle reverse KCI code %u (%d)\n",
+				resp->code, ret);
+		return;
+	}
 	edgetpu_kci_consume_wait_list(kci, resp);
 }
 
@@ -348,6 +453,7 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	spin_lock_init(&kci->wait_list_lock);
 	init_waitqueue_head(&kci->wait_list_waitq);
 	INIT_WORK(&kci->work, edgetpu_kci_consume_responses_work);
+	edgetpu_reverse_kci_init(&kci->rkci);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
 	return 0;
 }
@@ -375,6 +481,13 @@ int edgetpu_kci_reinit(struct edgetpu_kci *kci)
 	return 0;
 }
 
+void edgetpu_kci_cancel_work_queues(struct edgetpu_kci *kci)
+{
+	/* Cancel KCI and reverse KCI workers */
+	cancel_work_sync(&kci->work);
+	cancel_work_sync(&kci->rkci.work);
+}
+
 void edgetpu_kci_release(struct edgetpu_dev *etdev, struct edgetpu_kci *kci)
 {
 	if (!kci)
@@ -384,8 +497,7 @@ void edgetpu_kci_release(struct edgetpu_dev *etdev, struct edgetpu_kci *kci)
 	 * need to free them.
 	 */
 
-	/* Cancel the queue consumer worker or wait until it's done. */
-	cancel_work_sync(&kci->work);
+	edgetpu_kci_cancel_work_queues(kci);
 
 	edgetpu_kci_free_queue(etdev, &kci->cmd_queue_mem);
 	edgetpu_kci_free_queue(etdev, &kci->resp_queue_mem);
@@ -736,13 +848,19 @@ int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 	struct edgetpu_kci_response_element resp;
 	int ret;
 
+	/* Quick return if device already powered down, else get PM ref. */
+	if (!edgetpu_is_powered(etdev))
+		return -EAGAIN;
+	ret = edgetpu_pm_get(etdev->pm);
+	if (ret)
+		return ret;
 	ret = edgetpu_iremap_alloc(etdev, EDGETPU_USAGE_BUFFER_SIZE, &mem,
 				   EDGETPU_CONTEXT_KCI);
 
 	if (ret) {
 		etdev_warn_once(etdev, "%s: failed to allocate usage buffer",
 				__func__);
-		return ret;
+		goto out;
 	}
 
 	cmd.dma.address = mem.tpu_addr;
@@ -758,6 +876,9 @@ int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 		etdev_warn_once(etdev, "%s: error %d", __func__, ret);
 
 	edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
+
+out:
+	edgetpu_pm_put(etdev->pm);
 	return ret;
 }
 

@@ -9,6 +9,7 @@
 #include <asm/page.h>
 #include <linux/atomic.h>
 #include <linux/compiler.h>
+#include <linux/cred.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
@@ -19,6 +20,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/uidgid.h>
 
 #include "edgetpu-config.h"
 #include "edgetpu-debug-dump.h"
@@ -39,13 +41,17 @@
 
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
 
-/* TODO(b/156444816): Check permission. */
 static int edgetpu_mmap_compat(struct edgetpu_client *client,
 			       struct vm_area_struct *vma)
 {
 	int ret;
 	ulong phys_base, vma_size, map_size;
 
+	/* TODO(b/156444816): return -EPERM for non-root users */
+	if (!uid_eq(current_euid(), GLOBAL_ROOT_UID))
+		etdev_warn_once(
+			client->etdev,
+			"mmap full CSR region without root permission is deprecated");
 	vma_size = vma->vm_end - vma->vm_start;
 	map_size = min(vma_size, client->reg_window.size);
 	phys_base = client->etdev->regs.phys +
@@ -304,6 +310,7 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 {
 	edgetpu_chip_exit(etdev);
 	edgetpu_debug_dump_exit(etdev);
+	edgetpu_device_dram_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_usage_stats_exit(etdev);
 	edgetpu_mmu_detach(etdev);

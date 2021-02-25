@@ -21,6 +21,9 @@
 /* Initializes structures for device DRAM management. */
 int edgetpu_device_dram_init(struct edgetpu_dev *etdev);
 
+/* Teardown actions for device DRAM management. */
+void edgetpu_device_dram_exit(struct edgetpu_dev *etdev);
+
 /*
  * Returns the dma-buf FD allocated on the @client's DRAM with size @size.
  */
@@ -63,6 +66,10 @@ void edgetpu_device_dram_free(struct edgetpu_dev *etdev, void __iomem *kva,
 /* Add any private debug info related to @dmabuf in seq_file @s. */
 void edgetpu_device_dram_dmabuf_info_show(struct dma_buf *dmabuf,
 					  struct seq_file *s);
+
+/* Return amount of on-device DRAM currently used in bytes. */
+size_t edgetpu_device_dram_used(struct edgetpu_dev *etdev);
+
 #else /* !CONFIG_EDGETPU_DEVICE_DRAM */
 
 static inline int edgetpu_device_dram_init(struct edgetpu_dev *etdev)
@@ -72,6 +79,10 @@ static inline int edgetpu_device_dram_init(struct edgetpu_dev *etdev)
 	 * device DRAM is not supported.
 	 */
 	return 0;
+}
+
+static inline void edgetpu_device_dram_exit(struct edgetpu_dev *etdev)
+{
 }
 
 static inline int edgetpu_device_dram_getfd(struct edgetpu_client *client,
@@ -112,6 +123,10 @@ static inline void edgetpu_device_dram_dmabuf_info_show(struct dma_buf *dmabuf,
 {
 }
 
+static inline size_t edgetpu_device_dram_used(struct edgetpu_dev *etdev)
+{
+	return 0;
+}
 #endif /* CONFIG_EDGETPU_DEVICE_DRAM */
 
 #endif /* __EDGETPU_DRAM_H__ */

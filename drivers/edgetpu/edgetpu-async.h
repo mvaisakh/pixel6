@@ -49,6 +49,12 @@ struct edgetpu_async_entry {
 };
 
 /*
+ * Reduce duplicate code in for_each_async_ret. Do not use this in other place.
+ */
+#define _set_ret_val(ctx, val, i)                                              \
+	((i) < (ctx)->n_jobs ? (val = (typeof(val))(size_t)((ctx)->ret[i])) : 0)
+
+/*
  * Helper to loop through the return values. Use this if and only if
  * edgetpu_async_wait(ctx) is executed successfully.
  *
@@ -56,11 +62,8 @@ struct edgetpu_async_entry {
  *   for_each_async_ret(ctx, ret, i) { ... }
  */
 #define for_each_async_ret(ctx, val, i)                                        \
-	for (i = 0, val = (typeof(val))(size_t)((ctx)->ret[i]);                \
-	     i < (ctx)->n_jobs;                                                \
-	     ++i < (ctx)->n_jobs ?                                             \
-		     (val = (typeof(val))(size_t)((ctx)->ret[i])) :            \
-		     0)
+	for (i = 0, _set_ret_val(ctx, val, 0); i < (ctx)->n_jobs;              \
+	     ++i, _set_ret_val(ctx, val, i))
 
 /*
  * Helper to loop through the jobs currently added, with the same order of

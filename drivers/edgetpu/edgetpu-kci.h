@@ -21,6 +21,12 @@
 #include "edgetpu-mailbox.h"
 
 /*
+ * Maximum number of outstanding KCI requests from firmware
+ * This is used to size a circular buffer, so it must be a power of 2
+ */
+#define REVERSE_KCI_BUFFER_SIZE		(8)
+
+/*
  * The status field in a firmware response is set to this by us when the
  * response is fetched from the queue.
  */
@@ -36,6 +42,14 @@
  *
  */
 #define KCI_STATUS_NO_RESPONSE		(2)
+
+
+/*
+ * Command/response sequence numbers capped at half the range of the 64-bit
+ * value range. The second half is reserved for incoming requests from firmware.
+ * These are tagged with the MSB set.
+ */
+#define KCI_REVERSE_FLAG		(0x8000000000000000ull)
 
 /* command/response queue elements for KCI */
 
@@ -62,8 +76,8 @@ struct edgetpu_kci_response_element {
 	 */
 	u16 status;
 	/*
-	 * Return value is not currently needed by KCI, but firmware may set
-	 * this to a watermark value to aid in debugging
+	 * Return value is not currently needed by KCI command responses, but
+	 * incoming requests from firmware may encode information here.
 	 */
 	u32 retval;
 } __packed;
@@ -99,6 +113,19 @@ enum edgetpu_kci_code {
 };
 
 /*
+ * Definition of reverse KCI request code ranges
+ * 16-bit unsigned integer
+ * First half is reserved for chip specific codes,
+ * Generic codes can use the second half.
+ */
+enum edgetpu_reverse_kci_code {
+	RKCI_CHIP_CODE_FIRST = 0,
+	RKCI_CHIP_CODE_LAST = 0x7FFF,
+	RKCI_GENERIC_CODE_FIRST = 0x8000,
+	RKCI_GENERIC_CODE_LAST = 0xFFFF,
+};
+
+/*
  * Definition of code in response elements.
  * It is a 16-bit unsigned integer.
  */
@@ -131,6 +158,19 @@ struct edgetpu_kci_wait_list {
 	struct edgetpu_kci_response_element *resp;
 };
 
+/* Struct to hold a circular buffer for incoming KCI responses */
+struct edgetpu_reverse_kci {
+	unsigned long head;
+	unsigned long tail;
+	struct edgetpu_kci_response_element buffer[REVERSE_KCI_BUFFER_SIZE];
+	/* Lock to push elements in the buffer from the interrupt handler */
+	spinlock_t producer_lock;
+	/* Lock to pop elements from the buffer in the worker */
+	spinlock_t consumer_lock;
+	/* Worker to handle responses */
+	struct work_struct work;
+};
+
 struct edgetpu_kci {
 	struct edgetpu_mailbox *mailbox;
 	struct mutex mailbox_lock;	/* protects mailbox */
@@ -151,6 +191,8 @@ struct edgetpu_kci {
 	/* queue for waiting for the wait_list to be consumed */
 	wait_queue_head_t wait_list_waitq;
 	struct work_struct work;	/* worker of consuming responses */
+	/* Handler for reverse (firmware -> kernel) requests */
+	struct edgetpu_reverse_kci rkci;
 };
 
 struct edgetpu_kci_device_group_detail {
@@ -287,5 +329,8 @@ int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_ids);
 
 /* Inform the firmware the VII with @mailbox_ids are closed. */
 int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids);
+
+/* Cancel work queues or wait until they're done */
+void edgetpu_kci_cancel_work_queues(struct edgetpu_kci *kci);
 
 #endif /* __EDGETPU_KCI_H__ */

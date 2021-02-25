@@ -12,6 +12,7 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
 #include "abrolhos-platform.h"
+#include "abrolhos-pm.h"
 #include "edgetpu-telemetry.h"
 
 #define HOST_NONSECURE_INTRSRCMASKREG	0x000f0004
@@ -140,3 +141,30 @@ struct edgetpu_dumpregs_range edgetpu_chip_tile_statusregs_ranges[] = {
 };
 int edgetpu_chip_tile_statusregs_nranges =
 	ARRAY_SIZE(edgetpu_chip_tile_statusregs_ranges);
+
+static void edgetpu_chip_set_pm_qos(struct edgetpu_dev *etdev, u32 value)
+{
+	abrolhos_pm_set_pm_qos(etdev, value);
+}
+
+static void edgetpu_chip_set_bts(struct edgetpu_dev *etdev, u32 value)
+{
+	abrolhos_pm_set_bts(etdev, value);
+}
+
+void edgetpu_chip_handle_reverse_kci(struct edgetpu_dev *etdev,
+				     struct edgetpu_kci_response_element *resp)
+{
+	switch (resp->code) {
+	case RKCI_CODE_PM_QOS:
+		edgetpu_chip_set_pm_qos(etdev, resp->retval);
+		break;
+	case RKCI_CODE_BTS:
+		edgetpu_chip_set_bts(etdev, resp->retval);
+		break;
+	default:
+		etdev_warn(etdev, "%s: Unrecognized KCI request: %u\n",
+			   __func__, resp->code);
+		break;
+	}
+}
