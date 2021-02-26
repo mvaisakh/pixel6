@@ -258,6 +258,7 @@
 #define P9222_CHIP_ID				0x9222
 #define P9222RE_SYSTEM_MODE_REG			0x3F
 #define P9222RE_VOUT_REG			0x50
+#define P9222RE_VOUT_SET_REG			0x52
 #define P9222RE_VRECT_REG			0x54
 #define P9222RE_IOUT_REG			0x58
 #define P9222RE_DIE_TEMP_REG			0x5A
@@ -272,6 +273,10 @@
  */
 #define P9222_SYS_OP_MODE_WPC_BASIC		BIT(5)
 #define P9222_SYS_OP_MODE_WPC_EXTD		BIT(6)
+
+#define P9222_VOUT_SET_MIN_MV			3500
+#define P9222_VOUT_SET_MAX_MV			12500
+
 
 /*
  * P9382 unique registers

@@ -375,6 +375,19 @@ static int p9412_chip_get_vout_max(struct p9221_charger_data *chgr, u32 *mv)
 	return 0;
 }
 
+static int p9222_chip_get_vout_max(struct p9221_charger_data *chgr, u32 *mv)
+{
+	int ret;
+	u8 val;
+
+	ret = chgr->reg_read_8(chgr, P9222RE_VOUT_SET_REG, &val);
+	if (ret)
+		return ret;
+
+	*mv = val * 100 + 3500; /* Vout = value * 100mV + 3500mV */
+	return 0;
+}
+
 /*
  * chip_set_vout_max
  *
@@ -404,6 +417,17 @@ static int p9412_chip_set_vout_max(struct p9221_charger_data *chgr, u32 mv)
 		return -EINVAL;
 
 	ret = chgr->reg_write_16(chgr, P9412_VOUT_SET_REG, mv / 10);
+	return ret;
+}
+
+static int p9222_chip_set_vout_max(struct p9221_charger_data *chgr, u32 mv)
+{
+	int ret;
+
+	if (mv < P9222_VOUT_SET_MIN_MV || mv > P9222_VOUT_SET_MAX_MV)
+		return -EINVAL;
+
+	ret = chgr->reg_write_8(chgr, P9222RE_VOUT_SET_REG, (mv - 3500) / 100);
 	return ret;
 }
 
@@ -1242,8 +1266,8 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_tx_ilim = p9221_chip_get_tx_ilim;
 		chgr->chip_set_tx_ilim = p9221_chip_set_tx_ilim;
 		chgr->chip_get_die_temp = p9222_chip_get_die_temp;
-		chgr->chip_get_vout_max = p9221_chip_get_vout_max;
-		chgr->chip_set_vout_max = p9221_chip_set_vout_max;
+		chgr->chip_get_vout_max = p9222_chip_get_vout_max;
+		chgr->chip_set_vout_max = p9222_chip_set_vout_max;
 		chgr->chip_tx_mode_en = p9221_chip_tx_mode;
 		chgr->chip_set_data_buf = p9221_set_data_buf;
 		chgr->chip_get_data_buf = p9221_get_data_buf;
