@@ -316,7 +316,7 @@ static void s6e3hc3_panel_init(struct exynos_panel *ctx)
 }
 
 static const struct exynos_display_underrun_param underrun_param = {
-	.te_idle_us = 500,
+	.te_idle_us = 350,
 	.te_var = 1,
 };
 
