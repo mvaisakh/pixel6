@@ -110,7 +110,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 #define PD_MSG_TA_CUR_STEP		50000	/* uA */
 
 /* Maximum WCRX voltage threshold */
-#define PCA9468_WCRX_MAX_VOL		10000000 /* uV */
+#define PCA9468_WCRX_MAX_VOL		9750000 /* uV */
 /* WCRX voltage Step */
 #define WCRX_VOL_STEP			100000	/* uV */
 
