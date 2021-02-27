@@ -24,23 +24,6 @@
 #define MAX77759_CHG_INT_COUNT 2
 #define MAX77759_PMIC_PMIC_ID_MW	0x3b
 
-/*
- * b/156527175: workaround for read only MAX77759_CHG_DETAILS_03
- * MAX77759_PMIC_TOPSYS_INT_MASK_SPR_7 is used to detect exit from fshipmode.
- * The register (MAX77759_PMIC_TOPSYS_INT_MASK) is type S and the bit is reset
- * to 1 on power loss. The reports MAX77759_CHG_DETAILS_03 when the bit
- * is 1 and report 0 when the bit is set to 0.
- */
-#define MAX77759_FSHIP_EXIT_DTLS	  MAX77759_PMIC_TOPSYS_INT_MASK
-#define MAX77759_FSHIP_EXIT_DTLS_RD \
-				MAX77759_PMIC_TOPSYS_INT_MASK_SPR_7
-#define MAX77759_FSHIP_EXIT_DTLS_RD_SHIFT \
-				MAX77759_PMIC_TOPSYS_INT_MASK_SPR_7_SHIFT
-#define MAX77759_FSHIP_EXIT_DTLS_RD_MASK \
-				MAX77759_PMIC_TOPSYS_INT_MASK_SPR_7_MASK
-#define MAX77759_FSHIP_EXIT_DTLS_RD_CLEAR \
-				MAX77759_PMIC_TOPSYS_INT_MASK_SPR_7_CLEAR
-
 int max777x9_pmic_reg_read(struct i2c_client *client,
 			   u8 addr, u8 *val, int len);
 int max777x9_pmic_reg_write(struct i2c_client *client,
@@ -68,32 +51,31 @@ static inline int max77759_read_batt_id(struct i2c_client *client,
 }
 #endif
 
-/* mux configuration in MAX77759_PMIC_CONTROL_FG */
-#define THMIO_MUX_BATT_PACK	0
-#define THMIO_MUX_USB_TEMP	1
-#define THMIO_MUX_BATT_ID	2
-
-int max77759_read_batt_conn(struct i2c_client *client, int *temp);
-int max77759_read_usb_temp(struct i2c_client *client, int *temp);
-
-/* Hardware modes */
-enum max77759_charger_modes {
-	MAX77759_CHGR_MODE_ALL_OFF = 0x00,
-	MAX77759_CHGR_MODE_BUCK_ON = 0x04,
-	MAX77759_CHGR_MODE_CHGR_BUCK_ON = 0x05,
-	MAX77759_CHGR_MODE_BOOST_UNO_ON = 0x08,
-	MAX77759_CHGR_MODE_BOOST_ON = 0x09,
-	MAX77759_CHGR_MODE_OTG_BOOST_ON = 0x0a,
-	MAX77759_CHGR_MODE_BUCK_BOOST_UNO_ON = 0x0c,
-	MAX77759_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON = 0x0d,
-	MAX77759_CHGR_MODE_OTG_BUCK_BOOST_ON = 0x0e,
-	MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON = 0x0f,
-};
-
-/*
+/* ----------------------------------------------------------------------------
  * GS101 usecases
+ * Platform specific, will need to be moved outside the driver.
+ *
+ * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSx	Name
+ * ----------------------------------------------------------------------------
+ * 1-1	1	0	x	0	IF-PMIC-VBUS	0	0/0	USB_CHG
+ * 1-2	2	0	x	0	DC VBUS		0	0/0	USB_DC
+ * 2-1	1	0	0	1	IF-PMIC-VBUS	2	0/1	USB_CHG_WLC_TX
+ * 2-2	2	0	0	1	DC CHG		2	0/1	USB_DC_WLC_TX
+ * 3-1	0	0	1	0	IF-PMIC-WCIN	0	0/0	WLC_RX
+ * 3-2	0	0	2	0	DC WCIN		0	0/0	WLC_DC
+ * 4-1	0	1	1	0	IF-PMIC-WCIN	1	1/0	USB_OTG_WLC_RX
+ * 4-2	0	1	2	0	DC WCIN		1	1/0	USB_OTG_WLC_DC
+ * 5-1	0	1	0	0	0		1	1/0	USB_OTG
+ * 5-2	0	1	0	0	OTG 5V		0	0/0	USB_OTG_FRS
+ * 6-2	0	0	0	1	0		2	0/1	WLC_TX
+ * 7-2	0	1	0	1	MW OTG 5V	2	0/1	USB_OTG_WLC_TX
+ * 8	0	0	0	0	0		0	0/0	IDLE
+ * ----------------------------------------------------------------------------
+ *
+ * Ext_Boost = 0 off, 1 = OTG 5V, 2 = WTX 7.5
+ * USB_chg = 0 off, 1 = on, 2 = PPS
+ * WLC_chg = 0 off, 1 = on, 2 = PPS
  */
-
 struct max77759_foreach_cb_data {
 	struct gvotable_election *el;
 
@@ -124,11 +106,11 @@ struct max77759_foreach_cb_data {
 };
 
 struct max77759_usecase_data {
-	int bst_on;	/* */
-	int bst_sel;	/* */
-	int ext_bst_ctl;/* MW VENDOR_EXTBST_CTRL */
+	int bst_on;		/* ext boost */
+	int bst_sel;		/* 5V or 7.5V */
+	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
 
-	int ls2_en;	/* OVP LS2 */
+	int ls2_en;		/* OVP LS2, rtx case */
 
 	int vin_is_valid;	/* MAX20339 STATUS1.vinvalid */
 	int lsw1_is_open;	/* MAX20339 STATUS2.lsw1open */
@@ -136,30 +118,6 @@ struct max77759_usecase_data {
 
 	bool init_done;
 };
-
-/*
- *  Use cases, these are platform specific and need to be outside the driver.
- * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSx	Name
- * ----------------------------------------------------------------------------
- * 1-1	1	0	x	0	IF-PMIC-VBUS	0	0/0	USB_CHG
- * 1-2	2	0	x	0	DC VBUS		0	0/0	USB_DC
- * 2-1	1	0	0	1	IF-PMIC-VBUS	2	0/1	USB_CHG_WLC_TX
- * 2-2	2	0	0	1	DC CHG		2	0/1	USB_DC_WLC_TX
- * 3-1	0	0	1	0	IF-PMIC-WCIN	0	0/0	WLC_RX
- * 3-2	0	0	2	0	DC WCIN		0	0/0	WLC_DC
- * 4-1	0	1	1	0	IF-PMIC-WCIN	1	1/0	USB_OTG_WLC_RX
- * 4-2	0	1	2	0	DC WCIN		1	1/0	USB_OTG_WLC_DC
- * 5-1	0	1	0	0	0		1	1/0	USB_OTG
- * 5-2	0	1	0	0	OTG 5V		0	0/0	USB_OTG_FRS
- * 6-2	0	0	0	1	0		2	0/1	WLC_TX
- * 7-2	0	1	0	1	MW OTG 5V	2	0/1	USB_OTG_WLC_TX
- * 8	0	0	0	0	0		0	0/0	IDLE
- * ----------------------------------------------------------------------------
- *
- * Ext_Boost = 0 off, 1 = OTG 5V, 2 = WTX 7.5
- * USB_chg = 0 off, 1 = on, 2 = PPS
- * WLC_chg = 0 off, 1 = on, 2 = PPS
- */
 
 enum gsu_usecases {
 	GSU_RAW_MODE 		= -1,	/* raw mode, default, */
