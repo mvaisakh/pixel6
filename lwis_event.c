@@ -818,6 +818,11 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 		if (emit) {
 			event = kzalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
+			if (!event) {
+				pr_err("Failed to allocate event entry\n");
+				return -ENOMEM;
+			}
+
 			event->event_info.event_id = event_id;
 			event->event_info.event_counter = event_counter;
 			event->event_info.timestamp_ns = timestamp;
@@ -875,6 +880,10 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id, 
 	struct lwis_event_entry *event;
 
 	event = kzalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
+	if (!event) {
+		pr_err("Failed to allocate event entry\n");
+		return -ENOMEM;
+	}
 	event->event_info.event_id = event_id;
 	event->event_info.payload_size = payload_size;
 	if (payload_size > 0) {
@@ -986,6 +995,11 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 
 		if (emit) {
 			event = kzalloc(sizeof(struct lwis_event_entry), GFP_ATOMIC);
+			if (!event) {
+				pr_err("Failed to allocate event entry\n");
+				return;
+			}
+
 			event->event_info.event_id = event_id;
 			event->event_info.event_counter = event_counter;
 			event->event_info.timestamp_ns = timestamp;
@@ -1031,6 +1045,10 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
 
 		event = kzalloc(sizeof(struct lwis_event_entry) + payload_size,
 				GFP_ATOMIC);
+		if (!event) {
+			pr_err("Failed to allocate event entry\n");
+			return;
+		}
 		event->event_info.event_id = event_id;
 		event->event_info.event_counter = 0;
 		event->event_info.timestamp_ns = timestamp;
