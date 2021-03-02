@@ -2448,7 +2448,11 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 	if (ret < 0)
 		return IRQ_NONE;
 
+	pr_debug("INT : %02x %02x\n", chg_int[0], chg_int[1]);
+
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M) {
+		pr_debug("%s: INSEL\n", __func__);
+
 		ret = max77759_chgr_input_mask_clear(data);
 		if (ret < 0)
 			pr_info("INT : %x %x : clear=%d\n",
@@ -2457,20 +2461,25 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 			atomic_inc(&data->insel_cnt);
 	}
 
-	pr_debug("INT : %x %x\n", chg_int[0], chg_int[1]);
-
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
+		pr_debug("%s: SYS_UVLO1\n", __func__);
+
 		atomic_inc(&data->sysuvlo1_cnt);
 		max77759_vdroop_irq_work(data, VDROOP1);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO2_I) {
+		pr_debug("%s: SYS_UVLO2\n", __func__);
+
 		atomic_inc(&data->sysuvlo2_cnt);
 		max77759_vdroop_irq_work(data, VDROOP2);
 	}
 
-	if (chg_int[1] & MAX77759_CHG_INT2_BAT_OILO_I)
+	if (chg_int[1] & MAX77759_CHG_INT2_BAT_OILO_I) {
+		pr_debug("%s: BAT_OILO\n", __func__);
+
 		atomic_inc(&data->batoilo_cnt);
+	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
@@ -2492,6 +2501,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 	/* wired input is changed */
 	if (chg_int[0] & MAX77759_CHG_INT_MASK_CHGIN_M) {
+		pr_debug("%s: CHGIN\n", __func__);
 
 		if (data->chgin_psy)
 			power_supply_changed(data->chgin_psy);
@@ -2500,8 +2510,14 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 	}
 
 	/* wireless input is changed */
-	if (data->wcin_psy && (chg_int[0] & MAX77759_CHG_INT_MASK_WCIN_M))
-		power_supply_changed(data->wcin_psy);
+	if (chg_int[0] & MAX77759_CHG_INT_MASK_WCIN_M) {
+		pr_debug("%s: WCIN\n", __func__);
+
+		if (data->wcin_psy)
+			power_supply_changed(data->wcin_psy);
+		else
+			power_supply_changed(data->psy);
+	}
 
 	/* someting else is changed */
 	broadcast = (chg_int[0] & MAX77759_CHG_INT_MASK_CHG_M) |
