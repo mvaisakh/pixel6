@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
 #include <linux/slab.h>
 
 #include "lwis_i2c.h"
@@ -225,6 +226,25 @@ error_probe:
 	return ret;
 }
 
+#ifdef CONFIG_PM
+static int lwis_i2c_device_suspend(struct device *dev)
+{
+	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
+	if (lwis_dev->pm_hibernation == 0) {
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
+static int lwis_i2c_device_resume(struct device *dev)
+{
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(lwis_i2c_device_ops, lwis_i2c_device_suspend, lwis_i2c_device_resume);
+#endif
+
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
 	{ .compatible = LWIS_I2C_DEVICE_COMPAT },
@@ -239,6 +259,7 @@ static struct platform_driver lwis_driver = {
 			.name = LWIS_DRIVER_NAME,
 			.owner = THIS_MODULE,
 			.of_match_table = lwis_id_match,
+			.pm	= &lwis_i2c_device_ops,
 		},
 };
 #else /* CONFIG_OF not defined */

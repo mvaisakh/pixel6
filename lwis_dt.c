@@ -731,6 +731,20 @@ error_parse_power_down_seqs:
 	return ret;
 }
 
+static int parse_pm_hibernation(struct lwis_device *lwis_dev)
+{
+	struct device *dev;
+	struct device_node *dev_node;
+
+	dev = &(lwis_dev->plat_dev->dev);
+	dev_node = dev->of_node;
+	lwis_dev->pm_hibernation = 1;
+
+	of_property_read_u32(dev_node, "pm-hibernation", &lwis_dev->pm_hibernation);
+
+	return 0;
+}
+
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -820,6 +834,12 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	ret = parse_phys(lwis_dev);
 	if (ret) {
 		pr_err("Error parsing phy's\n");
+		return ret;
+	}
+
+	ret = parse_pm_hibernation(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing pm hibernation");
 		return ret;
 	}
 
