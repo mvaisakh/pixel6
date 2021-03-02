@@ -202,7 +202,7 @@ static void exynos_panel_get_panel_rev(struct exynos_panel *ctx)
 	dev_dbg(ctx->dev, "panel_rev: 0x%x\n", ctx->panel_rev);
 }
 
-static int exynos_panel_init(struct exynos_panel *ctx)
+int exynos_panel_init(struct exynos_panel *ctx)
 {
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	int ret;
@@ -226,6 +226,7 @@ static int exynos_panel_init(struct exynos_panel *ctx)
 
 	return ret;
 }
+EXPORT_SYMBOL(exynos_panel_init);
 
 void exynos_panel_reset(struct exynos_panel *ctx)
 {
