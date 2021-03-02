@@ -161,6 +161,8 @@ static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
 		drm_atomic_get_old_crtc_state(crtc_state->state, crtc);
 	struct drm_plane *plane;
 	const struct drm_plane_state *plane_state;
+	const struct decon_device *decon = exynos_crtc->ctx;
+	const struct exynos_dqe *dqe = decon->dqe;
 	uint32_t max_bpc;
 
 	DRM_DEBUG("%s +\n", __func__);
@@ -174,7 +176,10 @@ static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
 	if (exynos_crtc->ops->atomic_check)
 		exynos_crtc->ops->atomic_check(exynos_crtc, crtc_state);
 
-	if (new_exynos_state->force_bpc == EXYNOS_BPC_MODE_UNSPECIFIED) {
+	if ((dqe->force_disabled || !new_exynos_state->dqe.enabled) &&
+			(decon->config.out_bpc == 8)) {
+		new_exynos_state->in_bpc = 8;
+	} else if (new_exynos_state->force_bpc == EXYNOS_BPC_MODE_UNSPECIFIED) {
 		max_bpc = 8; /* initial bpc value */
 		drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, crtc_state) {
 			const struct drm_format_info *info;
