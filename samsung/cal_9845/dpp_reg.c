@@ -61,11 +61,11 @@ static struct cal_regs_desc regs_dpp[REGS_DPP_TYPE_MAX][REGS_DPP_ID_MAX];
 #define dma_write_mask(id, offset, val, mask)	\
 	cal_write_mask(dma_regs_desc(id), offset, val, mask)
 
-void dpp_regs_desc_init(void __iomem *regs, const char *name,
+void dpp_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
 		enum dpp_regs_type type, unsigned int id)
 {
 	cal_regs_desc_check(type, id, REGS_DPP_TYPE_MAX, REGS_DPP_ID_MAX);
-	cal_regs_desc_set(regs_dpp, regs, name, type, id);
+	cal_regs_desc_set(regs_dpp, regs, start, name, type, id);
 }
 
 /****************** IDMA CAL functions ******************/

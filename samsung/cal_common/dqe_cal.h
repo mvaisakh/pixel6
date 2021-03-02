@@ -70,8 +70,8 @@ struct exynos_atc {
 	__u8 lt_calc_ab_shift;
 };
 
-void
-dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver);
+void dqe_regs_desc_init(void __iomem *regs, phys_addr_t start,
+			const char *name, enum dqe_version ver);
 void dqe_reg_init(u32 width, u32 height);
 void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut);
 void dqe_reg_set_cgc_lut(const struct cgc_lut *lut);
@@ -99,4 +99,5 @@ void dqe_reg_set_histogram(enum histogram_state state);
 void dqe_reg_get_histogram_bins(struct histogram_bins *bins);
 void dqe_reg_set_size(u32 width, u32 height);
 void dqe_dump(void);
+void dqe_reg_set_drm_write_protected(bool protected);
 #endif /* __SAMSUNG_DQE_CAL_H__ */

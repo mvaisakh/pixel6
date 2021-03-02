@@ -82,11 +82,13 @@ static struct cal_regs_dqe regs_dqe;
 #define hist_read_relaxed(offset)	dqe_read_relaxed(offset + hist_offset)
 
 void
-dqe_regs_desc_init(void __iomem *regs, const char *name, enum dqe_version ver)
+dqe_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
+		   enum dqe_version ver)
 {
 	regs_dqe.version = ver;
 	regs_dqe.desc.regs = regs;
 	regs_dqe.desc.name = name;
+	regs_dqe.desc.start = start;
 }
 
 static void dqe_reg_set_img_size(u32 width, u32 height)
@@ -178,7 +180,6 @@ void dqe_reg_set_cgc_lut(const struct cgc_lut *lut)
 		cgc_write_mask(DQE0_CGC_CON, 0, CGC_EN);
 		return;
 	}
-
 	for (i = 0; i < DRM_SAMSUNG_CGC_LUT_REG_CNT; ++i) {
 		dqe_write_relaxed(DQE0_CGC_LUT_R(i), lut->r_values[i]);
 		dqe_write_relaxed(DQE0_CGC_LUT_G(i), lut->g_values[i]);
@@ -628,6 +629,11 @@ void dqe_reg_set_histogram(enum histogram_state state)
 {
 	u32 val = 0;
 
+	if (regs_dqe.desc.write_protected) {
+		cal_log_debug(0, "%s: ignored in protected status\n", __func__);
+		return;
+	}
+
 	if (state == HISTOGRAM_OFF)
 		val = 0;
 	else if (state == HISTOGRAM_FULL)
@@ -672,4 +678,9 @@ void dqe_dump(void)
 
 	cal_log_info(0, "\n=== DQE SFR ===\n");
 	dpu_print_hex_dump(dqe_regs, dqe_regs, 0x20);
+}
+
+void dqe_reg_set_drm_write_protected(bool protected)
+{
+	cal_set_write_protected(&regs_dqe.desc, protected);
 }

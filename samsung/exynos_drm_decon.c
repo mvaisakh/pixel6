@@ -1453,18 +1453,23 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 
 static int decon_remap_regs(struct decon_device *decon)
 {
+	struct resource res;
 	struct device *dev = decon->dev;
 	struct device_node *np = dev->of_node;
 	int i, ret = 0;
 
 	i = of_property_match_string(np, "reg-names", "main");
-	decon->regs.regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		decon_err(decon, "failed to get main resource\n");
+		goto err;
+	}
+	decon->regs.regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(decon->regs.regs)) {
 		decon_err(decon, "failed decon ioremap\n");
 		ret = PTR_ERR(decon->regs.regs);
 		goto err;
 	}
-	decon_regs_desc_init(decon->regs.regs, "decon", REGS_DECON,
+	decon_regs_desc_init(decon->regs.regs, res.start, "decon", REGS_DECON,
 			decon->id);
 
 	np = of_find_compatible_node(NULL, NULL, "samsung,exynos9-disp_ss");
@@ -1474,13 +1479,17 @@ static int decon_remap_regs(struct decon_device *decon)
 		goto err_main;
 	}
 	i = of_property_match_string(np, "reg-names", "sys");
-	decon->regs.ss_regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		decon_err(decon, "failed to get sys resource\n");
+		goto err_main;
+	}
+	decon->regs.ss_regs = ioremap(res.start, resource_size(&res));
 	if (!decon->regs.ss_regs) {
 		decon_err(decon, "failed to map sysreg-disp address.");
 		ret = -ENOMEM;
 		goto err_main;
 	}
-	decon_regs_desc_init(decon->regs.ss_regs, "decon-ss", REGS_DECON_SYS,
+	decon_regs_desc_init(decon->regs.ss_regs, res.start, "decon-ss", REGS_DECON_SYS,
 			decon->id);
 
 	return ret;

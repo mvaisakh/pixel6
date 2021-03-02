@@ -666,6 +666,7 @@ ATTRIBUTE_GROUPS(atc);
 extern u32 gs_chipid_get_type(void);
 struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)
 {
+	struct resource res;
 	struct device *dev = decon->dev;
 	struct device_node *np = dev->of_node;
 	struct exynos_dqe *dqe;
@@ -675,6 +676,10 @@ struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)
 	i = of_property_match_string(np, "reg-names", "dqe");
 	if (i < 0) {
 		pr_info("display quality enhancer is not supported\n");
+		return NULL;
+	}
+	if (of_address_to_resource(np, i, &res)) {
+		pr_err("failed to get dqe resource\n");
 		return NULL;
 	}
 
@@ -689,7 +694,7 @@ struct exynos_dqe *exynos_dqe_register(struct decon_device *decon)
 	}
 
 	dqe_version = gs_chipid_get_type() ? DQE_V2 : DQE_V1;
-	dqe_regs_desc_init(dqe->regs, "dqe", dqe_version);
+	dqe_regs_desc_init(dqe->regs, res.start, "dqe", dqe_version);
 	dqe->funcs = &dqe_funcs;
 	dqe->initialized = false;
 	dqe->decon = decon;

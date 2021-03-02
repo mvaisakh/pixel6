@@ -15,7 +15,7 @@
 
 #include <drm/samsung_drm.h>
 
-void hdr_regs_desc_init(void __iomem *regs, const char *name, u32 id);
+void hdr_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name, u32 id);
 void hdr_reg_set_hdr(u32 id, bool en);
 void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut);
 void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut);

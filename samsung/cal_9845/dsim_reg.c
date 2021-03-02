@@ -2035,11 +2035,11 @@ static void dsim_reg_set_dphy_pll_stable_cnt(u32 id, u32 cnt)
 			DSIM_PHY_PLL_STB_CNT_MASK);
 }
 
-void dsim_regs_desc_init(void __iomem *regs, const char *name,
+void dsim_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
 		enum dsim_regs_type type, unsigned int id)
 {
 	cal_regs_desc_check(type, id, REGS_DSIM_TYPE_MAX, MAX_DSI_CNT);
-	cal_regs_desc_set(regs_desc, regs, name, type, id);
+	cal_regs_desc_set(regs_desc, regs, start, name, type, id);
 }
 
 static void dpu_sysreg_select_dphy_rst_control(u32 id, u32 sel)
@@ -2526,4 +2526,9 @@ u32 diag_dsim_dphy_reg_read_mask(u32 id, u16 offset, u32 mask)
 u32 diag_dsim_dphy_extra_reg_read_mask(u32 id, u16 offset, u32 mask)
 {
 	return dsim_phy_extra_read_mask(id, offset, mask);
+}
+
+void dsim_reg_set_drm_write_protected(u32 id, bool write_protected)
+{
+	cal_set_write_protected(dsim_regs_desc(id), write_protected);
 }

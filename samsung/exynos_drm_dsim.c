@@ -1336,45 +1336,63 @@ static int dsim_parse_dt(struct dsim_device *dsim)
 
 static int dsim_remap_regs(struct dsim_device *dsim)
 {
+	struct resource res;
 	struct device *dev = dsim->dev;
 	struct device_node *np = dev->of_node;
 	int i, ret = 0;
 
 	i = of_property_match_string(np, "reg-names", "dsi");
-	dsim->res.regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		pr_err("failed to get dsi resource\n");
+		goto err;
+	}
+	dsim->res.regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(dsim->res.regs)) {
 		dsim_err(dsim, "failed to remap io region\n");
 		ret = PTR_ERR(dsim->res.regs);
 		goto err;
 	}
-	dsim_regs_desc_init(dsim->res.regs, "dsi", REGS_DSIM_DSI, dsim->id);
+	dsim_regs_desc_init(dsim->res.regs, res.start, "dsi", REGS_DSIM_DSI, dsim->id);
 
 	i = of_property_match_string(np, "reg-names", "dphy");
-	dsim->res.phy_regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		pr_err("failed to get dphy resource\n");
+		goto err;
+	}
+
+	dsim->res.phy_regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(dsim->res.phy_regs)) {
 		dsim_err(dsim, "failed to remap io region\n");
 		ret = PTR_ERR(dsim->res.regs);
 		goto err_dsi;
 	}
-	dsim_regs_desc_init(dsim->res.phy_regs, "dphy", REGS_DSIM_PHY,
+	dsim_regs_desc_init(dsim->res.phy_regs, res.start, "dphy", REGS_DSIM_PHY,
 			dsim->id);
 
 	i = of_property_match_string(np, "reg-names", "dphy-extra");
-	dsim->res.phy_regs_ex = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		pr_err("failed to get dphy resource\n");
+		goto err_dsi;
+	}
+	dsim->res.phy_regs_ex = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(dsim->res.phy_regs_ex))
 		dsim_warn(dsim, "failed to remap io region. it's optional\n");
-	dsim_regs_desc_init(dsim->res.phy_regs_ex, "dphy-extra",
+	dsim_regs_desc_init(dsim->res.phy_regs_ex, res.start, "dphy-extra",
 			REGS_DSIM_PHY_BIAS, dsim->id);
 
 	np = of_find_compatible_node(NULL, NULL, "samsung,exynos9-disp_ss");
 	i = of_property_match_string(np, "reg-names", "sys");
-	dsim->res.ss_reg_base = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		dsim_err(dsim, "failed to get sys resource\n");
+		goto err_dphy_ext;
+	}
+	dsim->res.ss_reg_base = ioremap(res.start, resource_size(&res));
 	if (!dsim->res.ss_reg_base) {
 		dsim_err(dsim, "failed to map sysreg-disp address.");
 		ret = PTR_ERR(dsim->res.ss_reg_base);
 		goto err_dphy_ext;
 	}
-	dsim_regs_desc_init(dsim->res.ss_reg_base, np->name, REGS_DSIM_SYS,
+	dsim_regs_desc_init(dsim->res.ss_reg_base, res.start, np->name, REGS_DSIM_SYS,
 			dsim->id);
 
 	return ret;

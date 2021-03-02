@@ -192,8 +192,8 @@ struct dsim_reg_config {
 	struct dsim_dphy_diag *dphy_diags;
 };
 
-void dsim_regs_desc_init(void __iomem *reg_base, const char *name,
-		enum dsim_regs_type type, unsigned int id);
+void dsim_regs_desc_init(void __iomem *reg_base, phys_addr_t start,
+			 const char *name, enum dsim_regs_type type, unsigned int id);
 
 /*************** DSIM CAL APIs exposed to DSIM driver ***************/
 /* DSIM control */
@@ -250,4 +250,5 @@ int dsim_dphy_diag_mask_from_range(uint8_t start, uint8_t end, uint32_t *mask);
 void dsim_reg_enable_packetgo(u32 id, u32 en);
 void dsim_reg_ready_packetgo(u32 id, u32 en);
 
+void dsim_reg_set_drm_write_protected(u32 id, bool write_protected);
 #endif /* __SAMSUNG_DSIM_CAL_H__ */

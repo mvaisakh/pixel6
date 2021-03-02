@@ -117,11 +117,11 @@ static struct cal_regs_desc regs_decon[REGS_DECON_TYPE_MAX][REGS_DECON_ID_MAX];
 #define dsc_write_mask(id, offset, val, mask)	\
 	cal_write_mask(sub_regs_desc(id), offset, val, mask)
 
-void decon_regs_desc_init(void __iomem *regs, const char *name,
+void decon_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
 		enum decon_regs_type type, unsigned int id)
 {
 	cal_regs_desc_check(type, id, REGS_DECON_TYPE_MAX, REGS_DECON_ID_MAX);
-	cal_regs_desc_set(regs_decon, regs, name, type, id);
+	cal_regs_desc_set(regs_decon, regs, start, name, type, id);
 }
 
 /******************* DECON CAL functions *************************/
@@ -2145,6 +2145,11 @@ int decon_reg_get_fs_interrupt_and_clear(u32 id)
 /* id: dsim_id */
 void decon_reg_set_start_crc(u32 id, u32 en)
 {
+	if (sub_regs_desc(id)->write_protected) {
+		pr_debug("ignored dsim%d crc in protected status\n", id);
+		return;
+	}
+
 	dsimif_write_mask(id, DSIMIF_CRC_CON(id), en ? ~0 : 0, CRC_START);
 }
 
@@ -2252,38 +2257,51 @@ u32 decon_reg_get_rsc_win(u32 id)
 #ifdef __linux__
 int __decon_init_resources(struct decon_device *decon)
 {
+	struct resource res;
 	struct device *dev = decon->dev;
 	struct device_node *np = dev->of_node;
 	int i, ret = 0;
 
 	i = of_property_match_string(np, "reg-names", "win");
-	decon->regs.win_regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		cal_log_err(decon->id, "failed to get win resource\n");
+		goto err;
+	}
+	decon->regs.win_regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(decon->regs.win_regs)) {
 		cal_log_err(decon->id, "failed decon win ioremap\n");
 		ret = PTR_ERR(decon->regs.win_regs);
 		goto err;
 	}
-	decon_regs_desc_init(decon->regs.win_regs, "decon_win",
+	decon_regs_desc_init(decon->regs.win_regs, res.start, "decon_win",
 			REGS_DECON_WIN, decon->id);
 
 	i = of_property_match_string(np, "reg-names", "sub");
-	decon->regs.sub_regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		cal_log_err(decon->id, "failed to get sub resource\n");
+		goto err_win;
+	}
+	decon->regs.sub_regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(decon->regs.sub_regs)) {
 		cal_log_err(decon->id, "failed decon sub ioremap\n");
 		ret = PTR_ERR(decon->regs.sub_regs);
 		goto err_win;
 	}
-	decon_regs_desc_init(decon->regs.sub_regs, "decon_sub",
+	decon_regs_desc_init(decon->regs.sub_regs, res.start, "decon_sub",
 			REGS_DECON_SUB, decon->id);
 
 	i = of_property_match_string(np, "reg-names", "wincon");
-	decon->regs.wincon_regs = of_iomap(np, i);
+	if (of_address_to_resource(np, i, &res)) {
+		cal_log_err(decon->id, "failed to get wincon resource\n");
+		goto err_sub;
+	}
+	decon->regs.wincon_regs = ioremap(res.start, resource_size(&res));
 	if (IS_ERR(decon->regs.wincon_regs)) {
 		cal_log_err(decon->id, "failed wincon ioremap\n");
 		ret = PTR_ERR(decon->regs.wincon_regs);
 		goto err_sub;
 	}
-	decon_regs_desc_init(decon->regs.wincon_regs, "decon_wincon",
+	decon_regs_desc_init(decon->regs.wincon_regs, res.start, "decon_wincon",
 			REGS_DECON_WINCON, decon->id);
 
 	return ret;
@@ -2313,4 +2331,9 @@ bool is_decon_using_ch(u32 id, u32 rsc_ch, u32 ch)
 bool is_decon_using_win(u32 id, u32 rsc_win, u32 win)
 {
 	return ((rsc_win >> (win * 4)) & 0xF) == OCCUPIED_BY_DECON(id);
+}
+
+void decon_reg_set_drm_write_protected(u32 id, bool protected)
+{
+	cal_set_write_protected(sub_regs_desc(id), protected);
 }

@@ -187,7 +187,7 @@ struct dpp_params_info {
 	enum dpp_sbwc_blk_size blk_size;
 };
 
-void dpp_regs_desc_init(void __iomem *regs, const char *name,
+void dpp_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
 		enum dpp_regs_type type, unsigned int id);
 
 /* DPP CAL APIs exposed to DPP driver */

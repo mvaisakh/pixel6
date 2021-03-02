@@ -270,7 +270,7 @@ struct decon_dsc {
 	unsigned char *dec_pps_t;
 };
 
-void decon_regs_desc_init(void __iomem *regs, const char *name,
+void decon_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
 		enum decon_regs_type type, unsigned int id);
 
 /*************** DECON CAL APIs exposed to DECON driver ***************/
@@ -345,6 +345,8 @@ void __decon_unmap_regs(struct decon_device *decon);
 #endif
 bool is_decon_using_ch(u32 id, u32 rsc_ch, u32 ch);
 bool is_decon_using_win(u32 id, u32 rsc_win, u32 win);
+
+void decon_reg_set_drm_write_protected(u32 id, bool protected);
 /*********************************************************************/
 
 #endif /* __SAMSUNG_DECON_CAL_H__ */

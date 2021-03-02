@@ -31,10 +31,11 @@ static struct cal_regs_desc regs_hdr[REGS_DPP_ID_MAX - 1];
 #define hdr_write_relaxed(id, offset, val)	\
 	cal_write_relaxed(hdr_regs_desc(id), offset, val)
 
-void hdr_regs_desc_init(void __iomem *regs, const char *name, u32 id)
+void hdr_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name, u32 id)
 {
 	regs_hdr[id].regs = regs;
 	regs_hdr[id].name = name;
+	regs_hdr[id].start = start;
 }
 
 void hdr_reg_set_hdr(u32 id, bool en)

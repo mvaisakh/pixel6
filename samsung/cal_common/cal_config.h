@@ -24,6 +24,7 @@
 #include <linux/iopoll.h>
 #include <linux/time.h>
 #include <linux/platform_device.h>
+#include <soc/google/exynos-el3_mon.h>
 #include <video/mipi_display.h>
 #include <drm/drm_print.h>
 #else
@@ -64,6 +65,8 @@ enum elem_size {
 struct cal_regs_desc {
 	const char *name;
 	void __iomem *regs;
+	volatile bool write_protected;
+	phys_addr_t start;
 };
 
 /* common function macro for register control file */
@@ -73,9 +76,10 @@ struct cal_regs_desc {
 	 cal_log_err(id, "type(%d): id(%d)\n", type, id);	\
 	 WARN_ON(1); }						\
 	 })
-#define cal_regs_desc_set(regs_desc, regs, name, type, id)	\
-	({ regs_desc[type][id].regs = regs;			\
-	 regs_desc[type][id].name = name;			\
+#define cal_regs_desc_set(regs_desc, regs, start, name, type, id)	\
+	({ regs_desc[type][id].regs = regs;				\
+	 regs_desc[type][id].name = name;				\
+	 regs_desc[type][id].start = start;				\
 	 cal_log_debug(id, "name(%s) type(%d) regs(%p)\n", name, type, regs);\
 	 })
 
@@ -89,7 +93,14 @@ static inline uint32_t cal_read(struct cal_regs_desc *regs_desc,
 static inline void cal_write(struct cal_regs_desc *regs_desc,
 		uint32_t offset, uint32_t val)
 {
-	writel(val, regs_desc->regs + offset);
+	if (unlikely(regs_desc->write_protected)) {
+		int ret = set_priv_reg(regs_desc->start + offset, val);
+		if (ret)
+			pr_err("%s: smc update error %d for %llx\n", __func__,
+				ret, regs_desc->start + offset);
+	} else {
+		writel(val, regs_desc->regs + offset);
+	}
 }
 
 static inline uint32_t cal_read_relaxed(struct cal_regs_desc *regs_desc,
@@ -101,7 +112,14 @@ static inline uint32_t cal_read_relaxed(struct cal_regs_desc *regs_desc,
 static inline void cal_write_relaxed(struct cal_regs_desc *regs_desc,
 		uint32_t offset, uint32_t val)
 {
-	writel_relaxed(val, regs_desc->regs + offset);
+	if (unlikely(regs_desc->write_protected)) {
+		int ret = set_priv_reg(regs_desc->start + offset, val);
+		if (ret)
+			pr_err("%s: smc update error %d for %llx\n", __func__,
+				ret, regs_desc->start + offset);
+	} else {
+		writel_relaxed(val, regs_desc->regs + offset);
+	}
 }
 
 static inline uint32_t cal_read_mask(struct cal_regs_desc *regs_desc,
@@ -168,6 +186,12 @@ static inline int cal_pack_lut_into_reg_pairs(const uint16_t *lut,
 		regs[i] = ((*lp) << low_shift) & low_mask;
 
 	return 0;
+}
+
+static inline void cal_set_write_protected(struct cal_regs_desc *regs_desc,
+				     bool protected)
+{
+	regs_desc->write_protected = protected;
 }
 
 #define cal_mask(val, mask)	(((val) & (mask)) >> (ffs(mask) - 1))

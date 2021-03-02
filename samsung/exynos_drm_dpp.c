@@ -386,11 +386,64 @@ static void __dpp_enable(struct dpp_device *dpp)
 
 #if IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
 
+static void set_resource_protection(bool dpu_protected)
+{
+	u32 decon_id;
+	u32 dsim_id;
+
+	pr_debug("%s DPU protection status changed to %d", __func__, dpu_protected);
+	for (decon_id = 0; decon_id < MAX_DECON_CNT; ++decon_id)
+		decon_reg_set_drm_write_protected(decon_id, dpu_protected);
+	dqe_reg_set_drm_write_protected(dpu_protected);
+	for (dsim_id = 0; dsim_id < MAX_DSI_CNT; ++dsim_id)
+		dsim_reg_set_drm_write_protected(dsim_id, dpu_protected);
+}
+
+static void update_secured_dpp_mask(struct dpp_device *dpp_to_change, bool enable) {
+	const struct drm_device *drm_dev;
+	struct exynos_drm_private *private;
+	u32 dpp_mask = BIT(dpp_to_change->id);
+
+	drm_dev = dpp_to_change->plane.base.dev;
+	private = drm_to_exynos_dev(drm_dev);
+	if (enable)
+		private->secured_dpp_mask |= dpp_mask;
+	else
+		private->secured_dpp_mask &= ~dpp_mask;
+}
+
+static bool update_resource_protection(struct dpp_device *dpp_to_change, bool enable)
+{
+	const struct drm_device *drm_dev;
+	const struct exynos_drm_private *private;
+	u32 dpp_mask = BIT(dpp_to_change->id);
+	u32 secure_mask;
+
+	drm_dev = dpp_to_change->plane.base.dev;
+	private = drm_to_exynos_dev(drm_dev);
+	secure_mask = private->secured_dpp_mask;
+
+	if (enable)
+		secure_mask |= dpp_mask;
+	else
+		secure_mask &= ~dpp_mask;
+
+	if ((secure_mask && !private->secured_dpp_mask) ||
+				(!secure_mask && private->secured_dpp_mask)) {
+		set_resource_protection(secure_mask);
+		return true;
+	}
+
+	/* resource protection flag is not changed */
+	return false;
+}
+
 static int set_protection(struct dpp_device *dpp, uint64_t modifier)
 {
 	bool protection;
 	u32 protection_id;
 	int ret = 0;
+	bool res_protection_changed = false;
 	static const u32 protection_ids[] = { PROT_L0, PROT_L1, PROT_L2,
 					PROT_L3, PROT_L4, PROT_L5, PROT_L12 };
 
@@ -402,16 +455,28 @@ static int set_protection(struct dpp_device *dpp, uint64_t modifier)
 		dpp_err(dpp, "failed to get protection id(%u)\n", dpp->id);
 		return -EINVAL;
 	}
-	protection_id = protection_ids[dpp->id];
 
+        /* Forward some register update to el3 if transit to protection mode */
+
+	if (protection)
+		res_protection_changed = update_resource_protection(dpp, true);
+
+	protection_id = protection_ids[dpp->id];
 	ret = exynos_smc(SMC_PROTECTION_SET, 0, protection_id,
 			(protection ? SMC_PROTECTION_ENABLE :
 			SMC_PROTECTION_DISABLE));
 	if (ret) {
 		dpp_err(dpp, "failed to %s protection(ch:%u, ret:%d)\n",
 				protection ? "enable" : "disable", dpp->id, ret);
+		if (protection && res_protection_changed)
+			set_resource_protection(false);
 		return ret;
 	}
+	/* Stop forwarding registers update to el3 if transit to none protection mode */
+	if (!protection)
+		update_resource_protection(dpp, false);
+	update_secured_dpp_mask(dpp, protection);
+
 	dpp->protection = protection;
 
 	dpp_debug(dpp, "ch:%u, en:%d\n", dpp->id, protection);
@@ -966,6 +1031,7 @@ irq_end:
 
 static int dpp_init_resources(struct dpp_device *dpp)
 {
+	struct resource res;
 	struct device *dev = dpp->dev;
 	struct device_node *np = dev->of_node;
 	struct platform_device *pdev;
@@ -974,12 +1040,16 @@ static int dpp_init_resources(struct dpp_device *dpp)
 	pdev = container_of(dev, struct platform_device, dev);
 
 	i = of_property_match_string(np, "reg-names", "dma");
+	if (of_address_to_resource(np, i, &res)) {
+		dpp_err(dpp, "failed to get dma resource\n");
+		return -EINVAL;
+	}
 	dpp->regs.dma_base_regs = of_iomap(np, i);
 	if (!dpp->regs.dma_base_regs) {
 		dpp_err(dpp, "failed to remap DPU_DMA SFR region\n");
 		return -EINVAL;
 	}
-	dpp_regs_desc_init(dpp->regs.dma_base_regs, "dma", REGS_DMA, dpp->id);
+	dpp_regs_desc_init(dpp->regs.dma_base_regs, res.start, "dma", REGS_DMA, dpp->id);
 
 	dpp->dma_irq = of_irq_get_byname(np, "dma");
 	dpp_info(dpp, "dma irq no = %d\n", dpp->dma_irq);
@@ -993,12 +1063,16 @@ static int dpp_init_resources(struct dpp_device *dpp)
 
 	if (test_bit(DPP_ATTR_DPP, &dpp->attr)) {
 		i = of_property_match_string(np, "reg-names", "dpp");
+		if (of_address_to_resource(np, i, &res)) {
+			dpp_err(dpp, "failed to get dpp resource\n");
+			return -EINVAL;
+		}
 		dpp->regs.dpp_base_regs = of_iomap(np, i);
 		if (!dpp->regs.dpp_base_regs) {
 			dpp_err(dpp, "failed to remap DPP SFR region\n");
 			return -EINVAL;
 		}
-		dpp_regs_desc_init(dpp->regs.dpp_base_regs, "dpp", REGS_DPP,
+		dpp_regs_desc_init(dpp->regs.dpp_base_regs, res.start, "dpp", REGS_DPP,
 				dpp->id);
 
 		dpp->dpp_irq = of_irq_get_byname(np, "dpp");
@@ -1015,12 +1089,16 @@ static int dpp_init_resources(struct dpp_device *dpp)
 	if (test_bit(DPP_ATTR_HDR, &dpp->attr) ||
 			test_bit(DPP_ATTR_HDR10_PLUS, &dpp->attr)) {
 		i = of_property_match_string(np, "reg-names", "hdr");
+		if (of_address_to_resource(np, i, &res)) {
+			dpp_err(dpp, "failed to get hdr resource\n");
+			return -EINVAL;
+		}
 		dpp->regs.hdr_base_regs = of_iomap(np, i);
 		if (!dpp->regs.hdr_base_regs) {
 			dpp_err(dpp, "failed to remap HDR SFR region\n");
 			return -EINVAL;
 		}
-		hdr_regs_desc_init(dpp->regs.hdr_base_regs, "hdr", dpp->id);
+		hdr_regs_desc_init(dpp->regs.hdr_base_regs, res.start, "hdr", dpp->id);
 	}
 
 	ret = __dpp_init_resources(dpp);
