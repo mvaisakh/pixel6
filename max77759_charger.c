@@ -812,8 +812,6 @@ static int max77759_set_usecase(struct max77759_chgr_data *data, u8 reg,
 	return 0;
 }
 
-static int max77759_wcin_is_online(struct max77759_chgr_data *data);
-
 /* lazy init on the */
 static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 				    struct device_node *node)
@@ -856,6 +854,9 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	       uc_data->lsw1_is_open != -EPROBE_DEFER &&
 	       uc_data->vin_is_valid != -EPROBE_DEFER;
 }
+
+
+static int max77759_wcin_is_online(struct max77759_chgr_data *data);
 
 /*
  * I am using a the comparator_none, need scan all the votes to determine
@@ -1021,15 +1022,20 @@ static int max77759_chgin_input_suspend(struct max77759_chgr_data *data,
 					bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_CHGINSEL_SHIFT;
+	u8 reg_val;
 	int ret;
 
-	data->chgin_input_suspend = enabled; /* cache */
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_12, &reg_val);
+	if (ret < 0 || ((reg_val & value) == value))
+		return ret;
 
 	ret = max77759_reg_update(data, MAX77759_CHG_CNFG_12,
 				  MAX77759_CHG_CNFG_12_CHGINSEL_MASK,
 				  value);
 	if (ret == 0)
 		ret = max77759_set_input_suspend(data, enabled, "CHGIN_SUSP");
+	if (ret == 0)
+		data->chgin_input_suspend = enabled; /* cache */
 
 	return ret;
 }
@@ -1039,15 +1045,20 @@ static int max77759_wcin_input_suspend(struct max77759_chgr_data *data,
 				       bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_WCINSEL_SHIFT;
+	u8 reg_val;
 	int ret;
 
-	data->wcin_input_suspend = enabled; /* cache */
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_12, &reg_val);
+	if (ret < 0 || ((reg_val & value) == value))
+		return ret;
 
 	ret =  max77759_reg_update(data, MAX77759_CHG_CNFG_12,
 				   MAX77759_CHG_CNFG_12_WCINSEL_MASK,
 				   value);
 	if (ret == 0)
-		ret = max77759_set_input_suspend(data, enabled, "CHGIN_SUSP");
+		ret = max77759_set_input_suspend(data, enabled, "WCIN_SUSP");
+	if (ret == 0)
+		data->wcin_input_suspend = enabled; /* cache */
 
 	return ret;
 }
@@ -1314,7 +1325,8 @@ static enum power_supply_property max77759_wcin_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
-static int max77759_wcin_is_present(struct max77759_chgr_data *data)
+
+static int max77759_wcin_is_valid(struct max77759_chgr_data *data)
 {
 	uint8_t int_ok;
 	int ret;
@@ -1328,8 +1340,11 @@ static int max77759_wcin_is_online(struct max77759_chgr_data *data)
 	uint8_t val;
 	int ret;
 
-	ret = max77759_wcin_is_present(data) &&
-	      max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_02, &val);
+	ret = max77759_wcin_is_valid(data);
+	if (ret <= 0)
+		return ret;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_02, &val);
 	return (ret == 0) && _chg_details_02_wcin_sts_get(val);
 }
 
@@ -1344,7 +1359,7 @@ static int max77759_wcin_voltage_max(struct max77759_chgr_data *chg,
 			return -ENODEV;
 	}
 
-	if (!max77759_wcin_is_present(chg)) {
+	if (!max77759_wcin_is_valid(chg)) {
 		val->intval = 0;
 		return 0;
 	}
@@ -1370,7 +1385,7 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 			return -ENODEV;
 	}
 
-	if (!max77759_wcin_is_present(chg)) {
+	if (!max77759_wcin_is_valid(chg)) {
 		val->intval = 0;
 		return 0;
 	}
@@ -1429,7 +1444,7 @@ static int max77759_wcin_get_prop(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = max77759_wcin_is_present(chgr);
+		val->intval = max77759_wcin_is_valid(chgr);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = max77759_wcin_is_online(chgr);
@@ -1533,7 +1548,7 @@ static int max77759_is_limited(struct max77759_chgr_data *data)
 	return (ret == 0) && _chg_int_ok_inlim_ok_get(value) == 0;
 }
 
-static int max77759_is_present(struct max77759_chgr_data *data)
+static int max77759_is_valid(struct max77759_chgr_data *data)
 {
 	uint8_t int_ok;
 	int ret;
@@ -1543,13 +1558,17 @@ static int max77759_is_present(struct max77759_chgr_data *data)
 	       _chg_int_ok_wcin_ok_get(int_ok));
 }
 
+/* WCIN || CHGIN present, valid  && CHGIN FET is closed */
 static int max77759_is_online(struct max77759_chgr_data *data)
 {
 	uint8_t val;
 	int ret;
 
-	ret = max77759_is_present(data) &&
-	      max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_02, &val);
+	ret = max77759_is_valid(data);
+	if (ret <= 0)
+		return 0;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_02, &val);
 	return (ret == 0) && (_chg_details_02_chgin_sts_get(val) ||
 	       _chg_details_02_wcin_sts_get(val));
 }
@@ -1889,7 +1908,7 @@ static int max77759_psy_get_property(struct power_supply *psy,
 		pval->intval = max77759_is_online(data);
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
-		pval->intval = max77759_is_present(data);
+		pval->intval = max77759_is_valid(data);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		ret = max77759_chgin_get_ilim_max_ua(data, &pval->intval);
