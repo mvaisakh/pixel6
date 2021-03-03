@@ -118,7 +118,6 @@ static int gbee_storage_read(gbms_tag_t tag, void *buff, size_t size,
 
 		ret = nvmem_device_read(nvmem, BATT_EEPROM_TAG_BRID_OFFSET,
 					1, &temp);
-		pr_err("cannot read nvram %d\n", ret);
 		if (ret < 0)
 			return ret;
 
