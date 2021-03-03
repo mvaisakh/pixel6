@@ -102,6 +102,7 @@ struct bts_dpp_info {
 	u32 src_w;
 	struct bts_layer_position dst;
 	u32 bw;
+	u32 rt_bw;
 	bool rotation;
 };
 
@@ -139,7 +140,7 @@ struct dpu_bts {
 	u32 vsa;
 	u32 fps;
 	/* includes writeback dpp */
-	struct dpu_bts_bw bw[MAX_DPP_CNT];
+	struct dpu_bts_bw rt_bw[MAX_DPP_CNT];
 
 	/* each decon must know other decon's BW to get overall BW */
 	u32 ch_bw[3][MAX_DECON_CNT];

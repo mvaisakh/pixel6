@@ -1244,7 +1244,7 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		decon->bts.rot_util_pct = 60;
 		decon_warn(decon, "WARN: rot_util_pct is not defined in DT.\n");
 	}
-	decon_info(decon, "bus_width(%d) bus_util_pct(%d) rot_util_pct(%d)\n",
+	decon_info(decon, "bus_width(%u) bus_util_pct(%u) rot_util_pct(%u)\n",
 			decon->bts.bus_width, decon->bts.bus_util_pct,
 			decon->bts.rot_util_pct);
 
