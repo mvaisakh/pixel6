@@ -561,42 +561,35 @@ static int p9412_set_data_buf(struct p9221_charger_data *chgr,
 }
 
 /* receive size */
-static int p9221_get_cc_recv_size(struct p9221_charger_data *chgr,
-				  size_t *len)
+static int p9221_get_cc_recv_size(struct p9221_charger_data *chgr, size_t *len)
 {
 	int ret;
 	u8 len8;
 
-	ret = chgr->reg_read_8(chgr, P9221R5_COM_CHAN_RECV_SIZE_REG,
-			       &len8);
+	ret = chgr->reg_read_8(chgr, P9221R5_COM_CHAN_RECV_SIZE_REG, &len8);
 	if (!ret)
 		*len = len8;
 	return ret;
 }
 
-static int p9412_get_cc_recv_size(struct p9221_charger_data *chgr,
-				  size_t *len)
+static int p9412_get_cc_recv_size(struct p9221_charger_data *chgr, size_t *len)
 {
 	int ret;
 	u16 len16;
 
-	ret = chgr->reg_read_16(chgr, P9412_COM_CHAN_RECV_SIZE_REG,
-				&len16);
+	ret = chgr->reg_read_16(chgr, P9412_COM_CHAN_RECV_SIZE_REG, &len16);
 	if (!ret)
 		*len = len16;
 	return ret;
 }
 
 /* send size */
-static int p9221_set_cc_send_size(struct p9221_charger_data *chgr,
-				  size_t len)
+static int p9221_set_cc_send_size(struct p9221_charger_data *chgr, size_t len)
 {
-	return chgr->reg_write_8(chgr, P9221R5_COM_CHAN_SEND_SIZE_REG,
-				len);
+	return chgr->reg_write_8(chgr, P9221R5_COM_CHAN_SEND_SIZE_REG, len);
 }
 
-static int p9382_set_cc_send_size(struct p9221_charger_data *chgr,
-				  size_t len)
+static int p9382_set_cc_send_size(struct p9221_charger_data *chgr, size_t len)
 {
 	int ret;
 
@@ -609,17 +602,15 @@ static int p9382_set_cc_send_size(struct p9221_charger_data *chgr,
 		return ret;
 	}
 
-	return chgr->reg_write_16(chgr, P9382A_COM_CHAN_SEND_SIZE_REG,
-				 len);
+	return chgr->reg_write_16(chgr, P9382A_COM_CHAN_SEND_SIZE_REG, len);
 }
 
-static int p9412_set_cc_send_size(struct p9221_charger_data *chgr,
-				  size_t len)
+static int p9412_set_cc_send_size(struct p9221_charger_data *chgr, size_t len)
 {
 	int ret;
 
-	/* set packet type to 0x100 */
-	ret = chgr->reg_write_8(chgr, P9382A_COM_PACKET_TYPE_ADDR,
+	/* set packet type(BiDi 0x98) to 0x800 */
+	ret = chgr->reg_write_8(chgr, P9412_COM_PACKET_TYPE_ADDR,
 				BIDI_COM_PACKET_TYPE);
 	if (ret) {
 		dev_err(&chgr->client->dev,
@@ -627,8 +618,7 @@ static int p9412_set_cc_send_size(struct p9221_charger_data *chgr,
 		return ret;
 	}
 
-	return chgr->reg_write_16(chgr, P9412_COM_CHAN_SEND_SIZE_REG,
-				 len);
+	return chgr->reg_write_16(chgr, P9412_COM_CHAN_SEND_SIZE_REG, len);
 }
 
 /* get align x */
@@ -730,34 +720,7 @@ static int p9412_chip_tx_mode(struct p9221_charger_data *chgr, bool enable)
 	return ret;
 }
 
-static int p9221_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
-{
-	u8 cur_cmd = 0;
-	int retry;
-	int ret;
-
-	for (retry = 0; retry < P9221_COM_CHAN_RETRIES; retry++) {
-		ret = chgr->reg_read_8(chgr, P9221_COM_REG, &cur_cmd);
-		if (ret == 0 && cur_cmd == 0)
-			break;
-		msleep(25);
-	}
-
-	if (retry >= P9221_COM_CHAN_RETRIES) {
-		dev_err(&chgr->client->dev,
-			"Failed to wait for cmd free %02x\n", cur_cmd);
-		return -EBUSY;
-	}
-
-	ret = chgr->reg_write_8(chgr, P9221_COM_REG, cmd);
-	if (ret)
-		dev_err(&chgr->client->dev,
-			"Failed to set cmd reg %02x: %d\n", cmd, ret);
-
-	return ret;
-}
-
-static int p9222_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
+static int p9222_chip_set_cmd_reg(struct p9221_charger_data *chgr, u16 cmd)
 {
 	u16 cur_cmd = 0;
 	int retry;
@@ -784,7 +747,7 @@ static int p9222_chip_set_cmd_reg(struct p9221_charger_data *chgr, u8 cmd)
 	return ret;
 }
 
-static int p9412_chip_set_cmd_reg(struct p9221_charger_data *chgr, u16 cmd)
+static int p9xxx_chip_set_cmd_reg(struct p9221_charger_data *chgr, u16 cmd)
 {
 	u16 cur_cmd = 0;
 	int retry;
@@ -1054,7 +1017,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	/*
 	 * Step 2: Enable Proprietary Mode: write 0x01 to 0x4F (0x4E bit8)
 	 */
-	ret = p9412_chip_set_cmd_reg(chgr, PROP_MODE_EN_CMD);
+	ret =chgr->chip_set_cmd(chgr, PROP_MODE_EN_CMD);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to send PROP_MODE_EN_CMD\n");
@@ -1088,7 +1051,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
                         "PROP_MODE: fail to enable Cap Div mode\n");
 		goto err_exit;
 	}
-	ret = p9412_chip_set_cmd_reg(chgr, INIT_CAP_DIV_CMD);
+	ret = chgr->chip_set_cmd(chgr, INIT_CAP_DIV_CMD);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to send INIT_CAP_DIV_CMD\n");
@@ -1133,7 +1096,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		dev_info(&chgr->client->dev, "request power=%dW\n", req_pwr);
 	}
 	/* Request power from TX based on PropReqPwr (0xC5) */
-	ret = p9412_chip_set_cmd_reg(chgr, PROP_REQ_PWR_CMD);
+	ret = chgr->chip_set_cmd(chgr, PROP_REQ_PWR_CMD);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to send PROP_REQ_PWR_CMD\n");
@@ -1267,18 +1230,22 @@ void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
 	case P9412_CHIP_ID:
 		chgr->reg_tx_id_addr = P9412_PROP_TX_ID_REG;
 		chgr->reg_tx_mfg_code_addr = P9382_EPP_TX_MFG_CODE_REG;
+		chgr->set_cmd_ccactivate_bit = P9412_COM_CCACTIVATE;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->reg_tx_id_addr = P9382_PROP_TX_ID_REG;
 		chgr->reg_tx_mfg_code_addr = P9382_EPP_TX_MFG_CODE_REG;
+		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
 		break;
 	case P9222_CHIP_ID:
 		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
 		chgr->reg_tx_mfg_code_addr = P9222RE_TX_MFG_CODE_REG;
+		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
 		break;
 	default:
 		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
 		chgr->reg_tx_mfg_code_addr = P9221R5_EPP_TX_MFG_CODE_REG;
+		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
 		break;
 	}
 }
@@ -1287,7 +1254,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 {
 	chgr->chip_get_iout = p9xxx_chip_get_iout;
 	chgr->chip_get_vout = p9xxx_chip_get_vout;
-	chgr->chip_set_cmd = p9221_chip_set_cmd_reg;
+	chgr->chip_set_cmd = p9xxx_chip_set_cmd_reg;
 	chgr->chip_get_op_freq = p9xxx_chip_get_op_freq;
 	chgr->chip_get_vrect = p9xxx_chip_get_vrect;
 

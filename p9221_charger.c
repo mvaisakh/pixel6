@@ -332,7 +332,7 @@ static int p9221_send_data(struct p9221_charger_data *charger)
 		goto error;
 	}
 
-	ret = charger->chip_set_cmd(charger, P9221R5_COM_CCACTIVATE);
+	ret = charger->chip_set_cmd(charger, charger->set_cmd_ccactivate_bit);
 	if (ret)
 		goto error;
 

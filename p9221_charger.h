@@ -377,15 +377,16 @@
 #define P9412_CDMODE_STS_REG			0x100
 #define P9412_CDMODE_REQ_REG			0x101
 #define P9412_COM_CHAN_RESET_REG		0x13F
-#define P9412_COM_CHAN_SEND_SIZE_REG		0x140
+#define P9412_COM_PACKET_TYPE_ADDR		0x800
+#define P9412_COM_CHAN_SEND_SIZE_REG		0x801
 #define P9412_COM_CHAN_SEND_IDX_REG		0x142
 #define P9412_COM_CHAN_RECV_SIZE_REG		0x144
 #define P9412_COM_CHAN_RECV_IDX_REG		0x146
 #define P9412_COM_CHAN_STATUS_REG		0x148
 #define P9412_PROP_TX_ID_REG			0x154
 
-#define P9412_DATA_BUF_START			0x0800
-#define P9412_DATA_BUF_SIZE			0x0800 /* 2048 bytes */
+#define P9412_DATA_BUF_START			0x804
+#define P9412_DATA_BUF_SIZE			0xFC /* 252 bytes */
 
 #define P9412_RN_MAX_POLL_ATTEMPTS		5
 #define P9412_RN_DELAY_MS			50
@@ -403,10 +404,12 @@
 #define INIT_CAP_DIV_CMD			BIT(6)
 #define PROP_MODE_EN_CMD			BIT(8)
 #define PROP_REQ_PWR_CMD			BIT(9)
+#define P9412_COM_CCACTIVATE			BIT(10)
 /* For INT status register */
-#define P9412_STAT_CCDATARCVD			BIT(15)
+#define P9412_STAT_PPRCVD			BIT(15)
 #define P9412_PROP_MODE_STAT_INT		BIT(12)
 #define P9412_CDMODE_CHANGE_INT			BIT(11)
+#define P9412_STAT_CCDATARCVD			BIT(9)
 #define P9412_STAT_OVV				BIT(4)
 #define P9412_STAT_OVC				BIT(3)
 #define P9412_STAT_OVT				BIT(2)
@@ -578,6 +581,7 @@ struct p9221_charger_data {
 
 	u16				reg_tx_id_addr;
 	u16				reg_tx_mfg_code_addr;
+	u16				set_cmd_ccactivate_bit;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -609,7 +613,7 @@ struct p9221_charger_data {
 	int (*chip_get_vout)(struct p9221_charger_data *chgr, u32 *mv);
 	int (*chip_get_iout)(struct p9221_charger_data *chgr, u32 *ma);
 	int (*chip_get_op_freq)(struct p9221_charger_data *chgr, u32 *khz);
-	int (*chip_set_cmd)(struct p9221_charger_data *chgr, u8 cmd);
+	int (*chip_set_cmd)(struct p9221_charger_data *chgr, u16 cmd);
 	int (*chip_get_rx_ilim)(struct p9221_charger_data *chgr, u32 *ma);
 	int (*chip_set_rx_ilim)(struct p9221_charger_data *chgr, u32 ma);
 	int (*chip_get_tx_ilim)(struct p9221_charger_data *chgr, u32 *ma);
