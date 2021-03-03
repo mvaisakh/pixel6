@@ -910,6 +910,7 @@ struct sec_ts_data {
 	u8 print_format;
 	u8 ms_frame_type;
 	u8 ss_frame_type;
+	int heatmap_dump;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
 	strength_t *heatmap_buff;

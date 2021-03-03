@@ -1052,6 +1052,73 @@ static ssize_t heatmap_mode_show(struct device *dev,
 #endif
 }
 
+/* sysfs file node to dump heatmap
+ * "echo cmd > heatmap_dump" to change
+ * Possible commands:
+ * 0 = disable
+ * 1 = enable
+ */
+static ssize_t heatmap_dump_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	int result;
+	int val;
+
+	result = kstrtoint(buf, 10, &val);
+	if (result < 0 || val < 0 || val > 1) {
+		input_err(true, &ts->client->dev,
+			"%s: Invalid input.\n", __func__);
+		return -EINVAL;
+	}
+	ts->heatmap_dump = val;
+	return count;
+#else
+	return 0;
+#endif
+}
+
+static ssize_t heatmap_dump_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	struct sec_ts_plat_data *pdata = ts->plat_data;
+	int x, y, max_x, max_y, index = 0;
+
+	index += scnprintf(buf + index, PAGE_SIZE - index,
+			"heatmap dump(mode %d) %s\n",
+			pdata->heatmap_mode,
+			(ts->heatmap_dump) ? "ENABLE" : "DISABLE");
+
+	if (!ts->heatmap_dump)
+		return index;
+
+	max_x = ts->tx_count;
+	max_y = ts->rx_count;
+
+	for (y = 0 ; y < max_y ; y++) {
+		for (x = 0 ; x < max_x ; x++) {
+			index += scnprintf(buf + index,
+				PAGE_SIZE - index,
+				" %3d,",
+				ts->v4l2.frame[y * max_x  + x]);
+			if (x == max_x - 1)
+				index += scnprintf(buf + index,
+					PAGE_SIZE - index, "\n");
+		}
+	}
+
+	return index;
+#else
+	return scnprintf(buf, PAGE_SIZE, "N/A\n");
+#endif
+}
+
 static ssize_t fw_version_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -1182,6 +1249,7 @@ static DEVICE_ATTR_RW(pressure_enable);
 static DEVICE_ATTR_RO(get_lp_dump);
 static DEVICE_ATTR_RO(force_recal_count);
 static DEVICE_ATTR_RW(heatmap_mode);
+static DEVICE_ATTR_RW(heatmap_dump);
 static DEVICE_ATTR_RO(fw_version);
 static DEVICE_ATTR_RO(status);
 
@@ -1203,6 +1271,7 @@ static struct attribute *cmd_attributes[] = {
 	&dev_attr_get_lp_dump.attr,
 	&dev_attr_force_recal_count.attr,
 	&dev_attr_heatmap_mode.attr,
+	&dev_attr_heatmap_dump.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_status.attr,
 	NULL,
