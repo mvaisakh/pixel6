@@ -258,3 +258,40 @@ void edgetpu_pchannel_power_up(struct edgetpu_dev *etdev)
 {
 	pchannel_state_change_request(etdev, STATE_RUN);
 }
+
+
+#if IS_ENABLED(CONFIG_PM_SLEEP)
+
+int edgetpu_pm_suspend(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_pm *etpm = etdev->pm;
+
+	if (!etpm)
+		return 0;
+
+	if (etpm->p->power_up_count) {
+		etdev_warn_ratelimited(
+			etdev, "%s: cannot suspend with power up count = %d\n",
+			__func__, etpm->p->power_up_count);
+		return -EAGAIN;
+	}
+
+	return 0;
+}
+
+int edgetpu_pm_resume(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_pm *etpm = etdev->pm;
+
+	if (!etpm)
+		return 0;
+
+	if (etpm->p->power_up_count)
+		etdev_warn_ratelimited(etdev,
+				       "%s: resumed with power up count = %d\n",
+				       __func__, etpm->p->power_up_count);
+
+	return 0;
+}
+
+#endif /* IS_ENABLED(CONFIG_PM_SLEEP) */

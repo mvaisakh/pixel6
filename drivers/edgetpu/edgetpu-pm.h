@@ -89,4 +89,12 @@ void edgetpu_pchannel_power_up(struct edgetpu_dev *etdev);
 int edgetpu_pchannel_power_down(struct edgetpu_dev *etdev,
 				bool wait_on_pactive);
 
+#if IS_ENABLED(CONFIG_PM_SLEEP)
+
+int edgetpu_pm_suspend(struct edgetpu_dev *etdev);
+
+int edgetpu_pm_resume(struct edgetpu_dev *etdev);
+
+#endif /* IS_ENABLED(CONFIG_PM_SLEEP) */
+
 #endif /* __EDGETPU_PM_H__ */

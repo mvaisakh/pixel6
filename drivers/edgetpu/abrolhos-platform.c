@@ -28,6 +28,7 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-iremap-pool.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
 
 static const struct of_device_id edgetpu_of_match[] = {
@@ -360,13 +361,37 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PM_SLEEP)
+
+static int edgetpu_platform_suspend(struct device *dev)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	return edgetpu_pm_suspend(etdev);
+}
+
+static int edgetpu_platform_resume(struct device *dev)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	return edgetpu_pm_resume(etdev);
+}
+
+#endif /* IS_ENABLED(CONFIG_PM_SLEEP) */
+
+static const struct dev_pm_ops edgetpu_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(edgetpu_platform_suspend,
+				edgetpu_platform_resume)
+};
+
 static struct platform_driver edgetpu_platform_driver = {
 	.probe = edgetpu_platform_probe,
 	.remove = edgetpu_platform_remove,
 	.driver = {
-			.name = "edgetpu_platform",
-			.of_match_table = edgetpu_of_match,
-		},
+		.name = "edgetpu_platform",
+		.of_match_table = edgetpu_of_match,
+		.pm = &edgetpu_pm_ops,
+	},
 };
 
 static int __init edgetpu_platform_init(void)
