@@ -359,7 +359,7 @@ static void st21nfc_power_stats_idle_signal(struct st21nfc_device *st21nfc_dev)
 	}
 }
 
-void st21nfc_pstate_wq(struct work_struct *work)
+static void st21nfc_pstate_wq(struct work_struct *work)
 {
 	struct st21nfc_device *st21nfc_dev = container_of(work,
 							struct st21nfc_device,
@@ -395,7 +395,7 @@ static void st21nfc_power_stats_filter(
 
 	if (count != HEADER_LENGTH) {
 		dev_err(&st21nfc_dev->client->dev,
-			"%s Warning: expect previous one was idle data\n");
+			"Warning: expect previous one was idle data\n");
 		st21nfc_dev->pw_states_err.header_payload++;
 		return;
 	}
