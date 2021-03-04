@@ -990,6 +990,7 @@ struct sec_ts_data {
 	int tune_fix_ver;
 	bool external_factory;
 
+	int report_rate;
 	int wet_mode;
 
 	unsigned char ito_test[4];		/* ito panel tx/rx chanel */

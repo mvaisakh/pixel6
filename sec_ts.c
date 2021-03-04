@@ -2272,6 +2272,7 @@ static void sec_ts_read_vendor_event(struct sec_ts_data *ts,
 			break;
 
 		case SEC_TS_EVENT_STATUS_ID_REPORT_RATE:
+			ts->report_rate = status_data_1;
 			if (ts->debug)
 				input_info(true,
 					&ts->client->dev,

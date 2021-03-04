@@ -1203,7 +1203,7 @@ static ssize_t status_show(struct device *dev,
 		goto out;
 	}
 	written += scnprintf(buf + written, PAGE_SIZE - written,
-			     "BOOT STATUS: 0x%02X\n", data[0]);
+			     "Boot status: %#x\n", data[0]);
 
 	memset(data, 0x0, 4);
 	ret = ts->sec_ts_read(ts, SEC_TS_READ_TS_STATUS, data, 4);
@@ -1214,7 +1214,7 @@ static ssize_t status_show(struct device *dev,
 		goto out;
 	}
 	written += scnprintf(buf + written, PAGE_SIZE - written,
-			     "TOUCH STATUS: 0x%02X, 0x%02X, 0x%02X, 0x%02X\n",
+			     "Touch status: %#x, %#x, %#x, %#x\n",
 			     data[0], data[1], data[2], data[3]);
 
 	memset(data, 0x0, 2);
@@ -1226,8 +1226,15 @@ static ssize_t status_show(struct device *dev,
 		goto out;
 	}
 	written += scnprintf(buf + written, PAGE_SIZE - written,
-			     "Functions: 0x%02X, 0x%02X\n", data[0], data[1]);
-
+			     "Functions: %#x, %#x\n", data[0], data[1]);
+	written += scnprintf(buf + written, PAGE_SIZE - written,
+			     "Charger mode: %#x\n", ts->charger_mode);
+	written += scnprintf(buf + written, PAGE_SIZE - written,
+			     "Wet mode: %d\n", ts->wet_mode);
+	written += scnprintf(buf + written, PAGE_SIZE - written,
+			     "Fingers#: %d\n", ts->touch_count);
+	written += scnprintf(buf + written, PAGE_SIZE - written,
+			     "Report rate: %d\n", ts->report_rate);
 out:
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
