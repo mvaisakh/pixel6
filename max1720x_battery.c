@@ -1978,12 +1978,15 @@ static int max1720x_set_property(struct power_supply *psy,
 	int delay_ms = 0;
 	int rc = 0;
 
+	mutex_lock(&chip->model_lock);
 	pm_runtime_get_sync(chip->dev);
 	if (!chip->init_complete || !chip->resume_complete) {
 		pm_runtime_put_sync(chip->dev);
+		mutex_unlock(&chip->model_lock);
 		return -EAGAIN;
 	}
 	pm_runtime_put_sync(chip->dev);
+	mutex_unlock(&chip->model_lock);
 
 	switch (psp) {
 	case GBMS_PROP_BATT_CE_CTRL:
