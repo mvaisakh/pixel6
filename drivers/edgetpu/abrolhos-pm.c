@@ -10,6 +10,7 @@
 #include <linux/gsa/gsa_tpu.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/soc/samsung/exynos-smc.h>
 
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
@@ -25,6 +26,8 @@
 #include "soc/google/bts.h"
 
 #include "edgetpu-pm.c"
+
+#define TPU_SMC_ID			(0x15)
 
 /*
  * Encode INT/MIF values as a 16 bit pair in the 32-bit return value
@@ -94,6 +97,12 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 			dev_err(dev, "pm_runtime_get_sync returned %d\n", ret);
 			return ret;
 		}
+		ret = exynos_smc(SMC_PROTECTION_SET, 0, TPU_SMC_ID,
+				 SMC_PROTECTION_ENABLE);
+		if (ret)
+			dev_warn(dev,
+				 "exynos_smc protection enable returned %d\n",
+				 ret);
 	}
 
 	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, (unsigned long)val);
@@ -104,6 +113,13 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 	}
 
 	if (curr_state != TPU_OFF && val == TPU_OFF) {
+		ret = exynos_smc(SMC_PROTECTION_SET, 0, TPU_SMC_ID,
+				 SMC_PROTECTION_DISABLE);
+		if (ret)
+			dev_warn(dev,
+				 "exynos_smc protection disable returned %d\n",
+				 ret);
+
 		ret = pm_runtime_put_sync(dev);
 		if (ret) {
 			dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",

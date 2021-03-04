@@ -82,6 +82,18 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	mutex_lock(&cooling->lock);
 	pwr_state = state_mapping[state_original];
 	if (state_original != cooling->cooling_state) {
+		/*
+		 * Cap the minimum state we request here.
+		 * We cannot go to states below SUD until firmware/runtime
+		 * handshake is added.
+		 */
+		if (pwr_state < TPU_ACTIVE_SUD) {
+			dev_warn_ratelimited(
+				dev, "Unable to go to state %lu, going to %d",
+				pwr_state, TPU_ACTIVE_SUD);
+			pwr_state = TPU_ACTIVE_SUD;
+		}
+
 		ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, pwr_state);
 		if (ret) {
 			dev_err(dev, "error setting tpu policy: %d\n", ret);

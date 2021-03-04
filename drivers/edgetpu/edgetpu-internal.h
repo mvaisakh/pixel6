@@ -99,6 +99,7 @@ struct edgetpu_reg_window {
 struct edgetpu_device_group;
 struct edgetpu_p2p_csr_map;
 struct edgetpu_remote_dram_map;
+struct edgetpu_wakelock;
 
 struct edgetpu_client {
 	pid_t pid;
@@ -126,11 +127,7 @@ struct edgetpu_client {
 	/* range of device CSRs mmap()'able */
 	struct edgetpu_reg_window reg_window;
 	/* Per-client request to keep device active */
-	struct {
-		struct mutex lock;
-		uint req_count;
-		uint csr_map_count;
-	} wakelock;
+	struct edgetpu_wakelock *wakelock;
 };
 
 struct edgetpu_mapping;

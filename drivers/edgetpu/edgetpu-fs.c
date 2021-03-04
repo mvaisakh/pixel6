@@ -36,6 +36,7 @@
 #include "edgetpu-mapping.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
+#include "edgetpu-wakelock.h"
 #include "edgetpu.h"
 
 #define CREATE_TRACE_POINTS
@@ -112,11 +113,7 @@ static int edgetpu_fs_release(struct inode *inode, struct file *file)
 		return 0;
 	etdev = client->etdev;
 
-	mutex_lock(&client->wakelock.lock);
-
-	wakelock_count = client->wakelock.req_count;
-	/* Set wakelock state to "released" */
-	client->wakelock.req_count = 0;
+	wakelock_count = edgetpu_wakelock_lock(client->wakelock);
 
 	/* HACK: Can't disband a group if the device is off, turn it on */
 	if (client->group && !wakelock_count) {
@@ -124,7 +121,7 @@ static int edgetpu_fs_release(struct inode *inode, struct file *file)
 		edgetpu_pm_get(etdev->pm);
 	}
 
-	mutex_unlock(&client->wakelock.lock);
+	edgetpu_wakelock_unlock(client->wakelock);
 
 	edgetpu_client_remove(client);
 
@@ -533,13 +530,12 @@ static int edgetpu_ioctl_tpu_timestamp(struct edgetpu_client *client,
 	u64 timestamp;
 	int ret = 0;
 
-	mutex_lock(&client->wakelock.lock);
-	if (!client->wakelock.req_count) {
-		mutex_unlock(&client->wakelock.lock);
+	if (!edgetpu_wakelock_lock(client->wakelock)) {
+		edgetpu_wakelock_unlock(client->wakelock);
 		ret = -EAGAIN;
 	} else {
 		timestamp = edgetpu_chip_tpu_timestamp(client->etdev);
-		mutex_unlock(&client->wakelock.lock);
+		edgetpu_wakelock_unlock(client->wakelock);
 		if (copy_to_user(argp, &timestamp, sizeof(*argp)))
 			ret = -EFAULT;
 	}
@@ -553,79 +549,66 @@ static bool edgetpu_ioctl_check_permissions(struct file *file, uint cmd)
 
 static int edgetpu_ioctl_release_wakelock(struct edgetpu_client *client)
 {
-	if (!client->etdev->pm)
-		return -ENODEV;
+	int count;
 
-	mutex_lock(&client->wakelock.lock);
-
-	/* Cannot release wakelock if client has active CSR mappings */
-	if (client->wakelock.csr_map_count) {
-		etdev_warn(
-			client->etdev,
-			"%s: refusing wakelock release with %u CSR mappings\n",
-			__func__, client->wakelock.csr_map_count);
-		mutex_unlock(&client->wakelock.lock);
-		return -EAGAIN;
+	edgetpu_wakelock_lock(client->wakelock);
+	/* when NO_WAKELOCK: count should be 1 so here is a no-op */
+	count = edgetpu_wakelock_release(client->wakelock);
+	if (count < 0) {
+		edgetpu_wakelock_unlock(client->wakelock);
+		return count;
 	}
-
-	/* Cannot release wakelock if it wasn't acquired */
-	if (!client->wakelock.req_count) {
-		etdev_warn(client->etdev, "%s: invalid wakelock release\n",
-			   __func__);
-		mutex_unlock(&client->wakelock.lock);
-		return -EINVAL;
-	}
-
-	client->wakelock.req_count--;
-	if (!client->wakelock.req_count) {
+	if (!count) {
 		mutex_lock(&client->group_lock);
 		if (client->group)
-			edgetpu_group_detach_mailbox(client->group);
+			edgetpu_group_close_and_detach_mailbox(client->group);
 		mutex_unlock(&client->group_lock);
+		edgetpu_pm_put(client->etdev->pm);
 	}
-	edgetpu_pm_put(client->etdev->pm);
-	etdev_dbg(client->etdev,
-		  "%s: wakelock req count = %u CSR map count = %u\n", __func__,
-		  client->wakelock.req_count, client->wakelock.csr_map_count);
-	mutex_unlock(&client->wakelock.lock);
+	edgetpu_wakelock_unlock(client->wakelock);
+	etdev_dbg(client->etdev, "%s: wakelock req count = %u", __func__,
+		  count);
 	return 0;
 }
 
 static int edgetpu_ioctl_acquire_wakelock(struct edgetpu_client *client)
 {
+	int count;
 	int ret;
 
-	if (!client->etdev->pm)
-		return -ENODEV;
-
-	mutex_lock(&client->wakelock.lock);
-
-	ret = edgetpu_pm_get(client->etdev->pm);
-
-	if (ret) {
-		etdev_warn(client->etdev, "%s: pm_get failed (%d)", __func__,
-			   ret);
-		goto out_unlock;
+	edgetpu_wakelock_lock(client->wakelock);
+	/* when NO_WAKELOCK: count should be 1 so here is a no-op */
+	count = edgetpu_wakelock_acquire(client->wakelock);
+	if (count < 0) {
+		edgetpu_wakelock_unlock(client->wakelock);
+		return count;
 	}
-	if (!client->wakelock.req_count) {
+	if (!count) {
+		ret = edgetpu_pm_get(client->etdev->pm);
+		if (ret) {
+			etdev_warn(client->etdev, "%s: pm_get failed (%d)",
+				   __func__, ret);
+			goto error_release;
+		}
 		mutex_lock(&client->group_lock);
 		if (client->group)
-			ret = edgetpu_group_attach_mailbox(client->group);
+			ret = edgetpu_group_attach_and_open_mailbox(
+				client->group);
 		mutex_unlock(&client->group_lock);
 		if (ret) {
 			etdev_warn(client->etdev,
 				   "failed to attach mailbox: %d", ret);
 			edgetpu_pm_put(client->etdev->pm);
-			goto out_unlock;
+			goto error_release;
 		}
 	}
-
-	client->wakelock.req_count++;
-	etdev_dbg(client->etdev,
-		  "%s: wakelock req count = %u CSR map count = %u\n", __func__,
-		  client->wakelock.req_count, client->wakelock.csr_map_count);
-out_unlock:
-	mutex_unlock(&client->wakelock.lock);
+	edgetpu_wakelock_unlock(client->wakelock);
+	etdev_dbg(client->etdev, "%s: wakelock req count = %u", __func__,
+		  count + 1);
+	return 0;
+error_release:
+	edgetpu_wakelock_release(client->wakelock);
+	edgetpu_wakelock_unlock(client->wakelock);
 	return ret;
 }
 

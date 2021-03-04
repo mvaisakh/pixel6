@@ -33,11 +33,8 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu-usage-stats.h"
+#include "edgetpu-wakelock.h"
 #include "edgetpu.h"
-
-#define UNLOCK(client) mutex_unlock(&client->group_lock)
-#define LOCK_IN_GROUP(client)                           \
-	({ mutex_lock(&client->group_lock); client->group ? 0 : -EINVAL; })
 
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
 
@@ -64,39 +61,42 @@ static int edgetpu_mmap_compat(struct edgetpu_client *client,
 	return ret;
 }
 
+/*
+ * Returns the wakelock event by mmap offset. Returns EDGETPU_WAKELOCK_EVENT_END
+ * if the offset does not correspond to a wakelock event.
+ */
+static enum edgetpu_wakelock_event mmap_wakelock_event(unsigned long pgoff)
+{
+	switch (pgoff) {
+	case 0:
+		return EDGETPU_WAKELOCK_EVENT_FULL_CSR;
+	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+		return EDGETPU_WAKELOCK_EVENT_MBOX_CSR;
+	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
+		return EDGETPU_WAKELOCK_EVENT_CMD_QUEUE;
+	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
+		return EDGETPU_WAKELOCK_EVENT_RESP_QUEUE;
+	default:
+		return EDGETPU_WAKELOCK_EVENT_END;
+	}
+}
+
 static void edgetpu_vma_open(struct vm_area_struct *vma)
 {
 	struct edgetpu_client *client = vma->vm_private_data;
+	enum edgetpu_wakelock_event evt = mmap_wakelock_event(vma->vm_pgoff);
 
-	switch (vma->vm_pgoff) {
-	case 0:
-	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
-		mutex_lock(&client->wakelock.lock);
-		client->wakelock.csr_map_count++;
-		mutex_unlock(&client->wakelock.lock);
-		break;
-	}
+	if (evt != EDGETPU_WAKELOCK_EVENT_END)
+		edgetpu_wakelock_inc_event(client->wakelock, evt);
 }
 
 static void edgetpu_vma_close(struct vm_area_struct *vma)
 {
 	struct edgetpu_client *client = vma->vm_private_data;
+	enum edgetpu_wakelock_event evt = mmap_wakelock_event(vma->vm_pgoff);
 
-	switch (vma->vm_pgoff) {
-	case 0:
-	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
-		mutex_lock(&client->wakelock.lock);
-		if (!client->wakelock.csr_map_count)
-			etdev_warn(client->etdev,
-				   "unbalanced vma_close on CSR mapping\n");
-		else
-			client->wakelock.csr_map_count--;
-		etdev_dbg(client->etdev,
-			  "%s: unmap CSRS. pgoff = %lX count = %u\n", __func__,
-			  vma->vm_pgoff, client->wakelock.csr_map_count);
-		mutex_unlock(&client->wakelock.lock);
-		break;
-	}
+	if (evt != EDGETPU_WAKELOCK_EVENT_END)
+		edgetpu_wakelock_dec_event(client->wakelock, evt);
 }
 
 static const struct vm_operations_struct edgetpu_vma_ops = {
@@ -104,11 +104,11 @@ static const struct vm_operations_struct edgetpu_vma_ops = {
 	.close = edgetpu_vma_close,
 };
 
-
 /* Map exported device CSRs or queue into user space. */
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 {
 	int ret = 0;
+	enum edgetpu_wakelock_event evt;
 
 	if (vma->vm_start & ~PAGE_MASK) {
 		etdev_dbg(client->etdev,
@@ -128,14 +128,15 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 
 	/* If backward compat map all CSRs */
 	if (!vma->vm_pgoff) {
-		mutex_lock(&client->wakelock.lock);
-		if (!client->wakelock.req_count)
-			ret = -EAGAIN;
-		else
+		evt = EDGETPU_WAKELOCK_EVENT_FULL_CSR;
+		if (edgetpu_wakelock_inc_event(client->wakelock, evt)) {
 			ret = edgetpu_mmap_compat(client, vma);
-		if (!ret)
-			client->wakelock.csr_map_count++;
-		mutex_unlock(&client->wakelock.lock);
+			if (ret)
+				edgetpu_wakelock_dec_event(client->wakelock,
+							   evt);
+		} else {
+			ret = -EAGAIN;
+		}
 		return ret;
 	}
 
@@ -147,41 +148,33 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 		return edgetpu_mmap_telemetry_buffer(
 			client->etdev, EDGETPU_TELEMETRY_TRACE, vma);
 
+	evt = mmap_wakelock_event(vma->vm_pgoff);
+	if (evt == EDGETPU_WAKELOCK_EVENT_END)
+		return -EINVAL;
+	if (!edgetpu_wakelock_inc_event(client->wakelock, evt))
+		return -EAGAIN;
+
+	mutex_lock(&client->group_lock);
+	if (!client->group) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
 	switch (vma->vm_pgoff) {
 	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
-		mutex_lock(&client->wakelock.lock);
-		if (!client->wakelock.req_count) {
-			ret = -EAGAIN;
-		} else {
-			ret = LOCK_IN_GROUP(client);
-			if (!ret)
-				ret = edgetpu_mmap_csr(client->group, vma);
-			UNLOCK(client);
-		}
-		if (!ret)
-			client->wakelock.csr_map_count++;
-		etdev_dbg(client->etdev, "%s: mmap CSRS. count = %u ret = %d\n",
-			  __func__, client->wakelock.csr_map_count, ret);
-		mutex_unlock(&client->wakelock.lock);
+		ret = edgetpu_mmap_csr(client->group, vma);
 		break;
 	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
-		ret = LOCK_IN_GROUP(client);
-		if (!ret)
-			ret = edgetpu_mmap_queue(client->group,
-						 MAILBOX_CMD_QUEUE, vma);
-		UNLOCK(client);
+		ret = edgetpu_mmap_queue(client->group, MAILBOX_CMD_QUEUE, vma);
 		break;
 	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
-		ret = LOCK_IN_GROUP(client);
-		if (!ret)
-			ret = edgetpu_mmap_queue(client->group,
-						 MAILBOX_RESP_QUEUE, vma);
-		UNLOCK(client);
-		break;
-	default:
-		ret = -EINVAL;
+		ret = edgetpu_mmap_queue(client->group, MAILBOX_RESP_QUEUE,
+					 vma);
 		break;
 	}
+out_unlock:
+	mutex_unlock(&client->group_lock);
+	if (ret)
+		edgetpu_wakelock_dec_event(client->wakelock, evt);
 	return ret;
 }
 
@@ -324,6 +317,11 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	client = kzalloc(sizeof(*client), GFP_KERNEL);
 	if (!client)
 		return ERR_PTR(-ENOMEM);
+	client->wakelock = edgetpu_wakelock_alloc(etdev);
+	if (!client->wakelock) {
+		kfree(client);
+		return ERR_PTR(-ENOMEM);
+	}
 
 	/* Allow entire CSR space to be mmap()'ed using 1.0 interface */
 	client->reg_window.start_reg_offset = 0;
@@ -332,9 +330,6 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	client->tgid = current->tgid;
 	client->etdev = etdev;
 	mutex_init(&client->group_lock);
-	mutex_init(&client->wakelock.lock);
-	/* Initialize client wakelock state to "acquired" */
-	client->wakelock.req_count = 1;
 	/* equivalent to edgetpu_client_get() */
 	refcount_set(&client->count, 1);
 	return client;
@@ -368,6 +363,13 @@ void edgetpu_client_remove(struct edgetpu_client *client)
 	 */
 	if (client->group)
 		edgetpu_device_group_leave(client);
+	edgetpu_wakelock_free(client->wakelock);
+	/*
+	 * It should be impossible to access client->wakelock after this cleanup
+	 * procedure. Set to NULL to cause kernel panic if use-after-free does
+	 * happen.
+	 */
+	client->wakelock = NULL;
 	edgetpu_client_put(client);
 }
 

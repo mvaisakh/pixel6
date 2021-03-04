@@ -57,7 +57,7 @@ struct edgetpu_device_group {
 	uint workload_id;
 	struct edgetpu_dev *etdev;	/* the device opened by the leader */
 	/*
-	 * Whether edgetpu_group_detach_mailbox() has effects on this group.
+	 * Whether mailbox attaching and detaching have effects on this group.
 	 * This field is configured according to the priority field when
 	 * creating this group.
 	 */
@@ -333,16 +333,35 @@ bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
 void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev);
 
 /*
- * Detach and release the mailbox of VII from @group.
+ * Detach and release the mailbox resources of VII from @group.
  * Some group operations would be disabled when a group has no mailbox attached.
+ *
+ * Caller holds @group->lock.
  */
-void edgetpu_group_detach_mailbox(struct edgetpu_device_group *group);
+void edgetpu_group_detach_mailbox_locked(struct edgetpu_device_group *group);
 /*
- * Request and attach a mailbox of VII to @group.
+ * Before detaching the mailbox, send CLOSE_DEVICE KCI that claims the mailbox
+ * is going to be unused.
+ *
+ * The KCI command is sent even when @group is configured as mailbox
+ * non-detachable.
+ */
+void edgetpu_group_close_and_detach_mailbox(struct edgetpu_device_group *group);
+/*
+ * Request and attach the mailbox resources of VII to @group.
  *
  * Return 0 on success.
+ *
+ * Caller holds @group->lock.
  */
-int edgetpu_group_attach_mailbox(struct edgetpu_device_group *group);
+int edgetpu_group_attach_mailbox_locked(struct edgetpu_device_group *group);
+/*
+ * After (successfully) attaching the mailbox, send OPEN_DEVICE KCI.
+ *
+ * The KCI command is sent even when @group is configured as mailbox
+ * non-detachable (because the mailbox was successfully "attached").
+ */
+int edgetpu_group_attach_and_open_mailbox(struct edgetpu_device_group *group);
 
 /*
  * Checks whether @group has mailbox detached.

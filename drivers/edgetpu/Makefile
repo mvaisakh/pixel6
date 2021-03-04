@@ -23,7 +23,7 @@ abrolhos-objs	:= abrolhos-core.o abrolhos-debug-dump.o \
 		   abrolhos-device-group.o abrolhos-device.o \
 		   abrolhos-firmware.o abrolhos-fs.o abrolhos-iommu.o \
 		   abrolhos-platform.o abrolhos-pm.o abrolhos-thermal.o \
-		   abrolhos-usage-stats.o \
+		   abrolhos-usage-stats.o abrolhos-wakelock.o \
 		   $(edgetpu-objs)
 
 KBUILD_OPTIONS += CONFIG_ABROLHOS=m
