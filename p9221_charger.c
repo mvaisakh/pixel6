@@ -1158,7 +1158,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	charger->enabled = !!online;
 	dev_warn(&charger->client->dev, "Set enable %d\n", charger->enabled);
 	if (charger->pdata->qien_gpio >= 0)
-		vote(charger->wlc_disable_votable, P9221_WLC_VOTER, charger->enabled, 0);
+		vote(charger->wlc_disable_votable, P9221_WLC_VOTER, !charger->enabled, 0);
 
 	return 1;
 }
