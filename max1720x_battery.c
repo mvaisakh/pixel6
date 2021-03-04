@@ -1754,6 +1754,8 @@ static int max1720x_get_property(struct power_supply *psy,
 		if (err == POWER_SUPPLY_STATUS_FULL)
 			batt_ce_start(&chip->cap_estimate,
 				      chip->cap_estimate.cap_tsettle);
+		/* return data ok */
+		err = 0;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = max1720x_get_battery_health(chip);
@@ -1821,6 +1823,8 @@ static int max1720x_get_property(struct power_supply *psy,
 			break;
 		/* err is cycle_count */
 		val->intval = err;
+		/* return data ok */
+		err = 0;
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		if (chip->gauge_type == -1) {
