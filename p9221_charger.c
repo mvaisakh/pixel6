@@ -470,10 +470,6 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 			"Could not vote DC_ICL %d\n", ret);
 
 	ocp_icl = (charger->dc_icl_epp > 0) ?
-		charger->dc_icl_epp : P9221_DC_ICL_EPP_UA;
-
-	/* TODO: verify this */
-	ocp_icl = (charger->dc_icl_epp > 0) ?
 		   charger->dc_icl_epp : P9221_DC_ICL_EPP_UA;
 
 	ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true, ocp_icl);
@@ -1362,46 +1358,6 @@ static int p9221_enable_interrupts(struct p9221_charger_data *charger)
 	return ret;
 }
 
-static void p9382_check_neg_power(struct p9221_charger_data *charger)
-{
-	int ret;
-	u8 np8;
-
-	charger->dc_icl_epp_neg = P9221_DC_ICL_EPP_UA;
-
-	if ((charger->chip_id < P9382A_CHIP_ID) || !p9221_is_epp(charger))
-		return;
-
-	if (charger->is_mfg_google) {
-		charger->dc_icl_epp_neg = P9382A_DC_ICL_EPP_1000;
-		dev_info(&charger->client->dev,
-			 "mfg code=%02x, use dc_icl=%dmA\n",
-			 WLC_MFG_GOOGLE, P9382A_DC_ICL_EPP_1000);
-		return;
-	}
-
-	ret = p9221_reg_read_8(charger, P9221R5_EPP_CUR_NEGOTIATED_POWER_REG,
-			       &np8);
-	if (ret)
-		dev_err(&charger->client->dev,
-			"Could not read Tx neg power: %d\n", ret);
-	else if (np8 < P9382A_NEG_POWER_10W) {
-		/*
-		 * base on firmware 17
-		 * Vout is 5V when Tx<10W, use BPP ICL
-		 */
-		charger->dc_icl_epp_neg = P9221_DC_ICL_BPP_UA;
-		dev_info(&charger->client->dev,
-			 "EPP less than 10W,use dc_icl=%dmA,np=%02x\n",
-			 P9221_DC_ICL_BPP_UA/1000, np8);
-	} else if (np8 < P9382A_NEG_POWER_11W) {
-		charger->dc_icl_epp_neg = P9382A_DC_ICL_EPP_1000;
-		dev_info(&charger->client->dev,
-			 "Use dc_icl=%dmA,np=%02x\n",
-			 charger->dc_icl_epp_neg/1000, np8);
-	}
-}
-
 static int p9221_set_dc_icl(struct p9221_charger_data *charger)
 {
 	int icl;
@@ -1716,7 +1672,8 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 	 * Always write FOD, check dc_icl, send CSP
 	 */
 	if (dc_in) {
-		p9382_check_neg_power(charger);
+		if (p9221_is_epp(charger))
+			charger->chip_check_neg_power(charger);
 		p9221_set_dc_icl(charger);
 		p9221_write_fod(charger);
 		if (!charger->dc_icl_bpp)

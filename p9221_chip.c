@@ -963,6 +963,49 @@ static int p9412_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 out:
 	return ret;
 }
+/* Read EPP_CUR_NEGOTIATED_POWER_REG to configure DC_ICL for EPP */
+static void p9xxx_check_neg_power(struct p9221_charger_data *chgr)
+{
+	int ret;
+	u8 np8;
+
+	chgr->dc_icl_epp_neg = P9221_DC_ICL_EPP_UA;
+
+	if (chgr->chip_id < P9382A_CHIP_ID)
+		return;
+
+	if (chgr->is_mfg_google) {
+		chgr->dc_icl_epp_neg = P9XXX_DC_ICL_EPP_1000;
+		dev_info(&chgr->client->dev,
+			 "mfg code=%02x, use dc_icl=%dmA\n",
+			 WLC_MFG_GOOGLE, P9XXX_DC_ICL_EPP_1000);
+		return;
+	}
+	ret = chgr->reg_read_8(chgr, P9221R5_EPP_CUR_NEGOTIATED_POWER_REG, &np8);
+	if (ret)
+		dev_err(&chgr->client->dev,
+			"Could not read Tx neg power: %d\n", ret);
+	else if (np8 < P9XXX_NEG_POWER_10W) {
+		/*
+		 * base on firmware 17
+		 * Vout is 5V when Tx<10W, use BPP ICL
+		 */
+		chgr->dc_icl_epp_neg = P9221_DC_ICL_BPP_UA;
+		dev_info(&chgr->client->dev,
+			 "EPP less than 10W,use dc_icl=%dmA,np=%02x\n",
+			 P9221_DC_ICL_BPP_UA/1000, np8);
+	} else if (np8 < P9XXX_NEG_POWER_11W) {
+		chgr->dc_icl_epp_neg = P9XXX_DC_ICL_EPP_1000;
+		dev_info(&chgr->client->dev,
+			 "Use dc_icl=%dmA,np=%02x\n",
+			 chgr->dc_icl_epp_neg/1000, np8);
+	}
+}
+
+static void p9222_check_neg_power(struct p9221_charger_data *chgr)
+{
+	chgr->dc_icl_epp_neg = P9XXX_DC_ICL_EPP_750;
+}
 
 /* For high power mode */
 static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
@@ -1283,6 +1326,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_sys_mode = p9412_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9412_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9412_prop_mode_enable;
+		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->rtx_state = RTX_AVAILABLE;
@@ -1308,6 +1352,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
+		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		break;
 	case P9222_CHIP_ID:
 		chgr->chip_get_iout = p9222_chip_get_iout;
@@ -1339,6 +1384,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_sys_mode = p9222_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9222_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
+		chgr->chip_check_neg_power = p9222_check_neg_power;
 		break;
 	default:
 		chgr->rtx_state = RTX_NOTSUPPORTED;
@@ -1364,6 +1410,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_get_sys_mode = p9221_chip_get_sys_mode;
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
+		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		break;
 	}
 

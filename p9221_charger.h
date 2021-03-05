@@ -57,9 +57,10 @@
 #define P9221_NEG_POWER_10W		(10 / 0.5)
 #define P9221_PTMC_EPP_TX_1912		0x32
 
-#define P9382A_DC_ICL_EPP_1000		1000000
-#define P9382A_NEG_POWER_10W		(10 / 0.5)
-#define P9382A_NEG_POWER_11W		(11 / 0.5)
+#define P9XXX_DC_ICL_EPP_1000		1000000
+#define P9XXX_DC_ICL_EPP_750		750000
+#define P9XXX_NEG_POWER_10W		(10 / 0.5)
+#define P9XXX_NEG_POWER_11W		(11 / 0.5)
 #define P9382_RTX_TIMEOUT_MS		(2 * 1000)
 
 /*
@@ -609,7 +610,6 @@ struct p9221_charger_data {
 	int (*chip_get_align_x)(struct p9221_charger_data *chgr, u8 *x);
 	int (*chip_get_align_y)(struct p9221_charger_data *chgr, u8 *y);
 
-
 	int (*chip_get_vout)(struct p9221_charger_data *chgr, u32 *mv);
 	int (*chip_get_iout)(struct p9221_charger_data *chgr, u32 *ma);
 	int (*chip_get_op_freq)(struct p9221_charger_data *chgr, u32 *khz);
@@ -627,6 +627,7 @@ struct p9221_charger_data {
 	int (*chip_tx_mode_en)(struct p9221_charger_data *chgr, bool en);
 	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
 	bool (*chip_prop_mode_en)(struct p9221_charger_data *chgr, int req_pwr);
+	void (*chip_check_neg_power)(struct p9221_charger_data *chgr);
 };
 
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
