@@ -49,7 +49,8 @@ static struct lwis_ioreg *get_block_by_idx(struct lwis_ioreg_device *ioreg_dev, 
 
 static int validate_offset(struct lwis_ioreg *block, uint64_t offset, size_t size_in_bytes)
 {
-	if (offset + size_in_bytes > block->size) {
+	uint64_t max_uint64 = 0xFFFFFFFFFFFFFFFFll;
+	if ((offset > max_uint64 - size_in_bytes) || (offset + size_in_bytes > block->size)) {
 		pr_err("Accessing invalid address! Block size is %d.\n", block->size);
 		pr_err("Offset %llu, size_in_bytes %zu, will be out of bound.\n", offset,
 		       size_in_bytes);
