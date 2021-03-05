@@ -230,7 +230,8 @@ error_probe:
 static int lwis_i2c_device_suspend(struct device *dev)
 {
 	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
-	if (lwis_dev->pm_hibernation == 0) {
+	if (lwis_dev->enabled == 1 && lwis_dev->pm_hibernation == 0) {
+		dev_warn(lwis_dev->dev, "Can't suspend because driver is in use!\n");
 		return -EBUSY;
 	}
 
