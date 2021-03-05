@@ -47,13 +47,22 @@ static struct lwis_ioreg *get_block_by_idx(struct lwis_ioreg_device *ioreg_dev, 
 	return block;
 }
 
-static int validate_offset(struct lwis_ioreg *block, uint64_t offset, size_t size_in_bytes)
+static int validate_offset(struct lwis_ioreg_device *ioreg_dev, struct lwis_ioreg *block,
+			   uint64_t offset, size_t size_in_bytes, unsigned int alignment)
 {
 	uint64_t max_uint64 = 0xFFFFFFFFFFFFFFFFll;
+
+	if (offset % alignment) {
+		dev_err(ioreg_dev->base_dev.dev, "Accessing invalid address! Alignment error\n");
+		return -EFAULT;
+	}
+
 	if ((offset > max_uint64 - size_in_bytes) || (offset + size_in_bytes > block->size)) {
-		pr_err("Accessing invalid address! Block size is %d.\n", block->size);
-		pr_err("Offset %llu, size_in_bytes %zu, will be out of bound.\n", offset,
-		       size_in_bytes);
+		dev_err(ioreg_dev->base_dev.dev,
+			"Accessing invalid address! Block size is %d.\n", block->size);
+		dev_err(ioreg_dev->base_dev.dev,
+			"Offset %llu, size_in_bytes %zu, will be out of bound.\n",
+			offset, size_in_bytes);
 		return -EFAULT;
 	}
 	return 0;
@@ -129,7 +138,7 @@ int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
 
 	res = platform_get_resource(plat_dev, IORESOURCE_MEM, index);
 	if (!res) {
-		pr_err("platform_get_resource error\n");
+		dev_err(ioreg_dev->base_dev.dev, "platform_get_resource error\n");
 		return -EINVAL;
 	}
 
@@ -139,7 +148,7 @@ int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
 	block->size = resource_size(res);
 	block->base = devm_ioremap(&plat_dev->dev, res->start, resource_size(res));
 	if (!block->base) {
-		pr_err("Cannot map I/O register space\n");
+		dev_err(ioreg_dev->base_dev.dev, "Cannot map I/O register space\n");
 		return -EINVAL;
 	}
 
@@ -344,7 +353,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 			goto rw_func_end;
 		}
 
-		ret = validate_offset(block, entry->rw_batch.offset, entry->rw_batch.size_in_bytes);
+		ret = validate_offset(ioreg_dev, block, entry->rw_batch.offset,
+				      entry->rw_batch.size_in_bytes,
+				      ioreg_dev->base_dev.native_addr_bitwidth / 8);
 		if (ret) {
 			goto rw_func_end;
 		}
@@ -353,8 +364,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 						ioreg_dev->base_dev.native_value_bitwidth,
 						entry->rw_batch.size_in_bytes, entry->rw_batch.buf);
 		if (ret) {
-			pr_err("Invalid ioreg batch read at:\n");
-			pr_err("Offset: 0x%llx, Base: %pK\n", entry->rw_batch.offset, block->base);
+			dev_err(ioreg_dev->base_dev.dev, "Invalid ioreg batch read at:\n");
+			dev_err(ioreg_dev->base_dev.dev, "Offset: 0x%llx, Base: %pK\n",
+				entry->rw_batch.offset, block->base);
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		ret = lwis_ioreg_write(ioreg_dev, entry->rw.bid, entry->rw.offset, entry->rw.val,
@@ -367,7 +379,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 			goto rw_func_end;
 		}
 
-		ret = validate_offset(block, entry->rw_batch.offset, entry->rw_batch.size_in_bytes);
+		ret = validate_offset(ioreg_dev, block, entry->rw_batch.offset,
+				      entry->rw_batch.size_in_bytes,
+				      ioreg_dev->base_dev.native_addr_bitwidth / 8);
 		if (ret) {
 			goto rw_func_end;
 		}
@@ -376,9 +390,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 						 entry->rw_batch.size_in_bytes,
 						 entry->rw_batch.buf);
 		if (ret) {
-			pr_err("Invalid ioreg batch write at:\n");
-			pr_err("Offset: 0x%08llx, Base: %pK\n", entry->rw_batch.offset,
-			       block->base);
+			dev_err(ioreg_dev->base_dev.dev, "Invalid ioreg batch write at:\n");
+			dev_err(ioreg_dev->base_dev.dev, "Offset: 0x%08llx, Base: %pK\n",
+				entry->rw_batch.offset, block->base);
 		}
 	} else if (entry->type == LWIS_IO_ENTRY_MODIFY) {
 		ret = lwis_ioreg_read(ioreg_dev, entry->mod.bid, entry->mod.offset, &reg_value,
@@ -391,7 +405,7 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 		ret = lwis_ioreg_write(ioreg_dev, entry->mod.bid, entry->mod.offset, reg_value,
 				       access_size);
 	} else {
-		pr_err("Invalid IO entry type: %d\n", entry->type);
+		dev_err(ioreg_dev->base_dev.dev, "Invalid IO entry type: %d\n", entry->type);
 		ret = -EINVAL;
 	}
 
@@ -419,22 +433,23 @@ int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t off
 		return PTR_ERR(block);
 	}
 
-	// Access_size is bitwidth
-	// and validate_offset expects size of bytes
-	ret = validate_offset(block, offset, access_size / 8);
-	if (ret) {
-		return ret;
-	}
-
 	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
 	ret = validate_access_size(access_size, native_value_bitwidth);
 	if (ret) {
-		pr_err("Invalid access size\n");
+		dev_err(ioreg_dev->base_dev.dev, "Invalid access size\n");
 		return ret;
 	}
 	if (access_size != native_value_bitwidth) {
 		offset_mask = native_value_bitwidth / BITS_PER_BYTE - 1;
 		internal_offset = offset & ~offset_mask;
+	}
+
+	// Access_size is bitwidth
+	// and validate_offset expects size of bytes
+	ret = validate_offset(ioreg_dev, block, internal_offset, access_size / 8,
+			      ioreg_dev->base_dev.native_addr_bitwidth / 8);
+	if (ret) {
+		return ret;
 	}
 
 	ret = ioreg_read_internal(block->base, internal_offset, native_value_bitwidth, value);
@@ -467,17 +482,10 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t of
 		return PTR_ERR(block);
 	}
 
-	// Access_size is bitwidth
-	// and validate_offset expects size of bytes
-	ret = validate_offset(block, offset, access_size / 8);
-	if (ret) {
-		return ret;
-	}
-
 	native_value_bitwidth = ioreg_dev->base_dev.native_value_bitwidth;
 	ret = validate_access_size(access_size, native_value_bitwidth);
 	if (ret) {
-		pr_err("Invalid access size\n");
+		dev_err(ioreg_dev->base_dev.dev, "Invalid access size\n");
 		return ret;
 	}
 
@@ -492,6 +500,15 @@ int lwis_ioreg_write(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t of
 		value <<= (offset - internal_offset) * 8;
 		value = (value & value_mask) | (read_value & ~value_mask);
 	}
+
+	// Access_size is bitwidth
+	// and validate_offset expects size of bytes
+	ret = validate_offset(ioreg_dev, block, internal_offset, access_size / 8,
+			      ioreg_dev->base_dev.native_addr_bitwidth / 8);
+	if (ret) {
+		return ret;
+	}
+
 	return ioreg_write_internal(block->base, internal_offset, native_value_bitwidth, value);
 }
 
