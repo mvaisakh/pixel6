@@ -36,6 +36,13 @@ int max777x9_pmic_reg_write(struct i2c_client *client,
 int max777x9_pmic_reg_update(struct i2c_client *client,
 			     u8 reg, u8 mask, u8 value);
 
+/* write to a register */
+int max77759_chg_reg_write(struct i2c_client *client, u8 reg, u8 value);
+/* udate a register */
+int max77759_chg_reg_update(struct i2c_client *client, u8 reg, u8 mask, u8 value);
+/* change the mode register */
+int max77759_chg_mode_write(struct i2c_client *client, enum max77759_charger_modes mode);
+
 #if IS_ENABLED(CONFIG_PMIC_MAX77729)
 extern int max77759_read_batt_conn(struct i2c_client *client, int *temp);
 extern int max77759_read_usb_temp(struct i2c_client *client, int *temp);
@@ -111,16 +118,29 @@ struct max77759_foreach_cb_data {
 };
 
 struct max77759_usecase_data {
+	int is_a1;
+
 	int bst_on;		/* ext boost */
 	int bst_sel;		/* 5V or 7.5V */
 	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
 
 	int ls2_en;		/* OVP LS2, rtx case */
+	int sw_en;		/* OVP SW Enable, rtx+otg case */
 
 	int vin_is_valid;	/* MAX20339 STATUS1.vinvalid */
 	int lsw1_is_open;	/* MAX20339 STATUS2.lsw1open */
 	int lsw1_is_closed;	/* MAX20339 STATUS2.lsw1closed */
 
+	int ext_bst_mode;	/* wlcrx+otg: b/175706836, TPS61372 P1.1+ */
+	int cpout_en;		/* wlcrx+otg: CPOUT enabled/disabled */
+	int cpout_ctl;		/* wlcrx+otg: CPOUT level 5.3V or DFLT */
+
+	int cpout21_en;		/* wlctx: CPOUT 2:1 converter enable/disable */
+
+	u8 otg_ilim;		/* TODO: TCPM to control this? */
+	u8 otg_vbyp;		/* TODO: TCPM to control this? */
+
+	struct i2c_client *client;
 	bool init_done;
 };
 
