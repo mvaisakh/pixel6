@@ -22,8 +22,13 @@
 #include "max77759_regs.h"
 
 #define MAX77759_CHG_INT_COUNT 2
+
+#define MAX77759_PMIC_REV_A0		0x01
+#define MAX77759_PMIC_REV_A1		0x02
+
 #define MAX77759_PMIC_PMIC_ID_MW	0x3b
 
+int max777x9_pmic_get_id(struct i2c_client *client, u8 *id, u8 *rev);
 int max777x9_pmic_reg_read(struct i2c_client *client,
 			   u8 addr, u8 *val, int len);
 int max777x9_pmic_reg_write(struct i2c_client *client,

@@ -87,7 +87,6 @@ enum max77729_pmic_register {
 #define MAX77759_PMIC_TOPSYS_INT_MASK_DEFAULT \
 		(MAX77759_PMIC_TOPSYS_INT_MASK_TSHDN_INT_M)
 
-#define MAX77759_REV_A0		0x1
 #define MAX77759_STORAGE_SIZE	16
 #define MAX77759_STORAGE_BASE	(MAX77759_PMIC_AP_DATAOUT0 + MAX77759_STORAGE_SIZE)
 
@@ -206,8 +205,12 @@ static inline int max77729_pmic_rmw8(struct max77729_pmic_data *data,
 int max777x9_pmic_reg_read(struct i2c_client *client,
 			   u8 addr, u8 *val, int len)
 {
-	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	struct max77729_pmic_data *data;
 
+	if (!client)
+		return -EINVAL;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENXIO;
 
@@ -218,8 +221,12 @@ EXPORT_SYMBOL_GPL(max777x9_pmic_reg_read);
 int max777x9_pmic_reg_write(struct i2c_client *client,
 			    u8 addr, const u8 *val, int len)
 {
-	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	struct max77729_pmic_data *data;
 
+	if (!client)
+		return -EINVAL;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENXIO;
 
@@ -230,14 +237,37 @@ EXPORT_SYMBOL_GPL(max777x9_pmic_reg_write);
 int max777x9_pmic_reg_update(struct i2c_client *client,
 			     u8 reg, u8 mask, u8 value)
 {
-	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	struct max77729_pmic_data *data;
 
+	if (!client)
+		return -EINVAL;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENXIO;
 
 	return max77729_pmic_rmw8(data, reg, mask, value);
 }
 EXPORT_SYMBOL_GPL(max777x9_pmic_reg_update);
+
+
+int max777x9_pmic_get_id(struct i2c_client *client, u8 *id, u8 *rev)
+{
+	struct max77729_pmic_data *data;
+
+	if (!client)
+		return -EINVAL;
+
+	data = i2c_get_clientdata(client);
+	if (!data)
+		return -ENXIO;
+
+	*rev = data->rev_id;
+	*id = data->pmic_id;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(max777x9_pmic_get_id);
+
 
 static int get_ovp_client_data(struct max77729_pmic_data *data)
 {
@@ -1003,7 +1033,7 @@ static int max77729_pmic_probe(struct i2c_client *client,
 			data->rev_id = _pmic_pmic_revision_rev_get(rev_reg);
 		}
 
-		if (data->rev_id == MAX77759_REV_A0)
+		if (data->rev_id == MAX77759_PMIC_REV_A0)
 			schedule_delayed_work(&data->storage_init_work, 0);
 	}
 
