@@ -16,6 +16,8 @@
 #ifndef __P9221_CHARGER_H__
 #define __P9221_CHARGER_H__
 
+#include <linux/gpio.h>
+
 #define P9221_WLC_VOTER				"WLC_VOTER"
 #define P9221_USER_VOTER			"WLC_USER_VOTER"
 #define P9221_OCP_VOTER				"OCP_VOTER"
@@ -579,6 +581,10 @@ struct p9221_charger_data {
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
 
+#if IS_ENABLED(CONFIG_GPIOLIB)
+	struct gpio_chip gpio;
+#endif
+
 	/* WLC DC when available */
 	u32 				wlc_dc_voltage_now;
 	u32 				wlc_dc_current_now;
@@ -634,6 +640,10 @@ struct p9221_charger_data {
 	void (*chip_check_neg_power)(struct p9221_charger_data *chgr);
 };
 
+bool p9221_is_epp(struct p9221_charger_data *charger);
+int p9221_set_psy_online(struct p9221_charger_data *charger, int online);
+
+void p9412_gpio_init(struct p9221_charger_data *charger);
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
 				 u16 chip_id);
 extern void p9221_chip_init_params(struct p9221_charger_data *charger,

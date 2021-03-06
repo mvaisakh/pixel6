@@ -1013,6 +1013,40 @@ static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	return -ENOTSUPP;
 }
 
+static int p9412_capdiv_en(struct p9221_charger_data *chgr, bool enable)
+{
+	const u8 mask = enable ? CDMODE_CAP_DIV_MODE : 0;
+	int ret, loops;
+	u8 cdmode;
+
+	/* TODO: it probably needs a lock around this */
+
+	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, mask);
+	if (ret < 0)
+		return -EIO;
+
+	ret = chgr->chip_set_cmd(chgr, INIT_CAP_DIV_CMD);
+	if (ret < 0)
+		return -EIO;
+
+	msleep(50);
+
+	/* verify the change to Cap Divider mode */
+	for (loops = 30 ; loops ; loops--) {
+
+		ret = chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
+		if (ret < 0)
+			return ret;
+
+		if ((cdmode & mask) == mask)
+			break;
+
+		msleep(100);
+	}
+
+	return ((cdmode & mask) == mask) ? 0 :  -ETIMEDOUT;
+}
+
 static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	int ret, loops;
@@ -1431,3 +1465,89 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 
 	return 0;
 }
+
+
+#define P9412_NUM_GPIOS			5
+#define P9412_MIN_GPIO			0
+#define P9412_MAX_GPIO			5
+#define P9412_GPIO_CPOUT_EN		1
+#define P9412_GPIO_CPOUT21_EN		2
+#define P9412_GPIO_CPOUT_CTL_EN		3
+
+#if IS_ENABLED(CONFIG_GPIOLIB)
+static int p9412_gpio_get_direction(struct gpio_chip *chip,
+				    unsigned int offset)
+{
+	return GPIOF_DIR_OUT;
+}
+
+static int p9412_gpio_get(struct gpio_chip *chip, unsigned int offset)
+{
+	//struct p9221_charger_data *charger = gpiochip_get_data(chip);
+	int value = 0;
+
+	switch (offset) {
+	case P9412_GPIO_CPOUT_EN:
+		break;
+	case P9412_GPIO_CPOUT21_EN:
+		// read cap divider
+		break;
+	case P9412_GPIO_CPOUT_CTL_EN:
+		break;
+	default:
+		break;
+	}
+
+	return value;
+}
+
+#define P9412_BPP_VOUT_DFLT	5000
+#define P9412_BPP_WLC_OTG_VOUT	5200
+
+static void p9412_gpio_set(struct gpio_chip *chip,
+			   unsigned int offset, int value)
+{
+	struct p9221_charger_data *charger = gpiochip_get_data(chip);
+	int ret = -EINVAL;
+
+	switch (offset) {
+	case P9412_GPIO_CPOUT_EN:
+		ret = p9221_set_psy_online(charger, value);
+		break;
+	case P9412_GPIO_CPOUT21_EN:
+		/* TODO: no-op for new firmware */
+		ret = p9412_capdiv_en(charger, !!value);
+		break;
+	case P9412_GPIO_CPOUT_CTL_EN:
+		/* b/174068520: set vout to 5.2 for BPP_WLC_RX+OTG */
+		if (value && !p9221_is_epp(charger))
+			ret = p9412_chip_set_vout_max(charger, P9412_BPP_WLC_OTG_VOUT);
+		else if (value == 0 )
+			ret = p9412_chip_set_vout_max(charger, P9412_BPP_VOUT_DFLT);
+		else
+			ret = 0;
+		break;
+	default:
+		break;
+	}
+
+	pr_debug("%s: GPIO offset=%d value=%d ret:%d\n", __func__,
+		 offset, value, ret);
+
+	if (ret < 0)
+		dev_err(&charger->client->dev, "GPIO%d: value=%d ret:%d\n",
+			offset, value, ret);
+}
+
+void p9412_gpio_init(struct p9221_charger_data *charger)
+{
+	charger->gpio.owner = THIS_MODULE;
+	charger->gpio.label = "p9412_gpio";
+	charger->gpio.get_direction = p9412_gpio_get_direction;
+	charger->gpio.get = p9412_gpio_get;
+	charger->gpio.set = p9412_gpio_set;
+	charger->gpio.base = -1;
+	charger->gpio.ngpio = P9412_NUM_GPIOS;
+	charger->gpio.can_sleep = true;
+}
+#endif

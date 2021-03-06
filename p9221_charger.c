@@ -16,6 +16,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/gpio/driver.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/alarmtimer.h>
@@ -193,7 +194,7 @@ static int p9221_reg_write_8(struct p9221_charger_data *charger, u16 reg,
 	return p9221_reg_write_n(charger, reg, &val, 1);
 }
 
-static bool p9221_is_epp(struct p9221_charger_data *charger)
+bool p9221_is_epp(struct p9221_charger_data *charger)
 {
 	int ret;
 	u32 vout_mv;
@@ -927,9 +928,6 @@ static int p9221_get_psy_online(struct p9221_charger_data *charger)
 	if (charger->dc_suspend_votable)
 		suspend = get_effective_result(charger->dc_suspend_votable);
 
-	pr_debug("%s: suspend=%d, wc_dc=%d\n", __func__, suspend,
-		 charger->wlc_dc_enabled);
-
 	/* TODO: not sure if this needs to be reported */
 	if (suspend < 0)
 		return suspend;
@@ -977,9 +975,6 @@ static int p9221_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = p9221_get_psy_online(charger);
-		pr_debug("%s: dc_enable=%d, online=%d, enabled=%d\n",
-			 __func__, val->intval,  charger->online,
-			 charger->enabled);
 		break;
 	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		val->strval = p9221_get_tx_id_str(charger);
@@ -1102,7 +1097,7 @@ static int p9221_get_property(struct power_supply *psy,
 }
 
 /* < 0 error, 0 = no changes, > 1 changed */
-static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
+int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
 	if (online < 0 || online > PPS_PSY_PROG_ONLINE)
 		return -EINVAL;
@@ -1275,9 +1270,6 @@ static int p9221_notifier_cb(struct notifier_block *nb, unsigned long event,
 
 	if (event != PSY_EVENT_PROP_CHANGED)
 		goto out;
-
-	pr_debug("%s: psy_changed: from=%s evt=%lu\n", __func__,
-		psy->desc->name, event);
 
 	if (strcmp(psy->desc->name, "dc") == 0) {
 		charger->dc_psy = psy;
@@ -4463,6 +4455,23 @@ static int p9221_charger_probe(struct i2c_client *client,
 			ret);
 		charger->rtx_log = NULL;
 	}
+
+#if IS_ENABLED(CONFIG_GPIOLIB)
+	if (charger->pdata->chip_id == P9412_CHIP_ID) {
+		p9412_gpio_init(charger);
+		charger->gpio.parent = &client->dev;
+		charger->gpio.of_node = of_find_node_by_name(client->dev.of_node,
+						charger->gpio.label);
+		if (!charger->gpio.of_node)
+			dev_err(&client->dev, "Failed to find %s DT node\n",
+				charger->gpio.label);
+
+		ret = devm_gpiochip_add_data(&client->dev, &charger->gpio, charger);
+		dev_info(&client->dev, "%d GPIOs registered ret:%d\n",
+			 charger->gpio.ngpio, ret);
+
+	}
+#endif
 
 	dev_info(&client->dev, "p9221 Charger Driver Loaded\n");
 
