@@ -35,6 +35,7 @@
 #define PANEL_ID_READ_SIZE	(PANEL_ID_LEN + PANEL_ID_OFFSET)
 
 static const char ext_info_regs[] = { 0xDA, 0xDB, 0xDC };
+#define EXT_INFO_SIZE ARRAY_SIZE(ext_info_regs)
 
 #define exynos_connector_to_panel(c)					\
 	container_of((c), struct exynos_panel, exynos_connector)
@@ -135,11 +136,10 @@ static int exynos_panel_read_id(struct exynos_panel *ctx)
 static int exynos_panel_read_extinfo(struct exynos_panel *ctx)
 {
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	const size_t extinfo_len = ARRAY_SIZE(ext_info_regs);
-	char buf[extinfo_len];
+	char buf[EXT_INFO_SIZE];
 	int i, ret;
 
-	for (i = 0; i < extinfo_len; i++) {
+	for (i = 0; i < EXT_INFO_SIZE; i++) {
 		ret = mipi_dsi_dcs_read(dsi, ext_info_regs[i], buf + i, 1);
 		if (ret != 1) {
 			dev_warn(ctx->dev,
