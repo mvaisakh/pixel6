@@ -160,6 +160,9 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A); /* TEST_KEY_ON_F0 */
 
+	// TODO: we need TE rising setting only before EVT.
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB9, 0x01, 0x09, 0x5C, 0x00, 0x0B);  /* TE rising time */
+
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x27, 0xF2); /* FQ_CON_GLOBAL */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x00); /* FQ_CON_0 */
 
