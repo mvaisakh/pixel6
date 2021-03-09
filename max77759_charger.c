@@ -127,6 +127,7 @@ struct max77759_chgr_data {
 	struct mutex vdroop_irq_lock[VDROOP_MAX];
 	struct delayed_work vdroop_irq_work[VDROOP_MAX];
 
+	int chg_term_voltage;
 };
 
 static inline int max77759_reg_read(struct regmap *regmap, uint8_t reg,
@@ -2132,6 +2133,43 @@ static int max77759_get_charge_type(struct max77759_chgr_data *data)
 	return POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
 }
 
+static int max77759_read_from_fg(struct max77759_chgr_data *data,
+				 enum power_supply_property psp,
+				 union power_supply_propval *pval)
+{
+	int ret = -ENODEV;
+
+	if (!data->fg_psy)
+		data->fg_psy = power_supply_get_by_name("maxfg");
+	if (data->fg_psy)
+		ret = power_supply_get_property(data->fg_psy, psp, pval);
+	if (ret < 0)
+		pval->intval = -1;
+	return 0;
+}
+
+static bool max77759_is_full(struct max77759_chgr_data *data)
+{
+	union power_supply_propval pval;
+	int vchrg = 0;
+	int ret;
+
+	/*
+	 * Set voltage level to leave CHARGER_DONE (BATT_RL_STATUS_DISCHARGE)
+	 * and enter BATT_RL_STATUS_RECHARGE. It sets STATUS_DISCHARGE again
+	 * once CHARGER_DONE flag set (return true here)
+	 */
+	ret = max77759_read_from_fg(data, POWER_SUPPLY_PROP_VOLTAGE_NOW,
+				    &pval);
+	if (ret == 0)
+		vchrg = pval.intval / 1000;
+	/* Report NOT_CHARGING(false) if fail to get battery voltage */
+	if (vchrg < data->chg_term_voltage)
+		return false;
+
+	return true;
+}
+
 static int max77759_get_status(struct max77759_chgr_data *data)
 {
 	uint8_t val;
@@ -2152,7 +2190,10 @@ static int max77759_get_status(struct max77759_chgr_data *data)
 			return POWER_SUPPLY_STATUS_CHARGING;
 		case CHGR_DTLS_DONE_MODE:
 			/* same as POWER_SUPPLY_PROP_CHARGE_DONE */
-			return POWER_SUPPLY_STATUS_FULL;
+			if (max77759_is_full(data))
+				return POWER_SUPPLY_STATUS_FULL;
+			else
+				return POWER_SUPPLY_STATUS_NOT_CHARGING;
 		case CHGR_DTLS_TIMER_FAULT_MODE:
 		case CHGR_DTLS_DETBAT_HIGH_SUSPEND_MODE:
 		case CHGR_DTLS_OFF_MODE:
@@ -2164,21 +2205,6 @@ static int max77759_get_status(struct max77759_chgr_data *data)
 	}
 
 	return POWER_SUPPLY_STATUS_UNKNOWN;
-}
-
-static int max77759_read_from_fg(struct max77759_chgr_data *data,
-				 enum power_supply_property psp,
-				 union power_supply_propval *pval)
-{
-	int ret = -ENODEV;
-
-	if (!data->fg_psy)
-		data->fg_psy = power_supply_get_by_name("maxfg");
-	if (data->fg_psy)
-		ret = power_supply_get_property(data->fg_psy, psp, pval);
-	if (ret < 0)
-		pval->intval = -1;
-	return 0;
 }
 
 static int max77759_get_chg_chgr_state(struct max77759_chgr_data *data,
@@ -3344,6 +3370,11 @@ static int max77759_charger_probe(struct i2c_client *client,
 	if (ret < 0)
 		dev_err(dev, "wd enable=%d failed %d\n", data->wden, ret);
 	mutex_unlock(&data->io_lock);
+
+	ret = of_property_read_u32(dev->of_node, "max77759,chg-term-voltage",
+				   &data->chg_term_voltage);
+	if (ret < 0)
+		data->chg_term_voltage = 0;
 
 	data->init_complete = 1;
 	data->resume_complete = 1;
