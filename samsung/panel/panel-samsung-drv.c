@@ -26,6 +26,7 @@
 #include <drm/drm_probe_helper.h>
 #include <video/mipi_display.h>
 
+#include <trace/dpu_trace.h>
 #include "../exynos_drm_connector.h"
 #include "panel-samsung-drv.h"
 
@@ -1892,6 +1893,8 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 
 	if (need_update_backlight && ctx->bl)
 		backlight_update_status(ctx->bl);
+
+	DPU_ATRACE_INT("panel_fps", drm_mode_vrefresh(mode));
 }
 
 static void local_hbm_timeout_work(struct work_struct *work)

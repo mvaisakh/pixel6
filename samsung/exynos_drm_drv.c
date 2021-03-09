@@ -46,6 +46,8 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
+EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
+
 static struct exynos_drm_priv_state *exynos_drm_get_priv_state(struct drm_atomic_state *state)
 {
 	struct exynos_drm_private *priv = state->dev->dev_private;
