@@ -3555,8 +3555,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 
 	/* Proprietary packet */
 	if (irq_src & charger->ints.pp_rcvd_bit) {
-		const size_t maxsz = sizeof(charger->pp_buf) * 3 + 1;
-		char s[maxsz];
+		char s[sizeof(charger->pp_buf) * 3 + 1];
 		u8 tmp, buff[sizeof(charger->pp_buf)], crc;
 
 		res = charger->chip_get_data_buf(charger,
@@ -3587,7 +3586,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 			charger->pp_buf_valid = (charger->pp_buf[0] == 0x4F);
 
 			p9221_hex_str(charger->pp_buf, sizeof(charger->pp_buf),
-				      s, maxsz, false);
+				      s, ARRAY_SIZE(s), false);
 			dev_info(&charger->client->dev, "Received PP: %s\n", s);
 
 			/* Check if charging on a Tx phone */
