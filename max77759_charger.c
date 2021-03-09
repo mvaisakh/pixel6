@@ -1073,6 +1073,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int buck_on = cb_data->inflow_off ? 0 : cb_data->buck_on;
+	const int chgr_on = cb_data->stby_on ? 0 : cb_data->chgr_on;
 	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
 	u8 mode;
@@ -1112,13 +1113,13 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 		/* pps_dc + wlc_tx handled up */
 		usecase = GSU_MODE_USB_CHG_WLC_TX;
-		mode = (cb_data->chgr_on) ?
+		mode = (chgr_on) ?
 			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
 			MAX77759_CHGR_MODE_BUCK_ON;
 	} else {
 
 		/* MODE_BUCK_ON is inflow */
-		if (cb_data->chgr_on) {
+		if (chgr_on) {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 			usecase = GSU_MODE_USB_CHG;
 		} else {
