@@ -1310,8 +1310,13 @@ static ssize_t hbm_mode_store(struct device *dev,
 		return -ENOTSUPP;
 	}
 
-	if (!ctx->enabled || !ctx->initialized) {
+	if (!ctx->enabled || !ctx->initialized || !ctx->current_mode) {
 		dev_err(ctx->dev, "panel is not enabled\n");
+		return -EPERM;
+	}
+
+	if (ctx->current_mode->exynos_mode.is_lp_mode) {
+		dev_dbg(ctx->dev, "hbm unsupported in LP mode\n");
 		return -EPERM;
 	}
 
@@ -1770,6 +1775,7 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 	struct drm_atomic_state *state = old_bridge_state->base.state;
 	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
 
 	/* this handles the case where panel may be enabled while booting already */
 	if (ctx->enabled && !exynos_panel_init(ctx))
@@ -1783,7 +1789,8 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 	drm_panel_enable(&ctx->panel);
 
 skip_enable:
-	exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
+	exynos_panel_set_backlight_state(ctx, pmode->exynos_mode.is_lp_mode ?
+					 PANEL_STATE_LP : PANEL_STATE_ON);
 }
 
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
@@ -1881,7 +1888,8 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			need_update_backlight = true;
 		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
 			funcs->set_nolp_mode(ctx, pmode);
-			exynos_panel_set_backlight_state(ctx, PANEL_STATE_ON);
+			exynos_panel_set_backlight_state(ctx, ctx->enabled ?
+							 PANEL_STATE_ON : PANEL_STATE_OFF);
 			need_update_backlight = true;
 		} else if (funcs->mode_set) {
 			funcs->mode_set(ctx, pmode);
