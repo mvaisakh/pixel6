@@ -3062,8 +3062,8 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 	input_mt_report_slot_state(info->input_dev, tool, 1);
 	input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
 	input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
-	input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, major);
-	input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, minor);
+	input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, major * AREA_SCALE);
+	input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, minor * AREA_SCALE);
 #ifndef SKIP_PRESSURE
 	input_report_abs(info->input_dev, ABS_MT_PRESSURE, z);
 #endif
@@ -4364,9 +4364,9 @@ static void fts_offload_report(void *handle,
 			input_report_abs(info->input_dev, ABS_MT_POSITION_Y,
 					 report->coords[i].y);
 			input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR,
-					 report->coords[i].major);
+					 report->coords[i].major * AREA_SCALE);
 			input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR,
-					 report->coords[i].minor);
+					 report->coords[i].minor * AREA_SCALE);
 
 #ifndef SKIP_PRESSURE
 			input_report_abs(info->input_dev, ABS_MT_PRESSURE,

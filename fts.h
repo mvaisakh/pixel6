@@ -203,10 +203,13 @@
 #define TOUCH_ID_MAX	10	/* /< Max number of simoultaneous touches
 				 * reported */
 
-#define AREA_MIN	PRESSURE_MIN	/* /< min value of Major/minor axis
-					 * reported */
-#define AREA_MAX	PRESSURE_MAX	/* /< Man value of Major/minor axis
-					 * reported */
+#define AREA_SCALE	16	/* /< Scale for major/minor axis calculation */
+#define AREA_MIN	(PRESSURE_MIN * AREA_SCALE)	/* /< Min value of
+							 * major/minor axis
+							 * reported */
+#define AREA_MAX	(PRESSURE_MAX * AREA_SCALE)	/* /< Max value of
+							 * major/minor axis
+							 * reported */
 /* **** END **** */
 
 /* #define SKIP_PRESSURE */
