@@ -1163,16 +1163,17 @@ static int p9221_set_property(struct power_supply *psy,
 			      const union power_supply_propval *val)
 {
 	struct p9221_charger_data *charger = power_supply_get_drvdata(psy);
-	int ret = 0;
 	bool changed = false;
+	int rc, ret = 0;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		ret = p9221_set_psy_online(charger, val->intval);
-		if (ret < 0)
+		rc = p9221_set_psy_online(charger, val->intval);
+		if (rc < 0) {
+			ret = rc;
 			break;
-
-		changed = !!ret;
+		}
+		changed = !!rc;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		if (charger->last_capacity == val->intval)
