@@ -73,6 +73,8 @@ struct uvilo_stats {
 
 struct max77759_chgr_data {
 	struct device *dev;
+	struct device *mdev;
+
 	struct power_supply *psy;
 	struct power_supply *wcin_psy;
 	struct power_supply *chgin_psy;
@@ -2866,12 +2868,13 @@ static int max77759_charger_probe(struct i2c_client *client,
 	ret = max77759_init_wcin_psy(data);
 	if (ret < 0)
 		pr_err("Couldn't register dc power supply (%d)\n", ret);
-	data->dev = pmic_device_create(data, "max77759-mitigation");
-	ret = device_create_file(data->dev, &dev_attr_triggered_stats);
-	if (ret)
-		dev_err(dev, "Failed to create device file, %s\n",
-			dev_attr_triggered_stats.attr.name);
 
+	data->mdev = pmic_device_create(data, "max77759-mitigation");
+	if (data->mdev) {
+		ret = device_create_file(data->mdev, &dev_attr_triggered_stats);
+		if (ret)
+			dev_err(dev, "No mitigation device (%d)\n", ret);
+	}
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	return 0;
 }
@@ -2884,6 +2887,9 @@ static int max77759_charger_remove(struct i2c_client *client)
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
 	if (data->tz_vdroop[VDROOP2])
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
+	if (data->mdev)
+		pmic_device_destroy(data->mdev->devt);
+
 	return 0;
 }
 
