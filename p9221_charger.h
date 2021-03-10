@@ -527,6 +527,7 @@ struct p9221_charger_data {
 	u8				cust_id;
 	int				ben_state;
 	u8				pp_buf[P9221R5_MAX_PP_BUF_SIZE];
+	char				pp_buf_str[P9221R5_MAX_PP_BUF_SIZE * 3 + 1];
 	bool				pp_buf_valid;
 	u8				*rx_buf;
 	size_t				rx_buf_size;
