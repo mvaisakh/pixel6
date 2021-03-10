@@ -108,6 +108,20 @@ uint edgetpu_wakelock_lock(struct edgetpu_wakelock *wakelock);
 void edgetpu_wakelock_unlock(struct edgetpu_wakelock *wakelock);
 
 /*
+ * Returns the request counter of @wakelock.
+ *
+ * Caller calls edgetpu_wakelock_lock() before calling this function.
+ *
+ * When the chipset doesn't support wakelock:
+ *   Returns 1.
+ */
+static inline uint
+edgetpu_wakelock_count_locked(struct edgetpu_wakelock *wakelock)
+{
+	return NO_WAKELOCK(wakelock) ? 1 : wakelock->req_count;
+}
+
+/*
  * Acquires the wakelock, increases @wakelock->req_count by one.
  *
  * This function should be surrounded by edgetpu_wakelock_lock() and

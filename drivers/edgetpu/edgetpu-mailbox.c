@@ -392,21 +392,28 @@ static int convert_runtime_queue_size_to_fw(u32 queue_size, u32 element_size)
 	return ret;
 }
 
-/*
- * Sets mailbox and allocates queues to @vii.
- *
- * @group is the device group that @vii will be associated with.
- *
- * Returns 0 on success.
- * Returns -EINVAL if any fields in @attr is invalid.
- */
+bool edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr)
+{
+	int size;
+
+	size = convert_runtime_queue_size_to_fw(attr->cmd_queue_size,
+						attr->sizeof_cmd);
+	if (size < 0)
+		return false;
+	size = convert_runtime_queue_size_to_fw(attr->resp_queue_size,
+						attr->sizeof_resp);
+	if (size < 0)
+		return false;
+	return true;
+}
+
 int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
-			     struct edgetpu_device_group *group,
-			     const struct edgetpu_mailbox_attr *attr)
+			     struct edgetpu_device_group *group)
 {
 	int cmd_queue_size, resp_queue_size;
 	struct edgetpu_mailbox_manager *mgr = group->etdev->mailbox_manager;
 	struct edgetpu_mailbox *mailbox;
+	const struct edgetpu_mailbox_attr *attr = &group->mbox_attr;
 	int ret;
 
 	if (!group->etdomain || group->etdomain->pasid == IOMMU_PASID_INVALID)
@@ -418,16 +425,8 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 
 	cmd_queue_size = convert_runtime_queue_size_to_fw(attr->cmd_queue_size,
 							  attr->sizeof_cmd);
-	if (cmd_queue_size < 0) {
-		edgetpu_mailbox_remove(mgr, mailbox);
-		return cmd_queue_size;
-	}
 	resp_queue_size = convert_runtime_queue_size_to_fw(
 		attr->resp_queue_size, attr->sizeof_resp);
-	if (resp_queue_size < 0) {
-		edgetpu_mailbox_remove(mgr, mailbox);
-		return resp_queue_size;
-	}
 
 	edgetpu_mailbox_set_priority(mailbox, attr->priority);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox,
@@ -674,12 +673,8 @@ void edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group)
 {
 	int cmd_queue_size, resp_queue_size;
 	struct edgetpu_mailbox *mailbox = group->vii.mailbox;
-	struct edgetpu_mailbox_attr *attr = &group->mbox_attr;
+	const struct edgetpu_mailbox_attr *attr = &group->mbox_attr;
 
-	/*
-	 * Sizes here should never be invalid since they are checked in
-	 * edgetpu_mailbox_init_vii().
-	 */
 	cmd_queue_size = convert_runtime_queue_size_to_fw(attr->cmd_queue_size,
 							  attr->sizeof_cmd);
 	resp_queue_size = convert_runtime_queue_size_to_fw(

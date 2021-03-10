@@ -44,9 +44,8 @@ struct edgetpu_wakelock *edgetpu_wakelock_alloc(struct edgetpu_dev *etdev)
 		return NULL;
 	wakelock->etdev = etdev;
 	mutex_init(&wakelock->lock);
-	/* TODO(b/180528998): init as "released" */
-	/* Initialize client wakelock state to "acquired" */
-	wakelock->req_count = 1;
+	/* Initialize client wakelock state to "released" */
+	wakelock->req_count = 0;
 	return wakelock;
 #endif /* EDGETPU_HAS_WAKELOCK */
 }

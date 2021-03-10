@@ -32,6 +32,7 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-sw-watchdog.h"
 #include "edgetpu-usr.h"
+#include "edgetpu-wakelock.h"
 #include "edgetpu.h"
 #include "mm-backport.h"
 
@@ -299,6 +300,45 @@ static void group_release_members(struct edgetpu_device_group *group)
 	group->members = NULL;
 }
 
+/*
+ * Does attach domain, init VII, and set @group->context_id without checking
+ * @group->mailbox_detachable and whether the mailbox is attached.
+ *
+ * Caller holds @group->lock.
+ */
+static int do_attach_mailbox_locked(struct edgetpu_device_group *group)
+{
+	int ret;
+
+	ret = edgetpu_mmu_attach_domain(group->etdev, group->etdomain);
+	if (ret)
+		return ret;
+	ret = edgetpu_mailbox_init_vii(&group->vii, group);
+	if (ret) {
+		edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+		return ret;
+	}
+	group->context_id = group->vii.mailbox->mailbox_id;
+	return 0;
+}
+
+/*
+ * Does detach domain, remove VII, and invalidate @group->context_id without
+ * checking @group->mailbox_detachable and whether the mailbox is detached.
+ *
+ * Caller holds @group->lock.
+ */
+static void do_detach_mailbox_locked(struct edgetpu_device_group *group)
+{
+	edgetpu_mailbox_remove_vii(&group->vii);
+	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
+	if (group->etdomain->token != EDGETPU_DOMAIN_TOKEN_END)
+		group->context_id =
+			EDGETPU_CONTEXT_DOMAIN_TOKEN | group->etdomain->token;
+	else
+		group->context_id = EDGETPU_CONTEXT_INVALID;
+}
+
 int edgetpu_group_set_eventfd(struct edgetpu_device_group *group, uint event_id,
 			      int eventfd)
 {
@@ -380,9 +420,9 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 		edgetpu_p2p_mailbox_release(group);
 #endif
+		edgetpu_mailbox_remove_vii(&group->vii);
 		group_release_members(group);
 	}
-	edgetpu_mailbox_remove_vii(&group->vii);
 	if (group->etdomain) {
 		edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
 		edgetpu_mmu_free_domain(group->etdev, group->etdomain);
@@ -564,9 +604,90 @@ void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
 	mutex_unlock(&client->etdev->groups_lock);
 }
 
-/* caller should hold client's etdev state lock. */
-static int edgetpu_device_group_add_locked(struct edgetpu_device_group *group,
-					   struct edgetpu_client *client)
+void edgetpu_device_group_leave(struct edgetpu_client *client)
+{
+	mutex_lock(&client->etdev->state_lock);
+	/*
+	 * The only chance that the state is not GOOD here is the wdt timeout
+	 * action is working. Let that worker perform the group leaving.
+	 */
+	if (client->etdev->state == ETDEV_STATE_GOOD)
+		edgetpu_device_group_leave_locked(client);
+	mutex_unlock(&client->etdev->state_lock);
+}
+
+struct edgetpu_device_group *
+edgetpu_device_group_alloc(struct edgetpu_client *client,
+			   const struct edgetpu_mailbox_attr *attr)
+{
+	static uint cur_workload_id;
+	int ret = -EINVAL;
+	struct edgetpu_device_group *group;
+	struct edgetpu_iommu_domain *etdomain;
+
+	if (!edgetpu_mailbox_validate_attr(attr))
+		goto error;
+	/*
+	 * The client already belongs to a group.
+	 * It's safe not to take client->group_lock as
+	 * edgetpu_device_group_add() will fail if there is race.
+	 */
+	if (client->group)
+		goto error;
+
+	group = kzalloc(sizeof(*group), GFP_KERNEL);
+	if (!group) {
+		ret = -ENOMEM;
+		goto error;
+	}
+
+	refcount_set(&group->ref_count, 1);
+	group->workload_id = cur_workload_id++;
+	INIT_LIST_HEAD(&group->clients);
+	group->n_clients = 0;
+	group->status = EDGETPU_DEVICE_GROUP_WAITING;
+	group->etdev = client->etdev;
+	group->vii.etdev = client->etdev;
+	mutex_init(&group->lock);
+	rwlock_init(&group->events.lock);
+	edgetpu_mapping_init(&group->host_mappings);
+	edgetpu_mapping_init(&group->dmabuf_mappings);
+	group->mbox_attr = *attr;
+	if (attr->priority & EDGETPU_PRIORITY_DETACHABLE)
+		group->mailbox_detachable = true;
+	/* adds @client as the first entry */
+	ret = edgetpu_device_group_add(group, client);
+	if (ret) {
+		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
+			  __func__, group->workload_id, ret);
+		goto error_put_group;
+	}
+
+	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
+	if (!etdomain) {
+		ret = -ENOMEM;
+		goto error_leave_group;
+	}
+	group->etdomain = etdomain;
+	if (etdomain->token != EDGETPU_DOMAIN_TOKEN_END)
+		group->context_id =
+			EDGETPU_CONTEXT_DOMAIN_TOKEN | etdomain->token;
+	else
+		group->context_id = EDGETPU_CONTEXT_INVALID;
+
+	mutex_unlock(&client->etdev->state_lock);
+	return group;
+
+error_leave_group:
+	edgetpu_device_group_leave_locked(client);
+error_put_group:
+	edgetpu_device_group_put(group);
+error:
+	return ERR_PTR(ret);
+}
+
+int edgetpu_device_group_add(struct edgetpu_device_group *group,
+			     struct edgetpu_client *client)
 {
 	struct edgetpu_list_client *c;
 	int ret = 0;
@@ -616,118 +737,6 @@ out:
 	return ret;
 }
 
-void edgetpu_device_group_leave(struct edgetpu_client *client)
-{
-	mutex_lock(&client->etdev->state_lock);
-	/*
-	 * The only chance that the state is not GOOD here is the wdt timeout
-	 * action is working. Let that worker perform the group leaving.
-	 */
-	if (client->etdev->state == ETDEV_STATE_GOOD)
-		edgetpu_device_group_leave_locked(client);
-	mutex_unlock(&client->etdev->state_lock);
-}
-
-struct edgetpu_device_group *
-edgetpu_device_group_alloc(struct edgetpu_client *client,
-			   const struct edgetpu_mailbox_attr *attr)
-{
-	static uint cur_workload_id;
-	int ret;
-	struct edgetpu_device_group *group;
-	struct edgetpu_iommu_domain *etdomain;
-
-	mutex_lock(&client->etdev->state_lock);
-	if (client->etdev->state != ETDEV_STATE_GOOD) {
-		ret = edgetpu_get_state_errno_locked(client->etdev);
-		goto state_unlock;
-	}
-	/*
-	 * The client already belongs to a group.
-	 * It's safe not to take client->group_lock as
-	 * edgetpu_device_group_add_locked() will fail if there is race.
-	 */
-	if (client->group) {
-		ret = -EINVAL;
-		goto state_unlock;
-	}
-
-	group = kzalloc(sizeof(*group), GFP_KERNEL);
-	if (!group) {
-		ret = -ENOMEM;
-		goto state_unlock;
-	}
-
-	refcount_set(&group->ref_count, 1);
-	group->workload_id = cur_workload_id++;
-	INIT_LIST_HEAD(&group->clients);
-	group->n_clients = 0;
-	group->status = EDGETPU_DEVICE_GROUP_WAITING;
-	group->etdev = client->etdev;
-	mutex_init(&group->lock);
-	rwlock_init(&group->events.lock);
-	edgetpu_mapping_init(&group->host_mappings);
-	edgetpu_mapping_init(&group->dmabuf_mappings);
-	/* adds @client as the first entry */
-	ret = edgetpu_device_group_add_locked(group, client);
-	if (ret) {
-		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
-			  __func__, group->workload_id, ret);
-		goto error_put_group;
-	}
-
-	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
-	if (!etdomain) {
-		ret = -ENOMEM;
-		goto error_leave_group;
-	}
-	ret = edgetpu_mmu_attach_domain(group->etdev, etdomain);
-	if (ret) {
-		edgetpu_mmu_free_domain(group->etdev, etdomain);
-		goto error_leave_group;
-	}
-	group->etdomain = etdomain;
-	ret = edgetpu_mailbox_init_vii(&group->vii, group, attr);
-	if (ret) {
-		etdev_dbg(group->etdev, "%s: group %u init vii failed ret=%d",
-			  __func__, group->workload_id, ret);
-		/* this also performs domain detach / free */
-		goto error_leave_group;
-	}
-
-	group->context_id = group->vii.mailbox->mailbox_id;
-	if (attr->priority & EDGETPU_PRIORITY_DETACHABLE)
-		group->mailbox_detachable = true;
-	group->mbox_attr = *attr;
-
-	mutex_unlock(&client->etdev->state_lock);
-	return group;
-
-error_leave_group:
-	edgetpu_device_group_leave_locked(client);
-error_put_group:
-	edgetpu_device_group_put(group);
-state_unlock:
-	mutex_unlock(&client->etdev->state_lock);
-	return ERR_PTR(ret);
-}
-
-int edgetpu_device_group_add(struct edgetpu_device_group *group,
-			     struct edgetpu_client *client)
-{
-	int ret;
-
-	mutex_lock(&client->etdev->state_lock);
-	if (client->etdev->state != ETDEV_STATE_GOOD) {
-		ret = edgetpu_get_state_errno_locked(client->etdev);
-		goto out;
-	}
-	ret = edgetpu_device_group_add_locked(group, client);
-out:
-	mutex_unlock(&client->etdev->state_lock);
-	return ret;
-}
-
 bool edgetpu_device_group_is_leader(struct edgetpu_device_group *group,
 				    const struct edgetpu_client *client)
 {
@@ -743,14 +752,15 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 {
 	int ret = 0, i;
 	struct edgetpu_dev *etdev;
+	bool mailbox_attached = false;
+	struct edgetpu_client *leader;
 
 	mutex_lock(&group->lock);
 	/* do nothing if the group is finalized */
 	if (edgetpu_device_group_is_finalized(group))
 		goto err_unlock;
 
-	if (!edgetpu_device_group_is_waiting(group) ||
-	    edgetpu_group_mailbox_detached_locked(group)) {
+	if (!edgetpu_device_group_is_waiting(group)) {
 		ret = -EINVAL;
 		goto err_unlock;
 	}
@@ -768,10 +778,29 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 		goto err_release_members;
 	}
 
+	leader = group->members[0];
+	/*
+	 * Initialize VII mailbox if
+	 * 1. mailbox is non-detachable: VII is assigned and has the same life
+	 *    cycle as a finalized @group, or
+	 * 2. has non-zero wakelock reference counter: VII should be ready to
+	 *    use after group is finalized.
+	 */
+	if (!group->mailbox_detachable ||
+	    edgetpu_wakelock_count_locked(leader->wakelock)) {
+		mailbox_attached = true;
+		ret = do_attach_mailbox_locked(group);
+		if (ret) {
+			etdev_err(group->etdev,
+				  "attach mailbox failed on finalization: %d",
+				  ret);
+			goto err_release_members;
+		}
+	}
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 	ret = edgetpu_p2p_mailbox_setup(group);
 	if (ret)
-		goto err_release_members;
+		goto err_detach_mailbox;
 #endif
 
 	ret = edgetpu_group_setup_remote_dram(group);
@@ -779,9 +808,12 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 		goto err_release_p2p;
 
 	edgetpu_usr_init_group(group);
-	ret = edgetpu_device_group_kci_finalized(group);
-	if (ret)
-		goto err_remove_remote_dram;
+
+	if (edgetpu_wakelock_count_locked(leader->wakelock)) {
+		ret = edgetpu_device_group_kci_finalized(group);
+		if (ret)
+			goto err_remove_remote_dram;
+	}
 
 	group->status = EDGETPU_DEVICE_GROUP_FINALIZED;
 
@@ -798,7 +830,10 @@ err_remove_remote_dram:
 err_release_p2p:
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 	edgetpu_p2p_mailbox_release(group);
+err_detach_mailbox:
 #endif
+	if (mailbox_attached)
+		do_detach_mailbox_locked(group);
 err_release_members:
 	group_release_members(group);
 err_unlock:
@@ -1532,52 +1567,40 @@ void edgetpu_group_detach_mailbox_locked(struct edgetpu_device_group *group)
 		return;
 	if (edgetpu_group_mailbox_detached_locked(group))
 		return;
-	edgetpu_mailbox_remove_vii(&group->vii);
-	edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
-	if (group->etdomain->token != EDGETPU_DOMAIN_TOKEN_END)
-		group->context_id =
-			EDGETPU_CONTEXT_DOMAIN_TOKEN | group->etdomain->token;
-	else
-		group->context_id = EDGETPU_CONTEXT_INVALID;
+	do_detach_mailbox_locked(group);
 }
 
 void edgetpu_group_close_and_detach_mailbox(struct edgetpu_device_group *group)
 {
 	mutex_lock(&group->lock);
-	if (edgetpu_device_group_is_finalized(group))
+	/* only a finalized group may have mailbox attached */
+	if (edgetpu_device_group_is_finalized(group)) {
 		edgetpu_group_kci_close_device(group);
-	edgetpu_group_detach_mailbox_locked(group);
+		edgetpu_group_detach_mailbox_locked(group);
+	}
 	mutex_unlock(&group->lock);
 }
 
 int edgetpu_group_attach_mailbox_locked(struct edgetpu_device_group *group)
 {
-	int ret;
-
 	if (!group->mailbox_detachable)
 		return 0;
 	if (!edgetpu_group_mailbox_detached_locked(group))
 		return 0;
-	ret = edgetpu_mmu_attach_domain(group->etdev, group->etdomain);
-	if (ret)
-		return ret;
-	ret = edgetpu_mailbox_init_vii(&group->vii, group, &group->mbox_attr);
-	if (ret) {
-		edgetpu_mmu_detach_domain(group->etdev, group->etdomain);
-		return ret;
-	}
-	group->context_id = group->vii.mailbox->mailbox_id;
-	return 0;
+	return do_attach_mailbox_locked(group);
 }
 
 int edgetpu_group_attach_and_open_mailbox(struct edgetpu_device_group *group)
 {
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&group->lock);
-	ret = edgetpu_group_attach_mailbox_locked(group);
-	if (!ret && edgetpu_device_group_is_finalized(group))
-		ret = edgetpu_group_kci_open_device(group);
+	/* only attaching mailbox for finalized groups */
+	if (edgetpu_device_group_is_finalized(group)) {
+		ret = edgetpu_group_attach_mailbox_locked(group);
+		if (!ret)
+			ret = edgetpu_group_kci_open_device(group);
+	}
 	mutex_unlock(&group->lock);
 	return ret;
 }

@@ -69,21 +69,10 @@ static struct dentry *edgetpu_debugfs_dir;
 int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
 {
 	struct edgetpu_client *client;
-	int res;
 
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
 	mutex_lock(&etdev->open.lock);
-	if (etdev->pm) {
-		res = edgetpu_pm_get(etdev->pm);
-		if (res) {
-			dev_err(etdev->dev,
-				"Failed to request device power up (%d)", res);
-			mutex_unlock(&etdev->open.lock);
-			return -ENODEV;
-		}
-	}
-
 	client = edgetpu_client_add(etdev);
 	if (IS_ERR(client)) {
 		mutex_unlock(&etdev->open.lock);
@@ -115,7 +104,10 @@ static int edgetpu_fs_release(struct inode *inode, struct file *file)
 
 	wakelock_count = edgetpu_wakelock_lock(client->wakelock);
 
-	/* HACK: Can't disband a group if the device is off, turn it on */
+	/*
+	 * TODO(b/180528495): remove pm_get when disbanding can be performed
+	 * with device off.
+	 */
 	if (client->group && !wakelock_count) {
 		wakelock_count = 1;
 		edgetpu_pm_get(etdev->pm);
@@ -205,11 +197,35 @@ static int edgetpu_ioctl_unset_perdie_eventfd(struct edgetpu_dev *etdev,
 static int edgetpu_ioctl_finalize_group(struct edgetpu_client *client)
 {
 	struct edgetpu_device_group *group;
-	int ret;
+	int ret = -EINVAL, wakelock_count;
 
-	LOCK_RETURN_IF_NOT_LEADER(client, group);
+	/*
+	 * Hold the wakelock since we need to decide whether VII should be
+	 * initialized during finalization.
+	 */
+	wakelock_count = edgetpu_wakelock_lock(client->wakelock);
+	LOCK(client);
+	group = client->group;
+	if (!group || !edgetpu_device_group_is_leader(group, client))
+		goto out_unlock;
+	/*
+	 * TODO(b/180528495): remove pm_get when finalization can be performed
+	 * with device off.
+	 */
+	if (!wakelock_count) {
+		ret = edgetpu_pm_get(client->etdev->pm);
+		if (ret) {
+			etdev_err(client->etdev, "%s: pm_get failed (%d)",
+				  __func__, ret);
+			goto out_unlock;
+		}
+	}
 	ret = edgetpu_device_group_finalize(group);
+	if (!wakelock_count)
+		edgetpu_pm_put(client->etdev->pm);
+out_unlock:
 	UNLOCK(client);
+	edgetpu_wakelock_unlock(client->wakelock);
 	return ret;
 }
 
@@ -928,7 +944,7 @@ int edgetpu_fs_add(struct edgetpu_dev *etdev)
 	}
 
 	etdev->etcdev = device_create(edgetpu_class, etdev->dev, etdev->devno,
-				      etdev, etdev->dev_name);
+				      etdev, "%s", etdev->dev_name);
 	if (IS_ERR(etdev->etcdev)) {
 		ret = PTR_ERR(etdev->etcdev);
 		dev_err(etdev->dev, "%s: failed to create char device: %d\n",

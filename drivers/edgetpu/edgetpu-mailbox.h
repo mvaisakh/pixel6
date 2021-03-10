@@ -214,9 +214,27 @@ void edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
  */
 struct edgetpu_mailbox *
 edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id);
+/*
+ * Validates the mailbox attributes.
+ * Returns true if valid, false otherwise.
+ *
+ * See the error cases of EDGETPU_CREATE_GROUP in edgetpu.h for when will @attr
+ * be considered as invalid.
+ */
+bool edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr);
+/*
+ * Sets mailbox and allocates queues to @vii.
+ *
+ * @group is the device group that @vii will be associated with,
+ * @group->mbox_attr is used to set the VII mailbox attributes.
+ *
+ * @group->mbox_attr must be checked by edgetpu_mailbox_validate_attr() before
+ * calling this function.
+ *
+ * Returns 0 on success.
+ */
 int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
-			     struct edgetpu_device_group *group,
-			     const struct edgetpu_mailbox_attr *attr);
+			     struct edgetpu_device_group *group);
 void edgetpu_mailbox_remove_vii(struct edgetpu_vii *vii);
 
 
