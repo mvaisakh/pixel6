@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Internal data for CS40L20/CS40L25/CS40L25A/CS40L25B
+ *
+ * Copyright (C) 2018-2020 Cirrus Logic, Inc.
+ */
 
 #ifndef __CS40L2X_H__
 #define __CS40L2X_H__
@@ -18,6 +23,9 @@
 #include <linux/completion.h>
 #include <linux/firmware.h>
 #include <linux/platform_data/cs40l2x.h>
+#include <linux/input.h>
+
+#include <linux/mfd/cs40l25-wavetable.h>
 
 #define CS40L2X_FIRSTREG		0x00000000
 #define CS40L2X_LASTREG			0x03804FE8
@@ -103,14 +111,14 @@
 #define CS40L2X_ASP_TX2_SRC		0x00004C24
 #define CS40L2X_ASP_TX3_SRC		0x00004C28
 #define CS40L2X_ASP_TX4_SRC		0x00004C2C
-#define CS40L2X_DSP1_RX1_SRC		0x00004C40
-#define CS40L2X_DSP1_RX2_SRC		0x00004C44
-#define CS40L2X_DSP1_RX3_SRC		0x00004C48
-#define CS40L2X_DSP1_RX4_SRC		0x00004C4C
-#define CS40L2X_DSP1_RX5_SRC		0x00004C50
-#define CS40L2X_DSP1_RX6_SRC		0x00004C54
-#define CS40L2X_DSP1_RX7_SRC		0x00004C58
-#define CS40L2X_DSP1_RX8_SRC		0x00004C5C
+#define CS40L2X_DSP1RX1_INPUT		0x00004C40
+#define CS40L2X_DSP1RX2_INPUT		0x00004C44
+#define CS40L2X_DSP1RX3_INPUT		0x00004C48
+#define CS40L2X_DSP1RX4_INPUT		0x00004C4C
+#define CS40L2X_DSP1RX5_INPUT		0x00004C50
+#define CS40L2X_DSP1RX6_INPUT		0x00004C54
+#define CS40L2X_DSP1RX7_INPUT		0x00004C58
+#define CS40L2X_DSP1RX8_INPUT		0x00004C5C
 #define CS40L2X_NGATE1_SRC		0x00004C60
 #define CS40L2X_NGATE2_SRC		0x00004C64
 #define CS40L2X_AMP_DIG_VOL_CTRL	0x00006000
@@ -606,6 +614,9 @@
 #define CS40L2X_TRIG_HIBER_MASK		0x00000001
 #define CS40L2X_TRIG_HIBER_SHIFT	0
 
+#define CS40L2X_UPDT_WKCTL_MASK		0x00000100
+#define CS40L2X_UPDT_WKCTL_SHIFT	8
+
 #define CS40L2X_WKSRC_POL_MASK		0x0000000F
 #define CS40L2X_WKSRC_POL_SHIFT		0
 #define CS40L2X_WKSRC_POL_GPIO1		1
@@ -620,6 +631,14 @@
 #define CS40L2X_WKSRC_EN_GPIO4		4
 #define CS40L2X_WKSRC_EN_SDA		8
 
+#define CS40L2X_WR_PEND_STS_MASK	0x2
+#define CS40L2X_WR_PEND_STS_SHIFT	1
+
+#define CS40L2X_PLL_REFCLK_SEL_MASK	0x00000007
+#define CS40L2X_PLL_REFCLK_SEL_SHIFT	0
+#define CS40L2X_PLL_REFCLK_SEL_BCLK	0x0
+#define CS40L2X_PLL_REFCLK_SEL_MCLK	0x5
+
 #define CS40L2X_PLL_REFCLK_EN_MASK	0x00000010
 #define CS40L2X_PLL_REFCLK_EN_SHIFT	4
 
@@ -628,10 +647,8 @@
 #define CS40L2X_PLL_REFCLK_FREQ_32K	32768
 #define CS40L2X_NUM_REFCLKS		64
 
-#define CS40L2X_PLL_REFCLK_SEL_MASK	0x00000007
-#define CS40L2X_PLL_REFCLK_SEL_SHIFT	0
-#define CS40L2X_PLL_REFCLK_SEL_BCLK	0x0
-#define CS40L2X_PLL_REFCLK_SEL_MCLK	0x5
+#define CS40L2X_PLL_OPEN_LOOP_MASK	BIT(11)
+#define CS40L2X_PLL_OPEN_LOOP_SHIFT	11
 
 #define CS40L2X_ASP_RX1_EN_MASK		0x00010000
 #define CS40L2X_ASP_RX1_EN_SHIFT	16
@@ -671,6 +688,7 @@
 
 #define CS40L2X_DAC_PCM1_SRC_DSP1TX1	0x32
 #define CS40L2X_DSP1_RXn_SRC_ASPRX1	0x08
+#define CS40L2X_DSP1_RXn_SRC_ASPRX2	0x09
 #define CS40L2X_DSP1_RXn_SRC_VMON	0x18
 #define CS40L2X_DSP1_RXn_SRC_IMON	0x19
 #define CS40L2X_DSP1_RXn_SRC_VPMON	0x28
@@ -862,7 +880,6 @@
 #define CS40L2X_WT_TERMINATOR		0x00FFFFFF
 #define CS40L2X_WT_COMP_INDEFINITE	0x00400000
 #define CS40L2X_WT_COMP_LEN_CALCD	0x00800000
-#define CS40L2X_WT_MAX_SAMPLES		0x003FFFFE
 #define CS40L2X_WT_CLR_EX_TYPE		0x0000FFFF
 #define CS40L2X_WT_YM_PRE_HEADER	0x00000600
 #define CS40L2X_WT_NUM_GPIO_VSLOTS	2
@@ -933,8 +950,10 @@
 #define CS40L2X_INDEX_CLICK_MIN		0x00000001
 #define CS40L2X_INDEX_CLICK_MAX		0x00007FFF
 #define CS40L2X_INDEX_CONT_MIN		0x00008000
+#define CS40L2X_INDEX_CONT_MAX		0x0000FFF6
+#define CS40L2X_INDEX_GP1F_OVWR		0x0000FFF7
+#define CS40L2X_INDEX_GP1R_OVWR		0x0000FFF8
 #define CS40L2X_INDEX_OVWR_SAVE		0x0000FFF9
-#define CS40L2X_INDEX_CONT_MAX		0x0000FFFA
 #define CS40L2X_INDEX_PBQ_SAVE		0x0000FFFB
 #define CS40L2X_INDEX_QEST		0x0000FFFC
 #define CS40L2X_INDEX_PEAK		0x0000FFFD
@@ -942,22 +961,15 @@
 #define CS40L2X_INDEX_DIAG		0x0000FFFF
 #define CS40L2X_INDEX_IDLE		0xFFFFFFFF
 
-#define CS40L2X_PBQ_SEG_LEN_MAX		20
-#define CS40L2X_PBQ_DEPTH_MAX		256
 #define CS40L2X_PBQ_SCALE_MAX		100
 #define CS40L2X_PBQ_DELAY_MAX		10000
-#define CS40L2X_PBQ_REPEAT_MAX		32
 #define CS40L2X_PBQ_POLL_NS		5000000
 #define CS40L2X_PBQ_STATE_IDLE		0x00
 #define CS40L2X_PBQ_STATE_PLAYING	0x01
 #define CS40L2X_PBQ_STATE_SILENT	0x02
-#define CS40L2X_PBQ_TAG_SILENCE		0x0000
-#define CS40L2X_PBQ_TAG_START		0x8000
-#define CS40L2X_PBQ_TAG_STOP		0x8001
-#define CS40L2X_PBQ_INNER_REPEAT	255
-#define CS40L2X_PBQ_INNER_FLAG		256
 #define CS40L2X_PBQ_FW_BYTES_MIN	192
 #define CS40L2X_PBQ_DUR_MIN_REV		0x0A0101
+#define CS40L2X_PWLE_FRQ_MIN_REV	0x0A0302
 
 #define CS40L2X_DIAG_STATE_INIT		0x00
 #define CS40L2X_DIAG_STATE_RUN1		0x01
@@ -1073,13 +1085,6 @@
 #define CS40L2X_MAX_WLEN		4096
 
 #define CS40L2X_DEVICE_NAME		"vibrator"
-#define CS40L2X_DUAL_NAME		"vibrator_dual"
-#define CS40L2X_TRI_NAME		"vibrator_tri"
-#define CS40L2X_QUAD_NAME		"vibrator_quad"
-
-#define CS40L2X_2ND_VIB			2
-#define CS40L2X_3RD_VIB			3
-#define CS40L2X_4TH_VIB			4
 
 #define CS40L2X_NUM_FW_FAMS		8
 #define CS40L2X_FW_ID_ORIG		0x1400A7
@@ -1089,7 +1094,7 @@
 #define CS40L2X_FW_ID_CLAB		0x1400CB
 #define CS40L2X_FW_ID_PAR		0x1400CF
 #define CS40L2X_FW_ID_A2H		0x1400D0
-#define CS40L2X_FW_ID_DSWAP		0x1400D1
+#define CS40L2X_FW_ID_DF0_CLAB		0x1400E0
 #define CS40L2X_A2H_MAX_TUNING		5
 #define CS40L2X_A2H_DELAY_MAX		300
 
@@ -1114,14 +1119,8 @@
 #define CS40L2X_I2S_ENABLED		1
 #define CS40L2X_I2S_DISABLED		0
 
-#define CS40L2X_VIBE_MODE_HAPTIC	0
-#define CS40L2X_VIBE_MODE_AUDIO		1
-
 #define CS40L2X_VIBE_STATE_STOPPED	0
 #define CS40L2X_VIBE_STATE_RUNNING	1
-
-#define CS40L2X_PBQ_SAVE_STATE_DONE	0
-#define CS40L2X_PBQ_SAVE_STATE_BUSY	1
 
 #define CS40L2X_SAVE_UNSAFE		0
 #define CS40L2X_SAVE_SAFE		1
@@ -1332,22 +1331,6 @@ struct cs40l2x_coeff_desc {
 	struct list_head list;
 };
 
-struct cs40l2x_pbq_pair {
-	unsigned int tag;
-	unsigned int mag;
-	unsigned int dur;
-	unsigned int repeat;
-	unsigned int remain;
-};
-
-struct cs40l2x_composite_data {
-	unsigned int rpt;
-	unsigned int index;
-	unsigned int amp;
-	unsigned int delay;
-	unsigned int dur;
-};
-
 struct cs40l2x_wseq_pair {
 	unsigned int reg;
 	unsigned int val;
@@ -1405,7 +1388,6 @@ struct cs40l2x_private {
 	struct work_struct vibe_pbq_work;
 	struct work_struct vibe_stop_work;
 	struct work_struct vibe_mode_work;
-	struct work_struct swap_fw_work;
 	struct workqueue_struct *vibe_workqueue;
 	struct mutex lock;
 	unsigned int cp_trigger_index;
@@ -1428,12 +1410,10 @@ struct cs40l2x_private {
 	unsigned int ym_hdr_strt_reg;
 	unsigned int wt_xm_header_end_pos;
 	unsigned int wt_ym_header_end_pos;
-	unsigned int virt_wt_end_header_pos;
 	unsigned int wt_xm_header_last_offset;
 	unsigned int wt_ym_header_last_offset;
 	unsigned int wt_xm_header_last_size;
 	unsigned int wt_ym_header_last_size;
-	unsigned int pbq_updated_fw_raw_wt_size;
 	unsigned int comp_bytes;
 	unsigned int *wvfrm_lengths;
 	unsigned int wvfrm_lengths_size;
@@ -1458,9 +1438,9 @@ struct cs40l2x_private {
 	struct cs40l2x_dblk_desc pre_dblks[CS40L2X_MAX_A2H_LEVELS];
 	struct cs40l2x_dblk_desc a2h_dblks[CS40L2X_MAX_A2H_LEVELS];
 	bool vibe_init_success;
-	bool vibe_mode;
 	bool vibe_state;
 	bool safe_save_state;
+	bool gpio_event;
 	struct gpio_desc *reset_gpio;
 	struct cs40l2x_platform_data pdata;
 	unsigned int num_algos;
@@ -1473,13 +1453,15 @@ struct cs40l2x_private {
 	unsigned int redc_measured;
 	unsigned int q_measured;
 	unsigned int bemf_measured;
-	struct cs40l2x_pbq_pair pbq_pairs[CS40L2X_PBQ_DEPTH_MAX];
-	struct cs40l2x_composite_data comp_sets[CS40L2X_PBQ_DEPTH_MAX];
-	struct hrtimer pbq_timer;
-	unsigned int pbq_depth;
-	unsigned int comp_sets_size;
+
+	struct wt_type10_comp pbq_comp;
 	unsigned int pbq_index;
 	unsigned int pbq_state;
+	int pbq_inner_mark;
+	int pbq_inner_loop;
+	int pbq_outer_loop;
+
+	struct hrtimer pbq_timer;
 	unsigned int pbq_cp_dig_scale;
 	unsigned int pwle_feature;
 	unsigned int pwle_wvfrm_len;
@@ -1491,20 +1473,14 @@ struct cs40l2x_private {
 	unsigned int num_virtual_pwle_waves;
 	unsigned int last_type_entered;
 	unsigned int display_pwle_segs;
-	unsigned int comp_outer[CS40L2X_PBQ_DEPTH_MAX];
-	unsigned int comp_inner[CS40L2X_PBQ_DEPTH_MAX];
-	unsigned int pbq_fw_composite[CS40L2X_PBQ_DEPTH_MAX + 3];
-	unsigned int pbq_fw_composite_len;
 	unsigned int virtual_gpio_index[CS40L2X_SIZE_TWO_ARRAY];
 	unsigned int loaded_gpio_index[CS40L2X_SIZE_TWO_ARRAY];
 	unsigned int virtual_slot_index;
-	unsigned int virtual_gpio1_fall_index;
-	unsigned int virtual_gpio1_rise_index;
+	unsigned int virtual_gpio1_fall_slot;
+	unsigned int virtual_gpio1_rise_slot;
 	struct list_head virtual_waveform_head;
 	struct list_head pwle_segment_head;
 	struct cs40l2x_ovwr_waveform *ovwr_wav;
-	int pbq_repeat;
-	int pbq_remain;
 	struct cs40l2x_wseq_pair wseq_table[CS40L2X_WSEQ_LENGTH_MAX];
 	unsigned int wseq_length;
 	unsigned int event_control;
@@ -1515,20 +1491,17 @@ struct cs40l2x_private {
 	int vpp_measured;
 	int ipp_measured;
 	bool asp_available;
-	bool asp_enable;
 	bool a2h_enable;
 	struct hrtimer asp_timer;
 	const struct cs40l2x_fw_desc *fw_desc;
 	unsigned int fw_id_remap;
-	unsigned int fw_id_dyn_swap;
-	unsigned int prev_fw_id;
 	bool cal_disabled_owt;
 	bool comp_enable_pend;
 	bool comp_enable;
 	bool comp_enable_redc;
 	bool comp_enable_f0;
-	bool comp_dur_en;
 	bool comp_dur_min_fw;
+	bool ext_freq_min_fw;
 	bool amp_gnd_stby;
 	bool clab_wt_en[CS40L2X_MAX_WAVEFORMS];
 	bool f0_wt_en[CS40L2X_MAX_WAVEFORMS];
@@ -1548,7 +1521,11 @@ struct cs40l2x_private {
 	struct cs40l2x_f0_dynamic dynamic_f0[CS40l2X_F0_MAX_ENTRIES];
 	int dynamic_f0_index;
 
-#ifdef CONFIG_ANDROID_TIMED_OUTPUT
+#ifdef CONFIG_HAPTICS_CS40L2X_INPUT
+	struct input_dev *input;
+	struct ff_effect *effect;
+	unsigned int trigger_indices[FF_MAX_EFFECTS];
+#elif defined CONFIG_ANDROID_TIMED_OUTPUT
 	struct timed_output_dev timed_dev;
 	struct hrtimer vibe_timer;
 	int vibe_timeout;
