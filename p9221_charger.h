@@ -408,6 +408,7 @@
 #define P9412_COM_CCACTIVATE			BIT(10)
 /* For INT status register */
 #define P9412_STAT_PPRCVD			BIT(15)
+#define P9412_CDMODE_ERROR_INT			BIT(14)
 #define P9412_PROP_MODE_STAT_INT		BIT(12)
 #define P9412_CDMODE_CHANGE_INT			BIT(11)
 #define P9412_STAT_CCDATARCVD			BIT(9)
@@ -478,8 +479,10 @@ struct p9221_charger_ints_bit {
 	u16				cc_reset_bit;
 	u16				propmode_stat_bit;
 	u16				cdmode_change_bit;
+	u16				cdmode_err_bit;
 	u16				stat_limit_mask;
 	u16				stat_cc_mask;
+	u16				prop_mode_mask;
 	/* Tx mode */
 	u16				hard_ocp_bit;
 	u16				tx_conflict_bit;

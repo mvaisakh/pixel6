@@ -1336,7 +1336,7 @@ static int p9221_enable_interrupts(struct p9221_charger_data *charger)
 		mask = P9382_STAT_RTX_MASK;
 	} else {
 		mask = charger->ints.stat_limit_mask | charger->ints.stat_cc_mask |
-		       charger->ints.vrecton_bit;
+		       charger->ints.vrecton_bit | charger->ints.prop_mode_mask;
 
 		if (charger->pdata->needs_dcin_reset ==
 						P9221_WC_DC_RESET_VOUTCHANGED)
@@ -1680,7 +1680,8 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 			p9221_icl_ramp_start(charger);
 
 		/* I am not sure that this needs to be done all the time */
-		if (charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT))
+		if (charger->pdata->has_wlc_dc &&
+		    charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT))
 			dev_info(&charger->client->dev, "PROP_MODE: enable\n");
 	}
 

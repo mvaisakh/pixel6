@@ -1194,6 +1194,7 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.cc_reset_bit = 0;
 		chgr->ints.propmode_stat_bit = P9412_PROP_MODE_STAT_INT;
 		chgr->ints.cdmode_change_bit = P9412_CDMODE_CHANGE_INT;
+		chgr->ints.cdmode_err_bit = P9412_CDMODE_ERROR_INT;
 
 		chgr->ints.hard_ocp_bit = P9412_STAT_OVC;
 		chgr->ints.tx_conflict_bit = P9412_STAT_TXCONFLICT;
@@ -1212,6 +1213,7 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.cc_reset_bit = P9221R5_STAT_CCRESET;
 		chgr->ints.propmode_stat_bit = 0;
 		chgr->ints.cdmode_change_bit = 0;
+		chgr->ints.cdmode_err_bit = 0;
 
 		chgr->ints.hard_ocp_bit = P9382_STAT_HARD_OCP;
 		chgr->ints.tx_conflict_bit = P9382_STAT_TXCONFLICT;
@@ -1230,6 +1232,7 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.cc_reset_bit = 0;
 		chgr->ints.propmode_stat_bit = 0;
 		chgr->ints.cdmode_change_bit = 0;
+		chgr->ints.cdmode_err_bit = 0;
 
 		chgr->ints.hard_ocp_bit = 0;
 		chgr->ints.tx_conflict_bit = 0;
@@ -1248,6 +1251,7 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.cc_reset_bit = P9221R5_STAT_CCRESET;
 		chgr->ints.propmode_stat_bit = 0;
 		chgr->ints.cdmode_change_bit = 0;
+		chgr->ints.cdmode_err_bit = 0;
 
 		chgr->ints.hard_ocp_bit = 0;
 		chgr->ints.tx_conflict_bit = 0;
@@ -1265,6 +1269,9 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 				   chgr->ints.pp_rcvd_bit |
 				   chgr->ints.cc_error_bit |
 				   chgr->ints.cc_data_rcvd_bit);
+	chgr->ints.prop_mode_mask = (chgr->ints.propmode_stat_bit |
+				     chgr->ints.cdmode_change_bit |
+				     chgr->ints.cdmode_err_bit);
 }
 
 void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
