@@ -538,9 +538,6 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_fake_vblank(old_state);
 
-	DPU_ATRACE_BEGIN("wait_for_vblanks");
-	drm_atomic_helper_wait_for_vblanks(dev, old_state);
-	DPU_ATRACE_END("wait_for_vblanks");
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
 		struct decon_mode *mode;
@@ -574,6 +571,10 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 					DECON_TRIG_MASK);
 		}
 	}
+
+	DPU_ATRACE_BEGIN("wait_for_flip_done");
+	drm_atomic_helper_wait_for_flip_done(dev, old_state);
+	DPU_ATRACE_END("wait_for_flip_done");
 
 	for_each_oldnew_connector_in_state(old_state, connector,
 				 old_conn_state, new_conn_state, i) {
