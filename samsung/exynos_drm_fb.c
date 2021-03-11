@@ -537,6 +537,26 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 
 	drm_atomic_helper_fake_vblank(old_state);
 
+	for_each_oldnew_connector_in_state(old_state, connector,
+				 old_conn_state, new_conn_state, i) {
+		if (new_conn_state->writeback_job || !new_conn_state->crtc)
+			continue;
+
+		new_crtc_state = drm_atomic_get_new_crtc_state(old_state, new_conn_state->crtc);
+		if (!new_crtc_state->active)
+			continue;
+
+		if (is_exynos_drm_connector(connector)) {
+			struct exynos_drm_connector *exynos_connector =
+				to_exynos_connector(connector);
+			const struct exynos_drm_connector_helper_funcs *funcs =
+				exynos_connector->helper_private;
+
+			funcs->atomic_commit(exynos_connector,
+					to_exynos_connector_state(old_conn_state),
+					to_exynos_connector_state(new_conn_state));
+		}
+	}
 
 	for_each_new_crtc_in_state(old_state, crtc, new_crtc_state, i) {
 		struct decon_mode *mode;
@@ -574,20 +594,6 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 	DPU_ATRACE_BEGIN("wait_for_flip_done");
 	drm_atomic_helper_wait_for_flip_done(dev, old_state);
 	DPU_ATRACE_END("wait_for_flip_done");
-
-	for_each_oldnew_connector_in_state(old_state, connector,
-				 old_conn_state, new_conn_state, i) {
-		if (!new_conn_state->writeback_job && is_exynos_drm_connector(connector)) {
-			struct exynos_drm_connector *exynos_connector =
-				to_exynos_connector(connector);
-			const struct exynos_drm_connector_helper_funcs *funcs =
-				exynos_connector->helper_private;
-
-			funcs->atomic_commit(exynos_connector,
-					to_exynos_connector_state(old_conn_state),
-					to_exynos_connector_state(new_conn_state));
-		}
-	}
 
 	exynos_atomic_bts_post_update(dev, old_state);
 

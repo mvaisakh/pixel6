@@ -580,8 +580,13 @@ int exynos_panel_disable(struct drm_panel *panel)
 			sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 			cancel_delayed_work_sync(&ctx->hbm.local_hbm.timeout_work);
 		}
-		if (exynos_panel_func->set_hbm_mode)
+		if (exynos_panel_func->set_hbm_mode) {
 			cancel_work_sync(&ctx->hbm.global_hbm.ghbm_work);
+			if (ctx->hbm.global_hbm.commit) {
+				drm_crtc_commit_put(ctx->hbm.global_hbm.commit);
+				ctx->hbm.global_hbm.commit = NULL;
+			}
+		}
 	}
 
 	exynos_panel_send_cmd_set(ctx, ctx->desc->off_cmd_set);
@@ -1107,7 +1112,20 @@ static void exynos_panel_connector_atomic_commit(
 
 	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on ||
 	    exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		struct drm_crtc_commit *commit = exynos_new_state->base.commit;
+		struct drm_crtc_commit *old_commit;
+
+		cancel_work_sync(&ctx->hbm.global_hbm.ghbm_work);
+
+		if (commit)
+			drm_crtc_commit_get(commit);
+
 		mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
+		old_commit = ctx->hbm.global_hbm.commit;
+		if (WARN_ON(old_commit))
+			drm_crtc_commit_put(old_commit);
+
+		ctx->hbm.global_hbm.commit = commit;
 
 		if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
 			if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
@@ -2388,19 +2406,39 @@ static void global_hbm_work(struct work_struct *work)
 	struct exynos_panel *ctx =
 			 container_of(work, struct exynos_panel, hbm.global_hbm.ghbm_work);
 	const struct exynos_panel_funcs *exynos_panel_func;
+	struct drm_crtc_commit *commit = ctx->hbm.global_hbm.commit;
 	/* TODO: Change to ctx->current_mode->exynos_mode.vblank_usec when it's ready */
-	u32 delay_us = USEC_PER_SEC / drm_mode_vrefresh(&ctx->current_mode->mode) / 2;
+	const u32 fps = drm_mode_vrefresh(&ctx->current_mode->mode);
+	u32 delay_us = USEC_PER_SEC / fps / 2;
+	const u32 timeout_ms = (MSEC_PER_SEC / fps) + 20;
+
 	/* considering the variation */
 	delay_us = delay_us * 105 / 100;
 
 	dev_dbg(ctx->dev, "%s\n", __func__);
 	DPU_ATRACE_BEGIN("ghbm");
 	mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
+
+	WARN_ON(!commit);
+
+	if (commit) {
+		int ret;
+
+		DPU_ATRACE_BEGIN("wait_for_flip");
+		ctx->hbm.global_hbm.commit = NULL;
+		ret = wait_for_completion_timeout(&commit->flip_done, timeout_ms);
+		WARN_ON(ret < 0);
+		drm_crtc_commit_put(commit);
+		DPU_ATRACE_END("wait_for_flip");
+	}
+
 	usleep_range(delay_us, delay_us + 100);
 	if (ctx->hbm.global_hbm.update_hbm) {
+		DPU_ATRACE_BEGIN("set_hbm");
 		exynos_panel_func = ctx->desc->exynos_panel_func;
 		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.global_hbm.hbm_mode);
 		ctx->hbm.global_hbm.update_hbm = false;
+		DPU_ATRACE_END("set_hbm");
 	}
 
 	if (ctx->hbm.global_hbm.update_bl) {

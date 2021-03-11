@@ -400,6 +400,7 @@ struct exynos_panel {
 			/* send ghbm mipi commands asynchronously after frame start */
 			struct work_struct ghbm_work;
 			struct mutex ghbm_work_lock;
+			struct drm_crtc_commit *commit;
 		} global_hbm;
 		struct workqueue_struct *wq;
 	} hbm;
