@@ -1304,7 +1304,7 @@ static int gcpm_debug_set_active(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_active_fops, gcpm_debug_get_active,
-			gcpm_debug_set_active, "%llu\n");
+			gcpm_debug_set_active, "%lld\n");
 
 static int gcpm_debug_dc_limit_demand_show(void *data, u64 *val)
 {
