@@ -118,6 +118,8 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 #define SWCHG_ICL_MIN			100000	/* uA */
 #define SWCHG_ICL_NORMAL		3000000 /* uA */
 
+#define PCA9468_OTV_MARGIN		12000	/* uV */
+
 /* INT1 Register Buffer */
 enum {
 	REG_INT1,
@@ -833,7 +835,7 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 			pr_err("%s: force CCMODE_IIN_LOOP ibatt %d->%d\n", __func__,
 			       ret, CCMODE_IIN_LOOP);
 			ret = CCMODE_IIN_LOOP;
-		} else if (vbat > pca9468->fv_uv) {
+		} else if (vbat > (pca9468->fv_uv + PCA9468_OTV_MARGIN)) {
 			pr_err("%s: force CCMODE_IIN_LOOP fv_uv %d->%d\n", __func__,
 			       ret, CCMODE_IIN_LOOP);
 			ret = CCMODE_IIN_LOOP;
@@ -871,6 +873,7 @@ static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 {
 	unsigned int val;
 	int ret;
+	int ibat = -EINVAL, vbat = -EINVAL, rc;
 
 	/* Read STS_A */
 	ret = regmap_read(pca9468->regmap, PCA9468_REG_STS_A, &val);
@@ -878,7 +881,7 @@ static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 		goto error;
 
 	/* Check STS_A */
-	if (val & PCA9468_BIT_CHG_LOOP_STS)	{
+	if (val & PCA9468_BIT_CHG_LOOP_STS) {
 		ret = CVMODE_CHG_LOOP;
 	} else if (val & PCA9468_BIT_VFLT_LOOP_STS) {
 		ret = CVMODE_VFLT_LOOP;
@@ -889,6 +892,26 @@ static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 	} else {
 		/* Any LOOP is inactive */
 		ret = CVMODE_LOOP_INACTIVE;
+	}
+
+	rc = pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat);
+	if (rc == 0)
+		rc = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
+	pr_debug("%s: status=%d ibat:%d, cc_max:%d , vbat:%d, fv:%d\n",
+		 __func__, ret, ibat, pca9468->cc_max, vbat, pca9468->fv_uv);
+	if (rc)
+		goto error;
+
+	if (ret == CVMODE_LOOP_INACTIVE) {
+		if (ibat > ((pca9468->cc_max * FCC_TOLERANCE_RATIO) / 100)) {
+			pr_err("%s: force CVMODE_IIN_LOOP ibatt %d->%d\n", __func__,
+			      ret, CVMODE_IIN_LOOP);
+			ret = CVMODE_IIN_LOOP;
+		} else if (vbat > (pca9468->fv_uv + PCA9468_OTV_MARGIN)) {
+			pr_err("%s: force CVMODE_IIN_LOOP fv_uv %d->%d\n", __func__,
+			       ret, CVMODE_IIN_LOOP);
+			ret = CVMODE_IIN_LOOP;
+		}
 	}
 
 error:
