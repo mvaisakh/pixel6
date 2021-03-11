@@ -1237,11 +1237,11 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		decon_warn(decon, "WARN: bus_width is not defined in DT.\n");
 	}
 	if (of_property_read_u32(np, "bus_util", &decon->bts.bus_util_pct)) {
-		decon->bts.bus_util_pct = 65;
+		decon->bts.bus_util_pct = 70;
 		decon_warn(decon, "WARN: bus_util_pct is not defined in DT.\n");
 	}
 	if (of_property_read_u32(np, "rot_util", &decon->bts.rot_util_pct)) {
-		decon->bts.rot_util_pct = 60;
+		decon->bts.rot_util_pct = 65;
 		decon_warn(decon, "WARN: rot_util_pct is not defined in DT.\n");
 	}
 	decon_info(decon, "bus_width(%u) bus_util_pct(%u) rot_util_pct(%u)\n",
