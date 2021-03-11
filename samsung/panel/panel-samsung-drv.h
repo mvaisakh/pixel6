@@ -387,6 +387,7 @@ struct exynos_panel {
 	struct device_node *touch_dev;
 
 	struct te2_data te2;
+	ktime_t last_commit_ts;
 
 	struct {
 		struct local_hbm {

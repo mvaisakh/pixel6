@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <video/mipi_display.h>
+#include <trace/dpu_trace.h>
 
 #include "panel-samsung-drv.h"
 
@@ -346,6 +347,39 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	return 0;
 }
 
+/*
+ * 120hz auto mode takes at least 2 frames to start lowering refresh rate in addition to
+ * time to next vblank. Use just over 2 frames time to consider worst case scenario
+ */
+#define EARLY_EXIT_THRESHOLD_US 17000
+
+static void s6e3hc3_commit_done(struct exynos_panel *ctx)
+{
+	if (!ctx->enabled)
+		return;
+
+	if (ctx->current_mode->priv_data == &s6e3hc3_mode_120_cmd_set) {
+		const ktime_t delta = ktime_sub(ktime_get(), ctx->last_commit_ts);
+		const s64 delta_us = ktime_to_us(delta);
+
+		if (delta_us < EARLY_EXIT_THRESHOLD_US) {
+			dev_dbg(ctx->dev, "skip early exit. %lldus since last commit\n",
+				delta_us);
+			return;
+		}
+
+		dev_dbg(ctx->dev, "sending early exit out cmd\n");
+
+		DPU_ATRACE_BEGIN("early_exit");
+		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+		EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
+		EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+		DPU_ATRACE_END("early_exit");
+	} else {
+		dev_dbg(ctx->dev, "not in 120hz mode\n");
+	}
+}
+
 static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 				 bool hbm_mode)
 {
@@ -577,6 +611,7 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.get_te2_edges = exynos_panel_get_te2_edges,
 	.configure_te2_edges = exynos_panel_configure_te2_edges,
 	.update_te2 = s6e3hc3_update_te2,
+	.commit_done = s6e3hc3_commit_done,
 };
 
 const struct brightness_capability s6e3hc3_brightness_capability = {

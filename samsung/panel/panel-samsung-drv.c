@@ -1150,6 +1150,8 @@ static void exynos_panel_connector_atomic_commit(
 
 	if (exynos_panel_func && exynos_panel_func->commit_done)
 		exynos_panel_func->commit_done(ctx);
+
+	ctx->last_commit_ts = ktime_get();
 }
 
 static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
