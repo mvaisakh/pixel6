@@ -150,6 +150,7 @@ struct exynos_drm_connector {
 	struct drm_connector base;
 	const struct exynos_drm_connector_funcs *funcs;
 	const struct exynos_drm_connector_helper_funcs *helper_private;
+	bool needs_commit;
 };
 
 #define to_exynos_connector(connector) \

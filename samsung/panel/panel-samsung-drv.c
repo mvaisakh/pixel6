@@ -1147,6 +1147,9 @@ static void exynos_panel_connector_atomic_commit(
 		if (exynos_panel_func && exynos_panel_func->set_dimming_on)
 			exynos_panel_func->set_dimming_on(ctx, exynos_new_state->dimming_on);
 	}
+
+	if (exynos_panel_func && exynos_panel_func->commit_done)
+		exynos_panel_func->commit_done(ctx);
 }
 
 static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
@@ -2188,6 +2191,8 @@ static int exynos_panel_bridge_attach(struct drm_bridge *bridge,
 	connector->funcs->reset(connector);
 	connector->status = connector_status_connected;
 	connector->state->self_refresh_aware = true;
+	if (ctx->desc->exynos_panel_func && ctx->desc->exynos_panel_func->commit_done)
+		ctx->exynos_connector.needs_commit = true;
 
 	ret = sysfs_create_link(&connector->kdev->kobj, &ctx->dev->kobj,
 				"panel");

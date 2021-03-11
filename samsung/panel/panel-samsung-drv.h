@@ -252,6 +252,13 @@ struct exynos_panel_funcs {
 	 * changed.
 	 */
 	void (*update_te2)(struct exynos_panel *exynos_panel);
+
+	/**
+	 * @commit_done
+	 *
+	 * Called after atomic commit flush has completed but transfer may not have started yet
+	 */
+	void (*commit_done)(struct exynos_panel *exynos_panel);
 };
 
 /**

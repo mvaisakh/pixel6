@@ -271,6 +271,48 @@ static void exynos_check_updated_planes(struct drm_device *dev, struct drm_atomi
 	}
 }
 
+static int exynos_add_relevant_connectors(struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter conn_iter;
+	const struct exynos_drm_connector *exynos_connector;
+	u32 connector_mask = 0;
+	int ret = 0;
+	int i;
+
+	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
+		if (!crtc_state->active)
+			continue;
+
+		connector_mask |= crtc_state->connector_mask;
+	}
+
+	drm_connector_list_iter_begin(state->dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (!(connector_mask & drm_connector_mask(connector)))
+			continue;
+
+		if (!is_exynos_drm_connector(connector))
+			continue;
+
+		exynos_connector = to_exynos_connector(connector);
+		if (!exynos_connector->needs_commit)
+			continue;
+
+		conn_state = drm_atomic_get_connector_state(state, connector);
+		if (IS_ERR(conn_state)) {
+			ret = PTR_ERR(conn_state);
+			break;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return ret;
+}
+
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
@@ -304,7 +346,7 @@ int exynos_atomic_check(struct drm_device *dev,
 
 	drm_self_refresh_helper_alter_state(state);
 
-	return ret;
+	return exynos_add_relevant_connectors(state);
 }
 
 static struct drm_private_state *exynos_atomic_duplicate_priv_state(struct drm_private_obj *obj)
