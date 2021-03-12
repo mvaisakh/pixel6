@@ -3935,7 +3935,7 @@ static int max1730x_decode_sn(char *serial_number,
 
 	count += scnprintf(serial_number + count, max - count, "%c%c",
 			   data[6] >> 8, data[6] & 0xFF);
-	return 0;
+	return count;
 }
 
 static int max1720x_decode_sn(char *serial_number,
@@ -3992,7 +3992,7 @@ static int max1720x_decode_sn(char *serial_number,
 				   data[10] >> 8, data[10] & 0xFF);
 	}
 
-	return 0;
+	return count;
 }
 
 static void *ct_seq_start(struct seq_file *s, loff_t *pos)
@@ -4273,6 +4273,16 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 					   MAX17X0X_TAG_SNUM);
 		if (reg && reg->size > size)
 			return -ERANGE;
+
+		ret = max17x0x_reg_load(&chip->regmap_nvram, reg, buff);
+		if (ret < 0)
+			return ret;
+
+		if (chip->gauge_type == MAX1730X_GAUGE_TYPE)
+			ret = max1730x_decode_sn(buff, size, (u16 *)buff);
+		else if (chip->gauge_type == MAX1720X_GAUGE_TYPE)
+			ret = max1720x_decode_sn(buff, size, (u16 *)buff);
+
 		break;
 
 	case GBMS_TAG_BCNT:
@@ -4280,6 +4290,9 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 					   MAX17X0X_TAG_BCNT);
 		if (reg && reg->size != size)
 			return -ERANGE;
+		ret = max17x0x_reg_load(&chip->regmap_nvram, reg, buff);
+		if (ret == 0)
+			ret = reg->size;
 		break;
 
 	/* Was POWER_SUPPLY_PROP_RESISTANCE_AVG */
@@ -4319,10 +4332,6 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 
 	if (!reg)
 		return -ENOENT;
-
-	ret = max17x0x_reg_load(&chip->regmap_nvram, reg, buff);
-	if (ret == 0)
-		ret = reg->size;
 
 	return ret;
 }
@@ -4453,30 +4462,14 @@ static void max17x0x_read_serial_number(struct max1720x_chip *chip)
 	char buff[32] = {0};
 	int ret;
 
-	ret = gbms_storage_read(GBMS_TAG_MINF, buff, GBMS_MINF_LEN);
-	if (ret >= 0) {
-		strncpy(chip->serial_number, buff, ret);
-		return;
-	}
+	if (chip->gauge_type == MAX_M5_GAUGE_TYPE)
+		ret = gbms_storage_read(GBMS_TAG_MINF, buff, GBMS_MINF_LEN);
+	else
+		ret = gbms_storage_read(GBMS_TAG_SNUM, buff, sizeof(chip->serial_number));
 
-	ret = gbms_storage_read(GBMS_TAG_SNUM, buff, sizeof(buff));
-	if (ret < 0) {
-		/* do nothing */
-	} else if (chip->gauge_type == MAX1730X_GAUGE_TYPE) {
-		ret = max1730x_decode_sn(chip->serial_number,
-					 sizeof(chip->serial_number),
-					 (u16 *)buff);
-	} else if (chip->gauge_type == MAX1720X_GAUGE_TYPE) {
-		ret = max1720x_decode_sn(chip->serial_number,
-					 sizeof(chip->serial_number),
-					 (u16 *)buff);
-	} else {
-		if (ret > sizeof(chip->serial_number))
-			ret = sizeof(chip->serial_number);
+	if (ret >= 0)
 		strncpy(chip->serial_number, buff, ret);
-	}
-
-	if (ret < 0)
+	else
 		chip->serial_number[0] = '\0';
 }
 
