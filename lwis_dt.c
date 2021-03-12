@@ -252,6 +252,46 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	return 0;
 }
 
+static int parse_critical_irq_events(struct lwis_device *lwis_dev, struct device_node *event_info)
+{
+	int ret;
+	int critical_irq_events_num;
+	u64 critical_irq_events;
+	int i;
+	lwis_dev->critical_irq_events_present = false;
+	lwis_dev->critical_irq_event_list = NULL;
+
+	critical_irq_events_num =
+		of_property_count_elems_of_size(event_info, "critical-irq-events", 8);
+	/* No Critical IRQ event found, just return */
+	if (critical_irq_events_num <= 0) {
+		return 0;
+	}
+
+	lwis_dev->critical_irq_event_list =
+		lwis_dev_critical_irq_event_list_alloc(critical_irq_events_num);
+	if (IS_ERR(lwis_dev->critical_irq_event_list)) {
+		pr_err("Failed to allocate critical irq events list\n");
+		return PTR_ERR(lwis_dev->critical_irq_event_list);
+	}
+
+	for (i = 0; i < critical_irq_events_num; ++i) {
+		ret = of_property_read_u64_index(event_info, "critical-irq-events", i,
+						 &critical_irq_events);
+		if (ret < 0) {
+			pr_err("Error adding critical irq events[%d]\n", i);
+			lwis_dev_critical_irq_event_list_free(lwis_dev->critical_irq_event_list);
+			lwis_dev->critical_irq_event_list = NULL;
+			return ret;
+		}
+		lwis_dev->critical_irq_event_list->critical_event_id[i] = critical_irq_events;
+	}
+
+#ifdef LWIS_DT_DEBUG
+	lwis_dev_critical_irq_event_list_print(lwis_dev->critical_irq_event_list);
+#endif
+	return 0;
+}
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -313,6 +353,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		u32 irq_reg_bitwidth = 32;
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
+
+		ret = parse_critical_irq_events(lwis_dev, event_info);
+		if (ret) {
+			pr_err("Error getting critical-irq-event from dt: %d\n", ret);
+			goto error_event_infos;
+		}
 
 		irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
 		if (irq_events_num <= 0) {

@@ -138,6 +138,16 @@ struct lwis_device_power_sequence_list {
 	int count;
 };
 
+/*
+ * struct lwis_device_critical_event_list
+ * This struct is to store the critical irq event list
+ */
+struct lwis_device_critical_irq_event_list {
+	int64_t *critical_event_id;
+	/* Count of critical event id */
+	int count;
+};
+
 /* struct lwis_client_debug_info
  * This struct applies to each of the LWIS clients, and the purpose is to
  * store information in help debugability.
@@ -242,6 +252,11 @@ struct lwis_device {
 
 	/* Power management hibernation state of the device */
 	int pm_hibernation;
+
+	/* Does critical-irq-events present */
+	bool critical_irq_events_present;
+	/* Critical IRQ events information */
+	struct lwis_device_critical_irq_event_list *critical_irq_event_list;
 };
 
 /*
@@ -355,5 +370,25 @@ void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list);
  *  Print lwis_device_power_sequence_list content
  */
 void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list);
+
+/*
+ *  lwis_device_critical_irq_event_list:
+ *  Allocate an instance of the lwis_device_
+ *  and initialize the data structures according to the number of
+ *  critical irq event specified.
+ */
+struct lwis_device_critical_irq_event_list *lwis_dev_critical_irq_event_list_alloc(int count);
+
+/*
+ *  lwis_dev_critical_irq_event_list_free: Deallocate the
+ *  critical irq event structure.
+ */
+void lwis_dev_critical_irq_event_list_free(struct lwis_device_critical_irq_event_list *list);
+
+/*
+ *  lwis_dev_critical_irq_event_list_print:
+ *  Print lwis_device_critical_irq_event_list content
+ */
+void lwis_dev_critical_irq_event_list_print(struct lwis_device_critical_irq_event_list *list);
 
 #endif /* LWIS_DEVICE_H_ */
