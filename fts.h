@@ -158,7 +158,7 @@
 /* Enable the support of keys */
 /* #define PHONE_KEY */
 
-#define GESTURE_MODE	/* /< enable the support of the gestures */
+#undef GESTURE_MODE	/* /< enable the support of the gestures */
 #ifdef GESTURE_MODE
 	#define USE_GESTURE_MASK	/* /< the gestures to select are
 					 * referred using
@@ -167,19 +167,19 @@
 #endif
 
 
-#define CHARGER_MODE	/* /< enable the support to charger mode feature
+#undef CHARGER_MODE	/* /< enable the support to charger mode feature
 			 * (comment to disable) */
 
 #define GLOVE_MODE	/* /< enable the support to glove mode feature (comment
 			 * to disable) */
 
-#define COVER_MODE	/* /< enable the support to cover mode feature (comment
+#undef COVER_MODE	/* /< enable the support to cover mode feature (comment
 			 * to disable) */
 
-#define STYLUS_MODE	/* /< enable the support to stylus mode feature (comment
+#undef STYLUS_MODE	/* /< enable the support to stylus mode feature (comment
 			 * to disable) */
 
-#define GRIP_MODE	/* /< enable the support to grip mode feature (comment
+#undef GRIP_MODE	/* /< enable the support to grip mode feature (comment
 			 * to disable) */
 
 
