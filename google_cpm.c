@@ -1049,6 +1049,7 @@ static int gcpm_psy_is_writeable(struct power_supply *psy,
 static enum power_supply_property gcpm_psy_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
 	/* pixel battery management subsystem */
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,	/* cc_max */
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,	/* fv_uv */
