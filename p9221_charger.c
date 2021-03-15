@@ -350,8 +350,11 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 {
 	int ret = 0;
 	u16 status_reg;
+	const bool no_csp = charger->ben_state &&
+			    charger->ints.cc_send_busy_bit &&
+			    charger->com_busy;
 
-	if (charger->ben_state && charger->com_busy) {
+	if (no_csp) {
 		charger->last_capacity = -1;
 		logbuffer_log(charger->rtx_log,
 			     "com_busy=%d, did not send csp",
@@ -1326,7 +1329,7 @@ static int p9221_enable_interrupts(struct p9221_charger_data *charger)
 
 	if (charger->ben_state) {
 		/* enable necessary INT for RTx mode */
-		mask = P9382_STAT_RTX_MASK;
+		mask = charger->ints.stat_rtx_mask;
 	} else {
 		mask = charger->ints.stat_limit_mask | charger->ints.stat_cc_mask |
 		       charger->ints.vrecton_bit | charger->ints.prop_mode_mask;
@@ -3234,7 +3237,7 @@ static void p9382_txid_work(struct work_struct *work)
 	int ret;
 	char s[FAST_SERIAL_ID_SIZE * 3 + 1];
 
-	if (charger->com_busy) {
+	if (charger->ints.cc_send_busy_bit && charger->com_busy) {
 		schedule_delayed_work(&charger->txid_work,
 				      msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		logbuffer_log(charger->rtx_log,

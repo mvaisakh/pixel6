@@ -417,6 +417,7 @@
 #define P9412_STAT_OVV				BIT(4)
 #define P9412_STAT_OVC				BIT(3)
 #define P9412_STAT_OVT				BIT(2)
+#define P9412_STAT_TXFOD			BIT(12)
 #define P9412_STAT_RXCONNECTED			BIT(11)
 #define P9412_STAT_TXCONFLICT			BIT(1)
 /* EPT code */
@@ -490,6 +491,10 @@ struct p9221_charger_ints_bit {
 	u16				tx_conflict_bit;
 	u16				csp_bit;
 	u16				rx_connected_bit;
+	u16				tx_fod_bit;
+	u16				tx_underpower_bit;
+	u16				tx_uvlo_bit;
+	u16				stat_rtx_mask;
 };
 
 struct p9221_charger_data {

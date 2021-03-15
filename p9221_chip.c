@@ -1223,7 +1223,7 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.over_uv_bit = 0;
 		chgr->ints.cc_send_busy_bit = 0;
 		chgr->ints.cc_data_rcvd_bit = P9412_STAT_CCDATARCVD;
-		chgr->ints.pp_rcvd_bit = 0;
+		chgr->ints.pp_rcvd_bit = P9412_STAT_PPRCVD;
 		chgr->ints.cc_error_bit = 0;
 		chgr->ints.cc_reset_bit = 0;
 		chgr->ints.propmode_stat_bit = P9412_PROP_MODE_STAT_INT;
@@ -1234,6 +1234,9 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.tx_conflict_bit = P9412_STAT_TXCONFLICT;
 		chgr->ints.csp_bit = 0;
 		chgr->ints.rx_connected_bit = P9412_STAT_RXCONNECTED;
+		chgr->ints.tx_fod_bit = P9412_STAT_TXFOD;
+		chgr->ints.tx_underpower_bit = 0;
+		chgr->ints.tx_uvlo_bit = 0;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->ints.over_curr_bit = P9221R5_STAT_OVC;
@@ -1253,6 +1256,9 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.tx_conflict_bit = P9382_STAT_TXCONFLICT;
 		chgr->ints.csp_bit = P9382_STAT_CSP;
 		chgr->ints.rx_connected_bit = P9382_STAT_RXCONNECTED;
+		chgr->ints.tx_fod_bit = P9382_STAT_TXFOD;
+		chgr->ints.tx_underpower_bit = P9382_STAT_TXUNDERPOWER;
+		chgr->ints.tx_uvlo_bit = P9382_STAT_TXUVLO;
 		break;
 	case P9222_CHIP_ID:
 		chgr->ints.over_curr_bit = P9222_STAT_OVC;
@@ -1272,6 +1278,9 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.tx_conflict_bit = 0;
 		chgr->ints.csp_bit = 0;
 		chgr->ints.rx_connected_bit = 0;
+		chgr->ints.tx_fod_bit = 0;
+		chgr->ints.tx_underpower_bit = 0;
+		chgr->ints.tx_uvlo_bit = 0;
 		break;
 	default:
 		chgr->ints.over_curr_bit = P9221R5_STAT_OVC;
@@ -1291,21 +1300,36 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.tx_conflict_bit = 0;
 		chgr->ints.csp_bit = 0;
 		chgr->ints.rx_connected_bit = 0;
+		chgr->ints.tx_fod_bit = 0;
+		chgr->ints.tx_underpower_bit = 0;
+		chgr->ints.tx_uvlo_bit = 0;
 		break;
 	}
 
-	chgr->ints.stat_limit_mask = (chgr->ints.cc_send_busy_bit |
-				      chgr->ints.over_uv_bit |
+
+	chgr->ints.stat_limit_mask = (chgr->ints.over_uv_bit |
 				      chgr->ints.over_temp_bit |
 				      chgr->ints.over_volt_bit |
 				      chgr->ints.over_curr_bit);
-	chgr->ints.stat_cc_mask = (chgr->ints.cc_reset_bit |
+	chgr->ints.stat_cc_mask = (chgr->ints.cc_send_busy_bit |
+				   chgr->ints.cc_reset_bit |
 				   chgr->ints.pp_rcvd_bit |
 				   chgr->ints.cc_error_bit |
 				   chgr->ints.cc_data_rcvd_bit);
 	chgr->ints.prop_mode_mask = (chgr->ints.propmode_stat_bit |
 				     chgr->ints.cdmode_change_bit |
 				     chgr->ints.cdmode_err_bit);
+	chgr->ints.stat_rtx_mask = (chgr->ints.stat_limit_mask |
+				    chgr->ints.stat_cc_mask |
+				    chgr->ints.mode_changed_bit |
+				    chgr->ints.vout_changed_bit |
+				    chgr->ints.hard_ocp_bit |
+				    chgr->ints.tx_conflict_bit |
+				    chgr->ints.csp_bit |
+				    chgr->ints.rx_connected_bit |
+				    chgr->ints.tx_fod_bit |
+				    chgr->ints.tx_underpower_bit |
+				    chgr->ints.tx_uvlo_bit);
 }
 
 void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
