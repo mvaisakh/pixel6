@@ -450,6 +450,7 @@ int exynos_panel_disable(struct drm_panel *panel)
 
 	ctx->enabled = false;
 	ctx->hbm_mode = false;
+	ctx->dimming_on = false;
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func) {
@@ -1432,6 +1433,43 @@ static ssize_t hbm_mode_show(struct device *dev,
 
 static DEVICE_ATTR_RW(hbm_mode);
 
+static ssize_t dimming_on_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	bool dimming_on;
+	int ret;
+
+	if (!ctx->enabled || !ctx->initialized) {
+		dev_err(ctx->dev, "panel is not enabled\n");
+		return -EPERM;
+	}
+
+	ret = kstrtobool(buf, &dimming_on);
+	if (ret) {
+		dev_err(ctx->dev, "invalid dimming_on value\n");
+		return ret;
+	}
+
+	if (funcs && funcs->set_dimming_on)
+		funcs->set_dimming_on(ctx, dimming_on);
+
+	return count;
+}
+
+static ssize_t dimming_on_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+	struct exynos_panel *ctx = bl_get_data(bd);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->dimming_on);
+}
+static DEVICE_ATTR_RW(dimming_on);
+
 static ssize_t local_hbm_mode_store(struct device *dev,
 			       struct device_attribute *attr,
 			       const char *buf, size_t count)
@@ -1675,6 +1713,7 @@ static DEVICE_ATTR_RW(als_table);
 
 static struct attribute *bl_device_attrs[] = {
 	&dev_attr_hbm_mode.attr,
+	&dev_attr_dimming_on.attr,
 	&dev_attr_local_hbm_mode.attr,
 	&dev_attr_local_hbm_max_timeout.attr,
 	&dev_attr_state.attr,

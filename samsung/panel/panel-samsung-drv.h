@@ -119,6 +119,16 @@ struct exynos_panel_funcs {
 	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, bool hbm_mode);
 
 	/**
+	 * @set_dimming_on:
+	 *
+	 * This callback is used to implement panel specific logic for dimming mode
+	 * enablement. If this is not defined, it means that panel does not support
+	 * dimmimg.
+	 */
+	void (*set_dimming_on)(struct exynos_panel *exynos_panel,
+				 bool dimming_on);
+
+	/**
 	 * @set_local_hbm_mode:
 	 *
 	 * This callback is used to implement panel specific logic for local high
@@ -297,6 +307,7 @@ struct exynos_panel {
 	bool initialized;
 
 	bool hbm_mode;
+	bool dimming_on;
 	struct backlight_device *bl;
 	struct mutex bl_state_lock;
 	struct exynos_bl_notifier bl_notifier;
