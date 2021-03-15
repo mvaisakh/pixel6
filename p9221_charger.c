@@ -60,7 +60,6 @@ enum wlc_align_codes {
 };
 
 #define P9221_CRC8_POLYNOMIAL		0x07	/* (x^8) + x^2 + x + 1 */
-
 DECLARE_CRC8_TABLE(p9221_crc8_table);
 
 static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
@@ -349,7 +348,6 @@ error:
 static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 {
 	int ret = 0;
-	u16 status_reg;
 	const bool no_csp = charger->ben_state &&
 			    charger->ints.cc_send_busy_bit &&
 			    charger->com_busy;
@@ -365,44 +363,9 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 	mutex_lock(&charger->cmd_lock);
 
 	if (charger->ben_state) {
-		ret = p9221_reg_read_16(charger, P9221_STATUS_REG, &status_reg);
-		if ((ret == 0) && (status_reg & P9382_STAT_RXCONNECTED)) {
-			dev_info(&charger->client->dev, "Send Tx soc=%d\n",
-				 stat);
-			/* write packet type to 0x100 */
-			ret = p9221_reg_write_8(charger,
-						P9382A_COM_PACKET_TYPE_ADDR,
-						PROPRIETARY_PACKET_TYPE);
-
-			memset(charger->tx_buf, 0, P9221R5_DATA_SEND_BUF_SIZE);
-
-			charger->tx_len = CHARGE_STATUS_PACKET_SIZE;
-			/* write 0x48 to 0x104 */
-			charger->tx_buf[0] = CHARGE_STATUS_PACKET_HEADER;
-			/* sype: power control 0x08 */
-			charger->tx_buf[1] = PP_TYPE_POWER_CONTROL;
-			/* subtype: state of charge report 0x10 */
-			charger->tx_buf[2] = PP_SUBTYPE_SOC;
-			/* soc: allow for 0.5% to fill up 0-200 -> 0-100% */
-			charger->tx_buf[3] = stat * 2;
-			/* crc-8 */
-			charger->tx_buf[4] = crc8(p9221_crc8_table,
-						  &charger->tx_buf[1],
-						  charger->tx_len - 1,
-						  CRC8_INIT_VALUE);
-			if (ret == 0) {
-				ret |= charger->chip_set_data_buf(charger,
-								  charger->tx_buf,
-								  charger->tx_len + 1);
-				ret = charger->chip_set_cmd(charger,
-						P9221R5_COM_CCACTIVATE);
-				if (ret == 0)
-					charger->com_busy = true;
-			}
-
-			memset(charger->tx_buf, 0, P9221R5_DATA_SEND_BUF_SIZE);
-			charger->tx_len = 0;
-		}
+		ret = charger->chip_send_csp_in_txmode(charger, stat);
+		if (ret == 0)
+			charger->com_busy = true;
 	}
 
 	if (charger->online) {
@@ -418,6 +381,11 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 
 	mutex_unlock(&charger->cmd_lock);
 	return ret;
+}
+
+u8 p9221_crc8(u8 *pdata, size_t nbytes, u8 crc)
+{
+	return crc8(p9221_crc8_table, pdata, nbytes, crc);
 }
 
 static bool p9221_is_online(const struct p9221_charger_data *charger)
@@ -3234,8 +3202,7 @@ static void p9382_txid_work(struct work_struct *work)
 {
 	struct p9221_charger_data *charger = container_of(work,
 			struct p9221_charger_data, txid_work.work);
-	int ret;
-	char s[FAST_SERIAL_ID_SIZE * 3 + 1];
+	int ret = 0;
 
 	if (charger->ints.cc_send_busy_bit && charger->com_busy) {
 		schedule_delayed_work(&charger->txid_work,
@@ -3246,51 +3213,15 @@ static void p9382_txid_work(struct work_struct *work)
 		return;
 	}
 
-	mutex_lock(&charger->cmd_lock);
-
-	/* write packet type to 0x100 */
-	ret = p9221_reg_write_8(charger,
-				P9382A_COM_PACKET_TYPE_ADDR,
-				PROPRIETARY_PACKET_TYPE);
-
-	memset(charger->tx_buf, 0, charger->tx_buf_size);
-
-	/* write 0x4F as header to 0x104 */
-	charger->tx_buf[0] = FAST_SERIAL_ID_HEADER;
-	charger->tx_len = FAST_SERIAL_ID_SIZE;
-
-	/* TODO: write txid to bit(23, 0) */
-	memset(&charger->tx_buf[1], 0x12, FAST_SERIAL_ID_SIZE - 1);
-
-	/* write accessory type to bit(31, 24) */
-	charger->tx_buf[4] = TX_ACCESSORY_TYPE;
-
-	ret |= charger->chip_set_data_buf(charger, charger->tx_buf,
-					  charger->tx_len + 1);
-	if (ret) {
-		dev_err(&charger->client->dev, "Failed to load tx %d\n", ret);
-		goto error;
-	}
-
-	/* send packet */
-	ret = charger->chip_set_cmd(charger, P9221R5_COM_CCACTIVATE);
-	if (ret) {
-		dev_err(&charger->client->dev, "Failed to send txid %d\n", ret);
-		goto error;
-	} else {
+	ret = charger->chip_send_txid(charger);
+	if (!ret) {
+		p9221_hex_str(&charger->tx_buf[1], FAST_SERIAL_ID_SIZE,
+			      charger->fast_id_str,
+			      sizeof(charger->fast_id_str), false);
+		dev_info(&charger->client->dev, "Fast serial ID send(%s)\n",
+			 charger->fast_id_str);
 		charger->com_busy = true;
 	}
-
-	p9221_hex_str(&charger->tx_buf[1], FAST_SERIAL_ID_SIZE,
-		      s, FAST_SERIAL_ID_SIZE * 3 + 1, false);
-	dev_info(&charger->client->dev, "Fast serial ID send(%s)\n", s);
-
-	mutex_unlock(&charger->cmd_lock);
-	charger->last_capacity = -1;
-	return;
-error:
-	mutex_unlock(&charger->cmd_lock);
-	charger->com_busy = false;
 }
 
 static void p9382_rtx_work(struct work_struct *work)
@@ -3554,18 +3485,14 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	if (irq_src & charger->ints.pp_rcvd_bit) {
 		u8 tmp, buff[sizeof(charger->pp_buf)], crc;
 
-		res = charger->chip_get_data_buf(charger,
-						 buff,
-						 sizeof(buff));
+		/* TODO: extract to a separate function */
+		res = charger->chip_get_data_buf(charger, buff, sizeof(buff));
 		if (res) {
 			dev_err(&charger->client->dev,
 				"Failed to read PP len: %d\n", res);
-		} else if ((res == 0) &&
-			   (buff[0] == CHARGE_STATUS_PACKET_HEADER)) {
-			crc = crc8(p9221_crc8_table,
-				   &buff[1],
-				   CHARGE_STATUS_PACKET_SIZE - 1,
-				   CRC8_INIT_VALUE);
+		} else if (res == 0 && buff[0] == CHARGE_STATUS_PACKET_HEADER) {
+			crc = p9221_crc8(&buff[1], CHARGE_STATUS_PACKET_SIZE - 1,
+					 CRC8_INIT_VALUE);
 			if ((buff[1] == PP_TYPE_POWER_CONTROL) &&
 			    (buff[2] == PP_SUBTYPE_SOC) &&
 			    (buff[4] == crc)) {

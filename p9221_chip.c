@@ -838,6 +838,104 @@ static int p9412_send_eop(struct p9221_charger_data *chgr, u8 reason)
 	return ret;
 }
 
+/* RTx mode: send Tx ID */
+static int p9221_send_txid(struct p9221_charger_data *chgr)
+{
+	return -ENOTSUPP;
+}
+
+static int p9382_send_txid(struct p9221_charger_data *chgr)
+{
+	int ret;
+
+	mutex_lock(&chgr->cmd_lock);
+
+	/* write packet type to 0x100 */
+	ret = chgr->reg_write_8(chgr,
+				P9382A_COM_PACKET_TYPE_ADDR,
+				PROPRIETARY_PACKET_TYPE);
+	if (ret)
+		goto error;
+
+	memset(chgr->tx_buf, 0, chgr->tx_buf_size);
+
+	/* write 0x4F as header to 0x104 */
+	chgr->tx_buf[0] = FAST_SERIAL_ID_HEADER;
+	chgr->tx_len = FAST_SERIAL_ID_SIZE;
+
+	/* TODO: write txid to bit(23, 0) */
+	memset(&chgr->tx_buf[1], 0x12, FAST_SERIAL_ID_SIZE - 1);
+
+	/* write accessory type to bit(31, 24) */
+	chgr->tx_buf[4] = TX_ACCESSORY_TYPE;
+
+	ret |= chgr->chip_set_data_buf(chgr, chgr->tx_buf, chgr->tx_len + 1);
+	if (ret) {
+		dev_err(&chgr->client->dev, "Failed to load tx %d\n", ret);
+		goto error;
+	}
+
+	/* send packet */
+	ret = chgr->chip_set_cmd(chgr, P9221R5_COM_CCACTIVATE);
+	if (ret)
+		dev_err(&chgr->client->dev, "Failed to send txid %d\n", ret);
+	else
+		chgr->last_capacity = -1;
+
+error:
+	mutex_unlock(&chgr->cmd_lock);
+	return ret;
+}
+
+/* RTx mode: send csp in Tx mode */
+static int p9221_send_csp_in_txmode(struct p9221_charger_data *chgr, u8 stat)
+{
+	return -ENOTSUPP;
+}
+static int p9382_send_csp_in_txmode(struct p9221_charger_data *chgr, u8 stat)
+{
+	int ret = 0;
+	u16 status_reg;
+
+	ret = chgr->reg_read_16(chgr, P9221_STATUS_REG, &status_reg);
+	if ((ret != 0) || (status_reg & P9382_STAT_RXCONNECTED) == 0)
+		return ret;
+
+	dev_info(&chgr->client->dev, "Send Tx soc=%d\n", stat);
+	/* write packet type to 0x100 */
+	ret = chgr->reg_write_8(chgr,
+				P9382A_COM_PACKET_TYPE_ADDR,
+				PROPRIETARY_PACKET_TYPE);
+
+	if (ret != 0)
+		return ret;
+
+	memset(chgr->tx_buf, 0, P9221R5_DATA_SEND_BUF_SIZE);
+
+	chgr->tx_len = CHARGE_STATUS_PACKET_SIZE;
+	/* write 0x48 to 0x104 */
+	chgr->tx_buf[0] = CHARGE_STATUS_PACKET_HEADER;
+	/* sype: power control 0x08 */
+	chgr->tx_buf[1] = PP_TYPE_POWER_CONTROL;
+	/* subtype: state of charge report 0x10 */
+	chgr->tx_buf[2] = PP_SUBTYPE_SOC;
+	/* soc: allow for 0.5% to fill up 0-200 -> 0-100% */
+	chgr->tx_buf[3] = stat * 2;
+	/* crc-8 */
+	chgr->tx_buf[4] = p9221_crc8(&chgr->tx_buf[1], chgr->tx_len - 1,
+				     CRC8_INIT_VALUE);
+
+	ret = chgr->chip_set_data_buf(chgr,
+				      chgr->tx_buf,
+				      chgr->tx_len + 1);
+	ret |= chgr->chip_set_cmd(chgr, P9221R5_COM_CCACTIVATE);
+
+	memset(chgr->tx_buf, 0, P9221R5_DATA_SEND_BUF_SIZE);
+	chgr->tx_len = 0;
+
+	return ret;
+}
+
 /* renegotiate power from charger->pdata->epp_rp_value */
 static int p9221_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 {
@@ -1392,6 +1490,8 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9412_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9412_prop_mode_enable;
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
+		chgr->chip_send_txid = p9221_send_txid; // TODO: b/179463786
+		chgr->chip_send_csp_in_txmode = p9221_send_csp_in_txmode; // TODO: b/182744651
 		break;
 	case P9382A_CHIP_ID:
 		chgr->rtx_state = RTX_AVAILABLE;
@@ -1418,6 +1518,8 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
+		chgr->chip_send_txid = p9382_send_txid;
+		chgr->chip_send_csp_in_txmode = p9382_send_csp_in_txmode;
 		break;
 	case P9222_CHIP_ID:
 		chgr->chip_get_iout = p9222_chip_get_iout;
@@ -1450,6 +1552,8 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9222_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		chgr->chip_check_neg_power = p9222_check_neg_power;
+		chgr->chip_send_txid = p9221_send_txid;
+		chgr->chip_send_csp_in_txmode = p9221_send_csp_in_txmode;
 		break;
 	default:
 		chgr->rtx_state = RTX_NOTSUPPORTED;
@@ -1476,6 +1580,8 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_renegotiate_pwr = p9221_chip_renegotiate_pwr;
 		chgr->chip_prop_mode_en = p9221_prop_mode_enable;
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
+		chgr->chip_send_txid = p9221_send_txid;
+		chgr->chip_send_csp_in_txmode = p9221_send_csp_in_txmode;
 		break;
 	}
 

@@ -17,6 +17,7 @@
 #define __P9221_CHARGER_H__
 
 #include <linux/gpio.h>
+#include <linux/crc8.h>
 
 #define P9221_WLC_VOTER				"WLC_VOTER"
 #define P9221_USER_VOTER			"WLC_USER_VOTER"
@@ -423,6 +424,8 @@
 /* EPT code */
 #define EPT_END_OF_CHARGE			BIT(0)
 
+#define P9221_CRC8_POLYNOMIAL           0x07    /* (x^8) + x^2 + x + 1 */
+
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
 	ALIGN_MFG_CHECKING,
@@ -544,6 +547,7 @@ struct p9221_charger_data {
 	u16				rx_len;
 	bool				rx_done;
 	u8				*tx_buf;
+	char				fast_id_str[FAST_SERIAL_ID_SIZE * 3 + 1];
 	size_t				tx_buf_size;
 	u32				tx_id;
 	u8				tx_id_str[(sizeof(u32) * 2) + 1];
@@ -643,8 +647,11 @@ struct p9221_charger_data {
 	int (*chip_renegotiate_pwr)(struct p9221_charger_data *chrg);
 	bool (*chip_prop_mode_en)(struct p9221_charger_data *chgr, int req_pwr);
 	void (*chip_check_neg_power)(struct p9221_charger_data *chgr);
+	int (*chip_send_txid)(struct p9221_charger_data *chgr);
+	int (*chip_send_csp_in_txmode)(struct p9221_charger_data *chgr, u8 stat);
 };
 
+u8 p9221_crc8(u8 *pdata, size_t nbytes, u8 crc);
 bool p9221_is_epp(struct p9221_charger_data *charger);
 int p9221_set_psy_online(struct p9221_charger_data *charger, int online);
 
