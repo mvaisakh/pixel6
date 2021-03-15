@@ -476,7 +476,7 @@ static void *fts_seq_start(struct seq_file *s, loff_t *pos)
 		 * __func__, info->limit, info->driver_test_buff); */
 	} else {
 		if (*pos != 0)
-			*pos += info->chunk - 1;
+			*pos = info->printed;
 
 		if (*pos >= info->limit)
 			/* dev_err(info->dev, "%s: Apparently, we're done.\n", __func__); */
@@ -506,8 +506,8 @@ static int fts_seq_show(struct seq_file *s, void *v)
 	struct fts_ts_info *info = PDE_DATA(file_inode(s->file));
 
 	/* dev_err(info->dev, "%s: In show()\n", __func__); */
-	seq_write(s, (u8 *)v, info->chunk);
-	info->printed += info->chunk;
+	if (seq_write(s, (u8 *)v, info->chunk) == 0)
+		info->printed += info->chunk;
 	return 0;
 }
 
