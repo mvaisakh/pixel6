@@ -771,6 +771,7 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 		   desc->max_avg_luminance);
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
 	drm_printf(p, "\thbm_on: %s\n", ctx->hbm_mode ? "true" : "false");
+	drm_printf(p, "\tdimming_on: %s\n", ctx->dimming_on ? "true" : "false");
 }
 
 static int exynos_panel_connector_get_property(
@@ -789,6 +790,9 @@ static int exynos_panel_connector_get_property(
 	} else if (property == p->hbm_on) {
 		*val = exynos_state->hbm_on;
 		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	} else if (property == p->dimming_on) {
+		*val = exynos_state->dimming_on;
+		dev_dbg(ctx->dev, "%s: dimming_on(%s)\n", __func__, *val ? "true" : "false");
 	} else
 		return -EINVAL;
 
@@ -812,6 +816,10 @@ static int exynos_panel_connector_set_property(
 		exynos_state->hbm_on = val;
 		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__,
 			 exynos_state->hbm_on ? "true" : "false");
+	} else if (property == p->dimming_on) {
+		exynos_state->dimming_on = val;
+		dev_dbg(ctx->dev, "%s: dimming_on(%s)\n", __func__,
+			 exynos_state->dimming_on ? "true" : "false");
 	} else
 		return -EINVAL;
 
@@ -830,12 +838,11 @@ static void exynos_panel_connector_atomic_commit(
 			    struct exynos_drm_connector_state *exynos_new_state)
 {
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
-	const struct exynos_panel_funcs *exynos_panel_func;
+	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
 
 	ctx->hbm.global_hbm.update_hbm = false;
 	ctx->hbm.global_hbm.update_bl = false;
 	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
-		exynos_panel_func = ctx->desc->exynos_panel_func;
 		if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
 			ctx->hbm.global_hbm.update_hbm = true;
 			ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
@@ -845,6 +852,11 @@ static void exynos_panel_connector_atomic_commit(
 	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
 		ctx->bl->props.brightness = exynos_new_state->brightness_level;
 		ctx->hbm.global_hbm.update_bl = true;
+	}
+
+	if (exynos_old_state->dimming_on != exynos_new_state->dimming_on) {
+		if (exynos_panel_func && exynos_panel_func->set_dimming_on)
+			exynos_panel_func->set_dimming_on(ctx, exynos_new_state->dimming_on);
 	}
 
 	if (ctx->hbm.global_hbm.update_hbm || ctx->hbm.global_hbm.update_bl)
@@ -1440,6 +1452,8 @@ static ssize_t dimming_on_store(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	struct drm_connector_state *conn_state;
+	struct drm_mode_config *config;
 	bool dimming_on;
 	int ret;
 
@@ -1454,8 +1468,20 @@ static ssize_t dimming_on_store(struct device *dev,
 		return ret;
 	}
 
-	if (funcs && funcs->set_dimming_on)
+	if (funcs && funcs->set_dimming_on) {
+		config = &ctx->exynos_connector.base.dev->mode_config;
+
+		drm_modeset_lock(&config->connection_mutex, NULL);
+		conn_state = ctx->exynos_connector.base.state;
+		if (conn_state) {
+			struct exynos_drm_connector_state *exynos_connector_state =
+				to_exynos_connector_state(conn_state);
+			exynos_connector_state->dimming_on = dimming_on;
+		}
+		drm_modeset_unlock(&config->connection_mutex);
+
 		funcs->set_dimming_on(ctx, dimming_on);
+	}
 
 	return count;
 }
@@ -1799,6 +1825,7 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
 	drm_object_attach_property(obj, p->brightness_level, 0);
 	drm_object_attach_property(obj, p->hbm_on, 0);
+	drm_object_attach_property(obj, p->dimming_on, 0);
 
 	if (desc->brt_capability) {
 		ret = exynos_panel_attach_brightness_capability(&ctx->exynos_connector,
