@@ -140,8 +140,13 @@ static void s6e3fc3_update_wrctrld(struct exynos_panel *ctx)
 	if (ctx->hbm.local_hbm.enabled)
 		val |= S6E3FC3_WRCTRLD_LOCAL_HBM_BIT;
 
-	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, local_hbm: %s)\n",
+	if (ctx->dimming_on)
+		val |= S6E3FC3_WRCTRLD_DIMMING_BIT;
+
+	dev_dbg(ctx->dev,
+		"%s(wrctrld:0x%x, hbm: %s, dimming: %s, local_hbm: %s)\n",
 		__func__, val, ctx->hbm_mode ? "on" : "off",
+		ctx->dimming_on ? "on" : "off",
 		ctx->hbm.local_hbm.enabled ? "on" : "off");
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
@@ -211,6 +216,14 @@ static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool hbm_mode)
 {
 	exynos_panel->hbm_mode = hbm_mode;
+
+	s6e3fc3_update_wrctrld(exynos_panel);
+}
+
+static void s6e3fc3_set_dimming_on(struct exynos_panel *exynos_panel,
+				 bool dimming_on)
+{
+	exynos_panel->dimming_on = dimming_on;
 
 	s6e3fc3_update_wrctrld(exynos_panel);
 }
@@ -391,6 +404,7 @@ static const struct exynos_panel_funcs s6e3fc3_exynos_funcs = {
 	.set_nolp_mode = s6e3fc3_set_nolp_mode,
 	.set_binned_lp = exynos_panel_set_binned_lp,
 	.set_hbm_mode = s6e3fc3_set_hbm_mode,
+	.set_dimming_on = s6e3fc3_set_dimming_on,
 	.set_local_hbm_mode = s6e3fc3_set_local_hbm_mode,
 	.is_mode_seamless = s6e3fc3_is_mode_seamless,
 	.mode_set = s6e3fc3_mode_set,
