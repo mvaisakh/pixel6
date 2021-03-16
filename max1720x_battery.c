@@ -982,6 +982,42 @@ static int max1720x_get_capacity_raw(struct max1720x_chip *chip, u16 *data)
 	return REGMAP_READ(&chip->regmap, chip->reg_prop_capacity_raw, data);
 }
 
+int max1720x_get_capacity(struct i2c_client *client, int *iic_raw)
+{
+	struct max1720x_chip *chip = i2c_get_clientdata(client);
+	u16 temp;
+	int ret;
+
+	if (!chip)
+		return -ENODEV;
+
+	/* check the rules on reg_prop_capacity_raw */
+	ret = max1720x_get_capacity_raw(chip, &temp);
+	if (ret == 0)
+		*iic_raw = ((int) temp) / 256;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(max1720x_get_capacity);
+
+int max1720x_get_voltage_now(struct i2c_client *client, int *volt)
+{
+	struct max1720x_chip *chip;
+	u16 temp;
+	int ret;
+
+	chip = i2c_get_clientdata(client);
+	if (!chip)
+		return -ENODEV;
+
+	ret = max17x0x_reg_read(&chip->regmap, MAX17X0X_TAG_vcel, &temp);
+	if (ret == 0)
+		*volt = reg_to_micro_volt(temp);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(max1720x_get_voltage_now);
+
 static int max1720x_get_battery_soc(struct max1720x_chip *chip)
 {
 	u16 data;

@@ -136,6 +136,9 @@ struct max17x0x_regmap {
 	struct max17x0x_reglog *reglog;
 };
 
+int max1720x_get_capacity(struct i2c_client *client, int *iic_raw);
+int max1720x_get_voltage_now(struct i2c_client *client, int *iic_raw);
+
 /* */
 #ifdef CONFIG_MAX1720X_REGLOG_LOG
 static inline void max17x0x_reglog_log(struct max17x0x_reglog *reglog,
