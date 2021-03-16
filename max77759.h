@@ -95,18 +95,17 @@ struct max77759_foreach_cb_data {
 
 	bool chgr_on;	/* CC_MAX != 0 */
 	bool stby_on;	/* on disconnect */
-	bool inflow_off;
+	bool inflow_off;/* ~same as stby */
 
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
 
 	bool otg_on;	/* power out, usually external */
 	bool frs_on;	/* fast role swap */
 
-	bool wlc_on;	/* charging wireless */
+	bool wlc_rx;	/* charging wireless */
 	bool wlc_tx;	/* battery share */
 
-	bool pps_dc;	/* PPS enabled - wired */
-	bool wlc_dc;	/* PPS enabled - wireless */
+	bool dc_on;	/* PPS enabled - wired or wireless */
 
 	bool boost_on;	/* old for WLC program */
 	bool uno_on;	/* old for WLC program */
@@ -142,6 +141,7 @@ struct max77759_usecase_data {
 
 	struct i2c_client *client;
 	bool init_done;
+	int use_case;
 };
 
 enum gsu_usecases {
