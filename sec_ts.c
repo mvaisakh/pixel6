@@ -1585,8 +1585,11 @@ static void sec_ts_handle_coord_event(struct sec_ts_data *ts,
 					SEC_TS_PRESSURE_MAX;
 		ts->coord[t_id].ttype = p_event_coord->ttype_3_2 << 2 |
 					p_event_coord->ttype_1_0 << 0;
-		ts->coord[t_id].major = p_event_coord->major;
-		ts->coord[t_id].minor = p_event_coord->minor;
+		ts->coord[t_id].major = p_event_coord->major *
+						ts->plat_data->mm2px;
+		ts->coord[t_id].minor = p_event_coord->minor *
+						ts->plat_data->mm2px;
+
 
 		if (!ts->coord[t_id].palm &&
 			(ts->coord[t_id].ttype == SEC_TS_TOUCHTYPE_PALM))
@@ -3275,6 +3278,11 @@ static int sec_ts_parse_dt(struct spi_device *client)
 
 	pdata->support_mt_pressure = true;
 
+	if (of_property_read_u8(np, "sec,mm2px", &pdata->mm2px) < 0)
+		pdata->mm2px = 1;
+	input_info(true, &client->dev,
+		   "%s: mm2px %d\n", __func__, pdata->mm2px);
+
 #ifdef PAT_CONTROL
 	input_info(true, &client->dev,
 		"%s: buffer limit: %d, lcd_id:%06X, bringup:%d, FW:%s(%d), id:%d,%d, pat_function:%d mis_cal:%d dex:%d, gesture:%d\n",
@@ -3483,8 +3491,12 @@ static void sec_ts_set_input_prop(struct sec_ts_data *ts,
 			     0, 0);
 	input_set_abs_params(dev, ABS_MT_POSITION_Y, 0, ts->plat_data->max_y,
 			     0, 0);
-	input_set_abs_params(dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
-	input_set_abs_params(dev, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
+	input_set_abs_params(dev, ABS_MT_TOUCH_MAJOR, 0,
+			255 * ts->plat_data->mm2px,
+			0, 0);
+	input_set_abs_params(dev, ABS_MT_TOUCH_MINOR, 0,
+			255 * ts->plat_data->mm2px,
+			0, 0);
 	input_set_abs_params(dev, ABS_MT_TOOL_TYPE, MT_TOOL_FINGER,
 			     MT_TOOL_FINGER, 0, 0);
 #ifdef ABS_MT_CUSTOM

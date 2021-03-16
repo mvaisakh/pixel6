@@ -817,8 +817,8 @@ struct sec_ts_coordinate {
 	u8 glove_flag;
 	u8 touch_height;
 	u16 mcount;
-	u8 major;
-	u8 minor;
+	u16 major;
+	u16 minor;
 	bool palm;
 	int palm_count;
 	u8 left_event;
@@ -1132,6 +1132,9 @@ struct sec_ts_plat_data {
 
 	struct drm_panel *panel;
 	u32 initial_panel_index;
+
+	/* convert mm to pixel for major and minor */
+	u8 mm2px;
 };
 
 int sec_ts_stop_device(struct sec_ts_data *ts);
