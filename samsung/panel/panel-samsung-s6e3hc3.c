@@ -315,6 +315,16 @@ static void s6e3hc3_panel_init(struct exynos_panel *ctx)
 	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_mode_60_cmd_set, "60");
 }
 
+static u32 s6e3hc3_get_panel_rev(u32 id)
+{
+	u8 build_code;
+
+	/* extract command 0xDB */
+	build_code = (id & 0xFF00) >> 8;
+
+	return (((build_code & 0xE0) >> 3) | (build_code & 0x03));
+}
+
 static const struct exynos_display_underrun_param underrun_param = {
 	.te_idle_us = 350,
 	.te_var = 1,
@@ -433,6 +443,7 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.is_mode_seamless = s6e3hc3_is_mode_seamless,
 	.mode_set = s6e3hc3_mode_set,
 	.panel_init = s6e3hc3_panel_init,
+	.get_panel_rev = s6e3hc3_get_panel_rev,
 };
 
 const struct brightness_capability s6e3hc3_brightness_capability = {
