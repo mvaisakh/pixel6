@@ -155,6 +155,41 @@ static int exynos_panel_read_extinfo(struct exynos_panel *ctx)
 	return 0;
 }
 
+static void exynos_panel_get_panel_rev(struct exynos_panel *ctx)
+{
+	u32 id, rev;
+
+	if (kstrtou32(ctx->panel_extinfo, 16, &id)) {
+		dev_err(ctx->dev, "failed to get panel extinfo\n");
+		return;
+	}
+
+	rev = ctx->desc->exynos_panel_func->get_panel_rev(id);
+
+	switch (rev) {
+	case 0:
+		ctx->panel_rev = PANEL_REV_PROTO1;
+		break;
+	case 1:
+		ctx->panel_rev = PANEL_REV_PROTO1_1;
+		break;
+	case 8:
+		ctx->panel_rev = PANEL_REV_EVT;
+		break;
+	case 0xC:
+		ctx->panel_rev = PANEL_REV_DVT;
+		break;
+	case 0x10:
+		ctx->panel_rev = PANEL_REV_PVT;
+		break;
+	default:
+		dev_err(ctx->dev, "unknown rev from panel (0x%x)\n", rev);
+		break;
+	}
+
+	dev_dbg(ctx->dev, "panel_rev: 0x%x\n", ctx->panel_rev);
+}
+
 static int exynos_panel_init(struct exynos_panel *ctx)
 {
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
@@ -170,6 +205,9 @@ static int exynos_panel_init(struct exynos_panel *ctx)
 	ret = exynos_panel_read_extinfo(ctx);
 	if (!ret)
 		ctx->initialized = true;
+
+	if (funcs && funcs->get_panel_rev)
+		exynos_panel_get_panel_rev(ctx);
 
 	if (funcs && funcs->panel_init)
 		funcs->panel_init(ctx);
@@ -419,6 +457,10 @@ void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
 
 	for (i = 0; i < cmd_set->num_cmd; i++) {
 		u32 delay_ms = cmd_set->cmds[i].delay_ms;
+
+		if (ctx->panel_rev &&
+		    !(cmd_set->cmds[i].panel_rev & ctx->panel_rev))
+			continue;
 
 		exynos_dcs_write(ctx, cmd_set->cmds[i].cmd,
 				cmd_set->cmds[i].cmd_len);
@@ -970,6 +1012,8 @@ static int panel_debugfs_add(struct exynos_panel *ctx, struct dentry *parent)
 	const struct exynos_panel_desc *desc = ctx->desc;
 	const struct exynos_panel_funcs *funcs = desc->exynos_panel_func;
 	struct dentry *root;
+
+	debugfs_create_u32("rev", 0600, parent, &ctx->panel_rev);
 
 	if (!funcs)
 		return -EINVAL;

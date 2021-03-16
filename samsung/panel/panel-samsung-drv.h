@@ -42,6 +42,16 @@
 
 #define DEFAULT_GAMMA_STR	"default"
 
+#define PANEL_REV_PROTO1	BIT(0)
+#define PANEL_REV_PROTO1_1	BIT(1)
+#define PANEL_REV_EVT		BIT(2)
+#define PANEL_REV_DVT		BIT(3)
+#define PANEL_REV_PVT		BIT(4)
+#define PANEL_REV_ALL		(~0)
+#define PANEL_REV_GE(rev)	(~((rev) - 1))
+#define PANEL_REV_LT(rev)	((rev) - 1)
+#define PANEL_REV_ALL_BUT(rev)	(PANEL_REV_ALL & ~(rev))
+
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
 	PANEL_STATE_LP,
@@ -185,6 +195,13 @@ struct exynos_panel_funcs {
 	 * original gamma.
 	 */
 	ssize_t (*restore_native_gamma)(struct exynos_panel *exynos_panel);
+
+	/**
+	 * @get_panel_rev:
+	 *
+	 * This callback is used to get panel HW revision from panel_extinfo.
+	 */
+	u32 (*get_panel_rev)(u32 id);
 };
 
 /**
@@ -192,11 +209,13 @@ struct exynos_panel_funcs {
  * @cmd_len:  Length of a dsi command.
  * @cmd:      Pointer to a dsi command.
  * @delay_ms: Delay time after executing this dsi command.
+ * @panel_rev:Send the command only when the panel revision is matched.
  */
 struct exynos_dsi_cmd {
 	u32 cmd_len;
 	const u8 *cmd;
 	u32 delay_ms;
+	u32 panel_rev;
 	u8 type;
 };
 
@@ -285,6 +304,7 @@ struct exynos_panel {
 
 	char panel_id[PANEL_ID_MAX];
 	char panel_extinfo[PANEL_EXTINFO_MAX];
+	u32 panel_rev;
 	bool is_secondary;
 
 	struct device_node *touch_dev;
@@ -345,11 +365,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	*end = '\0';
 }
 
-#define EXYNOS_DSI_CMD(cmd, delay) { sizeof(cmd), cmd, delay }
+#define EXYNOS_DSI_CMD(cmd, delay) { sizeof(cmd), cmd, delay, PANEL_REV_ALL }
 #define EXYNOS_DSI_CMD0(cmd) EXYNOS_DSI_CMD(cmd, 0)
 
 #define EXYNOS_DSI_CMD_SEQ_DELAY(delay, seq...) \
-	{ sizeof((const u8 []){seq}), (const u8 []){seq}, delay }
+	{ sizeof((const u8 []){seq}), (const u8 []){seq}, delay, PANEL_REV_ALL }
 #define EXYNOS_DSI_CMD_SEQ(seq...) EXYNOS_DSI_CMD_SEQ_DELAY(0, seq)
 
 #define DEFINE_EXYNOS_CMD_SET(name) \
