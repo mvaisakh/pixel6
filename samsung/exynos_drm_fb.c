@@ -436,7 +436,7 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 	}
 }
 
-#define TIMEOUT	msecs_to_jiffies(50)
+#define TIMEOUT	msecs_to_jiffies(100)
 
 /* wait at least one frame time on top of common timeout */
 static inline unsigned long fps_timeout(int fps)
