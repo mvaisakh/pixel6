@@ -968,6 +968,13 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 
 		}
 		break;
+	case GSU_MODE_USB_CHG:
+		if (from_uc == GSU_MODE_WLC_TX || from_uc == GSU_MODE_USB_CHG_WLC_TX) {
+			ret = gs101_wlc_tx_enable(uc_data, false);
+			if (ret < 0)
+				return ret;
+		}
+		break;
 	case GSU_RAW_MODE:
 		/* just write the value to the register (it's in stby) */
 		break;
