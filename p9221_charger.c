@@ -2569,7 +2569,7 @@ static ssize_t is_rtx_connected_show(struct device *dev,
 	if (charger->ben_state)
 		p9221_reg_read_16(charger, P9221_STATUS_REG, &status_reg);
 
-	attached = status_reg & P9382_STAT_RXCONNECTED;
+	attached = status_reg & charger->ints.rx_connected_bit;
 
 	return scnprintf(buf, PAGE_SIZE, "%s\n",
 			 attached ? "connected" : "disconnect");
