@@ -43,7 +43,7 @@
 
 /* Non DC Charger is the default */
 #define GCPM_DEFAULT_CHARGER	0
-/* Will need to handle capabilities based on index number */
+/* TODO: handle capabilities based on index number */
 #define GCPM_INDEX_DC_ENABLE	1
 #define GCPM_MAX_CHARGERS	4
 
@@ -154,18 +154,27 @@ struct gcpm_drv  {
 	struct dentry *debug_entry;
 };
 
+#define gcpm_psy_name(psy) \
+	((psy) && (psy)->desc && (psy)->desc->name ? (psy)->desc->name : "???")
+
+/* TODO: handle capabilities based on index number */
+#define gcpm_is_dc(index) \
+	((index) >= GCPM_INDEX_DC_ENABLE)
+
+static struct power_supply *gcpm_chg_get_charger(const struct gcpm_drv *gcpm, int index)
+{
+	return (index < 0 || index >= gcpm->chg_psy_count) ? NULL : gcpm->chg_psy_avail[index];
+}
+
 static struct power_supply *gcpm_chg_get_default(const struct gcpm_drv *gcpm)
 {
-	return gcpm->chg_psy_avail[GCPM_DEFAULT_CHARGER];
+	return gcpm_chg_get_charger(gcpm, GCPM_DEFAULT_CHARGER);
 }
 
 /* TODO: place a lock around the operation? */
 static struct power_supply *gcpm_chg_get_active(const struct gcpm_drv *gcpm)
 {
-	if (gcpm->chg_psy_active == -1)
-		return NULL;
-
-	return gcpm->chg_psy_avail[gcpm->chg_psy_active];
+	return gcpm_chg_get_charger(gcpm, gcpm->chg_psy_active);
 }
 
 static int gcpm_chg_ping(struct gcpm_drv *gcpm, int index, bool online)
@@ -184,72 +193,7 @@ static int gcpm_chg_ping(struct gcpm_drv *gcpm, int index, bool online)
 	return 0;
 }
 
-/*
- * Switch between chargers using ONLINE.
- * NOTE: online doesn't enable charging.
- * NOTE: call holding a lock on charger
- */
-static int gcpm_chg_offline(struct gcpm_drv *gcpm)
-{
-	struct power_supply *chg_psy;
-	int ret;
-
-	chg_psy = gcpm_chg_get_active(gcpm);
-	if (!chg_psy)
-		return 0;
-
-	/* OFFLINE should stop charging, this make sure that it does */
-	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 0);
-	if (ret == 0)
-		ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
-	if (ret == 0)
-		gcpm->chg_psy_active = -1;
-
-	pr_debug("%s: active=%d offline_ok=%d\n", __func__,
-		 gcpm->chg_psy_active, ret == 0);
-	return ret;
-}
-
-/* turn current offline (if a current exists), switch to new */
-static int gcpm_chg_set_online(struct gcpm_drv *gcpm, int index)
-{
-	const int index_old = gcpm->chg_psy_active;
-	struct power_supply *active;
-	int ret;
-
-	if (index < 0 || index >= gcpm->chg_psy_count)
-		return -ERANGE;
-	if (index == index_old)
-		return 0;
-
-	active = gcpm->chg_psy_avail[index];
-	if (!active) {
-		pr_err("invalid index %d\n", index);
-		return -EINVAL;
-	}
-
-	/* offline the current one */
-	ret = gcpm_chg_offline(gcpm);
-	if (ret < 0) {
-		pr_err("cannot turn %d offline\n", index_old);
-		return -EIO;
-	}
-
-	ret = GPSY_SET_PROP(active, POWER_SUPPLY_PROP_ONLINE, 1);
-	if (ret < 0) {
-		/* TODO: re-enable the old one if this fail???  */
-		goto error_exit;
-	}
-
-	gcpm->chg_psy_active = index;
-
-error_exit:
-	pr_info("%s: active charger %d->%d (%d)\n",
-		__func__, index_old, index, ret);
-	return ret;
-}
-
-/* use the charger one when avaiable or fallback to the generated one */
+/* use the charger one when avalaible or fallback to the generated one */
 static uint64_t gcpm_get_charger_state(const struct gcpm_drv *gcpm,
 				       struct power_supply *chg_psy)
 {
@@ -263,9 +207,131 @@ static uint64_t gcpm_get_charger_state(const struct gcpm_drv *gcpm,
 	return chg_state.v;
 }
 
-/* Enable DirectCharge mode, PPS and DC charger must be already initialized */
+/*
+ * chg_psy_active==-1 if index was active
+ * NOTE: GBMS_PROP_CHARGING_ENABLED will be pinged later on
+ */
+static int gcpm_chg_offline(struct gcpm_drv *gcpm, int index)
+{
+	const int active_index = gcpm->chg_psy_active;
+	struct power_supply *chg_psy;
+	int ret;
+
+	chg_psy = gcpm_chg_get_charger(gcpm, index);
+	if (!chg_psy)
+		return 0;
+
+	/* OFFLINE should stop charging */
+	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 0);
+	if (ret == 0)
+		ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
+	if (ret == 0 && gcpm->chg_psy_active == index)
+		gcpm->chg_psy_active = -1;
+
+	pr_info("%s: active=%d->%d offline_ok=%d\n", __func__,
+		 active_index, gcpm->chg_psy_active, ret == 0);
+
+	return ret;
+}
+
+/* preset charging parameters */
+static int gcpm_chg_preset(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
+{
+	const char *name = gcpm_psy_name(chg_psy);
+	int ret;
+
+	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
+			    gcpm->fv_uv);
+	if (ret < 0) {
+		pr_err("%s: %s no fv_uv (%d)\n", __func__, name, ret);
+		return ret;
+	}
+
+	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
+			    gcpm->cc_max);
+	if (ret < 0)
+		pr_err("%s: %s no cc_max (%d)\n", __func__, name, ret);
+
+	return ret;
+}
+
+/* setting online might start charging (if ENABLE is set) */
+static int gcpm_chg_online(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
+{
+	const char *name = gcpm_psy_name(chg_psy);
+	bool preset_ok = true;
+	int ret;
+
+	/* preset the new charger */
+	ret = gcpm_chg_preset(gcpm, chg_psy);
+	if (ret < 0)
+		preset_ok = false;
+
+	/* online (but so we can enable it) */
+	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 1);
+	if (ret < 0) {
+		pr_debug("%s: %s online failed (%d)\n", __func__, name, ret);
+		return ret;
+	}
+
+	/* retry preset if failed */
+	if (!preset_ok)
+		ret = gcpm_chg_preset(gcpm, chg_psy);
+	if (ret < 0) {
+		int rc;
+
+		pr_err("%s: %s preset failed (%d)\n", __func__, name, ret);
+
+		rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_ONLINE, 0);
+		if (rc < 0)
+			pr_err("%s: %s offline failed (%d)\n", __func__, name, rc);
+	}
+
+	return ret;
+}
+
+/*
+ * gcpm->chg_psy_active == gcpm->dc_index on success.
+ * NOTE: call with a lock around gcpm->chg_psy_lock
+ */
+static int gcpm_chg_start(struct gcpm_drv *gcpm, int index)
+{
+	const int active_index = gcpm->chg_psy_active;
+	struct power_supply *chg_psy;
+	int ret = -EINVAL;
+
+	if (index == active_index)
+		return 0;
+
+	if (active_index != -1)
+		pr_err("%s: %d->%d not idle\n", __func__, active_index, index);
+
+	/* validate the index before switch */
+	chg_psy = gcpm_chg_get_charger(gcpm, index);
+	if (chg_psy)
+		ret = gcpm_chg_online(gcpm, chg_psy);
+	if (ret < 0) {
+		/* TODO: force active_index if != -1 */
+		pr_debug("%s: index=%d not online (%d)\n",
+			 __func__, index, ret);
+		return ret;
+	}
+
+	pr_debug("%s: active=%d->%d\n", __func__, active_index, index);
+
+	gcpm->chg_psy_active = index;
+	return ret;
+}
+
+/*
+ * Enable DirectCharge mode, PPS and DC charger must be already initialized
+ * NOTE: disable might restart the default charger with stale settings
+ */
 static int gcpm_dc_enable(struct gcpm_drv *gcpm, bool enabled)
 {
+	if (gcpm->dcen_gpio >= 0 && !gcpm->dcen_gpio_default)
+		gpio_set_value(gcpm->dcen_gpio, enabled);
+
 	if (!gcpm->gbms_mode) {
 		struct gvotable_election *v;
 
@@ -284,37 +350,35 @@ static int gcpm_dc_enable(struct gcpm_drv *gcpm, bool enabled)
  * disable DC and switch back to the default charger. Final DC statate is
  * DC_IDLE (i.e. this can be used to reset dc_state from DC_DISABLED).
  * NOTE: call with a lock around gcpm->chg_psy_lock
+ * NOTE: I could pass in and return dc_state instead of changing gcpm
  */
-static int gcpm_dc_stop(struct gcpm_drv *gcpm, int final_state)
+static int gcpm_dc_stop(struct gcpm_drv *gcpm, int index)
 {
-	int ret;
+	int ret = 0;
 
-	/* enabled in dc_ready after programming the charger  */
-	if (gcpm->dcen_gpio >= 0 && !gcpm->dcen_gpio_default)
-		gpio_set_value(gcpm->dcen_gpio, 0);
+	if (!gcpm_is_dc(index))
+		return 0;
 
 	switch (gcpm->dc_state) {
 	case DC_RUNNING:
 	case DC_PASSTHROUGH:
+		ret = gcpm_chg_offline(gcpm, index);
+		if (ret < 0)
+			pr_warn("DC_PPS: Cannot offline DC index=%d (%d)",
+				index, ret);
+		else
+			gcpm->dc_state = DC_ENABLE;
+		/* Fall Through */
+	case DC_ENABLE:
+	case DC_ENABLE_PASSTHROUGH:
 		ret = gcpm_dc_enable(gcpm, false);
 		if (ret < 0) {
 			pr_err("DC_PPS: Cannot disable DC (%d)", ret);
 			break;
 		}
-		gcpm->dc_state = DC_ENABLE;
-		/* Fall Through */
-	case DC_ENABLE:
-	case DC_ENABLE_PASSTHROUGH:
-		ret = gcpm_chg_set_online(gcpm, 0);
-		if (ret < 0) {
-			pr_err("DC_PPS: Cannot enable default charger (%d)",
-			       ret);
-			break;
-		}
 		/* Fall Through */
 	default:
-		gcpm->dc_state = final_state;
-		ret = 0;
+		gcpm->dc_state = DC_DISABLED;
 		break;
 	}
 
@@ -327,9 +391,9 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 	struct power_supply *dc_psy;
 	int ret;
 
-	ret = gcpm_chg_set_online(gcpm, index);
+	ret = gcpm_chg_start(gcpm, index);
 	if (ret < 0) {
-		pr_err("PPS_DC: cannot online index=%d (%d)\n", index, ret);
+		pr_err("PPS_DC: index=%d not started (%d)\n", index, ret);
 		return ret;
 	}
 
@@ -339,24 +403,6 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 		return -ENODEV;
 	}
 
-	/* VFLOAT = vbat */
-	ret = GPSY_SET_PROP(dc_psy,
-			    POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
-			    gcpm->fv_uv);
-	if (ret < 0) {
-		pr_err("PPS_DC: no fv_uv (%d)\n", ret);
-		return ret;
-	}
-
-	/* ICHG_CHG = cc_max */
-	ret = GPSY_SET_PROP(dc_psy,
-			    POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
-			    gcpm->cc_max);
-	if (ret < 0) {
-		pr_err("PPS_DC: no cc_max (%d)\n", ret);
-		return ret;
-	}
-
 	/* set IIN_CFG, */
 	ret = GPSY_SET_PROP(dc_psy, POWER_SUPPLY_PROP_CURRENT_MAX,
 			    gcpm->out_ua);
@@ -364,10 +410,6 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 		pr_err("PPS_DC: no IIN (%d)\n", ret);
 		return ret;
 	}
-
-	/* enabled in dc_ready after programming the charger  */
-	if (gcpm->dcen_gpio >= 0 && !gcpm->dcen_gpio_default)
-		gpio_set_value(gcpm->dcen_gpio, 1);
 
 	/* vote on MODE */
 	ret = gcpm_dc_enable(gcpm, true);
@@ -402,6 +444,7 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 
 	/* battery demand comes from charging tier */
 	batt_demand = (gcpm->cc_max / 1000) * (gcpm->fv_uv / 1000);
+	/* TODO: handle capabilities based on index number */
 	if (batt_demand > gcpm->dc_limit_demand)
 		index = GCPM_INDEX_DC_ENABLE;
 
@@ -465,10 +508,10 @@ static bool gcpm_chg_dc_check_source(const struct gcpm_drv *gcpm, int index)
 	    gcpm->wlc_pps_data.stage == PPS_NOTSUPP )
 		return false;
 
-	return index == GCPM_INDEX_DC_ENABLE;
+	return gcpm_is_dc(index);
 }
 
-/* */
+/* reset gcpm pps state */
 static void gcpm_pps_online(struct gcpm_drv *gcpm)
 {
 	/* reset setpoint */
@@ -585,6 +628,8 @@ static int gcpm_pps_offline(struct gcpm_drv *gcpm)
 {
 	int ret;
 
+	/* TODO: migh be a no-op when pps_index == 0 */
+
 	if (gcpm->tcpm_pps_data.pps_psy) {
 		ret = pps_prog_offline(&gcpm->tcpm_pps_data,
 				       gcpm->tcpm_pps_data.pps_psy);
@@ -617,7 +662,6 @@ static void gcpm_chg_select_work(struct work_struct *work)
 
 	if (gcpm->taper_control) {
 
-
 		/* TODO: smooth from dc_index to the default charger */
 		index = GCPM_DEFAULT_CHARGER;
 		dc_done = true;
@@ -642,8 +686,8 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	if (!dc_ena) {
 
 		if (gcpm->dc_state > DC_IDLE && gcpm->dc_index > 0) {
-			pr_info("CHG_CHK: stop PPS_Work for dc_index=%d\n",
-				gcpm->dc_index);
+			pr_info("CHG_CHK: done=%d stop PPS_Work for dc_index=%d\n",
+				dc_done, gcpm->dc_index);
 
 			gcpm->dc_index =  dc_done ? -1 : GCPM_DEFAULT_CHARGER;
 			schedule_pps_interval = 0;
@@ -672,6 +716,51 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	mutex_unlock(&gcpm->chg_psy_lock);
 }
 
+static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
+{
+	struct power_supply *chg_psy = gcpm_chg_get_default(gcpm);
+	const int active_index = gcpm->chg_psy_active; /* will change */
+	const int dc_state = gcpm->dc_state; /* will change */
+	int pps_done, ret;
+
+	if (dc_state <= DC_IDLE && !gcpm_is_dc(active_index))
+		return 0;
+
+	/* online the default charger (do not change active, nor enable) */
+	ret = gcpm_chg_online(gcpm, chg_psy);
+	if (ret < 0)
+		pr_warn("%s: Cannot online default (%d)", __func__, ret);
+
+	/* dc_state=DC_DISABLED, chg_psy_active==-1 a DC charger was active */
+	ret = gcpm_dc_stop(gcpm, active_index);
+	if (ret < 0) {
+		pr_debug("%s: retry disable, dc_state=%d->%d (%d)\n",
+			 __func__, dc_state, gcpm->dc_state, ret);
+		return -EAGAIN;
+	}
+
+	/* not strictly required */
+	pps_done = gcpm_pps_offline(gcpm);
+	if (pps_done < 0)
+		pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
+			__func__, gcpm->dc_state, pps_done);
+
+	/* gcpm_chg_offline set GBMS_PROP_CHARGING_ENABLED = 0 */
+	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 1);
+	if (ret < 0)
+		pr_debug("%s: fail 2 enable charging on default (%d)\n",
+			 __func__, ret);
+	/* (re) start the default charger */
+	ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+	if (ret < 0) {
+		pr_debug("%s: fail 2 start default, dc_state=%d pps_done=%d (%d)\n",
+			__func__, gcpm->dc_state, pps_done >= 0 ? : pps_done, ret);
+		return -EAGAIN;
+	}
+
+	return 0;
+}
+
 /*
  * pps_data->stage:
  *  PPS_NONE -> PPS_AVAILABLE -> PPS_ACTIVE
@@ -694,39 +783,26 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 
 	/* disconnect, gcpm_chg_check() and most errors reset ->dc_index */
 	if (gcpm->dc_index <= 0) {
-		const int dc_state = gcpm->dc_state; /* will change */
+		const int active_index = gcpm->chg_psy_active; /* will change */
 
-		if (dc_state <= DC_IDLE) {
-			pr_warn("PPS_Work: spurious, elap=%lld dc_index=%d dc_state=%d\n",
-				elap, gcpm->dc_index, dc_state);
-			goto pps_dc_done;
-		}
-
-		/* First disable DC */
-		ret = gcpm_dc_stop(gcpm, DC_DISABLED);
+		ret = gcpm_pps_wlc_dc_restart_default(gcpm);
 		if (ret < 0) {
-			pr_err("PPS_Work: retry disable, elap=%lld dc_state=%d->%d (%d)\n",
-			       elap, dc_state, gcpm->dc_state, ret);
+			pr_warn("PPS_Work: retry restart elap=%lld dc_state=%d %d->%d (%d)\n",
+				elap, gcpm->dc_state, active_index,
+				gcpm->chg_psy_active, ret);
+
 			pps_ui = DC_ERROR_RETRY_MS;
 			goto pps_dc_reschedule;
 		}
 
-		/* and then disable PPS */
-		ret = gcpm_pps_offline(gcpm);
-		if (ret < 0) {
-			pr_err("PPS_Work: fail pps offline, elap=%lld dc_state=%d (%d)\n",
-				elap, gcpm->dc_state, ret);
-			pps_ui = PPS_ERROR_RETRY_MS;
-			goto pps_dc_reschedule;
-		}
-
-		/* and then re-enable if switching to the default */
+		/* re-enable DC if just switching to the default charger */
 		if (gcpm->dc_index == GCPM_DEFAULT_CHARGER)
 			gcpm->dc_state = DC_IDLE;
 
-		pr_info("PPS_Work: done elap=%lld dc_state=%d\n",
-			elap, gcpm->dc_state);
+		pr_info("PPS_Work: done elap=%lld dc_state=%d %d->%d\n", elap,
+			gcpm->dc_state, active_index, gcpm->chg_psy_active);
 
+		/* TODO: send a ps event? */
 		goto pps_dc_done;
 	}
 
@@ -744,8 +820,8 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 			pr_err("PPS_Work: PPS offline, elap=%lld dc_index:%d->0\n",
 			       elap, gcpm->dc_index);
 
+			gcpm->dc_index = GCPM_DEFAULT_CHARGER;
 			pps_ui = DC_ERROR_RETRY_MS;
-			gcpm->dc_index = 0;
 			goto pps_dc_reschedule;
 		}
 
@@ -759,7 +835,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 			goto pps_dc_reschedule;
 		}
 
-		/* check crossing demand or hard limits */
+		/* something is changed: kick the revert to default */
 		index = gcpm_chg_select(gcpm);
 		if (index != gcpm->dc_index)
 			mod_delayed_work(system_wq, &gcpm->select_work, 0);
@@ -778,9 +854,11 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		} else if (ret == -EBUSY || ret == -EAGAIN) {
 			pps_ui = DC_ERROR_RETRY_MS;
 		} else {
-			pr_err("PPS_Work: ping DC, elap=%lld (%d)\n", elap, ret);
+			pr_err("PPS_Work: ping DC failed, elap=%lld (%d)\n", elap, ret);
 
-			ret = gcpm_chg_set_online(gcpm, GCPM_DEFAULT_CHARGER);
+			ret = gcpm_chg_offline(gcpm, gcpm->dc_index);
+			if (ret == 0)
+				ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
 			if (ret < 0) {
 				pr_err("PPS_Work: cannot online default %d\n", ret);
 				pps_ui = DC_ERROR_RETRY_MS;
@@ -807,8 +885,9 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 			/* TODO: abort for the session  */
 			pr_err("PPS_Work: PROG timeout, elap=%lld dc_state=%d (%d)\n",
 			       elap, gcpm->dc_state, ret);
+
+			gcpm->dc_index = GCPM_DEFAULT_CHARGER;
 			pps_ui = PPS_ERROR_RETRY_MS;
-			gcpm->dc_index = 0;
 		}
 
 		goto pps_dc_reschedule;
@@ -851,7 +930,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		 * the PPS source.
 		 * NOTE: There are a bunch of interesting recovery scenarios.
 		 */
-		ret = gcpm_chg_offline(gcpm);
+		ret = gcpm_chg_offline(gcpm, gcpm->chg_psy_active);
 		if (ret == 0)
 			ret = gcpm_dc_start(gcpm, gcpm->dc_index);
 		if (ret == 0) {
@@ -881,8 +960,7 @@ pps_dc_reschedule:
 		pr_debug("PPS_Work: reschedule in %d dc_state=%d (%d:%d)",
 			 pps_ui, gcpm->dc_state, gcpm->out_uv, gcpm->out_ua);
 
-		schedule_delayed_work(&gcpm->pps_work,
-				      msecs_to_jiffies(pps_ui));
+		schedule_delayed_work(&gcpm->pps_work, msecs_to_jiffies(pps_ui));
 	}
 
 pps_dc_done:
@@ -964,11 +1042,9 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	if (chg_psy) {
 		ret = power_supply_set_property(chg_psy, psp, pval);
 		if (ret < 0) {
-			const char *name= (chg_psy->desc && chg_psy->desc->name) ?
-				chg_psy->desc->name : "???";
-
-			pr_err("cannot route prop=%d to %d:%s (%d)\n",
-				psp, gcpm->chg_psy_active, name, ret);
+			pr_err("cannot route prop=%d to %d:%s (%d)\n", psp,
+				gcpm->chg_psy_active, gcpm_psy_name(chg_psy),
+				ret);
 		}
 	} else {
 		pr_err("invalid active charger = %d for prop=%d\n",
@@ -1001,6 +1077,8 @@ static int gcpm_psy_get_property(struct power_supply *psy,
 	mutex_lock(&gcpm->chg_psy_lock);
 	chg_psy = gcpm_chg_get_active(gcpm);
 	if (!chg_psy) {
+		pr_err("invalid active charger = %d for prop=%d\n",
+			gcpm->chg_psy_active, psp);
 		mutex_unlock(&gcpm->chg_psy_lock);
 		return -ENODEV;
 	}
@@ -1224,17 +1302,19 @@ static void gcpm_init_work(struct work_struct *work)
 		found += !!gcpm->chg_psy_avail[i];
 	}
 
-	/* we done when we have (at least) the primary */
-	if (gcpm->chg_psy_avail[0]) {
+	/* sort of done when we have the primary, make it online */
+	if (gcpm->chg_psy_avail[0] && !gcpm->init_complete) {
+		struct power_supply *def_psy = gcpm->chg_psy_avail[0];
 
-		/* register the notifier only when have one (the default) */
-		if (!gcpm->init_complete) {
-			gcpm->chg_nb.notifier_call = gcpm_psy_changed;
-			ret = power_supply_reg_notifier(&gcpm->chg_nb);
-			if (ret < 0)
-				pr_err("cannot register power supply notifer, ret=%d\n",
-				ret);
-		}
+		gcpm->chg_nb.notifier_call = gcpm_psy_changed;
+		ret = power_supply_reg_notifier(&gcpm->chg_nb);
+		if (ret < 0)
+			pr_err("%s: no ps notifier, ret=%d\n", __func__, ret);
+
+		ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+		if (ret < 0)
+			pr_err("%s: default %s not online, ret=%d\n", __func__,
+			       gcpm_psy_name(def_psy), ret);
 
 		/* this is the reason why we need a lock here */
 		gcpm->resume_complete = true;
@@ -1250,10 +1330,8 @@ static void gcpm_init_work(struct work_struct *work)
 	dc_not_done = (gcpm->tcpm_phandle && !gcpm->tcpm_psy) ||
 		      (gcpm->wlc_dc_name && !gcpm->wlc_dc_psy);
 
-	pr_warn("%s:%d %s retries=%d dc_not_done=%d tcpm_ok=%d wlc_ok=%d\n",
-		__FILE__, __LINE__, __func__,
-		gcpm->chg_psy_retries,
-		dc_not_done,
+	pr_warn("%s retries=%d dc_not_done=%d tcpm_ok=%d wlc_ok=%d\n",
+		__func__, gcpm->chg_psy_retries, dc_not_done,
 		(!gcpm->tcpm_phandle || gcpm->tcpm_psy),
 		(!gcpm->wlc_dc_name || gcpm->wlc_dc_psy));
 
