@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0
-//
-// CS40L20/CS40L25/CS40L25A/CS40L25B Haptics Driver
-//
-// Copyright (C) 2018-2020 Cirrus Logic, Inc.
+/*
+ * cs40l2x-tables.c -- CS40L20/CS40L25/CS40L25A/CS40L25B Haptics Driver
+ *
+ * Copyright 2018 Cirrus Logic, Inc.
+ *
+ * Author: Jeff LaBundy <jeff.labundy@cirrus.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ */
 
 #include <linux/mfd/cs40l2x.h>
 
@@ -102,14 +110,14 @@ bool cs40l2x_readable_reg(struct device *dev, unsigned int reg)
 	case CS40L2X_ASP_TX2_SRC:
 	case CS40L2X_ASP_TX3_SRC:
 	case CS40L2X_ASP_TX4_SRC:
-	case CS40L2X_DSP1RX1_INPUT:
-	case CS40L2X_DSP1RX2_INPUT:
-	case CS40L2X_DSP1RX3_INPUT:
-	case CS40L2X_DSP1RX4_INPUT:
-	case CS40L2X_DSP1RX5_INPUT:
-	case CS40L2X_DSP1RX6_INPUT:
-	case CS40L2X_DSP1RX7_INPUT:
-	case CS40L2X_DSP1RX8_INPUT:
+	case CS40L2X_DSP1_RX1_SRC:
+	case CS40L2X_DSP1_RX2_SRC:
+	case CS40L2X_DSP1_RX3_SRC:
+	case CS40L2X_DSP1_RX4_SRC:
+	case CS40L2X_DSP1_RX5_SRC:
+	case CS40L2X_DSP1_RX6_SRC:
+	case CS40L2X_DSP1_RX7_SRC:
+	case CS40L2X_DSP1_RX8_SRC:
 	case CS40L2X_NGATE1_SRC:
 	case CS40L2X_NGATE2_SRC:
 	case CS40L2X_AMP_DIG_VOL_CTRL:
@@ -988,12 +996,6 @@ static const char * const cs40l2x_coeff_files_a2h[] = {
 	CS40L2X_DYN_F0_FILE_NAME,
 };  /* Audio to Haptics */
 
-static const char * const cs40l2x_coeff_files_df0_clab[] = {
-	CS40L2X_WT_FILE_NAME_DEFAULT,
-	CS40L2X_DYN_F0_FILE_NAME,
-	CS40L2X_CLAB_CONFIG_FILE_NAME,
-};  /* Dynamic F0 and CLAB includes dynamic ReDC */
-
 const struct cs40l2x_fw_desc cs40l2x_fw_fam[CS40L2X_NUM_FW_FAMS] = {
 	{
 		.id = CS40L2X_FW_ID_ORIG,
@@ -1052,14 +1054,13 @@ const struct cs40l2x_fw_desc cs40l2x_fw_fam[CS40L2X_NUM_FW_FAMS] = {
 		.fw_file = "cs40l25a_a2h.wmfw",
 	},  /* Audio to Haptics */
 	{
-		.id = CS40L2X_FW_ID_DF0_CLAB,
-		.min_rev = 0x0A0303,
-		.halo_state_run = 203,
-		.num_coeff_files = ARRAY_SIZE(cs40l2x_coeff_files_df0_clab),
-		.coeff_files = cs40l2x_coeff_files_df0_clab,
-		.fw_file = "cs40l25a_df0_clab.wmfw",
-		/* Dynamic F0 and CLAB includes dynamic ReDC */
-	},
+		.id = CS40L2X_FW_ID_DSWAP,
+		.min_rev = 0x0A0200,
+		.halo_state_run = 0,
+		.num_coeff_files = 0,
+		.coeff_files = NULL,
+		.fw_file = NULL,
+	}, /* Placeholder for dynamic FW swapping */
 };
 
 const struct cs40l2x_hw_err_desc cs40l2x_hw_errs[CS40L2X_NUM_HW_ERRS] = {
