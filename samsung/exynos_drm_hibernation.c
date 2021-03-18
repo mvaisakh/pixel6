@@ -250,6 +250,12 @@ exynos_hibernation_register(struct decon_device *decon)
 	struct device *dev = decon->dev;
 
 	np = dev->of_node;
+
+	if (of_property_read_bool(np, "override-hibernation")) {
+		pr_info("display hibernation is overridden\n");
+		return NULL;
+	}
+
 	if (!of_property_read_bool(np, "hibernation")) {
 		pr_info("display hibernation is not supported\n");
 		return NULL;
