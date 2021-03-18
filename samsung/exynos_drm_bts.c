@@ -737,7 +737,8 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 
 	if (shadow_updated) {
 		/* after DECON h/w configs are updated to shadow SFR */
-		if (decon->bts.total_bw < decon->bts.prev_total_bw)
+		if (decon->bts.total_bw < decon->bts.prev_total_bw ||
+				decon->bts.peak < decon->bts.prev_peak)
 			bts_update_bw(decon->bts.bw_idx, bw);
 
 		if (decon->bts.max_disp_freq < decon->bts.prev_max_disp_freq)
@@ -745,9 +746,11 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 					decon->bts.max_disp_freq);
 
 		decon->bts.prev_total_bw = decon->bts.total_bw;
+		decon->bts.prev_peak = decon->bts.peak;
 		decon->bts.prev_max_disp_freq = decon->bts.max_disp_freq;
 	} else {
-		if (decon->bts.total_bw > decon->bts.prev_total_bw)
+		if (decon->bts.total_bw > decon->bts.prev_total_bw ||
+				decon->bts.peak > decon->bts.prev_peak)
 			bts_update_bw(decon->bts.bw_idx, bw);
 
 		if (decon->bts.max_disp_freq > decon->bts.prev_max_disp_freq)

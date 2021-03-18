@@ -118,6 +118,7 @@ struct dpu_bts {
 	bool enabled;
 	u32 resol_clk;
 	u32 peak;
+	u32 prev_peak;
 	u32 read_bw;
 	u32 write_bw;
 	u32 total_bw;

@@ -699,7 +699,6 @@ static void _decon_enable(struct decon_device *decon)
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode)
 {
 	struct videomode vm;
-	int i;
 
 	drm_display_mode_to_videomode(mode, &vm);
 
@@ -707,9 +706,6 @@ static void decon_mode_update_bts(struct decon_device *decon, const struct drm_d
 	decon->bts.vfp = vm.vfront_porch;
 	decon->bts.vsa = vm.vsync_len;
 	decon->bts.fps = drm_mode_vrefresh(mode);
-
-	for (i = 0; i < MAX_WIN_PER_DECON; i++)
-		decon->bts.win_config[i].state = DPU_WIN_STATE_DISABLED;
 }
 
 static void decon_mode_set(struct exynos_drm_crtc *crtc,
@@ -717,6 +713,10 @@ static void decon_mode_set(struct exynos_drm_crtc *crtc,
 			   const struct drm_display_mode *adjusted_mode)
 {
 	struct decon_device *decon = crtc->ctx;
+	int i;
+
+	for (i = 0; i < MAX_WIN_PER_DECON; i++)
+		decon->bts.win_config[i].state = DPU_WIN_STATE_DISABLED;
 
 	decon_mode_update_bts(decon, adjusted_mode);
 }
