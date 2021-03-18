@@ -1258,7 +1258,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 	/* Save previous iin adc */
 	pca9468->prev_iin = iin;
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 	return 0;
@@ -1382,7 +1382,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 	/* Save previous iin adc */
 	pca9468->prev_iin = iin;
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 	return 0;
@@ -1481,7 +1481,7 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 	return 0;
@@ -1581,7 +1581,7 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 		}
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 	return 0;
@@ -1720,7 +1720,7 @@ static int pca9468_adjust_ta_current(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 error:
@@ -1816,7 +1816,7 @@ static int pca9468_adjust_ta_voltage(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 	return 0;
 }
@@ -1911,7 +1911,7 @@ static int pca9468_adjust_rx_voltage(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 	return 0;
@@ -2151,7 +2151,7 @@ static int pca9468_set_new_vfloat(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	} else {
 		/* Wait for next valid state */
@@ -2177,7 +2177,7 @@ static int pca9468_set_new_cc_max(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_ADJUST_CCMODE;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	} else {
 		/* Wait for next valid state */
@@ -2482,7 +2482,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		goto error;
 	}
 
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 
 error:
@@ -2572,7 +2572,7 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_ENTER_CVMODE;
 			pca9468->timer_period = 0;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2613,7 +2613,7 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_PDMSG_SEND;
 			pca9468->timer_period = 0;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2629,7 +2629,7 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_CHECK_CCMODE;
 			pca9468->timer_period = 1000;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2699,7 +2699,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 		break;
 
@@ -2724,7 +2724,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 		break;
 
@@ -2741,7 +2741,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_CHECK_CVMODE;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 		break;
 
@@ -2755,7 +2755,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_ENTER_CVMODE;
 		pca9468->timer_period = 1000;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 		break;
 
@@ -2847,7 +2847,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_CHECK_CVMODE;
 			pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2883,7 +2883,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_PDMSG_SEND;
 			pca9468->timer_period = 0;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2908,7 +2908,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_PDMSG_SEND;
 			pca9468->timer_period = 0;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2918,7 +2918,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_CHECK_CVMODE;
 			pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -2933,7 +2933,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_CHECK_CVMODE;
 			pca9468->timer_period = 1000;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			break;
 
@@ -3157,7 +3157,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 	pca9468->timer_id = TIMER_PDMSG_SEND;
 	pca9468->timer_period = 0;
 	mutex_unlock(&pca9468->lock);
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 error:
 	pr_debug("%s: End, ret=%d\n", __func__, ret);
@@ -3206,7 +3206,7 @@ static int pca9468_preset_config(struct pca9468_charger *pca9468)
 	pca9468->timer_id = TIMER_CHECK_ACTIVE;
 	pca9468->timer_period = PCA4968_ENABLE_DELAY_T;
 	mutex_unlock(&pca9468->lock);
-	queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			   msecs_to_jiffies(pca9468->timer_period));
 error:
 	pr_debug("%s: End, ret=%d\n", __func__, ret);
@@ -3235,7 +3235,7 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_ADJUST_CCMODE;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	} else if (ret == -EAGAIN) {
 		/* It is the retry condition */
@@ -3252,7 +3252,7 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 			pca9468->timer_id = TIMER_PRESET_DC;
 			pca9468->timer_period = 0;
 			mutex_unlock(&pca9468->lock);
-			queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+			mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				msecs_to_jiffies(pca9468->timer_period));
 			ret = 0;
 		} else {
@@ -3268,7 +3268,7 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
 
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	}
 
@@ -3358,7 +3358,7 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_VBATMIN_CHECK;
 		pca9468->timer_period = PCA9468_VBATMIN_CHECK_T;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	} else if (val.intval == 0) {
 		/* already disabled switching charger */
@@ -3370,7 +3370,7 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PRESET_DC;
 		pca9468->timer_period = 0;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	} else {
 		/* Switching charger is enabled */
@@ -3389,7 +3389,7 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_VBATMIN_CHECK;
 		pca9468->timer_period = PCA9468_VBATMIN_CHECK_T;
 		mutex_unlock(&pca9468->lock);
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 	}
 
@@ -3532,14 +3532,17 @@ static void pca9468_timer_work(struct work_struct *work)
 			pca9468->timer_id = TIMER_CHECK_ACTIVE;
 		}
 
-		pca9468->timer_period = PCA9468_PDMSG_WAIT_T;
+		if (pca9468->ta_type == TA_TYPE_WIRELESS)
+			pca9468->timer_period = PCA9468_PDMSG_WLC_WAIT_T;
+		else
+			pca9468->timer_period = PCA9468_PDMSG_WAIT_T;
 		mutex_unlock(&pca9468->lock);
 
 		pr_debug("%s: charging_state=%u next_time_id => pca9468->timer_id=%d ret=%d\n",
 			__func__, pca9468->charging_state, pca9468->ta_type,
 			ret);
 
-		queue_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				   msecs_to_jiffies(pca9468->timer_period));
 		break;
 
@@ -3564,6 +3567,8 @@ static void pca9468_timer_work(struct work_struct *work)
 		break;
 	}
 
+	pr_debug("%s: period=%lums, next id:%d\n", __func__,
+		 pca9468->timer_period, pca9468->timer_id);
 	/* Check the charging state again */
 	if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
 		/* Cancel work queue again */
@@ -3775,7 +3780,7 @@ static irqreturn_t pca9468_interrupt_handler(int irq, void *data)
 				/* Go to Pre CV Mode */
 				pca9468->timer_id = TIMER_ENTER_CVMODE;
 				pca9468->timer_period = 10;
-				queue_delayed_work(pca9468->dc_wq,
+				mod_delayed_work(pca9468->dc_wq,
 					&pca9468->timer_work,
 					msecs_to_jiffies(pca9468->timer_period));
 
