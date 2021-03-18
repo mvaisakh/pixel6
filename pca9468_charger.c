@@ -897,6 +897,33 @@ error:
 }
 
 
+static int pca9468_recover_ta(struct pca9468_charger *pca9468)
+{
+	int ret;
+
+	/* Check the TA type */
+	if (pca9468->ta_type == TA_TYPE_WIRELESS) {
+		/* Set RX voltage to 9V */
+		pca9468->ta_vol = 9000000;
+		/* Send RX voltage */
+		ret = pca9468_send_rx_voltage(pca9468, WCRX_REQUEST_VOLTAGE);
+	} else {
+		/* Set TA voltage to fixed 5V */
+		pca9468->ta_vol = 5000000;
+		/* Set TA current to maximum 3A */
+		pca9468->ta_cur = 3000000;
+
+		/* Send PD Message */
+		pca9468->ta_objpos = 1; /* PDO1 - fixed 5V */
+		ret = pca9468_send_pd_message(pca9468, PD_MSG_REQUEST_FIXED_PDO);
+	}
+
+	if (ret < 0)
+		pr_err("%s: cannot recover TA voltage (%d)\n", __func__, ret);
+
+	return ret;
+}
+
 /* Stop Charging */
 static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 {
@@ -949,33 +976,9 @@ static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 		goto error;
 	}
 
-	if (pca9468->mains_online == true) {
-		/* Recover TA voltage */
-
-		/* It needs some modification by a customer */
-		/* Check the TA type */
-		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
-			/* Set RX voltage to 9V */
-			pca9468->ta_vol = 9000000;
-			/* Send RX voltage */
-			ret = pca9468_send_rx_voltage(pca9468,
-						      WCRX_REQUEST_VOLTAGE);
-		} else {
-			/* Set TA voltage to fixed 5V */
-			pca9468->ta_vol = 5000000;
-			/* Set TA current to maximum 3A */
-			pca9468->ta_cur = 3000000;
-
-			/* Send PD Message */
-			pca9468->ta_objpos = 1; /* PDO1 - fixed 5V */
-			ret = pca9468_send_pd_message(pca9468,
-						      PD_MSG_REQUEST_FIXED_PDO);
-		}
-
-		if (ret < 0)
-			pr_err("%s: Error-send_pd_message\n", __func__);
-
-	}
+	/* Recover TA voltage */
+	if (pca9468->mains_online == true)
+		pca9468_recover_ta(pca9468);
 
 	power_supply_changed(pca9468->mains);
 
@@ -3934,6 +3937,7 @@ static int set_charging_enabled(struct pca9468_charger *pca9468, int index)
 		return -EINVAL;
 
 	if (index == 0) {
+		/* this is the same as stop charging */
 		pca9468->pps_index = 0;
 
 		cancel_delayed_work(&pca9468->timer_work);
