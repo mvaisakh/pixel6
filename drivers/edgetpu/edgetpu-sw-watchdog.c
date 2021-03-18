@@ -4,6 +4,8 @@
  *
  * Copyright (C) 2020 Google, Inc.
  */
+
+#include <linux/atomic.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
@@ -25,6 +27,36 @@ static void sw_wdt_handler_work(struct work_struct *work)
 		et_action_work->edgetpu_sw_wdt_handler(et_action_work->data);
 }
 
+static void sw_wdt_start(struct edgetpu_sw_wdt *wdt)
+{
+	if (wdt->is_wdt_disabled) {
+		etdev_dbg(wdt->etdev, "sw wdt disabled by module param");
+		return;
+	}
+	etdev_dbg(wdt->etdev, "sw wdt: started\n");
+	schedule_delayed_work(&wdt->dwork, wdt->hrtbeat_jiffs);
+}
+
+static void sw_wdt_stop(struct edgetpu_sw_wdt *wdt)
+{
+	etdev_dbg(wdt->etdev, "sw wdt: stopped\n");
+	cancel_delayed_work_sync(&wdt->dwork);
+}
+
+static void sw_wdt_modify_rate(struct edgetpu_sw_wdt *wdt, unsigned long rate)
+{
+	if (rate == wdt->hrtbeat_jiffs)
+		return;
+	wdt->hrtbeat_jiffs = rate;
+	/*
+	 * Don't restart the work if we already encountered a firmware timeout.
+	 */
+	if (work_pending(&wdt->et_action_work.work))
+		return;
+	sw_wdt_stop(wdt);
+	sw_wdt_start(wdt);
+}
+
 void edgetpu_watchdog_bite(struct edgetpu_dev *etdev, bool reset)
 {
 	if (!etdev->etdev_sw_wdt)
@@ -43,9 +75,8 @@ void edgetpu_watchdog_bite(struct edgetpu_dev *etdev, bool reset)
 }
 
 /*
- * Ping the f/w for a response. Reschedule the work for next beat
- * in case of response or schedule a worker for action callback in case of
- * TIMEOUT.
+ * Ping the f/w for a response. Reschedule the work for next beat in case of f/w
+ * is responded, or schedule a worker for action callback in case of TIMEOUT.
  */
 static void sw_wdt_work(struct work_struct *work)
 {
@@ -69,7 +100,8 @@ static void sw_wdt_work(struct work_struct *work)
 	}
 }
 
-int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long hrtbeat_ms)
+int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long active_ms,
+			  unsigned long dormant_ms)
 {
 	struct edgetpu_sw_wdt *etdev_sw_wdt;
 
@@ -78,7 +110,11 @@ int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long hrtbeat_ms)
 		return -ENOMEM;
 
 	etdev_sw_wdt->etdev = etdev;
-	etdev_sw_wdt->hrtbeat_jiffs = msecs_to_jiffies(hrtbeat_ms);
+	etdev_sw_wdt->hrtbeat_active = msecs_to_jiffies(active_ms);
+	etdev_sw_wdt->hrtbeat_dormant = msecs_to_jiffies(dormant_ms);
+	atomic_set(&etdev_sw_wdt->active_counter, 0);
+	/* init to dormant rate */
+	etdev_sw_wdt->hrtbeat_jiffs = etdev_sw_wdt->hrtbeat_dormant;
 	INIT_DELAYED_WORK(&etdev_sw_wdt->dwork, sw_wdt_work);
 	INIT_WORK(&etdev_sw_wdt->et_action_work.work, sw_wdt_handler_work);
 	etdev_sw_wdt->is_wdt_disabled = wdt_disable;
@@ -94,13 +130,7 @@ int edgetpu_sw_wdt_start(struct edgetpu_dev *etdev)
 		return -EINVAL;
 	if (!etdev_sw_wdt->et_action_work.edgetpu_sw_wdt_handler)
 		etdev_err(etdev, "sw wdt handler not set\n");
-	if (etdev_sw_wdt->is_wdt_disabled) {
-		etdev_dbg(etdev, "sw wdt disabled by module param");
-		return 0;
-	}
-	etdev_dbg(etdev, "sw wdt: started\n");
-	schedule_delayed_work(&etdev_sw_wdt->dwork,
-			      etdev_sw_wdt->hrtbeat_jiffs);
+	sw_wdt_start(etdev_sw_wdt);
 	return 0;
 }
 
@@ -108,17 +138,24 @@ void edgetpu_sw_wdt_stop(struct edgetpu_dev *etdev)
 {
 	if (!etdev->etdev_sw_wdt)
 		return;
-	etdev_dbg(etdev, "sw wdt: stopped\n");
-	cancel_delayed_work_sync(&etdev->etdev_sw_wdt->dwork);
+	sw_wdt_stop(etdev->etdev_sw_wdt);
 }
 
 void edgetpu_sw_wdt_destroy(struct edgetpu_dev *etdev)
 {
-	/* cancel and sync work due to watchdog bite to prevent UAF */
-	cancel_work_sync(&etdev->etdev_sw_wdt->et_action_work.work);
-	edgetpu_sw_wdt_stop(etdev);
-	kfree(etdev->etdev_sw_wdt);
+	struct edgetpu_sw_wdt *wdt = etdev->etdev_sw_wdt;
+	int counter;
+
+	if (!wdt)
+		return;
 	etdev->etdev_sw_wdt = NULL;
+	/* cancel and sync work due to watchdog bite to prevent UAF */
+	cancel_work_sync(&wdt->et_action_work.work);
+	sw_wdt_stop(wdt);
+	counter = atomic_read(&wdt->active_counter);
+	if (counter)
+		etdev_warn(etdev, "Unbalanced WDT active counter: %d", counter);
+	kfree(wdt);
 }
 
 void edgetpu_sw_wdt_set_handler(struct edgetpu_dev *etdev,
@@ -132,23 +169,22 @@ void edgetpu_sw_wdt_set_handler(struct edgetpu_dev *etdev,
 	et_sw_wdt->et_action_work.data = data;
 }
 
-void edgetpu_sw_wdt_modify_heartbeat(struct edgetpu_dev *etdev,
-				     unsigned long hrtbeat_ms)
+void edgetpu_sw_wdt_inc_active_ref(struct edgetpu_dev *etdev)
 {
-	struct edgetpu_sw_wdt *etdev_sw_wdt = etdev->etdev_sw_wdt;
-	unsigned long hrtbeat_jiffs = msecs_to_jiffies(hrtbeat_ms);
+	struct edgetpu_sw_wdt *wdt = etdev->etdev_sw_wdt;
 
-	if (!etdev_sw_wdt)
+	if (!wdt)
 		return;
-	/*
-	 * check if (et_action_work) is pending, since after watchdog bite
-	 * there is no need to restart another work.
-	 */
-	if (work_pending(&etdev_sw_wdt->et_action_work.work))
+	if (!atomic_fetch_inc(&wdt->active_counter))
+		sw_wdt_modify_rate(wdt, wdt->hrtbeat_active);
+}
+
+void edgetpu_sw_wdt_dec_active_ref(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_sw_wdt *wdt = etdev->etdev_sw_wdt;
+
+	if (!wdt)
 		return;
-	if (hrtbeat_jiffs != etdev_sw_wdt->hrtbeat_jiffs) {
-		edgetpu_sw_wdt_stop(etdev);
-		etdev_sw_wdt->hrtbeat_jiffs = hrtbeat_jiffs;
-		edgetpu_sw_wdt_start(etdev);
-	}
+	if (atomic_fetch_dec(&wdt->active_counter) == 1)
+		sw_wdt_modify_rate(wdt, wdt->hrtbeat_dormant);
 }

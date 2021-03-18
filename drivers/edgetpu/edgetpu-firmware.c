@@ -737,7 +737,8 @@ int edgetpu_firmware_create(struct edgetpu_dev *etdev,
 	}
 
 	etdev->firmware = et_fw;
-	ret = edgetpu_sw_wdt_create(etdev, EDGETPU_DORMANT_DEV_BEAT_MS);
+	ret = edgetpu_sw_wdt_create(etdev, EDGETPU_ACTIVE_DEV_BEAT_MS,
+				    EDGETPU_DORMANT_DEV_BEAT_MS);
 	if (ret)
 		etdev_err(etdev, "Failed to create sw wdt instance\n");
 	else

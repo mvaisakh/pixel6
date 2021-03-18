@@ -29,9 +29,12 @@
 #define QUEUE_SIZE MAX_QUEUE_SIZE
 
 /* Timeout for KCI responses from the firmware (milliseconds) */
-#ifdef CONFIG_EDGETPU_FPGA
+#if IS_ENABLED(CONFIG_EDGETPU_FPGA)
 /* Set extra ludicrously high to 60 seconds for (slow) Palladium emulation. */
 #define KCI_TIMEOUT	(60000)
+#elif IS_ENABLED(CONFIG_EDGETPU_TEST)
+/* fake-firmware could respond in a short time */
+#define KCI_TIMEOUT	(200)
 #else
 /* 5 secs. */
 #define KCI_TIMEOUT	(5000)

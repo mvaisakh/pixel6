@@ -15,21 +15,32 @@
 #include "edgetpu-internal.h"
 #include "edgetpu-wakelock.h"
 
+static const char *const event_name[] = {
+#define X(name, _) #name
+	EDGETPU_WAKELOCK_EVENTS
+#undef X
+};
+
 /*
- * Returns the first event with a non-zero counter.
- * Returns EDGETPU_WAKELOCK_EVENT_END if all event counters are zero.
+ * Loops through the events and warns if any event has a non-zero counter.
+ * Returns true if at least one non-zero counter is found.
  *
  * Caller holds @wakelock->lock.
  */
-static enum edgetpu_wakelock_event
-wakelock_non_zero_event(struct edgetpu_wakelock *wakelock)
+static bool wakelock_warn_non_zero_event(struct edgetpu_wakelock *wakelock)
 {
 	int i;
+	bool ret = false;
 
-	for (i = 0; i < EDGETPU_WAKELOCK_EVENT_END; i++)
-		if (wakelock->event_count[i])
-			return i;
-	return EDGETPU_WAKELOCK_EVENT_END;
+	for (i = 0; i < EDGETPU_WAKELOCK_EVENT_END; i++) {
+		if (wakelock->event_count[i]) {
+			ret = true;
+			etdev_warn(wakelock->etdev,
+				   "%s has non-zero counter=%d", event_name[i],
+				   wakelock->event_count[i]);
+		}
+	}
+	return ret;
 }
 
 struct edgetpu_wakelock *edgetpu_wakelock_alloc(struct edgetpu_dev *etdev)
@@ -143,17 +154,13 @@ int edgetpu_wakelock_release(struct edgetpu_wakelock *wakelock)
 		return -EINVAL;
 	}
 	/* only need to check events when this is the last reference */
-	if (wakelock->req_count == 1) {
-		enum edgetpu_wakelock_event evt =
-			wakelock_non_zero_event(wakelock);
-
-		if (evt != EDGETPU_WAKELOCK_EVENT_END) {
-			etdev_warn(
-				wakelock->etdev,
-				"event %d is happening, refusing wakelock release",
-				evt);
-			return -EAGAIN;
-		}
+	if (wakelock->req_count == 1 &&
+	    wakelock_warn_non_zero_event(wakelock)) {
+		etdev_warn(
+			wakelock->etdev,
+			"detected non-zero events, refusing wakelock release");
+		return -EAGAIN;
 	}
+
 	return --wakelock->req_count;
 }

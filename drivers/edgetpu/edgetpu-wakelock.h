@@ -25,14 +25,20 @@
  * Events that could block the wakelock from being released.
  * Use inc_event() and dec_event() to increase and decrease the counters when
  * the event happens.
+ *
+ * Defined with X macros to support fetching event names from values.
  */
-enum edgetpu_wakelock_event {
-	EDGETPU_WAKELOCK_EVENT_FULL_CSR = 0,
-	EDGETPU_WAKELOCK_EVENT_MBOX_CSR = 1,
-	EDGETPU_WAKELOCK_EVENT_CMD_QUEUE = 2,
-	EDGETPU_WAKELOCK_EVENT_RESP_QUEUE = 3,
+#define EDGETPU_WAKELOCK_EVENTS                                                \
+	X(EDGETPU_WAKELOCK_EVENT_FULL_CSR, 0),                                 \
+	X(EDGETPU_WAKELOCK_EVENT_MBOX_CSR, 1),                                 \
+	X(EDGETPU_WAKELOCK_EVENT_CMD_QUEUE, 2),                                \
+	X(EDGETPU_WAKELOCK_EVENT_RESP_QUEUE, 3),                               \
+	X(EDGETPU_WAKELOCK_EVENT_END, 4)
 
-	EDGETPU_WAKELOCK_EVENT_END = 4
+enum edgetpu_wakelock_event {
+#define X(name, val) name = val
+	EDGETPU_WAKELOCK_EVENTS
+#undef X
 };
 
 struct edgetpu_wakelock {

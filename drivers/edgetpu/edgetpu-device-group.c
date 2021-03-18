@@ -411,10 +411,21 @@ void edgetpu_group_notify(struct edgetpu_device_group *group, uint event_id)
  */
 static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 {
-	edgetpu_mappings_clear_group(group);
+	int i;
+	struct edgetpu_dev *etdev;
+
 	edgetpu_group_clear_events(group);
 	if (edgetpu_device_group_is_finalized(group)) {
+		for (i = 0; i < group->n_clients; i++) {
+			etdev = edgetpu_device_group_nth_etdev(group, i);
+			edgetpu_sw_wdt_dec_active_ref(etdev);
+		}
 		edgetpu_device_group_kci_leave(group);
+		/*
+		 * Mappings clear should be performed after had a handshake with
+		 * the firmware.
+		 */
+		edgetpu_mappings_clear_group(group);
 		edgetpu_usr_release_group(group);
 		edgetpu_group_remove_remote_dram(group);
 #ifdef EDGETPU_HAS_P2P_MAILBOX
@@ -560,22 +571,6 @@ void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
 			kfree(cur);
 			edgetpu_client_put(client);
 			group->n_clients--;
-		} else {
-			/*
-			 * Don't modify wdt heartbeat if state is not GOOD.
-			 * Safe to access etdev->state without state_lock as
-			 * racing state change may again restart wdt.
-			 */
-			if (will_disband &&
-			    cur->client->etdev->state == ETDEV_STATE_GOOD) {
-				/*
-				 * set time interval for sw wdt to DORMANT
-				 * state of all other clients in group.
-				 */
-				edgetpu_sw_wdt_modify_heartbeat(
-						cur->client->etdev,
-						EDGETPU_DORMANT_DEV_BEAT_MS);
-			}
 		}
 	}
 	edgetpu_device_group_put(client->group);
@@ -593,14 +588,6 @@ void edgetpu_device_group_leave_locked(struct edgetpu_client *client)
 			break;
 		}
 	}
-	/*
-	 * if etdev is not in any group and state is still good, set time
-	 * interval of wdt to DORMANT state.
-	 */
-	if (!edgetpu_in_any_group_locked(client->etdev) &&
-	    client->etdev->state == ETDEV_STATE_GOOD)
-		edgetpu_sw_wdt_modify_heartbeat(client->etdev,
-						EDGETPU_DORMANT_DEV_BEAT_MS);
 	mutex_unlock(&client->etdev->groups_lock);
 }
 
@@ -819,8 +806,7 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 
 	for (i = 0; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_sw_wdt_modify_heartbeat(etdev,
-						EDGETPU_ACTIVE_DEV_BEAT_MS);
+		edgetpu_sw_wdt_inc_active_ref(etdev);
 	}
 	mutex_unlock(&group->lock);
 	return 0;
