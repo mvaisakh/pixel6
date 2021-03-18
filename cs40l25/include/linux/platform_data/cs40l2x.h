@@ -1,13 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Platform data for CS40L20/CS40L25/CS40L25A/CS40L25B
  *
- * linux/platform_data/cs40l2x.h -- Platform data for
- * CS40L20/CS40L25/CS40L25A/CS40L25B
- *
- * Copyright 2018 Cirrus Logic, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2018-2020 Cirrus Logic, Inc.
  */
 
 #ifndef __CS40L2X_H
@@ -60,12 +55,7 @@ struct cs40l2x_platform_data {
 	unsigned int gpio_indv_pol;
 	bool hiber_enable;
 	unsigned int asp_bclk_freq;
-	bool asp_bclk_inv;
-	bool asp_fsync_inv;
-	unsigned int asp_fmt;
 	unsigned int asp_slot_num;
-	unsigned int asp_slot_width;
-	unsigned int asp_samp_width;
 	unsigned int asp_timeout;
 	bool vpbr_enable;
 	bool vbbr_enable;
@@ -76,7 +66,6 @@ struct cs40l2x_platform_data {
 	unsigned int fw_id_remap;
 	bool amp_gnd_stby;
 	bool auto_recovery;
-	char *unique_device_name;
 };
 
 #endif /* __CS40L2X_H */
