@@ -2984,25 +2984,26 @@ static void max77759_vdroop_irq_work(void *data, int id)
 	mutex_unlock(&chg_data->vdroop_irq_lock[id]);
 }
 
-static int uvilo_read_stats(struct uvilo_stats *dst, struct power_supply *psy)
+static int uvilo_read_stats(struct uvilo_stats *dst, struct max77759_chgr_data *data)
 {
-	union power_supply_propval ret = {0};
-	int err = 0;
+	int ret, soc, voltage_now;
 
-	if (!dst || !psy)
+	if (!dst || !data)
 		return -EINVAL;
 
+	ret = max77759_find_fg(data);
+	if (ret < 0)
+		return -EINVAL;
+
+	ret = max1720x_get_capacity(data->fg_i2c_client, &soc);
+	if (ret < 0)
+		return -EINVAL;
+	dst->capacity = soc;
+	ret = max1720x_get_voltage_now(data->fg_i2c_client, &voltage_now);
+	if (ret < 0)
+		return -EINVAL;
+	dst->voltage = voltage_now;
 	dst->_time = ktime_to_ms(ktime_get());
-	err = power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &ret);
-	if (err < 0)
-		dst->capacity = -1;
-	else
-		dst->capacity = ret.intval;
-	err = power_supply_get_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &ret);
-	if (err < 0)
-		dst->voltage = -1;
-	else
-		dst->voltage = ret.intval;
 
 	return (dst->capacity == -1 || dst->voltage == -1) ? -EIO : 0;
 }
@@ -3043,7 +3044,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: SYS_UVLO1\n", __func__);
 
 		atomic_inc(&data->sysuvlo1_cnt);
-		uvilo_read_stats(&data->sysuvlo1, data->psy);
+		uvilo_read_stats(&data->sysuvlo1, data);
 		max77759_vdroop_irq_work(data, VDROOP1);
 	}
 
@@ -3051,7 +3052,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: SYS_UVLO2\n", __func__);
 
 		atomic_inc(&data->sysuvlo2_cnt);
-		uvilo_read_stats(&data->sysuvlo2, data->psy);
+		uvilo_read_stats(&data->sysuvlo2, data);
 		max77759_vdroop_irq_work(data, VDROOP2);
 	}
 
@@ -3059,7 +3060,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		pr_debug("%s: BAT_OILO\n", __func__);
 
 		atomic_inc(&data->batoilo_cnt);
-		uvilo_read_stats(&data->batoilo, data->psy);
+		uvilo_read_stats(&data->batoilo, data);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
