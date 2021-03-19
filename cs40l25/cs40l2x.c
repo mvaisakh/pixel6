@@ -29,6 +29,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/platform_data/cs40l2x.h>
 #include <linux/mfd/cs40l2x.h>
+#include <linux/uaccess.h>
 
 #ifdef CONFIG_ANDROID_TIMED_OUTPUT
 #include "../staging/android/timed_output.h"
@@ -1495,7 +1496,7 @@ static ssize_t cs40l2x_cp_trigger_queue_store(struct device *dev,
 			if (section->amplitude || section->delay) {
 				ret = cs40l2x_comp_finalise_section(cs40l2x);
 				if (ret < 0)
-					return ret;
+					goto err_mutex;
 				section++;
 			}
 
@@ -1521,7 +1522,7 @@ static ssize_t cs40l2x_cp_trigger_queue_store(struct device *dev,
 			section->repeat = val;
 			ret = cs40l2x_comp_finalise_section(cs40l2x);
 			if (ret < 0)
-				return ret;
+				goto err_mutex;
 			section++;
 
 			if (inner_loop)
@@ -1595,7 +1596,7 @@ static ssize_t cs40l2x_cp_trigger_queue_store(struct device *dev,
 			if (section->amplitude || section->delay) {
 				ret = cs40l2x_comp_finalise_section(cs40l2x);
 				if (ret < 0)
-					return ret;
+					goto err_mutex;
 				section++;
 
 				if (inner_loop)
@@ -1624,7 +1625,7 @@ static ssize_t cs40l2x_cp_trigger_queue_store(struct device *dev,
 			if (section->delay) {
 				ret = cs40l2x_comp_finalise_section(cs40l2x);
 				if (ret < 0)
-					return ret;
+					goto err_mutex;
 				section++;
 
 				if (inner_loop)
@@ -1638,7 +1639,7 @@ static ssize_t cs40l2x_cp_trigger_queue_store(struct device *dev,
 	if (section->amplitude || section->delay) {
 		ret = cs40l2x_comp_finalise_section(cs40l2x);
 		if (ret < 0)
-			return ret;
+			goto err_mutex;
 	}
 
 	if (comp->repeat == WT_REPEAT_LOOP_MARKER) {
@@ -5034,22 +5035,12 @@ static ssize_t cs40l2x_gpio1_rise_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONPRESS1, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio1_rise_dig_scale_store(struct device *dev,
@@ -5064,22 +5055,12 @@ static ssize_t cs40l2x_gpio1_rise_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONPRESS1, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio1_fall_dig_scale_show(struct device *dev,
@@ -5089,22 +5070,12 @@ static ssize_t cs40l2x_gpio1_fall_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE1, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio1_fall_dig_scale_store(struct device *dev,
@@ -5119,22 +5090,12 @@ static ssize_t cs40l2x_gpio1_fall_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE1, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio2_rise_dig_scale_show(struct device *dev,
@@ -5144,22 +5105,12 @@ static ssize_t cs40l2x_gpio2_rise_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONPRESS2, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio2_rise_dig_scale_store(struct device *dev,
@@ -5174,22 +5125,12 @@ static ssize_t cs40l2x_gpio2_rise_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONPRESS2, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio2_fall_dig_scale_show(struct device *dev,
@@ -5199,22 +5140,12 @@ static ssize_t cs40l2x_gpio2_fall_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE2, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio2_fall_dig_scale_store(struct device *dev,
@@ -5229,22 +5160,12 @@ static ssize_t cs40l2x_gpio2_fall_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE2, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio3_rise_dig_scale_show(struct device *dev,
@@ -5254,22 +5175,12 @@ static ssize_t cs40l2x_gpio3_rise_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONPRESS3, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio3_rise_dig_scale_store(struct device *dev,
@@ -5290,16 +5201,9 @@ static ssize_t cs40l2x_gpio3_rise_dig_scale_store(struct device *dev,
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONPRESS3, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio3_fall_dig_scale_show(struct device *dev,
@@ -5315,16 +5219,9 @@ static ssize_t cs40l2x_gpio3_fall_dig_scale_show(struct device *dev,
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE3, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio3_fall_dig_scale_store(struct device *dev,
@@ -5339,22 +5236,12 @@ static ssize_t cs40l2x_gpio3_fall_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE3, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio4_rise_dig_scale_show(struct device *dev,
@@ -5364,22 +5251,12 @@ static ssize_t cs40l2x_gpio4_rise_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONPRESS4, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio4_rise_dig_scale_store(struct device *dev,
@@ -5394,22 +5271,12 @@ static ssize_t cs40l2x_gpio4_rise_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONPRESS4, CS40L2X_GPIO_RISE);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static ssize_t cs40l2x_gpio4_fall_dig_scale_show(struct device *dev,
@@ -5419,22 +5286,12 @@ static ssize_t cs40l2x_gpio4_fall_dig_scale_show(struct device *dev,
 	int ret;
 	unsigned int dig_scale;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_get(cs40l2x, &dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE4, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return snprintf(buf, PAGE_SIZE, "%u\n", dig_scale);
 }
 
 static ssize_t cs40l2x_gpio4_fall_dig_scale_store(struct device *dev,
@@ -5449,22 +5306,12 @@ static ssize_t cs40l2x_gpio4_fall_dig_scale_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 
-	pm_runtime_get_sync(cs40l2x->dev);
-	mutex_lock(&cs40l2x->lock);
-
 	ret = cs40l2x_gpio_edge_dig_scale_set(cs40l2x, dig_scale,
 			CS40L2X_INDEXBUTTONRELEASE4, CS40L2X_GPIO_FALL);
 	if (ret)
-		goto err_mutex;
+		return ret;
 
-	ret = count;
-
-err_mutex:
-	mutex_unlock(&cs40l2x->lock);
-	pm_runtime_mark_last_busy(cs40l2x->dev);
-	pm_runtime_put_autosuspend(cs40l2x->dev);
-
-	return ret;
+	return count;
 }
 
 static int cs40l2x_cp_dig_scale_get(struct cs40l2x_private *cs40l2x,
@@ -8303,8 +8150,8 @@ static int cs40l2x_upload_effect(struct input_dev *dev,
 {
 	struct cs40l2x_private *cs40l2x = input_get_drvdata(dev);
 	unsigned int data_length;
-	s16 *raw_custom_data;
-	int ret;
+	s16 *raw_custom_data = NULL;
+	int ret = 0;
 
 	switch (effect->type) {
 	case FF_PERIODIC:
