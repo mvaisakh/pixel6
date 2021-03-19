@@ -8,7 +8,7 @@
  * option) any later version.
  *
  */
-#define pr_fmt(fmt)  "[PARTIAL]: " fmt
+#define pr_fmt(fmt)  "[PARTIAL]: %s: " fmt, __func__
 
 #include <linux/device.h>
 #include <linux/of.h>
@@ -19,6 +19,9 @@
 #include "exynos_drm_dsim.h"
 #include "exynos_drm_connector.h"
 #include "cal_common/dsim_cal.h"
+
+#define pr_region(str, r)	\
+	pr_debug("%s["DRM_RECT_FMT"]\n", (str), DRM_RECT_ARG(r))
 
 static int exynos_partial_init(struct exynos_partial *partial,
 		const struct exynos_display_partial *partial_mode,
@@ -52,25 +55,23 @@ void exynos_partial_set_full(const struct drm_display_mode *mode,
 	partial_r->y1 = 0;
 	partial_r->x2 = mode->hdisplay;
 	partial_r->y2 = mode->vdisplay;
-	pr_debug("changed full\n");
 }
 
 static int exynos_partial_adjust_region(struct exynos_partial *partial,
 			const struct drm_display_mode *mode,
 			const struct drm_rect *req, struct drm_rect *r)
 {
-	pr_debug("requested update region[%d %d %d %d]\n",
-			req->x1, req->y1, req->x2 - req->x1, req->y2 - req->y1);
+	pr_region("requested update region", req);
 
 	if (!req->x1 && !req->y1 && !req->x2 && !req->y2) {
-		pr_err("invalid partial update region[%d %d %d %d]\n",
-				req->x1, req->y1, req->x2 - req->x1,
-				req->y2 - req->y1);
+		pr_region("invalid partial update region", req);
 		return -EINVAL;
 	}
 
-	if ((req->x2 > mode->hdisplay) || (req->y2 > mode->vdisplay))
+	if ((req->x2 > mode->hdisplay) || (req->y2 > mode->vdisplay)) {
+		pr_debug("changed full: requested region is bigger\n");
 		return -EINVAL;
+	}
 
 	/* adjusted update region */
 	r->y1 = rounddown(req->y1, partial->min_h);
@@ -82,8 +83,7 @@ static int exynos_partial_adjust_region(struct exynos_partial *partial,
 	r->x1 = 0;
 	r->x2 = mode->hdisplay;
 
-	pr_debug("adjusted update region[%d %d %d %d]\n", r->x1, r->y1,
-			drm_rect_width(r), drm_rect_height(r));
+	pr_region("adjusted update region", r);
 
 	return 0;
 }
@@ -132,16 +132,14 @@ static bool is_partial_supported(const struct drm_plane_state *state,
 	u32 format;
 	int sz_align = 1;
 
-	exynos_plane_print_info(state);
-
 	if (exynos_plane_state_rotation(state)) {
 		pr_debug("rotation is detected. partial->full\n");
-		return false;
+		goto not_supported;
 	}
 
 	if (exynos_plane_state_scaling(state)) {
 		pr_debug("scaling is detected. partial->full\n");
-		return false;
+		goto not_supported;
 	}
 
 	format = state->fb->format->format;
@@ -162,7 +160,7 @@ static bool is_partial_supported(const struct drm_plane_state *state,
 				!IS_ALIGNED(adj_src_y, sz_align)) {
 			pr_debug("align limitation. src_x/y[%d/%d] align[%d]\n",
 					adj_src_x, adj_src_y, sz_align);
-			return false;
+			goto not_supported;
 		}
 	}
 
@@ -170,10 +168,14 @@ static bool is_partial_supported(const struct drm_plane_state *state,
 			(drm_rect_height(crtc_r) < res->src_f_h.min * sz_align)) {
 		pr_debug("min size limitation. width[%d] height[%d]\n",
 				drm_rect_width(crtc_r), drm_rect_height(crtc_r));
-		return false;
+		goto not_supported;
 	}
 
 	return true;
+
+not_supported:
+	exynos_plane_print_info(state);
+	return false;
 }
 
 #define to_dpp_device(x)	container_of(x, struct dpp_device, plane)
@@ -200,7 +202,7 @@ static bool exynos_partial_check(struct exynos_partial *partial,
 
 		dpp = to_dpp_device(to_exynos_plane(plane));
 		res = &dpp->restriction;
-		pr_debug("DPP%d, ATTR(0x%lx)\n", dpp->id, dpp->attr);
+		pr_debug("checking plane%d ...\n", drm_plane_index(plane));
 
 		if (!is_partial_supported(plane_state, &r, partial_r, res))
 			return false;
@@ -385,7 +387,7 @@ void exynos_partial_prepare(struct exynos_partial *partial,
 	int ret = -ENOENT;
 	bool region_changed = false;
 
-	pr_debug("PREPARE: plane mask[0x%x]\n", crtc_state->plane_mask);
+	pr_debug("plane mask[0x%x]\n", crtc_state->plane_mask);
 
 	new_exynos_crtc_state->needs_reconfigure = false;
 
@@ -431,9 +433,7 @@ void exynos_partial_prepare(struct exynos_partial *partial,
 		exynos_partial_set_full(&crtc_state->mode,
 				&new_exynos_crtc_state->partial_region);
 
-	pr_debug("PREPARE: final update region[%d %d %d %d]\n",
-			partial_r->x1, partial_r->y1,
-			drm_rect_width(partial_r), drm_rect_height(partial_r));
+	pr_region("final update region", partial_r);
 
 	/*
 	 * If partial update region is requested, source and destination
@@ -442,8 +442,7 @@ void exynos_partial_prepare(struct exynos_partial *partial,
 	new_exynos_crtc_state->needs_reconfigure =
 			!exynos_partial_is_full(&crtc_state->mode, partial_r);
 
-	pr_debug("PREPARE: reconfigure(%d)\n",
-			new_exynos_crtc_state->needs_reconfigure);
+	pr_debug("reconfigure(%d)\n", new_exynos_crtc_state->needs_reconfigure);
 
 	exynos_partial_save_log(&plog, old_partial_r, &req, partial_r,
 				new_exynos_crtc_state->needs_reconfigure);
@@ -480,9 +479,7 @@ void exynos_partial_update(struct exynos_partial *partial,
 	partial->funcs->send_partial_command(partial, new_partial_region);
 	partial->funcs->set_partial_size(partial, new_partial_region);
 	DPU_EVENT_LOG(DPU_EVT_PARTIAL_UPDATE, decon->id, new_partial_region);
-	pr_debug("UPDATE: [%d %d %d %d]\n", new_partial_region->x1, new_partial_region->y1,
-			drm_rect_width(new_partial_region),
-			drm_rect_height(new_partial_region));
+	pr_region("applied partial region", new_partial_region);
 }
 
 void exynos_partial_restore(struct exynos_partial *partial)
@@ -506,9 +503,5 @@ void exynos_partial_restore(struct exynos_partial *partial)
 
 	partial->funcs->set_partial_size(partial, old_partial_region);
 	DPU_EVENT_LOG(DPU_EVT_PARTIAL_RESTORE, decon->id, old_partial_region);
-	pr_debug("RESTORE: [%d %d %d %d]\n",
-			old_partial_region->x1,
-			old_partial_region->y1,
-			drm_rect_width(old_partial_region),
-			drm_rect_height(old_partial_region));
+	pr_region("restored partial region", old_partial_region);
 }
