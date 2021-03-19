@@ -22,6 +22,7 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_self_refresh_helper.h>
 #include <drm/drm_vblank.h>
 
 #include <drm/exynos_drm.h>
@@ -301,6 +302,8 @@ int exynos_atomic_check(struct drm_device *dev,
 	if (ret)
 		return ret;
 
+	drm_self_refresh_helper_alter_state(state);
+
 	return ret;
 }
 
@@ -402,10 +405,27 @@ static void exynos_atomic_queue_work(struct drm_atomic_state *old_state, bool no
 int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state, bool nonblock)
 {
 	struct exynos_drm_priv_state *exynos_priv_state;
-	int ret;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+	int i, ret;
+	bool stall = !nonblock;
 
 	DPU_ATRACE_BEGIN("exynos_atomic_commit");
-	ret = drm_atomic_helper_setup_commit(state, nonblock);
+
+	/*
+	 * if self refresh was activated on last commit, it's okay to stall instead
+	 * of failing since commit should finish rather quickly
+	 */
+	if (!stall) {
+		for_each_old_crtc_in_state(state, crtc, old_crtc_state, i) {
+			if (old_crtc_state->self_refresh_active) {
+				stall = true;
+				break;
+			}
+		}
+	}
+
+	ret = drm_atomic_helper_setup_commit(state, !stall);
 	if (ret)
 		goto err;
 
@@ -429,8 +449,10 @@ int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state,
 	 */
 
 	ret = drm_atomic_helper_swap_state(state, true);
-	if (ret)
-		goto err_clean;
+	if (ret) {
+		drm_atomic_helper_cleanup_planes(dev, state);
+		goto err;
+	}
 
 	/*
 	 * Everything below can be run asynchronously without the need to grab
@@ -458,13 +480,9 @@ int exynos_atomic_commit(struct drm_device *dev, struct drm_atomic_state *state,
 	else
 		exynos_atomic_queue_work(state, nonblock, &exynos_priv_state->commit_work);
 
-	DPU_ATRACE_END("exynos_atomic_commit");
-	return 0;
-
-err_clean:
-	drm_atomic_helper_cleanup_planes(dev, state);
 err:
 	DPU_ATRACE_END("exynos_atomic_commit");
+
 	return ret;
 }
 
@@ -489,6 +507,11 @@ int exynos_atomic_enter_tui(void)
 
 	if (private->tui_enabled)
 		return -EBUSY;
+
+	drm_for_each_crtc(crtc, dev) {
+		decon = crtc_to_decon(crtc);
+		hibernation_block_exit(decon->hibernation);
+	}
 
 	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx, 0, ret);
 
@@ -575,6 +598,11 @@ err_state_alloc:
 err_dup:
 	DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
 	pr_debug("%s -\n", __func__);
+
+	drm_for_each_crtc(crtc, dev) {
+		decon = crtc_to_decon(crtc);
+		hibernation_unblock_enter(decon->hibernation);
+	}
 
 	return ret;
 }

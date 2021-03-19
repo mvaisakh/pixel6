@@ -39,6 +39,7 @@
 
 #include <decon_cal.h>
 #include <regs-decon.h>
+#include <trace/dpu_trace.h>
 
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_decon.h"
@@ -151,6 +152,8 @@ static int decon_enable_vblank(struct exynos_drm_crtc *crtc)
 
 	decon_debug(decon, "%s +\n", __func__);
 
+	hibernation_block(decon->hibernation);
+
 	if (decon_is_te_enabled(decon))
 		enable_irq(decon->irq_te);
 	else /* use framestart interrupt to track vsyncs */
@@ -175,6 +178,8 @@ static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
 		disable_irq_nosync(decon->irq_fs);
 
 	DPU_EVENT_LOG(DPU_EVT_VBLANK_DISABLE, decon->id, NULL);
+
+	hibernation_unblock_enter(decon->hibernation);
 
 	decon_debug(decon, "%s -\n", __func__);
 }
@@ -377,6 +382,11 @@ static int decon_atomic_check(struct exynos_drm_crtc *exynos_crtc,
 	int out_type;
 	int ret = 0;
 
+	if (exynos_crtc_state->bypass && !crtc_state->self_refresh_active) {
+		decon_err(decon, "bypass mode only supported in self refresh\n");
+		return -EINVAL;
+	}
+
 	if (crtc_state->mode_changed) {
 		out_type = decon_get_crtc_out_type(crtc_state);
 
@@ -397,6 +407,15 @@ static int decon_atomic_check(struct exynos_drm_crtc *exynos_crtc,
 
 	if (is_swb)
 		crtc_state->no_vblank = true;
+
+	/*
+	 * toggle hibernation during atomic check runs so that hibernation
+	 * is pushed out (if needed) ahead of commit
+	 */
+	if (crtc_state->active) {
+		hibernation_block(decon->hibernation);
+		hibernation_unblock_enter(decon->hibernation);
+	}
 
 	return ret;
 }
@@ -706,11 +725,8 @@ static void decon_enable_irqs(struct decon_device *decon)
 
 static void _decon_enable(struct decon_device *decon)
 {
-	struct drm_crtc *crtc = &decon->crtc->base;
-
 	decon_reg_init(decon->id, &decon->config);
 	decon_enable_irqs(decon);
-	drm_crtc_vblank_get(crtc);
 }
 
 static void decon_mode_update_bts(struct decon_device *decon, const struct drm_display_mode *mode)
@@ -843,11 +859,52 @@ static void _decon_stop(struct decon_device *decon, bool reset)
 		exynos_dqe_reset(decon->dqe);
 }
 
+static void decon_exit_hibernation(struct decon_device *decon)
+{
+	if (decon->state != DECON_STATE_HIBERNATION)
+		return;
+
+	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_IN, decon->id, NULL);
+	DPU_ATRACE_BEGIN(__func__);
+	decon_debug(decon, "%s +\n", __func__);
+
+	pm_runtime_get_sync(decon->dev);
+
+	_decon_enable(decon);
+	exynos_dqe_restore_lpd_data(decon->dqe);
+
+	if (decon->partial)
+		exynos_partial_restore(decon->partial);
+
+	decon->state = DECON_STATE_ON;
+
+	decon_debug(decon, "%s -\n", __func__);
+	DPU_ATRACE_END(__func__);
+	DPU_EVENT_LOG(DPU_EVT_EXIT_HIBERNATION_OUT, decon->id, NULL);
+}
+
 static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_state *old_crtc_state)
 {
 	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
 	struct exynos_drm_crtc_state *old_exynos_crtc_state = to_exynos_crtc_state(old_crtc_state);
 	struct decon_device *decon = exynos_crtc->ctx;
+
+	if (decon->state == DECON_STATE_ON) {
+		decon_info(decon, "already enabled(%d)\n", decon->state);
+		return;
+	}
+
+	if (decon->state == DECON_STATE_HIBERNATION) {
+		WARN_ON(!old_crtc_state->self_refresh_active);
+
+		if (old_exynos_crtc_state->bypass)
+			_decon_stop(decon, true);
+
+		decon_exit_hibernation(decon);
+		goto ret;
+	}
+
+	decon_info(decon, "%s +\n", __func__);
 
 	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
 		const struct drm_atomic_state *state = old_crtc_state->state;
@@ -861,20 +918,9 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 			decon_request_te_irq(exynos_crtc, exynos_conn_state);
 	}
 
-	if (decon->state == DECON_STATE_ON) {
-		decon_info(decon, "already enabled(%d)\n", decon->state);
-		return;
-	}
+	pm_runtime_get_sync(decon->dev);
 
-	decon_info(decon, "%s +\n", __func__);
-
-	/* avoid power enable if we were previously in bypass to keep vote balanced */
-	if (old_exynos_crtc_state->bypass)
-		decon_debug(decon, "bypass mode : skip power enable\n");
-	else
-		pm_runtime_get_sync(decon->dev);
-
-	if ((decon->state == DECON_STATE_INIT) || old_exynos_crtc_state->bypass)
+	if (decon->state == DECON_STATE_INIT)
 		_decon_stop(decon, true);
 
 	_decon_enable(decon);
@@ -886,21 +932,13 @@ static void decon_enable(struct exynos_drm_crtc *exynos_crtc, struct drm_crtc_st
 	DPU_EVENT_LOG(DPU_EVT_DECON_ENABLED, decon->id, decon);
 
 	decon_info(decon, "%s -\n", __func__);
-}
 
-void decon_exit_hibernation(struct decon_device *decon)
-{
-	if (decon->state != DECON_STATE_HIBERNATION)
-		return;
-
-	decon_debug(decon, "%s +\n", __func__);
-
-	_decon_enable(decon);
-	exynos_dqe_restore_lpd_data(decon->dqe);
-
-	decon->state = DECON_STATE_ON;
-
-	decon_debug(decon, "%s -\n", __func__);
+ret:
+	/* drop extra vote taken to avoid power disable during bypass mode */
+	if (old_exynos_crtc_state->bypass) {
+		decon_debug(decon, "bypass mode: drop extra power ref\n");
+		pm_runtime_put_sync(decon->dev);
+	}
 }
 
 static void decon_disable_irqs(struct decon_device *decon)
@@ -924,19 +962,27 @@ static void _decon_disable(struct decon_device *decon)
 
 	_decon_stop(decon, reset);
 	decon_disable_irqs(decon);
-	drm_crtc_vblank_put(crtc);
 }
 
-void decon_enter_hibernation(struct decon_device *decon)
+static void decon_enter_hibernation(struct decon_device *decon)
 {
-	decon_debug(decon, "%s +\n", __func__);
-
 	if (decon->state != DECON_STATE_ON)
 		return;
+
+	decon_debug(decon, "%s +\n", __func__);
+
+	DPU_ATRACE_BEGIN(__func__);
+	DPU_EVENT_LOG(DPU_EVT_ENTER_HIBERNATION_IN, decon->id, NULL);
 
 	_decon_disable(decon);
 
 	decon->state = DECON_STATE_HIBERNATION;
+
+	pm_runtime_put_sync(decon->dev);
+
+	DPU_EVENT_LOG(DPU_EVT_ENTER_HIBERNATION_OUT, decon->id, NULL);
+	DPU_ATRACE_END(__func__);
+
 	decon_debug(decon, "%s -\n", __func__);
 }
 
@@ -949,9 +995,23 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 	if (decon->state == DECON_STATE_OFF)
 		return;
 
+	if (exynos_crtc_state->bypass) {
+		decon_debug(decon, "bypass mode: get extra power ref\n");
+		pm_runtime_get_sync(decon->dev);
+	}
+
+	if (crtc_state->self_refresh_active) {
+		decon_enter_hibernation(decon);
+		return;
+	}
+
 	decon_info(decon, "%s +\n", __func__);
 
-	_decon_disable(decon);
+	if (decon->state == DECON_STATE_ON) {
+		_decon_disable(decon);
+
+		pm_runtime_put_sync(decon->dev);
+	}
 
 	if (crtc_state->mode_changed || crtc_state->connectors_changed) {
 		if (decon->irq_te >= 0) {
@@ -959,11 +1019,6 @@ static void decon_disable(struct exynos_drm_crtc *crtc)
 			decon->irq_te = -1;
 		}
 	}
-
-	if (exynos_crtc_state->bypass)
-		decon_debug(decon, "bypass mode : skip power disable\n");
-	else
-		pm_runtime_put_sync(decon->dev);
 
 	decon->state = DECON_STATE_OFF;
 

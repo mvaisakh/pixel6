@@ -173,6 +173,7 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		crtc_state = (struct drm_crtc_state *)priv;
 		log->data.crtc_info.enable = crtc_state->enable;
 		log->data.crtc_info.active = crtc_state->active;
+		log->data.crtc_info.self_refresh = crtc_state->self_refresh_active;
 		log->data.crtc_info.planes_changed = crtc_state->planes_changed;
 		log->data.crtc_info.mode_changed = crtc_state->mode_changed;
 		log->data.crtc_info.active_changed = crtc_state->active_changed;
@@ -410,6 +411,7 @@ static const char *get_event_name(enum dpu_event_type type)
 		"DECON_FRAMESTART",		"DECON_RSC_OCCUPANCY",
 		"DECON_TRIG_MASK",		"DSIM_ENABLED",
 		"DSIM_DISABLED",		"DSIM_COMMAND",
+		"DSIM_ULPS_ENTER",		"DSIM_ULPS_EXIT",
 		"DSIM_UNDERRUN",		"DSIM_FRAMEDONE",
 		"DPP_FRAMEDONE",		"DMA_RECOVERY",
 		"ATOMIC_COMMIT",		"TE_INTERRUPT",
@@ -566,9 +568,10 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 		case DPU_EVT_REQ_CRTC_INFO_OLD:
 		case DPU_EVT_REQ_CRTC_INFO_NEW:
 			scnprintf(buf + len, sizeof(buf) - len,
-				"\tenable(%d) active(%d) [p:%d m:%d a:%d]",
+				"\tenable(%d) active(%d) sr(%d) [p:%d m:%d a:%d]",
 					log->data.crtc_info.enable,
 					log->data.crtc_info.active,
+					log->data.crtc_info.self_refresh,
 					log->data.crtc_info.planes_changed,
 					log->data.crtc_info.mode_changed,
 					log->data.crtc_info.active_changed);
@@ -1143,19 +1146,23 @@ static ssize_t hibernation_write(struct file *file, const char __user *buffer,
 	struct seq_file *s = file->private_data;
 	struct decon_device *decon = s->private;
 	struct exynos_hibernation *hiber = decon->hibernation;
+	int ret;
 	bool en;
 
-	if (kstrtobool_from_user(buffer, len, &en))
-		return len;
+	ret = kstrtobool_from_user(buffer, len, &en);
+	if (ret)
+		return ret;
 
 	if (!en) {
-		/* force hibernation exit if currently hibernating */
+		/* if disabling, make sure it gets out of hibernation before disabling */
 		hibernation_block_exit(hiber);
 		hiber->enabled = false;
-		hibernation_unblock_enter(hiber);
 	} else {
-		hiber->enabled = en;
+		/* if enabling, vote to make sure hibernation is scheduled after unblocking */
+		hiber->enabled = true;
+		hibernation_block(hiber);
 	}
+	hibernation_unblock_enter(hiber);
 
 	return len;
 }

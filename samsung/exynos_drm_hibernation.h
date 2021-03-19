@@ -27,8 +27,9 @@ struct exynos_hibernation;
 struct writeback_device;
 
 struct exynos_hibernation_funcs {
-	void (*enter)(struct exynos_hibernation *hiber);
-	int (*exit)(struct exynos_hibernation *hiber);
+	int (*enter)(struct exynos_hibernation *hiber, bool nonblock);
+	void (*exit)(struct exynos_hibernation *hiber);
+	bool (*cancel)(struct exynos_hibernation *hiber);
 	bool (*check)(struct exynos_hibernation *hiber);
 };
 
@@ -45,8 +46,33 @@ struct exynos_hibernation {
 	bool enabled;
 };
 
-bool hibernation_block_exit(struct exynos_hibernation *hiber);
+/**
+ * hibernation_block - increase ref count on hibernation but do nothing
+ * @hiber: hibernation block ptr
+ *
+ * Return: current hibernation block ref count
+ */
+static inline int hibernation_block(struct exynos_hibernation *hiber)
+{
+	if (!hiber)
+		return 0;
+
+	return atomic_inc_return(&hiber->block_cnt);
+}
+
+/**
+ * hibernation_block_exit - block hibernation, and exit hibernation if currently on
+ * @hiber: hibernation block ptr
+ */
+void hibernation_block_exit(struct exynos_hibernation *hiber);
+
+/**
+ * hibernation_unblock_enter - unblock hibernation and schedule hibernation work if no one
+ *	else is blocking it
+ * @hiber: hibernation block ptr
+ */
 void hibernation_unblock_enter(struct exynos_hibernation *hiber);
+
 struct exynos_hibernation *
 exynos_hibernation_register(struct decon_device *decon);
 void exynos_hibernation_destroy(struct exynos_hibernation *hiber);

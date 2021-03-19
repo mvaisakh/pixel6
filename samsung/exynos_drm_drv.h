@@ -302,7 +302,7 @@ struct exynos_drm_crtc {
 		struct drm_property *histogram_threshold;
 		struct drm_property *partial;
 	} props;
-	bool enabled;
+	u8 active_state;
 };
 
 struct drm_exynos_file_private {

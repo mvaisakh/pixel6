@@ -30,12 +30,29 @@
 #include "exynos_drm_drv.h"
 #include "exynos_drm_plane.h"
 
+enum crtc_active_state {
+	CRTC_STATE_INACTIVE,
+	CRTC_STATE_ACTIVE,
+	CRTC_STATE_SELF_REFRESH,
+};
+
+static inline enum crtc_active_state
+exynos_drm_crtc_get_active_state(const struct drm_crtc_state *crtc_state)
+{
+	if (crtc_state->active)
+		return CRTC_STATE_ACTIVE;
+	else if (crtc_state->self_refresh_active)
+		return CRTC_STATE_SELF_REFRESH;
+	return CRTC_STATE_INACTIVE;
+}
+
 static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 					  struct drm_crtc_state *old_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	const enum crtc_active_state active_state = CRTC_STATE_ACTIVE;
 
-	if (exynos_crtc->enabled)
+	if (active_state == exynos_crtc->active_state)
 		return;
 
 	drm_crtc_vblank_on(crtc);
@@ -43,15 +60,16 @@ static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 	if (exynos_crtc->ops->enable)
 		exynos_crtc->ops->enable(exynos_crtc, old_state);
 
-	exynos_crtc->enabled = true;
+	exynos_crtc->active_state = active_state;
 }
 
 static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 					   struct drm_crtc_state *old_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	const enum crtc_active_state active_state = exynos_drm_crtc_get_active_state(crtc->state);
 
-	if (!exynos_crtc->enabled)
+	if (active_state == exynos_crtc->active_state)
 		return;
 
 	if (exynos_crtc->ops->disable)
@@ -67,7 +85,7 @@ static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	drm_crtc_vblank_off(crtc);
 
-	exynos_crtc->enabled = false;
+	exynos_crtc->active_state = active_state;
 }
 
 static void exynos_crtc_update_lut(struct drm_crtc *crtc,
@@ -784,6 +802,7 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	exynos_crtc->possible_type = type;
 	exynos_crtc->ops = ops;
 	exynos_crtc->ctx = ctx;
+	exynos_crtc->active_state = CRTC_STATE_INACTIVE;
 
 	crtc = &exynos_crtc->base;
 

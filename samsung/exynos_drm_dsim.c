@@ -115,6 +115,23 @@ static struct drm_crtc *drm_encoder_get_new_crtc(struct drm_encoder *encoder,
 	return conn_state->crtc;
 }
 
+static struct drm_crtc *drm_encoder_get_old_crtc(struct drm_encoder *encoder,
+						 struct drm_atomic_state *state)
+{
+	struct drm_connector *connector;
+	const struct drm_connector_state *conn_state;
+
+	connector = drm_atomic_get_old_connector_for_encoder(state, encoder);
+	if (!connector)
+		return NULL;
+
+	conn_state = drm_atomic_get_old_connector_state(state, connector);
+	if (!conn_state)
+		return NULL;
+
+	return conn_state->crtc;
+}
+
 static void dsim_dump(struct dsim_device *dsim)
 {
 	struct dsim_regs regs;
@@ -187,12 +204,14 @@ static int dsim_phy_power_off(struct dsim_device *dsim)
 
 static void _dsim_exit_ulps_locked(struct dsim_device *dsim)
 {
+	const struct decon_device *decon = dsim_get_decon(dsim);
+
 	WARN_ON(!mutex_is_locked(&dsim->state_lock));
 
 	if (dsim->state != DSIM_STATE_ULPS)
 		return;
 
-	dsim_debug(dsim, "%s +\n", __func__);
+	dsim_debug(dsim, "+\n");
 
 	DPU_ATRACE_BEGIN(__func__);
 
@@ -208,7 +227,9 @@ static void _dsim_exit_ulps_locked(struct dsim_device *dsim)
 	dsim->state = DSIM_STATE_HSCLKEN;
 	enable_irq(dsim->irq);
 
-	dsim_debug(dsim, "%s -\n", __func__);
+	dsim_debug(dsim, "-\n");
+	if (decon)
+		DPU_EVENT_LOG(DPU_EVT_DSIM_ULPS_EXIT, decon->id, dsim);
 
 	DPU_ATRACE_END(__func__);
 }
@@ -294,6 +315,7 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 		dsim->state = DSIM_STATE_SUSPEND;
 		_dsim_enable(dsim);
 	} else if (old_crtc_state->self_refresh_active) {
+		/* get extra ref count dropped when going into self refresh */
 		pm_runtime_get_sync(dsim->dev);
 	} else {
 		WARN(1, "unknown dsim state (%d)\n", dsim->state);
@@ -302,11 +324,13 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 
 static void _dsim_enter_ulps_locked(struct dsim_device *dsim)
 {
+	const struct decon_device *decon = dsim_get_decon(dsim);
+
 	WARN_ON(!mutex_is_locked(&dsim->state_lock));
 
 	DPU_ATRACE_BEGIN(__func__);
 
-	dsim_debug(dsim, "%s +\n", __func__);
+	dsim_debug(dsim, "+\n");
 
 	/* Wait for current read & write CMDs. */
 	mutex_lock(&dsim->cmd_lock);
@@ -323,8 +347,10 @@ static void _dsim_enter_ulps_locked(struct dsim_device *dsim)
 #if defined(CONFIG_CPU_IDLE)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 1);
 #endif
+	if (decon)
+		DPU_EVENT_LOG(DPU_EVT_DSIM_ULPS_ENTER, decon->id, dsim);
 
-	dsim_debug(dsim, "%s -\n", __func__);
+	dsim_debug(dsim, "-\n");
 
 	DPU_ATRACE_END(__func__);
 }
@@ -333,7 +359,7 @@ static void _dsim_disable(struct dsim_device *dsim)
 {
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
-	dsim_debug(dsim, "%s +\n", __func__);
+	dsim_debug(dsim, "+\n");
 	mutex_lock(&dsim->state_lock);
 	if (dsim->state == DSIM_STATE_SUSPEND) {
 		mutex_unlock(&dsim->state_lock);
@@ -365,36 +391,66 @@ static void _dsim_disable(struct dsim_device *dsim)
 	if (decon)
 		DPU_EVENT_LOG(DPU_EVT_DSIM_DISABLED, decon->id, dsim);
 
-	dsim_debug(dsim, "%s -\n", __func__);
+	dsim_debug(dsim, "-\n");
 }
 
 static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_state *state)
 {
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
-	const struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
-	const bool self_refresh_active = crtc && crtc->state && crtc->state->self_refresh_active;
+	struct drm_crtc *crtc = drm_encoder_get_old_crtc(encoder, state);
+	bool self_refresh_active = false;
+	bool was_in_self_refresh = false;
 
 	if ((!crtc || crtc->state->connectors_changed) && dsim->dev_link) {
 		device_link_del(dsim->dev_link);
 		dsim->dev_link = NULL;
 	}
 
+	if (crtc) {
+		const struct drm_crtc_state *old_crtc_state =
+			drm_atomic_get_old_crtc_state(state, crtc);
+		const struct drm_crtc_state *new_crtc_state =
+			drm_atomic_get_new_crtc_state(state, crtc);
+
+		if (old_crtc_state && old_crtc_state->self_refresh_active)
+			was_in_self_refresh = true;
+		if (new_crtc_state && new_crtc_state->self_refresh_active)
+			self_refresh_active = true;
+	}
+
+	dsim_debug(dsim, "state: %d self_refresh: %d->%d\n", dsim->state,
+		   was_in_self_refresh, self_refresh_active);
+
 	DPU_ATRACE_BEGIN(__func__);
+
 	if (self_refresh_active) {
 		const struct exynos_drm_crtc_state *exynos_crtc_state =
 			to_exynos_crtc_state(crtc->state);
 
-		if (exynos_crtc_state->bypass) {
+		if (was_in_self_refresh) {
+			WARN(1, "already in self refresh state. state:%d\n", dsim->state);
+		} else if (exynos_crtc_state->bypass) {
+			/* in bypass mode dsim should get fully disabled */
 			_dsim_disable(dsim);
 			dsim->state = DSIM_STATE_BYPASS;
 		} else {
+			/* during regular self refresh just need to go into runtime idle */
 			pm_runtime_put_sync(dsim->dev);
 		}
 	} else {
+		if (was_in_self_refresh) {
+			/* get extra ref count dropped when going into self refresh */
+			pm_runtime_get_sync(dsim->dev);
+
+			dsim_debug(dsim, "disable right after self refresh. state:%d\n",
+				  dsim->state);
+		}
+
 		_dsim_disable(dsim);
 
 		dsim_set_te_pinctrl(dsim, 0);
 	}
+
 	DPU_ATRACE_END(__func__);
 }
 
@@ -2318,10 +2374,10 @@ static int dsim_runtime_suspend(struct device *dev)
 	DPU_ATRACE_BEGIN(__func__);
 
 	mutex_lock(&dsim->state_lock);
+
+	dsim_debug(dsim, "state: %d\n", dsim->state);
 	if (dsim->state == DSIM_STATE_HSCLKEN)
 		_dsim_enter_ulps_locked(dsim);
-
-	dsim_debug(dsim, "%s\n", __func__);
 
 	dsim->suspend_state = dsim->state;
 	mutex_unlock(&dsim->state_lock);
@@ -2338,7 +2394,7 @@ static int dsim_runtime_resume(struct device *dev)
 	DPU_ATRACE_BEGIN(__func__);
 
 	mutex_lock(&dsim->state_lock);
-	dsim_debug(dsim, "%s\n", __func__);
+	dsim_debug(dsim, "state: %d\n", dsim->state);
 
 	if (dsim->state == DSIM_STATE_BYPASS)
 		ret = -EPERM;
@@ -2363,7 +2419,7 @@ static int dsim_suspend(struct device *dev)
 	if (dsim->state == DSIM_STATE_HSCLKEN)
 		_dsim_enter_ulps_locked(dsim);
 
-	dsim_debug(dsim, "%s\n", __func__);
+	dsim_debug(dsim, "-\n");
 
 	mutex_unlock(&dsim->state_lock);
 
@@ -2378,7 +2434,7 @@ static int dsim_resume(struct device *dev)
 	if (dsim->suspend_state == DSIM_STATE_HSCLKEN)
 		_dsim_exit_ulps_locked(dsim);
 
-	dsim_debug(dsim, "%s\n", __func__);
+	dsim_debug(dsim, "-\n");
 
 	mutex_unlock(&dsim->state_lock);
 

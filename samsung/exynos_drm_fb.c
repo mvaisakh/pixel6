@@ -486,19 +486,19 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 		DPU_EVENT_LOG(DPU_EVT_REQ_CRTC_INFO_NEW, decon->id,
 				new_crtc_state);
 
-		if (new_crtc_state->active || new_crtc_state->active_changed) {
-			const bool was_hibernating = hibernation_block_exit(decon->hibernation);
+		if (new_crtc_state->active || old_crtc_state->active) {
+			hibernation_block(decon->hibernation);
 
 			hibernation_crtc_mask |= drm_crtc_mask(crtc);
-			if (was_hibernating)
-				WARN_ON(drm_atomic_add_affected_planes(old_state, crtc));
 		}
 
-		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
+		if (drm_atomic_crtc_effectively_active(old_crtc_state) && !new_crtc_state->active) {
 			/* keep runtime vote while disabling is taking place */
 			pm_runtime_get_sync(decon->dev);
 			disabling_crtc_mask |= drm_crtc_mask(crtc);
+		}
 
+		if (old_crtc_state->active && drm_atomic_crtc_needs_modeset(new_crtc_state)) {
 			DPU_ATRACE_BEGIN("crtc_disable");
 
 			funcs = crtc->helper_private;

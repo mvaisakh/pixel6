@@ -120,6 +120,8 @@ static int writeback_atomic_check(struct drm_encoder *encoder,
 	const struct drm_framebuffer *fb;
 	int i;
 
+	conn_state->self_refresh_aware = true;
+
 	if (!wb_check_job(conn_state))
 		return 0;
 

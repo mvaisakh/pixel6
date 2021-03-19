@@ -183,6 +183,8 @@ enum dpu_event_type {
 	DPU_EVT_DSIM_ENABLED,
 	DPU_EVT_DSIM_DISABLED,
 	DPU_EVT_DSIM_COMMAND,
+	DPU_EVT_DSIM_ULPS_ENTER,
+	DPU_EVT_DSIM_ULPS_EXIT,
 	DPU_EVT_DSIM_UNDERRUN,
 	DPU_EVT_DSIM_FRAMEDONE,
 
@@ -286,6 +288,7 @@ struct dpu_log_crtc_info {
 	bool planes_changed;
 	bool mode_changed;
 	bool active_changed;
+	bool self_refresh;
 };
 
 struct dpu_log_freqs {
@@ -430,9 +433,6 @@ int dpu_init_debug(struct decon_device *decon);
 void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv);
 void DPU_EVENT_LOG_ATOMIC_COMMIT(int index);
 void DPU_EVENT_LOG_CMD(struct dsim_device *dsim, u8 type, u8 d0, u16 len);
-
-void decon_enter_hibernation(struct decon_device *decon);
-void decon_exit_hibernation(struct decon_device *decon);
 
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 int dpu_itmon_notifier(struct notifier_block *nb, unsigned long action,

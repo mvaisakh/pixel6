@@ -323,12 +323,22 @@ static int exynos_plane_atomic_check(struct drm_plane *plane,
 	if (!new_crtc_state->active)
 		return 0;
 
+	new_exynos_crtc_state = to_exynos_crtc_state(new_crtc_state);
+
+	/*
+	 * if update will be skipped, there's no point on running remaining checks
+	 *
+	 * NOTE: this only handles the case where the flag is set explicitly (ex. hibernation exit).
+	 *       dynamic detection (in crtc atomic_check) happens after planes atomic_check
+	 */
+	if (new_exynos_crtc_state->skip_update)
+		return 0;
+
 	ret = drm_atomic_helper_check_plane_state(state, new_crtc_state, 0,
 			INT_MAX, true, false);
 	if (ret)
 		return ret;
 
-	new_exynos_crtc_state = to_exynos_crtc_state(new_crtc_state);
 	decon = to_exynos_crtc(state->crtc)->ctx;
 	if (decon->partial && new_exynos_crtc_state->needs_reconfigure)
 		exynos_partial_reconfig_coords(decon->partial, state,
