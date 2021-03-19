@@ -61,6 +61,7 @@
 #include <drm/drm_panel.h>
 #include <video/display_timing.h>
 #include <samsung/exynos_drm_connector.h>
+#include <samsung/panel/panel-samsung-drv.h>
 
 #include "fts.h"
 #include "fts_lib/ftsCompensation.h"
@@ -4817,6 +4818,14 @@ out:
 	if (error < OK) {
 		dev_err(info->dev, "Cannot initialize the hardware device ERROR %08X\n",
 			error);
+	}
+
+	/* Align the touch and display status during boot. */
+	if (!IS_ERR_OR_NULL(info->board->panel)) {
+		struct exynos_panel *ctx = container_of(info->board->panel,
+							struct exynos_panel,
+							panel);
+		fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, ctx->enabled);
 	}
 
 	dev_err(info->dev, "Fw Update Finished! error = %08X\n", error);
