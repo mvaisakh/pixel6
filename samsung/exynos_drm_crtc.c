@@ -35,10 +35,15 @@ static void exynos_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 
+	if (exynos_crtc->enabled)
+		return;
+
 	drm_crtc_vblank_on(crtc);
 
 	if (exynos_crtc->ops->enable)
 		exynos_crtc->ops->enable(exynos_crtc, old_state);
+
+	exynos_crtc->enabled = true;
 }
 
 static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -46,7 +51,8 @@ static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 
-	drm_atomic_helper_disable_planes_on_crtc(old_state, false);
+	if (!exynos_crtc->enabled)
+		return;
 
 	if (exynos_crtc->ops->disable)
 		exynos_crtc->ops->disable(exynos_crtc);
@@ -60,6 +66,8 @@ static void exynos_drm_crtc_atomic_disable(struct drm_crtc *crtc,
 	}
 
 	drm_crtc_vblank_off(crtc);
+
+	exynos_crtc->enabled = false;
 }
 
 static void exynos_crtc_update_lut(struct drm_crtc *crtc,

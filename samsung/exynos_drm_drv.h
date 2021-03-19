@@ -288,6 +288,7 @@ struct exynos_drm_crtc {
 		struct drm_property *histogram_threshold;
 		struct drm_property *partial;
 	} props;
+	bool enabled;
 };
 
 struct drm_exynos_file_private {
