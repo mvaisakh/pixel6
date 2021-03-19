@@ -274,18 +274,17 @@ static void dpp_convert_plane_state_to_config(struct dpp_params_info *config,
 	unsigned int simplified_rot;
 
 	pr_debug("mode(%dx%d)\n", mode->hdisplay, mode->vdisplay);
-
-	config->src.x = state->base.src_x >> 16;
-	config->src.y = state->base.src_y >> 16;
-	config->src.w = state->base.src_w >> 16;
-	config->src.h = state->base.src_h >> 16;
+	config->src.x = state->base.src.x1 >> 16;
+	config->src.y = state->base.src.y1 >> 16;
+	config->src.w = drm_rect_width(&state->base.src) >> 16;
+	config->src.h = drm_rect_height(&state->base.src) >> 16;
 	config->src.f_w = fb->width;
 	config->src.f_h = fb->height;
 
-	config->dst.x = state->base.crtc_x;
-	config->dst.y = state->base.crtc_y;
-	config->dst.w = state->base.crtc_w;
-	config->dst.h = state->base.crtc_h;
+	config->dst.x = state->base.dst.x1;
+	config->dst.y = state->base.dst.y1;
+	config->dst.w = drm_rect_width(&state->base.dst);
+	config->dst.h = drm_rect_height(&state->base.dst);
 	config->dst.f_w = mode->hdisplay;
 	config->dst.f_h = mode->vdisplay;
 	config->rot = 0;

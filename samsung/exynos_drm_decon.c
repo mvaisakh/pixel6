@@ -107,9 +107,9 @@ static inline u32 win_start_pos(int x, int y)
 	return (WIN_STRPTR_Y_F(y) | WIN_STRPTR_X_F(x));
 }
 
-static inline u32 win_end_pos(int x, int y,  u32 xres, u32 yres)
+static inline u32 win_end_pos(int x2, int y2)
 {
-	return (WIN_ENDPTR_Y_F(y + yres - 1) | WIN_ENDPTR_X_F(x + xres - 1));
+	return (WIN_ENDPTR_Y_F(y2 - 1) | WIN_ENDPTR_X_F(x2 - 1));
 }
 
 /* ARGB value */
@@ -129,7 +129,7 @@ static void decon_set_color_map(struct decon_device *decon, u32 win_id,
 
 	memset(&win_info, 0, sizeof(struct decon_window_regs));
 	win_info.start_pos = win_start_pos(0, 0);
-	win_info.end_pos = win_end_pos(0, 0, hactive, vactive);
+	win_info.end_pos = win_end_pos(hactive, vactive);
 	win_info.start_time = 0;
 	win_info.colormap = 0x000000; /* black */
 	win_info.blend = DECON_BLENDING_NONE;
@@ -499,12 +499,10 @@ static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
 	if (is_colormap)
 		win_info.colormap = exynos_plane_state->colormap;
 
-	win_info.start_pos = win_start_pos(exynos_plane_state->base.crtc_x,
-					exynos_plane_state->base.crtc_y);
-	win_info.end_pos = win_end_pos(exynos_plane_state->base.crtc_x,
-					exynos_plane_state->base.crtc_y,
-					exynos_plane_state->base.crtc_w,
-					exynos_plane_state->base.crtc_h);
+	win_info.start_pos = win_start_pos(exynos_plane_state->base.dst.x1,
+					exynos_plane_state->base.dst.y1);
+	win_info.end_pos = win_end_pos(exynos_plane_state->base.dst.x2,
+					exynos_plane_state->base.dst.y2);
 	win_info.start_time = 0;
 
 	win_info.ch = dpp->id; /* DPP's id is DPP channel number */

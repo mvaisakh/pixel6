@@ -91,12 +91,17 @@ static int exynos_partial_adjust_region(struct exynos_partial *partial,
 static void exynos_plane_print_info(const struct drm_plane_state *state)
 {
 	const struct drm_plane *plane = state->plane;
-	const struct drm_rect src  = drm_plane_state_src(state);
-	const struct drm_rect dest = drm_plane_state_dest(state);
+	const struct drm_rect src = drm_plane_state_src(state);
+	const struct drm_rect dst = drm_plane_state_dest(state);
+	const struct drm_rect *clipped_src = &state->src;
+	const struct drm_rect *clipped_dst = &state->dst;
 
-	pr_debug("Plane%d/win%d src=" DRM_RECT_FP_FMT " crtc=" DRM_RECT_FMT "\n",
+	pr_debug("plane%d/win%d src["DRM_RECT_FP_FMT"] dst["DRM_RECT_FMT"]\n",
 			drm_plane_index(plane), state->normalized_zpos,
-			DRM_RECT_FP_ARG(&src), DRM_RECT_ARG(&dest));
+			DRM_RECT_FP_ARG(&src), DRM_RECT_ARG(&dst));
+
+	pr_debug("\t\tclipped src["DRM_RECT_FP_FMT"] dst["DRM_RECT_FMT"]\n",
+			DRM_RECT_FP_ARG(clipped_src), DRM_RECT_ARG(clipped_dst));
 }
 
 static inline bool
@@ -449,47 +454,12 @@ void exynos_partial_reconfig_coords(struct exynos_partial *partial,
 			struct drm_plane_state *plane_state,
 			const struct drm_rect *partial_r)
 {
-	struct drm_rect origin_src, origin_dst;
-
-	origin_src = drm_plane_state_src(plane_state);
-	origin_dst = drm_plane_state_dest(plane_state);
-
-	pr_debug("original coordinates:\n");
-	if (!drm_rect_intersect(&origin_dst, partial_r)) {
-		plane_state->visible = false;
+	plane_state->visible = drm_rect_clip_scaled(&plane_state->src,
+			&plane_state->dst, partial_r);
+	if (!plane_state->visible)
 		return;
-	}
-	origin_dst = drm_plane_state_dest(plane_state);
 
-	exynos_plane_print_info(plane_state);
-
-	/* reconfigure destination coordinates */
-	if (partial_r->x1 > origin_dst.x1)
-		plane_state->crtc_w = min(drm_rect_width(partial_r),
-				origin_dst.x2 - partial_r->x1);
-	else if (partial_r->x2 < origin_dst.x2)
-		plane_state->crtc_w = min(drm_rect_width(&origin_dst),
-				partial_r->x2 - origin_dst.x1);
-
-	if (partial_r->y1 > origin_dst.y1)
-		plane_state->crtc_h = min(drm_rect_height(partial_r),
-				origin_dst.y2 - partial_r->y1);
-	else if (partial_r->y2 < origin_dst.y2)
-		plane_state->crtc_h = min(drm_rect_height(&origin_dst),
-				partial_r->y2 - origin_dst.y1);
-
-	plane_state->crtc_x = max(origin_dst.x1 - partial_r->x1, 0);
-	plane_state->crtc_y = max(origin_dst.y1 - partial_r->y1, 0);
-
-	/* reconfigure source coordinates */
-	if (partial_r->y1 > origin_dst.y1)
-		plane_state->src_y +=
-			((partial_r->y1 - origin_dst.y1) << 16);
-	if (partial_r->x1 > origin_dst.x1)
-		plane_state->src_x +=
-			((partial_r->x1 - origin_dst.x1) << 16);
-	plane_state->src_w = plane_state->crtc_w << 16;
-	plane_state->src_h = plane_state->crtc_h << 16;
+	drm_rect_translate(&plane_state->dst, -(partial_r->x1), -(partial_r->y1));
 
 	pr_debug("reconfigured coordinates:\n");
 	exynos_plane_print_info(plane_state);

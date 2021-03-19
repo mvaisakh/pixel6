@@ -218,15 +218,15 @@ static void plane_state_to_win_config(struct dpu_bts_win_config *win_config,
 	const struct drm_framebuffer *fb = plane_state->fb;
 	unsigned int simplified_rot;
 
-	win_config->src_x = plane_state->src_x >> 16;
-	win_config->src_y = plane_state->src_y >> 16;
-	win_config->src_w = plane_state->src_w >> 16;
-	win_config->src_h = plane_state->src_h >> 16;
+	win_config->src_x = plane_state->src.x1 >> 16;
+	win_config->src_y = plane_state->src.y1 >> 16;
+	win_config->src_w = drm_rect_width(&plane_state->src) >> 16;
+	win_config->src_h = drm_rect_height(&plane_state->src) >> 16;
 
-	win_config->dst_x = plane_state->crtc_x;
-	win_config->dst_y = plane_state->crtc_y;
-	win_config->dst_w = plane_state->crtc_w;
-	win_config->dst_h = plane_state->crtc_h;
+	win_config->dst_x = plane_state->dst.x1;
+	win_config->dst_y = plane_state->dst.y1;
+	win_config->dst_w = drm_rect_width(&plane_state->dst);
+	win_config->dst_h = drm_rect_height(&plane_state->dst);
 
 	if (has_all_bits(DRM_FORMAT_MOD_ARM_AFBC(0), fb->modifier) ||
 			has_all_bits(DRM_FORMAT_MOD_SAMSUNG_SBWC(0),
