@@ -18,6 +18,7 @@
 #include <linux/of_gpio.h>
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/pm_runtime.h>
 #include <linux/spinlock.h>
 #if IS_ENABLED(CONFIG_EXYNOS_PM_QOS) || IS_ENABLED(CONFIG_EXYNOS_PM_QOS_MODULE)
 #include <soc/google/exynos_pm_qos.h>

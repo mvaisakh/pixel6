@@ -32,6 +32,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
+#include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/component.h>
 #include <linux/iommu.h>
@@ -184,15 +185,14 @@ static int dsim_phy_power_off(struct dsim_device *dsim)
 	return 0;
 }
 
-void dsim_exit_ulps(struct dsim_device *dsim)
+static void _dsim_exit_ulps_locked(struct dsim_device *dsim)
 {
+	WARN_ON(!mutex_is_locked(&dsim->state_lock));
+
 	dsim_debug(dsim, "%s +\n", __func__);
 
-	mutex_lock(&dsim->state_lock);
-	if (dsim->state != DSIM_STATE_ULPS) {
-		mutex_unlock(&dsim->state_lock);
-		return;
-	}
+	DPU_ATRACE_BEGIN(__func__);
+
 #if defined(CONFIG_CPU_IDLE)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 0);
 #endif
@@ -205,8 +205,9 @@ void dsim_exit_ulps(struct dsim_device *dsim)
 	dsim->state = DSIM_STATE_HSCLKEN;
 	enable_irq(dsim->irq);
 
-	mutex_unlock(&dsim->state_lock);
 	dsim_debug(dsim, "%s -\n", __func__);
+
+	DPU_ATRACE_END(__func__);
 }
 
 static void dsim_set_te_pinctrl(struct dsim_device *dsim, bool en)
@@ -225,9 +226,12 @@ static void _dsim_enable(struct dsim_device *dsim)
 {
 	const struct decon_device *decon = dsim_get_decon(dsim);
 
+	pm_runtime_get_sync(dsim->dev);
+
 	mutex_lock(&dsim->state_lock);
 	if (dsim->state == DSIM_STATE_HSCLKEN) {
 		mutex_unlock(&dsim->state_lock);
+		pm_runtime_put_sync(dsim->dev);
 		dsim_info(dsim, "already enabled(%d)\n", dsim->state);
 		return;
 	}
@@ -264,20 +268,32 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
 	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
+	struct drm_crtc_state *new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
 
-	_dsim_enable(dsim);
+	if (new_crtc_state->connectors_changed) {
+		const struct decon_device *decon = dsim_get_decon(dsim);
 
-	if (!old_crtc_state || !old_crtc_state->self_refresh_active)
+		WARN_ON(dsim->dev_link);
+
+		if (decon) {
+			dsim->dev_link = device_link_add(dsim->dev, decon->dev,
+							 DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
+		}
+	}
+
+	if (dsim->state == DSIM_STATE_SUSPEND) {
+		_dsim_enable(dsim);
 		dsim_set_te_pinctrl(dsim, 1);
+	} else if (old_crtc_state->self_refresh_active) {
+		pm_runtime_get_sync(dsim->dev);
+	}
 }
 
-void dsim_enter_ulps(struct dsim_device *dsim)
+static void _dsim_enter_ulps_locked(struct dsim_device *dsim)
 {
-	mutex_lock(&dsim->state_lock);
-	if (dsim->state != DSIM_STATE_HSCLKEN) {
-		mutex_unlock(&dsim->state_lock);
-		return;
-	}
+	WARN_ON(!mutex_is_locked(&dsim->state_lock));
+
+	DPU_ATRACE_BEGIN(__func__);
 
 	dsim_debug(dsim, "%s +\n", __func__);
 
@@ -297,8 +313,9 @@ void dsim_enter_ulps(struct dsim_device *dsim)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 1);
 #endif
 
-	mutex_unlock(&dsim->state_lock);
 	dsim_debug(dsim, "%s -\n", __func__);
+
+	DPU_ATRACE_END(__func__);
 }
 
 static void _dsim_disable(struct dsim_device *dsim)
@@ -332,6 +349,8 @@ static void _dsim_disable(struct dsim_device *dsim)
 	exynos_update_ip_idle_status(dsim->idle_ip_index, 1);
 #endif
 
+	pm_runtime_put_sync(dsim->dev);
+
 	if (decon)
 		DPU_EVENT_LOG(DPU_EVT_DSIM_DISABLED, decon->id, dsim);
 
@@ -344,10 +363,20 @@ static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_
 	const struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
 	const bool self_refresh_active = crtc && crtc->state && crtc->state->self_refresh_active;
 
-	_dsim_disable(dsim);
+	if ((!crtc || crtc->state->connectors_changed) && dsim->dev_link) {
+		device_link_del(dsim->dev_link);
+		dsim->dev_link = NULL;
+	}
 
-	if (!self_refresh_active)
+	DPU_ATRACE_BEGIN(__func__);
+	if (self_refresh_active) {
+		pm_runtime_put_sync(dsim->dev);
+	} else {
+		_dsim_disable(dsim);
+
 		dsim_set_te_pinctrl(dsim, 0);
+	}
+	DPU_ATRACE_END(__func__);
 }
 
 static void dsim_modes_release(struct dsim_pll_params *pll_params)
@@ -1572,15 +1601,12 @@ static void __dsim_write_data(struct dsim_device *dsim,
 			packet.size, dsim_reg_get_ph_cnt(dsim->id));
 }
 
-static int dsim_write_single_cmd_unlocked(struct dsim_device *dsim,
+static int dsim_write_single_cmd_locked(struct dsim_device *dsim,
 				const struct mipi_dsi_msg *msg, bool is_long)
 {
 	const u8 *tx_buf = msg->tx_buf;
 
-	if (dsim->state != DSIM_STATE_HSCLKEN) {
-		dsim_err(dsim, "Not ready(%d)\n", dsim->state);
-		return -EINVAL;
-	}
+	WARN_ON(!mutex_is_locked(&dsim->cmd_lock));
 
 	DPU_EVENT_LOG_CMD(dsim, msg->type, tx_buf[0], msg->tx_len);
 
@@ -1648,12 +1674,11 @@ static int
 dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 {
 	int ret = 0;
-	const struct decon_device *decon = dsim_get_decon(dsim);
 	u16 flags = msg->flags;
 	bool is_long = mipi_dsi_packet_format_is_long(msg->type);
 
 	if (dsim->config.mode == DSIM_VIDEO_MODE) {
-		ret = dsim_write_single_cmd_unlocked(dsim, msg, is_long);
+		ret = dsim_write_single_cmd_locked(dsim, msg, is_long);
 		goto err;
 	}
 
@@ -1690,24 +1715,19 @@ dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 			dsim_debug(dsim, "packet go ready\n");
 
 			ret = dsim_wait_for_cmd_fifo_empty(dsim, is_long);
-			if (ret) {
-				if (decon)
-					hibernation_unblock_enter(decon->hibernation);
-				return ret;
+			if (!ret) {
+				dsim_reg_enable_packetgo(dsim->id, false);
+				dsim->total_pend_ph = 0;
+				dsim->total_pend_pl = 0;
 			}
 
-			dsim_reg_enable_packetgo(dsim->id, false);
-			dsim->total_pend_ph = 0;
-			dsim->total_pend_pl = 0;
-			if (decon)
-				hibernation_unblock_enter(decon->hibernation);
+			pm_runtime_put_sync(dsim->dev);
 		} else {
-			ret = dsim_write_single_cmd_unlocked(dsim, msg, is_long);
+			ret = dsim_write_single_cmd_locked(dsim, msg, is_long);
 		}
 	} else {
 		if (!dsim->total_pend_ph) {
-			if (decon)
-				hibernation_block_exit(decon->hibernation);
+			pm_runtime_get_sync(dsim->dev);
 			dsim_reg_enable_packetgo(dsim->id, true);
 		}
 		dsim->total_pend_ph++;
@@ -1747,11 +1767,6 @@ dsim_read_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 	u32 rx_fifo, rx_size = 0;
 	int i = 0, ret = 0;
 	u8 *rx_buf = msg->rx_buf;
-
-	if (dsim->state != DSIM_STATE_HSCLKEN) {
-		dsim_err(dsim, "Not ready(%d)\n", dsim->state);
-		return -EINVAL;
-	}
 
 	if (msg->rx_len > MAX_RX_FIFO) {
 		dsim_err(dsim, "invalid rx len(%lu) max(%d)\n", msg->rx_len,
@@ -1835,12 +1850,19 @@ static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
 			    const struct mipi_dsi_msg *msg)
 {
 	struct dsim_device *dsim = host_to_dsi(host);
-	const struct decon_device *decon = dsim_get_decon(dsim);
 	int ret;
 
-	hibernation_block_exit(decon->hibernation);
+	DPU_ATRACE_BEGIN(__func__);
+
+	ret = pm_runtime_resume_and_get(dsim->dev);
+	if (ret)
+		return ret;
 
 	mutex_lock(&dsim->cmd_lock);
+	if (WARN_ON(dsim->state != DSIM_STATE_HSCLKEN)) {
+		ret = -EPERM;
+		goto abort;
+	}
 
 	switch (msg->type) {
 	case MIPI_DSI_DCS_READ:
@@ -1854,9 +1876,13 @@ static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
 		break;
 	}
 
+abort:
 	mutex_unlock(&dsim->cmd_lock);
 
-	hibernation_unblock_enter(decon->hibernation);
+	pm_runtime_mark_last_busy(dsim->dev);
+	pm_runtime_put_sync_autosuspend(dsim->dev);
+
+	DPU_ATRACE_END(__func__);
 
 	return ret;
 }
@@ -2215,6 +2241,9 @@ static int dsim_probe(struct platform_device *pdev)
 #endif
 
 	dsim->state = DSIM_STATE_SUSPEND;
+
+	pm_runtime_use_autosuspend(dsim->dev);
+	pm_runtime_set_autosuspend_delay(dsim->dev, 20);
 	pm_runtime_enable(dsim->dev);
 
 	if (!IS_ENABLED(CONFIG_BOARD_EMULATOR)) {
@@ -2249,6 +2278,49 @@ static int dsim_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int dsim_suspend(struct device *dev)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+
+	DPU_ATRACE_BEGIN(__func__);
+
+	mutex_lock(&dsim->state_lock);
+	if (dsim->state == DSIM_STATE_HSCLKEN)
+		_dsim_enter_ulps_locked(dsim);
+
+	dsim_debug(dsim, "%s\n", __func__);
+
+	DPU_ATRACE_END(__func__);
+	mutex_unlock(&dsim->state_lock);
+
+	return 0;
+}
+
+static int dsim_resume(struct device *dev)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+
+	DPU_ATRACE_BEGIN(__func__);
+
+	mutex_lock(&dsim->state_lock);
+	dsim_debug(dsim, "%s\n", __func__);
+
+	if (dsim->state == DSIM_STATE_ULPS)
+		_dsim_exit_ulps_locked(dsim);
+	mutex_unlock(&dsim->state_lock);
+
+	DPU_ATRACE_END(__func__);
+
+	return 0;
+}
+#endif
+
+
+static const struct dev_pm_ops dsim_pm_ops = {
+	SET_RUNTIME_PM_OPS(dsim_suspend, dsim_resume, NULL)
+};
+
 struct platform_driver dsim_driver = {
 	.probe = dsim_probe,
 	.remove = dsim_remove,
@@ -2256,6 +2328,7 @@ struct platform_driver dsim_driver = {
 		   .name = "exynos-dsim",
 		   .owner = THIS_MODULE,
 		   .of_match_table = dsim_of_match,
+		   .pm = &dsim_pm_ops,
 	},
 };
 

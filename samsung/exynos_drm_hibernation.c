@@ -97,7 +97,7 @@ static void exynos_hibernation_enter(struct exynos_hibernation *hiber)
 
 	hiber->dsim = decon_get_dsim(decon);
 	if (hiber->dsim)
-		dsim_enter_ulps(hiber->dsim);
+		pm_runtime_put_sync(hiber->dsim->dev);
 
 	decon->bts.ops->release_bw(decon);
 
@@ -143,7 +143,7 @@ static int exynos_hibernation_exit(struct exynos_hibernation *hiber)
 	pm_runtime_get_sync(decon->dev);
 
 	if (hiber->dsim) {
-		dsim_exit_ulps(hiber->dsim);
+		pm_runtime_get_sync(hiber->dsim->dev);
 		hiber->dsim = NULL;
 	}
 

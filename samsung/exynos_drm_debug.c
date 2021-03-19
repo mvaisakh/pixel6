@@ -1486,6 +1486,8 @@ void dsim_diag_create_debugfs(struct dsim_device *dsim) {
 		return;
 	}
 
+	debugfs_create_u32("state", 0400, dsim->debugfs_entry, &dsim->state);
+
 	if (dsim->config.num_dphy_diags == 0)
 		return;
 

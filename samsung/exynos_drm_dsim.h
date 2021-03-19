@@ -21,7 +21,6 @@
 #include <drm/drm_property.h>
 #include <drm/drm_panel.h>
 #include <video/videomode.h>
-#include <linux/pm_runtime.h>
 
 #include <dsim_cal.h>
 
@@ -65,6 +64,7 @@ struct dsim_device {
 	struct device *dev;
 	struct drm_bridge *panel_bridge;
 	struct mipi_dsi_device *dsi_device;
+	struct device_link *dev_link;
 
 	enum exynos_drm_output_type output_type;
 	int te_from;
@@ -126,9 +126,6 @@ dsim_get_decon(const struct dsim_device *dsim)
 
 	return to_exynos_crtc(crtc)->ctx;
 }
-
-void dsim_enter_ulps(struct dsim_device *dsim);
-void dsim_exit_ulps(struct dsim_device *dsim);
 
 #ifdef CONFIG_DEBUG_FS
 void dsim_diag_create_debugfs(struct dsim_device *dsim);
