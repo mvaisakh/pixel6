@@ -5527,6 +5527,13 @@ static void panel_bridge_disable(struct drm_bridge *bridge)
 	struct fts_ts_info *info =
 			container_of(bridge, struct fts_ts_info, panel_bridge);
 
+	if (bridge->encoder && bridge->encoder->crtc) {
+		const struct drm_crtc_state *crtc_state = bridge->encoder->crtc->state;
+
+		if (drm_atomic_crtc_effectively_active(crtc_state))
+			return;
+	}
+
 	dev_dbg(info->dev, "%s\n", __func__);
 	fts_set_bus_ref(info, FTS_BUS_REF_SCREEN_ON, false);
 }
