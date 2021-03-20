@@ -1002,12 +1002,33 @@ static ssize_t te2_lp_timing_show(struct device *dev,
 	return ret;
 }
 
+static ssize_t panel_idle_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	const struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+	int ret;
+
+	ret = kstrtobool(buf, &ctx->panel_idle_enabled);
+
+	return ret ? : count;
+}
+
+static ssize_t panel_idle_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	const struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->panel_idle_enabled);
+}
+
 static DEVICE_ATTR_RO(serial_number);
 static DEVICE_ATTR_RO(panel_extinfo);
 static DEVICE_ATTR_RO(panel_name);
 static DEVICE_ATTR_WO(gamma);
 static DEVICE_ATTR_RW(te2_timing);
 static DEVICE_ATTR_RW(te2_lp_timing);
+static DEVICE_ATTR_RW(panel_idle);
 
 static const struct attribute *panel_attrs[] = {
 	&dev_attr_serial_number.attr,
@@ -1016,6 +1037,7 @@ static const struct attribute *panel_attrs[] = {
 	&dev_attr_gamma.attr,
 	&dev_attr_te2_timing.attr,
 	&dev_attr_te2_lp_timing.attr,
+	&dev_attr_panel_idle.attr,
 	NULL
 };
 
@@ -2254,38 +2276,37 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
 	const struct exynos_panel_mode *pmode = ctx->current_mode;
 
-	/* this handles the case where panel may be enabled while booting already */
-	if (ctx->enabled && !exynos_panel_init(ctx))
-		goto skip_enable;
+	/* avoid turning on panel again if already enabled (ex. while booting or self refresh) */
+	if (!ctx->enabled || exynos_panel_init(ctx))
+		drm_panel_enable(&ctx->panel);
 
 	if (old_crtc_state && old_crtc_state->self_refresh_active) {
-		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
-		goto skip_enable;
+		const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+		dev_dbg(ctx->dev, "self refresh state : %s\n", __func__);
+
+		if (ctx->panel_idle_active && funcs && funcs->set_self_refresh)
+			funcs->set_self_refresh(ctx, false);
+	} else {
+		exynos_panel_set_backlight_state(ctx, pmode->exynos_mode.is_lp_mode ?
+						PANEL_STATE_LP : PANEL_STATE_ON);
+
+		exynos_panel_update_te2(ctx);
 	}
 
-	drm_panel_enable(&ctx->panel);
-
-skip_enable:
-	exynos_panel_set_backlight_state(ctx, pmode->exynos_mode.is_lp_mode ?
-					 PANEL_STATE_LP : PANEL_STATE_ON);
-
-	exynos_panel_update_te2(ctx);
+	ctx->panel_idle_active = false;
 }
 
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
 					   struct drm_bridge_state *old_bridge_state)
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
-	struct drm_atomic_state *state = old_bridge_state->base.state;
-	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
+
+	if (unlikely(!ctx->initialized))
+		return;
 
 	if (ctx->enabled)
 		return;
-
-	if (old_crtc_state && old_crtc_state->self_refresh_active) {
-		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
-		return;
-	}
 
 	drm_panel_prepare(&ctx->panel);
 }
@@ -2299,7 +2320,14 @@ static void exynos_panel_bridge_disable(struct drm_bridge *bridge,
 		conn_state->crtc->state->self_refresh_active;
 
 	if (self_refresh_active) {
-		dev_dbg(ctx->dev, "self refresh state : skip %s\n", __func__);
+		const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+		dev_dbg(ctx->dev, "self refresh state : %s\n", __func__);
+
+		if (ctx->panel_idle_enabled && funcs && funcs->set_self_refresh) {
+			funcs->set_self_refresh(ctx, true);
+			ctx->panel_idle_active = true;
+		}
 		return;
 	}
 
@@ -2581,6 +2609,7 @@ int exynos_panel_common_init(struct mipi_dsi_device *dsi,
 
 	drm_panel_add(&ctx->panel);
 
+	ctx->panel_idle_enabled = true;
 	ctx->bridge.funcs = &exynos_panel_bridge_funcs;
 #ifdef CONFIG_OF
 	ctx->bridge.of_node = ctx->dev->of_node;

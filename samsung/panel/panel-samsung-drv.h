@@ -259,6 +259,14 @@ struct exynos_panel_funcs {
 	 * Called after atomic commit flush has completed but transfer may not have started yet
 	 */
 	void (*commit_done)(struct exynos_panel *exynos_panel);
+
+	/**
+	 * @set_self_refresh
+	 *
+	 * Called when display self refresh state has changed. While in self refresh state, the
+	 * panel can optimize for power assuming that there are no pending updates.
+	 */
+	void (*set_self_refresh)(struct exynos_panel *exynos_panel, bool enable);
 };
 
 /**
@@ -369,6 +377,11 @@ struct exynos_panel {
 	const struct exynos_panel_mode *current_mode;
 	bool enabled;
 	bool initialized;
+
+	/* indicates whether panel idle feature is enabled */
+	bool panel_idle_enabled;
+	/* indicates if panel is currently in idle mode */
+	bool panel_idle_active;
 
 	bool hbm_mode;
 	bool dimming_on;
