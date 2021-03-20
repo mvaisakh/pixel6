@@ -328,10 +328,12 @@ static bool decon_is_seamless_possible(const struct decon_device *decon,
 static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 			       struct drm_crtc_state *crtc_state)
 {
-	const struct drm_atomic_state *state = crtc_state->state;
+	struct drm_atomic_state *state = crtc_state->state;
 	const struct decon_device *decon = exynos_crtc->ctx;
 	struct exynos_drm_crtc_state *exynos_crtc_state;
 	const struct exynos_drm_connector_state *exynos_conn_state;
+	struct drm_crtc *crtc = &exynos_crtc->base;
+	const struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
 
 	exynos_conn_state = crtc_get_exynos_connector_state(state, crtc_state);
 	if (!exynos_conn_state)
@@ -348,7 +350,7 @@ static int decon_check_modeset(struct exynos_drm_crtc *exynos_crtc,
 	}
 
 	if (exynos_conn_state->seamless_possible && !crtc_state->connectors_changed &&
-	    !crtc_state->active_changed && crtc_state->active) {
+	    drm_atomic_crtc_effectively_active(old_crtc_state) && crtc_state->active) {
 		if (!decon_is_seamless_possible(decon, crtc_state, exynos_conn_state)) {
 			decon_warn(decon, "seamless not possible for mode %s\n",
 				   crtc_state->adjusted_mode.name);
@@ -576,6 +578,15 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 			decon->config.out_type == DECON_OUT_WB)
 		return;
 
+	if (new_exynos_crtc_state->skip_update) {
+		/* for seamless mode change, change pipeline but skip update from decon */
+		if (new_exynos_crtc_state->seamless_mode_changed)
+			decon_seamless_mode_set(exynos_crtc, old_crtc_state);
+
+		complete_all(&decon->framestart_done);
+		goto skip_update;
+	}
+
 	if (new_exynos_crtc_state->wb_type == EXYNOS_WB_CWB)
 		decon_reg_set_cwb_enable(decon->id, true);
 	else if (old_exynos_crtc_state->wb_type == EXYNOS_WB_CWB)
@@ -584,17 +595,6 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 	/* if there are no planes attached, enable colormap as fallback */
 	if (new_crtc_state->plane_mask == 0) {
 		const int win_id = decon_get_win_id(new_crtc_state, 0);
-
-		/*
-		 * if the display is already in self refresh mode when being
-		 * enabled without planes, skip the update to keep the same
-		 * self refresh contents
-		 */
-		if (!old_crtc_state->enable &&
-			old_crtc_state->self_refresh_active) {
-			complete_all(&decon->framestart_done);
-			goto skip_update;
-		}
 
 		if (win_id < 0) {
 			decon_warn(decon, "unable to get free win_id=%d mask=0x%x\n",
@@ -617,7 +617,8 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 			new_exynos_crtc_state->in_bpc, decon->config.out_bpc,
 			new_exynos_crtc_state->force_bpc);
 
-	if (dqe) {
+	if (dqe && (new_crtc_state->color_mgmt_changed || !dqe->initialized ||
+		    dqe->force_atc_config.dirty)) {
 		if (partial && new_exynos_crtc_state->partial) {
 			width = drm_rect_width(
 					&new_exynos_crtc_state->partial_region);

@@ -320,7 +320,7 @@ static int exynos_plane_atomic_check(struct drm_plane *plane,
 	new_crtc_state = drm_atomic_get_new_crtc_state(state->state,
 							state->crtc);
 
-	if (!new_crtc_state->planes_changed || !new_crtc_state->active)
+	if (!new_crtc_state->active)
 		return 0;
 
 	ret = drm_atomic_helper_check_plane_state(state, new_crtc_state, 0,

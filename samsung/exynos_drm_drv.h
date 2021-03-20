@@ -245,6 +245,20 @@ struct exynos_drm_crtc_state {
 	 *          power/regulators are kept enabled
 	 */
 	u8 bypass : 1;
+
+	/**
+	 * @skip_update: if flag is set, most DPU updates should be skipped
+	 *               and signaling of commit done should happen immediately
+	 */
+	u8 skip_update : 1;
+
+	/**
+	 * @planes_updated: this flag tracks whether planes were really changed, compared with
+	 *                  crtc_state->planes_changed where it may be set if planes were added
+	 *                  to atomic state due to any mode set (ex. self refresh change)
+	 */
+	u8 planes_updated : 1;
+
 	unsigned int reserved_win_mask;
 	unsigned int visible_win_mask;
 	struct drm_rect partial_region;

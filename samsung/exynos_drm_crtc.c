@@ -134,28 +134,31 @@ static void exynos_crtc_update_lut(struct drm_crtc *crtc,
 }
 
 static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
-				     struct drm_crtc_state *state)
+				     struct drm_crtc_state *crtc_state)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct exynos_drm_crtc_state *new_exynos_state =
-						to_exynos_crtc_state(state);
+						to_exynos_crtc_state(crtc_state);
+	const struct drm_crtc_state *old_crtc_state =
+		drm_atomic_get_old_crtc_state(crtc_state->state, crtc);
 	struct drm_plane *plane;
 	const struct drm_plane_state *plane_state;
 	uint32_t max_bpc;
 
 	DRM_DEBUG("%s +\n", __func__);
 
-	if (!state->enable)
+	if (!crtc_state->enable)
 		return 0;
 
-	exynos_crtc_update_lut(crtc, state);
+	if (crtc_state->color_mgmt_changed)
+		exynos_crtc_update_lut(crtc, crtc_state);
 
 	if (exynos_crtc->ops->atomic_check)
-		exynos_crtc->ops->atomic_check(exynos_crtc, state);
+		exynos_crtc->ops->atomic_check(exynos_crtc, crtc_state);
 
 	if (new_exynos_state->force_bpc == EXYNOS_BPC_MODE_UNSPECIFIED) {
 		max_bpc = 8; /* initial bpc value */
-		drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, state) {
+		drm_atomic_crtc_state_for_each_plane_state(plane, plane_state, crtc_state) {
 			const struct drm_format_info *info;
 			const struct dpu_fmt *fmt_info;
 
@@ -172,6 +175,21 @@ static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
 			new_exynos_state->force_bpc == EXYNOS_BPC_MODE_10 ?
 			10 : 8;
 	}
+
+	/*
+	 * if the the following conditions are met then skip the update to keep self refresh
+	 * contents on the screen and save some cycles
+	 *  1. Display is in self refresh
+	 *  2. No color mgmt updates
+	 *  3. There are no planes updated
+	 *
+	 * NOTE: may need to handle the case where there is a regular mode set coming out of self
+	 * refresh that requires an update, however most mode set updates require planes to be
+	 * updated too, and/or we may actually want to just update encoder/bridges/connectors only.
+	 */
+	if (old_crtc_state->self_refresh_active && !crtc_state->color_mgmt_changed &&
+	    !new_exynos_state->planes_updated)
+		new_exynos_state->skip_update = true;
 
 	DRM_DEBUG("%s -\n", __func__);
 
@@ -371,6 +389,8 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &copy->base);
 
 	copy->seamless_mode_changed = false;
+	copy->skip_update = false;
+	copy->planes_updated = false;
 
 	return &copy->base;
 }
@@ -380,7 +400,8 @@ exynos_drm_replace_property_blob_from_id(struct drm_device *dev,
 					 struct drm_property_blob **blob,
 					 uint64_t blob_id,
 					 ssize_t expected_size,
-					 ssize_t expected_elem_size)
+					 ssize_t expected_elem_size,
+					 bool *replaced)
 {
 	struct drm_property_blob *new_blob = NULL;
 
@@ -401,7 +422,7 @@ exynos_drm_replace_property_blob_from_id(struct drm_device *dev,
 		}
 	}
 
-	drm_property_replace_blob(blob, new_blob);
+	*replaced |= drm_property_replace_blob(blob, new_blob);
 	drm_property_blob_put(new_blob);
 
 	return 0;
@@ -414,64 +435,74 @@ static int exynos_drm_crtc_set_property(struct drm_crtc *crtc,
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct exynos_drm_crtc_state *exynos_crtc_state;
-	int ret;
+	int ret = 0;
+	bool replaced = false;
 
 	exynos_crtc_state = to_exynos_crtc_state(state);
 
 	if (property == exynos_crtc->props.color_mode) {
-		exynos_crtc_state->color_mode = val;
+		if (val != exynos_crtc_state->color_mode) {
+			exynos_crtc_state->color_mode = val;
+			replaced = true;
+		}
 	} else if (property == exynos_crtc->props.force_bpc) {
-		exynos_crtc_state->force_bpc = val;
+		if (val != exynos_crtc_state->force_bpc) {
+			exynos_crtc_state->force_bpc = val;
+			replaced = true;
+		}
 	} else if (property == exynos_crtc->props.ppc ||
 			property == exynos_crtc->props.max_disp_freq) {
 		return 0;
 	} else if (property == exynos_crtc->props.dqe_enabled) {
-		exynos_crtc_state->dqe.enabled = val;
+		if (val != exynos_crtc_state->dqe.enabled) {
+			exynos_crtc_state->dqe.enabled = val;
+			replaced = true;
+		}
 	} else if (property == exynos_crtc->props.histogram_threshold) {
-		exynos_crtc_state->dqe.histogram_threshold = val;
+		if (val != exynos_crtc_state->dqe.histogram_threshold) {
+			exynos_crtc_state->dqe.histogram_threshold = val;
+			replaced = true;
+		}
 	} else if (property == exynos_crtc->props.cgc_lut) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_lut, val,
-				sizeof(struct cgc_lut), -1);
-		return ret;
+				sizeof(struct cgc_lut), -1, &replaced);
 	} else if (property == exynos_crtc->props.disp_dither) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->disp_dither, val,
-				sizeof(struct dither_config), -1);
-		return ret;
+				sizeof(struct dither_config), -1, &replaced);
 	} else if (property == exynos_crtc->props.cgc_dither) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->cgc_dither, val,
-				sizeof(struct dither_config), -1);
-		return ret;
+				sizeof(struct dither_config), -1, &replaced);
 	} else if (property == exynos_crtc->props.linear_matrix) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->linear_matrix, val,
-				sizeof(struct exynos_matrix), -1);
-		return ret;
+				sizeof(struct exynos_matrix), -1, &replaced);
 	} else if (property == exynos_crtc->props.gamma_matrix) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->gamma_matrix, val,
-				sizeof(struct exynos_matrix), -1);
-		return ret;
+				sizeof(struct exynos_matrix), -1, &replaced);
 	} else if (property == exynos_crtc->props.histogram_roi) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->histogram_roi, val,
-				sizeof(struct histogram_roi), -1);
+				sizeof(struct histogram_roi), -1, &replaced);
 	} else if (property == exynos_crtc->props.histogram_weights) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->histogram_weights, val,
-				sizeof(struct histogram_weights), -1);
+				sizeof(struct histogram_weights), -1, &replaced);
 	} else if (property == exynos_crtc->props.partial) {
 		ret = exynos_drm_replace_property_blob_from_id(state->crtc->dev,
 				&exynos_crtc_state->partial, val,
-				sizeof(struct drm_clip_rect), -1);
+				sizeof(struct drm_clip_rect), -1, &replaced);
 		return ret;
 	} else {
 		return -EINVAL;
 	}
 
-	return 0;
+	state->color_mgmt_changed |= replaced;
+
+	return ret;
 }
 
 static int exynos_drm_crtc_get_property(struct drm_crtc *crtc,

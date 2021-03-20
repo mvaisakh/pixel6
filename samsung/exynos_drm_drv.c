@@ -82,7 +82,7 @@ static unsigned int exynos_drm_crtc_get_win_cnt(struct drm_crtc_state *crtc_stat
 {
 	unsigned int num_planes;
 
-	if (!crtc_state->active)
+	if (!crtc_state->enable || !drm_atomic_crtc_effectively_active(crtc_state))
 		return 0;
 
 	num_planes = hweight32(crtc_state->plane_mask);
@@ -248,6 +248,28 @@ static void exynos_atomic_prepare_partial_update(struct drm_atomic_state *state)
 	}
 }
 
+static void exynos_check_updated_planes(struct drm_device *dev, struct drm_atomic_state *state)
+{
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
+	int i;
+
+	for_each_new_plane_in_state(state, plane, plane_state, i) {
+		struct drm_crtc_state *crtc_state;
+		struct exynos_drm_crtc_state *exynos_crtc_state;
+
+		if (plane_state->crtc) {
+			crtc_state = drm_atomic_get_new_crtc_state(state, plane_state->crtc);
+
+			if (WARN_ON(!crtc_state))
+				return;
+
+			exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+			exynos_crtc_state->planes_updated = true;
+		}
+	}
+}
+
 int exynos_atomic_check(struct drm_device *dev,
 			struct drm_atomic_state *state)
 {
@@ -258,6 +280,8 @@ int exynos_atomic_check(struct drm_device *dev,
 		pr_info("tui enabled reject commit(%pK)\n", state);
 		return -EPERM;
 	}
+
+	exynos_check_updated_planes(dev, state);
 
 	ret = drm_atomic_helper_check_modeset(dev, state);
 	if (ret)

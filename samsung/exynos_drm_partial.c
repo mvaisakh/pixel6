@@ -426,6 +426,9 @@ void exynos_partial_prepare(struct exynos_partial *partial,
 		} else if (exynos_partial_is_full(&crtc_state->mode, partial_r)) {
 			return;
 		}
+	} else {
+		/* if region changed, DQE needs to be updated */
+		crtc_state->color_mgmt_changed = true;
 	}
 
 	/* check DPP hw limit if violated, update region is changed to full */
