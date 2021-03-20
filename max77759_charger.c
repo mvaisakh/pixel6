@@ -48,7 +48,6 @@ enum PMIC_VDROOP_SENSOR {
 	VDROOP_MAX,
 };
 
-
 #define MAX77759_DEFAULT_MODE	MAX77759_CHGR_MODE_ALL_OFF
 
 /* CHG_DETAILS_01:CHG_DTLS */
@@ -79,7 +78,6 @@ struct max77759_chgr_data {
 	struct power_supply *wcin_psy;
 	struct power_supply *chgin_psy;
 
-	struct power_supply *fg_psy;
 	struct power_supply *wlc_psy;
 	struct regmap *regmap;
 
@@ -216,6 +214,55 @@ int max77759_chg_mode_write(struct i2c_client *client,
 				 mode);
 }
 EXPORT_SYMBOL_GPL(max77759_chg_mode_write);
+
+/* ----------------------------------------------------------------------- */
+
+static int max77759_find_pmic(struct max77759_chgr_data *data)
+{
+	struct device_node *dn;
+
+	if (data->pmic_i2c_client)
+		return 0;
+
+	dn = of_parse_phandle(data->dev->of_node, "max77759,pmic", 0);
+	if (!dn)
+		return -ENXIO;
+
+	data->pmic_i2c_client = of_find_i2c_device_by_node(dn);
+	if (!data->pmic_i2c_client)
+		return -EAGAIN;
+
+	return 0;
+}
+
+static int max77759_find_fg(struct max77759_chgr_data *data)
+{
+	struct device_node *dn;
+
+	if (data->fg_i2c_client)
+		return 0;
+
+	dn = of_parse_phandle(data->dev->of_node, "max77759,max_m5", 0);
+	if (!dn)
+		return -ENXIO;
+
+	data->fg_i2c_client = of_find_i2c_device_by_node(dn);
+	if (!data->fg_i2c_client)
+		return -EAGAIN;
+
+	return 0;
+}
+
+static int max77759_read_vbatt(struct max77759_chgr_data *data, int *vbatt)
+{
+	int ret;
+
+	ret = max77759_find_fg(data);
+	if (ret == 0)
+		ret = max1720x_get_voltage_now(data->fg_i2c_client, vbatt);
+
+	return ret;
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -1239,23 +1286,6 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->cpout21_en != -EPROBE_DEFER;
 }
 
-static int max77759_find_pmic(struct max77759_chgr_data *data)
-{
-	if (!data->pmic_i2c_client) {
-		struct device_node *dn;
-
-		dn = of_parse_phandle(data->dev->of_node, "max77759,pmic", 0);
-		if (!dn)
-			return -ENXIO;
-
-		data->pmic_i2c_client = of_find_i2c_device_by_node(dn);
-		if (!data->pmic_i2c_client)
-			return -EAGAIN;
-	}
-
-	return !!data->pmic_i2c_client;
-}
-
 /*
  * adjust *INSEL (only one source can be enabled at a given time)
  * TODO: should we mask the interrupts for CHGIN,WCIN as well?
@@ -1302,7 +1332,7 @@ static int max77759_set_usecase(struct max77759_chgr_data *data,
 	if (uc_data->is_a1 == -1) {
 
 		ret = max77759_find_pmic(data);
-		if (ret > 0) {
+		if (ret == 0) {
 			u8 id, rev;
 
 			ret = max777x9_pmic_get_id(data->pmic_i2c_client, &id, &rev);
@@ -1899,24 +1929,6 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 	return rc;
 }
 
-static int max77759_find_fg(struct max77759_chgr_data *data)
-{
-	struct device_node *dn;
-
-	if (data->fg_i2c_client)
-		return 0;
-
-	dn = of_parse_phandle(data->dev->of_node, "max77759,max_m5", 0);
-	if (!dn)
-		return -ENXIO;
-
-	data->fg_i2c_client = of_find_i2c_device_by_node(dn);
-	if (!data->fg_i2c_client)
-		return -EAGAIN;
-
-	return 0;
-}
-
 #define MAX77759_WCIN_RAW_TO_UA	156
 
 /* only valid in mode 5, 6, 7, e, f */
@@ -2133,41 +2145,21 @@ static int max77759_get_charge_type(struct max77759_chgr_data *data)
 	return POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
 }
 
-static int max77759_read_from_fg(struct max77759_chgr_data *data,
-				 enum power_supply_property psp,
-				 union power_supply_propval *pval)
-{
-	int ret = -ENODEV;
-
-	if (!data->fg_psy)
-		data->fg_psy = power_supply_get_by_name("maxfg");
-	if (data->fg_psy)
-		ret = power_supply_get_property(data->fg_psy, psp, pval);
-	if (ret < 0)
-		pval->intval = -1;
-	return 0;
-}
-
 static bool max77759_is_full(struct max77759_chgr_data *data)
 {
-	union power_supply_propval pval;
-	int vchrg = 0;
-	int ret;
+	int ret, vbatt = 0;
 
 	/*
 	 * Set voltage level to leave CHARGER_DONE (BATT_RL_STATUS_DISCHARGE)
 	 * and enter BATT_RL_STATUS_RECHARGE. It sets STATUS_DISCHARGE again
 	 * once CHARGER_DONE flag set (return true here)
 	 */
-	ret = max77759_read_from_fg(data, POWER_SUPPLY_PROP_VOLTAGE_NOW,
-				    &pval);
+	ret = max77759_read_vbatt(data, &vbatt);
 	if (ret == 0)
-		vchrg = pval.intval / 1000;
-	/* Report NOT_CHARGING(false) if fail to get battery voltage */
-	if (vchrg < data->chg_term_voltage)
-		return false;
+		vbatt = vbatt / 1000;
 
-	return true;
+	/* true when chg_term_voltage==0, false if read error (vbatt==0) */
+	return vbatt >= data->chg_term_voltage;
 }
 
 static int max77759_get_status(struct max77759_chgr_data *data)
@@ -2211,10 +2203,9 @@ static int max77759_get_chg_chgr_state(struct max77759_chgr_data *data,
 				       union gbms_charger_state *chg_state)
 {
 	int usb_present, usb_valid, dc_present, dc_valid;
-	union power_supply_propval pval;
 	const char *source = "";
 	uint8_t int_ok, dtls;
-	int icl = 0;
+	int vbatt, icl = 0;
 	int rc;
 
 	chg_state->v = 0;
@@ -2236,10 +2227,10 @@ static int max77759_get_chg_chgr_state(struct max77759_chgr_data *data,
 	dc_present = (rc == 0) && _chg_int_ok_wcin_ok_get(int_ok);
 	dc_valid = dc_present && _chg_details_02_wcin_sts_get(dtls);
 
-	rc = max77759_read_from_fg(data, POWER_SUPPLY_PROP_VOLTAGE_NOW,
-				   &pval);
+
+	rc = max77759_read_vbatt(data, &vbatt);
 	if (rc == 0)
-		chg_state->f.vchrg = pval.intval / 1000;
+		chg_state->f.vchrg = vbatt / 1000;
 
 	if (chg_state->f.chg_status == POWER_SUPPLY_STATUS_DISCHARGING)
 		goto exit_done;
@@ -2456,9 +2447,9 @@ static int max77759_psy_get_property(struct power_supply *psy,
 		pval->intval = max77759_get_status(data);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		rc = max77759_read_from_fg(data, psp, pval);
+		rc = max77759_read_vbatt(data, &pval->intval);
 		if (rc < 0)
-			dev_err(data->dev, "cannot read voltage now=%d\n", rc);
+			pval->intval = -1;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		if (max77759_wcin_is_online(data))
@@ -2534,7 +2525,7 @@ static ssize_t show_fship_dtls(struct device *dev,
 
 
 	ret = max77759_find_pmic(data);
-	if (ret <= 0)
+	if (ret < 0)
 		return ret;
 
 	ret = max777x9_pmic_reg_read(data->pmic_i2c_client,
@@ -2986,25 +2977,20 @@ static void max77759_vdroop_irq_work(void *data, int id)
 
 static int uvilo_read_stats(struct uvilo_stats *dst, struct max77759_chgr_data *data)
 {
-	int ret, soc, voltage_now;
+	int ret;
 
 	if (!dst || !data)
 		return -EINVAL;
 
 	ret = max77759_find_fg(data);
+	if (ret == 0)
+		ret = max1720x_get_capacity(data->fg_i2c_client, &dst->capacity);
+	if (ret == 0)
+		ret = max1720x_get_voltage_now(data->fg_i2c_client, &dst->voltage);
 	if (ret < 0)
 		return -EINVAL;
 
-	ret = max1720x_get_capacity(data->fg_i2c_client, &soc);
-	if (ret < 0)
-		return -EINVAL;
-	dst->capacity = soc;
-	ret = max1720x_get_voltage_now(data->fg_i2c_client, &voltage_now);
-	if (ret < 0)
-		return -EINVAL;
-	dst->voltage = voltage_now;
 	dst->_time = ktime_to_ms(ktime_get());
-
 	return (dst->capacity == -1 || dst->voltage == -1) ? -EIO : 0;
 }
 
@@ -3197,6 +3183,8 @@ static const struct thermal_zone_of_device_ops vdroop2_tz_ops = {
 	.get_temp = max77759_vdroop2_read_temp,
 };
 
+
+
 static int max77759_init_vdroop(void *data_)
 {
 	struct max77759_chgr_data *data = data_;
@@ -3276,7 +3264,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	struct device *dev = &client->dev;
 	struct max77759_chgr_data *data;
 	struct regmap *regmap;
-	const char *psy_name;
+	const char *tmp;
 	int ret = 0;
 	u8 ping;
 
@@ -3307,11 +3295,10 @@ static int max77759_charger_probe(struct i2c_client *client,
 	atomic_set(&data->insel_cnt, 0);
 	i2c_set_clientdata(client, data);
 
-	ret = of_property_read_string(dev->of_node, "max77759,psy-name",
-				      &psy_name);
+	/* NOTE: only one instance */
+	ret = of_property_read_string(dev->of_node, "max77759,psy-name", &tmp);
 	if (ret == 0)
-		max77759_psy_desc.name = devm_kstrdup(dev, psy_name,
-						      GFP_KERNEL);
+		max77759_psy_desc.name = devm_kstrdup(dev, tmp, GFP_KERNEL);
 
 	chgr_psy_cfg.drv_data = data;
 	chgr_psy_cfg.supplied_to = NULL;
