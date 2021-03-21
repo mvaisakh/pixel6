@@ -27,6 +27,10 @@ struct lwis_top_device {
 	uint8_t scratch_mem[SCRATCH_MEMORY_SIZE];
 	/* Hash table for event subscriber */
 	DECLARE_HASHTABLE(event_subscriber, EVENT_HASH_BITS);
+
+	/* Subscription tasklet */
+	struct tasklet_struct subscribe_tasklet;
+	struct list_head emitted_event_list_tasklet;
 };
 
 int lwis_top_device_deinit(void);
