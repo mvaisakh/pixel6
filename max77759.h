@@ -94,8 +94,8 @@ struct max77759_foreach_cb_data {
 	const char *reason;
 
 	bool chgr_on;	/* CC_MAX != 0 */
-	bool stby_on;	/* on disconnect */
-	bool inflow_off;/* ~same as stby */
+	bool stby_on;	/* on disconnect, mode=0 */
+	int inflow_off;	/* on input_suspend, mode=0 */
 
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
 

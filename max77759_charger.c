@@ -342,7 +342,8 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case GBMS_CHGR_MODE_INFLOW_OFF:
 		if (!cb_data->inflow_off)
 			cb_data->reason = reason;
-		pr_debug("%s: INFLOW_OFF vote=0x%x\n", __func__, mode);
+		pr_debug("%s: INFLOW_OFF %s vote=0x%x\n", __func__,
+			 reason ? reason : "<>", mode);
 		cb_data->inflow_off += 1;
 		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
@@ -1095,13 +1096,15 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 	return usecase;
 }
 
+#define cb_data_is_inflow_off(cb_data) ((cb_data)->inflow_off >= 2)
+
 /*
  * Determines the use case to switch to. This is device/system dependent and
  * will likely be factored to a separate file (compile module).
  */
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
-	const int buck_on = cb_data->inflow_off ? 0 : cb_data->buck_on;
+	const int buck_on = cb_data_is_inflow_off(cb_data) ? 0 : cb_data->buck_on;
 	const int chgr_on = cb_data->stby_on ? 0 : cb_data->chgr_on;
 	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
@@ -1438,12 +1441,12 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	}
 
 	dev_info(data->dev, "%s:%s raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d inflow=%d\n",
+		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d inflow_off=%d\n",
 		__func__, trigger ? trigger : "<>",
 		cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx,
-		cb_data.wlc_rx, !cb_data.inflow_off);
+		cb_data.wlc_rx, cb_data_is_inflow_off(&cb_data));
 
 	/* just use raw "as is", no changes to switches etc */
 	if (cb_data.use_raw) {
@@ -1553,12 +1556,7 @@ static int max77759_chgin_input_suspend(struct max77759_chgr_data *data,
 					bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_CHGINSEL_SHIFT;
-	u8 reg_val;
 	int ret;
-
-	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_12, &reg_val);
-	if (ret < 0 || ((reg_val & value) == value))
-		return ret;
 
 	ret = max77759_reg_update(data, MAX77759_CHG_CNFG_12,
 				  MAX77759_CHG_CNFG_12_CHGINSEL_MASK,
@@ -1576,12 +1574,7 @@ static int max77759_wcin_input_suspend(struct max77759_chgr_data *data,
 				       bool enabled, const char *reason)
 {
 	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_WCINSEL_SHIFT;
-	u8 reg_val;
 	int ret;
-
-	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_12, &reg_val);
-	if (ret < 0 || ((reg_val & value) == value))
-		return ret;
 
 	ret =  max77759_reg_update(data, MAX77759_CHG_CNFG_12,
 				   MAX77759_CHG_CNFG_12_WCINSEL_MASK,
