@@ -279,6 +279,10 @@ static const struct exynos_display_underrun_param underrun_param = {
 	.te_var = 1,
 };
 
+static const u32 s6e3fc3_bl_range[] = {
+	95, 205, 315, 400, 2047
+};
+
 static const struct exynos_panel_mode s6e3fc3_modes[] = {
 	{
 		/* 1080x2400 @ 60Hz */
@@ -438,6 +442,8 @@ const struct exynos_panel_desc samsung_s6e3fc3 = {
 	.max_luminance = 5400000,
 	.max_avg_luminance = 1200000,
 	.min_luminance = 5,
+	.bl_range = s6e3fc3_bl_range,
+	.bl_num_ranges = ARRAY_SIZE(s6e3fc3_bl_range),
 	.modes = s6e3fc3_modes,
 	.num_modes = ARRAY_SIZE(s6e3fc3_modes),
 	.off_cmd_set = &s6e3fc3_off_cmd_set,
