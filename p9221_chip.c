@@ -1319,10 +1319,10 @@ void p9221_chip_init_interrupt_bits(struct p9221_charger_data *chgr, u16 chip_id
 		chgr->ints.over_volt_bit = 0;      /* TODO: b/181191668*/
 		chgr->ints.over_temp_bit = P9412_STAT_OVT;
 		chgr->ints.over_uv_bit = 0;
-		chgr->ints.cc_send_busy_bit = 0;
+		chgr->ints.cc_send_busy_bit = P9412_STAT_CCSENDBUSY;
 		chgr->ints.cc_data_rcvd_bit = P9412_STAT_CCDATARCVD;
 		chgr->ints.pp_rcvd_bit = P9412_STAT_PPRCVD;
-		chgr->ints.cc_error_bit = 0;
+		chgr->ints.cc_error_bit = P9412_STAT_CCERROR;
 		chgr->ints.cc_reset_bit = 0;
 		chgr->ints.propmode_stat_bit = P9412_PROP_MODE_STAT_INT;
 		chgr->ints.cdmode_change_bit = P9412_CDMODE_CHANGE_INT;
