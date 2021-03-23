@@ -1856,7 +1856,6 @@ static enum power_supply_property max77759_wcin_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
-
 static int max77759_wcin_is_valid(struct max77759_chgr_data *data)
 {
 	uint8_t int_ok;
@@ -1930,6 +1929,18 @@ static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 }
 
 #define MAX77759_WCIN_RAW_TO_UA	156
+
+static bool max77759_current_check_mode(struct max77759_chgr_data *data)
+{
+	int ret;
+	u8 reg;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
+	if (ret < 0)
+		return false;
+
+	return reg == 5 || reg == 6 || reg == 7 || reg == 0xe || reg == 0xf;
+}
 
 /* only valid in mode 5, 6, 7, e, f */
 static int max77759_wcin_current_now(struct max77759_chgr_data *data, int *iic)
@@ -2047,10 +2058,6 @@ static int max77759_init_wcin_psy(struct max77759_chgr_data *data)
 	return 0;
 }
 
-#if 0
-
-#define max77759_chg_is_valid(dtls0) \
-	(_chg_details_00_chgin_dtls_get(dtls0) == 0x3)
 
 static int max77759_chg_is_valid(struct max77759_chgr_data *data)
 {
@@ -2058,7 +2065,7 @@ static int max77759_chg_is_valid(struct max77759_chgr_data *data)
 	int ret;
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_INT_OK, &int_ok);
-	return (ret == 0) && (_chg_int_ok_chgin_ok_get(int_ok);
+	return (ret == 0) && _chg_int_ok_chgin_ok_get(int_ok);
 }
 
 static int max77759_chgin_is_online(struct max77759_chgr_data *data)
@@ -2066,10 +2073,13 @@ static int max77759_chgin_is_online(struct max77759_chgr_data *data)
 	uint8_t val;
 	int ret;
 
+	ret = max77759_chg_is_valid(data);
+	if (ret <= 0)
+		return ret;
+
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_02, &val);
-	return (ret == 0) && (_chg_details_02_chgin_sts_get(val);
+	return (ret == 0) && _chg_details_02_chgin_sts_get(val);
 }
-#endif
 
 /*
  * NOTE: could also check aicl to determine whether the adapter is, in fact,
@@ -2452,12 +2462,20 @@ static int max77759_psy_get_property(struct power_supply *psy,
 			pval->intval = -1;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		if (!max77759_current_check_mode(data)) {
+			pval->intval = 0;
+			break;
+		}
+
 		if (max77759_wcin_is_online(data))
 			rc = max77759_wcin_current_now(data, &pval->intval);
-		else
+		else if (max77759_chgin_is_online(data))
 			rc = max77759_chgin_current_now(data, &pval->intval);
+		else
+			rc = -EINVAL;
+
 		if (rc < 0)
-			pval->intval = -1;
+			pval->intval = rc;
 		break;
 	default:
 		dev_err(data->dev, "property (%d) unsupported.\n", psp);
