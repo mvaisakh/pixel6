@@ -95,8 +95,11 @@ struct max77759_foreach_cb_data {
 
 	bool chgr_on;	/* CC_MAX != 0 */
 	bool stby_on;	/* on disconnect, mode=0 */
-	int inflow_off;	/* on input_suspend, mode=0 */
 
+	int chgin_off;	/* input_suspend, mode=0 */
+	int wlcin_off;	/* input_suspend, mode=0 */
+
+	/* wlc_on is the same as wlc_rx */
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
 
 	bool otg_on;	/* power out, usually external */
@@ -130,6 +133,7 @@ struct max77759_usecase_data {
 	int lsw1_is_open;	/* MAX20339 STATUS2.lsw1open */
 	int lsw1_is_closed;	/* MAX20339 STATUS2.lsw1closed */
 
+	int wlc_en;		/* wlcrx/chgin coex */
 	int ext_bst_mode;	/* wlcrx+otg: b/175706836, TPS61372 P1.1+ */
 	int cpout_en;		/* wlcrx+otg: CPOUT enabled/disabled */
 	int cpout_ctl;		/* wlcrx+otg: CPOUT level 5.3V or DFLT */
@@ -168,8 +172,13 @@ enum gsu_usecases {
 /* internal system values */
 enum {
 	GBMS_CHGR_MODE_STBY_ON		= 0x10 + MAX77759_CHGR_MODE_ALL_OFF,
-	GBMS_CHGR_MODE_INFLOW_OFF	= 0x11 + MAX77759_CHGR_MODE_ALL_OFF,
+	/* USB inflow off */
+	GBMS_CHGR_MODE_CHGIN_OFF	= 0x11 + MAX77759_CHGR_MODE_ALL_OFF,
+	/* WCIN inflow off */
+	GBMS_CHGR_MODE_WLCIN_OFF	= 0x12 + MAX77759_CHGR_MODE_ALL_OFF,
+	/* charging enabled (charging current != 0) */
 	GBMS_CHGR_MODE_CHGR_BUCK_ON	= 0x10 + MAX77759_CHGR_MODE_CHGR_BUCK_ON,
+	/* Compat: old for programmging */
 	GBMS_CHGR_MODE_BOOST_UNO_ON	= 0x10 + MAX77759_CHGR_MODE_BOOST_UNO_ON,
 };
 

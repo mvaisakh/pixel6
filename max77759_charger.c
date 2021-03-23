@@ -339,12 +339,21 @@ static int max77759_foreach_callback(void *data, const char *reason,
 			 __func__, reason ? reason : "<>", mode);
 		cb_data->stby_on += 1;
 		break;
-	case GBMS_CHGR_MODE_INFLOW_OFF:
-		if (!cb_data->inflow_off)
+	/* input_suspend => 0 ilim */
+	case GBMS_CHGR_MODE_CHGIN_OFF:
+		if (!cb_data->chgin_off)
 			cb_data->reason = reason;
-		pr_debug("%s: INFLOW_OFF %s vote=0x%x\n", __func__,
+		pr_debug("%s: CHGIN_OFF %s vote=0x%x\n", __func__,
 			 reason ? reason : "<>", mode);
-		cb_data->inflow_off += 1;
+		cb_data->chgin_off += 1;
+		break;
+	/* input_suspend => DC_SUSPEND */
+	case GBMS_CHGR_MODE_WLCIN_OFF:
+		if (!cb_data->wlcin_off)
+			cb_data->reason = reason;
+		pr_debug("%s: WLCIN_OFF %s vote=0x%x\n", __func__,
+			 reason ? reason : "<>", mode);
+		cb_data->wlcin_off += 1;
 		break;
 	/* MAX77759: charging on via CC_MAX (needs inflow, buck_on on) */
 	case GBMS_CHGR_MODE_CHGR_BUCK_ON:
@@ -355,7 +364,7 @@ static int max77759_foreach_callback(void *data, const char *reason,
 		cb_data->chgr_on += 1;
 		break;
 
-	/* USB: inflow, actual charging controlled via BUCK_ON */
+	/* USB: present, charging controlled via GBMS_CHGR_MODE_CHGR_BUCK_ON */
 	case GBMS_USB_BUCK_ON:
 		if (!cb_data->buck_on)
 			cb_data->reason = reason;
@@ -1097,7 +1106,8 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 	return usecase;
 }
 
-#define cb_data_is_inflow_off(cb_data) ((cb_data)->inflow_off >= 2)
+#define cb_data_is_inflow_off(cb_data) \
+	((cb_data)->chgin_off && (cb_data)->wlcin_off)
 
 /*
  * Determines the use case to switch to. This is device/system dependent and
@@ -1105,7 +1115,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
  */
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
-	const int buck_on = cb_data_is_inflow_off(cb_data) ? 0 : cb_data->buck_on;
+	const int buck_on = cb_data->chgin_off ? 0 : cb_data->buck_on;
 	const int chgr_on = cb_data->stby_on ? 0 : cb_data->chgr_on;
 	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
@@ -1157,6 +1167,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 	} else if (cb_data->wlc_rx) {
 
+		/* will be in mode 4 if in stby */
 		if (!chgr_on) {
 			mode = MAX77759_CHGR_MODE_BUCK_ON;
 			usecase = GSU_MODE_WLC_RX;
@@ -1248,6 +1259,7 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->lsw1_is_closed = -EPROBE_DEFER;
 		uc_data->lsw1_is_open = -EPROBE_DEFER;
 
+		uc_data->wlc_en = -EPROBE_DEFER;
 		uc_data->ext_bst_mode = -EPROBE_DEFER;
 		uc_data->cpout_en = -EPROBE_DEFER;
 		uc_data->cpout_ctl = -EPROBE_DEFER;
@@ -1289,6 +1301,9 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	if (uc_data->lsw1_is_open == -EPROBE_DEFER)
 		uc_data->lsw1_is_open = of_get_named_gpio(node, "max77759,lsw1-is_open", 0);
 
+	/*  wlc_rx: disable when chgin  */
+	if (uc_data->wlc_en == -EPROBE_DEFER)
+		uc_data->wlc_en = of_get_named_gpio(node, "max77759,wlc-en", 0);
 	/* OPTIONAL: only in P1.1+ (TPS61372) */
 	if (uc_data->ext_bst_mode == -EPROBE_DEFER)
 		uc_data->ext_bst_mode = of_get_named_gpio(node, "max77759,extbst-mode", 0);
@@ -1316,7 +1331,8 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 
 /*
  * adjust *INSEL (only one source can be enabled at a given time)
- * TODO: should we mask the interrupts for CHGIN,WCIN as well?
+ * NOTE: providing compatibility with input_suspend makes this more complex
+ * that it needs to be.
  */
 static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 			      struct max77759_foreach_cb_data *cb_data,
@@ -1324,26 +1340,46 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 {
 	const u8 insel_mask = MAX77759_CHG_CNFG_12_CHGINSEL_MASK |
 			      MAX77759_CHG_CNFG_12_WCINSEL_MASK;
+	bool wlc_on = true;
 	u8 insel_value = 0;
 	int ret;
 
-	if (cb_data->buck_on) {
+	if (cb_data->buck_on && !cb_data->chgin_off) {
 		insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
 	} else if (cb_data->wlc_rx) {
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+
+		/* input_suspend */
+		if (cb_data->wlcin_off)
+			pr_warn("%s: wlc_rx=%d with wlcin_off=%d\n", __func__,
+				cb_data->wlc_rx, cb_data->wlcin_off);
 	} else if (cb_data->otg_on) {
-		/* all OTG cases mask CHGIN */
+		/* all OTG cases MUST mask CHGIN */
+		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+	} else if (cb_data_is_inflow_off(cb_data)) {
+		/* input_suspend masks only CHGIN */
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
 	} else {
-		insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
+		/* disconnected, do not enable chgin if in input_suspend */
+		if (!cb_data->chgin_off)
+			insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
+
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+	}
+
+	/* b/182973431 disable WLC IC when on CHGIN */
+	if (uc_data->cpout_en >= 0) {
+		wlc_on = (insel_value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
+
+		/* play well with the WLC chip */
+		gpio_set_value_cansleep(uc_data->cpout_en, wlc_on);
 	}
 
 	ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
 				      insel_mask, insel_value);
 
-	pr_debug("%s: usecase=%d mask=%x insel=%x (%d)\n", __func__,
-		 use_case, insel_mask, insel_value, ret);
+	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n", __func__,
+		 use_case, insel_mask, insel_value, wlc_on, ret);
 
 	return ret;
 }
@@ -1379,16 +1415,17 @@ static int max77759_set_usecase(struct max77759_chgr_data *data,
 			 uc_data->lsw1_is_open, uc_data->lsw1_is_closed);
 	}
 
-	/* just set the mode register to handle chgr_on/off and inflow */
-	if (from_uc == use_case)
-		goto exit_done;
-
+	/* always fix/adjust insel (solves multiple input_suspend) */
 	ret = max77759_set_insel(uc_data, cb_data, use_case);
 	if (ret < 0) {
 		dev_err(data->dev, "use_case=%d->%d set_insel failed ret:%d\n",
 			from_uc, use_case, ret);
 		return ret;
 	}
+
+	/* just set the mode register to handle chgr_on/off and inflow */
+	if (from_uc == use_case)
+		goto exit_done;
 
 	/* transition to STBY if requested from the use case. */
 	ret = max77759_to_standby(uc_data, use_case);
@@ -1452,6 +1489,8 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	/* this is the last vote of the election */
 	cb_data.reg = reg;	/* current */
 	cb_data.el = el;	/* election */
+
+	/* read directly instead of using the vote */
 	cb_data.wlc_rx = max77759_wcin_is_online(data);
 
 	/* now scan all the reasons, accumulate in cb_data */
@@ -1465,13 +1504,14 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		goto unlock_done;
 	}
 
-	dev_info(data->dev, "%s:%s raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d, "
-		"boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d inflow_off=%d\n",
+	dev_info(data->dev, "%s:%s raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
+		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d"
+		" chgin_off=%d wlcin_off=%d\n",
 		__func__, trigger ? trigger : "<>",
 		cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
-		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx,
-		cb_data.wlc_rx, cb_data_is_inflow_off(&cb_data));
+		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx,
+		cb_data.chgin_off, cb_data.wlcin_off);
 
 	/* just use raw "as is", no changes to switches etc */
 	if (cb_data.use_raw) {
@@ -1567,45 +1607,28 @@ static int max77759_set_charge_disable(struct max77759_chgr_data *data,
 				  enabled);
 }
 
-/* google_charger on disconnect */
-static int max77759_set_input_suspend(struct max77759_chgr_data *data,
-				      int enabled, const char *reason)
-{
-	return gvotable_cast_vote(data->mode_votable, reason,
-				  (void*)GBMS_CHGR_MODE_INFLOW_OFF,
-				  enabled);
-}
-
-/* turn off CHGIN_INSEL: works when max77559 registers are not protected */
 static int max77759_chgin_input_suspend(struct max77759_chgr_data *data,
 					bool enabled, const char *reason)
 {
-	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_CHGINSEL_SHIFT;
 	int ret;
 
-	ret = max77759_reg_update(data, MAX77759_CHG_CNFG_12,
-				  MAX77759_CHG_CNFG_12_CHGINSEL_MASK,
-				  value);
-	if (ret == 0)
-		ret = max77759_set_input_suspend(data, enabled, "CHGIN_SUSP");
+	ret = gvotable_cast_vote(data->mode_votable, "CHGIN_SUSP",
+				 (void*)GBMS_CHGR_MODE_CHGIN_OFF,
+				 enabled);
 	if (ret == 0)
 		data->chgin_input_suspend = enabled; /* cache */
 
 	return ret;
 }
 
-/* turn off WCIN_INSEL: works when max77559 registers are not protected */
 static int max77759_wcin_input_suspend(struct max77759_chgr_data *data,
 				       bool enabled, const char *reason)
 {
-	const u8 value = (!enabled) << MAX77759_CHG_CNFG_12_WCINSEL_SHIFT;
 	int ret;
 
-	ret =  max77759_reg_update(data, MAX77759_CHG_CNFG_12,
-				   MAX77759_CHG_CNFG_12_WCINSEL_MASK,
-				   value);
-	if (ret == 0)
-		ret = max77759_set_input_suspend(data, enabled, "WCIN_SUSP");
+	ret = gvotable_cast_vote(data->mode_votable, "WCIN_SUSP",
+				 (void*)GBMS_CHGR_MODE_WLCIN_OFF,
+				 enabled);
 	if (ret == 0)
 		data->wcin_input_suspend = enabled; /* cache */
 
@@ -1770,7 +1793,6 @@ static int max77759_chgin_get_ilim_max_ua(struct max77759_chgr_data *data,
 static int max77759_wcin_set_ilim_max_ua(struct max77759_chgr_data *data,
 					 int ilim_ua)
 {
-	const bool suspend = ilim_ua == 0;
 	u8 value;
 	int ret;
 
@@ -1789,8 +1811,7 @@ static int max77759_wcin_set_ilim_max_ua(struct max77759_chgr_data *data,
 					MAX77759_CHG_CNFG_10_WCIN_ILIM_MASK,
 					value);
 
-	if (ret == 0)
-		ret = max77759_wcin_input_suspend(data, suspend, "DC_ICL");
+	/* Legacy: DC_ICL doesn't suspend on ilim_ua == 0 (it should) */
 
 	return ret;
 }
@@ -1826,15 +1847,15 @@ static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 	struct max77759_chgr_data *data = gvotable_get_data(el);
 	int ret, suspend = (long)value > 0;
 
+	/* will trigger a CHARGER_MODE callback */
 	ret = max77759_wcin_input_suspend(data, suspend, "DC_SUSPEND");
 	if (ret < 0)
 		return;
 
-	/* enable charging when DC_SUSPEND is not set */
-	ret = max77759_set_charge_enabled(data, !suspend, "DC_SUSPEND");
+	/* buck_on in not set on WLC */
 
-	dev_info(data->dev, "DC_SUSPEND reason=%s, value=%ld suspend=%d (%d)\n",
-		reason ? reason : "", (long)value, suspend, ret);
+	pr_debug("%s: DC_SUSPEND reason=%s, value=%ld suspend=%d (%d)\n",
+		 __func__, reason ? reason : "", (long)value, suspend, ret);
 }
 
 static void max77759_dcicl_callback(struct gvotable_election *el,
@@ -1846,20 +1867,20 @@ static void max77759_dcicl_callback(struct gvotable_election *el,
 	const bool suspend = dc_icl == 0;
 	int ret;
 
-	pr_debug("%s: dc_icl=%d suspend=%d\n", __func__,
-		 dc_icl, suspend);
+	pr_debug("%s: DC_ICL reason=%s, value=%ld suspend=%d\n",
+		 __func__, reason ? reason : "", (long)value, suspend);
 
 	ret = max77759_wcin_set_ilim_max_ua(data, dc_icl);
 	if (ret < 0)
-		dev_err(data->dev, "cannot set DC_ICL (%d)\n", ret);
+		dev_err(data->dev, "cannot set dc_icl=%d (%d)\n",
+			dc_icl, ret);
 
-	ret = gvotable_cast_vote(data->dc_suspend_votable, "DC_ICL",
-				  (void *)1,
-				  suspend);
-
+	/* will trigger a CHARGER_MODE callback */
+	ret = max77759_wcin_input_suspend(data, suspend, "DC_ICL");
 	if (ret < 0)
-		dev_err(data->dev, "cannot set DC_SUSPEND=%d (%d)\n",
+		dev_err(data->dev, "cannot set suspend=%d (%d)\n",
 			suspend, ret);
+
 }
 
 /*************************
@@ -3058,8 +3079,8 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		if (data->insel_clear)
 			ret = max77759_chgr_input_mask_clear(data);
 
-		pr_debug("%s: INSEL clear=%d (%d)\n", __func__, data->insel_clear,
-			 data->insel_clear ? ret : 0);
+		pr_debug("%s: INSEL insel_auto_clear=%d (%d)\n", __func__,
+			 data->insel_clear, data->insel_clear ? ret : 0);
 		atomic_inc(&data->insel_cnt);
 	}
 
@@ -3110,8 +3131,8 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 		if (data->chgin_psy)
 			power_supply_changed(data->chgin_psy);
-		else
-			power_supply_changed(data->psy);
+
+		power_supply_changed(data->psy);
 	}
 
 	/* wireless input is changed */
@@ -3120,8 +3141,8 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 		if (data->wcin_psy)
 			power_supply_changed(data->wcin_psy);
-		else
-			power_supply_changed(data->psy);
+
+		power_supply_changed(data->psy);
 	}
 
 	/* someting else is changed */
