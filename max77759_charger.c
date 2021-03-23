@@ -1018,6 +1018,7 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 		}
 		break;
 	case GSU_MODE_USB_CHG:
+	case GSU_MODE_USB_DC:
 		if (from_uc == GSU_MODE_WLC_TX || from_uc == GSU_MODE_USB_CHG_WLC_TX) {
 			ret = gs101_wlc_tx_enable(uc_data, false);
 			if (ret < 0)
@@ -1119,6 +1120,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 		if (cb_data->dc_on) {
 			pr_warn("%s: no wlc_tx with dc_on for now\n", __func__);
+			/* TODO: GSU_MODE_USB_DC_WLC_TX */
 			wlc_tx = 0;
 		}
 	}
@@ -1136,13 +1138,36 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (wlc_tx)
 			usecase = GSU_MODE_WLC_TX;
 
-	} else if (buck_on && wlc_tx) {
+	} else if (wlc_tx) {
 
-		/* dc_on + wlc_tx handled up */
-		usecase = GSU_MODE_USB_CHG_WLC_TX;
-		mode = (chgr_on) ?
-			MAX77759_CHGR_MODE_CHGR_BUCK_ON :
-			MAX77759_CHGR_MODE_BUCK_ON;
+		if (!buck_on) {
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_WLC_TX;
+		} else if (cb_data->dc_on) {
+			pr_err("WLC_TX+DC is not supported yet\n");
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_USB_DC;
+		} else if (chgr_on) {
+			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
+			usecase = GSU_MODE_USB_CHG_WLC_TX;
+		} else {
+			mode = MAX77759_CHGR_MODE_BUCK_ON;
+			usecase = GSU_MODE_USB_CHG_WLC_TX;
+		}
+
+	} else if (cb_data->wlc_rx) {
+
+		if (!chgr_on) {
+			mode = MAX77759_CHGR_MODE_BUCK_ON;
+			usecase = GSU_MODE_WLC_RX;
+		} else if (cb_data->dc_on) {
+			mode = MAX77759_CHGR_MODE_ALL_OFF;
+			usecase = GSU_MODE_WLC_DC;
+		} else {
+			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
+			usecase = GSU_MODE_WLC_RX;
+		}
+
 	} else {
 
 		/* MODE_BUCK_ON is inflow */
@@ -1163,13 +1188,6 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (cb_data->dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
-			// usecase = GSU_MODE_WLC_DC;
-		} else if (wlc_tx) {
-			/* buck_on, inflow_off or OTG */
-			usecase = GSU_MODE_WLC_TX;
-		} else if (cb_data->wlc_rx) {
-			/* mode = _CHGR_BUCK_ON || _BUCK_ON*/
-			usecase = GSU_MODE_WLC_RX;
 		} else if (cb_data->stby_on && !cb_data->chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
@@ -1218,19 +1236,35 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	int ret;
 
 	if (!node) {
-		uc_data->init_done = false;
+		uc_data->is_a1 = -1;
+
 		uc_data->bst_on = -EPROBE_DEFER;
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
 		uc_data->ls2_en = -EPROBE_DEFER;
+		uc_data->sw_en = -EPROBE_DEFER;
+
+		uc_data->vin_is_valid = -EPROBE_DEFER;
 		uc_data->lsw1_is_closed = -EPROBE_DEFER;
 		uc_data->lsw1_is_open = -EPROBE_DEFER;
-		uc_data->vin_is_valid = -EPROBE_DEFER;
-		uc_data->cpout_ctl = -EPROBE_DEFER;
+
+		uc_data->ext_bst_mode = -EPROBE_DEFER;
 		uc_data->cpout_en = -EPROBE_DEFER;
+		uc_data->cpout_ctl = -EPROBE_DEFER;
 		uc_data->cpout21_en = -EPROBE_DEFER;
-		uc_data->sw_en = -EPROBE_DEFER;
-		uc_data->is_a1 = -1;
+		uc_data->init_done = false;
+
+		/* TODO: read from device tree */
+		ret = max77759_otg_ilim_ma_to_code(&uc_data->otg_ilim,
+						   GS101_OTG_ILIM_DEFAULT_MA);
+		if (ret < 0)
+			uc_data->otg_ilim = MAX77759_CHG_CNFG_05_OTG_ILIM_1500MA;
+
+		ret = max77759_otg_vbyp_mv_to_code(&uc_data->otg_vbyp,
+						   GS101_OTG_VBYPASS_DEFAULT_MV);
+		if (ret < 0)
+			uc_data->otg_vbyp = MAX77759_CHG_CNFG_11_OTG_VBYP_5100MV;
+
 		return 0;
 	}
 
@@ -1240,42 +1274,33 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_sel = of_get_named_gpio(node, "max77759,bst-sel", 0);
 	if (uc_data->ext_bst_ctl == -EPROBE_DEFER)
 		uc_data->ext_bst_ctl = of_get_named_gpio(node, "max77759,extbst-ctl", 0);
+
 	if (uc_data->ls2_en == -EPROBE_DEFER)
 		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
+	/* OTG+RTXL: IN-OUT switch of AO37 (forced always) */
+	if (uc_data->sw_en == -EPROBE_DEFER)
+		uc_data->sw_en = of_get_named_gpio(node, "max77759,sw-en", 0);
 
+	/* NBC workaround */
+	if (uc_data->vin_is_valid == -EPROBE_DEFER)
+		uc_data->vin_is_valid = of_get_named_gpio(node, "max77759,vin-is_valid", 0);
 	if (uc_data->lsw1_is_closed == -EPROBE_DEFER)
 		uc_data->lsw1_is_closed = of_get_named_gpio(node, "max77759,lsw1-is_closed", 0);
 	if (uc_data->lsw1_is_open == -EPROBE_DEFER)
 		uc_data->lsw1_is_open = of_get_named_gpio(node, "max77759,lsw1-is_open", 0);
 
-	if (uc_data->vin_is_valid == -EPROBE_DEFER)
-		uc_data->vin_is_valid = of_get_named_gpio(node, "max77759,vin-is_valid", 0);
-
-	/*  wlc_rx -> wlc_rx+otg disable cpout */
-	if (uc_data->cpout_en == -EPROBE_DEFER)
-		uc_data->cpout_en = of_get_named_gpio(node, "max77759,cpout-en", 0);
-	/* ->wlc_tx disable 2:1 cpout */
-	if (uc_data->cpout21_en == -EPROBE_DEFER)
-		uc_data->cpout21_en = of_get_named_gpio(node, "max77759,cpout_21-en", 0);
-	/* to 5.2V in p9412 */
-	if (uc_data->cpout_ctl == -EPROBE_DEFER)
-		uc_data->cpout_ctl = of_get_named_gpio(node, "max77759,cpout-ctl", 0);
-
 	/* OPTIONAL: only in P1.1+ (TPS61372) */
 	if (uc_data->ext_bst_mode == -EPROBE_DEFER)
 		uc_data->ext_bst_mode = of_get_named_gpio(node, "max77759,extbst-mode", 0);
-
-	/* OTG+RTXL: IN-OUT switch of AO37 (forced always) */
-	if (uc_data->sw_en == -EPROBE_DEFER)
-		uc_data->sw_en = of_get_named_gpio(node, "max77759,sw-en", 0);
-
-	ret = max77759_otg_ilim_ma_to_code(&uc_data->otg_ilim, GS101_OTG_ILIM_DEFAULT_MA);
-	if (ret < 0)
-		uc_data->otg_ilim = MAX77759_CHG_CNFG_05_OTG_ILIM_1500MA;
-
-	ret = max77759_otg_vbyp_mv_to_code(&uc_data->otg_vbyp, GS101_OTG_VBYPASS_DEFAULT_MV);
-	if (ret < 0)
-		uc_data->otg_vbyp = MAX77759_CHG_CNFG_11_OTG_VBYP_5100MV;
+	/*  wlc_rx -> wlc_rx+otg disable cpout */
+	if (uc_data->cpout_en == -EPROBE_DEFER)
+		uc_data->cpout_en = of_get_named_gpio(node, "max77759,cpout-en", 0);
+	/* to 5.2V in p9412 */
+	if (uc_data->cpout_ctl == -EPROBE_DEFER)
+		uc_data->cpout_ctl = of_get_named_gpio(node, "max77759,cpout-ctl", 0);
+	/* ->wlc_tx disable 2:1 cpout */
+	if (uc_data->cpout21_en == -EPROBE_DEFER)
+		uc_data->cpout21_en = of_get_named_gpio(node, "max77759,cpout_21-en", 0);
 
 	return uc_data->bst_on != -EPROBE_DEFER &&
 	       uc_data->bst_sel != -EPROBE_DEFER &&
