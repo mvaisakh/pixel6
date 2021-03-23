@@ -3053,13 +3053,14 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 	pr_debug("INT : %02x %02x\n", chg_int[0], chg_int[1]);
 
-	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M && data->insel_clear) {
-		ret = max77759_chgr_input_mask_clear(data);
-		if (ret < 0)
-			pr_info("INT : %x %x : clear=%d\n",
-				chg_int[0], chg_int[1], ret);
-		else
-			atomic_inc(&data->insel_cnt);
+	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M) {
+
+		if (data->insel_clear)
+			ret = max77759_chgr_input_mask_clear(data);
+
+		pr_debug("%s: INSEL clear=%d (%d)\n", __func__, data->insel_clear,
+			 data->insel_clear ? ret : 0);
+		atomic_inc(&data->insel_cnt);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
