@@ -391,6 +391,8 @@
 
 #define P9412_DATA_BUF_START			0x804
 #define P9412_DATA_BUF_SIZE			0xFC /* 252 bytes */
+#define P9412_PP_SEND_BUF_START			0x50
+#define P9412_PP_RECV_BUF_START			0x58
 
 #define P9412_RN_MAX_POLL_ATTEMPTS		5
 #define P9412_RN_DELAY_MS			50
@@ -422,6 +424,8 @@
 #define P9412_STAT_OVT				BIT(2)
 #define P9412_STAT_TXFOD			BIT(12)
 #define P9412_STAT_RXCONNECTED			BIT(11)
+#define P9412_STAT_PPPSENT			BIT(9)
+#define P9412_STAT_CSP				BIT(10)
 #define P9412_STAT_TXCONFLICT			BIT(1)
 /* EPT code */
 #define EPT_END_OF_CHARGE			BIT(0)
@@ -499,6 +503,7 @@ struct p9221_charger_ints_bit {
 	u16				tx_fod_bit;
 	u16				tx_underpower_bit;
 	u16				tx_uvlo_bit;
+	u16				pppsent_bit;
 	u16				stat_rtx_mask;
 };
 
@@ -603,7 +608,10 @@ struct p9221_charger_data {
 
 	u16				reg_tx_id_addr;
 	u16				reg_tx_mfg_code_addr;
+	u16				reg_packet_type_addr;
 	u16				set_cmd_ccactivate_bit;
+	u16				reg_set_pp_buf_addr;
+	u16				reg_get_pp_buf_addr;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -696,4 +704,8 @@ enum p9382_rtx_err {
       -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_tx_id_addr, id, sizeof(*id)))
 #define p9xxx_chip_get_tx_mfg_code(chgr, code) (chgr->reg_tx_mfg_code_addr < 0 ? \
       -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_tx_mfg_code_addr, code, sizeof(*code)))
+#define p9xxx_chip_set_pp_buf(chgr, data, len) (chgr->reg_set_pp_buf_addr == 0 ? \
+      -ENOTSUPP : chgr->reg_write_n(chgr, chgr->reg_set_pp_buf_addr, data, len))
+#define p9xxx_chip_get_pp_buf(chgr, data, len) (chgr->reg_get_pp_buf_addr == 0 ? \
+      -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_get_pp_buf_addr, data, len))
 #endif /* __P9221_CHARGER_H__ */

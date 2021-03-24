@@ -349,7 +349,7 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 {
 	int ret = 0;
 	const bool no_csp = charger->ben_state &&
-			    charger->ints.cc_send_busy_bit &&
+			    charger->ints.pppsent_bit &&
 			    charger->com_busy;
 
 	if (no_csp) {
@@ -3204,7 +3204,7 @@ static void p9382_txid_work(struct work_struct *work)
 			struct p9221_charger_data, txid_work.work);
 	int ret = 0;
 
-	if (charger->ints.cc_send_busy_bit && charger->com_busy) {
+	if (charger->ints.pppsent_bit && charger->com_busy) {
 		schedule_delayed_work(&charger->txid_work,
 				      msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		logbuffer_log(charger->rtx_log,
@@ -3258,7 +3258,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	u16 status_reg;
 	bool attached = 0;
 	const u16 mode_changed_bit = charger->ints.mode_changed_bit;
-	const u16 cc_send_busy_bit = charger->ints.cc_send_busy_bit;
+	const u16 pppsent_bit = charger->ints.pppsent_bit;
 	const u16 hard_ocp_bit = charger->ints.hard_ocp_bit;
 	const u16 tx_conflict_bit = charger->ints.tx_conflict_bit;
 	const u16 rx_connected_bit = charger->ints.rx_connected_bit;
@@ -3294,7 +3294,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		return;
 	}
 
-	if (irq_src & cc_send_busy_bit)
+	if (irq_src & pppsent_bit)
 		charger->com_busy = false;
 
 	if (irq_src & (hard_ocp_bit | tx_conflict_bit)) {
@@ -3486,7 +3486,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		u8 tmp, buff[sizeof(charger->pp_buf)], crc;
 
 		/* TODO: extract to a separate function */
-		res = charger->chip_get_data_buf(charger, buff, sizeof(buff));
+		res = p9xxx_chip_get_pp_buf(charger, buff, sizeof(buff));
 		if (res) {
 			dev_err(&charger->client->dev,
 				"Failed to read PP len: %d\n", res);
