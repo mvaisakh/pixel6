@@ -4984,7 +4984,7 @@ static int max1720x_pm_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops max1720x_pm_ops = {
-	SET_LATE_SYSTEM_SLEEP_PM_OPS(max1720x_pm_suspend, max1720x_pm_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(max1720x_pm_suspend, max1720x_pm_resume)
 };
 
 static struct i2c_driver max1720x_i2c_driver = {
