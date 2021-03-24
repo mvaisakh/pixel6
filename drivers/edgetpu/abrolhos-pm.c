@@ -24,6 +24,7 @@
 
 #include "soc/google/exynos_pm_qos.h"
 #include "soc/google/bts.h"
+#include "soc/google/bcl.h"
 
 #include "edgetpu-pm.c"
 
@@ -465,6 +466,12 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 	if (ret)
 		abrolhos_power_down(etpm);
+	else {
+        	if (!etdev->bcl_dev)
+			etdev->bcl_dev = gs101_retrieve_bcl_handle();
+		if (etdev->bcl_dev)
+			gs101_init_tpu_ratio(etdev->bcl_dev);
+	}
 
 	return ret;
 }

@@ -35,6 +35,8 @@
 #include "edgetpu-thermal.h"
 #include "edgetpu-usage-stats.h"
 
+#include "soc/google/bcl.h"
+
 #define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
 #define etdev_warn(etdev, fmt, ...)                                            \
 	dev_warn((etdev)->etcdev, fmt, ##__VA_ARGS__)
@@ -199,6 +201,7 @@ struct edgetpu_dev {
 	/* debug dump handlers */
 	edgetpu_debug_dump_handlers *debug_dump_handlers;
 	struct work_struct debug_dump_work;
+	struct gs101_bcl_dev *bcl_dev;
 };
 
 extern const struct file_operations edgetpu_fops;
