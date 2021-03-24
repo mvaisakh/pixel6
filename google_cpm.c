@@ -57,6 +57,13 @@
 #define GCPM_DEFAULT_DC_LIMIT_VBATT_MAX		4400000
 #define GCPM_DEFAULT_DC_LIMIT_DELTA_HIGH	50000
 
+#define GCPM_TAPER_STEP_FV_MARGIN	0
+#define GCPM_TAPER_STEP_CC_STEP		200000
+#define GCPM_TAPER_STEP_COUNT		5
+#define GCPM_TAPER_STEP_GRACE		5
+#define GCPM_TAPER_STEP_VOLTAGE		0
+#define GCPM_TAPER_STEP_INTERVAL_S	60
+
 /* TODO: move to configuration */
 #define DC_TA_VMAX_MV		9800000
 /* TODO: move to configuration */
@@ -128,8 +135,13 @@ struct gcpm_drv  {
 
 	/* force check of the DC limit again (debug) */
 	bool new_dc_limit;
-	/* force disable */
-	bool taper_control;
+
+	/* taper off of current at tier, voltage */
+	u32 taper_step_interval;	/* countdown interval in seconds */
+	u32 taper_step_voltage;		/* voltage before countdown */
+	u32 taper_step_grace;		/* steps from voltage before countdown */
+	u32 taper_step_count;		/* countdown steps before dc_done */
+	int taper_step;			/* actual countdown */
 
 	/* policy: power demand limit for DC charging */
 	u32 dc_limit_vbatt_low;		/* DC will not stop until low */
@@ -158,7 +170,7 @@ struct gcpm_drv  {
 	((psy) && (psy)->desc && (psy)->desc->name ? (psy)->desc->name : "???")
 
 /* TODO: handle capabilities based on index number */
-#define gcpm_is_dc(index) \
+#define gcpm_is_dc(gcpm, index) \
 	((index) >= GCPM_INDEX_DC_ENABLE)
 
 static struct power_supply *gcpm_chg_get_charger(const struct gcpm_drv *gcpm, int index)
@@ -235,20 +247,20 @@ static int gcpm_chg_offline(struct gcpm_drv *gcpm, int index)
 }
 
 /* preset charging parameters */
-static int gcpm_chg_preset(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
+static int gcpm_chg_preset(struct power_supply *chg_psy, int fv_uv, int cc_max)
 {
 	const char *name = gcpm_psy_name(chg_psy);
 	int ret;
 
 	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
-			    gcpm->fv_uv);
+			    fv_uv);
 	if (ret < 0) {
 		pr_err("%s: %s no fv_uv (%d)\n", __func__, name, ret);
 		return ret;
 	}
 
 	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
-			    gcpm->cc_max);
+			    cc_max);
 	if (ret < 0)
 		pr_err("%s: %s no cc_max (%d)\n", __func__, name, ret);
 
@@ -263,7 +275,7 @@ static int gcpm_chg_online(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
 	int ret;
 
 	/* preset the new charger */
-	ret = gcpm_chg_preset(gcpm, chg_psy);
+	ret = gcpm_chg_preset(chg_psy, gcpm->fv_uv, gcpm->cc_max);
 	if (ret < 0)
 		preset_ok = false;
 
@@ -276,7 +288,7 @@ static int gcpm_chg_online(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
 
 	/* retry preset if failed */
 	if (!preset_ok)
-		ret = gcpm_chg_preset(gcpm, chg_psy);
+		ret = gcpm_chg_preset(chg_psy, gcpm->fv_uv, gcpm->cc_max);
 	if (ret < 0) {
 		int rc;
 
@@ -356,7 +368,7 @@ static int gcpm_dc_stop(struct gcpm_drv *gcpm, int index)
 {
 	int ret = 0;
 
-	if (!gcpm_is_dc(index))
+	if (!gcpm_is_dc(gcpm, index))
 		return 0;
 
 	switch (gcpm->dc_state) {
@@ -435,10 +447,11 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	const int vbatt_max = gcpm->dc_limit_vbatt_max;
 	int batt_demand, index = GCPM_DEFAULT_CHARGER;
 
+	/* taper_control only applies to DC (unless is forced) */
 	if (gcpm->force_active >= 0)
 		return gcpm->force_active;
 
-	/* keep on default */
+	/* keep on default until we have valid charging parameters */
 	if (gcpm->cc_max <= 0 || gcpm->fv_uv <= 0)
 		return GCPM_DEFAULT_CHARGER;
 
@@ -500,15 +513,12 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 
 static bool gcpm_chg_dc_check_source(const struct gcpm_drv *gcpm, int index)
 {
-	if (gcpm->taper_control)
-		return false;
-
 	/* Will run detection only the first time */
 	if (gcpm->tcpm_pps_data.stage == PPS_NOTSUPP &&
 	    gcpm->wlc_pps_data.stage == PPS_NOTSUPP )
 		return false;
 
-	return gcpm_is_dc(index);
+	return gcpm_is_dc(gcpm, index);
 }
 
 /* reset gcpm pps state */
@@ -648,7 +658,76 @@ static int gcpm_pps_offline(struct gcpm_drv *gcpm)
 	return 0;
 }
 
-/* triggered on every FV_UV, keep polling if in -EAGAIN */
+/* <=0 to disable, > 0 to enable "n" counts */
+static bool gcpm_taper_ctl(struct gcpm_drv *gcpm, int count)
+{
+	bool changed = false;
+
+	if (count <= 0) {
+		changed = gcpm->taper_step != 0;
+		gcpm->taper_step = 0;
+	} else if (gcpm->taper_step == 0) {
+		gcpm->taper_step = count;
+		changed = true;
+	}
+
+	return changed;
+}
+
+static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
+{
+	const int delta = gcpm->taper_step_count - taper_step;
+	int fv_uv = gcpm->fv_uv, cc_max = gcpm->cc_max;
+	struct power_supply *dc_psy;
+
+	if (taper_step <= 0)
+		return true;
+	/*
+	 * TODO: on a race between TAPER and select, active might not
+	 * be a DC source. Force done to prevent voltage spikes.
+	 */
+	dc_psy = gcpm_chg_get_active(gcpm);
+	if (!dc_psy)
+		return true;
+
+	/* Optional voltage limit */
+	if (gcpm->taper_step_voltage) {
+		int vbatt;
+
+		vbatt = GPSY_GET_PROP(dc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
+		if (vbatt < 0)
+			pr_err("%s: cannot read voltage (%d)", __func__, vbatt);
+		else if (vbatt < gcpm->taper_step_voltage)
+			return false;
+	}
+
+	/* adjust ccharging voltage, current for the step */
+	fv_uv -= GCPM_TAPER_STEP_FV_MARGIN;
+	cc_max = cc_max - delta * GCPM_TAPER_STEP_CC_STEP;
+	if (cc_max < gcpm->cc_max / 2)
+		cc_max = gcpm->cc_max / 2;
+
+	/* cc_max > gcpm->cc_max when delta < 0 */
+	if (cc_max < gcpm->cc_max) {
+		int ret;
+
+		/* failure to preset stop taper and revert to main */
+		ret = gcpm_chg_preset(dc_psy, fv_uv, cc_max);
+		if (ret < 0)
+			return true;
+	}
+
+	pr_debug("CHG_CHK: taper_step=%d fv_uv=%d->%d, cc_max=%d->%d\n",
+		 taper_step, gcpm->fv_uv, fv_uv, gcpm->cc_max, cc_max);
+
+	/* not done */
+	return false;
+}
+
+/*
+ * triggered on every FV_UV and in DC_PASSTHROUGH
+ * will keep polling if in -EAGAIN
+ */
 static void gcpm_chg_select_work(struct work_struct *work)
 {
 	struct gcpm_drv *gcpm =
@@ -659,14 +738,10 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	mutex_lock(&gcpm->chg_psy_lock);
 
 	index = gcpm_chg_select(gcpm);
-
-	if (gcpm->taper_control) {
-
-		/* TODO: smooth from dc_index to the default charger */
-		index = GCPM_DEFAULT_CHARGER;
-		dc_done = true;
-	} else if (index < 0) {
+	if (index < 0) {
 		const int interval = 5; /* 5 seconds */
+
+		/* TODO: force to default after 3 faults? */
 
 		pr_debug("CHG_CHK: reschedule in %d seconds\n", interval);
 		schedule_delayed_work(&gcpm->select_work,
@@ -676,20 +751,41 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	}
 
 	/*
-	 * NOTE: disabling DC might need to transition to charger mode 0
-	 *       same might apply when switching between WLC-DC and PPS-DC.
-	 *       Figure out a way to do this if needed.
+	 * taper control while in dc_ena might knock down fv_uv by a little
+	 * and will reduce cc_max every gcpm->taper_step_interval by a fixed
+	 * amount seconds for gcpm->taper_step_count seconds.
 	 */
 	dc_ena = gcpm_chg_dc_check_source(gcpm, index);
+	if (dc_ena && gcpm->taper_step > 0) {
+		const int interval = msecs_to_jiffies(gcpm->taper_step_interval * 1000);
+
+		dc_done = gcpm_taper_step(gcpm, gcpm->taper_step - 1);
+		if (!dc_done) {
+			schedule_delayed_work(&gcpm->select_work, interval);
+			gcpm->taper_step -= 1;
+		}
+
+		pr_debug("CHG_CHK: taper step=%d done=%d\n", gcpm->taper_step, dc_done);
+	} else if (gcpm->taper_step != 0) {
+		gcpm_taper_ctl(gcpm, 0);
+	}
+
 	pr_debug("CHG_CHK: DC dc_ena=%d dc_state=%d dc_index=%d->%d\n",
 		 dc_ena, gcpm->dc_state, gcpm->dc_index, index);
-	if (!dc_ena) {
+
+	/*
+	 * NOTE: disabling DC might need to transition to charger mode 0
+	 * same might apply when switching between WLC-DC and PPS-DC.
+	 * Figure out a way to do this if needed.
+	 */
+	if (!dc_ena || dc_done) {
 
 		if (gcpm->dc_state > DC_IDLE && gcpm->dc_index > 0) {
 			pr_info("CHG_CHK: done=%d stop PPS_Work for dc_index=%d\n",
 				dc_done, gcpm->dc_index);
 
-			gcpm->dc_index =  dc_done ? -1 : GCPM_DEFAULT_CHARGER;
+			gcpm->dc_index = dc_done ? -1 : GCPM_DEFAULT_CHARGER;
+			gcpm->taper_step = 0;
 			schedule_pps_interval = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
@@ -723,7 +819,7 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 	const int dc_state = gcpm->dc_state; /* will change */
 	int pps_done, ret;
 
-	if (dc_state <= DC_IDLE && !gcpm_is_dc(active_index))
+	if (dc_state <= DC_IDLE && !gcpm_is_dc(gcpm, active_index))
 		return 0;
 
 	/* online the default charger (do not change active, nor enable) */
@@ -972,8 +1068,8 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 				 const union power_supply_propval *pval)
 {
 	struct gcpm_drv *gcpm = power_supply_get_drvdata(psy);
-	bool taper_control, ta_check = false;
 	struct power_supply *chg_psy = NULL;
+	bool ta_check = false;
 	bool route = true;
 	int ret = 0;
 
@@ -987,12 +1083,16 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	mutex_lock(&gcpm->chg_psy_lock);
 	switch (psp) {
 	/* do not route to the active charger */
-	case GBMS_PROP_TAPER_CONTROL:
-		taper_control = pval->intval != GBMS_TAPER_CONTROL_OFF;
-		ta_check = taper_control != gcpm->taper_control;
-		gcpm->taper_control = taper_control;
+	case GBMS_PROP_TAPER_CONTROL: {
+		int count = 0;
+
+		if (pval->intval != GBMS_TAPER_CONTROL_OFF)
+			count = gcpm->taper_step_count + gcpm->taper_step_grace;
+
+		/* ta_check is set when taper control changes value */
+		ta_check = gcpm_taper_ctl(gcpm, count);
 		route = false;
-		break;
+	} break;
 
 	/* also route to the active charger */
 	case GBMS_PROP_CHARGE_DISABLE:
@@ -1001,6 +1101,9 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 		 * TODO: reset DC state and PPS detection, disable dc
 		 */
 		pr_info("%s: ChargeDisable value=%d\n", __func__, pval->intval);
+		if (pval->intval && gcpm->dc_state == DC_DISABLED)
+			gcpm->dc_state = DC_IDLE;
+
 		ta_check = true;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -1367,15 +1470,23 @@ static int gcpm_debug_get_active(void *data, u64 *val)
 static int gcpm_debug_set_active(void *data, u64 val)
 {
 	struct gcpm_drv *gcpm = data;
-	const int intval = val;
+	int intval = (int)val;
+
+	if (gcpm->force_active != -1 && val == gcpm->force_active)
+		intval = -1;
+
+	pr_info("%s: val=%llu val=%lld intval=%d\n", __func__, val, val, intval);
 
 	if (intval != -1 && (intval < 0 || intval >= gcpm->chg_psy_count))
 		return -ERANGE;
-	if (intval != -1 && !gcpm->chg_psy_avail[intval])
+	if (intval != -1 && !gcpm_chg_get_charger(gcpm, intval))
 		return -EINVAL;
 
 	mutex_lock(&gcpm->chg_psy_lock);
-	gcpm->force_active = val;
+	gcpm->force_active = intval;
+	/* always reset DC STATE */
+	gcpm->dc_state = DC_IDLE;
+	gcpm_pps_online(gcpm);
 	mod_delayed_work(system_wq, &gcpm->select_work, 0);
 	mutex_unlock(&gcpm->chg_psy_lock);
 
@@ -1480,6 +1591,35 @@ static int gcpm_debug_dc_state_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_dc_state_fops, gcpm_debug_dc_state_get,
 			gcpm_debug_dc_state_set, "%llu\n");
 
+
+static int gcpm_debug_taper_ctl_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_ctl_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	bool ta_check;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+
+	/* ta_check set when taper control changes value */
+	ta_check = gcpm_taper_ctl(gcpm, val);
+	if (ta_check)
+		mod_delayed_work(system_wq, &gcpm->select_work, 0);
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_ctl_fops, gcpm_debug_taper_ctl_get,
+			gcpm_debug_taper_ctl_set, "%llu\n");
+
 static struct dentry *gcpm_init_fs(struct gcpm_drv *gcpm)
 {
 	struct dentry *de;
@@ -1492,8 +1632,8 @@ static struct dentry *gcpm_init_fs(struct gcpm_drv *gcpm)
 	debugfs_create_file("active", 0644, de, gcpm, &gcpm_debug_active_fops);
 	debugfs_create_file("dc_limit_demand", 0644, de, gcpm,
 			    &gcpm_debug_dc_limit_demand_fops);
-	debugfs_create_file("pps_stage", 0644, de, gcpm,
-			    &gcpm_debug_pps_stage_fops);
+	debugfs_create_file("pps_stage", 0644, de, gcpm, &gcpm_debug_pps_stage_fops);
+	debugfs_create_file("taper_ctl", 0644, de, gcpm, &gcpm_debug_taper_ctl_fops);
 
 	return de;
 }
@@ -1662,6 +1802,7 @@ static int google_cpm_probe(struct platform_device *pdev)
 	gcpm->chg_psy_retries = 10; /* chg_psy_retries *  INIT_RETRY_DELAY_MS */
 	gcpm->out_uv = -1;
 	gcpm->out_ua = -1;
+
 	INIT_DELAYED_WORK(&gcpm->pps_work, gcpm_pps_wlc_dc_work);
 	INIT_DELAYED_WORK(&gcpm->select_work, gcpm_chg_select_work);
 	INIT_DELAYED_WORK(&gcpm->init_work, gcpm_init_work);
@@ -1700,8 +1841,7 @@ static int google_cpm_probe(struct platform_device *pdev)
 	}
 
 	/* GCPM might need a gpio to enable/disable DC/PPS */
-	gcpm->dcen_gpio = of_get_named_gpio(pdev->dev.of_node,
-					    "google,dc-en", 0);
+	gcpm->dcen_gpio = of_get_named_gpio(pdev->dev.of_node, "google,dc-en", 0);
 	if (gcpm->dcen_gpio >= 0) {
 		of_property_read_u32(pdev->dev.of_node, "google,dc-en-value",
 				     &gcpm->dcen_gpio_default);
@@ -1744,6 +1884,26 @@ static int google_cpm_probe(struct platform_device *pdev)
 					    GCPM_DEFAULT_DC_LIMIT_DELTA_HIGH;
 	if (gcpm->dc_limit_vbatt_high > gcpm->dc_limit_vbatt_max)
 		gcpm->dc_limit_vbatt_high = gcpm->dc_limit_vbatt_max;
+
+	/* taper control */
+	gcpm->taper_step = -1;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-interval",
+				   &gcpm->taper_step_interval);
+	if (ret < 0)
+		gcpm->taper_step_interval = GCPM_TAPER_STEP_INTERVAL_S;
+
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-count",
+				   &gcpm->taper_step_count);
+	if (ret < 0)
+		gcpm->taper_step_count = GCPM_TAPER_STEP_COUNT;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-grace",
+				   &gcpm->taper_step_grace);
+	if (ret < 0)
+		gcpm->taper_step_grace = GCPM_TAPER_STEP_GRACE;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-voltage",
+				   &gcpm->taper_step_voltage);
+	if (ret < 0)
+		gcpm->taper_step_voltage = GCPM_TAPER_STEP_VOLTAGE;
 
 	/* sysfs & debug */
 	gcpm->debug_entry = gcpm_init_fs(gcpm);
