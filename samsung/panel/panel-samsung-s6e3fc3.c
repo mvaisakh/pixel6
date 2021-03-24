@@ -72,6 +72,44 @@ static const struct exynos_dsi_cmd s6e3fc3_lp_high_cmds[] = {
 	EXYNOS_DSI_CMD(display_on, 0)
 };
 
+static const struct exynos_dsi_cmd s6e3fc3_1_pwm_cmds[] = {
+	EXYNOS_DSI_CMD0(test_key_on_f0),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x28, 0xF2),
+	EXYNOS_DSI_CMD_SEQ(0xF2, 0xCC),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xF2, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x00, 0x72),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xD2, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x00, 0x72),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x02, 0x33, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x02, 0x22),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x02, 0x38, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x00, 0x01, 0x00),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x28, 0xF2),
+	EXYNOS_DSI_CMD_SEQ(0xF2, 0xC4),
+	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F),
+	EXYNOS_DSI_CMD0(test_key_off_f0)
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3fc3_1_pwm);
+
+static const struct exynos_dsi_cmd s6e3fc3_4_pwm_cmds[] = {
+	EXYNOS_DSI_CMD0(test_key_on_f0),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x28, 0xF2),
+	EXYNOS_DSI_CMD_SEQ(0xF2, 0xCC),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xF2, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0xC4),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xD2, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0xC4),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x02, 0x33, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x02, 0x22),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x02, 0x38, 0x65),
+	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x00, 0x01, 0x00),
+	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x28, 0xF2),
+	EXYNOS_DSI_CMD_SEQ(0xF2, 0xC4),
+	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F),
+	EXYNOS_DSI_CMD0(test_key_off_f0)
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3fc3_4_pwm);
+
 static const struct exynos_binned_lp s6e3fc3_binned_lp[] = {
 	BINNED_LP_MODE("off",     0, s6e3fc3_lp_off_cmds),
 	BINNED_LP_MODE("low",    80, s6e3fc3_lp_low_cmds),
@@ -192,6 +230,9 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 
 	s6e3fc3_change_frequency(ctx, drm_mode_vrefresh(mode));
 
+	if (ctx->panel_rev == PANEL_REV_PROTO1_1)
+		exynos_panel_send_cmd_set(ctx, &s6e3fc3_4_pwm_cmd_set);
+
 	/* DSC related configuration */
 	exynos_dcs_compression_mode(ctx, 0x1); /* DSC_DEC_ON */
 	EXYNOS_PPS_LONG_WRITE(ctx); /* PPS_SETTING */
@@ -216,6 +257,13 @@ static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool hbm_mode)
 {
 	exynos_panel->hbm_mode = hbm_mode;
+
+	if (exynos_panel->panel_rev == PANEL_REV_PROTO1_1) {
+		if (hbm_mode)
+			exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_1_pwm_cmd_set);
+		else
+			exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_4_pwm_cmd_set);
+	}
 
 	s6e3fc3_update_wrctrld(exynos_panel);
 }
