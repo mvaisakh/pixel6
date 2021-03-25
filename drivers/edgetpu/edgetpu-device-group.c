@@ -865,11 +865,15 @@ static int edgetpu_map_iova_sgt_worker(struct iova_mapping_worker_param *param)
 	const struct edgetpu_mapping *map = &hmap->map;
 	enum edgetpu_context_id ctx_id = edgetpu_group_context_id_locked(group);
 	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
+	int ret;
 
 	edgetpu_mmu_reserve(etdev, map->alloc_iova, map->alloc_size);
-	return edgetpu_mmu_map_iova_sgt(etdev, map->device_address,
-					&hmap->sg_tables[i], map->dir,
-					ctx_id);
+	ret = edgetpu_mmu_map_iova_sgt(etdev, map->device_address,
+				       &hmap->sg_tables[i], map->dir,
+				       ctx_id);
+	if (ret)
+		edgetpu_mmu_free(etdev, map->alloc_iova, map->alloc_size);
+	return ret;
 }
 
 /*

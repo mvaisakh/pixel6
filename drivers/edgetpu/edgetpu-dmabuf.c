@@ -103,7 +103,7 @@ static int etdev_add_translations(struct edgetpu_dev *etdev,
 	struct sg_table *sgt = &entry->shrunk_sgt;
 	struct scatterlist *sg;
 
-	for (sg = sgt->sgl, i = 0; i < sgt->nents; i++, sg = sg_next(sg)) {
+	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
 		ret = edgetpu_mmu_add_translation(etdev, tpu_addr + offset,
 						  sg_dma_address(sg),
 						  sg_dma_len(sg), prot, ctx_id);
@@ -111,11 +111,30 @@ static int etdev_add_translations(struct edgetpu_dev *etdev,
 			goto rollback;
 		offset += sg_dma_len(sg);
 	}
+	edgetpu_mmu_reserve(etdev, tpu_addr, offset);
 	return 0;
 
 rollback:
 	edgetpu_mmu_remove_translation(etdev, tpu_addr, offset, ctx_id);
 	return ret;
+}
+
+static void etdev_remove_translations(struct edgetpu_dev *etdev,
+				      tpu_addr_t tpu_addr,
+				      struct dmabuf_map_entry *entry,
+				      enum edgetpu_context_id ctx_id)
+{
+	uint i;
+	u64 offset = 0;
+	struct sg_table *sgt = &entry->shrunk_sgt;
+	struct scatterlist *sg;
+
+	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+		edgetpu_mmu_remove_translation(etdev, tpu_addr + offset,
+					       sg_dma_len(sg), ctx_id);
+		offset += sg_dma_len(sg);
+	}
+	edgetpu_mmu_free(etdev, tpu_addr, offset);
 }
 
 /*
@@ -218,8 +237,8 @@ err_remove:
 		if (!dmap->entries[i].sgt)
 			edgetpu_mmu_free(etdev, tpu_addr, dmap->size);
 		else
-			edgetpu_mmu_remove_translation(etdev, tpu_addr,
-						       dmap->size, ctx_id);
+			etdev_remove_translations(etdev, tpu_addr,
+						  &dmap->entries[i], ctx_id);
 	}
 	etdev_unmap_dmabuf(group->etdev, dmap, tpu_addr);
 
@@ -242,8 +261,8 @@ static void group_unmap_dmabuf(struct edgetpu_device_group *group,
 
 	for (i = 1; i < group->n_clients; i++) {
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		edgetpu_mmu_remove_translation(etdev, tpu_addr, dmap->size,
-					       ctx_id);
+		etdev_remove_translations(etdev, tpu_addr, &dmap->entries[i],
+					  ctx_id);
 	}
 	etdev_unmap_dmabuf(group->etdev, dmap, tpu_addr);
 }

@@ -38,17 +38,14 @@
 
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
 
-static int edgetpu_mmap_compat(struct edgetpu_client *client,
-			       struct vm_area_struct *vma)
+static int edgetpu_mmap_full_csr(struct edgetpu_client *client,
+				 struct vm_area_struct *vma)
 {
 	int ret;
 	ulong phys_base, vma_size, map_size;
 
-	/* TODO(b/156444816): return -EPERM for non-root users */
 	if (!uid_eq(current_euid(), GLOBAL_ROOT_UID))
-		etdev_warn_once(
-			client->etdev,
-			"mmap full CSR region without root permission is deprecated");
+		return -EPERM;
 	vma_size = vma->vm_end - vma->vm_start;
 	map_size = min(vma_size, client->reg_window.size);
 	phys_base = client->etdev->regs.phys +
@@ -126,11 +123,11 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 	/* Mark the VMA's pages as uncacheable. */
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
-	/* If backward compat map all CSRs */
+	/* map all CSRs for debug purpose */
 	if (!vma->vm_pgoff) {
 		evt = EDGETPU_WAKELOCK_EVENT_FULL_CSR;
 		if (edgetpu_wakelock_inc_event(client->wakelock, evt)) {
-			ret = edgetpu_mmap_compat(client, vma);
+			ret = edgetpu_mmap_full_csr(client, vma);
 			if (ret)
 				edgetpu_wakelock_dec_event(client->wakelock,
 							   evt);

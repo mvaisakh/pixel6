@@ -172,35 +172,6 @@ struct edgetpu_mailbox_attr {
 #define EDGETPU_SET_PERDIE_EVENTFD \
 	_IOW(EDGETPU_IOCTL_BASE, 9, struct edgetpu_event_register)
 
-struct edgetpu_device_buffer_ioctl {
-	/*
-	 * Buffer size to be allocated in bytes.
-	 *
-	 * The size will be aligned with the page size.
-	 */
-	__u64 size;
-	/*
-	 * The buffer will be allocated on the @die_index-th die's device DRAM.
-	 * The index is decided by the order of joining the group, with value
-	 * from zero to (# dies in group) - 1.
-	 */
-	__u32 die_index;
-};
-
-/*
- * Deprecated, use EDGETPU_ALLOCATE_DEVICE_BUFFER.
- *
- * Return a dma-buf FD on success.
- *
- * EINVAL: If @size is zero.
- * EINVAL: If @die_index is greater than or equal to the number of dies in the
- *         device group.
- * EINVAL: If the target device group is not finalized.
- * ENODEV: If the on-device DRAM is not supported or failed on initialization.
- */
-#define EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT \
-	_IOR(EDGETPU_IOCTL_BASE, 11, struct edgetpu_device_buffer_ioctl)
-
 /* Unset event by event_id registered with EDGETPU_SET_EVENTFD. */
 #define EDGETPU_UNSET_EVENT \
 	_IOW(EDGETPU_IOCTL_BASE, 14, __u32)

@@ -338,37 +338,6 @@ static int edgetpu_ioctl_unmap_buffer(struct edgetpu_client *client,
 	return ret;
 }
 
-static int edgetpu_ioctl_allocate_device_buffer_compat(
-	struct edgetpu_client *leader,
-	struct edgetpu_device_buffer_ioctl __user *argp)
-{
-#ifndef EDGETPU_HAS_DEVICE_DRAM
-	return -ENOTTY;
-#else
-	struct edgetpu_device_buffer_ioctl ibuf;
-	struct edgetpu_client *client;
-	struct edgetpu_device_group *group;
-
-	if (copy_from_user(&ibuf, argp, sizeof(ibuf)))
-		return -EFAULT;
-
-	LOCK_RETURN_IF_NOT_LEADER(leader, group);
-	mutex_lock(&group->lock);
-
-	if (!edgetpu_device_group_is_finalized(group) ||
-	    ibuf.die_index >= group->n_clients) {
-		mutex_unlock(&group->lock);
-		UNLOCK(leader);
-		return -EINVAL;
-	}
-	client = group->members[ibuf.die_index];
-	mutex_unlock(&group->lock);
-	UNLOCK(leader);
-
-	return edgetpu_device_dram_getfd(client, ibuf.size);
-#endif /* EDGETPU_HAS_DEVICE_DRAM */
-}
-
 static int
 edgetpu_ioctl_allocate_device_buffer(struct edgetpu_client *client, u64 size)
 {
@@ -661,9 +630,6 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_SET_PERDIE_EVENTFD:
 		ret = edgetpu_ioctl_set_perdie_eventfd(client->etdev, argp);
-		break;
-	case EDGETPU_ALLOCATE_DEVICE_BUFFER_COMPAT:
-		ret = edgetpu_ioctl_allocate_device_buffer_compat(client, argp);
 		break;
 	case EDGETPU_UNSET_EVENT:
 		ret = edgetpu_ioctl_unset_eventfd(client, arg);

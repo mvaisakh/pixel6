@@ -202,6 +202,10 @@ void edgetpu_mmu_free(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
  * (as on Hermosa, where the SMMU translates TPU VAs to IOVAs sent to the IOMMU
  * downstream of the TPU).
  *
+ * Note: for chipsets with edgetpu_mmu_alloc() support, @iova passed to this
+ * function must be either allocated from edgetpu_mmu_alloc() or reserved by
+ * edgetpu_mmu_reserve().
+ *
  * For chipsets with IOMMU AUX domain support, @context_id can be used to
  * specify a detached IOMMU domain by value
  * (EDGETPU_CONTEXT_DOMAIN_TOKEN | @token), where @token is the one returned by
