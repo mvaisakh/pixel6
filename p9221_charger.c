@@ -1068,7 +1068,7 @@ static int p9221_get_property(struct power_supply *psy,
 }
 
 /* < 0 error, 0 = no changes, > 1 changed */
-int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
+static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
 	if (online < 0 || online > PPS_PSY_PROG_ONLINE)
 		return -EINVAL;
@@ -4075,20 +4075,25 @@ static int p9382a_tx_icl_vote_callback(struct votable *votable, void *data,
 	return ret;
 }
 
+int p9221_wlc_disable(struct p9221_charger_data *charger, int disable, u8 reason)
+{
+	int ret = 0;
+
+	if (disable && p9221_is_online(charger))
+		ret = charger->chip_send_eop(charger, reason);
+	if (charger->pdata->qien_gpio >= 0)
+		gpio_set_value_cansleep(charger->pdata->qien_gpio, disable);
+
+	pr_debug("%s: disable=%d, reason=%d ret=%d\n", __func__, disable, reason, ret);
+	return ret;
+}
+
 static int p9221_wlc_disable_callback(struct votable *votable, void *data,
 				      int disable, const char *client)
 {
 	struct p9221_charger_data *charger = data;
-	int ret = 0;
-	u8 reason = EPT_END_OF_CHARGE;
 
-	if (p9221_is_online(charger))
-		ret = charger->chip_send_eop(charger, reason);
-
-	if (charger->pdata->qien_gpio >= 0)
-		gpio_set_value_cansleep(charger->pdata->qien_gpio, disable);
-
-	return ret;
+	return p9221_wlc_disable(charger, disable, EPT_END_OF_CHARGE);
 }
 
 /*

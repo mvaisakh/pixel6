@@ -1634,18 +1634,19 @@ static int p9412_gpio_get(struct gpio_chip *chip, unsigned int offset)
 #define P9412_BPP_VOUT_DFLT	5000
 #define P9412_BPP_WLC_OTG_VOUT	5200
 
-static void p9412_gpio_set(struct gpio_chip *chip,
-			   unsigned int offset, int value)
+
+static void p9412_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
 {
 	struct p9221_charger_data *charger = gpiochip_get_data(chip);
 	int ret = -EINVAL;
 
 	switch (offset) {
 	case P9412_GPIO_CPOUT_EN:
-		ret = p9221_set_psy_online(charger, value);
+		/* take offline (if online) and set/reset QI_EN_L */
+		ret = p9221_wlc_disable(charger, !value, EPT_END_OF_CHARGE);
 		break;
 	case P9412_GPIO_CPOUT21_EN:
-		/* TODO: no-op for new firmware */
+		/* TODO: no-op for FW38+ */
 		ret = p9412_capdiv_en(charger, !!value);
 		break;
 	case P9412_GPIO_CPOUT_CTL_EN:
