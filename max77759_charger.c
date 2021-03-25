@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": %s " fmt, __func__
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/ctype.h>
 #include <linux/i2c.h>
@@ -105,6 +105,8 @@ struct max77759_chgr_data {
 
 	atomic_t insel_cnt;
 	bool insel_clear;	/* when set, irq clears CHGINSEL_MASK */
+
+	atomic_t early_topoff_cnt;
 
 	struct mutex io_lock;
 	bool resume_complete;
@@ -1375,11 +1377,14 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 		gpio_set_value_cansleep(uc_data->cpout_en, wlc_on);
 	}
 
+	/* TODO: call max77759_chg_prot() to disable and re-enable protection */
+
+	/* changing [CHGIN|WCIN]_INSEL: works when protection is disabled  */
 	ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
 				      insel_mask, insel_value);
 
-	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n", __func__,
-		 use_case, insel_mask, insel_value, wlc_on, ret);
+	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n",
+		 __func__, use_case, insel_mask, insel_value, wlc_on, ret);
 
 	return ret;
 }
@@ -1448,7 +1453,7 @@ exit_done:
 	/* finally set mode register */
 	ret = max77759_chg_reg_write(uc_data->client, MAX77759_CHG_CNFG_00,
 				     cb_data->reg);
-	pr_debug("%s: CHARGER_MODE=%x reg:%x\n", __func__, cb_data->reg, ret);
+	pr_debug("%s: CHARGER_MODE=%x ret:%x\n", __func__, cb_data->reg, ret);
 	if (ret < 0) {
 		dev_err(data->dev,  "use_case=%d->%d CNFG_00=%x failed ret:%d\n",
 			from_uc, use_case, cb_data->reg, ret);
@@ -2292,18 +2297,24 @@ static int max77759_get_chg_chgr_state(struct max77759_chgr_data *data,
 	if (usb_valid) {
 		max77759_chgin_get_ilim_max_ua(data, &icl);
 		/* TODO: 'u' only when in sink */
-		source = dc_present ? "Uw" : "u";
+		if (!dc_present)
+			source = "U";
+		 else if (dc_valid)
+			source = "UW";
+		 else
+			source = "Uw";
+
 	} else if (dc_valid) {
 		max77759_wcin_get_ilim_max_ua(data, &icl);
 
 		/* TODO: 'u' only when in sink */
-		source = usb_present ? "uW" : "w";
+		source = usb_present ? "uW" : "W";
 	} else if (usb_present && dc_present) {
-		source = "-";
+		source = "uw";
 	} else if (usb_present) {
-		source = "u?";
+		source = "u";
 	} else if (dc_present) {
-		source = "w?";
+		source = "w";
 	}
 
 	chg_state->f.icl = icl / 1000;
@@ -2923,6 +2934,9 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	debugfs_create_atomic_t("insel_cnt", 0644, data->de, &data->insel_cnt);
 	debugfs_create_bool("insel_clear", 0644, data->de, &data->insel_clear);
 
+	debugfs_create_atomic_t("early_topoff_cnt", 0644, data->de,
+				&data->early_topoff_cnt);
+
 	debugfs_create_file("vdroop2_ok", 0400, data->de, data,
 			    &vdroop2_ok_fops);
 	debugfs_create_file("vdp1_stp_bst", 0600, data->de, data,
@@ -3109,6 +3123,10 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
+
+		if (!max77759_is_full(data))
+			return POWER_SUPPLY_STATUS_FULL;
+		atomic_inc(&data->early_topoff_cnt);
 		/*
 		 * TODO: rewrite  to FV_UV when if entering TOP off far
 		 * from terminal voltage
@@ -3351,6 +3369,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	atomic_set(&data->sysuvlo2_cnt, 0);
 	atomic_set(&data->batoilo_cnt, 0);
 	atomic_set(&data->insel_cnt, 0);
+	atomic_set(&data->early_topoff_cnt, 0);
 	i2c_set_clientdata(client, data);
 
 	/* NOTE: only one instance */

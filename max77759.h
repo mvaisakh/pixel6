@@ -103,15 +103,15 @@ struct max77759_foreach_cb_data {
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
 
 	bool otg_on;	/* power out, usually external */
-	bool frs_on;	/* fast role swap */
+	bool frs_on;	/* power out, fast role swap (internal) */
 
 	bool wlc_rx;	/* charging wireless */
 	bool wlc_tx;	/* battery share */
 
-	bool dc_on;	/* PPS enabled - wired or wireless */
+	bool dc_on;	/* DC requested - wired or wireless */
 
-	bool boost_on;	/* old for WLC program */
-	bool uno_on;	/* old for WLC program */
+	bool boost_on;	/* Compat: old for WLC program */
+	bool uno_on;	/* Compat: old for WLC program */
 
 	u8 raw_value;	/* hard override */
 	bool use_raw;
@@ -171,6 +171,7 @@ enum gsu_usecases {
 
 /* internal system values */
 enum {
+	/* Charging disabled (go to mode 0) */
 	GBMS_CHGR_MODE_STBY_ON		= 0x10 + MAX77759_CHGR_MODE_ALL_OFF,
 	/* USB inflow off */
 	GBMS_CHGR_MODE_CHGIN_OFF	= 0x11 + MAX77759_CHGR_MODE_ALL_OFF,
