@@ -217,6 +217,57 @@ int max77759_chg_mode_write(struct i2c_client *client,
 }
 EXPORT_SYMBOL_GPL(max77759_chg_mode_write);
 
+/* 1 if changed, 0 if not changed, or < 0 on error */
+static int max77759_chg_prot(struct regmap *regmap, bool enable)
+{
+	u8 value = enable ? 0 : MAX77759_CHG_CNFG_06_CHGPROT_MASK;
+	u8 prot;
+	int ret;
+
+	ret = max77759_reg_read(regmap, MAX77759_CHG_CNFG_06, &prot);
+	if (ret < 0)
+		return -EIO;
+
+	if ((prot & MAX77759_CHG_CNFG_06_CHGPROT_MASK) == value)
+		return 0;
+
+	ret = regmap_write_bits(regmap, MAX77759_CHG_CNFG_06,
+				MAX77759_CHG_CNFG_06_CHGPROT_MASK,
+				value);
+	if (ret < 0)
+		return -EIO;
+
+	return 1;
+}
+
+int max77759_chg_insel_write(struct i2c_client *client, u8 mask, u8 value)
+{
+	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+	int ret, prot;
+
+	if (!data || !data->regmap)
+		return -ENODEV;
+
+	prot = max77759_chg_prot(data->regmap, false);
+	if (prot < 0)
+		return -EIO;
+
+	/* changing [CHGIN|WCIN]_INSEL: works when protection is disabled  */
+	ret = regmap_write_bits(data->regmap, MAX77759_CHG_CNFG_12, mask, value);
+	if (ret < 0 || prot == 0)
+		return ret;
+
+	prot = max77759_chg_prot(data->regmap, true);
+	if (prot < 0) {
+		pr_err("%s: cannot restore protection bits (%d)\n",
+		       __func__, prot);
+		return prot;
+	};
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(max77759_chg_insel_write);
+
 /* ----------------------------------------------------------------------- */
 
 static int max77759_find_pmic(struct max77759_chgr_data *data)
@@ -1377,11 +1428,8 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 		gpio_set_value_cansleep(uc_data->cpout_en, wlc_on);
 	}
 
-	/* TODO: call max77759_chg_prot() to disable and re-enable protection */
-
 	/* changing [CHGIN|WCIN]_INSEL: works when protection is disabled  */
-	ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
-				      insel_mask, insel_value);
+	ret = max77759_chg_insel_write(uc_data->client, insel_mask, insel_value);
 
 	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n",
 		 __func__, use_case, insel_mask, insel_value, wlc_on, ret);
