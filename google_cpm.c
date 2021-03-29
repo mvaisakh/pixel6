@@ -475,10 +475,10 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 		if (vbatt_min && vbatt < vbatt_min)
 			index = gcpm->dc_index == GCPM_DEFAULT_CHARGER ?
 				-EAGAIN : gcpm->dc_index; /* debounce? */
-		else if (vbatt_high && vbatt > vbatt_high)
-			index = gcpm->dc_index; /* debounce */
 		else if (vbatt_max && vbatt > vbatt_max)
 			index = GCPM_DEFAULT_CHARGER; /* disable */
+		else if (vbatt_high && vbatt > vbatt_high)
+			index = gcpm->dc_index; /* debounce */
 		else if (vbatt_min && vbatt > vbatt_min)
 			index = GCPM_INDEX_DC_ENABLE; /* enable */
 
