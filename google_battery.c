@@ -3656,6 +3656,29 @@ static ssize_t batt_show_ac_soc(struct device *dev,
 static const DEVICE_ATTR(ac_soc, 0444, batt_show_ac_soc, NULL);
 
 
+static ssize_t batt_show_charger_state(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "0x%llx\n", batt_drv->chg_state.v);
+}
+
+static const DEVICE_ATTR(charger_state, 0444, batt_show_charger_state, NULL);
+
+
+static ssize_t batt_show_charge_type(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", batt_drv->chg_state.f.chg_type);
+}
+
+static const DEVICE_ATTR(charge_type, 0444, batt_show_charge_type, NULL);
+
 /* ------------------------------------------------------------------------- */
 
 static int batt_init_fs(struct batt_drv *batt_drv)
@@ -3666,28 +3689,22 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	/* stats */
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_stats);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-				"Failed to create charge_stats\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create charge_stats\n");
 
-	ret = device_create_file(&batt_drv->psy->dev,
-				 &dev_attr_charge_stats_actual);
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_stats_actual);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-				"Failed to create charge_stats_actual\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create charge_stats_actual\n");
 
-	ret = device_create_file(&batt_drv->psy->dev,
-				 &dev_attr_charge_details);
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_details);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-				"Failed to create charge_details\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create charge_details\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_ssoc_details);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create ssoc_details\n");
 
 	/* health based charging */
-	ret = device_create_file(&batt_drv->psy->dev,
-				 &dev_attr_charge_deadline);
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_deadline);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create chg_deadline\n");
 
@@ -3710,40 +3727,41 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	/* time to full */
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_ttf_stats);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-				"Failed to create ttf_stats\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create ttf_stats\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_ttf_details);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-				"Failed to create ttf_details\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create ttf_details\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_pairing_state);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-			"Failed to create pairing_state\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create pairing_state\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_cycle_counts);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-			"Failed to create pairing_state\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create cycle_counts\n");
 
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_full_estimate);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create chage_full_estimate\n");
+
+	/* google_resistance and resistance */
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_resistance_avg);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-			"Failed to create resistance_avg\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create resistance_avg\n");
 
-	ret = device_create_file(&batt_drv->psy->dev,
-				 &dev_attr_charge_full_estimate);
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_resistance);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-			"Failed to create chage_full_estimate\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create resistance\n");
 
-	ret = device_create_file(&batt_drv->psy->dev,
-				 &dev_attr_resistance);
+	/* monitoring */
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charger_state);
 	if (ret)
-		dev_err(&batt_drv->psy->dev,
-			"Failed to create resistance\n");
+		dev_err(&batt_drv->psy->dev, "Failed to create charger state\n");
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_type);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create charge_type\n");
+
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
@@ -3751,22 +3769,16 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 
 	debugfs_create_file("cycle_count_sync", 0600, de, batt_drv,
 			    &cycle_count_bins_sync_fops);
-	debugfs_create_file("ssoc_gdf", 0600, de, batt_drv,
-			    &debug_ssoc_gdf_fops);
-	debugfs_create_file("ssoc_uic", 0600, de, batt_drv,
-			    &debug_ssoc_uic_fops);
-	debugfs_create_file("ssoc_rls", 0400, de, batt_drv,
-			    &debug_ssoc_rls_fops);
+	debugfs_create_file("ssoc_gdf", 0600, de, batt_drv, &debug_ssoc_gdf_fops);
+	debugfs_create_file("ssoc_uic", 0600, de, batt_drv, &debug_ssoc_uic_fops);
+	debugfs_create_file("ssoc_rls", 0400, de, batt_drv, &debug_ssoc_rls_fops);
 	debugfs_create_file("ssoc_uicurve", 0600, de, batt_drv,
 			    &debug_ssoc_uicurve_cstr_fops);
 	debugfs_create_file("force_psy_update", 0400, de, batt_drv,
 			    &debug_force_psy_update_fops);
-	debugfs_create_file("pairing_state", 0200, de, batt_drv,
-			    &debug_pairing_fops);
-	debugfs_create_file("blf_state", 0400, de, batt_drv,
-			    &debug_blf_state_fops);
-	debugfs_create_file("temp", 0400, de, batt_drv,
-			    &debug_fake_temp_fops);
+	debugfs_create_file("pairing_state", 0200, de, batt_drv, &debug_pairing_fops);
+	debugfs_create_file("blf_state", 0400, de, batt_drv, &debug_blf_state_fops);
+	debugfs_create_file("temp", 0400, de, batt_drv, &debug_fake_temp_fops);
 
 	/* health charging */
 	debugfs_create_file("chg_health_thr_soc", 0600, de, batt_drv,
