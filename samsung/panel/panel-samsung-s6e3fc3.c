@@ -193,6 +193,11 @@ static void s6e3fc3_update_te2(struct exynos_panel *ctx)
 	if (!ctx)
 		return;
 
+	if (ctx->panel_rev == PANEL_REV_PROTO1) {
+		dev_dbg(ctx->dev, "No need to send TE2 commands on P1.0\n");
+		return;
+	}
+
 	/* normal mode */
 	for (i = 0; i < 2; i++) {
 		timing.rising_edge = ctx->te2.mode_data[i].timing.rising_edge;
