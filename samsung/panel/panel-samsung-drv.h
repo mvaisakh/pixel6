@@ -398,6 +398,7 @@ struct exynos_panel {
 			bool update_bl;
 			/* send ghbm mipi commands asynchronously after frame start */
 			struct work_struct ghbm_work;
+			struct mutex ghbm_work_lock;
 		} global_hbm;
 		struct workqueue_struct *wq;
 	} hbm;

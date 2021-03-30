@@ -1097,27 +1097,30 @@ static void exynos_panel_connector_atomic_commit(
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
 
-	ctx->hbm.global_hbm.update_hbm = false;
-	ctx->hbm.global_hbm.update_bl = false;
-	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
-		if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
-			ctx->hbm.global_hbm.update_hbm = true;
-			ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
-		}
-	}
+	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on ||
+	    exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
 
-	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
-		ctx->bl->props.brightness = exynos_new_state->brightness_level;
-		ctx->hbm.global_hbm.update_bl = true;
+		if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
+			if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
+				ctx->hbm.global_hbm.update_hbm = true;
+				ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
+			}
+		}
+
+		if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+			ctx->bl->props.brightness = exynos_new_state->brightness_level;
+			ctx->hbm.global_hbm.update_bl = true;
+		}
+
+		queue_work(ctx->hbm.wq, &ctx->hbm.global_hbm.ghbm_work);
+		mutex_unlock(&ctx->hbm.global_hbm.ghbm_work_lock);
 	}
 
 	if (exynos_old_state->dimming_on != exynos_new_state->dimming_on) {
 		if (exynos_panel_func && exynos_panel_func->set_dimming_on)
 			exynos_panel_func->set_dimming_on(ctx, exynos_new_state->dimming_on);
 	}
-
-	if (ctx->hbm.global_hbm.update_hbm || ctx->hbm.global_hbm.update_bl)
-		queue_work(ctx->hbm.wq, &ctx->hbm.global_hbm.ghbm_work);
 }
 
 static const struct exynos_drm_connector_helper_funcs exynos_panel_connector_helper_funcs = {
@@ -2366,15 +2369,21 @@ static void global_hbm_work(struct work_struct *work)
 	delay_us = delay_us * 105 / 100;
 
 	dev_dbg(ctx->dev, "%s\n", __func__);
-
+	DPU_ATRACE_BEGIN("ghbm");
+	mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
 	usleep_range(delay_us, delay_us + 100);
 	if (ctx->hbm.global_hbm.update_hbm) {
 		exynos_panel_func = ctx->desc->exynos_panel_func;
 		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.global_hbm.hbm_mode);
+		ctx->hbm.global_hbm.update_hbm = false;
 	}
 
-	if (ctx->hbm.global_hbm.update_bl)
+	if (ctx->hbm.global_hbm.update_bl) {
 		backlight_update_status(ctx->bl);
+		ctx->hbm.global_hbm.update_bl = false;
+	}
+	mutex_unlock(&ctx->hbm.global_hbm.ghbm_work_lock);
+	DPU_ATRACE_END("ghbm");
 }
 
 static void local_hbm_data_init(struct exynos_panel *ctx)
@@ -2389,6 +2398,9 @@ static void local_hbm_data_init(struct exynos_panel *ctx)
 		INIT_DELAYED_WORK(&ctx->hbm.local_hbm.timeout_work, local_hbm_timeout_work);
 		INIT_WORK(&ctx->hbm.global_hbm.ghbm_work, global_hbm_work);
 	}
+	ctx->hbm.global_hbm.update_hbm = false;
+	ctx->hbm.global_hbm.update_bl = false;
+	mutex_init(&ctx->hbm.global_hbm.ghbm_work_lock);
 }
 
 static void exynos_panel_te2_init(struct exynos_panel *ctx)
