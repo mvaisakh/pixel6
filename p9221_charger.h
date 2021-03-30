@@ -48,6 +48,7 @@
 
 #define P9221_TX_TIMEOUT_MS			(20 * 1000)
 #define P9221_DCIN_TIMEOUT_MS			(1 * 1000)
+#define P9221_CHARGE_STATS_TIMEOUT_MS		(10 * 1000)
 #define P9221_VRECT_TIMEOUT_MS			(2 * 1000)
 #define P9221_ALIGN_TIMEOUT_MS			(2 * 1000)
 #define P9221_ALIGN_DELAY_MS			100
@@ -438,6 +439,33 @@ enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_PASSED,
 };
 
+#define WLC_SOC_STATS_LEN      101
+
+struct p9221_soc_data {
+	ktime_t last_update;
+	int elapsed_time;
+	int pout_min;
+	int pout_max;
+	int of_freq;
+	int vrect;
+	int iout;
+	int die_temp;
+	int sys_mode;
+	long pout_sum;
+};
+
+struct p9221_charge_stats {
+	ktime_t start_time;
+	struct p9221_soc_data soc_data[WLC_SOC_STATS_LEN];
+	int adapter_type;
+	int cur_soc;
+	int volt_conf;
+	int cur_conf;
+	int of_freq;
+	int last_soc;
+	struct mutex stats_lock;
+};
+
 struct p9221_charger_platform_data {
 	int				irq_gpio;
 	int				irq_int;
@@ -525,6 +553,7 @@ struct p9221_charger_data {
 	struct mutex			cmd_lock;
 	struct device			*dev;
 	struct delayed_work		notifier_work;
+	struct delayed_work		charge_stats_work;
 	struct delayed_work		dcin_work;
 	struct delayed_work		align_work;
 	struct delayed_work		tx_work;
@@ -600,6 +629,8 @@ struct p9221_charger_data {
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
 	bool				no_fod;
+
+	struct p9221_charge_stats chg_data;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
