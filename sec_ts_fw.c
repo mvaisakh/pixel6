@@ -281,21 +281,21 @@ static void sec_ts_save_version_of_bin(struct sec_ts_data *ts,
 	ts->plat_data->config_version_of_bin[0] =
 			((fw_hd->para_ver >> 0) & 0xff);
 
-	input_info(true, &ts->client->dev, "%s: img_ver of bin = %x.%x.%x.%x\n",
+	input_info(true, &ts->client->dev, "%s: img_ver of bin: %x.%x.%x.%x\n",
 			__func__,
 			ts->plat_data->img_version_of_bin[0],
 			ts->plat_data->img_version_of_bin[1],
 			ts->plat_data->img_version_of_bin[2],
 			ts->plat_data->img_version_of_bin[3]);
 
-	input_info(true, &ts->client->dev, "%s: core_ver of bin = %x.%x.%x.%x\n",
+	input_info(true, &ts->client->dev, "%s: core_ver of bin: %x.%x.%x.%x\n",
 			__func__,
 			ts->plat_data->core_version_of_bin[0],
 			ts->plat_data->core_version_of_bin[1],
 			ts->plat_data->core_version_of_bin[2],
 			ts->plat_data->core_version_of_bin[3]);
 
-	input_info(true, &ts->client->dev, "%s: config_ver of bin = %x.%x.%x.%x\n",
+	input_info(true, &ts->client->dev, "%s: config_ver of bin: %x.%x.%x.%x\n",
 			__func__,
 			ts->plat_data->config_version_of_bin[0],
 			ts->plat_data->config_version_of_bin[1],
@@ -318,7 +318,7 @@ static int sec_ts_save_version_of_ic(struct sec_ts_data *ts)
 		return -EIO;
 	}
 	input_info(true, &ts->client->dev,
-		"%s: IC Image version info : %x.%x.%x.%x\n",
+		"%s: IC Image version info: %x.%x.%x.%x\n",
 		__func__, img_ver[0], img_ver[1], img_ver[2], img_ver[3]);
 
 	ts->plat_data->img_version_of_ic[0] = img_ver[0];
@@ -334,7 +334,7 @@ static int sec_ts_save_version_of_ic(struct sec_ts_data *ts)
 		return -EIO;
 	}
 	input_info(true, &ts->client->dev,
-		"%s: IC Core version info : %x.%x.%x.%x,\n",
+		"%s: IC Core version info: %x.%x.%x.%x,\n",
 		__func__, core_ver[0], core_ver[1], core_ver[2], core_ver[3]);
 
 	ts->plat_data->core_version_of_ic[0] = core_ver[0];
@@ -350,7 +350,7 @@ static int sec_ts_save_version_of_ic(struct sec_ts_data *ts)
 		return -EIO;
 	}
 	input_info(true, &ts->client->dev,
-			"%s: IC config version info : %x.%x.%x.%x\n",
+			"%s: IC config version info: %x.%x.%x.%x\n",
 			__func__, config_ver[0], config_ver[1],
 			config_ver[2], config_ver[3]);
 
@@ -506,7 +506,7 @@ static bool sec_ts_limited_flashpagewrite(struct sec_ts_data *ts,
 		ret = ts->sec_ts_write_burst_heap(ts, tCmd, 1 + copy_cur);
 		if (ret < 0)
 			input_err(true, &ts->client->dev,
-					"%s: failed, ret:%d\n", __func__, ret);
+					"%s: failed, ret: %d\n", __func__, ret);
 
 		copy_size += copy_cur;
 		copy_left -= copy_cur;
@@ -832,7 +832,7 @@ static int sec_ts_firmware_update(struct sec_ts_data *ts, const u8 *data,
 		return -1;
 	}
 
-	input_err(true, &ts->client->dev, "%s: num_chunk : %d\n",
+	input_err(true, &ts->client->dev, "%s: num_chunk: %d\n",
 			__func__, fw_hd->num_chunk);
 
 	for (i = 0; i < fw_hd->num_chunk; i++) {
@@ -1182,7 +1182,7 @@ int sec_ts_firmware_update_on_probe(struct sec_ts_data *ts, bool force_update)
 	ts->cal_status = sec_ts_read_calibration_report(ts);
 
 	input_info(true, &ts->client->dev,
-			"%s: initial firmware update %s, cal:%X\n",
+			"%s: initial firmware update %s, cal: %X\n",
 			__func__, fw_path, ts->cal_status);
 
 	/* Loading Firmware */
@@ -1378,7 +1378,7 @@ static int sec_ts_load_fw_from_ffu(struct sec_ts_data *ts)
 	disable_irq(ts->client->irq);
 
 	input_info(true, ts->dev,
-		    "%s: Load firmware : %s\n", __func__, fw_path);
+		    "%s: Load firmware: %s\n", __func__, fw_path);
 
 	/* Loading Firmware */
 	if (request_firmware(&fw_entry, fw_path, &ts->client->dev) !=  0) {

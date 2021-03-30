@@ -415,7 +415,7 @@ static ssize_t sec_ts_enter_recovery_store(struct device *dev,
 
 	ret = kstrtoul(buf, 10, &on);
 	if (ret != 0) {
-		input_err(true, &ts->client->dev, "%s: failed to read:%d\n",
+		input_err(true, &ts->client->dev, "%s: failed to read: %d\n",
 					__func__, ret);
 		return -EINVAL;
 	}

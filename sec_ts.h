@@ -1018,7 +1018,14 @@ struct sec_ts_data {
 	short pressure_right;
 	u8 pressure_user_level;
 #endif
-	int debug;
+	union {
+		u32 debug;
+		struct {
+		u32 debug_events : 1;
+		u32 debug_status : 1;
+		u32 debug_reserved : 30;
+		};
+	};
 
 	int fs_postcal_mean;
 

@@ -519,7 +519,7 @@ static ssize_t scrub_pos_show(struct device *dev,
 			"%s: scrub_id: %d\n", __func__, ts->scrub_id);
 #else
 	input_info(true, &ts->client->dev,
-			"%s: scrub_id: %d, X:%d, Y:%d\n", __func__,
+			"%s: scrub_id: %d, X: %d, Y: %d\n", __func__,
 			ts->scrub_id, ts->scrub_x, ts->scrub_y);
 #endif
 	snprintf(buff, sizeof(buff), "%d %d %d",
@@ -756,7 +756,7 @@ static ssize_t all_touch_count_show(struct device *dev,
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 
 	input_info(true, &ts->client->dev,
-		"%s: touch:%d, force:%d, aod:%d, spay:%d\n", __func__,
+		"%s: touch: %d, force: %d, aod: %d, spay: %d\n", __func__,
 		ts->all_finger_count, ts->all_force_count,
 		ts->all_aod_tap_count, ts->all_spay_count);
 
@@ -788,7 +788,7 @@ static ssize_t z_value_show(struct device *dev,
 	struct sec_cmd_data *sec = dev_get_drvdata(dev);
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 
-	input_info(true, &ts->client->dev, "%s: max:%d, min:%d, avg:%d\n",
+	input_info(true, &ts->client->dev, "%s: max: %d, min: %d, avg: %d\n",
 		   __func__, ts->max_z_value, ts->min_z_value, ts->sum_z_value);
 
 	if (ts->all_finger_count)
@@ -4698,7 +4698,7 @@ int get_tsp_nvm_data(struct sec_ts_data *ts, u8 offset)
 	}
 
 	input_info(true, &ts->client->dev,
-		   "%s: offset:%u  data:%02X\n", __func__, offset, buff[0]);
+		   "%s: offset: %u data: %02X\n", __func__, offset, buff[0]);
 
 out_nvm:
 	ret = ts->sec_ts_write(ts, SEC_TS_CMD_SENSE_ON, NULL, 0);
@@ -4722,7 +4722,7 @@ int get_tsp_nvm_data_by_size(struct sec_ts_data *ts, u8 offset,
 		return -ENOMEM;
 
 	input_info(true, &ts->client->dev,
-		   "%s: offset:%u, length:%d, size:%d\n",
+		   "%s: offset: %u, length: %d, size: %d\n",
 		   __func__, offset, length, sizeof(data));
 
 	/* SENSE OFF -> CELAR EVENT STACK -> READ NV -> SENSE ON */
@@ -4952,12 +4952,12 @@ static void get_tsp_test_result(void *device_data)
 	result = (struct sec_ts_test_result *)buff;
 
 	input_info(true, &ts->client->dev,
-			 "%s: [0x%X][0x%X] M:%d, M:%d, A:%d, A:%d\n",
+			 "%s: [0x%X][0x%X] M: %d, M: %d, A: %d, A: %d\n",
 			__func__, *result->data, buff[0],
 			result->module_result, result->module_count,
 			result->assy_result, result->assy_count);
 
-	snprintf(buff, sizeof(buff), "M:%s, M:%d, A:%s, A:%d",
+	snprintf(buff, sizeof(buff), "M: %s, M: %d, A: %s, A: %d",
 			result->module_result == 0 ? "NONE" :
 			result->module_result == 1 ? "FAIL" : "PASS",
 			result->module_count,
@@ -6319,7 +6319,7 @@ static void run_force_pressure_calibration(void *device_data)
 	ts->pressure_cal_base = get_tsp_nvm_data(ts,
 				SEC_TS_NVM_OFFSET_PRESSURE_BASE_CAL_COUNT);
 
-	input_info(true, &ts->client->dev, "%s: count:%d\n",
+	input_info(true, &ts->client->dev, "%s: count: %d\n",
 		   __func__, ts->pressure_cal_base);
 
 	enable_irq(ts->client->irq);
@@ -6734,7 +6734,7 @@ static void set_pressure_strength(void *device_data)
 				SEC_TS_NVM_OFFSET_PRESSURE_DELTA_CAL_COUNT);
 
 	input_info(true, &ts->client->dev,
-		   "%s: count:%d\n", __func__, ts->pressure_cal_delta);
+		   "%s: count: %d\n", __func__, ts->pressure_cal_delta);
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
 	return;
@@ -7471,7 +7471,7 @@ static void set_aod_rect(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	input_info(true, &ts->client->dev, "%s: w:%d, h:%d, x:%d, y:%d\n",
+	input_info(true, &ts->client->dev, "%s: w: %d, h: %d, x: %d, y: %d\n",
 			__func__, sec->cmd_param[0], sec->cmd_param[1],
 			sec->cmd_param[2], sec->cmd_param[3]);
 
@@ -7545,7 +7545,7 @@ static void get_aod_rect(void *device_data)
 		rect_data[i] = (data[i * 2 + 1] & 0xFF) << 8 |
 					(data[i * 2] & 0xFF);
 
-	input_info(true, &ts->client->dev, "%s: w:%d, h:%d, x:%d, y:%d\n",
+	input_info(true, &ts->client->dev, "%s: w: %d, h: %d, x: %d, y: %d\n",
 			__func__,
 			rect_data[0], rect_data[1], rect_data[2], rect_data[3]);
 
@@ -8476,7 +8476,7 @@ int sec_ts_run_rawdata_type(struct sec_ts_data *ts, struct sec_cmd_data *sec)
 
 	ts->tsp_dump_lock = 1;
 	input_info(true, &ts->client->dev,
-			"%s: start (wet:%d)##\n",
+			"%s: start (wet: %d)##\n",
 			__func__, ts->wet_mode);
 
 
@@ -8520,7 +8520,7 @@ int sec_ts_run_rawdata_type(struct sec_ts_data *ts, struct sec_cmd_data *sec)
 
 		if (ret < 0)
 			input_info(true, &ts->client->dev,
-					"%s: mutual %d : error ## ret:%d\n",
+					"%s: mutual %d : error ## ret: %d\n",
 					__func__, sec->cmd_param[0], ret);
 		else
 #ifdef USE_SPEC_CHECK
@@ -8567,7 +8567,7 @@ int sec_ts_run_rawdata_type(struct sec_ts_data *ts, struct sec_cmd_data *sec)
 					max, &spec_check);
 		if (ret < 0)
 			input_info(true, &ts->client->dev,
-					"%s: self %d : error ## ret:%d\n",
+					"%s: self %d : error ## ret: %d\n",
 					__func__, sec->cmd_param[0], ret);
 		else
 #ifdef USE_SPEC_CHECK
@@ -8662,11 +8662,11 @@ int sec_ts_run_rawdata_type(struct sec_ts_data *ts, struct sec_cmd_data *sec)
 
 	sec_ts_release_tmode(ts);
 out:
-	input_info(true, &ts->client->dev, "%s: ito : %02X %02X %02X %02X\n",
+	input_info(true, &ts->client->dev, "%s: ito: %02X %02X %02X %02X\n",
 			__func__, ts->ito_test[0], ts->ito_test[1]
 			, ts->ito_test[2], ts->ito_test[3]);
 
-	input_info(true, &ts->client->dev, "%s: done (wet:%d)##\n",
+	input_info(true, &ts->client->dev, "%s: done (wet: %d)##\n",
 			__func__, ts->wet_mode);
 	ts->tsp_dump_lock = 0;
 
@@ -8746,7 +8746,7 @@ void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read)
 
 	ts->tsp_dump_lock = 1;
 	input_info(true, &ts->client->dev,
-			"%s: start (wet:%d)##\n",
+			"%s: start (wet: %d)##\n",
 			__func__, ts->wet_mode);
 
 	ret = sec_ts_fix_tmode(ts, TOUCH_SYSTEM_MODE_TOUCH,
@@ -8769,7 +8769,7 @@ void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read)
 					&spec_check);
 		if (ret < 0)
 			input_info(true, &ts->client->dev,
-					"%s: mutual %d : error ## ret:%d\n",
+					"%s: mutual %d : error ## ret: %d\n",
 					__func__, test_type[i], ret);
 		else
 #ifdef USE_SPEC_CHECK
@@ -8788,7 +8788,7 @@ void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read)
 						  max, &spec_check);
 			if (ret < 0)
 				input_info(true, &ts->client->dev,
-						"%s: self %d : error ## ret:%d\n",
+						"%s: self %d : error ## ret: %d\n",
 						__func__, test_type[i], ret);
 			else
 #ifdef USE_SPEC_CHECK
@@ -8855,11 +8855,11 @@ void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read)
 
 	sec_ts_release_tmode(ts);
 out:
-	input_info(true, &ts->client->dev, "%s: ito : %02X %02X %02X %02X\n",
+	input_info(true, &ts->client->dev, "%s: ito: %02X %02X %02X %02X\n",
 			__func__, ts->ito_test[0], ts->ito_test[1]
 			, ts->ito_test[2], ts->ito_test[3]);
 
-	input_info(true, &ts->client->dev, "%s: done (wet:%d)##\n",
+	input_info(true, &ts->client->dev, "%s: done (wet: %d)##\n",
 			__func__, ts->wet_mode);
 	ts->tsp_dump_lock = 0;
 
