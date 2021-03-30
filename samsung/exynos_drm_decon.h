@@ -106,6 +106,8 @@ struct bts_dpp_info {
 	u32 bw;
 	u32 rt_bw;
 	bool rotation;
+	bool is_afbc;
+	bool is_yuv;
 };
 
 struct bts_decon_info {
@@ -136,6 +138,8 @@ struct dpu_bts {
 	u32 bus_width;
 	u32 bus_util_pct;
 	u32 rot_util_pct;
+	u32 afbc_rgb_util_pct;
+	u32 afbc_yuv_util_pct;
 	u32 dfs_lv_cnt;
 	u32 dfs_lv_khz[BTS_DFS_MAX];
 	u32 vbp;

@@ -589,7 +589,8 @@ static void dpu_bts_share_bw_info(int id)
 }
 
 static void
-dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 fps, u32 lcd_h, u32 vblank_us, int idx)
+dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 fps, u32 lcd_h, u32 vblank_us, int idx,
+		const struct dpu_bts *bts)
 {
 	u32 avg_bw, rt_bw, rot_bw = 0;
 	u32 src_w = dpp->src_w;
@@ -612,8 +613,19 @@ dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 fps, u32 lcd_h, u32 vblank_us,
 
 	DPU_DEBUG_BTS("  DPP%d bandwidth: avg %u, rt %u, rot %u\n", idx, avg_bw, rt_bw, rot_bw);
 
+	if (dpp->is_afbc) {
+		u32 afbc_util_pct;
+
+		if (dpp->is_yuv)
+			afbc_util_pct = bts->afbc_yuv_util_pct;
+		else
+			afbc_util_pct = bts->afbc_rgb_util_pct;
+
+		avg_bw = mult_frac(avg_bw, afbc_util_pct, 100);
+	}
 	dpp->bw = avg_bw;
 	dpp->rt_bw = max(rt_bw, rot_bw);
+	DPU_DEBUG_BTS("           final: avg %u, rt %u\n", dpp->bw, dpp->rt_bw);
 }
 
 static void dpu_bts_convert_config_to_info(struct bts_dpp_info *dpp,
@@ -630,10 +642,12 @@ static void dpu_bts_convert_config_to_info(struct bts_dpp_info *dpp,
 	dpp->dst.y1 = config->dst_y;
 	dpp->dst.y2 = config->dst_y + config->dst_h;
 	dpp->rotation = config->is_rot;
+	dpp->is_afbc = config->is_comp;
+	dpp->is_yuv = IS_YUV(fmt_info);
 
-	DPU_DEBUG_BTS("  DPP%d : bpp(%u) src w(%u) h(%u) rot(%d)\n",
+	DPU_DEBUG_BTS("  DPP%d : bpp(%u) src w(%u) h(%u) rot(%d) afbc(%d) yuv(%d)\n",
 			DPU_DMA2CH(config->dpp_ch), dpp->bpp, dpp->src_w,
-			dpp->src_h, dpp->rotation);
+			dpp->src_h, dpp->rotation, dpp->is_afbc, dpp->is_yuv);
 	DPU_DEBUG_BTS("        dst x(%u) right(%u) y(%u) bottom(%u)\n",
 			dpp->dst.x1, dpp->dst.x2, dpp->dst.y1, dpp->dst.y2);
 }
@@ -676,7 +690,7 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 		idx = config[i].dpp_ch;
 		dpu_bts_convert_config_to_info(&bts_info.rdma[idx], &config[i]);
 		dpu_bts_calc_dpp_bw(&bts_info.rdma[idx], decon->bts.fps,
-				decon->config.image_height, vblank_us, idx);
+				decon->config.image_height, vblank_us, idx, &decon->bts);
 		read_bw += bts_info.rdma[idx].bw;
 	}
 
@@ -686,7 +700,7 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 		wb_idx = config->dpp_ch;
 		dpu_bts_convert_config_to_info(&bts_info.odma, config);
 		dpu_bts_calc_dpp_bw(&bts_info.odma, decon->bts.fps, bts_info.lcd_h,
-				vblank_us, wb_idx);
+				vblank_us, wb_idx, &decon->bts);
 		write_bw = bts_info.odma.bw;
 	} else {
 		wb_idx = -1;

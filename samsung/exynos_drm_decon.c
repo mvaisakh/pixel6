@@ -1260,6 +1260,15 @@ static int decon_parse_dt(struct decon_device *decon, struct device_node *np)
 		decon->bts.rot_util_pct = 65;
 		decon_warn(decon, "WARN: rot_util_pct is not defined in DT.\n");
 	}
+	if (of_property_read_u32(np, "afbc_rgb_util_pct", &decon->bts.rot_util_pct)) {
+		decon->bts.afbc_rgb_util_pct = 100;
+		decon_warn(decon, "WARN: afbc_rgb_util_pct is not defined in DT.\n");
+	}
+	if (of_property_read_u32(np, "afbc_yuv_util_pct", &decon->bts.rot_util_pct)) {
+		decon->bts.afbc_yuv_util_pct = 100;
+		decon_warn(decon, "WARN: afbc_yuv_util_pct is not defined in DT.\n");
+	}
+
 	decon_info(decon, "bus_width(%u) bus_util_pct(%u) rot_util_pct(%u)\n",
 			decon->bts.bus_width, decon->bts.bus_util_pct,
 			decon->bts.rot_util_pct);
