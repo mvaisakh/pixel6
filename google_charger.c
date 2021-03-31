@@ -2597,7 +2597,7 @@ static int chg_pm_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops chg_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(chg_pm_suspend, chg_pm_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(chg_pm_suspend, chg_pm_resume)
 };
 #endif
 

@@ -4496,7 +4496,7 @@ static int p9221_pm_resume(struct device *dev)
 }
 #endif
 static const struct dev_pm_ops p9221_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(p9221_pm_suspend, p9221_pm_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(p9221_pm_suspend, p9221_pm_resume)
 };
 
 static struct i2c_driver p9221_charger_driver = {
