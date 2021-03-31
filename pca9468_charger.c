@@ -2521,6 +2521,9 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 		mutex_unlock(&pca9468->lock);
 		ret = pca9468_set_new_iin(pca9468);
 	} else {
+		const ibat_limit = (pca9468->cc_max * FCC_POWER_INCREASE_THRESHOLD) / 100;
+		int ibat;
+
 		/* Check the charging type */
 		ccmode = pca9468_check_ccmode_status(pca9468);
 		if (ccmode < 0) {
@@ -2530,8 +2533,25 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 
 		switch(ccmode) {
 		case CCMODE_LOOP_INACTIVE:
+			if (pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat)) {
+				/* skip ibat check when failed to get ibat*/
+				ibat = pca9468->cc_max;
+			}
+
+			if (ibat >  ibat_limit) {
+				/* skip current compensation when ibat is enough */
+				pr_debug("%s: CC INACTIVE: skip compensation for ibat=%d\n",
+					 __func__, ibat);
+				mutex_lock(&pca9468->lock);
+				pca9468->timer_id = TIMER_CHECK_CCMODE;
+				pca9468->timer_period = PCA9468_CCMODE_CHECK1_T;
+				mutex_unlock(&pca9468->lock);
+				mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
+						 msecs_to_jiffies(pca9468->timer_period));
+				break;
+			}
 			/* Set input current compensation */
-						/* Check the TA type */
+			/* Check the TA type */
 			if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 				/* Need RX voltage compensation */
 				ret = pca9468_set_rx_voltage_comp(pca9468);
