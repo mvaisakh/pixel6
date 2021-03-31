@@ -127,6 +127,8 @@ struct chg_drv {
 	const char *chg_psy_name;
 	struct power_supply *wlc_psy;
 	const char *wlc_psy_name;
+	struct power_supply *ext_psy;
+	const char *ext_psy_name;
 	struct power_supply *bat_psy;
 	const char *bat_psy_name;
 	struct power_supply *tcpm_psy;
@@ -245,6 +247,8 @@ static int chg_psy_changed(struct notifier_block *nb,
 	      !strcmp(psy->desc->name, chg_drv->usb_psy_name)) ||
 	     (chg_drv->tcpm_psy_name &&
 	      !strcmp(psy->desc->name, chg_drv->tcpm_psy_name)) ||
+	     (chg_drv->ext_psy_name &&
+	      !strcmp(psy->desc->name, chg_drv->ext_psy_name)) ||
 	     (chg_drv->wlc_psy_name &&
 	      !strcmp(psy->desc->name, chg_drv->wlc_psy_name)))) {
 		schedule_work(&chg_drv->chg_psy_work);
@@ -398,6 +402,9 @@ static int info_usb_state(union gbms_ce_adapter_details *ad,
 			amperage_max / 1000);
 	}
 
+	if (!ad)
+		return 0;
+
 	ad->ad_voltage = (voltage_max < 0) ? voltage_max
 					   : voltage_max / 100000;
 	ad->ad_amperage = (amperage_max < 0) ? amperage_max
@@ -428,6 +435,9 @@ static int info_wlc_state(union gbms_ce_adapter_details *ad,
 		amperage_max / 1000,
 		GPSY_GET_PROP(wlc_psy, POWER_SUPPLY_PROP_TEMP));
 
+	if (!ad)
+		return 0;
+
 	if (voltage_max < 0 || amperage_max < 0) {
 		ad->ad_type = CHG_EV_ADAPTER_TYPE_UNKNOWN;
 		ad->ad_voltage = voltage_max;
@@ -441,6 +451,36 @@ static int info_wlc_state(union gbms_ce_adapter_details *ad,
 		ad->ad_type = CHG_EV_ADAPTER_TYPE_WLC_SPP;
 	}
 
+	ad->ad_voltage = voltage_max / 100000;
+	ad->ad_amperage = amperage_max / 100000;
+
+	return 0;
+}
+
+static int info_ext_state(union gbms_ce_adapter_details *ad,
+			  struct power_supply *ext_psy)
+{
+	int voltage_max, amperage_max;
+
+	voltage_max = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX);
+	amperage_max = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_CURRENT_MAX);
+
+	pr_info("extv=%d extcc=%d extMv=%d extMc=%d\n",
+		GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW) / 1000,
+		GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_CURRENT_NOW) / 1000,
+		voltage_max / 1000, amperage_max / 1000);
+
+	if (!ad)
+		return 0;
+
+	if (voltage_max < 0 || amperage_max < 0) {
+		ad->ad_type = CHG_EV_ADAPTER_TYPE_UNKNOWN;
+		ad->ad_voltage = voltage_max;
+		ad->ad_amperage = amperage_max;
+		return -EINVAL;
+	}
+
+	ad->ad_type = CHG_EV_ADAPTER_TYPE_POGO;
 	ad->ad_voltage = voltage_max / 100000;
 	ad->ad_amperage = amperage_max / 100000;
 
@@ -782,11 +822,14 @@ static int chg_work_next_interval(const struct chg_drv *chg_drv,
 
 static void chg_work_adapter_details(union gbms_ce_adapter_details *ad,
 				     int usb_online, int wlc_online,
+				     int ext_online,
 				     struct chg_drv *chg_drv)
 {
 	/* print adapter details, route after at the end */
 	if (wlc_online)
 		(void)info_wlc_state(ad, chg_drv->wlc_psy);
+	if (ext_online)
+		(void)info_ext_state(ad, chg_drv->ext_psy);
 	if (usb_online)
 		(void)info_usb_state(ad, chg_drv->usb_psy, chg_drv->tcpm_psy);
 }
@@ -900,11 +943,12 @@ static void chg_work(struct work_struct *work)
 		container_of(work, struct chg_drv, chg_work.work);
 	struct power_supply *bat_psy = chg_drv->bat_psy;
 	struct power_supply *wlc_psy = chg_drv->wlc_psy;
+	struct power_supply *ext_psy = chg_drv->ext_psy;
 	struct power_supply *usb_psy = chg_drv->tcpm_psy ? chg_drv->tcpm_psy :
 				       chg_drv->usb_psy;
 	union gbms_ce_adapter_details ad = { .v = 0 };
 	int soc, disable_charging = 0, disable_pwrsrc = 0;
-	int usb_online, wlc_online = 0;
+	int usb_online, wlc_online = 0, ext_online = 0;
 	int update_interval = -1;
 	bool chg_done = false;
 	int success, rc = 0;
@@ -943,14 +987,16 @@ static void chg_work(struct work_struct *work)
 	usb_online = chg_usb_online(usb_psy);
 	if (wlc_psy)
 		wlc_online = GPSY_GET_PROP(wlc_psy, POWER_SUPPLY_PROP_ONLINE);
+	if (ext_psy)
+		ext_online = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_ONLINE);
 
-	if (usb_online  < 0 || wlc_online < 0) {
-		pr_err("MSC_CHG error reading usb=%d wlc=%d\n",
-						usb_online, wlc_online);
+	if (usb_online  < 0 || wlc_online < 0 || ext_online < 0) {
+		pr_err("MSC_CHG error reading usb=%d wlc=%d ext=%d\n",
+		       usb_online, wlc_online, ext_online);
 
 		/* TODO: maybe disable charging when this happens? */
 		goto rerun_error;
-	} else if (!usb_online && !wlc_online) {
+	} else if (!usb_online && !wlc_online && !ext_online) {
 
 		if (chg_drv->stop_charging != 1) {
 			pr_info("MSC_CHG no power source, disabling charging\n");
@@ -1026,7 +1072,7 @@ static void chg_work(struct work_struct *work)
 	chg_drv->disable_pwrsrc = disable_pwrsrc;
 
 	/* make sure ->fv_uv and ->cc_max are always correct */
-	chg_work_adapter_details(&ad, usb_online, wlc_online, chg_drv);
+	chg_work_adapter_details(&ad, usb_online, wlc_online, ext_online, chg_drv);
 
 	/* determine the next update interval */
 	update_interval = chg_work_roundtrip(chg_drv, &chg_drv->chg_state);
@@ -1046,8 +1092,8 @@ update_charger:
 			update_interval);
 
 		if (chg_drv->stop_charging != 0) {
-			pr_info("MSC_CHG power source usb=%d wlc=%d, enabling charging\n",
-				usb_online, wlc_online);
+			pr_info("MSC_CHG power source usb=%d wlc=%d, ext=%d enabling charging\n",
+				usb_online, wlc_online, ext_online);
 
 			vote(chg_drv->msc_chg_disable_votable,
 			     MSC_CHG_VOTER, false, 0);
@@ -2278,7 +2324,7 @@ static void google_charger_init_work(struct work_struct *work)
 					       init_work.work);
 	struct power_supply *chg_psy = NULL, *usb_psy = NULL;
 	struct power_supply *wlc_psy = NULL, *bat_psy = NULL;
-	struct power_supply *tcpm_psy = NULL;
+	struct power_supply *ext_psy = NULL, *tcpm_psy = NULL;
 	bool pps_enable;
 	int ret = 0;
 
@@ -2302,6 +2348,12 @@ static void google_charger_init_work(struct work_struct *work)
 			goto retry_init_work;
 	}
 
+	if (chg_drv->ext_psy_name) {
+		ext_psy = psy_get_by_name(chg_drv, chg_drv->ext_psy_name);
+		if (!ext_psy)
+			goto retry_init_work;
+	}
+
 	if (chg_drv->tcpm_phandle) {
 		tcpm_psy = get_tcpm_psy(chg_drv);
 		if (IS_ERR(tcpm_psy)) {
@@ -2316,9 +2368,10 @@ static void google_charger_init_work(struct work_struct *work)
 		goto retry_init_work;
 
 	chg_drv->chg_psy = chg_psy;
+	chg_drv->bat_psy = bat_psy;
 	chg_drv->wlc_psy = wlc_psy;
 	chg_drv->usb_psy = usb_psy;
-	chg_drv->bat_psy = bat_psy;
+	chg_drv->ext_psy = ext_psy;
 	chg_drv->tcpm_psy = tcpm_psy;
 
 	/* PPS negotiation handled in google_charger */
@@ -2363,7 +2416,9 @@ static void google_charger_init_work(struct work_struct *work)
 		pr_err("Cannot register power supply notifer, ret=%d\n", ret);
 
 	chg_drv->init_done = true;
-	pr_info("google_charger init_work done\n");
+	pr_info("google_charger chg=%d bat=%d wlc=%d usb=%d ext=%d tcpm=%d init_work done\n",
+		!!chg_drv->chg_psy, !!chg_drv->bat_psy, !!chg_drv->wlc_psy,
+		!!chg_drv->usb_psy, !!chg_drv->ext_psy, !!chg_drv->tcpm_psy);
 
 	/* catch state changes that happened before registering the notifier */
 	schedule_delayed_work(&chg_drv->chg_work,
@@ -2379,8 +2434,11 @@ retry_init_work:
 		power_supply_put(usb_psy);
 	if (wlc_psy)
 		power_supply_put(wlc_psy);
+	if (ext_psy)
+		power_supply_put(ext_psy);
 	if (tcpm_psy)
 		power_supply_put(tcpm_psy);
+
 	schedule_delayed_work(&chg_drv->init_work,
 			      msecs_to_jiffies(CHG_DELAY_INIT_MS));
 }
@@ -2392,6 +2450,7 @@ static int google_charger_probe(struct platform_device *pdev)
 {
 	const char *chg_psy_name, *bat_psy_name;
 	const char *usb_psy_name = NULL, *wlc_psy_name = NULL;
+	const char *ext_psy_name = NULL;
 	struct chg_drv *chg_drv;
 	int ret;
 
@@ -2434,6 +2493,18 @@ static int google_charger_probe(struct platform_device *pdev)
 		chg_drv->wlc_psy_name =
 		    devm_kstrdup(&pdev->dev, wlc_psy_name, GFP_KERNEL);
 		if (!chg_drv->wlc_psy_name)
+			return -ENOMEM;
+	}
+
+	ret = of_property_read_string(pdev->dev.of_node,
+				      "google,ext-power-supply",
+				      &ext_psy_name);
+	if (ret != 0)
+		pr_warn("google,ext-power-supply not defined\n");
+	if (ext_psy_name) {
+		chg_drv->ext_psy_name =
+		    devm_kstrdup(&pdev->dev, ext_psy_name, GFP_KERNEL);
+		if (!chg_drv->ext_psy_name)
 			return -ENOMEM;
 	}
 

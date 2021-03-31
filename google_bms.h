@@ -73,6 +73,7 @@ struct gbms_chg_profile {
 	S(WLC),		\
 	S(WLC_EPP),	\
 	S(WLC_SPP),	\
+	S(POGO),	\
 
 #define CHG_EV_ADAPTER_STRING(s)	#s
 #define _CHG_EV_ADAPTER_PRIMITIVE_CAT(a, ...) a ## __VA_ARGS__
