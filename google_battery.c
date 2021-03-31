@@ -4910,7 +4910,7 @@ static int gbatt_pm_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops gbatt_pm_ops = {
-	SET_LATE_SYSTEM_SLEEP_PM_OPS(gbatt_pm_suspend, gbatt_pm_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(gbatt_pm_suspend, gbatt_pm_resume)
 };
 #endif
 
