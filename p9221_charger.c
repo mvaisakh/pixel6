@@ -4079,7 +4079,7 @@ int p9221_wlc_disable(struct p9221_charger_data *charger, int disable, u8 reason
 {
 	int ret = 0;
 
-	if (disable && p9221_is_online(charger))
+	if (disable && charger->online)
 		ret = charger->chip_send_eop(charger, reason);
 	if (charger->pdata->qien_gpio >= 0)
 		gpio_set_value_cansleep(charger->pdata->qien_gpio, disable);
