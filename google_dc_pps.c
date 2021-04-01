@@ -24,6 +24,7 @@
 #include "google_bms.h"
 #include "google_psy.h"
 #include "google_dc_pps.h"
+#include "../../drivers/usb/typec/tcpm/max77759_export.h"
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
