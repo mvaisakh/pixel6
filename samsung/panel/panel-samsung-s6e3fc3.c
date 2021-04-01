@@ -46,6 +46,7 @@ static const u8 test_key_on_f0[] = { 0xF0, 0x5A, 0x5A };
 static const u8 test_key_off_f0[] = { 0xF0, 0xA5, 0xA5 };
 static const u8 test_key_on_f1[] = { 0xF1, 0x5A, 0x5A };
 static const u8 test_key_off_f1[] = { 0xF1, 0xA5, 0xA5 };
+static const u8 freq_update[] = { 0xF7, 0x0F };
 
 static const struct exynos_dsi_cmd s6e3fc3_off_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 0),
@@ -86,7 +87,7 @@ static const struct exynos_dsi_cmd s6e3fc3_1_pwm_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x00, 0x01, 0x00),
 	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x28, 0xF2),
 	EXYNOS_DSI_CMD_SEQ(0xF2, 0xC4),
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F),
+	EXYNOS_DSI_CMD0(freq_update),
 	EXYNOS_DSI_CMD0(test_key_off_f0)
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3fc3_1_pwm);
@@ -105,7 +106,7 @@ static const struct exynos_dsi_cmd s6e3fc3_4_pwm_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0x65, 0x01, 0x00, 0x01, 0x00),
 	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x28, 0xF2),
 	EXYNOS_DSI_CMD_SEQ(0xF2, 0xC4),
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F),
+	EXYNOS_DSI_CMD0(freq_update),
 	EXYNOS_DSI_CMD0(test_key_off_f0)
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3fc3_4_pwm);
@@ -132,6 +133,7 @@ static const struct exynos_dsi_cmd s6e3fc3_init_cmds[] = {
 	/* FQ CON setting */
 	EXYNOS_DSI_CMD_SEQ(0xB0, 0x27, 0xF2 ),
 	EXYNOS_DSI_CMD_SEQ(0xF2, 0x00),
+	EXYNOS_DSI_CMD0(freq_update),
 
 	/* IRC setting for HBM */
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_PROTO1, 0xB0, 0x0B, 0x8F),
@@ -233,7 +235,7 @@ static void s6e3fc3_update_te2(struct exynos_panel *ctx)
 	}
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x28, 0xF2); /* global para */
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xC4); /* global para 8bit */
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF7, 0x0F); /* LTPS update */
+	EXYNOS_DCS_WRITE_TABLE(ctx, freq_update); /* LTPS update */
 	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_off_f0);
 }
 
@@ -243,10 +245,10 @@ static void s6e3fc3_change_frequency(struct exynos_panel *ctx,
 	if (!ctx || (vrefresh != 60 && vrefresh != 90))
 		return;
 
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_on_f0);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, (vrefresh == 90) ? 0x08 : 0x00);
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF7, 0x0F);
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
+	EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_off_f0);
 
 	dev_dbg(ctx->dev, "%s: change to %uhz\n", __func__, vrefresh);
 }
