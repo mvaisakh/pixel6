@@ -44,6 +44,8 @@ int max77759_chg_reg_update(struct i2c_client *client, u8 reg, u8 mask, u8 value
 int max77759_chg_mode_write(struct i2c_client *client, enum max77759_charger_modes mode);
 /* change the insel register */
 int max77759_chg_insel_write(struct i2c_client *client, u8 mask, u8 value);
+/* read the insel register */
+int max77759_chg_insel_read(struct i2c_client *client, u8 *value);
 
 #if IS_ENABLED(CONFIG_PMIC_MAX77729)
 extern int max77759_read_batt_conn(struct i2c_client *client, int *temp);

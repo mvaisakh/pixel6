@@ -268,6 +268,21 @@ int max77759_chg_insel_write(struct i2c_client *client, u8 mask, u8 value)
 }
 EXPORT_SYMBOL_GPL(max77759_chg_insel_write);
 
+int max77759_chg_insel_read(struct i2c_client *client, u8 *value)
+{
+	struct max77759_chgr_data *data;
+
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
+	if (!data || !data->regmap)
+		return -ENODEV;
+
+	return  max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_12, value);
+}
+EXPORT_SYMBOL_GPL(max77759_chg_insel_read);
+
 /* ----------------------------------------------------------------------- */
 
 static int max77759_find_pmic(struct max77759_chgr_data *data)
@@ -562,6 +577,26 @@ static int max77759_ext_mode(struct max77759_usecase_data *uc_data, int mode)
 	return ret;
 }
 
+static int gs101_wlc_en(struct max77759_usecase_data *uc_data, bool wlc_on)
+{
+	int ret = 0;
+
+	pr_debug("%s: cpout_en=%d wlc_en=%d wlc_on=%d\n", __func__,
+		 uc_data->cpout_en, uc_data->wlc_en, wlc_on);
+
+	if (uc_data->cpout_en >= 0) {
+		gpio_set_value_cansleep(uc_data->cpout_en, wlc_on);
+	} else if (uc_data->wlc_en >= 0) {
+		/* TODO: wlc_en is active low, fix here or in device tree */
+		gpio_set_value_cansleep(uc_data->wlc_en, !!wlc_on);
+		pr_warn("%s: setting wlc_en=%d\n", __func__, !!wlc_on);
+	} else if (!wlc_on) {
+		pr_debug("%s: no toggle for WLC on\n", __func__);
+	}
+
+	return ret;
+}
+
 /* RTX reverse wireless charging */
 static int gs101_wlc_tx_enable(struct max77759_usecase_data *uc_data,
 			       bool enable)
@@ -573,12 +608,24 @@ static int gs101_wlc_tx_enable(struct max77759_usecase_data *uc_data,
 		ret = max77759_ls2_mode(uc_data, 1);
 		if (ret == 0)
 			ret = max77759_ext_mode(uc_data, EXT_MODE_OTG_7_5V);
+		if (ret < 0)
+			return ret;
 
 		mdelay(100);
+
+		/* p9412 will not be in RX when powered from EXT */
+		ret = gs101_wlc_en(uc_data, true);
+		if (ret < 0)
+			return ret;
 
 		if (uc_data->cpout21_en >= 0)
 			gpio_set_value_cansleep(uc_data->cpout21_en, 0);
 	} else {
+		/* p9412 is already off from insel */
+		ret = gs101_wlc_en(uc_data, false);
+		if (ret < 0)
+			return ret;
+
 		/* NOTE: turn off WLC, no need to reset cpout */
 		ret = max77759_ext_mode(uc_data, EXT_MODE_OFF);
 		if (ret == 0)
@@ -729,8 +776,7 @@ static int max77759_force_standby(struct max77759_chgr_data *data)
 		dev_err(data->dev, "%s: cannot reset mode register (%d)\n",
 			__func__, ret);
 
-	ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
-				      insel_mask, insel_value);
+	ret = max77759_chg_insel_write(uc_data->client, insel_mask, insel_value);
 	if (ret < 0)
 		dev_err(data->dev, "%s: cannot reset insel (%d)\n",
 			__func__, ret);
@@ -1389,12 +1435,12 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
  */
 static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 			      struct max77759_foreach_cb_data *cb_data,
-			      int use_case)
+			      int from_uc, int use_case)
 {
 	const u8 insel_mask = MAX77759_CHG_CNFG_12_CHGINSEL_MASK |
 			      MAX77759_CHG_CNFG_12_WCINSEL_MASK;
-	bool wlc_on = true;
 	u8 insel_value = 0;
+	int wlc_on;
 	int ret;
 
 	if (cb_data->buck_on && !cb_data->chgin_off) {
@@ -1420,19 +1466,27 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
 	}
 
-	/* b/182973431 disable WLC IC when on CHGIN */
-	if (uc_data->cpout_en >= 0) {
+	if (from_uc != use_case) {
 		wlc_on = (insel_value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
 
-		/* play well with the WLC chip */
-		gpio_set_value_cansleep(uc_data->cpout_en, wlc_on);
+		/* b/182973431 disable WLC_IC while CHGIN, rtx will enable WLC later */
+		ret = gs101_wlc_en(uc_data, wlc_on);
+		if (ret < 0)
+			pr_err("%s: error wlc_en=%d ret:%d\n", __func__,
+			       wlc_on, ret);
+	} else {
+		u8 value = 0;
+
+		wlc_on = max77759_chg_insel_read(uc_data->client, &value);
+		if (wlc_on == 0)
+			wlc_on = (value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
 	}
 
 	/* changing [CHGIN|WCIN]_INSEL: works when protection is disabled  */
 	ret = max77759_chg_insel_write(uc_data->client, insel_mask, insel_value);
 
-	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n",
-		 __func__, use_case, insel_mask, insel_value, wlc_on, ret);
+	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n", __func__,
+		 use_case, insel_mask, insel_value, wlc_on, ret);
 
 	return ret;
 }
@@ -1469,14 +1523,14 @@ static int max77759_set_usecase(struct max77759_chgr_data *data,
 	}
 
 	/* always fix/adjust insel (solves multiple input_suspend) */
-	ret = max77759_set_insel(uc_data, cb_data, use_case);
+	ret = max77759_set_insel(uc_data, cb_data, from_uc, use_case);
 	if (ret < 0) {
 		dev_err(data->dev, "use_case=%d->%d set_insel failed ret:%d\n",
 			from_uc, use_case, ret);
 		return ret;
 	}
 
-	/* just set the mode register to handle chgr_on/off and inflow */
+	/* usbchg+wlctx will call _set_insel() multiple times. */
 	if (from_uc == use_case)
 		goto exit_done;
 
