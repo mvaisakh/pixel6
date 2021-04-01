@@ -40,6 +40,9 @@ static const unsigned char PPS_SETTING[] = {
 #define S6E3HC3_WRCTRLD_HBM_BIT        0xC0
 #define S6E3HC3_WRCTRLD_LOCAL_HBM_BIT  0x10
 
+#define S6E3HC3_TE2_CHANGEABLE 0x31
+#define S6E3HC3_TE2_FIXED      0x41
+
 static const u8 unlock_cmd_f0[] = { 0xF0, 0x5A, 0x5A };
 static const u8 lock_cmd_f0[]   = { 0xF0, 0xA5, 0xA5 };
 static const u8 hlpm_gamma[] = { 0x49, 0x01 };
@@ -121,13 +124,32 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_120_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120);
 
+static u8 s6e3hc3_get_te2_option(struct exynos_panel *ctx)
+{
+	const struct drm_display_mode *mode;
+
+	if (!ctx || !ctx->current_mode)
+		return S6E3HC3_TE2_CHANGEABLE;
+
+	/* proto 1.0 only supports changeable TE2 */
+	if (ctx->panel_rev == PANEL_REV_PROTO1)
+		return S6E3HC3_TE2_CHANGEABLE;
+
+	mode = &ctx->current_mode->mode;
+
+	if (ctx->current_mode->exynos_mode.is_lp_mode ||
+	    drm_mode_vrefresh(mode) == 120)
+		return S6E3HC3_TE2_FIXED;
+
+	return S6E3HC3_TE2_CHANGEABLE;
+}
+
 static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 {
 	struct exynos_panel_te2_timing timing;
-	/* TODO: change option dynamically */
-	const u8 option[3] = {0xB9, 0x00, 0x31}; /* default changeable TE2 */
 	u8 width[7] = {0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30}; /* default timing */
 	u32 rising, falling;
+	u8 option = s6e3hc3_get_te2_option(ctx);
 	int ret;
 
 	if (!ctx)
@@ -140,7 +162,14 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 
 		width[1] = (rising >> 8) & 0xF;
 		width[2] = rising & 0xFF;
-		width[3] = width[4] = 0;
+
+		if (option == S6E3HC3_TE2_CHANGEABLE) {
+			width[3] = width[4] = 0;
+		} else { /* S6E3HC3_TE2_FIXED */
+			width[3] = width[1];
+			width[4] = width[2];
+		}
+
 		width[5] = (falling >> 8) & 0xF;
 		width[6] = falling & 0xFF;
 	} else if (ret == -EAGAIN) {
@@ -150,13 +179,14 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 	}
 
 	dev_dbg(ctx->dev,
-		"TE2 updated: option changeable, width 0xb9 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		"TE2 updated: option %s, width 0xb9 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		(option == S6E3HC3_TE2_CHANGEABLE) ? "changeable" : "fixed",
 		width[1], width[2], width[3], width[4], width[5], width[6]);
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x4F, 0xF2);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x0D);
-	EXYNOS_DCS_WRITE_TABLE(ctx, option);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB9, 0x00, option);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x14, 0xB9);
 	EXYNOS_DCS_WRITE_TABLE(ctx, width);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
