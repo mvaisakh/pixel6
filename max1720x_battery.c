@@ -984,10 +984,14 @@ static int max1720x_get_capacity_raw(struct max1720x_chip *chip, u16 *data)
 
 int max1720x_get_capacity(struct i2c_client *client, int *iic_raw)
 {
-	struct max1720x_chip *chip = i2c_get_clientdata(client);
+	struct max1720x_chip *chip;
 	u16 temp;
 	int ret;
 
+	if (!client || !iic_raw)
+		return -EINVAL;
+
+	chip = i2c_get_clientdata(client);
 	if (!chip)
 		return -ENODEV;
 
@@ -1005,6 +1009,9 @@ int max1720x_get_voltage_now(struct i2c_client *client, int *volt)
 	struct max1720x_chip *chip;
 	u16 temp;
 	int ret;
+
+	if (!client || !volt)
+		return -EINVAL;
 
 	chip = i2c_get_clientdata(client);
 	if (!chip)
