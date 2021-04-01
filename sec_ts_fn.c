@@ -1052,6 +1052,54 @@ static ssize_t heatmap_mode_show(struct device *dev,
 #endif
 }
 
+/* sysfs file node to store encoded_enable control
+ * "echo cmd > encoded_enable" to change
+ * Possible commands:
+ * 0 = ENCODED_ENABLE_OFF
+ * 1 = ENCODED_ENABLE_ON
+ */
+static ssize_t encoded_enable_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	struct sec_ts_plat_data *pdata = ts->plat_data;
+	int result;
+	int val;
+
+	result = kstrtoint(buf, 10, &val);
+	if (result < 0 || val < ENCODED_ENABLE_OFF ||
+	    val > ENCODED_ENABLE_ON) {
+		input_err(true, &ts->client->dev,
+			"%s: Invalid input.\n", __func__);
+		return -EINVAL;
+	}
+	pdata->encoded_enable = val;
+
+	return count;
+#else
+	return 0;
+#endif
+}
+
+static ssize_t encoded_enable_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	const struct sec_ts_plat_data *pdata = ts->plat_data;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pdata->encoded_enable);
+#else
+	return scnprintf(buf, PAGE_SIZE, "N/A\n");
+#endif
+}
+
+
 /* sysfs file node to dump heatmap
  * "echo cmd > heatmap_dump" to change
  * Possible commands:
@@ -1256,6 +1304,7 @@ static DEVICE_ATTR_RW(pressure_enable);
 static DEVICE_ATTR_RO(get_lp_dump);
 static DEVICE_ATTR_RO(force_recal_count);
 static DEVICE_ATTR_RW(heatmap_mode);
+static DEVICE_ATTR_RW(encoded_enable);
 static DEVICE_ATTR_RW(heatmap_dump);
 static DEVICE_ATTR_RO(fw_version);
 static DEVICE_ATTR_RO(status);
@@ -1278,6 +1327,7 @@ static struct attribute *cmd_attributes[] = {
 	&dev_attr_get_lp_dump.attr,
 	&dev_attr_force_recal_count.attr,
 	&dev_attr_heatmap_mode.attr,
+	&dev_attr_encoded_enable.attr,
 	&dev_attr_heatmap_dump.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_status.attr,

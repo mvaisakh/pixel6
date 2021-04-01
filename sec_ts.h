@@ -650,6 +650,11 @@ enum {
 	HEATMAP_FULL	= 2
 };
 
+enum {
+	ENCODED_ENABLE_OFF	= 0,
+	ENCODED_ENABLE_ON	= 1
+};
+
 /* Motion filter finite state machine (FSM) states
  * SEC_TS_MF_FILTERED        - default coordinate filtering
  * SEC_TS_MF_UNFILTERED      - unfiltered single-touch coordinates
@@ -914,6 +919,7 @@ struct sec_ts_data {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
 	strength_t *heatmap_buff;
+	strength_t *encoded_buff;
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
@@ -1104,6 +1110,7 @@ struct sec_ts_plat_data {
 	int bringup;
 	int mis_cal_check;
 	int heatmap_mode;
+	int encoded_enable;
 #ifdef PAT_CONTROL
 	int pat_function;
 	int afe_base;

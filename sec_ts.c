@@ -1103,6 +1103,118 @@ int sec_ts_read_calibration_report(struct sec_ts_data *ts)
 	return ts->cali_report_status;
 }
 
+#define PTFLIB_ENCODED_ENABLED_OFFSET_LSB	0xA0
+#define PTFLIB_ENCODED_ENABLED_OFFSET_MSB	0x00
+#define PTFLIB_ENCODED_ENABLED_TRUE		0x01
+#define PTFLIB_ENCODED_ENABLED_FALSE		0x00
+static int sec_ts_ptflib_reinit(struct sec_ts_data *ts)
+{
+	u8 r_data[2] = {0x00, 0x00};
+	u8 w_data[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	int ret = 0;
+
+	/* Check whether encoded heatmap is inited in custom library. */
+	r_data[0] = PTFLIB_ENCODED_ENABLED_OFFSET_LSB;
+	r_data[1] = PTFLIB_ENCODED_ENABLED_OFFSET_MSB;
+        ret = sec_ts_read_from_customlib(ts, r_data, 2);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			  "%s: Read encoded heatmap's inited failed.\n",
+			  __func__);
+		return -EIO;
+	}
+
+	if (r_data[1] != 0x01) {
+		input_err(true, &ts->client->dev,
+			  "%s: Encoded heatmap was not initialized.\n",
+			  __func__);
+		return -EIO;
+	}
+
+	/* Return if encoded heatmap is already enabled. */
+	if (r_data[0] == 0x01) {
+		input_info(true, &ts->client->dev,
+			   "%s: Encoded heatmap is already enabled.\n",
+			   __func__);
+		return 0;
+	}
+
+	/* Enable encoded heatmap. */
+	w_data[0] = PTFLIB_ENCODED_ENABLED_OFFSET_LSB;
+	w_data[1] = PTFLIB_ENCODED_ENABLED_OFFSET_MSB;
+	w_data[2] = PTFLIB_ENCODED_ENABLED_TRUE;
+	ret = sec_ts_write(ts, SEC_TS_CMD_CUSTOMLIB_WRITE_PARAM, w_data, 3);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			  "%s: ptlib - Writing encoded heatmap's enabled register failed.\n",
+			  __func__);
+		return -EIO;
+	}
+
+	/* Check whether encoded heatmap is enabled in customlib. */
+	r_data[0] = PTFLIB_ENCODED_ENABLED_OFFSET_LSB;
+	r_data[1] = PTFLIB_ENCODED_ENABLED_OFFSET_MSB;
+	ret = sec_ts_read_from_customlib(ts, r_data, 2);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			  "%s: ptlib - Read encoded heatmap's enabled status failed.\n",
+			  __func__);
+		return -EIO;
+	}
+
+	if (r_data[0] != PTFLIB_ENCODED_ENABLED_TRUE) {
+		input_err(true, &ts->client->dev,
+			  "%s: ptlib - Enabling encoded heatmap failed.\n",
+				  __func__);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int sec_ts_ptflib_rle_decoder(struct sec_ts_data *ts,
+				     const u16 *in_array,
+				     const int in_array_size, u16 *out_array,
+				     const int out_array_max_size)
+{
+	const u16 ESCAPE_MASK = 0xF000;
+	const u16 ESCAPE_BIT = 0x8000;
+
+	int i;
+	int j;
+	int out_array_size = 0;
+	u16 prev_word = 0;
+
+	for (i = 0; i < in_array_size; i++) {
+		u16 curr_word = in_array[i];
+		if ((curr_word & ESCAPE_MASK) == ESCAPE_BIT) {
+			u16 repetition = (curr_word & ~ESCAPE_MASK) - 1;
+			if (out_array_size + repetition > out_array_max_size) {
+				input_err(true, &ts->client->dev,
+					  "%s: decoding failed at %d.\n",
+					  __func__, i);
+				return -1;
+			}
+			for (j = 0; j < repetition; j++) {
+				*out_array++ = prev_word;
+				out_array_size++;
+			}
+		} else {
+			if (out_array_size + 1 > out_array_max_size) {
+				input_err(true, &ts->client->dev,
+					  "%s: decoding failed at %d.\n",
+					  __func__, i);
+				return -1;
+			}
+			*out_array++ = curr_word;
+			out_array_size++;
+			prev_word = curr_word;
+		}
+	}
+
+	return out_array_size;
+}
+
 static void sec_ts_reinit(struct sec_ts_data *ts)
 {
 	u8 w_data[2] = {0x00, 0x00};
@@ -1965,6 +2077,102 @@ static void sec_ts_populate_coordinate_channel(struct sec_ts_data *ts,
 	}
 }
 
+#define PTFLIB_ENCODED_COUNTER_OFFSET_LSB	0xA8
+#define PTFLIB_ENCODED_COUNTER_OFFSET_MSB	0x00
+#define PTFLIB_ENCODED_DATA_OFFSET_LSB		0xAE
+#define PTFLIB_ENCODED_DATA_OFFSET_MSB		0x00
+static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
+					   struct touch_offload_frame *frame,
+					   int channel)
+{
+	u32 heatmap_array_len = 0;
+	u32 decoded_size = 0;
+	u32 encoded_counter = 0;
+	u8 r_data[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	u16 encoded_data_size = 0;
+	int i;
+	int x;
+	int y;
+	int ret = 0;
+	struct TouchOffloadData2d *mutual_strength =
+		(struct TouchOffloadData2d *)frame->channel_data[channel];
+
+	mutual_strength->tx_size = ts->tx_count;
+	mutual_strength->rx_size = ts->rx_count;
+	mutual_strength->header.channel_type = frame->channel_type[channel];
+	mutual_strength->header.channel_size =
+		TOUCH_OFFLOAD_FRAME_SIZE_2D(mutual_strength->rx_size,
+					    mutual_strength->tx_size);
+
+	r_data[0] = PTFLIB_ENCODED_COUNTER_OFFSET_LSB;
+	r_data[1] = PTFLIB_ENCODED_COUNTER_OFFSET_MSB;
+	ret = sec_ts_read_from_customlib(ts, r_data, sizeof(r_data));
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: Read customlib's data size failed\n",
+				__func__);
+		return -EIO;
+	}
+
+	heatmap_array_len = mutual_strength->tx_size * mutual_strength->rx_size;
+	encoded_counter = le32_to_cpup((uint32_t *) r_data);
+	encoded_data_size = le16_to_cpup((uint16_t *) &r_data[4]);
+
+	if (encoded_counter == 0 || encoded_data_size == 0 ||
+	    encoded_data_size > heatmap_array_len * 2) {
+		input_err(true, &ts->client->dev,
+			  "%s: Invalid encoded data size %d (%d)\n",
+			  __func__, encoded_data_size, encoded_counter);
+		return -EIO;
+	}
+
+	if (!ts->encoded_buff) {
+		ts->encoded_buff = kmalloc(heatmap_array_len * 2, GFP_KERNEL);
+		if (!ts->encoded_buff) {
+			input_err(true, &ts->client->dev,
+				  "%s: kmalloc for encoded_buff failed.\n",
+				  __func__);
+			return -ENOMEM;
+		} else {
+			input_info(true, &ts->client->dev,
+				   "%s: kmalloc for encoded_buff was successful.\n",
+				   __func__);
+		}
+	}
+
+	/* Read encoded heatmap from customlib. */
+	*((u8 *) ts->encoded_buff) = PTFLIB_ENCODED_DATA_OFFSET_LSB;
+	*(((u8 *) ts->encoded_buff) + 1) = PTFLIB_ENCODED_DATA_OFFSET_MSB;
+	ret = sec_ts_read_from_customlib(ts, (u8 *) ts->encoded_buff,
+					 encoded_data_size);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			  "%s: Read encoded data (size=%d) failed.\n",
+			  __func__, encoded_data_size);
+		return -EIO;
+	}
+
+	decoded_size = sec_ts_ptflib_rle_decoder(
+	    ts, (u16 *) ts->encoded_buff, encoded_data_size / 2,
+	    (u16 *) ts->heatmap_buff, heatmap_array_len);
+	if (decoded_size != heatmap_array_len) {
+		input_info(true, &ts->client->dev,
+			   "%s: Decoding data failed (decoded_size=%d).",
+			   __func__, decoded_size);
+		return -EIO;
+	}
+
+	i = 0;
+	for (y = mutual_strength->rx_size - 1; y >= 0; y--) {
+		for (x = mutual_strength->tx_size - 1; x >= 0; x--) {
+			((uint16_t *) mutual_strength->data)[i++] =
+			    ts->heatmap_buff[x * mutual_strength->rx_size + y];
+		}
+	}
+
+	return 0;
+}
+
 static void sec_ts_populate_mutual_channel(struct sec_ts_data *ts,
 					struct touch_offload_frame *frame,
 					int channel)
@@ -2179,6 +2387,8 @@ static void sec_ts_populate_frame(struct sec_ts_data *ts,
 {
 	static u64 index;
 	int i;
+	int retval = -1;
+	const struct sec_ts_plat_data *pdata = ts->plat_data;
 
 	frame->header.index = index++;
 	frame->header.timestamp = ts->timestamp;
@@ -2190,12 +2400,21 @@ static void sec_ts_populate_frame(struct sec_ts_data *ts,
 
 	/* Populate all channels */
 	for (i = 0; i < frame->num_channels; i++) {
-		if (frame->channel_type[i] == TOUCH_DATA_TYPE_COORD)
+		u8 channel_type = frame->channel_type[i];
+
+		if (channel_type == TOUCH_DATA_TYPE_COORD) {
 			sec_ts_populate_coordinate_channel(ts, frame, i);
-		else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_MUTUAL) != 0)
-			sec_ts_populate_mutual_channel(ts, frame, i);
-		else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_SELF) != 0)
+		} else if ((channel_type & TOUCH_SCAN_TYPE_MUTUAL) != 0) {
+			if ((pdata->encoded_enable == ENCODED_ENABLE_ON) &&
+			    ((channel_type & ~TOUCH_SCAN_TYPE_MUTUAL) ==
+			    TOUCH_DATA_TYPE_STRENGTH))
+				retval = sec_ts_populate_encoded_channel(
+				    ts, frame, i);
+			if (retval < 0)
+				sec_ts_populate_mutual_channel(ts, frame, i);
+		} else if ((channel_type & TOUCH_SCAN_TYPE_SELF) != 0) {
 			sec_ts_populate_self_channel(ts, frame, i);
+		}
 	}
 }
 
@@ -2223,6 +2442,9 @@ int sec_ts_enable_grip(struct sec_ts_data *ts, bool enable)
 			__func__, ret);
 		final_result = ret;
 	}
+
+	if (!enable)
+		sec_ts_ptflib_reinit(ts);
 
 	return final_result;
 }
@@ -3269,6 +3491,10 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	if (of_property_read_u32(np, "sec,mis_cal_check",
 				 &pdata->mis_cal_check) < 0)
 		pdata->mis_cal_check = 0;
+
+	if (of_property_read_u32(np, "sec,encoded_enable",
+		&pdata->encoded_enable) < 0)
+		pdata->encoded_enable = 0;
 
 	if (of_property_read_u32(np, "sec,heatmap_mode",
 		&pdata->heatmap_mode) < 0)
@@ -4621,6 +4847,7 @@ static int sec_ts_remove(struct spi_device *client)
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	kfree(ts->heatmap_buff);
+	kfree(ts->encoded_buff);
 #endif
 #ifdef USE_STIM_PAD
 	kfree(ts->gainTable);
