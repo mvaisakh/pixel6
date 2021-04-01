@@ -1922,24 +1922,30 @@ static int max77759_wcin_is_online(struct max77759_chgr_data *data)
 	return (ret == 0) && _chg_details_02_wcin_sts_get(val);
 }
 
+/* TODO: make this configurable */
+static struct power_supply* max77759_get_wlc_psy(struct max77759_chgr_data *chg)
+{
+	if (!chg->wlc_psy)
+		chg->wlc_psy = power_supply_get_by_name("wireless");
+	return chg->wlc_psy;
+}
+
 static int max77759_wcin_voltage_max(struct max77759_chgr_data *chg,
 				     union power_supply_propval *val)
 {
+	struct power_supply *wlc_psy;
 	int rc;
-
-	if (!chg->wlc_psy) {
-		chg->wlc_psy = power_supply_get_by_name("wireless");
-		if (!chg->wlc_psy)
-			return -ENODEV;
-	}
 
 	if (!max77759_wcin_is_valid(chg)) {
 		val->intval = 0;
 		return 0;
 	}
 
-	rc = power_supply_get_property(chg->wlc_psy,
-				       POWER_SUPPLY_PROP_VOLTAGE_MAX, val);
+	wlc_psy = max77759_get_wlc_psy(chg);
+	if (!wlc_psy)
+		return max77759_get_regulation_voltage_uv(chg, &val->intval);
+
+	rc = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, val);
 	if (rc < 0) {
 		dev_err(chg->dev, "Couldn't get VOLTAGE_MAX, rc=%d\n", rc);
 		return rc;
@@ -1951,21 +1957,19 @@ static int max77759_wcin_voltage_max(struct max77759_chgr_data *chg,
 static int max77759_wcin_voltage_now(struct max77759_chgr_data *chg,
 				     union power_supply_propval *val)
 {
+	struct power_supply *wlc_psy;
 	int rc;
-
-	if (!chg->wlc_psy) {
-		chg->wlc_psy = power_supply_get_by_name("wireless");
-		if (!chg->wlc_psy)
-			return -ENODEV;
-	}
 
 	if (!max77759_wcin_is_valid(chg)) {
 		val->intval = 0;
 		return 0;
 	}
 
-	rc = power_supply_get_property(chg->wlc_psy,
-				       POWER_SUPPLY_PROP_VOLTAGE_NOW, val);
+	wlc_psy = max77759_get_wlc_psy(chg);
+	if (!wlc_psy)
+		return max77759_read_vbatt(chg, &val->intval);
+
+	rc = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, val);
 	if (rc < 0)
 		dev_err(chg->dev, "Couldn't get VOLTAGE_NOW, rc=%d\n", rc);
 
