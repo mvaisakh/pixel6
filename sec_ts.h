@@ -1139,6 +1139,7 @@ struct sec_ts_plat_data {
 
 	struct drm_panel *panel;
 	u32 initial_panel_index;
+	u32 offload_id;
 
 	/* convert mm to pixel for major and minor */
 	u8 mm2px;

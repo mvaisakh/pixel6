@@ -3021,6 +3021,7 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	struct sec_ts_plat_data *pdata = dev->platform_data;
 	struct device_node *np = dev->of_node;
 	u32 coords[2];
+	u8 offload_id[4];
 	int ret = 0;
 	int count = 0;
 	u32 ic_match_value;
@@ -3280,6 +3281,19 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	pdata->support_dex = of_property_read_bool(np, "support_dex_mode");
 
 	pdata->support_mt_pressure = true;
+
+	pdata->offload_id = 0;
+	if (of_property_read_u8_array(np, "sec,touch_offload_id",
+				      offload_id, 4) == -EINVAL)
+		input_err(true, &client->dev,
+			  "%s: Failed to read sec,touch_offload_id\n");
+	else {
+		pdata->offload_id = *(u32 *)offload_id;
+		input_info(true, &client->dev,
+			   "%s: Offload device ID = \"%c%c%c%c\" / 0x%08X\n",
+			   __func__, offload_id[0], offload_id[1], offload_id[2],
+			   offload_id[3], pdata->offload_id);
+	}
 
 	if (of_property_read_u8(np, "sec,mm2px", &pdata->mm2px) < 0)
 		pdata->mm2px = 1;
@@ -3973,9 +3987,7 @@ static int sec_ts_probe(struct spi_device *client)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	ts->offload.caps.touch_offload_major_version = 1;
 	ts->offload.caps.touch_offload_minor_version = 0;
-	/* ID equivalent to the 4-byte, little-endian string: '00r3' */
-	ts->offload.caps.device_id =
-	    '3' << 24 | 'r' << 16 | '0' << 8 | '0' << 0;
+	ts->offload.caps.device_id = ts->plat_data->offload_id;
 	ts->offload.caps.display_width = ts->plat_data->max_x + 1;
 	ts->offload.caps.display_height = ts->plat_data->max_y + 1;
 	ts->offload.caps.tx_size = ts->tx_count;
