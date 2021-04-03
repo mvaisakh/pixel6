@@ -2082,9 +2082,9 @@ static int max77759_wcin_prop_is_writeable(struct power_supply *psy,
 	return 0;
 }
 
-static const struct power_supply_desc max77759_wcin_psy_desc = {
+static struct power_supply_desc max77759_wcin_psy_desc = {
 	.name = "dc",
-	.type = POWER_SUPPLY_TYPE_WIRELESS,
+	.type = POWER_SUPPLY_TYPE_UNKNOWN,
 	.properties = max77759_wcin_props,
 	.num_properties = ARRAY_SIZE(max77759_wcin_props),
 	.get_property = max77759_wcin_get_prop,
@@ -2095,11 +2095,25 @@ static const struct power_supply_desc max77759_wcin_psy_desc = {
 static int max77759_init_wcin_psy(struct max77759_chgr_data *data)
 {
 	struct power_supply_config wcin_cfg = {};
+	struct device *dev = data->dev;
+	const char *name;
+	int ret;
 
 	wcin_cfg.drv_data = data;
-	wcin_cfg.of_node = data->dev->of_node;
-	data->wcin_psy = devm_power_supply_register(
-		data->dev, &max77759_wcin_psy_desc, &wcin_cfg);
+	wcin_cfg.of_node = dev->of_node;
+
+	if (of_property_read_bool(dev->of_node, "max77759,dc-psy-type-wireless"))
+		max77759_wcin_psy_desc.type = POWER_SUPPLY_TYPE_WIRELESS;
+
+	ret = of_property_read_string(dev->of_node, "max77759,dc-psy-name", &name);
+	if (ret == 0) {
+		max77759_wcin_psy_desc.name = devm_kstrdup(dev, name, GFP_KERNEL);
+		if (!max77759_wcin_psy_desc.name)
+			return -ENOMEM;
+	}
+
+	data->wcin_psy = devm_power_supply_register(data->dev,
+					&max77759_wcin_psy_desc, &wcin_cfg);
 	if (IS_ERR(data->wcin_psy))
 		return PTR_ERR(data->wcin_psy);
 
