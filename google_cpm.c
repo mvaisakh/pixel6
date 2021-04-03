@@ -49,11 +49,14 @@
 
 /* tier based, disabled now */
 #define GCPM_DEFAULT_DC_LIMIT_DEMAND	0
+/* thermal will change this */
+#define GCPM_DEFAULT_DC_LIMIT_CC_MIN	1000000
 
 /* voltage based */
 #define GCPM_DEFAULT_DC_LIMIT_VBATT_MIN		3600000
 #define GCPM_DEFAULT_DC_LIMIT_DELTA_LOW		200000
 
+/* demand based limits */
 #define GCPM_DEFAULT_DC_LIMIT_VBATT_MAX		4400000
 #define GCPM_DEFAULT_DC_LIMIT_DELTA_HIGH	50000
 
@@ -148,6 +151,7 @@ struct gcpm_drv  {
 	u32 dc_limit_vbatt_min;		/* DC will start at min */
 	u32 dc_limit_vbatt_high;	/* DC will not start over high */
 	u32 dc_limit_vbatt_max;		/* DC stop at max */
+	u32 dc_limit_cc_min;		/* DC stop if CC_MAX is under cc_min */
 	u32 dc_limit_demand;
 
 	/* cc_max and fv_uv are demand from google_charger */
@@ -437,7 +441,12 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 }
 
 /*
- * Select the DC charger using the thermal policy.
+ * Select the DC charger using the thermal policy. DC charging is enabled
+ * when demand is over dc_limit (default 0) and vbatt > vbatt_min (default
+ * 3.6V or device tree). DC is stopped when vbatt is over vbatt_max (4.4V,
+ * or DT) and not started when vbatt is over vbatt_high (default 200mV under
+ * vbatt_max or DT). DC charging is not stopped after start unless vbatt
+ * falls under vbatt_low.
  * NOTE: program target before enabling chaging.
  */
 static int gcpm_chg_select(const struct gcpm_drv *gcpm)
@@ -455,17 +464,18 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	if (gcpm->cc_max <= 0 || gcpm->fv_uv <= 0)
 		return GCPM_DEFAULT_CHARGER;
 
-	/* battery demand comes from charging tier */
+	/* battery demand comes from charging tier or thermal limit */
 	batt_demand = (gcpm->cc_max / 1000) * (gcpm->fv_uv / 1000);
 	/* TODO: handle capabilities based on index number */
-	if (batt_demand > gcpm->dc_limit_demand)
+	if (batt_demand > gcpm->dc_limit_demand) {
 		index = GCPM_INDEX_DC_ENABLE;
 
-	/* TODO: add debounce on demand */
+		pr_debug("%s: index=%d/%d demand=%d > dc_limit=%d\n", __func__,
+			 index, gcpm->chg_psy_count, batt_demand,
+			 gcpm->dc_limit_demand);
+	}
 
-	pr_debug("%s: index=%d count=%d demand=%d dc_limit=%d\n",
-		 __func__, index, gcpm->chg_psy_count, batt_demand,
-		 gcpm->dc_limit_demand);
+	/* TODO: add debounce on demand */
 
 	/* could select different modes here depending on capabilities */
 	chg_psy = gcpm_chg_get_default(gcpm);
@@ -492,8 +502,10 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 			index = GCPM_DEFAULT_CHARGER; /* disable */
 		else if (vbatt_high && vbatt > vbatt_high)
 			index = gcpm->dc_index; /* debounce */
-		else if (vbatt_min && vbatt > vbatt_min)
-			index = GCPM_INDEX_DC_ENABLE; /* enable */
+		else if (vbatt_min && vbatt < vbatt_min)
+			index = GCPM_DEFAULT_CHARGER;
+
+		/* demand decides DC unless under vmin */
 
 		pr_debug("%s: index=%d vbatt=%d: low=%d min=%d high=%d max=%d\n",
 			 __func__, index, vbatt, vbatt_low, vbatt_min,
@@ -503,6 +515,13 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	if (index >= gcpm->chg_psy_count) {
 		pr_err("CHG_CHK index=%d out of bounds %d\n", index,
 		       gcpm->chg_psy_count);
+		return GCPM_DEFAULT_CHARGER;
+	}
+
+	/* thermals might have reduced demand and was tno caught from dc_limit */
+	if (gcpm->cc_max <= gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
+		pr_debug("%s: cc_max=%d under cc_min=%d\n", __func__,
+			 gcpm->cc_max, gcpm->dc_limit_cc_min);
 		return GCPM_DEFAULT_CHARGER;
 	}
 
@@ -765,7 +784,7 @@ static void gcpm_chg_select_work(struct work_struct *work)
 			gcpm->taper_step -= 1;
 		}
 
-		pr_debug("CHG_CHK: taper step=%d done=%d\n", gcpm->taper_step, dc_done);
+		pr_debug("CHG_CHK: taper_step=%d done=%d\n", gcpm->taper_step, dc_done);
 	} else if (gcpm->taper_step != 0) {
 		gcpm_taper_ctl(gcpm, 0);
 	}
@@ -1858,6 +1877,13 @@ static int google_cpm_probe(struct platform_device *pdev)
 				   &gcpm->dc_limit_demand);
 	if (ret < 0)
 		gcpm->dc_limit_demand = GCPM_DEFAULT_DC_LIMIT_DEMAND;
+
+	ret = of_property_read_u32(pdev->dev.of_node, "google,dc_limit-cc_min",
+				   &gcpm->dc_limit_cc_min);
+	if (ret < 0)
+		gcpm->dc_limit_cc_min = GCPM_DEFAULT_DC_LIMIT_CC_MIN;
+
+
 
 	/* voltage lower bound */
 	ret = of_property_read_u32(pdev->dev.of_node, "google,dc_limit-vbatt_min",
