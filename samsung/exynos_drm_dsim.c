@@ -284,11 +284,19 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 		}
 	}
 
+	dsim_debug(dsim, "current state: %d\n", dsim->state);
+
 	if (dsim->state == DSIM_STATE_SUSPEND) {
 		_dsim_enable(dsim);
 		dsim_set_te_pinctrl(dsim, 1);
+	} else if (dsim->state == DSIM_STATE_BYPASS) {
+		pm_runtime_set_suspended(dsim->dev);
+		dsim->state = DSIM_STATE_SUSPEND;
+		_dsim_enable(dsim);
 	} else if (old_crtc_state->self_refresh_active) {
 		pm_runtime_get_sync(dsim->dev);
+	} else {
+		WARN(1, "unknown dsim state (%d)\n", dsim->state);
 	}
 }
 
@@ -373,7 +381,15 @@ static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_
 
 	DPU_ATRACE_BEGIN(__func__);
 	if (self_refresh_active) {
-		pm_runtime_put_sync(dsim->dev);
+		const struct exynos_drm_crtc_state *exynos_crtc_state =
+			to_exynos_crtc_state(crtc->state);
+
+		if (exynos_crtc_state->bypass) {
+			_dsim_disable(dsim);
+			dsim->state = DSIM_STATE_BYPASS;
+		} else {
+			pm_runtime_put_sync(dsim->dev);
+		}
 	} else {
 		_dsim_disable(dsim);
 
@@ -1869,8 +1885,10 @@ static ssize_t dsim_host_transfer(struct mipi_dsi_host *host,
 	DPU_ATRACE_BEGIN(__func__);
 
 	ret = pm_runtime_resume_and_get(dsim->dev);
-	if (ret)
+	if (ret) {
+		dsim_err(dsim, "runtime resume failed (%d). unable to transfer cmd\n", ret);
 		return ret;
+	}
 
 	mutex_lock(&dsim->cmd_lock);
 	if (WARN_ON(dsim->state != DSIM_STATE_HSCLKEN)) {
@@ -2315,13 +2333,16 @@ static int dsim_runtime_suspend(struct device *dev)
 static int dsim_runtime_resume(struct device *dev)
 {
 	struct dsim_device *dsim = dev_get_drvdata(dev);
+	int ret = 0;
 
 	DPU_ATRACE_BEGIN(__func__);
 
 	mutex_lock(&dsim->state_lock);
 	dsim_debug(dsim, "%s\n", __func__);
 
-	if (dsim->state == DSIM_STATE_ULPS)
+	if (dsim->state == DSIM_STATE_BYPASS)
+		ret = -EPERM;
+	else if (dsim->state == DSIM_STATE_ULPS)
 		_dsim_exit_ulps_locked(dsim);
 
 	dsim->suspend_state = dsim->state;
@@ -2329,7 +2350,7 @@ static int dsim_runtime_resume(struct device *dev)
 
 	DPU_ATRACE_END(__func__);
 
-	return 0;
+	return ret;
 }
 
 static int dsim_suspend(struct device *dev)
