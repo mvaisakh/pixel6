@@ -3679,6 +3679,32 @@ static ssize_t batt_show_charge_type(struct device *dev,
 
 static const DEVICE_ATTR(charge_type, 0444, batt_show_charge_type, NULL);
 
+
+static ssize_t batt_show_constant_charge_current(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", batt_drv->cc_max);
+}
+
+static const DEVICE_ATTR(constant_charge_current, 0444,
+			 batt_show_constant_charge_current, NULL);
+
+
+static ssize_t batt_show_constant_charge_voltage(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", batt_drv->fv_uv);
+}
+
+static const DEVICE_ATTR(constant_charge_voltage, 0444,
+			 batt_show_constant_charge_voltage, NULL);
+
 /* ------------------------------------------------------------------------- */
 
 static int batt_init_fs(struct batt_drv *batt_drv)
@@ -3761,7 +3787,12 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_charge_type);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create charge_type\n");
-
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_constant_charge_current);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create constant charge current\n");
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_constant_charge_voltage);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create constant charge voltage\n");
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
