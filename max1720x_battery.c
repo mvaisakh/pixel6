@@ -4838,7 +4838,7 @@ static int max1720x_probe(struct i2c_client *client,
 	else
 		chip->max1720x_psy_desc.name = "maxfg";
 
-	pr_info("max1720x_psy_desc.name=%s\n",chip->max1720x_psy_desc.name);
+	pr_info("max1720x_psy_desc.name=%s\n", chip->max1720x_psy_desc.name);
 
 	chip->max1720x_psy_desc.type = POWER_SUPPLY_TYPE_BATTERY;
 	chip->max1720x_psy_desc.get_property = max1720x_get_property;
