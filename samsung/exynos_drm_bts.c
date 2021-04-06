@@ -612,7 +612,7 @@ dpu_bts_calc_dpp_bw(struct bts_dpp_info *dpp, u32 fps, u32 lcd_h, u32 vblank_us,
 
 	DPU_DEBUG_BTS("  DPP%d bandwidth: avg %u, rt %u, rot %u\n", idx, avg_bw, rt_bw, rot_bw);
 
-	dpp->bw = max(avg_bw, rot_bw);
+	dpp->bw = avg_bw;
 	dpp->rt_bw = max(rt_bw, rot_bw);
 }
 
