@@ -314,21 +314,19 @@ static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 
 	ctx->hbm_mode = hbm_mode;
 
-	/*
-	 * TODO(b/176400319): The delay time here may cause performance issue,
-	 * need to revisit this later.
-	 */
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
-	if (ctx->hbm_mode) {
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x00);
-		usleep_range(17000, 17010);
-	} else {
-		usleep_range(17000, 17010);
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
+	if (ctx->panel_rev == PANEL_REV_PROTO1) {
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+		if (ctx->hbm_mode) {
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x00);
+			usleep_range(17000, 17010);
+		} else {
+			usleep_range(17000, 17010);
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
+		}
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
 	}
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
 	s6e3hc3_write_display_mode(ctx, &pmode->mode);
 }
 
