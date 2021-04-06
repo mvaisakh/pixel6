@@ -1170,7 +1170,8 @@ int dpu_init_debug(struct decon_device *decon)
 	debugfs_create_x32("dta_hi_thres", 0664, urgent_dent, &decon->config.urgent.dta_hi_thres);
 	debugfs_create_x32("dta_lo_thres", 0664, urgent_dent, &decon->config.urgent.dta_lo_thres);
 
-	exynos_debugfs_add_dqe(dqe, crtc->debugfs_entry);
+	if (dqe)
+		exynos_debugfs_add_dqe(dqe, crtc->debugfs_entry);
 
 	return 0;
 
