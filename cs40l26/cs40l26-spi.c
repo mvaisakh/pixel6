@@ -10,7 +10,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include <linux/mfd/cs40l26.h>
+#include "cs40l26.h"
 
 static const struct spi_device_id cs40l26_id_spi[] = {
 	{"cs40l26a", 0},

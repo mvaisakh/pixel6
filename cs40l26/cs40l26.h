@@ -41,7 +41,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 
-#include <linux/firmware/cirrus/cl_dsp.h>
+#include "cl_dsp.h"
 
 #define CS40L26_FIRSTREG				0x0
 #define CS40L26_LASTREG					0x3C7DFE8

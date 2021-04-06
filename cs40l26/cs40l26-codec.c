@@ -4,7 +4,7 @@
 //
 // Copyright 2021 Cirrus Logic. Inc.
 
-#include <cs40l26.h>
+#include "cs40l26.h"
 
 static const struct cs40l26_pll_sysclk_config cs40l26_pll_sysclk[] = {
 	{CS40L26_PLL_CLK_FRQ0, CS40L26_PLL_CLK_CFG0},

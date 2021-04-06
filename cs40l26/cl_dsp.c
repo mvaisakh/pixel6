@@ -6,7 +6,7 @@
 //
 // Author: Fred Treven <fred.treven@cirrus.com>
 
-#include <linux/firmware/cirrus/cl_dsp.h>
+#include "cl_dsp.h"
 
 struct cl_dsp_memchunk cl_dsp_memchunk_create(void *data, int size)
 {
