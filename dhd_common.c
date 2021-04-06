@@ -6319,13 +6319,54 @@ wl_iw_parse_channel_list(char** list_str, uint16* channel_list, int channel_num)
 	return num;
 }
 
+#ifdef DHD_LINUX_STD_FW_API
+int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
+	char ** buffer, int *length)
+{
+	int ret = BCME_ERROR;
+	const struct firmware *fw = NULL;
+
+	if (file_path) {
+		ret = dhd_os_get_img_fwreq(dhd, &fw, file_path);
+		if (ret < 0) {
+			DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n", ret));
+			goto err;
+		} else {
+			DHD_ERROR(("dhd_os_get_img(Request Firmware API) success\n"));
+			if ((fw->size <= 0 || fw->size > *length)) {
+				*length = fw->size;
+				goto err;
+			}
+			*buffer = MALLOCZ(dhd->osh, fw->size);
+			if (*buffer == NULL) {
+				DHD_ERROR(("%s: Failed to allocate memory %d bytes\n",
+					__FUNCTION__, (int)fw->size));
+				goto err;
+			}
+			*length = fw->size;
+			ret = memcpy_s(*buffer, fw->size, fw->data, fw->size);
+			if (ret != BCME_OK) {
+				DHD_ERROR(("%s: memcpy_s failed, err : %d\n", __FUNCTION__, ret));
+				goto err;
+			}
+			ret = BCME_OK;
+		}
+	}
+err:
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+	return ret;
+}
+
+#else
+
 /* Given filename and download type,  returns a buffer pointer and length
 * for download to f/w. Type can be FW or NVRAM.
 *
 */
 int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t component,
 	char ** buffer, int *length)
-
 {
 	int ret = BCME_ERROR;
 	int len = 0;
@@ -6373,6 +6414,7 @@ err:
 
 	return ret;
 }
+#endif /* DHD_LINUX_STD_FW_API */
 
 int
 dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_type,
@@ -6413,6 +6455,10 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 {
 	int chunk_len;
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
+	int cumulative_len = 0;
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
+
 	int size2alloc;
 	unsigned char *new_buf;
 	int err = 0, data_offset;
@@ -6424,6 +6470,15 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 	if ((new_buf = (unsigned char *)MALLOCZ(dhd->osh, size2alloc)) != NULL) {
 		do {
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
+			if (len >= MAX_CHUNK_LEN)
+				chunk_len = MAX_CHUNK_LEN;
+			else
+				chunk_len = len;
+
+			memcpy(new_buf + data_offset, buf + cumulative_len, chunk_len);
+			cumulative_len += chunk_len;
+#else
 			chunk_len = dhd_os_get_image_block((char *)(new_buf + data_offset),
 				MAX_CHUNK_LEN, buf);
 			if (chunk_len < 0) {
@@ -6432,6 +6487,7 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 				err = BCME_ERROR;
 				goto exit;
 			}
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
 			if (len - chunk_len == 0)
 				dl_flag |= DL_END;
 
@@ -6442,13 +6498,18 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 			len = len - chunk_len;
 		} while ((len > 0) && (err == 0));
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
+		MFREE(dhd->osh, new_buf, size2alloc);
+#endif /* !LINUX && !linux */
 	} else {
 		err = BCME_NOMEM;
 	}
+#if (defined(LINUX) || defined(linux)) && !defined(DHD_LINUX_STD_FW_API)
 exit:
 	if (new_buf) {
 		MFREE(dhd->osh, new_buf, size2alloc);
 	}
+#endif /* LINUX || linux */
 	return err;
 }
 
@@ -6506,6 +6567,9 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 		clm_blob_path = clm_path;
 		DHD_TRACE(("clm path from module param:%s\n", clm_path));
 	} else {
+#ifdef DHD_LINUX_STD_FW_API
+		clm_blob_path = DHD_CLM_NAME;
+#else
 		clm_blob_path = VENDOR_PATH CONFIG_BCMDHD_CLM_PATH;
 #if defined(AUTO_CHIP_DETECTION)
 		if (dhd_bus_chip_id(dhd) == BCM4375_CHIP_ID) {
@@ -6524,6 +6588,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 						CONFIG_BCMDHD_4389_CLM_PATH;
 		}
 #endif /* AUTO_CHIP_DETECTION */
+#endif /* DHD_LINUX_STD_FW_API */
 	}
 
 	/* If CLM blob file is found on the filesystem, download the file.
@@ -6531,7 +6596,16 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	 * validate the country code before proceeding with the initialization.
 	 * If country code is not valid, fail the initialization.
 	 */
+#if (!defined(LINUX) && !defined(linux)) || defined(DHD_LINUX_STD_FW_API)
+	DHD_ERROR(("Clmblob file : %s\n", clm_blob_path));
+	len = MAX_CLM_BUF_SIZE;
+	dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
+#else
 	memblock = dhd_os_open_image1(dhd, (char *)clm_blob_path);
+	len = dhd_os_get_image_size(memblock);
+#endif /* !LINUX && !linux || DHD_LINUX_STD_FW_API */
+
+#if defined(LINUX) || defined(linux)
 	if (memblock == NULL) {
 #if defined(DHD_BLOB_EXISTENCE_CHECK)
 		if (dhd->is_blob) {
@@ -6547,8 +6621,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 		goto exit;
 	}
-
-	len = dhd_os_get_image_size(memblock);
+#endif /* defined(LINUX) || defined(linux) */
 
 	if ((len > 0) && (len < MAX_CLM_BUF_SIZE) && memblock) {
 		status = dhd_check_current_clm_data(dhd);
@@ -6596,7 +6669,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 			err = BCME_ERROR;
 			goto exit;
 		} else {
-			DHD_INFO(("%s: CLM download succeeded \n", __FUNCTION__));
+			DHD_ERROR(("%s: CLM download succeeded \n", __FUNCTION__));
 		}
 	} else {
 		DHD_INFO(("Skipping the clm download. len:%d memblk:%p \n", len, memblock));
@@ -6613,7 +6686,12 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 exit:
 
 	if (memblock) {
+#if (defined(LINUX) || defined(linux)) && !defined(DHD_LINUX_STD_FW_API)
 		dhd_os_close_image1(dhd, memblock);
+#else
+		dhd_free_download_buffer(dhd, memblock, MAX_CLM_BUF_SIZE);
+#endif /* LINUX || linux */
+
 	}
 
 	return err;

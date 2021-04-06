@@ -1009,14 +1009,14 @@ osl_os_open_image(char *filename)
 {
 	struct file *fp;
 
-	fp = filp_open(filename, O_RDONLY, 0);
+	fp = dhd_filp_open(filename, O_RDONLY, 0);
 	/*
 	 * 2.6.11 (FC4) supports filp_open() but later revs don't?
 	 * Alternative:
 	 * fp = open_namei(AT_FDCWD, filename, O_RD, 0);
 	 * ???
 	 */
-	if (IS_ERR(fp)) {
+	if (IS_ERR(fp) || fp == NULL) {
 		DHD_ERROR(("ERROR %ld: Unable to open file %s\n", PTR_ERR(fp), filename));
 		fp = NULL;
 	}
@@ -1034,7 +1034,7 @@ osl_os_get_image_block(char *buf, int len, void *image)
 		return 0;
 	}
 
-	rdlen = kernel_read_compat(fp, fp->f_pos, buf, len);
+	rdlen = dhd_kernel_read_compat(fp, fp->f_pos, buf, len);
 	if (rdlen > 0) {
 		fp->f_pos += rdlen;
 	}
@@ -1048,7 +1048,7 @@ osl_os_close_image(void *image)
 	struct file *fp = (struct file *)image;
 
 	if (fp != NULL) {
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 	}
 }
 

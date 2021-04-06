@@ -699,8 +699,8 @@ get_mem_val_from_file(void)
 	int ret = 0;
 
 	/* Read memdump info from the file */
-	fp = filp_open(filepath, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(filepath, O_RDONLY, 0);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		DHD_ERROR(("%s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 #if defined(CONFIG_X86)
 		/* Check if it is Live Brix Image */
@@ -710,8 +710,8 @@ get_mem_val_from_file(void)
 		/* Try if it is Installed Brix Image */
 		filepath = MEMDUMPINFO_INST;
 		DHD_ERROR(("%s: Try File [%s]\n", __FUNCTION__, filepath));
-		fp = filp_open(filepath, O_RDONLY, 0);
-		if (IS_ERR(fp)) {
+		fp = dhd_filp_open(filepath, O_RDONLY, 0);
+		if (IS_ERR(fp) || (fp == NULL)) {
 			DHD_ERROR(("%s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 			goto done;
 		}
@@ -721,10 +721,10 @@ get_mem_val_from_file(void)
 	}
 
 	/* Handle success case */
-	ret = kernel_read_compat(fp, 0, (char *)&mem_val, sizeof(uint32));
+	ret = dhd_kernel_read_compat(fp, 0, (char *)&mem_val, sizeof(uint32));
 	if (ret < 0) {
 		DHD_ERROR(("%s: File read error, ret=%d\n", __FUNCTION__, ret));
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 		goto done;
 	}
 
@@ -732,7 +732,7 @@ get_mem_val_from_file(void)
 	p_mem_val[sizeof(uint32) - 1] = '\0';
 	mem_val = bcm_atoi(p_mem_val);
 
-	filp_close(fp, NULL);
+	dhd_filp_close(fp, NULL);
 
 done:
 	return mem_val;
@@ -837,11 +837,11 @@ get_assert_val_from_file(void)
 	 * 2: Trigger Kernel crash by BUG()
 	 * File doesn't exist: Keep default value (1).
 	 */
-	fp = filp_open(filepath, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(filepath, O_RDONLY, 0);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		DHD_ERROR(("%s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 	} else {
-		int ret = kernel_read_compat(fp, 0, (char *)&mem_val, sizeof(uint32));
+		int ret = dhd_kernel_read_compat(fp, 0, (char *)&mem_val, sizeof(uint32));
 		if (ret < 0) {
 			DHD_ERROR(("%s: File read error, ret=%d\n", __FUNCTION__, ret));
 		} else {
@@ -850,7 +850,7 @@ get_assert_val_from_file(void)
 			mem_val = bcm_atoi(p_mem_val);
 			DHD_ERROR(("%s: ASSERT ENABLED = %d\n", __FUNCTION__, mem_val));
 		}
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 	}
 
 #ifdef CUSTOMER_HW4_DEBUG

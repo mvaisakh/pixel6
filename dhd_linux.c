@@ -48,7 +48,6 @@
 #include <linux/spinlock.h>
 #include <linux/ethtool.h>
 #include <linux/fcntl.h>
-#include <linux/fs.h>
 #include <linux/ip.h>
 #include <linux/reboot.h>
 #include <linux/notifier.h>
@@ -61,7 +60,6 @@
 #include <linux/cpufreq.h>
 #endif /* ENABLE_ADAPTIVE_SCHED */
 #include <linux/rtc.h>
-#include <linux/namei.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
 #include <dhd_linux_priv.h>
@@ -8429,7 +8427,7 @@ dhd_os_write_file_posn(void *fp, unsigned long *posn, void *buf,
 	if (!fp || !buf || buflen == 0)
 		return -1;
 
-	if (vfs_write((struct file *)fp, buf, buflen, &wr_posn) < 0)
+	if (dhd_vfs_write((struct file *)fp, buf, buflen, &wr_posn) < 0)
 		return -1;
 
 	*posn = wr_posn;
@@ -8445,7 +8443,7 @@ dhd_os_read_file(void *file, char *buf, uint32 size)
 	if (!file || !buf)
 		return -1;
 
-	return vfs_read(filep, buf, size, &filep->f_pos);
+	return dhd_vfs_read(filep, buf, size, &filep->f_pos);
 }
 
 int
@@ -8465,7 +8463,7 @@ static int
 dhd_init_logstrs_array(osl_t *osh, dhd_event_log_t *temp)
 {
 	struct file *filep = NULL;
-	struct kstat stat;
+	struct kstat stat = {0};
 	mm_segment_t fs;
 	char *raw_fmts =  NULL;
 	int logstrs_size = 0;
@@ -8479,13 +8477,13 @@ dhd_init_logstrs_array(osl_t *osh, dhd_event_log_t *temp)
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filep = filp_open(logstrs_path, O_RDONLY, 0);
+	filep = dhd_filp_open(logstrs_path, O_RDONLY, 0);
 
-	if (IS_ERR(filep)) {
+	if (IS_ERR(filep) || (filep == NULL)) {
 		DHD_ERROR_NO_HW4(("%s: Failed to open the file %s \n", __FUNCTION__, logstrs_path));
 		goto fail;
 	}
-	error = vfs_stat(logstrs_path, &stat);
+	error = dhd_vfs_stat(logstrs_path, &stat);
 	if (error) {
 		DHD_ERROR_NO_HW4(("%s: Failed to stat file %s \n", __FUNCTION__, logstrs_path));
 		goto fail;
@@ -8507,14 +8505,14 @@ dhd_init_logstrs_array(osl_t *osh, dhd_event_log_t *temp)
 		}
 	}
 
-	if (vfs_read(filep, raw_fmts, logstrs_size, &filep->f_pos) !=	logstrs_size) {
+	if (dhd_vfs_read(filep, raw_fmts, logstrs_size, &filep->f_pos) !=	logstrs_size) {
 		DHD_ERROR_NO_HW4(("%s: Failed to read file %s\n", __FUNCTION__, logstrs_path));
 		goto fail;
 	}
 
 	if (dhd_parse_logstrs_file(osh, raw_fmts, logstrs_size, temp)
 				== BCME_OK) {
-		filp_close(filep, NULL);
+		dhd_filp_close(filep, NULL);
 		set_fs(fs);
 		return BCME_OK;
 	}
@@ -8529,7 +8527,7 @@ fail:
 
 fail1:
 	if (!IS_ERR(filep))
-		filp_close(filep, NULL);
+		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
 	temp->fmts = NULL;
@@ -8554,8 +8552,8 @@ dhd_read_map(osl_t *osh, char *fname, uint32 *ramstart, uint32 *rodata_start,
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filep = filp_open(fname, O_RDONLY, 0);
-	if (IS_ERR(filep)) {
+	filep = dhd_filp_open(fname, O_RDONLY, 0);
+	if (IS_ERR(filep) || (filep == NULL)) {
 		DHD_ERROR_NO_HW4(("%s: Failed to open %s \n",  __FUNCTION__, fname));
 		goto fail;
 	}
@@ -8566,7 +8564,7 @@ dhd_read_map(osl_t *osh, char *fname, uint32 *ramstart, uint32 *rodata_start,
 
 fail:
 	if (!IS_ERR(filep))
-		filp_close(filep, NULL);
+		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
 
@@ -8582,8 +8580,13 @@ static int
 dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		uint32 lr, char *lr_fn)
 {
+#ifdef DHD_LINUX_STD_FW_API
+	const struct firmware *fw = NULL;
+	uint32 size = 0, mem_offset = 0;
+#else
 	struct file *filep = NULL;
 	mm_segment_t fs;
+#endif /* DHD_LINUX_STD_FW_API */
 	char *raw_fmts = NULL, *raw_fmts_loc = NULL, *cptr = NULL;
 	uint32 read_size = READ_NUM_BYTES;
 	int err = BCME_ERROR;
@@ -8610,14 +8613,24 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		return BCME_ERROR;
 	}
 
+#ifdef DHD_LINUX_STD_FW_API
+	err = dhd_os_get_img_fwreq(g_dhd_pub, &fw, fname);
+	if (err < 0) {
+		DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
+			err));
+		goto fail;
+	}
+	size = fw->size;
+#else
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filep = filp_open(fname, O_RDONLY, 0);
-	if (IS_ERR(filep)) {
+	filep = dhd_filp_open(fname, O_RDONLY, 0);
+	if (IS_ERR(filep) || (filep == NULL)) {
 		DHD_ERROR(("%s: Failed to open %s \n",  __FUNCTION__, fname));
 		goto fail;
 	}
+#endif /* DHD_LINUX_STD_FW_API */
 
 	if (pc_fn == NULL) {
 		count |= PC_FOUND_BIT;
@@ -8627,12 +8640,27 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 	}
 	while (count != ALL_ADDR_VAL)
 	{
+#ifdef DHD_LINUX_STD_FW_API
+		/* Bound check for size before doing memcpy() */
+		if ((mem_offset + read_size) > size) {
+			read_size = size - mem_offset;
+		}
+
+		err = memcpy_s(raw_fmts, read_size,
+				((char *)(fw->data) + mem_offset), read_size);
+		if (err) {
+			DHD_ERROR(("%s: failed to copy raw_fmts, err=%d\n",
+				 __FUNCTION__, err));
+			goto fail;
+		}
+#else
 		err = dhd_os_read_file(filep, raw_fmts, read_size);
 		if (err < 0) {
 			DHD_ERROR(("%s: map file read failed err:%d \n",
 				__FUNCTION__, err));
 			goto fail;
 		}
+#endif /* DHD_LINUX_STD_FW_API */
 
 		/* End raw_fmts with NULL as strstr expects NULL terminated
 		* strings
@@ -8725,6 +8753,14 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 			offset += (len + 1);
 		}
 
+#ifdef DHD_LINUX_STD_FW_API
+        if ((mem_offset + read_size) >= size) {
+            break;
+        }
+
+        memset(raw_fmts, 0, read_size);
+        mem_offset += (read_size -(len + 1));
+#else
 		if (err < (int)read_size) {
 			/*
 			* since we reset file pos back to earlier pos by
@@ -8742,14 +8778,21 @@ dhd_lookup_map(osl_t *osh, char *fname, uint32 pc, char *pc_fn,
 		* the string and addr even if it comes as splited in next read.
 		*/
 		dhd_os_seek_file(filep, -(len + 1));
+#endif /* DHD_LINUX_STD_FW_API */
 		DHD_TRACE(("%s: seek %d \n", __FUNCTION__, -(len + 1)));
 	}
 
 fail:
+#ifdef DHD_LINUX_STD_FW_API
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+#else
 	if (!IS_ERR(filep))
-		filp_close(filep, NULL);
+		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
+#endif /* DHD_LINUX_STD_FW_API */
 
 	if (!(count & PC_FOUND_BIT)) {
 		sprintf(pc_fn, "0x%08x", pc);
@@ -8790,8 +8833,8 @@ dhd_init_static_strs_array(osl_t *osh, dhd_event_log_t *temp, char *str_file, ch
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filep = filp_open(str_file, O_RDONLY, 0);
-	if (IS_ERR(filep)) {
+	filep = dhd_filp_open(str_file, O_RDONLY, 0);
+	if (IS_ERR(filep) || (filep == NULL)) {
 		DHD_ERROR(("%s: Failed to open the file %s \n",  __FUNCTION__, str_file));
 		goto fail;
 	}
@@ -8828,7 +8871,7 @@ dhd_init_static_strs_array(osl_t *osh, dhd_event_log_t *temp, char *str_file, ch
 		}
 	}
 
-	error = vfs_read(filep, raw_fmts, logstrs_size, (&filep->f_pos));
+	error = dhd_vfs_read(filep, raw_fmts, logstrs_size, (&filep->f_pos));
 	if (error != logstrs_size) {
 		DHD_ERROR(("%s: %s read failed %d \n", __FUNCTION__, str_file, error));
 		goto fail;
@@ -8846,7 +8889,7 @@ dhd_init_static_strs_array(osl_t *osh, dhd_event_log_t *temp, char *str_file, ch
 		temp->rom_rodata_end = rodata_end;
 	}
 
-	filp_close(filep, NULL);
+	dhd_filp_close(filep, NULL);
 	set_fs(fs);
 
 	return BCME_OK;
@@ -8858,7 +8901,7 @@ fail:
 
 fail1:
 	if (!IS_ERR(filep))
-		filp_close(filep, NULL);
+		dhd_filp_close(filep, NULL);
 
 	set_fs(fs);
 
@@ -9594,12 +9637,17 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 
 	/* set default firmware and nvram path for built-in type driver */
 	if (!dhd_download_fw_on_driverload) {
+#ifdef DHD_LINUX_STD_FW_API
+		fw = DHD_FW_NAME;
+		nv = DHD_NVRAM_NAME;
+#else
 #ifdef CONFIG_BCMDHD_FW_PATH
 		fw = VENDOR_PATH CONFIG_BCMDHD_FW_PATH;
 #endif /* CONFIG_BCMDHD_FW_PATH */
 #ifdef CONFIG_BCMDHD_NVRAM_PATH
 		nv = VENDOR_PATH CONFIG_BCMDHD_NVRAM_PATH;
 #endif /* CONFIG_BCMDHD_NVRAM_PATH */
+#endif /* DHD_LINUX_STD_FW_API */
 #ifdef AUTO_CHIP_DETECTION
 		if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM4375_CHIP_ID) {
 			if (dhd_bus_chiprev_id(dhdp) == 1) {
@@ -9616,8 +9664,12 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_4385_NVRAM_PATH;
 		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM43752_CHIP_ID) {
+#ifdef DHD_LINUX_STD_FW_API
+				nv = DHD_NVRAM_USI_NAME;
+#else
 				nv = VENDOR_PATH
 					 CONFIG_BCMDHD_43752_NVRAM_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
 		} else if (dhdp->bus && dhd_bus_chip_id(dhdp) == BCM4389_CHIP_ID) {
 				fw = VENDOR_PATH CONFIG_BCMDHD_4389_FW_PATH;
 				nv = VENDOR_PATH
@@ -9628,9 +9680,9 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 
 	/* check if we need to initialize the path */
 	if (dhdinfo->fw_path[0] == '\0') {
-		if (adapter && adapter->fw_path && adapter->fw_path[0] != '\0')
+		if (adapter && adapter->fw_path && adapter->fw_path[0] != '\0') {
 			fw = adapter->fw_path;
-
+		}
 	}
 	if (dhdinfo->nv_path[0] == '\0') {
 		if (adapter && adapter->nv_path && adapter->nv_path[0] != '\0')
@@ -9641,11 +9693,24 @@ bool dhd_update_fw_nv_path(dhd_info_t *dhdinfo)
 	 *
 	 * TODO: need a solution for multi-chip, can't use the same firmware for all chips
 	 */
-	if (firmware_path[0] != '\0')
+	if (firmware_path[0] != '\0') {
+		/* Newline is getting added sometimes when firmware_path module parameter
+		 * is updated via command line using echo command, due to which
+		 * file not found error is seen, hence replacing '\n' with '\0'.
+		 */
+		if (firmware_path[strlen(firmware_path) - 1] == '\n') {
+			firmware_path[strlen(firmware_path)-1] = '\0';
+		}
 		fw = firmware_path;
+	}
 
-	if (nvram_path[0] != '\0')
+	if (nvram_path[0] != '\0') {
+		if (nvram_path[strlen(nvram_path)-1] == '\n') {
+			nvram_path[strlen(nvram_path)-1] = '\0';
+		}
 		nv = nvram_path;
+	}
+
 
 #ifdef DHD_UCODE_DOWNLOAD
 	if (ucode_path[0] != '\0')
@@ -13382,10 +13447,10 @@ dhd_check_filesystem_is_up(void)
 {
 	struct file *fp;
 	const char *fw = VENDOR_PATH CONFIG_BCMDHD_FW_PATH;
-	fp = filp_open(fw, O_RDONLY, 0);
+	fp = dhd_filp_open(fw, O_RDONLY, 0);
 
-	if (IS_ERR(fp)) {
-		DHD_ERROR(("%s: filp_open(%s) failed(%d) schedule wl_accel_work\n",
+	if (IS_ERR(fp) || fp == NULL) {
+		DHD_ERROR(("%s: dhd_filp_open(%s) failed(%d) schedule wl_accel_work\n",
 			__FUNCTION__, fw, (int)IS_ERR(fp)));
 		return FALSE;
 	}
@@ -14682,20 +14747,34 @@ exit:
 
 #endif /* DHD_PCIE_RUNTIMEPM */
 
+int
+dhd_os_get_img_fwreq(dhd_pub_t *dhd, const struct firmware **fw, char *file_path)
+{
+	return request_firmware(fw, file_path,
+		dhd_bus_to_dev(dhd->bus));
+}
+
+void
+dhd_os_close_img_fwreq(const struct firmware *fw)
+{
+	release_firmware(fw);
+}
+
 void *
 dhd_os_open_image1(dhd_pub_t *pub, char *filename)
 {
 	struct file *fp;
 	int size;
 
-	fp = filp_open(filename, O_RDONLY, 0);
+	fp = dhd_filp_open(filename, O_RDONLY, 0);
+
 	/*
-	 * 2.6.11 (FC4) supports filp_open() but later revs don't?
+	 * 2.6.11 (FC4) supports dhd_filp_open() but later revs don't?
 	 * Alternative:
 	 * fp = open_namei(AT_FDCWD, filename, O_RD, 0);
 	 * ???
 	 */
-	 if (IS_ERR(fp)) {
+	 if (IS_ERR(fp) || (fp == NULL)) {
 		 fp = NULL;
 		 goto err;
 	 }
@@ -14706,7 +14785,7 @@ dhd_os_open_image1(dhd_pub_t *pub, char *filename)
 		 goto err;
 	 }
 
-	 size = i_size_read(file_inode(fp));
+	 size = dhd_i_size_read(file_inode(fp));
 	 if (size <= 0) {
 		 DHD_ERROR(("%s: %s file size invalid %d\n", __FUNCTION__, filename, size));
 		 fp = NULL;
@@ -14730,8 +14809,8 @@ dhd_os_get_image_block(char *buf, int len, void *image)
 		return 0;
 	}
 
-	size = i_size_read(file_inode(fp));
-	rdlen = kernel_read_compat(fp, fp->f_pos, buf, MIN(len, size));
+	size = dhd_i_size_read(file_inode(fp));
+	rdlen = dhd_kernel_read_compat(fp, fp->f_pos, buf, MIN(len, size));
 
 	if (len >= size && size != rdlen) {
 		return -EIO;
@@ -14756,7 +14835,7 @@ dhd_os_gets_image(dhd_pub_t *pub, char *str, int len, void *image)
 	if (!image)
 		return 0;
 
-	rd_len = kernel_read_compat(fp, fp->f_pos, str, len);
+	rd_len = dhd_kernel_read_compat(fp, fp->f_pos, str, len);
 	str_end = strnchr(str, len, '\n');
 	if (str_end == NULL) {
 		goto err;
@@ -14781,7 +14860,7 @@ dhd_os_get_image_size(void *image)
 		return 0;
 	}
 
-	size = i_size_read(file_inode(fp));
+	size = dhd_i_size_read(file_inode(fp));
 
 	return size;
 }
@@ -14790,7 +14869,7 @@ void
 dhd_os_close_image1(dhd_pub_t *pub, void *image)
 {
 	if (image) {
-		filp_close((struct file *)image, NULL);
+		dhd_filp_close((struct file *)image, NULL);
 	}
 }
 
@@ -17038,21 +17117,21 @@ int write_file(const char * file_name, uint32 flags, uint8 *buf, int size)
 	set_fs(KERNEL_DS);
 
 	/* open file to write */
-	fp = filp_open(file_name, flags, 0664);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(file_name, flags, 0664);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		DHD_ERROR(("open file error, err = %ld\n", PTR_ERR(fp)));
 		goto exit;
 	}
 
 	/* Write buf to file */
-	ret = vfs_write(fp, buf, size, &pos);
+	ret = dhd_vfs_write(fp, buf, size, &pos);
 	if (ret < 0) {
 		DHD_ERROR(("write file error, err = %d\n", ret));
 		goto exit;
 	}
 
 	/* Sync file from filesystem to physical media */
-	ret = vfs_fsync(fp, 0);
+	ret = dhd_vfs_fsync(fp, 0);
 	if (ret < 0) {
 		DHD_ERROR(("sync file error, error = %d\n", ret));
 		goto exit;
@@ -17062,7 +17141,7 @@ int write_file(const char * file_name, uint32 flags, uint8 *buf, int size)
 exit:
 	/* close file before return */
 	if (!IS_ERR(fp))
-		filp_close(fp, current->files);
+		dhd_filp_close(fp, current->files);
 
 	/* restore previous address limit */
 	set_fs(old_fs);
@@ -17249,14 +17328,14 @@ write_dump_to_file(dhd_pub_t *dhd, uint8 *buf, int size, char *fname)
 	 */
 	file_mode = O_CREAT | O_WRONLY | O_SYNC;
 	{
-		struct file *fp = filp_open(memdump_path, file_mode, 0664);
+		struct file *fp = dhd_filp_open(memdump_path, file_mode, 0664);
 		/* Check if it is live Brix image having /installmedia, else use /data */
-		if (IS_ERR(fp)) {
+		if (IS_ERR(fp) || (fp == NULL)) {
 			DHD_ERROR(("open file %s, try /data/\n", memdump_path));
 			snprintf(memdump_path, sizeof(memdump_path), "%s%s_%s_" "%s",
 				"/data/", fname, memdump_type,  dhd->debug_dump_time_str);
 		} else {
-			filp_close(fp, NULL);
+			dhd_filp_close(fp, NULL);
 		}
 	}
 #endif /* CUSTOMER_HW4_DEBUG */
@@ -18615,6 +18694,15 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #if defined(WL_CFGVENDOR_SEND_HANG_EVENT)
 char hang_reason_str[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
 #endif
+
+#ifdef DHD_COREDUMP
+#ifdef DHD_LINUX_STD_FW_API
+char map_path[PATH_MAX] = DHD_MAP_NAME;
+#else
+char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
+#endif /* DHD_LINUX_STD_FW_API */
+#endif /* DHD_COREDUMP */
+
 static void
 dhd_mem_dump(void *handle, void *event_info, u8 event)
 {
@@ -18626,7 +18714,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char memdump_type[DHD_MEMDUMP_TYPE_LONGSTR_LEN];
 	char pc_fn[DHD_FUNC_STR_LEN] = "\0";
 	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
-	char *map_path = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 	trap_t *tr;
 #endif /* DHD_COREDUMP */
 
@@ -18693,11 +18780,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		DHD_MEMDUMP_TYPE_LONGSTR_LEN, dhdp->debug_dump_subcmd);
 	if (dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP &&
 		dhdp->dongle_trap_occured == TRUE) {
-#ifdef AUTO_CHIP_DETECTION
-		if (dhd_bus_chip_id(dhdp) == 0x4389) {
-			map_path = VENDOR_PATH CONFIG_BCMDHD_4389_MAP_PATH;
-		}
-#endif /* AUTO_CHIP_DETECTION  */
 		tr = &dhdp->last_trap_info;
 		dhd_lookup_map(dhdp->osh, map_path,
 			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
@@ -20335,7 +20417,7 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 	unsigned long flags = 0;
 	size_t log_size = 0;
 	size_t fspace_remain = 0;
-	struct kstat stat;
+	struct kstat stat = {0};
 	char time_str[128];
 	unsigned int len = 0;
 	log_dump_section_hdr_t sec_hdr;
@@ -20376,8 +20458,8 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 	else
 		file_mode = O_CREAT | O_RDWR | O_SYNC;
 
-	fp = filp_open(dump_path, file_mode, 0664);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(dump_path, file_mode, 0664);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		/* If android installed image, try '/data' directory */
 #if defined(CONFIG_X86)
 		DHD_ERROR(("%s: File open error on Installed android image, trying /data...\n",
@@ -20388,8 +20470,8 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 				sizeof(dump_path) - strlen(dump_path),
 				"_%s", dhdp->debug_dump_time_str);
 		}
-		fp = filp_open(dump_path, file_mode, 0664);
-		if (IS_ERR(fp)) {
+		fp = dhd_filp_open(dump_path, file_mode, 0664);
+		if (IS_ERR(fp) || (fp == NULL)) {
 			ret = PTR_ERR(fp);
 			DHD_ERROR(("open file error, err = %d\n", ret));
 			goto exit2;
@@ -20402,7 +20484,7 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 #endif /* CONFIG_X86 && OEM_ANDROID */
 	}
 
-	ret = vfs_stat(dump_path, &stat);
+	ret = dhd_vfs_stat(dump_path, &stat);
 	if (ret < 0) {
 		DHD_ERROR(("file stat error, err = %d\n", ret));
 		goto exit2;
@@ -20556,7 +20638,7 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 
 exit2:
 	if (!IS_ERR(fp) && fp != NULL) {
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 		DHD_ERROR(("%s: Finished writing log dump to file - '%s' \n",
 				__FUNCTION__, dump_path));
 	}
@@ -20589,7 +20671,7 @@ dhd_export_debug_data(void *mem_buf, void *fp, const void *user_buf, uint32 buf_
 	int ret = BCME_OK;
 
 	if (fp) {
-		ret = vfs_write(fp, mem_buf, buf_len, (loff_t *)pos);
+		ret = dhd_vfs_write(fp, mem_buf, buf_len, (loff_t *)pos);
 		if (ret < 0) {
 			DHD_ERROR(("write file error, err = %d\n", ret));
 			goto exit;
@@ -21793,6 +21875,31 @@ dhd_debug_uart_exec(dhd_pub_t *dhdp, char *cmd)
 #endif	/* DHD_DEBUG_UART */
 
 #if defined(DHD_BLOB_EXISTENCE_CHECK)
+#ifdef DHD_LINUX_STD_FW_API
+void
+dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
+{
+	char *filepath = DHD_CLM_NAME;
+	const struct firmware *fw = NULL;
+	int ret = 0;
+
+	ret = dhd_os_get_img_fwreq(dhdp, &fw, filepath);
+	if (ret < 0) {
+		DHD_ERROR(("%s: ----- blob file doesn't exist (%s) -----\n", __FUNCTION__,
+			filepath));
+		dhdp->is_blob = FALSE;
+	} else {
+		DHD_ERROR(("%s: ----- blob file exists (%s) -----\n", __FUNCTION__, filepath));
+		dhdp->is_blob = TRUE;
+#if defined(CONCATE_BLOB)
+		strncat(fw_path, "_blob", strlen("_blob"));
+#else
+		BCM_REFERENCE(fw_path);
+#endif /* SKIP_CONCATE_BLOB */
+		dhd_os_close_img_fwreq(fw);
+	}
+}
+#else
 void
 dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 {
@@ -21813,8 +21920,8 @@ dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 	}
 #endif /* AUTO_CHIP_DETECTION */
 
-	fp = filp_open(filepath, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(filepath, O_RDONLY, 0);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		DHD_ERROR(("%s: ----- blob file doesn't exist (%s) -----\n", __FUNCTION__,
 			filepath));
 		dhdp->is_blob = FALSE;
@@ -21826,9 +21933,10 @@ dhd_set_blob_support(dhd_pub_t *dhdp, char *fw_path)
 #else
 		BCM_REFERENCE(fw_path);
 #endif /* SKIP_CONCATE_BLOB */
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 	}
 }
+#endif /* DHD_LINUX_STD_FW_API */
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 
 #if defined(PCIE_FULL_DONGLE)
@@ -21933,14 +22041,14 @@ dhd_write_file(const char *filepath, char *buf, int buf_len)
 	set_fs(KERNEL_DS);
 
 	/* File is always created. */
-	fp = filp_open(filepath, O_RDWR | O_CREAT, 0664);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(filepath, O_RDWR | O_CREAT, 0664);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		DHD_ERROR(("%s: Couldn't open file '%s' err %ld\n",
 			__FUNCTION__, filepath, PTR_ERR(fp)));
 		ret = BCME_ERROR;
 	} else {
 		if (fp->f_mode & FMODE_WRITE) {
-			ret = vfs_write(fp, buf, buf_len, &fp->f_pos);
+			ret = dhd_vfs_write(fp, buf, buf_len, &fp->f_pos);
 			if (ret < 0) {
 				DHD_ERROR(("%s: Couldn't write file '%s'\n",
 					__FUNCTION__, filepath));
@@ -21949,7 +22057,7 @@ dhd_write_file(const char *filepath, char *buf, int buf_len)
 				ret = BCME_OK;
 			}
 		}
-		filp_close(fp, NULL);
+		dhd_filp_close(fp, NULL);
 	}
 
 	/* restore previous address limit */
@@ -21969,15 +22077,15 @@ dhd_read_file(const char *filepath, char *buf, int buf_len)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	fp = filp_open(filepath, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
+	fp = dhd_filp_open(filepath, O_RDONLY, 0);
+	if (IS_ERR(fp) || (fp == NULL)) {
 		set_fs(old_fs);
 		DHD_ERROR(("%s: File %s doesn't exist\n", __FUNCTION__, filepath));
 		return BCME_ERROR;
 	}
 
-	ret = kernel_read_compat(fp, 0, buf, buf_len);
-	filp_close(fp, NULL);
+	ret = dhd_kernel_read_compat(fp, 0, buf, buf_len);
+	dhd_filp_close(fp, NULL);
 
 	/* restore previous address limit */
 	set_fs(old_fs);
@@ -22015,8 +22123,15 @@ dhd_write_file_and_check(const char *filepath, char *buf, int buf_len)
 #ifdef FILTER_IE
 int dhd_read_from_file(dhd_pub_t *dhd)
 {
-	int ret = 0, nread = 0;
+	int ret = 0;
+#ifdef DHD_LINUX_STD_FW_API
+	const struct firmware *fw = NULL;
+	char *filepath = FILTER_IE_PATH;
+	int filelen = 0;
+#else
+	int nread = 0;
 	void *fd;
+#endif /* DHD_LINUX_STD_FW_API */
 	uint8 *buf;
 	NULL_CHECK(dhd, "dhd is NULL", ret);
 
@@ -22027,6 +22142,32 @@ int dhd_read_from_file(dhd_pub_t *dhd)
 	}
 
 	/* open file to read */
+#ifdef DHD_LINUX_STD_FW_API
+	ret = dhd_os_get_img_fwreq(dhd, &fw, filepath);
+	if (ret < 0) {
+		DHD_ERROR(("dhd_os_get_img_fwreq(%s) error : %d\n",
+			filepath, ret));
+		goto exit;
+	}
+
+	filelen = fw->size;
+	if (filelen == 0) {
+		DHD_ERROR(("error: zero length file.failed to read\n"));
+		ret = BCME_ERROR;
+		goto exit;
+	}
+
+	ret = memcpy_s(buf, FILE_BLOCK_READ_SIZE, fw->data, fw->size);
+	if (ret < 0) {
+		DHD_ERROR((" memcpy_s() error : %d\n", ret));
+		goto exit;
+	}
+
+	ret = dhd_parse_filter_ie(dhd, buf);
+	if (ret < 0) {
+		DHD_ERROR(("error: failed to parse filter ie\n"));
+	}
+#else
 	fd = dhd_os_open_image1(dhd, FILTER_IE_PATH);
 	if (!fd) {
 		DHD_ERROR(("No filter file(not an error), filter path%s\n", FILTER_IE_PATH));
@@ -22043,8 +22184,15 @@ int dhd_read_from_file(dhd_pub_t *dhd)
 		DHD_ERROR(("error: zero length file.failed to read\n"));
 		ret = BCME_ERROR;
 	}
-	dhd_os_close_image1(dhd, fd);
+#endif /* DHD_LINUX_STD_FW_API */
 exit:
+#ifdef DHD_LINUX_STD_FW_API
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+#else
+	dhd_os_close_image1(dhd, fd);
+#endif /* DHD_LINUX_STD_FW_API */
 	if (buf) {
 		MFREE(dhd->osh, buf, FILE_BLOCK_READ_SIZE);
 	}
@@ -23995,19 +24143,23 @@ dhd_ring_whole_unlock(void *_ring)
 #define DHD_VFS_INODE(dir) d_inode(dir)
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0) */
 
+#ifdef DHD_SUPPORT_VFS_CALL
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
 #define DHD_VFS_UNLINK(dir, b, c) vfs_unlink(DHD_VFS_INODE(dir), b)
 #else
 #define DHD_VFS_UNLINK(dir, b, c) vfs_unlink(DHD_VFS_INODE(dir), b, c)
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0) */
+#else
+#define DHD_VFS_UNLINK(dir, b, c) 0
+#endif /* DHD_SUPPORT_VFS_CALL */
 int
 dhd_file_delete(char *path)
 {
-	struct path file_path;
+	struct path file_path = {.dentry = 0};
 	int err;
 	struct dentry *dir;
 
-	err = kern_path(path, 0, &file_path);
+	err = dhd_kern_path(path, 0, &file_path);
 
 	if (err < 0) {
 		DHD_ERROR(("Failed to get kern-path delete file: %s error: %d\n", path, err));

@@ -3153,6 +3153,85 @@ dhdpcie_download_firmware(struct dhd_bus *bus, osl_t *osh)
 	return ret;
 } /* dhdpcie_download_firmware */
 
+#ifdef DHD_LINUX_STD_FW_API
+static int
+dhdpcie_download_code_file(struct dhd_bus *bus, char *pfw_path)
+{
+	int bcmerror = BCME_ERROR;
+	int offset = 0;
+	int len = 0;
+	bool store_reset;
+	int offset_end = bus->ramsize;
+	const struct firmware *fw = NULL;
+	int buf_offset = 0, residual_len = 0;
+
+#if defined(DHD_FW_MEM_CORRUPTION)
+		if (dhd_bus_get_fw_mode(bus->dhd) == DHD_FLAG_MFG_MODE) {
+			dhd_tcm_test_enable = TRUE;
+		} else {
+			dhd_tcm_test_enable = FALSE;
+		}
+#endif /* DHD_FW_MEM_CORRUPTION */
+		DHD_ERROR(("%s: dhd_tcm_test_enable %u\n", __FUNCTION__, dhd_tcm_test_enable));
+		/* TCM check */
+		if (dhd_tcm_test_enable && !dhd_bus_tcm_test(bus)) {
+			DHD_ERROR(("dhd_bus_tcm_test failed\n"));
+			bcmerror = BCME_ERROR;
+			goto err;
+		}
+
+	DHD_ERROR(("%s: download firmware %s\n", __FUNCTION__, pfw_path));
+
+	/* check if CR4/CA7 */
+	store_reset = (si_setcore(bus->sih, ARMCR4_CORE_ID, 0) ||
+			si_setcore(bus->sih, ARMCA7_CORE_ID, 0));
+
+	bcmerror = dhd_os_get_img_fwreq(bus->dhd, &fw, bus->fw_path);
+	if (bcmerror < 0) {
+		DHD_ERROR(("dhd_os_get_img(Request Firmware API) error : %d\n",
+			bcmerror));
+		goto err;
+	}
+	DHD_ERROR(("dhd_os_get_img(Request Firmware API) success\n"));
+	residual_len = fw->size;
+	while (residual_len) {
+		len = MIN(residual_len, MEMBLOCK);
+
+		/* if address is 0, store the reset instruction to be written in 0 */
+		if (store_reset) {
+			ASSERT(offset == 0);
+			bus->resetinstr = *(((uint32*)fw->data + buf_offset));
+			/* Add start of RAM address to the address given by user */
+			offset += bus->dongle_ram_base;
+			offset_end += offset;
+			store_reset = FALSE;
+		}
+
+		bcmerror = dhdpcie_bus_membytes(bus, TRUE, offset, (uint8 *)fw->data + buf_offset, len);
+		if (bcmerror) {
+			DHD_ERROR(("%s: error %d on writing %d membytes at 0x%08x\n",
+				__FUNCTION__, bcmerror, MEMBLOCK, offset));
+			goto err;
+		}
+		offset += MEMBLOCK;
+
+		if (offset >= offset_end) {
+			DHD_ERROR(("%s: invalid address access to %x (offset end: %x)\n",
+				__FUNCTION__, offset, offset_end));
+			bcmerror = BCME_ERROR;
+			goto err;
+		}
+		residual_len -= len;
+		buf_offset += len;
+	}
+err:
+	if (fw) {
+		dhd_os_close_img_fwreq(fw);
+	}
+	return bcmerror;
+} /* dhdpcie_download_code_file */
+
+#else
 /**
  * Downloads a file containing firmware into dongle memory. In case of a .bea file, the DHD
  * is updated with the event logging partitions within that file as well.
@@ -3270,6 +3349,7 @@ err:
 
 	return bcmerror;
 } /* dhdpcie_download_code_file */
+#endif
 
 #ifdef CUSTOMER_HW4_DEBUG
 #define MIN_NVRAMVARS_SIZE 128

@@ -33,6 +33,7 @@
 #ifndef _dhd_h_
 #define _dhd_h_
 
+#include <linux/firmware.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -45,6 +46,8 @@
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
+#include <linux/fs.h>
+#include <linux/namei.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <linux/sched/types.h>
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) */
@@ -866,7 +869,7 @@ extern void copy_debug_dump_time(char *dest, char *src);
 #ifdef PLATFORM_PATH
 #define DHD_COMMON_DUMP_PATH	PLATFORM_PATH
 #else
-#define DHD_COMMON_DUMP_PATH	"/vendor/etc/wifi/
+#define DHD_COMMON_DUMP_PATH	"/vendor/etc/wifi/"
 #endif /* PLATFORM_PATH*/
 
 struct cntry_locales_custom {
@@ -2170,6 +2173,11 @@ void dhd_schedule_cto_recovery(dhd_pub_t *dhdp);
 #define EDL_SCHEDULE_DELAY 500 /* 500ms */
 void dhd_schedule_edl_work(dhd_pub_t *dhdp, uint delay_ms);
 #endif /* EWP_EDL */
+
+#if defined(linux) || defined(LINUX)
+int dhd_os_get_img_fwreq(dhd_pub_t *dhd, const struct firmware **fw, char *file_path);
+void dhd_os_close_img_fwreq(const struct firmware *fw);
+#endif /* linux || LINUX */
 
 #ifdef PKT_FILTER_SUPPORT
 #define DHD_UNICAST_FILTER_NUM		0
@@ -3686,4 +3694,73 @@ typedef enum wifi_alert_reason_codes {
 } wifi_alert_reason_codes_t;
 int dhd_os_send_alert_message(dhd_pub_t *dhdp);
 #endif
+
+#if defined(__linux__)
+#ifdef DHD_SUPPORT_VFS_CALL
+static INLINE struct file *dhd_filp_open(const char *filename, int flags, int mode)
+{
+	return filp_open(filename, flags, mode);
+}
+
+static INLINE int dhd_filp_close(void *image, void *id)
+{
+	return filp_close((struct file *)image, id);
+}
+
+static INLINE int dhd_i_size_read(const struct inode *inode)
+{
+	return i_size_read(inode);
+}
+
+static INLINE int dhd_kernel_read_compat(struct file *fp, loff_t pos, void *buf, size_t count)
+{
+	return kernel_read_compat(fp, pos, buf, count);
+}
+
+static INLINE int dhd_vfs_read(struct file *filep, char *buf, size_t size, loff_t *pos)
+{
+	return vfs_read(filep, buf, size, pos);
+}
+
+static INLINE int dhd_vfs_write(struct file *filep, char *buf, size_t size, loff_t *pos)
+{
+	return vfs_write(filep, buf, size, pos);
+}
+
+static INLINE int dhd_vfs_fsync(struct file *filep, int datasync)
+{
+	return vfs_fsync(filep, datasync);
+}
+
+static INLINE int dhd_vfs_stat(char *buf, struct kstat *stat)
+{
+	return vfs_stat(buf, stat);
+}
+
+static INLINE int dhd_kern_path(char *name, int flags, struct path *file_path)
+{
+	return kern_path(name, flags, file_path);
+}
+#else
+static INLINE struct file *dhd_filp_open(const char *filename, int flags, int mode)
+	{ return NULL; }
+static INLINE int dhd_filp_close(void *image, void *id)
+	{ return 0; }
+static INLINE int dhd_i_size_read(const struct inode *inode)
+	{ return 0; }
+static INLINE int dhd_kernel_read_compat(struct file *fp, loff_t pos, void *buf, size_t count)
+	{ return 0; }
+static INLINE int dhd_vfs_read(struct file *filep, char *buf, size_t size, loff_t *pos)
+	{ return 0; }
+static INLINE int dhd_vfs_write(struct file *filep, char *buf, size_t size, loff_t *pos)
+	{ return 0; }
+static INLINE int dhd_vfs_fsync(struct file *filep, int datasync)
+	{ return 0; }
+static INLINE int dhd_vfs_stat(char *buf, struct kstat *stat)
+	{ return 0; }
+static INLINE int dhd_kern_path(char *name, int flags, struct path *file_path)
+	{ return 0; }
+#endif /* DHD_SUPPORT_VFS_CALL */
+#endif /* __linux__ */
+
 #endif /* _dhd_h_ */
