@@ -282,8 +282,6 @@ struct gbms_charging_event {
 
 	ktime_t first_update;
 	ktime_t last_update;
-	uint32_t chg_sts_qual_time;
-	uint32_t chg_sts_delta_soc;
 
 	/* health based charging */
 	struct batt_chg_health		ce_health;	/* updated on close */
