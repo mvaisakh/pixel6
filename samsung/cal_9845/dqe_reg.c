@@ -137,8 +137,9 @@ void dqe_reg_init(u32 width, u32 height)
 
 void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut)
 {
-	int i;
-	u32 val;
+	int i, ret = 0;
+	u16 tmp_lut[DEGAMMA_LUT_SIZE] = {0};
+	u32 regs[DQE0_DEGAMMALUT_REG_CNT] = {0};
 
 	cal_log_debug(0, "%s +\n", __func__);
 
@@ -147,12 +148,20 @@ void dqe_reg_set_degamma_lut(const struct drm_color_lut *lut)
 		return;
 	}
 
-	for (i = 0; i < DIV_ROUND_UP(DEGAMMA_LUT_SIZE, 2); ++i) {
-		val = DEGAMMA_LUT_H(lut[i * 2 + 1].red) |
-			DEGAMMA_LUT_L(lut[i * 2].red);
-		degamma_write_relaxed(DQE0_DEGAMMALUT(i), val);
+	for (i = 0; i < DEGAMMA_LUT_SIZE; i++)
+		tmp_lut[i] = lut[i].red;
 
-		cal_log_debug(0, "[%d] 0x%x\n", i, val);
+	ret = cal_pack_lut_into_reg_pairs(tmp_lut, DEGAMMA_LUT_SIZE,
+		DEGAMMA_LUT_L_MASK, DEGAMMA_LUT_H_MASK, regs,
+		DQE0_DEGAMMALUT_REG_CNT);
+	if(ret) {
+		cal_log_err(0, "Failed to pack degamma lut\n");
+		return;
+	}
+
+	for (i = 0; i < DQE0_DEGAMMALUT_REG_CNT; i++) {
+		degamma_write_relaxed(DQE0_DEGAMMALUT(i), regs[i]);
+		cal_log_debug(0, "[%d]: 0x%x\n", i, regs[i]);
 	}
 	degamma_write(DQE0_DEGAMMA_CON, DEGAMMA_EN);
 
@@ -183,8 +192,15 @@ void dqe_reg_set_cgc_lut(const struct cgc_lut *lut)
 
 void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 {
-	int i;
-	u32 val;
+	enum dqe_regamma_elements {
+		REGAMMA_RED = 0,
+		REGAMMA_GREEN = 1,
+		REGAMMA_BLUE = 2,
+		REGAMMA_MAX = 3
+	};
+	int i, ret = 0;
+	u16 tmp_lut[REGAMMA_MAX][REGAMMA_LUT_SIZE] = {0};
+	u32 regs[REGAMMA_MAX][DQE0_REGAMMALUT_REG_CNT] = {0};
 
 	cal_log_debug(0, "%s +\n", __func__);
 
@@ -193,21 +209,29 @@ void dqe_reg_set_regamma_lut(const struct drm_color_lut *lut)
 		return;
 	}
 
-	for (i = 0; i < DIV_ROUND_UP(REGAMMA_LUT_SIZE, 2); ++i) {
-		val = REGAMMA_LUT_H(lut[i * 2 + 1].red) |
-				REGAMMA_LUT_L(lut[i * 2].red);
-		regamma_write_relaxed(DQE0_REGAMMALUT_R(i), val);
-		cal_log_debug(0, "[%d]   red: 0x%x\n", i, val);
+	for (i = 0; i < REGAMMA_LUT_SIZE; i++) {
+		tmp_lut[REGAMMA_RED][i] = lut[i].red;
+		tmp_lut[REGAMMA_GREEN][i] = lut[i].green;
+		tmp_lut[REGAMMA_BLUE][i] = lut[i].blue;
+	}
 
-		val = REGAMMA_LUT_H(lut[i * 2 + 1].green) |
-				REGAMMA_LUT_L(lut[i * 2].green);
-		regamma_write_relaxed(DQE0_REGAMMALUT_G(i), val);
-		cal_log_debug(0, "[%d] green: 0x%x\n", i, val);
+	for (i = 0; i < REGAMMA_MAX; i++) {
+		ret = cal_pack_lut_into_reg_pairs(tmp_lut[i], REGAMMA_LUT_SIZE,
+			REGAMMA_LUT_L_MASK, REGAMMA_LUT_H_MASK, regs[i],
+			DQE0_REGAMMALUT_REG_CNT);
+		if(ret) {
+			cal_log_err(0, "Failed to pack regamma %d element\n", i);
+			return;
+		}
+	}
 
-		val = REGAMMA_LUT_H(lut[i * 2 + 1].blue) |
-				REGAMMA_LUT_L(lut[i * 2].blue);
-		regamma_write_relaxed(DQE0_REGAMMALUT_B(i), val);
-		cal_log_debug(0, "[%d]  blue: 0x%x\n", i, val);
+	for (i = 0; i < DQE0_REGAMMALUT_REG_CNT; i++) {
+		regamma_write_relaxed(DQE0_REGAMMALUT_R(i), regs[REGAMMA_RED][i]);
+		regamma_write_relaxed(DQE0_REGAMMALUT_G(i), regs[REGAMMA_GREEN][i]);
+		regamma_write_relaxed(DQE0_REGAMMALUT_B(i), regs[REGAMMA_BLUE][i]);
+		cal_log_debug(0, "[%d]  red: 0x%x\n", i, regs[REGAMMA_RED][i]);
+		cal_log_debug(0, "[%d]  green: 0x%x\n", i, regs[REGAMMA_GREEN][i]);
+		cal_log_debug(0, "[%d]  blue: 0x%x\n", i, regs[REGAMMA_BLUE][i]);
 	}
 	regamma_write(DQE0_REGAMMA_CON, REGAMMA_EN);
 

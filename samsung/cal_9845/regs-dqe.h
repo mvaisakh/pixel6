@@ -422,6 +422,7 @@
  * _n: [0, 32] / _x: [0, 64]
  */
 #define DQE0_DEGAMMALUT(_n)		(0x1004 + ((_n) * 0x4))
+#define DQE0_DEGAMMALUT_REG_CNT		(33)
 
 #define DEGAMMA_LUT_H(_v)		((_v) << 16)
 #define DEGAMMA_LUT_H_MASK		(0x1FFF << 16)
@@ -501,6 +502,7 @@
 #define DQE0_REGAMMALUT_R(_n)		(0x2004 + ((_n) * 0x4))
 #define DQE0_REGAMMALUT_G(_n)		(0x2088 + ((_n) * 0x4))
 #define DQE0_REGAMMALUT_B(_n)		(0x210C + ((_n) * 0x4))
+#define DQE0_REGAMMALUT_REG_CNT		(33)
 
 #define REGAMMA_LUT_H(_v)		((_v) << 16)
 #define REGAMMA_LUT_H_MASK		(0x1FFF << 16)
