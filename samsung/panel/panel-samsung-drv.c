@@ -336,8 +336,6 @@ int exynos_panel_init(struct exynos_panel *ctx)
 	if (funcs && funcs->panel_init)
 		funcs->panel_init(ctx);
 
-	exynos_panel_update_te2(ctx);
-
 	return ret;
 }
 EXPORT_SYMBOL(exynos_panel_init);
@@ -2339,7 +2337,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 	}
 	ctx->current_mode = pmode;
 
-	if (!pmode->exynos_mode.is_lp_mode)
+	if (ctx->enabled && !pmode->exynos_mode.is_lp_mode)
 		exynos_panel_update_te2(ctx);
 
 	if (need_update_backlight && ctx->bl)
