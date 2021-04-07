@@ -182,8 +182,12 @@ static inline int max77759_reg_update(struct max77759_chgr_data *data,
 
 int max77759_chg_reg_write(struct i2c_client *client, u8 reg, u8 value)
 {
-	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+	struct max77759_chgr_data *data;
 
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENODEV;
 
@@ -194,8 +198,12 @@ EXPORT_SYMBOL_GPL(max77759_chg_reg_write);
 int max77759_chg_reg_update(struct i2c_client *client,
 			    u8 reg, u8 mask, u8 value)
 {
-	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+	struct max77759_chgr_data *data;
 
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENODEV;
 
@@ -206,8 +214,12 @@ EXPORT_SYMBOL_GPL(max77759_chg_reg_update);
 int max77759_chg_mode_write(struct i2c_client *client,
 			    enum max77759_charger_modes mode)
 {
-	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+	struct max77759_chgr_data *data;
 
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENODEV;
 
@@ -242,9 +254,13 @@ static int max77759_chg_prot(struct regmap *regmap, bool enable)
 
 int max77759_chg_insel_write(struct i2c_client *client, u8 mask, u8 value)
 {
-	struct max77759_chgr_data *data = i2c_get_clientdata(client);
+	struct max77759_chgr_data *data;
 	int ret, prot;
 
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
 	if (!data || !data->regmap)
 		return -ENODEV;
 
