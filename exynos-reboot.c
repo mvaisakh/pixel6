@@ -142,6 +142,13 @@ static void exynos_reboot_parse(const char *cmd)
 			exynos_reboot_mode_set(REBOOT_MODE_FASTBOOT);
 		} else if (!strcmp(cmd, "recovery")) {
 			exynos_reboot_mode_set(REBOOT_MODE_RECOVERY);
+		} else if (!strcmp(cmd, "dm-verity device corrupted") ||
+			   !strcmp(cmd, "from_fastboot") ||
+			   !strcmp(cmd, "shell") ||
+			   !strcmp(cmd, "userrequested") ||
+			   !strcmp(cmd, "userrequested,fastboot") ||
+			   !strcmp(cmd, "userrequested,recovery")) {
+			/* Known reboot command */
 		} else {
 			pr_err("Unknown reboot command: '%s'\n", cmd);
 		}
