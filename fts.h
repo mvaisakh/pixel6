@@ -308,6 +308,7 @@ struct fts_hw_platform_data {
 	bool separate_save_golden_ms_raw_cmd;
 	bool sensor_inverted_x;
 	bool sensor_inverted_y;
+	bool tx_rx_dir_swap; /* Set as TRUE if Tx direction is same as x-axis. */
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	bool heatmap_mode_full_init;
 #endif

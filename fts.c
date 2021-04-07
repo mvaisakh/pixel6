@@ -3939,9 +3939,14 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 				else
 					y_val = y;
 
-				heatmap_value =
-				    (strength_t)ms_frame.node_data[
-					x_val * max_y + y_val];
+				if (info->board->tx_rx_dir_swap)
+					heatmap_value =
+					    (strength_t)ms_frame.node_data[
+						y_val * max_x + x_val];
+				else
+					heatmap_value =
+					    (strength_t)ms_frame.node_data[
+						x_val * max_y + y_val];
 
 				v4l2->frame[frame_index++] = heatmap_value;
 			}
@@ -4076,6 +4081,8 @@ static void fts_populate_mutual_channel(struct fts_ts_info *info,
 	uint16_t heatmap_value;
 	int result;
 	uint32_t data_type = 0;
+	uint32_t max_x = 0;
+	uint32_t max_y = 0;
 	struct TouchOffloadData2d *mutual_strength =
 		(struct TouchOffloadData2d *)frame->channel_data[channel];
 
@@ -4105,11 +4112,16 @@ static void fts_populate_mutual_channel(struct fts_ts_info *info,
 		dev_err(info->dev, "getMSFrame3 failed with result=0x%08X.\n",
 			result);
 	} else {
-		uint32_t max_x = mutual_strength->tx_size;
-		uint32_t max_y = mutual_strength->rx_size;
+		if (info->board->tx_rx_dir_swap) {
+			max_x = mutual_strength->rx_size;
+			max_y = mutual_strength->tx_size;
+		} else {
+			max_x = mutual_strength->tx_size;
+			max_y = mutual_strength->rx_size;
+		}
 
-		for (y = 0; y < mutual_strength->rx_size; y++) {
-			for (x = 0; x < mutual_strength->tx_size; x++) {
+		for (y = 0; y < max_y; y++) {
+			for (x = 0; x < max_x; x++) {
 				/* Rotate frame counter-clockwise and invert
 				 * if necessary.
 				 */
@@ -4122,9 +4134,12 @@ static void fts_populate_mutual_channel(struct fts_ts_info *info,
 				else
 					y_val = y;
 
-				heatmap_value =
-				    ms_frame.node_data[
-					x_val * max_y + y_val];
+				if (info->board->tx_rx_dir_swap)
+					heatmap_value = ms_frame.node_data[
+						y_val * max_x + x_val];
+				else
+					heatmap_value = ms_frame.node_data[
+						x_val * max_y + y_val];
 
 				((uint16_t *)
 				 mutual_strength->data)[frame_index++] =
@@ -6022,6 +6037,12 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		bdata->sensor_inverted_y = 1;
 	dev_info(dev, "Sensor inverted y = %u\n", bdata->sensor_inverted_y);
 
+	bdata->tx_rx_dir_swap = 0;
+	if (of_property_read_bool(np, "st,tx_rx_dir_swap"))
+		bdata->tx_rx_dir_swap = 1;
+	dev_info(dev, "tx_rx_dir_swap = %u\n",
+		bdata->tx_rx_dir_swap);
+
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	bdata->offload_id = 0;
 	retval = of_property_read_u8_array(np, "st,touch_offload_id",
@@ -6364,8 +6385,13 @@ static int fts_probe(struct spi_device *client)
 	info->v4l2.parent_dev = info->dev;
 	info->v4l2.input_dev = info->input_dev;
 	info->v4l2.read_frame = read_heatmap_raw;
-	info->v4l2.width = getForceLen(info);
-	info->v4l2.height = getSenseLen(info);
+	if (info->board->tx_rx_dir_swap) {
+		info->v4l2.width = getSenseLen(info);
+		info->v4l2.height = getForceLen(info);
+	} else {
+		info->v4l2.width = getForceLen(info);
+		info->v4l2.height = getSenseLen(info);
+	}
 	/* 120 Hz operation */
 	info->v4l2.timeperframe.numerator = 1;
 	info->v4l2.timeperframe.denominator = 120;
