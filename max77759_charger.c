@@ -41,6 +41,7 @@
 #define VD_DELAY 300
 #define THERMAL_IRQ_COUNTER_LIMIT 5
 #define THERMAL_HYST_LEVEL 100
+#define BATOILO_DET_30US 0x4
 
 enum PMIC_VDROOP_SENSOR {
 	VDROOP1,
@@ -3409,6 +3410,15 @@ static int max77759_init_vdroop(void *data_)
 	data->vdroop_counter[VDROOP2] = 0;
 	mutex_init(&data->vdroop_irq_lock[VDROOP1]);
 	mutex_init(&data->vdroop_irq_lock[VDROOP2]);
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_17, &regdata);
+	if (ret < 0)
+		return -ENODEV;
+
+	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_17,
+				 (u8) regdata | BATOILO_DET_30US);
+	if (ret < 0)
+		return -EIO;
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_15, &regdata);
 	if (ret < 0)
