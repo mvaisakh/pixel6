@@ -58,7 +58,7 @@
 /*
  * Size of memory for FW accessible debug dump segments
  */
-#define EDGETPU_DEBUG_DUMP_MEM_SIZE 0x40000
+#define EDGETPU_DEBUG_DUMP_MEM_SIZE 0x4E0000
 
 #include "config-mailbox.h"
 #include "config-tpu-cpu.h"

@@ -157,13 +157,19 @@ static int edgetpu_ioctl_unset_eventfd(struct edgetpu_client *client,
 }
 
 static int
-edgetpu_ioctl_set_perdie_eventfd(struct edgetpu_dev *etdev,
+edgetpu_ioctl_set_perdie_eventfd(struct edgetpu_client *client,
 				 struct edgetpu_event_register __user *argp)
 {
+	struct edgetpu_dev *etdev = client->etdev;
 	struct edgetpu_event_register eventreg;
 
 	if (copy_from_user(&eventreg, argp, sizeof(eventreg)))
 		return -EFAULT;
+
+	if (perdie_event_id_to_num(eventreg.event_id) >=
+	    EDGETPU_NUM_PERDIE_EVENTS)
+		return -EINVAL;
+	client->perdie_events |= 1 << perdie_event_id_to_num(eventreg.event_id);
 
 	switch (eventreg.event_id) {
 	case EDGETPU_PERDIE_EVENT_LOGS_AVAILABLE:
@@ -177,9 +183,15 @@ edgetpu_ioctl_set_perdie_eventfd(struct edgetpu_dev *etdev,
 	}
 }
 
-static int edgetpu_ioctl_unset_perdie_eventfd(struct edgetpu_dev *etdev,
+static int edgetpu_ioctl_unset_perdie_eventfd(struct edgetpu_client *client,
 					      uint event_id)
 {
+	struct edgetpu_dev *etdev = client->etdev;
+
+	if (perdie_event_id_to_num(event_id) >= EDGETPU_NUM_PERDIE_EVENTS)
+		return -EINVAL;
+	client->perdie_events &= ~(1 << perdie_event_id_to_num(event_id));
+
 	switch (event_id) {
 	case EDGETPU_PERDIE_EVENT_LOGS_AVAILABLE:
 		edgetpu_telemetry_unset_event(etdev, EDGETPU_TELEMETRY_LOG);
@@ -629,13 +641,13 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 		ret = edgetpu_ioctl_finalize_group(client);
 		break;
 	case EDGETPU_SET_PERDIE_EVENTFD:
-		ret = edgetpu_ioctl_set_perdie_eventfd(client->etdev, argp);
+		ret = edgetpu_ioctl_set_perdie_eventfd(client, argp);
 		break;
 	case EDGETPU_UNSET_EVENT:
 		ret = edgetpu_ioctl_unset_eventfd(client, arg);
 		break;
 	case EDGETPU_UNSET_PERDIE_EVENT:
-		ret = edgetpu_ioctl_unset_perdie_eventfd(client->etdev, arg);
+		ret = edgetpu_ioctl_unset_perdie_eventfd(client, arg);
 		break;
 	case EDGETPU_SYNC_BUFFER:
 		ret = edgetpu_ioctl_sync_buffer(client, argp);
@@ -883,6 +895,25 @@ static void edgetpu_fs_setup_debugfs(struct edgetpu_dev *etdev)
 			    &statusregs_ops);
 }
 
+static ssize_t firmware_crash_count_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", etdev->firmware_crash_count);
+}
+static DEVICE_ATTR_RO(firmware_crash_count);
+
+static struct attribute *edgetpu_dev_attrs[] = {
+	&dev_attr_firmware_crash_count.attr,
+	NULL,
+};
+
+static const struct attribute_group edgetpu_attr_group = {
+	.attrs = edgetpu_dev_attrs,
+};
+
 const struct file_operations edgetpu_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_llseek,
@@ -919,12 +950,16 @@ int edgetpu_fs_add(struct edgetpu_dev *etdev)
 		return ret;
 	}
 
+	ret = device_add_group(etdev->dev, &edgetpu_attr_group);
+	if (ret)
+		etdev_warn(etdev, "edgetpu attr group create failed: %d", ret);
 	edgetpu_fs_setup_debugfs(etdev);
 	return 0;
 }
 
 void edgetpu_fs_remove(struct edgetpu_dev *etdev)
 {
+	device_remove_group(etdev->dev, &edgetpu_attr_group);
 	device_destroy(edgetpu_class, etdev->devno);
 	cdev_del(&etdev->cdev);
 	debugfs_remove_recursive(etdev->d_entry);

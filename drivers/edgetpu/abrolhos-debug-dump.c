@@ -92,11 +92,10 @@ int edgetpu_debug_dump_init(struct edgetpu_dev *etdev)
 	size = EDGETPU_DEBUG_DUMP_MEM_SIZE;
 
 	/*
-	 * Allocate buffers for various dump segments and map them to FW
-	 * accessible regions
+	 * Allocate a buffer for various dump segments
 	 */
-	ret = edgetpu_iremap_alloc(etdev, size, &etdev->debug_dump_mem,
-				   EDGETPU_CONTEXT_KCI);
+	ret = edgetpu_alloc_coherent(etdev, size, &etdev->debug_dump_mem,
+				     EDGETPU_CONTEXT_KCI);
 	if (ret) {
 		etdev_err(etdev, "Debug dump seg alloc failed");
 		etdev->debug_dump_mem.vaddr = NULL;
@@ -130,7 +129,7 @@ void edgetpu_debug_dump_exit(struct edgetpu_dev *etdev)
 	/*
 	 * Free the memory assigned for debug dump
 	 */
-	edgetpu_iremap_free(etdev, &etdev->debug_dump_mem,
-			    EDGETPU_CONTEXT_KCI);
+	edgetpu_free_coherent(etdev, &etdev->debug_dump_mem,
+			      EDGETPU_CONTEXT_KCI);
 	kfree(etdev->debug_dump_handlers);
 }

@@ -133,6 +133,24 @@ static void edgetpu_utilization_update(
 	mutex_unlock(&ustats->usage_stats_lock);
 }
 
+static void edgetpu_counter_update(
+	struct edgetpu_dev *etdev,
+	struct edgetpu_usage_counter *counter)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (!ustats)
+		return;
+
+	etdev_dbg(etdev, "%s: type=%d value=%llu\n", __func__,
+		  counter->type, counter->value);
+
+	mutex_lock(&ustats->usage_stats_lock);
+	if (counter->type >= 0 && counter->type < EDGETPU_COUNTER_COUNT)
+		ustats->counter[counter->type] = counter->value;
+	mutex_unlock(&ustats->usage_stats_lock);
+}
+
 void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 {
 	struct edgetpu_usage_header *header = buf;
@@ -157,6 +175,9 @@ void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 			edgetpu_utilization_update(
 				etdev, &metric->component_activity);
 			break;
+		case EDGETPU_METRIC_TYPE_COUNTER:
+			edgetpu_counter_update(etdev, &metric->counter);
+			break;
 		default:
 			etdev_dbg(etdev, "%s: %d: skip unknown type=%u",
 				  __func__, i, metric->type);
@@ -179,6 +200,22 @@ int edgetpu_usage_get_utilization(struct edgetpu_dev *etdev,
 	mutex_lock(&ustats->usage_stats_lock);
 	val = ustats->component_utilization[component];
 	ustats->component_utilization[component] = 0;
+	mutex_unlock(&ustats->usage_stats_lock);
+	return val;
+}
+
+static int64_t edgetpu_usage_get_counter(
+	struct edgetpu_dev *etdev,
+	enum edgetpu_usage_counter_type counter_type)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+	int32_t val;
+
+	if (counter_type >= EDGETPU_COUNTER_COUNT)
+		return -1;
+	edgetpu_kci_update_usage(etdev);
+	mutex_lock(&ustats->usage_stats_lock);
+	val = ustats->counter[counter_type];
 	mutex_unlock(&ustats->usage_stats_lock);
 	return val;
 }
@@ -284,10 +321,38 @@ static ssize_t tpu_utilization_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(tpu_utilization);
 
+static ssize_t tpu_active_cycle_count_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_TPU_ACTIVE_CYCLES);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(tpu_active_cycle_count);
+
+static ssize_t tpu_throttle_stall_count_show(struct device *dev,
+					     struct device_attribute *attr,
+					     char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_TPU_THROTTLE_STALLS);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(tpu_throttle_stall_count);
+
 static struct attribute *usage_stats_dev_attrs[] = {
 	&dev_attr_tpu_usage.attr,
 	&dev_attr_device_utilization.attr,
 	&dev_attr_tpu_utilization.attr,
+	&dev_attr_tpu_active_cycle_count.attr,
+	&dev_attr_tpu_throttle_stall_count.attr,
 	NULL,
 };
 

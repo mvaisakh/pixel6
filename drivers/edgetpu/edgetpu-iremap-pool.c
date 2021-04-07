@@ -78,29 +78,6 @@ void edgetpu_iremap_pool_destroy(struct edgetpu_dev *etdev)
 	etdev->iremap_pool = NULL;
 }
 
-static int edgetpu_alloc_coherent(struct edgetpu_dev *etdev, size_t size,
-				  struct edgetpu_coherent_mem *mem,
-				  enum edgetpu_context_id context_id)
-{
-	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
-
-	mem->vaddr = dma_alloc_coherent(etdev->dev, size, &mem->dma_addr,
-					GFP_KERNEL);
-	if (!mem->vaddr)
-		return -ENOMEM;
-	edgetpu_x86_coherent_mem_init(mem);
-	mem->tpu_addr =
-		edgetpu_mmu_tpu_map(etdev, mem->dma_addr, size,
-				    DMA_BIDIRECTIONAL, context_id, flags);
-	if (!mem->tpu_addr) {
-		dma_free_coherent(etdev->dev, size, mem->vaddr, mem->dma_addr);
-		mem->vaddr = NULL;
-		return -EINVAL;
-	}
-	mem->size = size;
-	return 0;
-}
-
 int edgetpu_iremap_alloc(struct edgetpu_dev *etdev, size_t size,
 			 struct edgetpu_coherent_mem *mem,
 			 enum edgetpu_context_id context_id)
@@ -123,20 +100,10 @@ int edgetpu_iremap_alloc(struct edgetpu_dev *etdev, size_t size,
 	mem->dma_addr = etmempool->base_dma_addr + offset;
 	mem->tpu_addr = etmempool->base_tpu_addr + offset;
 	mem->size = size;
-	etdev_dbg(etdev, "iremap_alloc @ %llx IOVA = %llx size = %zu",
-		   (u64)mem->vaddr, mem->dma_addr, size);
+	etdev_dbg(etdev, "%s @ %llx IOVA = %llx size = %zu",
+		   __func__, (u64)mem->vaddr, mem->dma_addr, size);
 	mutex_unlock(&etmempool->lock);
 	return 0;
-}
-
-static void edgetpu_free_coherent(struct edgetpu_dev *etdev,
-				  struct edgetpu_coherent_mem *mem,
-				  enum edgetpu_context_id context_id)
-{
-	edgetpu_mmu_tpu_unmap(etdev, mem->tpu_addr, mem->size, context_id);
-	edgetpu_x86_coherent_mem_set_wb(mem);
-	dma_free_coherent(etdev->dev, mem->size, mem->vaddr, mem->dma_addr);
-	mem->vaddr = NULL;
 }
 
 void edgetpu_iremap_free(struct edgetpu_dev *etdev,
@@ -150,8 +117,8 @@ void edgetpu_iremap_free(struct edgetpu_dev *etdev,
 		return;
 	}
 	mutex_lock(&etmempool->lock);
-	etdev_dbg(etdev, "iremap_free @ %llx IOVA = %llx size = %zu",
-		  (u64)mem->vaddr, mem->dma_addr, mem->size);
+	etdev_dbg(etdev, "%s @ %llx IOVA = %llx size = %zu",
+		  __func__, (u64)mem->vaddr, mem->dma_addr, mem->size);
 	gen_pool_free(etmempool->gen_pool, (unsigned long)mem->vaddr,
 		      mem->size);
 	mem->vaddr = NULL;
@@ -188,8 +155,8 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 
 	offset = mem->vaddr - etmempool->base_vaddr;
 	phys = etmempool->base_phys_addr + offset;
-	etdev_dbg(etdev, "iremap_mmap: virt = %llx phys = %llx\n",
-		  (u64)mem->vaddr, phys);
+	etdev_dbg(etdev, "%s: virt = %llx phys = %llx\n",
+		  __func__, (u64)mem->vaddr, phys);
 	ret = remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
 			      vma->vm_end - vma->vm_start, vma->vm_page_prot);
 	vma->vm_pgoff = orig_pgoff;

@@ -91,9 +91,19 @@ static void edgetpu_vma_close(struct vm_area_struct *vma)
 {
 	struct edgetpu_client *client = vma->vm_private_data;
 	enum edgetpu_wakelock_event evt = mmap_wakelock_event(vma->vm_pgoff);
+	struct edgetpu_dev *etdev = client->etdev;
 
 	if (evt != EDGETPU_WAKELOCK_EVENT_END)
 		edgetpu_wakelock_dec_event(client->wakelock, evt);
+
+	/* TODO(b/184613387): check whole VMA range instead of the start only */
+	if (vma->vm_pgoff == EDGETPU_MMAP_LOG_BUFFER_OFFSET >> PAGE_SHIFT)
+		edgetpu_munmap_telemetry_buffer(etdev, EDGETPU_TELEMETRY_LOG,
+						vma);
+	else if (vma->vm_pgoff ==
+		 EDGETPU_MMAP_TRACE_BUFFER_OFFSET >> PAGE_SHIFT)
+		edgetpu_munmap_telemetry_buffer(etdev, EDGETPU_TELEMETRY_TRACE,
+						vma);
 }
 
 static const struct vm_operations_struct edgetpu_vma_ops = {
@@ -329,6 +339,7 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	mutex_init(&client->group_lock);
 	/* equivalent to edgetpu_client_get() */
 	refcount_set(&client->count, 1);
+	client->perdie_events = 0;
 	return client;
 }
 
@@ -348,8 +359,11 @@ void edgetpu_client_put(struct edgetpu_client *client)
 
 void edgetpu_client_remove(struct edgetpu_client *client)
 {
+	struct edgetpu_dev *etdev;
+
 	if (IS_ERR_OR_NULL(client))
 		return;
+	etdev = client->etdev;
 	/*
 	 * A quick check without holding client->group_lock.
 	 *
@@ -367,6 +381,15 @@ void edgetpu_client_remove(struct edgetpu_client *client)
 	 * happen.
 	 */
 	client->wakelock = NULL;
+
+	/* Clean up all the per die event fds registered by the client */
+	if (client->perdie_events &
+	    1 << perdie_event_id_to_num(EDGETPU_PERDIE_EVENT_LOGS_AVAILABLE))
+		edgetpu_telemetry_unset_event(etdev, EDGETPU_TELEMETRY_LOG);
+	if (client->perdie_events &
+	    1 << perdie_event_id_to_num(EDGETPU_PERDIE_EVENT_TRACES_AVAILABLE))
+		edgetpu_telemetry_unset_event(etdev, EDGETPU_TELEMETRY_TRACE);
+
 	edgetpu_client_put(client);
 }
 
@@ -385,6 +408,47 @@ int edgetpu_register_irq(struct edgetpu_dev *etdev, int irq)
 void edgetpu_unregister_irq(struct edgetpu_dev *etdev, int irq)
 {
 	devm_free_irq(etdev->dev, irq, etdev);
+}
+
+int edgetpu_alloc_coherent(struct edgetpu_dev *etdev, size_t size,
+			   struct edgetpu_coherent_mem *mem,
+			   enum edgetpu_context_id context_id)
+{
+	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
+
+	mem->vaddr = dma_alloc_coherent(etdev->dev, size, &mem->dma_addr,
+					GFP_KERNEL);
+	if (!mem->vaddr)
+		return -ENOMEM;
+	edgetpu_x86_coherent_mem_init(mem);
+	mem->tpu_addr =
+		edgetpu_mmu_tpu_map(etdev, mem->dma_addr, size,
+				    DMA_BIDIRECTIONAL, context_id, flags);
+	if (!mem->tpu_addr) {
+		dma_free_coherent(etdev->dev, size, mem->vaddr, mem->dma_addr);
+		mem->vaddr = NULL;
+		return -EINVAL;
+	}
+	mem->size = size;
+	return 0;
+}
+
+void edgetpu_free_coherent(struct edgetpu_dev *etdev,
+			   struct edgetpu_coherent_mem *mem,
+			   enum edgetpu_context_id context_id)
+{
+	edgetpu_mmu_tpu_unmap(etdev, mem->tpu_addr, mem->size, context_id);
+	edgetpu_x86_coherent_mem_set_wb(mem);
+	dma_free_coherent(etdev->dev, mem->size, mem->vaddr, mem->dma_addr);
+	mem->vaddr = NULL;
+}
+
+void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev, u16 crash_type,
+				   u32 extra_info)
+{
+	etdev_err(etdev, "firmware crashed: %u 0x%x", crash_type, extra_info);
+	etdev->firmware_crash_count++;
+	edgetpu_fatal_error_notify(etdev);
 }
 
 int __init edgetpu_init(void)

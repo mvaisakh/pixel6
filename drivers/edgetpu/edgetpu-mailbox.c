@@ -5,10 +5,12 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
+#include <asm/page.h>
 #include <linux/bits.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
+#include <linux/mmzone.h> /* MAX_ORDER_NR_PAGES */
 #include <linux/slab.h>
 
 #include "edgetpu-device-group.h"
@@ -378,8 +380,8 @@ static int convert_runtime_queue_size_to_fw(u32 queue_size, u32 element_size)
 	/* zero size is not allowed */
 	if (queue_size == 0 || element_size == 0)
 		return -EINVAL;
-	/* prevent integer overflow */
-	if (queue_size > SIZE_MAX / runtime_unit)
+	/* A quick check to prevent the queue allocation failure. */
+	if (queue_size > (MAX_ORDER_NR_PAGES << PAGE_SHIFT) / runtime_unit)
 		return -ENOMEM;
 	/*
 	 * Kernel doesn't care whether queue_size * runtime_unit is a multiple
@@ -392,19 +394,19 @@ static int convert_runtime_queue_size_to_fw(u32 queue_size, u32 element_size)
 	return ret;
 }
 
-bool edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr)
+int edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr)
 {
 	int size;
 
 	size = convert_runtime_queue_size_to_fw(attr->cmd_queue_size,
 						attr->sizeof_cmd);
 	if (size < 0)
-		return false;
+		return size;
 	size = convert_runtime_queue_size_to_fw(attr->resp_queue_size,
 						attr->sizeof_resp);
 	if (size < 0)
-		return false;
-	return true;
+		return size;
+	return 0;
 }
 
 int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,

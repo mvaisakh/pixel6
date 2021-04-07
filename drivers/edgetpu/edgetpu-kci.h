@@ -70,14 +70,15 @@ struct edgetpu_kci_response_element {
 	u64 seq;
 	u16 code;
 	/*
-	 * Reserved on firmware side - they can't touch this.
+	 * Reserved on firmware side for KCI response - they can't touch this.
 	 * If a value is written here it will be discarded and overwritten
-	 * during response processing
+	 * during response processing.
+	 * For a Reverse KCI command firmware does set this as value1.
 	 */
 	u16 status;
 	/*
-	 * Return value is not currently needed by KCI command responses, but
-	 * incoming requests from firmware may encode information here.
+	 * Return value is not currently needed by KCI command responses.
+	 * For reverse KCI commands this is set as value2.
 	 */
 	u32 retval;
 } __packed;
@@ -102,8 +103,6 @@ enum edgetpu_kci_code {
 	KCI_CODE_JOIN_GROUP = 3,
 	KCI_CODE_LEAVE_GROUP = 4,
 	KCI_CODE_MAP_TRACE_BUFFER = 5,
-	/* TODO(b/136208139): remove when old fw no longer in use */
-	KCI_CODE_FIRMWARE_FLAVOR_COMPAT = 6,
 	KCI_CODE_SHUTDOWN = 7,
 	KCI_CODE_GET_DEBUG_DUMP = 8,
 	KCI_CODE_OPEN_DEVICE = 9,
@@ -122,6 +121,7 @@ enum edgetpu_reverse_kci_code {
 	RKCI_CHIP_CODE_FIRST = 0,
 	RKCI_CHIP_CODE_LAST = 0x7FFF,
 	RKCI_GENERIC_CODE_FIRST = 0x8000,
+	RKCI_FIRMWARE_CRASH = RKCI_GENERIC_CODE_FIRST + 0,
 	RKCI_GENERIC_CODE_LAST = 0xFFFF,
 };
 

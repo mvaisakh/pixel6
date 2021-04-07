@@ -4,10 +4,12 @@
  *
  * Copyright (C) 2019-2020 Google, Inc.
  */
+
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -74,11 +76,11 @@ static int telemetry_set_event(struct edgetpu_dev *etdev,
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
 
-	write_lock_irqsave(&tel->ctx_mem_lock, flags);
+	write_lock_irqsave(&tel->ctx_lock, flags);
 	if (tel->ctx)
 		eventfd_ctx_put(tel->ctx);
 	tel->ctx = ctx;
-	write_unlock_irqrestore(&tel->ctx_mem_lock, flags);
+	write_unlock_irqrestore(&tel->ctx_lock, flags);
 
 	return 0;
 }
@@ -90,11 +92,11 @@ static void telemetry_unset_event(struct edgetpu_dev *etdev,
 
 	if (!tel->inited)
 		return;
-	write_lock_irqsave(&tel->ctx_mem_lock, flags);
+	write_lock_irqsave(&tel->ctx_lock, flags);
 	if (tel->ctx)
 		eventfd_ctx_put(tel->ctx);
 	tel->ctx = NULL;
-	write_unlock_irqrestore(&tel->ctx_mem_lock, flags);
+	write_unlock_irqrestore(&tel->ctx_lock, flags);
 
 	return;
 }
@@ -205,12 +207,12 @@ static void telemetry_worker(struct work_struct *work)
 
 		prev_head = tel->header->head;
 		if (tel->header->head != tel->header->tail) {
-			read_lock(&tel->ctx_mem_lock);
+			read_lock(&tel->ctx_lock);
 			if (tel->ctx)
 				eventfd_signal(tel->ctx, 1);
 			else
 				tel->fallback_fn(tel);
-			read_unlock(&tel->ctx_mem_lock);
+			read_unlock(&tel->ctx_lock);
 		}
 
 		spin_unlock_irqrestore(&tel->state_lock, flags);
@@ -257,16 +259,35 @@ static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 	if (!tel->inited)
 		return -ENODEV;
 
-	write_lock(&tel->ctx_mem_lock);
+	mutex_lock(&tel->mmap_lock);
 
-	ret = edgetpu_iremap_mmap(etdev, vma, &tel->coherent_mem);
+	if (!tel->is_mmapped) {
+		ret = edgetpu_iremap_mmap(etdev, vma, &tel->coherent_mem);
 
-	if (!ret)
-		tel->coherent_mem.host_addr = vma->vm_start;
+		if (!ret) {
+			tel->coherent_mem.host_addr = vma->vm_start;
+			tel->is_mmapped = true;
+		}
+	} else {
+		ret = -EBUSY;
+		etdev_warn(etdev, "Buffer is already mmapped");
+	}
 
-	write_unlock(&tel->ctx_mem_lock);
+	mutex_unlock(&tel->mmap_lock);
 
 	return ret;
+}
+
+static void telemetry_munmap_buffer(struct edgetpu_dev *etdev,
+				    struct edgetpu_telemetry *tel,
+				    struct vm_area_struct *vma)
+{
+	if (!tel->inited)
+		return;
+
+	mutex_lock(&tel->mmap_lock);
+	tel->is_mmapped = false;
+	mutex_unlock(&tel->mmap_lock);
 }
 
 static int telemetry_init(struct edgetpu_dev *etdev,
@@ -306,7 +327,7 @@ static int telemetry_init(struct edgetpu_dev *etdev,
 		edgetpu_x86_coherent_mem_set_uc(&tel->coherent_mem);
 	}
 
-	rwlock_init(&tel->ctx_mem_lock);
+	rwlock_init(&tel->ctx_lock);
 	tel->name = name;
 	tel->etdev = etdev;
 
@@ -322,6 +343,8 @@ static int telemetry_init(struct edgetpu_dev *etdev,
 	tel->fallback_fn = fallback;
 	tel->state = EDGETPU_TELEMETRY_ENABLED;
 	tel->inited = true;
+	mutex_init(&tel->mmap_lock);
+	tel->is_mmapped = false;
 
 	return 0;
 }
@@ -442,4 +465,14 @@ int edgetpu_mmap_telemetry_buffer(struct edgetpu_dev *etdev,
 		return -ENODEV;
 	return telemetry_mmap_buffer(
 		etdev, select_telemetry(etdev->telemetry, type), vma);
+}
+
+void edgetpu_munmap_telemetry_buffer(struct edgetpu_dev *etdev,
+				     enum edgetpu_telemetry_type type,
+				     struct vm_area_struct *vma)
+{
+	if (!etdev->telemetry)
+		return;
+	telemetry_munmap_buffer(etdev, select_telemetry(etdev->telemetry, type),
+				vma);
 }

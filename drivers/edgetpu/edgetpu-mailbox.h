@@ -216,12 +216,12 @@ struct edgetpu_mailbox *
 edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id);
 /*
  * Validates the mailbox attributes.
- * Returns true if valid, false otherwise.
+ * Returns 0 if valid, otherwise a negative errno.
  *
  * See the error cases of EDGETPU_CREATE_GROUP in edgetpu.h for when will @attr
  * be considered as invalid.
  */
-bool edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr);
+int edgetpu_mailbox_validate_attr(const struct edgetpu_mailbox_attr *attr);
 /*
  * Sets mailbox and allocates queues to @vii.
  *

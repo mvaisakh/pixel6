@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include <linux/version.h>
+#include <linux/of.h>
 
 #include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
@@ -23,42 +24,19 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-thermal.h"
 
-static const unsigned long state_mapping[] = {
-	TPU_ACTIVE_OD,
-	TPU_ACTIVE_NOM,
-	TPU_ACTIVE_UD,
-	TPU_ACTIVE_SUD,
-	TPU_RETENTION_CLOCKS_SLOW,
-	TPU_SLEEP_CLOCKS_SLOW,
-	TPU_SLEEP_CLOCKS_OFF,
-	TPU_DEEP_SLEEP_CLOCKS_FAST,
-	TPU_DEEP_SLEEP_CLOCKS_SLOW,
-	TPU_DEEP_SLEEP_CLOCKS_OFF,
-	TPU_OFF,
-};
-
-/*
- * Sequence need to be kept to make power increasing
- * to make sure we always return the highest state.
- */
-static const struct edgetpu_state_pwr state_pwr_map[] = {
-	{ TPU_ACTIVE_OD, 198 },
-	{ TPU_ACTIVE_NOM, 165 },
-	{ TPU_ACTIVE_UD, 131 },
-	{ TPU_ACTIVE_SUD, 102 },
-	{ TPU_SLEEP_CLOCKS_SLOW, 66 },
-	{ TPU_SLEEP_CLOCKS_OFF, 66 },
-	{ TPU_RETENTION_CLOCKS_SLOW, 49 },
-	{ TPU_DEEP_SLEEP_CLOCKS_FAST, 43 },
-	{ TPU_DEEP_SLEEP_CLOCKS_SLOW, 6 },
-	{ TPU_DEEP_SLEEP_CLOCKS_OFF, 6 },
-	{ TPU_OFF, 0 },
-};
+#define MAX_NUM_TPU_STATES 10
+#define OF_DATA_NUM_MAX MAX_NUM_TPU_STATES * 2
+static struct edgetpu_state_pwr state_pwr_map[MAX_NUM_TPU_STATES] = {0};
 
 static int edgetpu_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
-	*state = ARRAY_SIZE(state_mapping) - 1;
+	struct edgetpu_thermal *thermal = cdev->devdata;
+
+	if (thermal->tpu_num_states <= 0)
+		return -ENOSYS;
+
+	*state = thermal->tpu_num_states - 1;
 	return 0;
 }
 
@@ -73,14 +51,14 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	struct device *dev = cooling->dev;
 	unsigned long pwr_state;
 
-	if (state_original >= ARRAY_SIZE(state_mapping)) {
+	if (state_original >= cooling->tpu_num_states) {
 		dev_err(dev, "%s: invalid cooling state %lu\n", __func__,
 			state_original);
 		return -EINVAL;
 	}
 
 	mutex_lock(&cooling->lock);
-	pwr_state = state_mapping[state_original];
+	pwr_state = state_pwr_map[state_original].state;
 	if (state_original != cooling->cooling_state) {
 		/*
 		 * Cap the minimum state we request here.
@@ -116,7 +94,7 @@ static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 	struct edgetpu_thermal *cooling = cdev->devdata;
 
 	*state = cooling->cooling_state;
-	if (*state >= ARRAY_SIZE(state_mapping)) {
+	if (*state >= cooling->tpu_num_states) {
 		dev_warn(cooling->dev,
 			 "Unknown cooling state: %lu, resetting\n", *state);
 		mutex_lock(&cooling->lock);
@@ -138,17 +116,17 @@ static int edgetpu_get_cur_state(struct thermal_cooling_device *cdev,
 }
 
 static int edgetpu_state2power_internal(unsigned long state, u32 *power,
-					struct device *dev)
+					struct edgetpu_thermal *thermal)
 {
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(state_pwr_map); i++) {
+	for (i = 0; i < thermal->tpu_num_states; ++i) {
 		if (state == state_pwr_map[i].state) {
 			*power = state_pwr_map[i].power;
 			return 0;
 		}
 	}
-	dev_err(dev, "Unknown state req for: %lu\n", state);
+	dev_err(thermal->dev, "Unknown state req for: %lu\n", state);
 	*power = 0;
 	return -EINVAL;
 }
@@ -164,7 +142,7 @@ static int edgetpu_get_requested_power(struct thermal_cooling_device *cdev,
 
 	state_original = exynos_acpm_get_rate(TPU_ACPM_DOMAIN, 0);
 	return edgetpu_state2power_internal(state_original, power,
-					    cooling->dev);
+					    cooling);
 }
 
 static int edgetpu_state2power(struct thermal_cooling_device *cdev,
@@ -175,14 +153,14 @@ static int edgetpu_state2power(struct thermal_cooling_device *cdev,
 {
 	struct edgetpu_thermal *cooling = cdev->devdata;
 
-	if (state >= ARRAY_SIZE(state_mapping)) {
+	if (state >= cooling->tpu_num_states) {
 		dev_err(cooling->dev, "%s: invalid state: %lu\n", __func__,
 			state);
 		return -EINVAL;
 	}
 
-	return edgetpu_state2power_internal(state_mapping[state], power,
-					    cooling->dev);
+	return edgetpu_state2power_internal(state_pwr_map[state].state, power,
+					    cooling);
 }
 
 static int edgetpu_power2state(struct thermal_cooling_device *cdev,
@@ -191,18 +169,29 @@ static int edgetpu_power2state(struct thermal_cooling_device *cdev,
 #endif
 			       u32 power, unsigned long *state)
 {
-	int i;
-	struct edgetpu_thermal *cooling = cdev->devdata;
+	int i, penultimate_throttle_state;
+	struct edgetpu_thermal *thermal = cdev->devdata;
 
-	for (i = 0; i < ARRAY_SIZE(state_pwr_map); i++) {
-		if (power >= state_pwr_map[i].power) {
-			*state = i;
-			return 0;
+	*state = 0;
+	if (thermal->tpu_num_states < 2)
+		return thermal->tpu_num_states == 1 ? 0 : -ENOSYS;
+
+	penultimate_throttle_state = thermal->tpu_num_states - 2;
+	/*
+	 * argument "power" is the maximum allowed power consumption in mW as
+	 * defined by the PID control loop. Check for the first state that is
+	 * less than or equal to the current allowed power. state_pwr_map is
+	 * descending, so lowest power consumption is last value in the array
+	 * return lowest state even if it consumes more power than allowed as
+	 * not all platforms can handle throttling below an active state
+	 */
+	for (i = penultimate_throttle_state; i >= 0; --i) {
+		if (power < state_pwr_map[i].power) {
+			*state = i + 1;
+			break;
 		}
 	}
-
-	dev_err(cooling->dev, "No power2state mapping found: %d\n", power);
-	return -EINVAL;
+	return 0;
 }
 
 static struct thermal_cooling_device_ops edgetpu_cooling_ops = {
@@ -233,12 +222,56 @@ static void devm_tpu_thermal_release(struct device *dev, void *res)
 	tpu_thermal_exit(thermal);
 }
 
+static int tpu_thermal_parse_dvfs_table(struct edgetpu_thermal *thermal)
+{
+	int row_size, col_size, tbl_size, i;
+	int of_data_int_array[OF_DATA_NUM_MAX];
+
+	if (of_property_read_u32_array(thermal->dev->of_node,
+                                "tpu_dvfs_table_size", of_data_int_array, 2 ))
+		goto error;
+
+	row_size = of_data_int_array[0];
+	col_size = of_data_int_array[1];
+	tbl_size = row_size * col_size;
+	if (row_size > MAX_NUM_TPU_STATES) {
+		dev_err(thermal->dev, "too many TPU states\n");
+		goto error;
+	}
+
+	if (tbl_size > OF_DATA_NUM_MAX)
+		goto error;
+
+	if (of_property_read_u32_array(thermal->dev->of_node,
+                                "tpu_dvfs_table", of_data_int_array, tbl_size))
+		goto error;
+
+	thermal->tpu_num_states = row_size;
+	for (i = 0; i < row_size; ++i) {
+		int idx = col_size * i;
+		state_pwr_map[i].state = of_data_int_array[idx];
+		state_pwr_map[i].power = of_data_int_array[idx+1];
+	}
+
+	return 0;
+
+error:
+	dev_err(thermal->dev, "failed to parse DVFS table\n");
+	return -EINVAL;
+}
+
 static int
 tpu_thermal_cooling_register(struct edgetpu_thermal *thermal, char *type)
 {
 	struct device_node *cooling_node = NULL;
+	int err = 0;
 
 	thermal->op_data = NULL;
+	thermal->tpu_num_states = 0;
+
+	err = tpu_thermal_parse_dvfs_table(thermal);
+	if (err)
+		return err;
 
 	mutex_init(&thermal->lock);
 	cooling_node = of_find_node_by_name(NULL, "tpu-cooling");

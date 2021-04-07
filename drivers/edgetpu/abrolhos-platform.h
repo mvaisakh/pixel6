@@ -22,6 +22,9 @@
 struct edgetpu_platform_pwr {
 	struct mutex policy_lock;
 	enum tpu_pwr_state curr_policy;
+	struct mutex state_lock;
+	u64 min_state;
+	u64 requested_state;
 };
 
 struct abrolhos_platform_dev {

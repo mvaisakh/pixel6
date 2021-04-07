@@ -35,8 +35,6 @@
 #include "edgetpu-thermal.h"
 #include "edgetpu-usage-stats.h"
 
-#include "soc/google/bcl.h"
-
 #define etdev_err(etdev, fmt, ...) dev_err((etdev)->etcdev, fmt, ##__VA_ARGS__)
 #define etdev_warn(etdev, fmt, ...)                                            \
 	dev_warn((etdev)->etcdev, fmt, ##__VA_ARGS__)
@@ -103,6 +101,10 @@ struct edgetpu_p2p_csr_map;
 struct edgetpu_remote_dram_map;
 struct edgetpu_wakelock;
 
+#define EDGETPU_NUM_PERDIE_EVENTS	2
+#define perdie_event_id_to_num(event_id)				      \
+	(event_id - EDGETPU_PERDIE_EVENT_LOGS_AVAILABLE)
+
 struct edgetpu_client {
 	pid_t pid;
 	pid_t tgid;
@@ -130,6 +132,8 @@ struct edgetpu_client {
 	struct edgetpu_reg_window reg_window;
 	/* Per-client request to keep device active */
 	struct edgetpu_wakelock *wakelock;
+	/* Bit field of registered per die events */
+	u64 perdie_events;
 };
 
 struct edgetpu_mapping;
@@ -197,11 +201,14 @@ struct edgetpu_dev {
 	/* version read from the firmware binary file */
 	struct edgetpu_fw_version fw_version;
 	atomic_t job_count;	/* times joined to a device group */
+
+	/* counts of error events */
+	uint firmware_crash_count;
+
 	struct edgetpu_coherent_mem debug_dump_mem;	/* debug dump memory */
 	/* debug dump handlers */
 	edgetpu_debug_dump_handlers *debug_dump_handlers;
 	struct work_struct debug_dump_work;
-	struct gs101_bcl_dev *bcl_dev;
 };
 
 extern const struct file_operations edgetpu_fops;
@@ -295,9 +302,28 @@ edgetpu_x86_coherent_mem_set_wb(struct edgetpu_coherent_mem *mem)
 #endif
 }
 
+/*
+ * Attempt to allocate memory from the dma coherent memory using dma_alloc.
+ * Use this to allocate memory outside the instruction remap pool.
+ */
+int edgetpu_alloc_coherent(struct edgetpu_dev *etdev, size_t size,
+			   struct edgetpu_coherent_mem *mem,
+			   enum edgetpu_context_id context_id);
+/*
+ * Free memory allocated by the function above from the dma coherent memory.
+ */
+void edgetpu_free_coherent(struct edgetpu_dev *etdev,
+			   struct edgetpu_coherent_mem *mem,
+			   enum edgetpu_context_id context_id);
+
+
 /* External drivers can hook up to edgetpu driver using these calls. */
 int edgetpu_open(struct edgetpu_dev *etdev, struct file *file);
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg);
+
+/* Handle firmware crash event */
+void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev, u16 crash_type,
+				   u32 extra_info);
 
 /* Bus (Platform/PCI) <-> Core API */
 

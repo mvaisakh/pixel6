@@ -87,9 +87,16 @@ edgetpu_reverse_kci_consume_response(struct edgetpu_dev *etdev,
 		edgetpu_chip_handle_reverse_kci(etdev, resp);
 		return;
 	}
-	/* We don't have any generic reverse KCI codes yet */
-	etdev_warn(etdev, "%s: Unrecognized KCI request: %u\n", __func__,
-		   resp->code);
+
+	switch (resp->code) {
+	case RKCI_FIRMWARE_CRASH:
+		edgetpu_handle_firmware_crash(etdev, resp->status,
+					      resp->retval);
+		break;
+	default:
+		etdev_warn(etdev, "%s: Unrecognized KCI request: 0x%x\n",
+			   __func__, resp->code);
+	}
 }
 
 /* Remove one element from the circular buffer */
@@ -143,10 +150,10 @@ static int edgetpu_reverse_kci_add_response(
 	const struct edgetpu_kci_response_element *resp)
 {
 	struct edgetpu_reverse_kci *rkci = &kci->rkci;
-	unsigned long head, tail;
+	unsigned long head, tail, flags;
 	int ret = 0;
 
-	spin_lock(&rkci->producer_lock);
+	spin_lock_irqsave(&rkci->producer_lock, flags);
 	head = rkci->head;
 	tail = READ_ONCE(rkci->tail);
 	if (CIRC_SPACE(head, tail, REVERSE_KCI_BUFFER_SIZE) >= 1) {
@@ -157,7 +164,7 @@ static int edgetpu_reverse_kci_add_response(
 	} else {
 		ret = -ENOSPC;
 	}
-	spin_unlock(&rkci->producer_lock);
+	spin_unlock_irqrestore(&rkci->producer_lock, flags);
 	return ret;
 }
 
@@ -192,8 +199,9 @@ static void edgetpu_kci_consume_wait_list(
 		const struct edgetpu_kci_response_element *resp)
 {
 	struct edgetpu_kci_wait_list *cur, *nxt;
+	unsigned long flags;
 
-	spin_lock(&kci->wait_list_lock);
+	spin_lock_irqsave(&kci->wait_list_lock, flags);
 
 	list_for_each_entry_safe(cur, nxt, &kci->wait_list, list) {
 		if (cur->resp->seq > resp->seq)
@@ -210,7 +218,7 @@ static void edgetpu_kci_consume_wait_list(
 		kfree(cur);
 	}
 
-	spin_unlock(&kci->wait_list_lock);
+	spin_unlock_irqrestore(&kci->wait_list_lock, flags);
 }
 
 /*
@@ -530,15 +538,16 @@ void edgetpu_kci_release(struct edgetpu_dev *etdev, struct edgetpu_kci *kci)
 static int edgetpu_kci_push_wait_resp(struct edgetpu_kci *kci,
 				      struct edgetpu_kci_response_element *resp)
 {
-	struct edgetpu_kci_wait_list *entry = kzalloc(sizeof(*entry),
-						      GFP_KERNEL);
+	struct edgetpu_kci_wait_list *entry =
+		kzalloc(sizeof(*entry), GFP_KERNEL);
+	unsigned long flags;
 
 	if (!entry)
 		return -ENOMEM;
 	entry->resp = resp;
-	spin_lock(&kci->wait_list_lock);
+	spin_lock_irqsave(&kci->wait_list_lock, flags);
 	list_add_tail(&entry->list, &kci->wait_list);
-	spin_unlock(&kci->wait_list_lock);
+	spin_unlock_irqrestore(&kci->wait_list_lock, flags);
 
 	return 0;
 }
@@ -552,8 +561,9 @@ static void edgetpu_kci_del_wait_resp(struct edgetpu_kci *kci,
 				      struct edgetpu_kci_response_element *resp)
 {
 	struct edgetpu_kci_wait_list *cur;
+	unsigned long flags;
 
-	spin_lock(&kci->wait_list_lock);
+	spin_lock_irqsave(&kci->wait_list_lock, flags);
 
 	list_for_each_entry(cur, &kci->wait_list, list) {
 		if (cur->resp->seq > resp->seq)
@@ -565,7 +575,7 @@ static void edgetpu_kci_del_wait_resp(struct edgetpu_kci *kci,
 		}
 	}
 
-	spin_unlock(&kci->wait_list_lock);
+	spin_unlock_irqrestore(&kci->wait_list_lock, flags);
 }
 
 int edgetpu_kci_push_cmd(struct edgetpu_kci *kci,
@@ -769,8 +779,8 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
-enum edgetpu_fw_flavor edgetpu_kci_fw_info(
-	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info)
+enum edgetpu_fw_flavor edgetpu_kci_fw_info(struct edgetpu_kci *kci,
+					   struct edgetpu_fw_info *fw_info)
 {
 	struct edgetpu_dev *etdev = kci->mailbox->etdev;
 	struct edgetpu_command_element cmd = {
@@ -781,10 +791,6 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 		},
 	};
 	struct edgetpu_coherent_mem mem;
-	/* TODO(b/136208139): remove when old fw no longer in use */
-	struct edgetpu_command_element cmd_compat = {
-		.code = KCI_CODE_FIRMWARE_FLAVOR_COMPAT,
-	};
 	struct edgetpu_kci_response_element resp;
 	enum edgetpu_fw_flavor flavor = FW_FLAVOR_UNKNOWN;
 	int ret;
@@ -804,9 +810,6 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	}
 
 	ret = edgetpu_kci_send_cmd_return_resp(kci, &cmd, &resp);
-	if (ret == KCI_ERROR_UNIMPLEMENTED)
-		ret = edgetpu_kci_send_cmd_return_resp(kci, &cmd_compat, &resp);
-
 	if (cmd.dma.address) {
 		memcpy(fw_info, mem.vaddr, sizeof(*fw_info));
 		edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
@@ -815,16 +818,16 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	if (ret == KCI_ERROR_UNIMPLEMENTED) {
 		etdev_dbg(etdev, "old firmware does not report flavor\n");
 	} else if (ret == KCI_ERROR_OK) {
-		switch (resp.retval) {
+		switch (fw_info->fw_flavor) {
 		case FW_FLAVOR_BL1:
 		case FW_FLAVOR_SYSTEST:
 		case FW_FLAVOR_PROD_DEFAULT:
 		case FW_FLAVOR_CUSTOM:
-			flavor = resp.retval;
+			flavor = fw_info->fw_flavor;
 			break;
 		default:
 			etdev_dbg(etdev, "unrecognized fw flavor 0x%x\n",
-				  resp.retval);
+				  fw_info->fw_flavor);
 		}
 	} else {
 		etdev_dbg(etdev, "firmware flavor query returns %d\n", ret);

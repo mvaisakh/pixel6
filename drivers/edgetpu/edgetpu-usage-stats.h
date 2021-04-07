@@ -53,11 +53,34 @@ struct edgetpu_component_activity {
 	int32_t utilization;
 };
 
+/*
+ * Defines different counter types we track.
+ * Must be kept in sync with firmware enum class CounterType.
+ */
+enum edgetpu_usage_counter_type {
+	/* TPU active cycles. */
+	EDGETPU_COUNTER_TPU_ACTIVE_CYCLES = 0,
+	/* Number of stalls caused by throttling. */
+	EDGETPU_COUNTER_TPU_THROTTLE_STALLS = 1,
+
+	EDGETPU_COUNTER_COUNT = 2, /* number of counters above */
+};
+
+/* Generic counter. Only reported if it has a value larger than 0. */
+struct __packed edgetpu_usage_counter {
+	/* What it counts. */
+	enum edgetpu_usage_counter_type type;
+
+	/* Accumulated value since last initialization. */
+	uint64_t value;
+};
+
 /* Must be kept in sync with firmware enum class UsageTrackerMetric::Type */
 enum edgetpu_usage_metric_type {
 	EDGETPU_METRIC_TYPE_RESERVED = 0,
 	EDGETPU_METRIC_TYPE_TPU_USAGE = 1,
 	EDGETPU_METRIC_TYPE_COMPONENT_ACTIVITY = 2,
+	EDGETPU_METRIC_TYPE_COUNTER = 3,
 };
 
 /*
@@ -70,6 +93,7 @@ struct edgetpu_usage_metric {
 	union {
 		struct tpu_usage tpu_usage;
 		struct edgetpu_component_activity component_activity;
+		struct edgetpu_usage_counter counter;
 	};
 };
 
@@ -79,6 +103,7 @@ struct edgetpu_usage_stats {
 	DECLARE_HASHTABLE(uid_hash_table, UID_HASH_BITS);
 	/* component utilization values reported by firmware */
 	int32_t component_utilization[EDGETPU_USAGE_COMPONENT_COUNT];
+	int64_t counter[EDGETPU_COUNTER_COUNT];
 	struct mutex usage_stats_lock;
 };
 

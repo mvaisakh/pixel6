@@ -9,6 +9,7 @@
 
 #include <linux/eventfd.h>
 #include <linux/mm.h>
+#include <linux/mutex.h>
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
@@ -77,7 +78,7 @@ struct edgetpu_telemetry {
 	bool caller_mem;
 
 	struct eventfd_ctx *ctx; /* signal this to notify the runtime */
-	rwlock_t ctx_mem_lock; /* protects ctx and coherent_mem */
+	rwlock_t ctx_lock; /* protects ctx */
 	const char *name; /* for debugging */
 	bool inited; /* whether telemetry_init() succeeded */
 
@@ -85,6 +86,9 @@ struct edgetpu_telemetry {
 	struct work_struct work;
 	/* Fallback function to call for default log/trace handling. */
 	void (*fallback_fn)(struct edgetpu_telemetry *tel);
+	struct mutex mmap_lock; /* protects is_mmapped */
+	/* Flag tracking when the telemetry buffer is mapped to user space. */
+	bool is_mmapped;
 };
 
 struct edgetpu_telemetry_ctx {
@@ -138,5 +142,8 @@ void edgetpu_telemetry_mappings_show(struct edgetpu_dev *etdev,
 int edgetpu_mmap_telemetry_buffer(struct edgetpu_dev *etdev,
 				  enum edgetpu_telemetry_type type,
 				  struct vm_area_struct *vma);
+void edgetpu_munmap_telemetry_buffer(struct edgetpu_dev *etdev,
+				     enum edgetpu_telemetry_type type,
+				     struct vm_area_struct *vma);
 
 #endif /* __EDGETPU_TELEMETRY_H__ */

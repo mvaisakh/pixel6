@@ -608,19 +608,22 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 			   const struct edgetpu_mailbox_attr *attr)
 {
 	static uint cur_workload_id;
-	int ret = -EINVAL;
+	int ret;
 	struct edgetpu_device_group *group;
 	struct edgetpu_iommu_domain *etdomain;
 
-	if (!edgetpu_mailbox_validate_attr(attr))
+	ret = edgetpu_mailbox_validate_attr(attr);
+	if (ret)
 		goto error;
 	/*
 	 * The client already belongs to a group.
 	 * It's safe not to take client->group_lock as
 	 * edgetpu_device_group_add() will fail if there is race.
 	 */
-	if (client->group)
+	if (client->group) {
+		ret = -EINVAL;
 		goto error;
+	}
 
 	group = kzalloc(sizeof(*group), GFP_KERNEL);
 	if (!group) {
@@ -1077,7 +1080,11 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 
 	etdev_dbg(etdev, "%s: hostaddr=0x%llx pages=%u dir=%x", __func__,
 		  host_addr, num_pages, dir);
-	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL);
+	/*
+	 * "num_pages" is decided from user-space arguments, don't show warnings
+	 * when facing malicious input.
+	 */
+	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL | __GFP_NOWARN);
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
 
