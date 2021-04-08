@@ -58,12 +58,17 @@ void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut)
 		return;
 	}
 
-	for (i = 0; i < HDR_EOTF_POSX_LUT_REG_CNT; i++) {
+	// Registers POSX 0~(N-1) contain two points each
+	for (i = 0; i < HDR_EOTF_POSX_LUT_REG_CNT - 1; i++) {
 		val = EOTF_POSX_H(lut->posx[i * 2 + 1]) |
 			EOTF_POSX_L(lut->posx[i * 2]);
 		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), val);
 		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 	}
+	// Register POSX N contains a single last point
+	val = EOTF_POSX_L(lut->posx[i * 2]);
+	hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), val);
+	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
 	for (i = 0; i < HDR_EOTF_POSY_LUT_REG_CNT; i++) {
 		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSY(i), lut->posy[i]);
@@ -89,19 +94,29 @@ void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut)
 		return;
 	}
 
-	for (i = 0; i < HDR_OETF_POSX_LUT_REG_CNT; i++) {
+	// Registers POSX 0~(N-1) contain two points each
+	for (i = 0; i < HDR_OETF_POSX_LUT_REG_CNT - 1; i++) {
 		val = OETF_POSX_H(lut->posx[i * 2 + 1]) |
 			OETF_POSX_L(lut->posx[i * 2]);
 		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), val);
 		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 	}
+	// Register POSX N contains a single last point
+	val = OETF_POSX_L(lut->posx[i * 2]);
+	hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), val);
+	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
-	for (i = 0; i < HDR_OETF_POSY_LUT_REG_CNT; i++) {
+	// Registers POSY 0~(N-1) contain two points each
+	for (i = 0; i < HDR_OETF_POSY_LUT_REG_CNT - 1; i++) {
 		val = OETF_POSY_H(lut->posy[i * 2 + 1]) |
 			OETF_POSY_L(lut->posy[i * 2]);
 		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), val);
 		cal_log_debug(id, "POSY[%d]: 0x%x\n", i, val);
 	}
+	// Register POSY N contains a single last point
+	val = OETF_POSY_L(lut->posy[i * 2]);
+	hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), val);
+	cal_log_debug(id, "POSY[%d]: 0x%x\n", i, val);
 
 	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_OEN(1),
 			MOD_CTRL_OEN_MASK);
@@ -167,12 +182,17 @@ void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 	hdr_write_relaxed(id, HDR_LSI_L_TM_RNGY, val);
 	cal_log_debug(id, "RNGY: 0x%x\n", val);
 
-	for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT; i++) {
+	// Registers POSX 0~(N-1) contain two points each
+	for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT - 1; i++) {
 		val = TM_POSX_H(tm->posx[i * 2 + 1]) |
 			TM_POSX_L(tm->posx[i * 2]);
 		hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
 		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 	}
+	// Register POSX N contains a single last point
+	val = TM_POSX_L(tm->posx[i * 2]);
+	hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
+	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
 	for (i = 0; i < HDR_TM_POSY_LUT_REG_CNT; i++) {
 		hdr_write_relaxed(id, HDR_LSI_L_TM_POSY(i), tm->posy[i]);
