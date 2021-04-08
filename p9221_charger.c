@@ -3325,7 +3325,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		}
 	}
 
-	if ((irq_src & csp_bit) && (status_reg & csp_bit)) {
+	if (irq_src & csp_bit) {
 		ret = p9221_reg_read_8(charger, P9382A_CHARGE_STAT_REG,
 				       &csp_reg);
 		if (ret) {
