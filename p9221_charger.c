@@ -998,13 +998,9 @@ static int p9221_get_property(struct power_supply *psy,
 		if (ret < 0)
 			break;
 
-		if (charger->wlc_dc_enabled) {
-			ret = charger->chip_get_rx_ilim(charger, &temp);
-			if (ret == 0)
-				charger->wlc_dc_current_now = temp * 1000; /* mA to uA */
-		} else {
-			ret = charger->chip_get_iout(charger, &temp);
-		}
+		ret = charger->chip_get_iout(charger, &temp);
+		if (charger->wlc_dc_enabled && (ret == 0))
+			charger->wlc_dc_current_now = temp * 1000; /* mA to uA */
 
 		val->intval = ret ? : temp * 1000; /* mA to uA */
 	break;
