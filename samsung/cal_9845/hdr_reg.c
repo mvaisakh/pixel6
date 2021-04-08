@@ -48,7 +48,8 @@ void hdr_reg_set_hdr(u32 id, bool en)
 void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut)
 {
 	int i;
-	u32 val;
+	int ret = 0;
+	u32 regs[HDR_EOTF_POSX_LUT_REG_CNT] = {0};
 
 	cal_log_debug(id, "%s +\n", __func__);
 
@@ -58,17 +59,17 @@ void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut)
 		return;
 	}
 
-	// Registers POSX 0~(N-1) contain two points each
-	for (i = 0; i < HDR_EOTF_POSX_LUT_REG_CNT - 1; i++) {
-		val = EOTF_POSX_H(lut->posx[i * 2 + 1]) |
-			EOTF_POSX_L(lut->posx[i * 2]);
-		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), val);
-		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
+	ret = cal_pack_lut_into_reg_pairs(lut->posx, DRM_SAMSUNG_HDR_EOTF_LUT_LEN,
+			EOTF_POSX_L_MASK, EOTF_POSX_H_MASK, regs,
+			HDR_EOTF_POSX_LUT_REG_CNT);
+	if(ret) {
+		cal_log_err(id, "Failed to pack eotf_posx\n");
+	} else {
+		for (i = 0; i < HDR_EOTF_POSX_LUT_REG_CNT; i++) {
+			hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), regs[i]);
+			cal_log_debug(id, "POSX[%d]: 0x%x\n", i, regs[i]);
+		}
 	}
-	// Register POSX N contains a single last point
-	val = EOTF_POSX_L(lut->posx[i * 2]);
-	hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSX(i), val);
-	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
 	for (i = 0; i < HDR_EOTF_POSY_LUT_REG_CNT; i++) {
 		hdr_write_relaxed(id, HDR_LSI_L_EOTF_POSY(i), lut->posy[i]);
@@ -84,7 +85,6 @@ void hdr_reg_set_eotf_lut(u32 id, struct hdr_eotf_lut *lut)
 void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut)
 {
 	int i;
-	u32 val;
 
 	cal_log_debug(id, "%s +\n", __func__);
 
@@ -94,29 +94,35 @@ void hdr_reg_set_oetf_lut(u32 id, struct hdr_oetf_lut *lut)
 		return;
 	}
 
-	// Registers POSX 0~(N-1) contain two points each
-	for (i = 0; i < HDR_OETF_POSX_LUT_REG_CNT - 1; i++) {
-		val = OETF_POSX_H(lut->posx[i * 2 + 1]) |
-			OETF_POSX_L(lut->posx[i * 2]);
-		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), val);
-		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
+	{
+		u32 regs[HDR_OETF_POSX_LUT_REG_CNT] = {0};
+		int ret = cal_pack_lut_into_reg_pairs(lut->posx,
+				DRM_SAMSUNG_HDR_OETF_LUT_LEN, OETF_POSX_L_MASK,
+				OETF_POSX_H_MASK, regs, HDR_OETF_POSX_LUT_REG_CNT);
+		if (ret) {
+			cal_log_err(id, "Failed to pack oetf_posx\n");
+		} else {
+			for (i = 0; i < HDR_OETF_POSX_LUT_REG_CNT; i++) {
+				hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), regs[i]);
+				cal_log_debug(id, "POSX[%d]: 0x%x\n", i, regs[i]);
+			}
+		}
 	}
-	// Register POSX N contains a single last point
-	val = OETF_POSX_L(lut->posx[i * 2]);
-	hdr_write_relaxed(id, HDR_LSI_L_OETF_POSX(i), val);
-	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
-	// Registers POSY 0~(N-1) contain two points each
-	for (i = 0; i < HDR_OETF_POSY_LUT_REG_CNT - 1; i++) {
-		val = OETF_POSY_H(lut->posy[i * 2 + 1]) |
-			OETF_POSY_L(lut->posy[i * 2]);
-		hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), val);
-		cal_log_debug(id, "POSY[%d]: 0x%x\n", i, val);
+	{
+		u32 regs[HDR_OETF_POSY_LUT_REG_CNT] = {0};
+		int ret = cal_pack_lut_into_reg_pairs(lut->posy,
+				DRM_SAMSUNG_HDR_OETF_LUT_LEN, OETF_POSY_L_MASK,
+				OETF_POSY_H_MASK, regs, HDR_OETF_POSY_LUT_REG_CNT);
+		if (ret) {
+			cal_log_err(id, "Failed to pack oetf_posy\n");
+		} else {
+			for (i = 0; i < HDR_OETF_POSY_LUT_REG_CNT; i++) {
+				hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), regs[i]);
+				cal_log_debug(id, "POSY[%d]: 0x%x\n", i, regs[i]);
+			}
+		}
 	}
-	// Register POSY N contains a single last point
-	val = OETF_POSY_L(lut->posy[i * 2]);
-	hdr_write_relaxed(id, HDR_LSI_L_OETF_POSY(i), val);
-	cal_log_debug(id, "POSY[%d]: 0x%x\n", i, val);
 
 	hdr_write_mask(id, HDR_LSI_L_MOD_CTRL, MOD_CTRL_OEN(1),
 			MOD_CTRL_OEN_MASK);
@@ -160,7 +166,9 @@ void hdr_reg_set_gm(u32 id, struct hdr_gm_data *data)
 void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 {
 	int i;
+	int ret;
 	u32 val;
+	u32 regs[HDR_TM_POSX_LUT_REG_CNT] = {0};
 
 	cal_log_debug(id, "%s +\n", __func__);
 
@@ -182,17 +190,17 @@ void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 	hdr_write_relaxed(id, HDR_LSI_L_TM_RNGY, val);
 	cal_log_debug(id, "RNGY: 0x%x\n", val);
 
-	// Registers POSX 0~(N-1) contain two points each
-	for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT - 1; i++) {
-		val = TM_POSX_H(tm->posx[i * 2 + 1]) |
-			TM_POSX_L(tm->posx[i * 2]);
-		hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
-		cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
+
+	ret = cal_pack_lut_into_reg_pairs(tm->posx, DRM_SAMSUNG_HDR_TM_LUT_LEN,
+			TM_POSX_L_MASK, TM_POSX_H_MASK, regs, HDR_TM_POSX_LUT_REG_CNT);
+	if(ret) {
+		cal_log_err(id, "Failed to pack tm_posx\n");
+	} else {
+		for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT; i++) {
+			hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
+			cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
+		}
 	}
-	// Register POSX N contains a single last point
-	val = TM_POSX_L(tm->posx[i * 2]);
-	hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
-	cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
 
 	for (i = 0; i < HDR_TM_POSY_LUT_REG_CNT; i++) {
 		hdr_write_relaxed(id, HDR_LSI_L_TM_POSY(i), tm->posy[i]);

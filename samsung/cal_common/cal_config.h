@@ -122,6 +122,54 @@ static inline void cal_write_mask(struct cal_regs_desc *regs_desc,
 	cal_write(regs_desc, offset, val);
 }
 
+/*
+ * Packs an array of data points into a series of registers, where each register
+ * contains 2 data points, with, optionally, an additional register containing
+ * one data point. For example, packs a data array of 20 points into 10
+ * registers, or 21 points into 11 registers.
+ *
+ * Note that the mask parameters are assumed to be pre-shifted within a u32
+ * word by the caller. Low/high shift values for lut parameter are calculated
+ * based on the first set bit in the corresponding masks.
+ *
+ * @lut: Array of points
+ * @lut_len: The length of the array of points
+ * @low_mask: Shifted register field mask for the first point in a register
+ * @hi_mask: Shifted register field mask for the second point in a register
+ * @regs: Output array of register values
+ * @regs_len: Length of the output array fo register values
+ */
+static inline int cal_pack_lut_into_reg_pairs(const uint16_t *lut,
+		const size_t lut_len, const uint32_t low_mask, const uint32_t hi_mask,
+		uint32_t *regs, const size_t regs_len)
+{
+	int i;
+	uint8_t low_shift;
+	uint8_t hi_shift;
+	const uint16_t *lp = lut;
+
+	if (unlikely(regs == NULL || lut == NULL))
+		return -ENOMEM;
+
+	if (unlikely(DIV_ROUND_UP(lut_len, 2) != regs_len))
+		return -EINVAL;
+
+	if (unlikely(!low_mask || !hi_mask))
+		return -EINVAL;
+
+	low_shift = ffs(low_mask) - 1;
+	hi_shift = ffs(hi_mask) - 1;
+	for (i = 0; i < lut_len / 2; i++) {
+		regs[i] = (*(lp++) << low_shift) & low_mask;
+		regs[i] |= (*(lp++) << hi_shift) & hi_mask;
+	}
+
+	if (i < regs_len)
+		regs[i] = ((*lp) << low_shift) & low_mask;
+
+	return 0;
+}
+
 #define cal_mask(val, mask)	(((val) & (mask)) >> (ffs(mask) - 1))
 
 void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len);

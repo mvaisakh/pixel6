@@ -149,7 +149,9 @@
  */
 #define HDR_LSI_L_TM_POSX(_n)		(0x03D8 + ((_n) * 0x4))
 #define TM_POSX_H(_v)			((_v) << 16)
+#define TM_POSX_H_MASK			(0xFFFF << 16)
 #define TM_POSX_L(_v)			((_v) << 0)
+#define TM_POSX_L_MASK			(0xFFFF << 0)
 
 #define HDR_TM_POSY_LUT_REG_CNT		(33)
 /*
