@@ -25,20 +25,12 @@
 struct pca9468_platform_data {
 	int	irq_gpio;		/* GPIO pin that's connected to INT# */
 	unsigned int	iin_cfg;	/* Input Current Limit - uA unit */
-	unsigned int 	ichg_cfg;	/* Charging Current - uA unit */
 	unsigned int	v_float;	/* V_Float Voltage - uV unit */
 	unsigned int 	iin_topoff;	/* Input Topoff current -uV unit */
 	/* Switching frequency: 0 - 833kHz, ... , 3 - 980kHz */
 	unsigned int 	fsw_cfg;
 	/* NTC voltage threshold : 0~2.4V - uV unit */
 	unsigned int	ntc_th;
-	/*
-	 * Default charging mode:
-	 *	0 - No direct charging
-	 *	1 - 2:1 charging mode
-	 *	2 - 4:1 charging mode
-	 */
-	unsigned int	chg_mode;
 
 #ifdef CONFIG_THERMAL
 	const char *usb_tz_name;
@@ -79,12 +71,10 @@ struct pca9468_platform_data {
  * @ta_max_pwr: TA maximum power, uW
  * @prev_iin: Previous IIN ADC of PCA9468, uA
  * @prev_inc: Previous TA voltage or current increment factor
- * @req_new_iin: Request for new input current limit, true or false
- * @req_new_vfloat: Request for new vfloat, true or false
  * @fv_uv: requested float voltage
  * @cc_max: requested charge current max
  * @new_iin: New request input current limit, uA
- * @new_vfloat: New request vfloat, uV
+ * @new_vfloat: Request for new vfloat
  * @adc_comp_gain: adc gain for compensation
  * @retry_cnt: retry counter for re-starting charging if charging stop happens
  * @ta_type: TA type for the direct charging, USBPD TA or Wireless Charger.
@@ -129,11 +119,8 @@ struct pca9468_charger {
 	unsigned int		prev_iin;
 	unsigned int		prev_inc;
 
-	bool			req_new_iin;
-	bool			req_new_vfloat;
-
 	unsigned int		new_iin;
-	unsigned int		new_vfloat;
+	int 			new_vfloat;
 
 	int			adc_comp_gain;
 
@@ -143,6 +130,7 @@ struct pca9468_charger {
 
 /* Google Integration Start */
 	int pps_index;		/* 0=disabled, 1=tcpm, 2=wireless */
+	bool			init_done;
 
 	/* PPS_wireless */
 	const char 		*wlc_psy_name;
@@ -157,11 +145,23 @@ struct pca9468_charger {
 #ifdef CONFIG_THERMAL
 	struct thermal_zone_device *usb_tzd;
 #endif
-	int			ta_type;
-	unsigned int		chg_mode;
+
+	/* WIRELESS or WIRED */
+	int	ta_type;
+	/*
+	 *	0 - No direct charging
+	 *	1 - 2:1 charging mode
+	 *	2 - 4:1 charging mode
+	 */
+	int	chg_mode;
+
 	/* requested charging current and voltage */
-	int			fv_uv;
-	int			cc_max;
+	int	fv_uv;
+	int	cc_max;
+	ktime_t	dc_start_time;
+	bool	irdrop_comp_ok;
+
+	/* monitoring */
 	struct power_supply	*batt_psy;
 
 	/* debug */
@@ -169,10 +169,6 @@ struct pca9468_charger {
 	u32			debug_address;
 	int			debug_adc_channel;
 
-	bool			init_done;
-
-	ktime_t dc_start_time;
-	bool irdrop_comp_ok;
 /* Google Integration END */
 };
 
@@ -235,11 +231,6 @@ enum {
 };
 
 int pca9468_probe_pps(struct pca9468_charger *pca9468_chg);
-int pca9468_set_switching_charger(bool enable, unsigned int input_current,
-				  unsigned int charging_current,
-				  unsigned int vfloat);
-int pca9468_get_swc_property(enum power_supply_property prop,
-			     union power_supply_propval *val);
 
 int pca9468_request_pdo(struct pca9468_charger *pca9468);
 int pca9468_usbpd_setup(struct pca9468_charger *pca9468);

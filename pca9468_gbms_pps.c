@@ -65,40 +65,6 @@ int pca9468_probe_pps(struct pca9468_charger *pca9468_chg)
 	return pps_available ? 0 : -ENODEV;
 }
 
-/* Configure GCPM not needed */
-int pca9468_set_switching_charger(bool enable,
-					 unsigned int input_current,
-					 unsigned int charging_current,
-					 unsigned int vfloat)
-{
-	int ret = 0;
-
-	/* handled in GCPM */
-
-	pr_debug("%s: End, ret=%d\n", __func__, ret);
-	return ret;
-}
-
-/* force OFF, handled in GCPM */
-int pca9468_get_swc_property(enum power_supply_property prop,
-			     union power_supply_propval *val)
-{
-	int ret = 0;
-
-
-	switch (prop) {
-	case GBMS_PROP_CHARGING_ENABLED:
-		val->intval = 0;
-		break;
-	default:
-		pr_err("%s: cannot set prop %d\n", __func__, prop);
-		break;
-	}
-
-	pr_debug("%s: End, ret=%d\n", __func__, ret);
-	return ret;
-}
-
 /* ------------------------------------------------------------------------ */
 
 /* switch PDO if needed */
@@ -188,6 +154,7 @@ check_online:
 	return ret;
 }
 
+/* call holding mutex_unlock(&pca9468->lock); */
 int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 				   unsigned int msg_type)
 {
@@ -197,14 +164,11 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 	int pps_ui;
 	int ret;
 
-	mutex_lock(&pca9468->lock);
-
 	if (!tcpm_psy || (pca9468->charging_state == DC_STATE_NO_CHARGING &&
 	    msg_type == PD_MSG_REQUEST_APDO) || !pca9468->mains_online) {
 		pr_debug("%s: failure tcpm_psy_ok=%d charging_state=%u online=%d",
 			__func__,  tcpm_psy != 0, pca9468->charging_state,
 			pca9468->mains_online);
-		mutex_unlock(&pca9468->lock);
 		return -EINVAL;
 	}
 
@@ -212,7 +176,6 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 	online = pps_prog_check_online(&pca9468->pps_data, tcpm_psy);
 	if (!online) {
 		pr_debug("%s: not online", __func__);
-		mutex_unlock(&pca9468->lock);
 		return -EINVAL;
 	}
 
@@ -221,7 +184,6 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		ret = pps_prog_offline(&pca9468->pps_data, tcpm_psy);
 		pr_debug("%s: requesting offline ret=%d\n", __func__, ret);
 		/* TODO: reset state? */
-		mutex_unlock(&pca9468->lock);
 		return ret;
 	}
 
@@ -286,15 +248,22 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		mod_delayed_work(system_wq, &pca9468->pps_work,
 				 msecs_to_jiffies(pps_ui));
 
-	mutex_unlock(&pca9468->lock);
 	return pps_ui;
 }
 
-/* Get the max current/voltage/power of APDO from the CC/PD driver */
-/* This function needs some modification by a customer */
+/*
+ * Get the max current/voltage/power of APDO from the CC/PD driver
+ * Initialize &pca9468->ta_max_vol, &pca9468->ta_max_cur, &pca9468->ta_max_pwr
+ * initialize pca9468->pps_data and &pca9468->ta_objpos also
+ *
+ * call holding mutex_unlock(&pca9468->lock);
+ */
 int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 {
 	int ret = 0;
+
+	/* default APDO */
+	pca9468->ta_objpos = 0;
 
 	/* check the phandle */
 	ret = pca9468_usbpd_setup(pca9468);
@@ -324,10 +293,8 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 	return 0;
 }
 
-/******************/
-/* Set RX voltage */
-/******************/
-
+/* WLC_DC ---------------------------------------------------------------- */
+/* call holding mutex_unlock(&pca9468->lock); */
 struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
 {
 	const char *wlc_psy_name = pca9468->wlc_psy_name;
@@ -354,16 +321,13 @@ struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
 	return pca9468->wlc_psy;
 }
 
-/* Send RX voltage to RX IC */
-/* This function needs some modification by a customer */
+/* call holding mutex_unlock(&pca9468->lock); */
 int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 				   unsigned int msg_type)
 {
 	union power_supply_propval pro_val;
 	struct power_supply *wlc_psy;
 	int ret = -EINVAL;
-
-	mutex_lock(&pca9468->lock);
 
 	/* Vbus reset happened in the previous PD communication */
 	if (pca9468->mains_online == false)
@@ -391,16 +355,14 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 	}
 
 out:
-	mutex_unlock(&pca9468->lock);
 	return ret;
 }
 
-/************************/
-/* Get RX max power    */
-/************************/
-
-/* Get the max current/voltage/power of RXIC from the WCRX driver */
-/* TODO: just ask the ->pd since GCPM will take care of this */
+/*
+ * Get the max current/voltage/power of RXIC from the WCRX driver
+ * Initialize &pca9468->ta_max_vol, &pca9468->ta_max_cur, &pca9468->ta_max_pwr
+ * call holding mutex_unlock(&pca9468->lock);
+ */
 int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 {
 	union power_supply_propval pro_val;
@@ -476,9 +438,9 @@ int pca9468_set_ta_type(struct pca9468_charger *pca9468)
 		return -EINVAL;
 
 	if (pca9468->ta_type == PPS_INDEX_TCPM)
-		pca9468->pdata->chg_mode = CHG_2TO1_DC_MODE;
+		pca9468->chg_mode = CHG_2TO1_DC_MODE;
 	else if (pca9468->ta_type == PPS_INDEX_WLC)
-		pca9468->pdata->chg_mode = CHG_4TO1_DC_MODE;
+		pca9468->chg_mode = CHG_4TO1_DC_MODE;
 
 	return 0;
 }
