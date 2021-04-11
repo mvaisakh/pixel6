@@ -856,6 +856,12 @@ static int pps_set_prop(struct pd_pps_data *pps,
 	return ret;
 }
 
+static void pps_log_keepalive(struct pd_pps_data *pps)
+{
+	pps_log(pps, "%d KEEP ALIVE", pps->keep_alive_cnt);
+	pps->keep_alive_cnt = 0;
+}
+
 /*
  * return negative values on errors
  * return PD_T_PPS_TIMEOUT after successful updates or pings
@@ -892,6 +898,10 @@ int pps_update_adapter(struct pd_pps_data *pps,
 	 *       the values.
 	 */
 	if (pps->op_ua != pending_ua) {
+
+		if (pps->keep_alive_cnt)
+			pps_log_keepalive(pps);
+
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_CURRENT_NOW,
 				   pending_ua, tcpm_psy);
 		pr_debug("%s: %s SET_UA out_ua %d->%d, ret=%d", __func__,
@@ -917,9 +927,12 @@ int pps_update_adapter(struct pd_pps_data *pps,
 	} else if (pps->out_uv != pending_uv) {
 		ret = pps_set_prop(pps, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 				   pending_uv,  tcpm_psy);
+
+		if (pps->keep_alive_cnt)
+			pps_log_keepalive(pps);
+
 		pr_debug("%s: %s SET_UV out_v %d->%d, ret=%d\n", __func__,
 			pps_name(tcpm_psy), pps->out_uv, pending_uv, ret);
-
 		pps_log(pps, "SET_UV out_v %d->%d, ret=%d",
 			pps->out_uv, pending_uv, ret);
 
@@ -941,11 +954,17 @@ int pps_update_adapter(struct pd_pps_data *pps,
 		return PD_T_PPS_TIMEOUT - (interval * MSEC_PER_SEC);
 	} else {
 		ret = pps_keep_alive(pps, tcpm_psy);
+		if (ret < 0) {
+			if (pps->keep_alive_cnt)
+				pps_log_keepalive(pps);
+			pps_log(pps, "KEEP ALIVE out_v %d, op_c %d (%d)",
+				pps->out_uv, pps->op_ua, ret);
+		} else {
+			pps->keep_alive_cnt += 1;
+		}
 
 		pr_debug("%s: %s KEEP ALIVE out_v %d, op_c %d (%d)", __func__,
 			pps_name(tcpm_psy), pps->out_uv, pps->op_ua, ret);
-		pps_log(pps, "KEEP ALIVE out_v %d, op_c %d (%d)",
-			pps->out_uv, pps->op_ua, ret);
 
 		if (ret == 0)
 			return PD_T_PPS_TIMEOUT;
