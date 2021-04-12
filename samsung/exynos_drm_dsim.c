@@ -1316,9 +1316,10 @@ err:
 	return ret;
 }
 
-static void dsim_underrun_info(struct dsim_device *dsim)
+static void dsim_underrun_info(struct dsim_device *dsim, u32 underrun_cnt)
 {
-	printk_ratelimited("underrun irq occurs: MIF(%lu), INT(%lu), DISP(%lu)\n",
+	printk_ratelimited("underrun irq occurs(%u): MIF(%lu), INT(%lu), DISP(%lu)\n",
+			underrun_cnt,
 			exynos_devfreq_get_domain_freq(DEVFREQ_MIF),
 			exynos_devfreq_get_domain_freq(DEVFREQ_INT),
 			exynos_devfreq_get_domain_freq(DEVFREQ_DISP));
@@ -1373,9 +1374,19 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 
 	if (int_src & DSIM_INTSRC_UNDER_RUN) {
 		DPU_ATRACE_INT("DPU_UNDERRUN", 1);
-		dsim_underrun_info(dsim);
-		if (decon)
+		if (decon) {
+			static unsigned long last_dumptime;
+
+			dsim_underrun_info(dsim, decon->d.underrun_cnt + 1);
 			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
+			if (time_after(jiffies, last_dumptime + msecs_to_jiffies(5000))) {
+				decon_dump_event_condition(decon, DPU_EVT_CONDITION_UNDERRUN);
+				last_dumptime = jiffies;
+			}
+		} else {
+			dsim_underrun_info(dsim, 0);
+		}
+
 		DPU_ATRACE_INT("DPU_UNDERRUN", 0);
 	}
 

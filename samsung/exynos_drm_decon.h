@@ -236,6 +236,11 @@ enum dpu_event_type {
 	DPU_EVT_MAX, /* End of EVENT */
 };
 
+enum dpu_event_condition {
+	DPU_EVT_CONDITION_ALL = 0,
+	DPU_EVT_CONDITION_UNDERRUN,
+};
+
 #define DPU_CALLSTACK_MAX 10
 struct dpu_log_dsim_cmd {
 	u8 id;
@@ -288,6 +293,28 @@ struct dpu_log_freqs {
 	unsigned long disp_freq;
 };
 
+struct dpu_log_bts_update {
+	struct dpu_log_freqs freqs;
+	u32 peak;
+	u32 prev_peak;
+	u32 total_bw;
+	u32 prev_total_bw;
+};
+
+struct dpu_log_bts_cal {
+	struct dpu_log_freqs freqs;
+	u32 disp_freq;
+	u32 peak;
+	u32 read_bw;
+	u32 write_bw;
+	u32 fps;
+};
+
+struct dpu_log_bts_event {
+	struct dpu_log_freqs freqs;
+	u32 value;
+};
+
 struct dpu_log_partial {
 	u32 min_w;
 	u32 min_h;
@@ -295,11 +322,6 @@ struct dpu_log_partial {
 	struct drm_rect req;
 	struct drm_rect adj;
 	bool reconfigure;
-};
-
-struct dpu_log_bts_event {
-	struct dpu_log_freqs freqs;
-	unsigned int value;
 };
 
 struct dpu_log {
@@ -315,6 +337,8 @@ struct dpu_log {
 		struct dpu_log_win win;
 		struct dpu_log_crtc_info crtc_info;
 		struct dpu_log_freqs freqs;
+		struct dpu_log_bts_update bts_update;
+		struct dpu_log_bts_cal bts_cal;
 		struct dpu_log_bts_event bts_event;
 		struct dpu_log_partial partial;
 		unsigned int value;
@@ -399,6 +423,8 @@ static inline struct decon_device *get_decon_drvdata(u32 id)
 
 void decon_dump(struct decon_device *decon);
 void decon_dump_all(struct decon_device *decon);
+void decon_dump_event_condition(const struct decon_device *decon,
+		enum dpu_event_condition condition);
 int dpu_init_debug(struct decon_device *decon);
 void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv);
 void DPU_EVENT_LOG_ATOMIC_COMMIT(int index);

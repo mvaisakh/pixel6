@@ -787,6 +787,7 @@ static void dpu_bts_release_bw(struct decon_device *decon)
 
 	if (decon->config.out_type & DECON_OUT_DSI) {
 		bts_update_bw(decon->bts.bw_idx, bw);
+		decon->bts.prev_peak = 0;
 		decon->bts.prev_total_bw = 0;
 		exynos_pm_qos_update_request(&decon->bts.disp_qos, 0);
 		decon->bts.prev_max_disp_freq = 0;

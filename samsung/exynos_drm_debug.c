@@ -33,6 +33,7 @@
 /* Default is 1024 entries array for event log buffer */
 static unsigned int dpu_event_log_max = 1024;
 static unsigned int dpu_event_print_max = 512;
+static unsigned int dpu_event_print_underrun = 128;
 
 module_param_named(event_log_max, dpu_event_log_max, uint, 0);
 module_param_named(event_print_max, dpu_event_print_max, uint, 0600);
@@ -177,11 +178,19 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		break;
 	case DPU_EVT_BTS_RELEASE_BW:
 	case DPU_EVT_BTS_UPDATE_BW:
-		dpu_event_save_freqs(&log->data.freqs);
+		dpu_event_save_freqs(&log->data.bts_update.freqs);
+		log->data.bts_update.peak = decon->bts.peak;
+		log->data.bts_update.prev_peak = decon->bts.prev_peak;
+		log->data.bts_update.total_bw = decon->bts.total_bw;
+		log->data.bts_update.prev_total_bw = decon->bts.prev_total_bw;
 		break;
 	case DPU_EVT_BTS_CALC_BW:
-		dpu_event_save_freqs(&log->data.bts_event.freqs);
-		log->data.bts_event.value = decon->bts.max_disp_freq;
+		dpu_event_save_freqs(&log->data.bts_cal.freqs);
+		log->data.bts_cal.disp_freq = decon->bts.max_disp_freq;
+		log->data.bts_cal.peak = decon->bts.peak;
+		log->data.bts_cal.read_bw = decon->bts.read_bw;
+		log->data.bts_cal.write_bw = decon->bts.write_bw;
+		log->data.bts_cal.fps = decon->bts.fps;
 		break;
 	case DPU_EVT_DSIM_UNDERRUN:
 		dpu_event_save_freqs(&log->data.bts_event.freqs);
@@ -326,11 +335,13 @@ static void dpu_print_log_atomic(struct dpu_log_atomic *atomic,
 		fmt = dpu_find_fmt_info(win->format);
 
 		len = scnprintf(buf, sizeof(buf),
-				"\t\t\t\t\tWIN%d: %s[0x%llx] SRC[%d %d %d %d] ",
+				"\t\t\t\t\tWIN%d: %s[0x%llx] SRC[%d %d %d %d] %s %s ",
 				i, str_state[win->state],
 				(win->state == DPU_WIN_STATE_BUFFER) ?
 				atomic->win_config[i].dma_addr : 0,
-				win->src_x, win->src_y, win->src_w, win->src_h);
+				win->src_x, win->src_y, win->src_w, win->src_h,
+				(win->is_comp) ? "AFBC" : "",
+				(win->is_rot) ? "ROT" : "");
 		len += scnprintf(buf + len, sizeof(buf) - len,
 				"DST[%d %d %d %d] ",
 				win->dst_x, win->dst_y, win->dst_w, win->dst_h);
@@ -367,11 +378,13 @@ static void dpu_print_log_rsc(char *buf, int len, struct dpu_log_rsc_occupancy *
 }
 
 #define LOG_BUF_SIZE	128
-static int dpu_print_log_freqs(char *buf, int len, struct dpu_log_freqs *freqs)
+static int dpu_print_log_bts_update(char *buf, int len, struct dpu_log_bts_update *update)
 {
 	return scnprintf(buf + len, LOG_BUF_SIZE - len,
-			"\tmif(%lu) int(%lu) disp(%lu)",
-			freqs->mif_freq, freqs->int_freq, freqs->disp_freq);
+			"\tmif(%lu) int(%lu) disp(%lu) peak(%u,%u) total(%u,%u)",
+			update->freqs.mif_freq, update->freqs.int_freq, update->freqs.disp_freq,
+			update->prev_peak, update->peak,
+			update->prev_total_bw, update->total_bw);
 }
 
 static int dpu_print_log_partial(char *buf, int len, struct dpu_log_partial *p)
@@ -423,8 +436,39 @@ static const char *get_event_name(enum dpu_event_type type)
 	return events[type];
 }
 
+static bool is_skip_dpu_event_dump(enum dpu_event_type type, enum dpu_event_condition condition)
+{
+	if (condition == DPU_EVT_CONDITION_ALL)
+		return false;
+
+	if (condition == DPU_EVT_CONDITION_UNDERRUN) {
+		switch (type) {
+		case DPU_EVT_DSIM_UNDERRUN:
+		case DPU_EVT_ATOMIC_COMMIT:
+		case DPU_EVT_TE_INTERRUPT:
+		case DPU_EVT_ENTER_HIBERNATION_IN:
+		case DPU_EVT_ENTER_HIBERNATION_OUT:
+		case DPU_EVT_EXIT_HIBERNATION_IN:
+		case DPU_EVT_EXIT_HIBERNATION_OUT:
+		case DPU_EVT_ATOMIC_BEGIN:
+		case DPU_EVT_ATOMIC_FLUSH:
+		case DPU_EVT_PLANE_UPDATE:
+		case DPU_EVT_PLANE_DISABLE:
+		case DPU_EVT_BTS_RELEASE_BW:
+		case DPU_EVT_BTS_CALC_BW:
+		case DPU_EVT_BTS_UPDATE_BW:
+		case DPU_EVT_DECON_RSC_OCCUPANCY:
+			return false;
+		default:
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static void dpu_event_log_print(const struct decon_device *decon, struct drm_printer *p,
-				size_t max_logs)
+				size_t max_logs, enum dpu_event_condition condition)
 {
 	int idx = atomic_read(&decon->d.event_log_idx);
 	struct dpu_log *log;
@@ -456,6 +500,9 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 
 		/* Seek a index */
 		log = &decon->d.event_log[idx];
+
+		if (is_skip_dpu_event_dump(log->type, condition))
+			continue;
 
 		/* TIME */
 		ts = ktime_to_timespec64(log->time);
@@ -515,12 +562,14 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 			break;
 		case DPU_EVT_BTS_RELEASE_BW:
 		case DPU_EVT_BTS_UPDATE_BW:
-			dpu_print_log_freqs(buf, len, &log->data.freqs);
+			dpu_print_log_bts_update(buf, len, &log->data.bts_update);
 			break;
 		case DPU_EVT_BTS_CALC_BW:
 			scnprintf(buf + len, sizeof(buf) - len,
-					"\tcalculated disp(%u)",
-					log->data.bts_event.value);
+					"\tdisp(%u) peak(%u) read(%u) write(%u) %uhz",
+					log->data.bts_cal.disp_freq, log->data.bts_cal.peak,
+					log->data.bts_cal.read_bw, log->data.bts_cal.write_bw,
+					log->data.bts_cal.fps);
 			break;
 		case DPU_EVT_DSIM_UNDERRUN:
 			scnprintf(buf + len, sizeof(buf) - len,
@@ -579,7 +628,7 @@ static int dpu_debug_event_show(struct seq_file *s, void *unused)
 	struct decon_device *decon = s->private;
 	struct drm_printer p = drm_seq_file_printer(s);
 
-	dpu_event_log_print(decon, &p, dpu_event_log_max);
+	dpu_event_log_print(decon, &p, dpu_event_log_max, DPU_EVT_CONDITION_ALL);
 	return 0;
 }
 
@@ -1361,15 +1410,33 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len)
 
 void decon_dump_all(struct decon_device *decon)
 {
-	struct drm_printer p = drm_info_printer(decon->dev);
 	bool active = pm_runtime_active(decon->dev);
 
 	pr_info("DPU power %s state\n", active ? "on" : "off");
 
-	dpu_event_log_print(decon, &p, dpu_event_print_max);
+	decon_dump_event_condition(decon, DPU_EVT_CONDITION_ALL);
 
 	if (active)
 		decon_dump(decon);
+}
+
+void decon_dump_event_condition(const struct decon_device *decon,
+		enum dpu_event_condition condition)
+{
+	struct drm_printer p = drm_info_printer(decon->dev);
+	u32 print_log_size;
+
+	switch (condition) {
+	case DPU_EVT_CONDITION_UNDERRUN:
+		print_log_size = dpu_event_print_underrun;
+		break;
+	case DPU_EVT_CONDITION_ALL:
+	default:
+		print_log_size = dpu_event_print_max;
+		break;
+	}
+
+	dpu_event_log_print(decon, &p, print_log_size, condition);
 }
 
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
