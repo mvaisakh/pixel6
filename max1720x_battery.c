@@ -2902,6 +2902,9 @@ static int max1720x_init_model(struct max1720x_chip *chip)
 {
 	void *model_data;
 
+	if (chip->gauge_type != MAX_M5_GAUGE_TYPE)
+		return 0;
+
 	/* ->batt_id negative for no lookup */
 	if (chip->batt_id >= 0) {
 		chip->batt_node = max1720x_find_batt_node(chip);
@@ -4619,6 +4622,12 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 	case 0x405: /* max1730x pass2 silicon initial samples */
 	case 0x406: /* max1730x pass2 silicon */
 		gauge_type = MAX1730X_GAUGE_TYPE;
+		break;
+	case 0x630: /* for fake battery */
+		gauge_type = MAX_M5_GAUGE_TYPE;
+		break;
+	case 0x110: /* for fake battery */
+		gauge_type = MAX1720X_GAUGE_TYPE;
 		break;
 	default:
 		gauge_type = MAX1720X_GAUGE_TYPE;
