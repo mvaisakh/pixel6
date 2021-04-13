@@ -90,8 +90,8 @@ edgetpu_reverse_kci_consume_response(struct edgetpu_dev *etdev,
 
 	switch (resp->code) {
 	case RKCI_FIRMWARE_CRASH:
-		edgetpu_handle_firmware_crash(etdev, resp->status,
-					      resp->retval);
+		edgetpu_handle_firmware_crash(
+		      etdev, (enum edgetpu_fw_crash_type)resp->retval);
 		break;
 	default:
 		etdev_warn(etdev, "%s: Unrecognized KCI request: 0x%x\n",

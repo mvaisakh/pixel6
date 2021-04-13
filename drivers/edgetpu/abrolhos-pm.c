@@ -634,13 +634,12 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 	if (ret)
 		return ret;
 
+	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
+	mutex_init(&edgetpu_pdev->platform_pwr.state_lock);
 	ret = abrolhos_pwr_state_set(etdev,
 				     abrolhos_get_initial_pwr_state(dev));
 	if (ret)
 		return ret;
-
-	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
-	mutex_init(&edgetpu_pdev->platform_pwr.state_lock);
 	abrolhos_pwr_debugfs_dir =
 		debugfs_create_dir("power", edgetpu_fs_debugfs_dir());
 	if (!abrolhos_pwr_debugfs_dir) {

@@ -66,6 +66,11 @@ static struct dentry *edgetpu_debugfs_dir;
 		}                                                              \
 	} while (0)
 
+static bool is_edgetpu_file(struct file *file)
+{
+	return file->f_op == &edgetpu_fops;
+}
+
 int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
 {
 	struct edgetpu_client *client;
@@ -252,6 +257,10 @@ static int edgetpu_ioctl_join_group(struct edgetpu_client *client,
 
 	if (!file) {
 		ret = -EBADF;
+		goto out;
+	}
+	if (!is_edgetpu_file(file)) {
+		ret = -EINVAL;
 		goto out;
 	}
 	leader = file->private_data;
@@ -697,9 +706,6 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 
 static long edgetpu_fs_ioctl(struct file *file, uint cmd, ulong arg)
 {
-	if (file->f_op != &edgetpu_fops)
-		return -ENOTTY;
-
 	return edgetpu_ioctl(file, cmd, arg);
 }
 

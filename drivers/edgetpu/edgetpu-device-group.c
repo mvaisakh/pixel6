@@ -664,8 +664,6 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 			EDGETPU_CONTEXT_DOMAIN_TOKEN | etdomain->token;
 	else
 		group->context_id = EDGETPU_CONTEXT_INVALID;
-
-	mutex_unlock(&client->etdev->state_lock);
 	return group;
 
 error_leave_group:
@@ -1073,9 +1071,14 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 	int i;
 	int ret;
 
-	num_pages = size / PAGE_SIZE;
+	if (size == 0)
+		return ERR_PTR(-EINVAL);
 	offset = host_addr & (PAGE_SIZE - 1);
-	if (offset)
+	/* overflow check */
+	if (unlikely(size + offset < size))
+		return ERR_PTR(-ENOMEM);
+	num_pages = (size + offset) / PAGE_SIZE;
+	if ((size + offset) % PAGE_SIZE)
 		num_pages++;
 
 	etdev_dbg(etdev, "%s: hostaddr=0x%llx pages=%u dir=%x", __func__,

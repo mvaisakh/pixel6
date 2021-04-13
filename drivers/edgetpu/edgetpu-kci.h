@@ -70,10 +70,9 @@ struct edgetpu_kci_response_element {
 	u64 seq;
 	u16 code;
 	/*
-	 * Reserved on firmware side for KCI response - they can't touch this.
+	 * Reserved for host use - firmware can't touch this.
 	 * If a value is written here it will be discarded and overwritten
 	 * during response processing.
-	 * For a Reverse KCI command firmware does set this as value1.
 	 */
 	u16 status;
 	/*

@@ -16,7 +16,6 @@
 #include <linux/version.h>
 #include <linux/of.h>
 
-#include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
 #include "edgetpu-config.h"

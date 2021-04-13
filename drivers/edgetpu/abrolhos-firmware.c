@@ -9,13 +9,13 @@
 #include <linux/gsa/gsa_tpu.h>
 #include <linux/slab.h>
 
-#include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
 #include "edgetpu-config.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
+#include "mobile-firmware.h"
 
 static int abrolhos_firmware_alloc_buffer(
 		struct edgetpu_firmware *et_fw,
@@ -26,7 +26,7 @@ static int abrolhos_firmware_alloc_buffer(
 
 	/* Allocate extra space the image header */
 	size_t buffer_size =
-		edgetpu_pdev->fw_region_size + ABROLHOS_FW_HEADER_SIZE;
+		edgetpu_pdev->fw_region_size + MOBILE_FW_HEADER_SIZE;
 
 	fw_buf->vaddr = kzalloc(buffer_size, GFP_KERNEL);
 	if (!fw_buf->vaddr) {
@@ -70,14 +70,14 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	struct edgetpu_dev *etdev = et_fw->etdev;
 	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	void *image_vaddr, *header_vaddr;
-	struct abrolhos_image_config *image_config;
+	struct mobile_image_config *image_config;
 	phys_addr_t image_start, image_end, carveout_start, carveout_end;
 	dma_addr_t header_dma_addr;
 	int ret, tpu_state;
 
-	if (fw_buf->used_size < ABROLHOS_FW_HEADER_SIZE) {
+	if (fw_buf->used_size < MOBILE_FW_HEADER_SIZE) {
 		etdev_err(etdev, "Invalid buffer size: %zu < %d\n",
-			  fw_buf->used_size, ABROLHOS_FW_HEADER_SIZE);
+			  fw_buf->used_size, MOBILE_FW_HEADER_SIZE);
 		return -EINVAL;
 	}
 
@@ -109,12 +109,12 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	}
 
 	/* Skip the header */
-	memcpy(image_vaddr, fw_buf->vaddr + ABROLHOS_FW_HEADER_SIZE,
-	       fw_buf->used_size - ABROLHOS_FW_HEADER_SIZE);
+	memcpy(image_vaddr, fw_buf->vaddr + MOBILE_FW_HEADER_SIZE,
+	       fw_buf->used_size - MOBILE_FW_HEADER_SIZE);
 
 	/* Allocate coherent memory for the image header */
 	header_vaddr = dma_alloc_coherent(edgetpu_pdev->gsa_dev,
-					  ABROLHOS_FW_HEADER_SIZE,
+					  MOBILE_FW_HEADER_SIZE,
 					  &header_dma_addr, GFP_KERNEL);
 	if (!header_vaddr) {
 		etdev_err(etdev,
@@ -123,7 +123,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 		goto out_unmap;
 	}
 
-	memcpy(header_vaddr, fw_buf->vaddr, ABROLHOS_FW_HEADER_SIZE);
+	memcpy(header_vaddr, fw_buf->vaddr, MOBILE_FW_HEADER_SIZE);
 	etdev_dbg(etdev,
 		  "Requesting GSA image load. meta = %llX payload = %llX",
 		  header_dma_addr, (u64)edgetpu_pdev->fw_region_paddr);
@@ -137,7 +137,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	}
 
 	/* fetch the firmware versions */
-	image_config = fw_buf->vaddr + ABROLHOS_IMAGE_CONFIG_OFFSET;
+	image_config = fw_buf->vaddr + MOBILE_IMAGE_CONFIG_OFFSET;
 	memcpy(&etdev->fw_version, &image_config->firmware_versions,
 	       sizeof(etdev->fw_version));
 
@@ -173,7 +173,7 @@ static int abrolhos_firmware_prepare_run(struct edgetpu_firmware *et_fw,
 	}
 
 out_free_gsa:
-	dma_free_coherent(edgetpu_pdev->gsa_dev, ABROLHOS_FW_HEADER_SIZE,
+	dma_free_coherent(edgetpu_pdev->gsa_dev, MOBILE_FW_HEADER_SIZE,
 			  header_vaddr, header_dma_addr);
 out_unmap:
 	memunmap(image_vaddr);
@@ -188,12 +188,12 @@ static const struct edgetpu_firmware_handlers abrolhos_firmware_handlers = {
 	.prepare_run = abrolhos_firmware_prepare_run,
 };
 
-int abrolhos_edgetpu_firmware_create(struct edgetpu_dev *etdev)
+int mobile_edgetpu_firmware_create(struct edgetpu_dev *etdev)
 {
 	return edgetpu_firmware_create(etdev, &abrolhos_firmware_handlers);
 }
 
-void abrolhos_edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
+void mobile_edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
 {
 	edgetpu_firmware_destroy(etdev);
 }

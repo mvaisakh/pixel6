@@ -211,6 +211,15 @@ struct edgetpu_dev {
 	struct work_struct debug_dump_work;
 };
 
+/* Firmware crash_type codes */
+enum edgetpu_fw_crash_type {
+	EDGETPU_FW_CRASH_ASSERT = 0,
+	EDGETPU_FW_CRASH_DATA_ABORT = 1,
+	EDGETPU_FW_CRASH_PREFETCH_ABORT = 2,
+	EDGETPU_FW_CRASH_UNDEF_EXCEPT = 3,
+	EDGETPU_FW_CRASH_UNRECOV_FAULT = 4,
+};
+
 extern const struct file_operations edgetpu_fops;
 
 /* Status regs dump. */
@@ -322,8 +331,8 @@ int edgetpu_open(struct edgetpu_dev *etdev, struct file *file);
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg);
 
 /* Handle firmware crash event */
-void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev, u16 crash_type,
-				   u32 extra_info);
+void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev,
+				   enum edgetpu_fw_crash_type crash_type);
 
 /* Bus (Platform/PCI) <-> Core API */
 
@@ -353,8 +362,12 @@ void edgetpu_chip_exit(struct edgetpu_dev *etdev);
 /* IRQ handler */
 irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg);
 
-/* Called from core to chip layer when MMU is needed during device init. */
-void edgetpu_setup_mmu(struct edgetpu_dev *etdev);
+/*
+ * Called from core to chip layer when MMU is needed during device init.
+ *
+ * Returns 0 on success, otherwise -errno.
+ */
+int edgetpu_setup_mmu(struct edgetpu_dev *etdev);
 
 /* Read TPU timestamp */
 u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev);

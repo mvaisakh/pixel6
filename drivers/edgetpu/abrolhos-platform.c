@@ -20,7 +20,6 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 
-#include "abrolhos-firmware.h"
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
 #include "edgetpu-config.h"
@@ -30,6 +29,7 @@
 #include "edgetpu-mmu.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
+#include "mobile-firmware.h"
 
 static const struct of_device_id edgetpu_of_match[] = {
 	{ .compatible = "google,darwinn", },
@@ -172,14 +172,15 @@ static void edgetpu_platform_cleanup_fw_region(
 	etpdev->shared_mem_vaddr = NULL;
 }
 
-void edgetpu_setup_mmu(struct edgetpu_dev *etdev)
+int edgetpu_setup_mmu(struct edgetpu_dev *etdev)
 {
 	int ret;
 
 	/* No MMU info to pass to attach, IOMMU API will handle. */
 	ret = edgetpu_mmu_attach(etdev, NULL);
 	if (ret)
-		dev_warn(etdev->dev, "failed to attach IOMMU: %d\n", ret);
+		dev_err(etdev->dev, "failed to attach IOMMU: %d\n", ret);
+	return ret;
 }
 
 static int abrolhos_parse_ssmt(struct abrolhos_platform_dev *etpdev)
@@ -305,7 +306,7 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_remove_device;
 
-	ret = abrolhos_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
+	ret = mobile_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
 	if (ret) {
 		dev_err(dev,
 			"%s initialize firmware downloader failed: %d\n",
@@ -346,7 +347,7 @@ static int edgetpu_platform_remove(struct platform_device *pdev)
 	struct edgetpu_dev *etdev = platform_get_drvdata(pdev);
 	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 
-	abrolhos_edgetpu_firmware_destroy(etdev);
+	mobile_edgetpu_firmware_destroy(etdev);
 	if (edgetpu_pdev->irq >= 0)
 		edgetpu_unregister_irq(etdev, edgetpu_pdev->irq);
 

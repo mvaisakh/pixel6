@@ -31,6 +31,7 @@
 #include "edgetpu-mailbox.h"
 #include "edgetpu-mcp.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-sw-watchdog.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu-usage-stats.h"
 #include "edgetpu-wakelock.h"
@@ -256,7 +257,9 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 			etdev->dev_name, ret);
 		goto remove_dev;
 	}
-	edgetpu_setup_mmu(etdev);
+	ret = edgetpu_setup_mmu(etdev);
+	if (ret)
+		goto remove_dev;
 
 	edgetpu_usage_stats_init(etdev);
 
@@ -443,12 +446,16 @@ void edgetpu_free_coherent(struct edgetpu_dev *etdev,
 	mem->vaddr = NULL;
 }
 
-void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev, u16 crash_type,
-				   u32 extra_info)
+void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev,
+				   enum edgetpu_fw_crash_type crash_type)
 {
-	etdev_err(etdev, "firmware crashed: %u 0x%x", crash_type, extra_info);
+	etdev_err(etdev, "firmware crashed: %u", crash_type);
 	etdev->firmware_crash_count++;
 	edgetpu_fatal_error_notify(etdev);
+
+	if (crash_type == EDGETPU_FW_CRASH_UNRECOV_FAULT)
+		/* Restart firmware without chip reset */
+		edgetpu_watchdog_bite(etdev, false);
 }
 
 int __init edgetpu_init(void)
