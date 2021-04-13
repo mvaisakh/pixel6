@@ -26,6 +26,9 @@
 #define MAX1730X_GAUGE_TYPE	1
 #define MAX_M5_GAUGE_TYPE	2
 
+#define EEPROM_SN	0
+#define MAX1720X_SN	1
+
 /* multiply by 2 when task period = 351 ms */
 static inline int reg_to_micro_amp_h(s16 val, u16 rsense, int lsb)
 {

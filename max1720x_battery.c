@@ -4320,6 +4320,7 @@ static int max17x0x_storage_iter(int index, gbms_tag_t *tag, void *ptr)
 {
 	struct max1720x_chip *chip = (struct max1720x_chip *)ptr;
 	static gbms_tag_t keys[] = {GBMS_TAG_SNUM, GBMS_TAG_BCNT,
+				    GBMS_TAG_MXSN, GBMS_TAG_MXCN,
 				    GBMS_TAG_RAVG, GBMS_TAG_RFCN,
 				    GBMS_TAG_CMPC, GBMS_TAG_DXAC};
 	const int count = ARRAY_SIZE(keys);
@@ -4345,6 +4346,7 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 
 	switch (tag) {
 	case GBMS_TAG_SNUM:
+	case GBMS_TAG_MXSN:
 		reg = max17x0x_find_by_tag(&chip->regmap_nvram,
 					   MAX17X0X_TAG_SNUM);
 		if (reg && reg->size > size)
@@ -4362,6 +4364,7 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 		break;
 
 	case GBMS_TAG_BCNT:
+	case GBMS_TAG_MXCN:
 		reg = max17x0x_find_by_tag(&chip->regmap_nvram,
 					   MAX17X0X_TAG_BCNT);
 		if (reg && reg->size != size)
@@ -4420,7 +4423,7 @@ static int max17x0x_storage_write(gbms_tag_t tag, const void *buff, size_t size,
 	struct max1720x_chip *chip = (struct max1720x_chip *)ptr;
 
 	switch (tag) {
-	case GBMS_TAG_BCNT:
+	case GBMS_TAG_MXCN:
 		reg = max17x0x_find_by_tag(&chip->regmap_nvram,
 					   MAX17X0X_TAG_BCNT);
 		if (reg && reg->size != size)
@@ -4535,11 +4538,18 @@ static struct gbms_storage_desc max17x0x_prop_dsc = {
 /* this must be not blocking */
 static void max17x0x_read_serial_number(struct max1720x_chip *chip)
 {
+	struct device_node *node = chip->dev->of_node;
 	char buff[32] = {0};
+	u32 sn_source = EEPROM_SN;
 	int ret;
 
-	if (chip->gauge_type == MAX_M5_GAUGE_TYPE)
+	ret = of_property_read_u32(node, "maxim,read-batt-sn", &sn_source);
+	dev_info(chip->dev, "batt-sn source: %d (%d)\n", sn_source, ret);
+
+	if (sn_source == EEPROM_SN)
 		ret = gbms_storage_read(GBMS_TAG_MINF, buff, GBMS_MINF_LEN);
+	else if (sn_source == MAX1720X_SN)
+		ret = gbms_storage_read(GBMS_TAG_MXSN, buff, sizeof(chip->serial_number));
 	else
 		ret = gbms_storage_read(GBMS_TAG_SNUM, buff, sizeof(chip->serial_number));
 
@@ -4560,7 +4570,7 @@ static void max1720x_init_work(struct work_struct *work)
 		/* TODO: move to max1720x1 */
 		if (chip->regmap_nvram.regmap) {
 			ret = gbms_storage_register(&max17x0x_storage_dsc,
-						    "maxfg_sr", chip);
+						    "max1720x", chip);
 			if (ret == -EBUSY)
 				ret = 0;
 		}
