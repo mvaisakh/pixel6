@@ -1654,7 +1654,7 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 	struct device *dev = cs40l26->dev;
 	int ret = 0;
 	unsigned int reg, freq;
-	u32 index, algo_id;
+	u32 index = 0, algo_id;
 	u16 duration;
 
 	pm_runtime_get_sync(dev);
@@ -1951,7 +1951,7 @@ static int cs40l26_owt_upload(struct cs40l26_private *cs40l26, s16 *data,
 	unsigned int write_reg, reg, wt_offset, wt_size, wt_base;
 	struct cl_dsp_memchunk header_ch, data_ch;
 	u8 *full_data, *header;
-	int ret = 0, i;
+	int ret = 0;
 
 	data_ch = cl_dsp_memchunk_create((void *) data, data_size_bytes);
 
