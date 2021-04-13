@@ -50,5 +50,6 @@ void hibernation_unblock_enter(struct exynos_hibernation *hiber);
 struct exynos_hibernation *
 exynos_hibernation_register(struct decon_device *decon);
 void exynos_hibernation_destroy(struct exynos_hibernation *hiber);
+int exynos_hibernation_suspend(struct exynos_hibernation *hiber);
 
 #endif /* __EXYNOS_DRM_HIBERNATION__ */

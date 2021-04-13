@@ -92,6 +92,7 @@ struct dsim_device {
 	struct completion rd_comp;
 
 	enum dsim_state state;
+	enum dsim_state suspend_state;
 
 	/* set bist mode by sysfs */
 	unsigned int bist_mode;

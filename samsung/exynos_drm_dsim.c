@@ -189,6 +189,9 @@ static void _dsim_exit_ulps_locked(struct dsim_device *dsim)
 {
 	WARN_ON(!mutex_is_locked(&dsim->state_lock));
 
+	if (dsim->state != DSIM_STATE_ULPS)
+		return;
+
 	dsim_debug(dsim, "%s +\n", __func__);
 
 	DPU_ATRACE_BEGIN(__func__);
@@ -2279,7 +2282,7 @@ static int dsim_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int dsim_suspend(struct device *dev)
+static int dsim_runtime_suspend(struct device *dev)
 {
 	struct dsim_device *dsim = dev_get_drvdata(dev);
 
@@ -2291,13 +2294,14 @@ static int dsim_suspend(struct device *dev)
 
 	dsim_debug(dsim, "%s\n", __func__);
 
-	DPU_ATRACE_END(__func__);
+	dsim->suspend_state = dsim->state;
 	mutex_unlock(&dsim->state_lock);
+	DPU_ATRACE_END(__func__);
 
 	return 0;
 }
 
-static int dsim_resume(struct device *dev)
+static int dsim_runtime_resume(struct device *dev)
 {
 	struct dsim_device *dsim = dev_get_drvdata(dev);
 
@@ -2308,17 +2312,51 @@ static int dsim_resume(struct device *dev)
 
 	if (dsim->state == DSIM_STATE_ULPS)
 		_dsim_exit_ulps_locked(dsim);
+
+	dsim->suspend_state = dsim->state;
 	mutex_unlock(&dsim->state_lock);
 
 	DPU_ATRACE_END(__func__);
 
 	return 0;
 }
+
+static int dsim_suspend(struct device *dev)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+
+	mutex_lock(&dsim->state_lock);
+	dsim->suspend_state = dsim->state;
+
+	if (dsim->state == DSIM_STATE_HSCLKEN)
+		_dsim_enter_ulps_locked(dsim);
+
+	dsim_debug(dsim, "%s\n", __func__);
+
+	mutex_unlock(&dsim->state_lock);
+
+	return 0;
+}
+
+static int dsim_resume(struct device *dev)
+{
+	struct dsim_device *dsim = dev_get_drvdata(dev);
+
+	mutex_lock(&dsim->state_lock);
+	if (dsim->suspend_state == DSIM_STATE_HSCLKEN)
+		_dsim_exit_ulps_locked(dsim);
+
+	dsim_debug(dsim, "%s\n", __func__);
+
+	mutex_unlock(&dsim->state_lock);
+
+	return 0;
+}
 #endif
 
-
 static const struct dev_pm_ops dsim_pm_ops = {
-	SET_RUNTIME_PM_OPS(dsim_suspend, dsim_resume, NULL)
+	SET_RUNTIME_PM_OPS(dsim_runtime_suspend, dsim_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(dsim_suspend, dsim_resume)
 };
 
 struct platform_driver dsim_driver = {

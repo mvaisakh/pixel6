@@ -1591,7 +1591,7 @@ static int decon_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int decon_suspend(struct device *dev)
+static int decon_runtime_suspend(struct device *dev)
 {
 	struct decon_device *decon = dev_get_drvdata(dev);
 
@@ -1609,7 +1609,7 @@ static int decon_suspend(struct device *dev)
 	return 0;
 }
 
-static int decon_resume(struct device *dev)
+static int decon_runtime_resume(struct device *dev)
 {
 	struct decon_device *decon = dev_get_drvdata(dev);
 
@@ -1623,10 +1623,33 @@ static int decon_resume(struct device *dev)
 
 	return 0;
 }
+
+static int decon_suspend(struct device *dev)
+{
+	struct decon_device *decon = dev_get_drvdata(dev);
+	int ret = 0;
+
+	decon_debug(decon, "%s\n", __func__);
+
+	if (decon->state == DECON_STATE_ON)
+		ret = exynos_hibernation_suspend(decon->hibernation);
+
+	return ret;
+}
+
+static int decon_resume(struct device *dev)
+{
+	struct decon_device *decon = dev_get_drvdata(dev);
+
+	decon_debug(decon, "%s\n", __func__);
+
+	return 0;
+}
 #endif
 
 static const struct dev_pm_ops decon_pm_ops = {
-	SET_RUNTIME_PM_OPS(decon_suspend, decon_resume, NULL)
+	SET_RUNTIME_PM_OPS(decon_runtime_suspend, decon_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(decon_suspend, decon_resume)
 };
 
 struct platform_driver decon_driver = {
