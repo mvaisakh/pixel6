@@ -1261,6 +1261,10 @@ static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 		return 0;
 
 	crtc_state = drm_atomic_get_new_crtc_state(state, connector_state->crtc);
+
+	if (ctx->touch_dev)
+		exynos_drm_connector_attach_touch(ctx, connector_state, crtc_state);
+
 	if (!drm_atomic_crtc_needs_modeset(crtc_state))
 		return 0;
 
@@ -1268,9 +1272,6 @@ static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 						       connector_state->crtc);
 	if (!old_crtc_state->enable && ctx->enabled)
 		old_crtc_state->self_refresh_active = true;
-
-	if (ctx->touch_dev)
-		exynos_drm_connector_attach_touch(ctx, connector_state, crtc_state);
 
 	 return exynos_drm_connector_check_mode(ctx, connector_state, &crtc_state->mode);
 }
