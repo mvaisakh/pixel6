@@ -1831,19 +1831,26 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		pr_info("MSC_PRE vt=%d vb=%d fv_uv=%d chg_type=%d\n",
 			vtier, vbatt, *fv_uv, chg_type);
 	} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT) {
+		const int type_margin = utv_margin;
+
 		/*
-		 * Not fast, taper or precharge: in *_UNKNOWN and *_NONE
-		 * set checked_cv_cnt=0 and check current to avoid early
-		 * termination in case of lack of headroom
-		 * NOTE: this can cause early switch on low ilim
-		 * TODO: check if we are really lacking hedrooom.
+		 * Not fast, taper or precharge: in *_UNKNOWN and *_NONE.
+		 * Set checked_cv_cnt=0 when voltage is withing utv_margin of
+		 * vtier (tune marging) to force checking current and avoid
+		 * early termination for lack of headroom. Carry on at the
+		 * same update_interval otherwise.
 		 */
 		msc_state = MSC_TYPE;
-		*update_interval = profile->cv_update_interval;
-		batt_drv->checked_cv_cnt = 0;
+		if (vbatt > (vtier - type_margin)) {
+			*update_interval = profile->cv_update_interval;
+			batt_drv->checked_cv_cnt = 0;
+		} else {
+			batt_drv->checked_cv_cnt = 1;
+		}
 
-		pr_info("MSC_TYPE vt=%d vb=%d fv_uv=%d chg_type=%d\n",
-			vtier, vbatt, *fv_uv, chg_type);
+		pr_info("MSC_TYPE vt=%d margin=%d cv_cnt=%d vb=%d fv_uv=%d chg_type=%d\n",
+			vtier, type_margin, vbatt, batt_drv->checked_cv_cnt,
+			*fv_uv, chg_type);
 
 	} else if (batt_drv->checked_ov_cnt) {
 		/*
