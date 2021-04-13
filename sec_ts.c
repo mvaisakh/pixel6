@@ -47,29 +47,43 @@ static void unregister_panel_bridge(struct drm_bridge *bridge);
 int sec_ts_read_information(struct sec_ts_data *ts);
 
 #ifndef I2C_INTERFACE
-int sec_ts_spi_delay(u8 reg)
+void sec_ts_spi_delay(u8 reg, u32 len)
 {
+	u32 delay_us = 100;
+
 	switch (reg) {
 	case SEC_TS_READ_TOUCH_RAWDATA:
-		return 500;
+		delay_us = 500;
+		break;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	case SEC_TS_CMD_HEATMAP_READ:
-		return 500;
+		delay_us = 500;
+		break;
 #endif
+	case SEC_TS_CMD_CUSTOMLIB_READ_PARAM:
+		delay_us = 70 + ((len * 3) >> 1);
+		break;
 	case SEC_TS_READ_ALL_EVENT:
-		return 550;
+		delay_us = 550;
+		break;
 	case SEC_TS_READ_CSRAM_RTDP_DATA:
-		return 550;
+		delay_us = 550;
+		break;
 	case SEC_TS_CAAT_READ_STORED_DATA:
-		return 550;
+		delay_us = 550;
+		break;
 	case SEC_TS_CMD_FLASH_READ_DATA:
-		return 2000;
+		delay_us = 2000;
+		break;
 	case SEC_TS_READ_FIRMWARE_INTEGRITY:
-		return 20*1000;
+		delay_us = 20*1000;
+		break;
 	case SEC_TS_READ_SELFTEST_RESULT:
-		return 4000;
-	default: return 100;
+		delay_us = 4000;
+		break;
 	}
+
+	usleep_range(delay_us, delay_us + 1);
 }
 
 int sec_ts_spi_post_delay(u8 reg)
@@ -372,8 +386,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			usleep_range(sec_ts_spi_delay(reg),
-					sec_ts_spi_delay(reg) + 1);
+			sec_ts_spi_delay(reg, len);
 
 			// read sequence start
 			spi_message_init(&msg);
@@ -543,8 +556,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			usleep_range(sec_ts_spi_delay(reg),
-					sec_ts_spi_delay(reg) + 1);
+			sec_ts_spi_delay(reg, len);
 
 			copy_size = 0;
 			remain = spi_read_len;
@@ -965,7 +977,7 @@ static int sec_ts_read_from_customlib(struct sec_ts_data *ts, u8 *data, int len)
 	ret = sec_ts_write(ts, SEC_TS_CMD_CUSTOMLIB_READ_PARAM, data, 2);
 	if (ret < 0)
 		input_err(true, &ts->client->dev,
-			"%s: fail to read custom library command\n", __func__);
+			"%s: fail to write custom library command\n", __func__);
 
 	ret = sec_ts_read(ts, SEC_TS_CMD_CUSTOMLIB_READ_PARAM, (u8 *)data, len);
 	if (ret < 0)
