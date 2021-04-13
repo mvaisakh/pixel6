@@ -722,6 +722,9 @@ static void decon_mode_update_bts(struct decon_device *decon, const struct drm_d
 	decon->bts.vfp = vm.vfront_porch;
 	decon->bts.vsa = vm.vsync_len;
 	decon->bts.fps = drm_mode_vrefresh(mode);
+
+	decon->config.image_width = mode->hdisplay;
+	decon->config.image_height = mode->vdisplay;
 }
 
 static void decon_mode_set(struct exynos_drm_crtc *crtc,
