@@ -45,7 +45,6 @@ static const unsigned char PPS_SETTING[] = {
 
 static const u8 unlock_cmd_f0[] = { 0xF0, 0x5A, 0x5A };
 static const u8 lock_cmd_f0[]   = { 0xF0, 0xA5, 0xA5 };
-static const u8 hlpm_gamma[] = { 0x49, 0x01 };
 static const u8 display_off[] = { 0x28 };
 static const u8 display_on[] = { 0x29 };
 static const u8 sleep_in[] = { 0x10 };
@@ -58,6 +57,8 @@ static DEFINE_EXYNOS_CMD_SET(s6e3hc3_off);
 
 static const struct exynos_dsi_cmd s6e3hc3_lp_cmds[] = {
 	EXYNOS_DSI_CMD(display_off, 17),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB0, 0x00, 0x01, 0x60),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0x60, 0x00),	/* 30Hz */
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_lp);
 
@@ -68,7 +69,7 @@ static const struct exynos_dsi_cmd s6e3hc3_lp_off_cmds[] = {
 static const struct exynos_dsi_cmd s6e3hc3_lp_low_cmds[] = {
 	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
 	EXYNOS_DSI_CMD_SEQ(0x53, 0x25),	/* aod 10 nit */
-	EXYNOS_DSI_CMD(hlpm_gamma, 0),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_PROTO1, 0x49, 0x01),	/* hlpm gamma */
 	EXYNOS_DSI_CMD(lock_cmd_f0, 17),
 	EXYNOS_DSI_CMD(display_on, 0)
 };
@@ -76,7 +77,7 @@ static const struct exynos_dsi_cmd s6e3hc3_lp_low_cmds[] = {
 static const struct exynos_dsi_cmd s6e3hc3_lp_high_cmds[] = {
 	EXYNOS_DSI_CMD(unlock_cmd_f0, 0),
 	EXYNOS_DSI_CMD_SEQ(0x53, 0x24),	/* aod 50 nit */
-	EXYNOS_DSI_CMD(hlpm_gamma, 0),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_PROTO1, 0x49, 0x01),	/* hlpm gamma */
 	EXYNOS_DSI_CMD(lock_cmd_f0, 17),
 	EXYNOS_DSI_CMD(display_on, 0)
 };
@@ -247,7 +248,8 @@ static void s6e3hc3_set_nolp_mode(struct exynos_panel *ctx,
 	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
 	s6e3hc3_write_display_mode(ctx, &pmode->mode);
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x02);
+	if (ctx->panel_rev == PANEL_REV_PROTO1)
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x02);	/* normal gamma */
 	s6e3hc3_change_frequency(ctx, pmode);
 	usleep_range(delay_us, delay_us + 10);
 	EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
