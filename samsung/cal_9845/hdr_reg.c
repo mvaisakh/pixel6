@@ -197,8 +197,8 @@ void hdr_reg_set_tm(u32 id, struct hdr_tm_data *tm)
 		cal_log_err(id, "Failed to pack tm_posx\n");
 	} else {
 		for (i = 0; i < HDR_TM_POSX_LUT_REG_CNT; i++) {
-			hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), val);
-			cal_log_debug(id, "POSX[%d]: 0x%x\n", i, val);
+			hdr_write_relaxed(id, HDR_LSI_L_TM_POSX(i), regs[i]);
+			cal_log_debug(id, "POSX[%d]: 0x%x\n", i, regs[i]);
 		}
 	}
 
