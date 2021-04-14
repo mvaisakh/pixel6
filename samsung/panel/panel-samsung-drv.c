@@ -574,6 +574,7 @@ int exynos_panel_disable(struct drm_panel *panel)
 	if (exynos_panel_func) {
 		if (exynos_panel_func->set_local_hbm_mode) {
 			ctx->hbm.local_hbm.enabled = false;
+			sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 			cancel_delayed_work_sync(&ctx->hbm.local_hbm.timeout_work);
 		}
 		if (exynos_panel_func->set_hbm_mode)
@@ -1803,6 +1804,7 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 	}
 
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, local_hbm_en);
+	sysfs_notify(&bd->dev.kobj, NULL, "local_hbm_mode");
 	if (local_hbm_en) {
 		queue_delayed_work(ctx->hbm.wq,
 			 &ctx->hbm.local_hbm.timeout_work,
@@ -2361,6 +2363,7 @@ static void local_hbm_timeout_work(struct work_struct *work)
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, false);
+	sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 }
 
 static void global_hbm_work(struct work_struct *work)
