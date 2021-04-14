@@ -30,7 +30,9 @@
 #include <linux/soc/samsung/exynos-smc.h>
 #include "../../bms/google_bms.h"
 
-#define BMS_RSBM_VALID   BIT(31)
+#define EXYNOS_PMU_SYSIP_DAT0		(0x0810)
+
+#define BMS_RSBM_VALID			BIT(31)
 
 static struct regmap *pmureg;
 static u32 warm_reboot_offset, warm_reboot_trigger;
@@ -39,6 +41,17 @@ static u32 reboot_cmd_offset;
 static u32 shutdown_offset, shutdown_trigger;
 static phys_addr_t pmu_alive_base;
 static bool rsbm_supported;
+
+enum pon_reboot_mode {
+	REBOOT_MODE_NORMAL		= 0x00,
+	REBOOT_MODE_CHARGE		= 0x0A,
+
+	REBOOT_MODE_DMVERITY_CORRUPTED	= 0x50,
+
+	REBOOT_MODE_FASTBOOT		= 0xFC,
+	REBOOT_MODE_FACTORY		= 0xFD,
+	REBOOT_MODE_RECOVERY		= 0xFF,
+};
 
 static void exynos_power_off(void)
 {
@@ -98,13 +111,6 @@ static void exynos_power_off(void)
 	}
 }
 
-#define EXYNOS_PMU_SYSIP_DAT0		(0x0810)
-#define REBOOT_MODE_NORMAL		(0x00)
-#define REBOOT_MODE_CHARGE		(0x0A)
-#define REBOOT_MODE_FASTBOOT		(0xFC)
-#define REBOOT_MODE_FACTORY		(0xFD)
-#define REBOOT_MODE_RECOVERY		(0xFF)
-
 static void exynos_reboot_mode_set(u32 val)
 {
 	int ret;
@@ -142,8 +148,9 @@ static void exynos_reboot_parse(const char *cmd)
 			exynos_reboot_mode_set(REBOOT_MODE_FASTBOOT);
 		} else if (!strcmp(cmd, "recovery")) {
 			exynos_reboot_mode_set(REBOOT_MODE_RECOVERY);
-		} else if (!strcmp(cmd, "dm-verity device corrupted") ||
-			   !strcmp(cmd, "from_fastboot") ||
+		} else if (!strcmp(cmd, "dm-verity device corrupted")) {
+			exynos_reboot_mode_set(REBOOT_MODE_DMVERITY_CORRUPTED);
+		} else if (!strcmp(cmd, "from_fastboot") ||
 			   !strcmp(cmd, "shell") ||
 			   !strcmp(cmd, "userrequested") ||
 			   !strcmp(cmd, "userrequested,fastboot") ||
