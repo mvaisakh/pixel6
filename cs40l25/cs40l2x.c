@@ -11539,7 +11539,10 @@ static struct regmap_config cs40l2x_regmap = {
 
 
 static const struct mfd_cell cs40l2x_devs[] = {
-	{ .name = "cs40l2x-codec" },
+	{
+		.name = "cs40l2x-codec",
+		.of_compatible = "cs40l2x-codec",
+	},
 };
 
 static int cs40l2x_i2c_probe(struct i2c_client *i2c_client,
