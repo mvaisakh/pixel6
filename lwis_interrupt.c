@@ -120,6 +120,8 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq, int64_t 
 static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 {
 	int ret;
+	int i;
+	struct lwis_device_critical_irq_event_list *list;
 	struct lwis_interrupt *irq = (struct lwis_interrupt *)data;
 	struct lwis_single_event_info *event;
 	struct list_head *p;
@@ -148,9 +150,20 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	}
 
 	spin_lock_irqsave(&irq->lock, flags);
+	list = irq->lwis_dev->critical_irq_event_list;
 	list_for_each (p, &irq->enabled_event_infos) {
 		event = list_entry(p, struct lwis_single_event_info, node_enabled);
 
+		/* Check if this critical events need to be printed */
+		if (list != NULL && list->count > 0) {
+			for (i = 0; i < list->count; ++i) {
+				if (list->critical_event_id[i] == event->event_id) {
+					dev_err_ratelimited(irq->lwis_dev->dev,
+							    "Caught critical IRQ(%s) event(%lld)\n",
+							    irq->name, event->event_id);
+				}
+			}
+		}
 		/* Check if this event needs to be emitted */
 		if ((source_value >> event->int_reg_bit) & 0x1) {
 			/* Emit the event */
