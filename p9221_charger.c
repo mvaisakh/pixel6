@@ -3908,6 +3908,16 @@ static int p9221_parse_dt(struct device *dev,
 		dev_info(dev, "dt epp_rp_value: %d\n", pdata->epp_rp_value);
 	}
 
+	pdata->epp_vout_mv = P9221_MAX_VOUT_SET_MV_DEFAULT;
+	ret = of_property_read_u32(node, "google,epp_vout_mv", &data);
+	if (ret == 0) {
+		if (data < vout_set_min_mv || data > vout_set_max_mv)
+			dev_err(dev, "epp_vout_mv out of range %d\n", data);
+		else
+			pdata->epp_vout_mv = data;
+	}
+
+
 	ret = of_property_read_u32(node, "google,needs_dcin_reset", &data);
 	if (ret < 0) {
 		pdata->needs_dcin_reset = -1;

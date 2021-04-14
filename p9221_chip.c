@@ -1012,7 +1012,7 @@ static int p9412_chip_renegotiate_pwr(struct p9221_charger_data *chgr)
 	}
 
 	/* Set the voltage to maximum value as defined in device-tree. */
-	ret = chgr->chip_set_vout_max(chgr, chgr->pdata->max_vout_mv);
+	ret = chgr->chip_set_vout_max(chgr, chgr->pdata->epp_vout_mv);
 
 	val8 = P9412_MW_TO_HW(tgt_pwr_mw);
 	ret = chgr->reg_write_8(chgr,
