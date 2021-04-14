@@ -356,7 +356,6 @@ struct te2_mode_data {
 
 struct te2_data {
 	struct te2_mode_data mode_data[MAX_TE2_TYPE];
-	struct mutex timing_lock;
 };
 
 struct exynos_panel {
@@ -386,6 +385,7 @@ struct exynos_panel {
 	bool hbm_mode;
 	bool dimming_on;
 	struct backlight_device *bl;
+	struct mutex mode_lock;
 	struct mutex bl_state_lock;
 	struct exynos_bl_notifier bl_notifier;
 
@@ -408,8 +408,6 @@ struct exynos_panel {
 			bool enabled;
 			/* max local hbm on period in ms */
 			u32 max_timeout_ms;
-			/* used to protect local hbm operation */
-			struct mutex lock;
 			/* work used to turn off local hbm if reach max_timeout */
 			struct delayed_work timeout_work;
 		} local_hbm;

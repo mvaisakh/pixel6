@@ -732,8 +732,6 @@ static void s6e3hc2_common_post_enable(struct exynos_panel *ctx)
 	else
 		EXYNOS_DCS_WRITE_SEQ(ctx, 0x29); /* display on */
 
-	backlight_update_status(ctx->bl);
-
 	kthread_flush_work(&spanel->gamma_work);
 	if (!spanel->native_gamma_ready)
 		kthread_queue_work(&spanel->worker, &spanel->gamma_work);

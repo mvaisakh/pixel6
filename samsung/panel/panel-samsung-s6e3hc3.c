@@ -503,8 +503,6 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	else
 		EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
 
-	backlight_update_status(ctx->bl);
-
 	return 0;
 }
 
@@ -598,10 +596,10 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
-	mutex_lock(&ctx->hbm.local_hbm.lock);
+	mutex_lock(&ctx->mode_lock);
 	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
-	mutex_unlock(&ctx->hbm.local_hbm.lock);
+	mutex_unlock(&ctx->mode_lock);
 
 	config = &ctx->exynos_connector.base.dev->mode_config;
 	drm_modeset_lock(&config->connection_mutex, NULL);
