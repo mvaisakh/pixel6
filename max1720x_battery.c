@@ -4342,6 +4342,7 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 {
 	struct max1720x_chip *chip = (struct max1720x_chip *)ptr;
 	const struct max17x0x_reg *reg;
+	u16 data[32] = {0};
 	int ret;
 
 	switch (tag) {
@@ -4352,15 +4353,14 @@ static int max17x0x_storage_read(gbms_tag_t tag, void *buff, size_t size,
 		if (reg && reg->size > size)
 			return -ERANGE;
 
-		ret = max17x0x_reg_load(&chip->regmap_nvram, reg, buff);
+		ret = max17x0x_reg_load(&chip->regmap_nvram, reg, &data);
 		if (ret < 0)
 			return ret;
 
 		if (chip->gauge_type == MAX1730X_GAUGE_TYPE)
-			ret = max1730x_decode_sn(buff, size, (u16 *)buff);
+			ret = max1730x_decode_sn(buff, size, data);
 		else if (chip->gauge_type == MAX1720X_GAUGE_TYPE)
-			ret = max1720x_decode_sn(buff, size, (u16 *)buff);
-
+			ret = max1720x_decode_sn(buff, size, data);
 		break;
 
 	case GBMS_TAG_BCNT:
