@@ -735,7 +735,8 @@ static void dpu_bts_calc_bw(struct decon_device *decon)
 
 static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 {
-	struct bts_bw bw = { 0, };
+	struct bts_bw bw = { 0 };
+	int ret = 0;
 
 	DPU_DEBUG_BTS("%s +\n", __func__);
 
@@ -753,7 +754,7 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 		/* after DECON h/w configs are updated to shadow SFR */
 		if (decon->bts.total_bw < decon->bts.prev_total_bw ||
 				decon->bts.peak < decon->bts.prev_peak)
-			bts_update_bw(decon->bts.bw_idx, bw);
+			ret = bts_update_bw(decon->bts.bw_idx, bw);
 
 		if (decon->bts.max_disp_freq < decon->bts.prev_max_disp_freq)
 			exynos_pm_qos_update_request(&decon->bts.disp_qos,
@@ -765,7 +766,7 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 	} else {
 		if (decon->bts.total_bw > decon->bts.prev_total_bw ||
 				decon->bts.peak > decon->bts.prev_peak)
-			bts_update_bw(decon->bts.bw_idx, bw);
+			ret = bts_update_bw(decon->bts.bw_idx, bw);
 
 		if (decon->bts.max_disp_freq > decon->bts.prev_max_disp_freq)
 			exynos_pm_qos_update_request(&decon->bts.disp_qos,
@@ -773,6 +774,12 @@ static void dpu_bts_update_bw(struct decon_device *decon, bool shadow_updated)
 	}
 
 	DPU_EVENT_LOG(DPU_EVT_BTS_UPDATE_BW, decon->id, NULL);
+
+	if (ret) {
+		pr_warn("failed to update bw(%d) to bts(%d)\n", decon->bts.bw_idx, ret);
+		decon_dump_event_condition(decon, DPU_EVT_CONDITION_FAIL_UPDATE_BW);
+	}
+
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 

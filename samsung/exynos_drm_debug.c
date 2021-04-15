@@ -34,6 +34,7 @@
 static unsigned int dpu_event_log_max = 1024;
 static unsigned int dpu_event_print_max = 512;
 static unsigned int dpu_event_print_underrun = 128;
+static unsigned int dpu_event_print_fail_update_bw = 32;
 
 module_param_named(event_log_max, dpu_event_log_max, uint, 0);
 module_param_named(event_print_max, dpu_event_print_max, uint, 0600);
@@ -458,6 +459,18 @@ static bool is_skip_dpu_event_dump(enum dpu_event_type type, enum dpu_event_cond
 		case DPU_EVT_BTS_CALC_BW:
 		case DPU_EVT_BTS_UPDATE_BW:
 		case DPU_EVT_DECON_RSC_OCCUPANCY:
+			return false;
+		default:
+			return true;
+		}
+	}
+
+	if (condition == DPU_EVT_CONDITION_FAIL_UPDATE_BW) {
+		switch (type) {
+		case DPU_EVT_ATOMIC_COMMIT:
+		case DPU_EVT_BTS_RELEASE_BW:
+		case DPU_EVT_BTS_CALC_BW:
+		case DPU_EVT_BTS_UPDATE_BW:
 			return false;
 		default:
 			return true;
@@ -1429,6 +1442,9 @@ void decon_dump_event_condition(const struct decon_device *decon,
 	switch (condition) {
 	case DPU_EVT_CONDITION_UNDERRUN:
 		print_log_size = dpu_event_print_underrun;
+		break;
+	case DPU_EVT_CONDITION_FAIL_UPDATE_BW:
+		print_log_size = dpu_event_print_fail_update_bw;
 		break;
 	case DPU_EVT_CONDITION_ALL:
 	default:

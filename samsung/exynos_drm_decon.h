@@ -239,6 +239,7 @@ enum dpu_event_type {
 enum dpu_event_condition {
 	DPU_EVT_CONDITION_ALL = 0,
 	DPU_EVT_CONDITION_UNDERRUN,
+	DPU_EVT_CONDITION_FAIL_UPDATE_BW,
 };
 
 #define DPU_CALLSTACK_MAX 10
