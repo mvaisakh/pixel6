@@ -3653,6 +3653,11 @@ static int max77759_charger_probe(struct i2c_client *client,
 	ret = max77759_wdt_enable(data, data->wden);
 	if (ret < 0)
 		dev_err(dev, "wd enable=%d failed %d\n", data->wden, ret);
+
+	/* disable fast charge safety timer*/
+	max77759_chg_reg_update(data->uc_data.client, MAX77759_CHG_CNFG_01,
+				MAX77759_CHG_CNFG_01_FCHGTIME_MASK,
+				MAX77759_CHG_CNFG_01_FCHGTIME_CLEAR);
 	mutex_unlock(&data->io_lock);
 
 	ret = of_property_read_u32(dev->of_node, "max77759,chg-term-voltage",
