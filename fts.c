@@ -6599,6 +6599,10 @@ static int fts_pm_suspend(struct device *dev)
 	if (info->resume_bit == 1 || info->sensor_sleep == false) {
 		dev_warn(info->dev, "%s: can't suspend because touch bus is in use!\n",
 			__func__);
+		if (info->bus_refmask == FTS_BUS_REF_BUGREPORT) {
+			fts_set_bus_ref(info, FTS_BUS_REF_BUGREPORT, false);
+			__pm_relax(info->wakesrc);
+		}
 		return -EBUSY;
 	}
 

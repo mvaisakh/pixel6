@@ -326,6 +326,7 @@ enum {
 	FTS_BUS_REF_FW_UPDATE		= 0x04,
 	FTS_BUS_REF_SYSFS		= 0x08,
 	FTS_BUS_REF_FORCE_ACTIVE	= 0x10,
+	FTS_BUS_REF_BUGREPORT		= 0x20,
 };
 
 /* Motion filter finite state machine (FSM) states

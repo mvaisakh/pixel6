@@ -2866,14 +2866,31 @@ END_DIAGNOSTIC:
 						FTS_BUS_REF_FORCE_ACTIVE,
 						cmd[1]);
 					res = OK;
-					if (cmd[1])
-						__pm_stay_awake(info->wakesrc);
-					else
-						__pm_relax(info->wakesrc);
+				}
+			} else if (numberParam == 3){
+				if (cmd[1] > 1) {
+					dev_err(info->dev, "Parameter should be 1 or 0\n");
+					res = ERROR_OP_NOT_ALLOW;
+				} else {
+					dev_info(info->dev, "%s: %s\n",
+						cmd[2] ? "FTS_BUS_REF_BUGREPORT" :
+							"FTS_BUS_REF_FORCE_ACTIVE",
+						cmd[1] ? "ON" : "OFF");
+					fts_set_bus_ref(info,
+						cmd[2] ? FTS_BUS_REF_BUGREPORT :
+							FTS_BUS_REF_FORCE_ACTIVE,
+						cmd[1]);
+					res = OK;
 				}
 			} else {
 				dev_err(info->dev, "Wrong number of parameters!\n");
 				res = ERROR_OP_NOT_ALLOW;
+			}
+			if (res == OK) {
+				if (cmd[1])
+					__pm_stay_awake(info->wakesrc);
+				else
+					__pm_relax(info->wakesrc);
 			}
 			break;
 
