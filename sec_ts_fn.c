@@ -8376,9 +8376,18 @@ static void set_touch_mode(void *device_data)
 		break;
 	case 7:
 		input_info(true, &ts->client->dev,
-			"%s: param = %d, do touch system reset\n",
-			__func__, sec->cmd_param[0]);
-		sec_ts_system_reset(ts);
+			"%s: param = %d %d, do touch system reset\n",
+			__func__, sec->cmd_param[0], sec->cmd_param[1]);
+		switch (sec->cmd_param[1]) {
+		case RESET_MODE_SW:
+			sec_ts_system_reset(ts, RESET_MODE_SW, true, true);
+			break;
+		case RESET_MODE_HW:
+			sec_ts_system_reset(ts, RESET_MODE_HW, true, true);
+			break;
+		default:
+			sec_ts_system_reset(ts, RESET_MODE_AUTO, true, true);
+		}
 		break;
 	case 8:
 		input_info(true, &ts->client->dev,

@@ -558,6 +558,13 @@ enum {
 						 **/
 };
 
+enum RESET_MODE {
+	RESET_MODE_NA		= 0x00,
+	RESET_MODE_SW		= 0x01,
+	RESET_MODE_HW		= 0x02,
+	RESET_MODE_AUTO		= (RESET_MODE_SW | RESET_MODE_HW),
+};
+
 enum CUSTOMLIB_EVENT_TYPE {
 	CUSTOMLIB_EVENT_TYPE_SPAY			= 0x04,
 	CUSTOMLIB_EVENT_TYPE_PRESSURE_TOUCHED		= 0x05,
@@ -1154,9 +1161,12 @@ struct sec_ts_plat_data {
 
 int sec_ts_stop_device(struct sec_ts_data *ts);
 int sec_ts_start_device(struct sec_ts_data *ts);
-int sec_ts_hw_reset(struct sec_ts_data *ts);
-int sec_ts_sw_reset(struct sec_ts_data *ts);
-int sec_ts_system_reset(struct sec_ts_data *ts);
+int sec_ts_hw_reset(struct sec_ts_data *ts, bool wait_for_done);
+int sec_ts_sw_reset(struct sec_ts_data *ts, bool wait_for_done);
+int sec_ts_system_reset(struct sec_ts_data *ts,
+			enum RESET_MODE mode,
+			bool wait_for_done,
+			bool sense_on);
 int sec_ts_set_lowpowermode(struct sec_ts_data *ts, u8 mode);
 int sec_ts_firmware_update_on_probe(struct sec_ts_data *ts, bool force_update);
 int sec_ts_firmware_update_on_hidden_menu(struct sec_ts_data *ts,

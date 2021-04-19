@@ -681,10 +681,14 @@ skip_spi_read:
 	} else
 		ts->io_err_count = 0;
 
-	/* do hw reset if continuously failed over SEC_TS_IO_RESET_CNT times */
-	if (ts->io_err_count >= SEC_TS_IO_RESET_CNT) {
+	/*
+	 * Do hw reset if continuously failed over SEC_TS_IO_RESET_CNT times
+	 * except for FW update process.
+	 */
+	if (ts->io_err_count >= SEC_TS_IO_RESET_CNT &&
+	    (ts->bus_refmask & SEC_TS_BUS_REF_FW_UPDATE) == 0) {
 		ts->io_err_count = 0;
-		sec_ts_hw_reset(ts);
+		sec_ts_system_reset(ts, RESET_MODE_HW, false, true);
 	}
 
 	return ret;
@@ -2705,14 +2709,14 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 					break;
 				case 0x40:
 					input_info(true, &ts->client->dev,
-						"%s: sw_reset done\n",
+						"%s: sw_reset ack.\n",
 						__func__);
 					sec_ts_unlocked_release_all_finger(ts);
 					complete_all(&ts->boot_completed);
 					break;
 				case 0x10:
 					input_info(true, &ts->client->dev,
-						"%s: hw_reset done\n",
+						"%s: hw_reset ack.\n",
 						__func__);
 					sec_ts_unlocked_release_all_finger(ts);
 					complete_all(&ts->boot_completed);
@@ -5159,7 +5163,7 @@ static void sec_ts_resume_work(struct work_struct *work)
 
 	ts->power_status = SEC_TS_STATE_POWER_ON;
 
-	ret = sec_ts_system_reset(ts);
+	ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
 	if (ret < 0)
 		input_err(true, &ts->client->dev,
 			"%s: reset failed! ret %d\n", __func__, ret);
