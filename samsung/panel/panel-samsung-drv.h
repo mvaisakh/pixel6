@@ -439,6 +439,7 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 
 #define EXYNOS_DSI_CMD_REV(cmd, delay, rev) { sizeof(cmd), cmd, delay, (u32)rev }
 #define EXYNOS_DSI_CMD(cmd, delay) EXYNOS_DSI_CMD_REV(cmd, delay, PANEL_REV_ALL)
+#define EXYNOS_DSI_CMD0_REV(cmd, rev) EXYNOS_DSI_CMD_REV(cmd, 0, rev)
 #define EXYNOS_DSI_CMD0(cmd) EXYNOS_DSI_CMD(cmd, 0)
 
 #define EXYNOS_DSI_CMD_SEQ_DELAY_REV(rev, delay, seq...) \
