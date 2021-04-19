@@ -141,13 +141,18 @@ void edgetpu_mappings_show(struct edgetpu_mapping_root *mappings,
 
 static inline int __dma_dir_to_iommu_prot(enum dma_data_direction dir)
 {
+	int prot = 0;
+
+#ifdef EDGETPU_IS_IO_COHERENT
+	prot = IOMMU_CACHE;
+#endif
 	switch (dir) {
 	case DMA_BIDIRECTIONAL:
-		return IOMMU_READ | IOMMU_WRITE;
+		return prot | IOMMU_READ | IOMMU_WRITE;
 	case DMA_TO_DEVICE:
-		return IOMMU_READ;
+		return prot | IOMMU_READ;
 	case DMA_FROM_DEVICE:
-		return IOMMU_WRITE;
+		return prot | IOMMU_WRITE;
 	default:
 		return 0;
 	}

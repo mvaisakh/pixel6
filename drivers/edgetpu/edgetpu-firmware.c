@@ -659,6 +659,7 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 	struct edgetpu_dev *etdev = data;
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 
+	etdev->watchdog_timeout_count++;
 	/* Don't attempt f/w restart if device is off. */
 	if (!edgetpu_is_powered(etdev))
 		return;

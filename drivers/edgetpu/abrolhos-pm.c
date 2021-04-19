@@ -10,7 +10,9 @@
 #include <linux/gsa/gsa_tpu.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
-#include <linux/soc/samsung/exynos-smc.h>
+#include <soc/google/bcl.h>
+#include <soc/google/bts.h>
+#include <soc/google/exynos_pm_qos.h>
 
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
@@ -22,12 +24,7 @@
 #include "edgetpu-pm.h"
 #include "edgetpu-telemetry.h"
 
-#include "soc/google/exynos_pm_qos.h"
-#include "soc/google/bts.h"
-
 #include "edgetpu-pm.c"
-
-#define TPU_SMC_ID			(0x15)
 
 /*
  * Encode INT/MIF values as a 16 bit pair in the 32-bit return value
@@ -98,12 +95,6 @@ static int abrolhos_pwr_state_set_locked(void *data, u64 val)
 			dev_err(dev, "pm_runtime_get_sync returned %d\n", ret);
 			return ret;
 		}
-		ret = exynos_smc(SMC_PROTECTION_SET, 0, TPU_SMC_ID,
-				 SMC_PROTECTION_ENABLE);
-		if (ret)
-			dev_warn(dev,
-				 "exynos_smc protection enable returned %d\n",
-				 ret);
 	}
 
 	ret = exynos_acpm_set_rate(TPU_ACPM_DOMAIN, (unsigned long)val);
@@ -114,13 +105,6 @@ static int abrolhos_pwr_state_set_locked(void *data, u64 val)
 	}
 
 	if (curr_state != TPU_OFF && val == TPU_OFF) {
-		ret = exynos_smc(SMC_PROTECTION_SET, 0, TPU_SMC_ID,
-				 SMC_PROTECTION_DISABLE);
-		if (ret)
-			dev_warn(dev,
-				 "exynos_smc protection disable returned %d\n",
-				 ret);
-
 		ret = pm_runtime_put_sync(dev);
 		if (ret) {
 			dev_err(dev, "%s: pm_runtime_put_sync returned %d\n",
@@ -522,8 +506,14 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 		etdev->state = ETDEV_STATE_GOOD; /* f/w handshake success */
 	mutex_unlock(&etdev->state_lock);
 
-	if (ret)
+	if (ret) {
 		abrolhos_power_down(etpm);
+	} else {
+		if (!edgetpu_pdev->bcl_dev)
+			edgetpu_pdev->bcl_dev = gs101_retrieve_bcl_handle();
+		if (edgetpu_pdev->bcl_dev)
+			gs101_init_tpu_ratio(edgetpu_pdev->bcl_dev);
+	}
 
 	return ret;
 }
@@ -611,7 +601,7 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 
 	if (etdev->kci && edgetpu_firmware_status_locked(etdev) == FW_VALID) {
 		/* Update usage stats before we power off fw. */
-		edgetpu_kci_update_usage(etdev);
+		edgetpu_kci_update_usage_locked(etdev);
 		abrolhos_pm_shutdown_firmware(edgetpu_pdev, etdev,
 					      edgetpu_pdev);
 		edgetpu_kci_cancel_work_queues(etdev->kci);

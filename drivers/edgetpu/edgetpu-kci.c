@@ -842,6 +842,22 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(struct edgetpu_kci *kci,
 
 int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 {
+	int ret;
+
+	/* Quick return if device already powered down, else get PM ref. */
+	if (!edgetpu_is_powered(etdev))
+		return -EAGAIN;
+	ret = edgetpu_pm_get(etdev->pm);
+	if (ret)
+		return ret;
+	ret = edgetpu_kci_update_usage_locked(etdev);
+
+	edgetpu_pm_put(etdev->pm);
+	return ret;
+}
+
+int edgetpu_kci_update_usage_locked(struct edgetpu_dev *etdev)
+{
 #define EDGETPU_USAGE_BUFFER_SIZE	4096
 	struct edgetpu_command_element cmd = {
 		.code = KCI_CODE_GET_USAGE,
@@ -854,19 +870,13 @@ int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 	struct edgetpu_kci_response_element resp;
 	int ret;
 
-	/* Quick return if device already powered down, else get PM ref. */
-	if (!edgetpu_is_powered(etdev))
-		return -EAGAIN;
-	ret = edgetpu_pm_get(etdev->pm);
-	if (ret)
-		return ret;
 	ret = edgetpu_iremap_alloc(etdev, EDGETPU_USAGE_BUFFER_SIZE, &mem,
 				   EDGETPU_CONTEXT_KCI);
 
 	if (ret) {
 		etdev_warn_once(etdev, "%s: failed to allocate usage buffer",
 				__func__);
-		goto out;
+		return ret;
 	}
 
 	cmd.dma.address = mem.tpu_addr;
@@ -883,8 +893,6 @@ int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 
 	edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
 
-out:
-	edgetpu_pm_put(etdev->pm);
 	return ret;
 }
 

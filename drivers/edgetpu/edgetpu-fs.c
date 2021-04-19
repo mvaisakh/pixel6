@@ -68,6 +68,8 @@ static struct dentry *edgetpu_debugfs_dir;
 
 static bool is_edgetpu_file(struct file *file)
 {
+	if (edgetpu_is_external_wrapper_class_file(file))
+		return true;
 	return file->f_op == &edgetpu_fops;
 }
 
@@ -911,8 +913,19 @@ static ssize_t firmware_crash_count_show(
 }
 static DEVICE_ATTR_RO(firmware_crash_count);
 
+static ssize_t watchdog_timeout_count_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", etdev->watchdog_timeout_count);
+}
+static DEVICE_ATTR_RO(watchdog_timeout_count);
+
 static struct attribute *edgetpu_dev_attrs[] = {
 	&dev_attr_firmware_crash_count.attr,
+	&dev_attr_watchdog_timeout_count.attr,
 	NULL,
 };
 

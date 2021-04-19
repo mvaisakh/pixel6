@@ -204,6 +204,7 @@ struct edgetpu_dev {
 
 	/* counts of error events */
 	uint firmware_crash_count;
+	uint watchdog_timeout_count;
 
 	struct edgetpu_coherent_mem debug_dump_mem;	/* debug dump memory */
 	/* debug dump handlers */
@@ -329,6 +330,15 @@ void edgetpu_free_coherent(struct edgetpu_dev *etdev,
 /* External drivers can hook up to edgetpu driver using these calls. */
 int edgetpu_open(struct edgetpu_dev *etdev, struct file *file);
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg);
+
+#if IS_ENABLED(CONFIG_EDGETPU_EXTERNAL_WRAPPER_CLASS)
+extern bool edgetpu_is_external_wrapper_class_file(struct file *file);
+#else
+static inline bool edgetpu_is_external_wrapper_class_file(struct file *file)
+{
+	return false;
+}
+#endif
 
 /* Handle firmware crash event */
 void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev,

@@ -11,6 +11,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
+#include <soc/google/bcl.h>
 
 #include "abrolhos-debug-dump.h"
 #include "abrolhos-pm.h"
@@ -44,6 +45,7 @@ struct abrolhos_platform_dev {
 	struct edgetpu_coherent_mem log_mem;
 	struct edgetpu_coherent_mem trace_mem;
 	struct abrolhos_sscd_info sscd_info;
+	struct gs101_bcl_dev *bcl_dev;
 };
 
 #endif /* __ABROLHOS_PLATFORM_H__ */

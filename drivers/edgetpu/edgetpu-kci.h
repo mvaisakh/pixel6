@@ -287,6 +287,16 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 int edgetpu_kci_update_usage(struct edgetpu_dev *etdev);
 
 /*
+ * Works the same as edgetpu_kci_update_usage() except the caller of this
+ * function must guarantee the device stays powered up, typically by calling
+ * edgetpu_pm_get() or by calling this function from the power management
+ * functions themselves.
+ *
+ * Returns KCI response code on success or < 0 on error (typically -ETIMEDOUT).
+ */
+int edgetpu_kci_update_usage_locked(struct edgetpu_dev *etdev);
+
+/*
  * Sends the "Map Log Buffer" command and waits for remote response.
  *
  * Returns the code of response, or a negative errno on error.

@@ -216,18 +216,26 @@ edgetpu_device_group_kci_finalized(struct edgetpu_device_group *group)
 		 */
 		if (etdev->state != ETDEV_STATE_GOOD) {
 			ret = edgetpu_get_state_errno_locked(etdev);
+			etdev_err(group->etdev, "finalize dev %s state %u (%d)",
+				  etdev->dev_name, etdev->state, ret);
 			goto out_free;
 		}
 		ret = edgetpu_async_add_job(
 			ctx, &params[i],
 			(edgetpu_async_job_t)edgetpu_kci_join_group_worker);
-		if (ret)
+		if (ret) {
+			etdev_err(group->etdev,
+				  "finalize fw job for %s returns %d",
+				  etdev->dev_name, ret);
 			goto out_free;
+		}
 		atomic_inc(&etdev->job_count);
 	}
 	ret = edgetpu_async_wait(ctx);
-	if (ret)
+	if (ret) {
+		etdev_err(group->etdev, "finalize wait returns %d", ret);
 		goto out_free;
+	}
 	for_each_async_ret(ctx, val, i) {
 		if (val)
 			goto out_leave;
@@ -471,11 +479,21 @@ static bool edgetpu_group_check_contiguity(struct edgetpu_device_group *group)
 		mcp_n = mcp->total_num;
 	fr = group->etdev->mcp_die_index;
 	for (i = 1; i < group->n_clients; i++, fr = to) {
-		to = edgetpu_device_group_nth_etdev(group, i)->mcp_die_index;
+		struct edgetpu_dev *to_etdev =
+			edgetpu_device_group_nth_etdev(group, i);
+
+		to = to_etdev->mcp_die_index;
 		if (fr + 1 == to)
 			continue;
-		if (!mcp_n || (fr + 1) % mcp_n != to)
+		if (!mcp_n || (fr + 1) % mcp_n != to) {
+			struct edgetpu_dev *fr_etdev =
+				edgetpu_device_group_nth_etdev(group, i - 1);
+
+			etdev_err(group->etdev,
+				  "finalize group not contiguous at %s -> %s",
+				  fr_etdev->dev_name, to_etdev->dev_name);
 			return false;
+		}
 	}
 
 	return true;
@@ -749,13 +767,17 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 		goto err_unlock;
 
 	if (!edgetpu_device_group_is_waiting(group)) {
+		etdev_err(group->etdev, "finalize group is not waiting");
 		ret = -EINVAL;
 		goto err_unlock;
 	}
 
 	ret = group_alloc_members(group);
-	if (ret)
+	if (ret) {
+		etdev_err(group->etdev,
+			  "finalize alloc members returns %d", ret);
 		goto err_unlock;
+	}
 
 	/*
 	 * Check the contiguity here but not in edgetpu_clients_groupable()
@@ -780,20 +802,25 @@ int edgetpu_device_group_finalize(struct edgetpu_device_group *group)
 		ret = do_attach_mailbox_locked(group);
 		if (ret) {
 			etdev_err(group->etdev,
-				  "attach mailbox failed on finalization: %d",
-				  ret);
+				  "finalize attach mailbox failed: %d", ret);
 			goto err_release_members;
 		}
 	}
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 	ret = edgetpu_p2p_mailbox_setup(group);
-	if (ret)
+	if (ret) {
+		etdev_err(group->etdev,
+			  "finalize p2p mailbox setup failed: %d", ret);
 		goto err_detach_mailbox;
+	}
 #endif
 
 	ret = edgetpu_group_setup_remote_dram(group);
-	if (ret)
+	if (ret) {
+		etdev_err(group->etdev,
+			  "finalize remote dram setup failed: %d", ret);
 		goto err_release_p2p;
+	}
 
 	edgetpu_usr_init_group(group);
 
