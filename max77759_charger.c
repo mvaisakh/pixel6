@@ -1879,6 +1879,29 @@ static int max77759_get_regulation_voltage_uv(struct max77759_chgr_data *data,
 	return 0;
 }
 
+static int max77759_enable_sw_recharge(struct max77759_chgr_data *data)
+{
+	struct max77759_usecase_data *uc_data = &data->uc_data;
+	int ret;
+	uint8_t reg;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &reg);
+	if (ret < 0 || _chg_details_01_chg_dtls_get(reg) != CHGR_DTLS_DONE_MODE)
+		return ret;
+
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
+	if (ret < 0)
+		return ret;
+
+	ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_ALL_OFF);
+	if (ret == 0)
+		ret = max77759_chg_mode_write(uc_data->client, reg);
+
+	pr_debug("%s MAX77759_CHG_CNFG_00:0x%X (%d)\n", __func__, reg, ret);
+
+	return ret;
+}
+
 /* set charging current to 0 to disable charging (MODE=0) */
 static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 					       int current_ua)
@@ -1899,6 +1922,12 @@ static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 		value = 0x3c;
 	else
 		value = 0x3 + (current_ua - 200000) / 66670;
+
+	if (current_ua) {
+		ret = max77759_enable_sw_recharge(data);
+		if (ret < 0)
+			dev_err(data->dev, "cannot re-enable charging (%d)\n", ret);
+	}
 
 	value = VALUE2FIELD(MAX77759_CHG_CNFG_02_CHGCC, value);
 	ret = max77759_reg_update(data, MAX77759_CHG_CNFG_02,
