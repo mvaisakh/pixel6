@@ -1886,6 +1886,8 @@ static ssize_t state_show(struct device *dev,
 		rc = snprintf(buf, PAGE_SIZE, "%s\n", statestr);
 	}
 
+	dev_dbg(ctx->dev, "%s: %s\n", __func__, buf);
+
 	return rc;
 }
 
@@ -1917,6 +1919,8 @@ static ssize_t lp_state_show(struct device *dev,
 	mutex_unlock(&ctx->lp_state_lock);
 
 	mutex_unlock(&ctx->bl_state_lock);
+
+	dev_dbg(ctx->dev, "%s: %s\n", __func__, buf);
 
 	return rc;
 }
@@ -2329,22 +2333,32 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 		const bool was_lp_mode = ctx->current_mode &&
 					 ctx->current_mode->exynos_mode.is_lp_mode;
 		const bool is_lp_mode = pmode->exynos_mode.is_lp_mode;
+		bool state_changed = false;
 
 		if (is_lp_mode && funcs->set_lp_mode) {
 			funcs->set_lp_mode(ctx, pmode);
 			need_update_backlight = true;
 		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
 			funcs->set_nolp_mode(ctx, pmode);
-			exynos_panel_set_backlight_state(ctx, ctx->enabled ?
-							 PANEL_STATE_ON : PANEL_STATE_OFF);
+			state_changed = true;
 			need_update_backlight = true;
 		} else if (funcs->mode_set) {
 			funcs->mode_set(ctx, pmode);
-			if (ctx->bl)
+			state_changed = true;
+		}
+
+		ctx->current_mode = pmode;
+
+		if (state_changed) {
+			if (was_lp_mode)
+				exynos_panel_set_backlight_state(ctx, ctx->enabled ?
+								 PANEL_STATE_ON : PANEL_STATE_OFF);
+			else if (ctx->bl)
 				backlight_state_changed(ctx->bl);
 		}
+	} else {
+		ctx->current_mode = pmode;
 	}
-	ctx->current_mode = pmode;
 
 	if (ctx->enabled && !pmode->exynos_mode.is_lp_mode)
 		exynos_panel_update_te2(ctx);
