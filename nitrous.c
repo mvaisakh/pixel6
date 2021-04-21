@@ -20,6 +20,10 @@
 #include <misc/logbuffer.h>
 #include <linux/kfifo.h>
 #include <linux/slab.h>
+#include <soc/google/exynos-cpupm.h>
+
+#define STATUS_IDLE	1
+#define STATUS_BUSY	0
 
 #define NITROUS_AUTOSUSPEND_DELAY   	1000 /* autosleep delay 1000 ms */
 #define TIMESYNC_TIMESTAMP_MAX_QUEUE	16
@@ -52,6 +56,7 @@ struct nitrous_bt_lpm {
 	bool lpm_enabled;
 	struct nitrous_lpm_proc *proc;
 	struct logbuffer *log;
+	int idle_btip_index;
 };
 
 #define PROC_BTWAKE	0
@@ -91,6 +96,7 @@ static void nitrous_prepare_uart_tx_locked(struct nitrous_bt_lpm *lpm)
 
 	pm_runtime_get_sync(lpm->dev);
 	/* Shall be resumed here */
+	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
 	logbuffer_log(lpm->log, "uart_tx_locked");
 	pm_runtime_mark_last_busy(lpm->dev);
 	pm_runtime_put_autosuspend(lpm->dev);
@@ -115,6 +121,7 @@ static irqreturn_t nitrous_host_wake_isr(int irq, void *data)
 	}
 
 	pm_runtime_get(lpm->dev);
+	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
 	logbuffer_log(lpm->log, "host_wake_isr");
 	pm_runtime_mark_last_busy(lpm->dev);
 	pm_runtime_put_autosuspend(lpm->dev);
@@ -489,6 +496,7 @@ static int nitrous_rfkill_set_power(void *data, bool blocked)
 
 		dev_dbg(lpm->dev, "DEV_WAKE: High");
 		gpiod_set_value_cansleep(lpm->gpio_dev_wake, true);
+		exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
 	} else {
 		dev_dbg(lpm->dev, "DEV_WAKE: Low");
 		gpiod_set_value_cansleep(lpm->gpio_dev_wake, false);
@@ -496,6 +504,7 @@ static int nitrous_rfkill_set_power(void *data, bool blocked)
 		/* Power down the BT chip */
 		dev_dbg(lpm->dev, "REG_ON: Low");
 		logbuffer_log(lpm->log, "Power down BT chip");
+		exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_IDLE);
 		gpiod_set_value_cansleep(lpm->gpio_power, false);
 	}
 	lpm->rfkill_blocked = blocked;
@@ -560,13 +569,12 @@ static int nitrous_probe(struct platform_device *pdev)
 	struct nitrous_bt_lpm *lpm;
 	int rc = 0;
 
-	dev_dbg(lpm->dev, "nitrous_probe\n");
-
 	lpm = devm_kzalloc(dev, sizeof(struct nitrous_bt_lpm), GFP_KERNEL);
 	if (!lpm)
 		return -ENOMEM;
 
 	lpm->dev = dev;
+	dev_dbg(lpm->dev, "probe:\n");
 
 	if (device_property_read_u32(dev, "wake-polarity", &lpm->wake_polarity)) {
 		dev_warn(lpm->dev, "Wake polarity not in dev tree\n");
@@ -623,6 +631,9 @@ static int nitrous_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, lpm);
 
+	lpm->idle_btip_index = exynos_get_idle_ip_index("bluetooth");
+	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_IDLE);
+
 	logbuffer_log(lpm->log, "probe: successful");
 
 	return rc;
@@ -666,6 +677,7 @@ static int nitrous_suspend_device(struct device *dev)
 		(lpm->is_suspended ? "asleep" : "awake"));
 
 	nitrous_wake_controller(lpm, false);
+	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_IDLE);
 	lpm->is_suspended = true;
 
 	return 0;
@@ -681,6 +693,7 @@ static int nitrous_resume_device(struct device *dev)
 		(lpm->is_suspended ? "asleep" : "awake"));
 
 	nitrous_wake_controller(lpm, true);
+	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
 	lpm->is_suspended = false;
 
 	return 0;
