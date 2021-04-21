@@ -15,6 +15,9 @@
 #include <linux/atomic.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
 
 #include "audiometrics.h"
 
@@ -310,6 +313,10 @@ static long amcs_cdev_unlocked_ioctl(struct file *file, unsigned int cmd, unsign
 		return ret;
 	}
 
+	if (_IOC_TYPE(cmd) != AMCS_IOCTL_MAGIC) {
+		dev_err(&amcs_pdev->dev, "%s: cmd 0x%08x is not AMCS IOCTL\n", __func__, cmd);
+		return ret;
+	}
 
 	if (copy_from_user(&params, (struct amcs_params *)arg, _IOC_SIZE(cmd)))
 		return ret;
@@ -412,6 +419,20 @@ static long amcs_cdev_unlocked_ioctl(struct file *file, unsigned int cmd, unsign
 	return ret;
 }
 
+#ifdef CONFIG_COMPAT
+static long amcs_cdev_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	if (_IOC_TYPE(cmd) != AMCS_IOCTL_MAGIC) {
+		dev_err(&amcs_pdev->dev, "%s: cmd 0x%08x is not AMCS IOCTL\n", __func__, cmd);
+		return -ENOTTY;
+	}
+
+	return amcs_cdev_unlocked_ioctl(file, cmd, (unsigned long)compat_ptr(arg));
+}
+#else
+#define amcs_cdev_compat_ioctl NULL;
+#endif
+
 static char *amcs_devnode(struct device *dev, umode_t *mode)
 {
 	struct audiometrics_priv_type *priv = NULL;
@@ -462,6 +483,7 @@ static const struct file_operations amcs_fops = {
 	.open = amcs_cdev_open,
 	.release = amcs_cdev_release,
 	.unlocked_ioctl = amcs_cdev_unlocked_ioctl,
+	.compat_ioctl = amcs_cdev_compat_ioctl,
 
 	.owner = THIS_MODULE,
 };
