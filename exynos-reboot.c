@@ -73,7 +73,7 @@ static void exynos_power_off(void)
 			continue;
 		of_property_read_u32(pp, "linux,code", &keycode);
 		if (keycode == KEY_POWER) {
-			pr_info("%s: <%u>\n", __func__,  keycode);
+			pr_info("%s: <%u>\n", __func__, keycode);
 			power_gpio = of_get_gpio(pp, 0);
 			break;
 		}
@@ -93,16 +93,13 @@ static void exynos_power_off(void)
 			exynos_acpm_reboot();
 #endif
 			pr_emerg("Set PS_HOLD Low.\n");
-			ret = rmw_priv_reg(pmu_alive_base + shutdown_offset,
-					   shutdown_trigger, 0);
+			ret = rmw_priv_reg(pmu_alive_base + shutdown_offset, shutdown_trigger, 0);
 			/* TODO: remove following fallback. see b/169128860 */
 			if (ret)
-				regmap_update_bits(pmureg, shutdown_offset,
-						   shutdown_trigger, 0);
+				regmap_update_bits(pmureg, shutdown_offset, shutdown_trigger, 0);
 
 			++poweroff_try;
-			pr_emerg("Should not reach here! (poweroff_try:%d)\n",
-				 poweroff_try);
+			pr_emerg("Should not reach here! (poweroff_try:%d)\n", poweroff_try);
 		} else {
 			/*
 			 * if power button is not released,
@@ -133,7 +130,7 @@ static void exynos_reboot_mode_set(u32 val)
 		ret = gbms_storage_write(GBMS_TAG_RSBM, &reboot_mode, sizeof(reboot_mode));
 		if (ret < 0)
 			pr_err("%s(): failed to write gbms storage: %d(%d)\n", __func__,
-				GBMS_TAG_RSBM, ret);
+			       GBMS_TAG_RSBM, ret);
 	}
 }
 
@@ -172,16 +169,14 @@ static void exynos_reboot_parse(const char *cmd)
 	}
 }
 
-static int exynos_reboot_handler(struct notifier_block *nb,
-				  unsigned long mode, void *cmd)
+static int exynos_reboot_handler(struct notifier_block *nb, unsigned long mode, void *cmd)
 {
 	u32 data;
 	int ret;
 
 	ret = gbms_storage_read(GBMS_TAG_RSBM, &data, sizeof(data));
 	if (ret < 0)
-		pr_err("%s(): failed to read gbms storage: %d(%d)\n", __func__,
-			GBMS_TAG_RSBM, ret);
+		pr_err("%s(): failed to read gbms storage: %d(%d)\n", __func__, GBMS_TAG_RSBM, ret);
 
 	rsbm_supported = ret != -ENOENT;
 
@@ -258,49 +253,50 @@ static int exynos_reboot_probe(struct platform_device *pdev)
 	pmu_alive_base = res.start;
 
 	if (of_property_read_u32(np, "swreset-system-offset", &warm_reboot_offset) < 0) {
-		pr_err("failed to find swreset-system-offset property\n");
+		dev_err(dev, "failed to find swreset-system-offset property\n");
 		return -EINVAL;
 	}
 
 	if (of_property_read_u32(np, "swreset-system-trigger", &warm_reboot_trigger) < 0) {
-		pr_err("failed to find swreset-system-trigger property\n");
+		dev_err(dev, "failed to find swreset-system-trigger property\n");
 		return -EINVAL;
 	}
 
 	if (of_property_read_u32(np, "pshold-control-offset", &cold_reboot_offset) < 0) {
-		pr_err("failed to find pshold-control-offset property\n");
+		dev_err(dev, "failed to find pshold-control-offset property\n");
 		return -EINVAL;
 	}
 
-	if (of_property_read_u32(np, "pshold-control-trigger",
-				 &cold_reboot_trigger) < 0) {
-		pr_err("failed to find shutdown-trigger property\n");
+	if (of_property_read_u32(np, "pshold-control-trigger", &cold_reboot_trigger) < 0) {
+		dev_err(dev, "failed to find shutdown-trigger property\n");
 		return -EINVAL;
 	}
 
 	shutdown_offset = cold_reboot_offset;
 	shutdown_trigger = cold_reboot_trigger;
 
-	if (of_property_read_u32(np, "reboot-cmd-offset",
-				 &reboot_cmd_offset) < 0) {
-		pr_info("failed to find reboot-offset property, using default\n");
+	if (of_property_read_u32(np, "reboot-cmd-offset", &reboot_cmd_offset) < 0) {
+		dev_info(dev, "failed to find reboot-offset property, using default\n");
 		reboot_cmd_offset = EXYNOS_PMU_SYSIP_DAT0;
 	}
 
 	err = register_reboot_notifier(&exynos_reboot_nb);
-	if (err)
+	if (err) {
 		dev_err(dev, "cannot register reboot handler (err=%d)\n", err);
+		return err;
+	}
 
 	err = register_restart_handler(&exynos_restart_nb);
-	if (err)
+	if (err) {
 		dev_err(dev, "cannot register restart handler (err=%d)\n", err);
+		unregister_reboot_notifier(&exynos_reboot_nb);
+		return err;
+	}
 
 	pm_power_off = exynos_power_off;
+	dev_info(dev, "register restart handler successfully\n");
 
-	if (!err)
-		dev_info(dev, "register restart handler successfully\n");
-
-	return err;
+	return 0;
 }
 
 static const struct of_device_id exynos_reboot_of_match[] = {
