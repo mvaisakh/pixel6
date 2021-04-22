@@ -527,7 +527,11 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 /* Wrapper API for i2c read and write */
 int fts_read(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 {
-	return fts_read_internal(info, outBuf, byteToRead, false);
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_read_internal(info, outBuf, byteToRead, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_read_heap(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
@@ -538,8 +542,12 @@ int fts_read_heap(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 int fts_writeRead(struct fts_ts_info *info, u8 *cmd, int cmdLength, u8 *outBuf,
 		  int byteToRead)
 {
-	return fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
 					false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_writeRead_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength,
@@ -551,7 +559,11 @@ int fts_writeRead_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 
 int fts_write(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_write_internal(info, cmd, cmdLength, false);
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_write_internal(info, cmd, cmdLength, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_write_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
@@ -561,7 +573,11 @@ int fts_write_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 
 int fts_writeFwCmd(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_writeFwCmd_internal(info, cmd, cmdLength, false);
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_writeFwCmd_internal(info, cmd, cmdLength, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_writeFwCmd_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
@@ -573,9 +589,13 @@ int fts_writeThenWriteRead(struct fts_ts_info *info, u8 *writeCmd1,
 			   int writeCmdLength, u8 *readCmd1, int readCmdLength,
 			   u8 *outBuf, int byteToRead)
 {
-	return fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
 						readCmd1, readCmdLength,
 						outBuf, byteToRead, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_writeThenWriteRead_heap(struct fts_ts_info *info, u8 *writeCmd1,
@@ -603,6 +623,8 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 	u8 *finalCmd;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
+
+	mutex_lock(&info->io_mutex);
 
 	finalCmd = info->io_write_buf;
 
@@ -632,6 +654,7 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 					   toWrite) < OK) {
 				dev_err(info->dev, " %s: ERROR %08X\n",
 					 __func__, ERROR_BUS_W);
+				mutex_unlock(&info->io_mutex);
 				return ERROR_BUS_W;
 			}
 
@@ -642,6 +665,8 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 	} else
 		dev_err(info->dev, "%s: address size bigger than max allowed %lu... ERROR %08X\n",
 			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
+
+	mutex_unlock(&info->io_mutex);
 
 	return OK;
 }
@@ -668,6 +693,8 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
 
+	mutex_lock(&info->io_mutex);
+
 	finalCmd = info->io_write_buf;
 	buff = info->io_read_buf;
 
@@ -690,6 +717,7 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 					       buff, toRead + 1) < OK) {
 				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
+				mutex_unlock(&info->io_mutex);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff + 1, toRead);
@@ -698,6 +726,7 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 					       buff, toRead) < OK) {
 				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
+				mutex_unlock(&info->io_mutex);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff, toRead);
@@ -707,6 +736,8 @@ int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 
 		outBuf += toRead;
 	}
+
+	mutex_unlock(&info->io_mutex);
 
 	return OK;
 }
@@ -734,6 +765,8 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 	u8 *finalCmd2;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
+
+	mutex_lock(&info->io_mutex);
 
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
@@ -765,6 +798,7 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
 			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
+			mutex_unlock(&info->io_mutex);
 			return ERROR_BUS_W;
 		}
 
@@ -772,6 +806,7 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 				   < OK) {
 			dev_err(info->dev, "%s: second write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
+			mutex_unlock(&info->io_mutex);
 			return ERROR_BUS_W;
 		}
 
@@ -779,6 +814,8 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 
 		data += toWrite;
 	}
+
+	mutex_unlock(&info->io_mutex);
 
 	return OK;
 }
@@ -811,6 +848,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
 
+	mutex_lock(&info->io_mutex);
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
 	buff = info->io_read_buf;
@@ -841,6 +879,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
 			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
 				__func__, ERROR_BUS_W);
+			mutex_unlock(&info->io_mutex);
 			return ERROR_BUS_W;
 		}
 
@@ -849,6 +888,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 					       buff, toRead + 1) < OK) {
 				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
+				mutex_unlock(&info->io_mutex);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff + 1, toRead);
@@ -857,6 +897,7 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 					       buff, toRead) < OK) {
 				dev_err(info->dev, "%s: read error... ERROR %08X\n",
 					__func__, ERROR_BUS_WR);
+				mutex_unlock(&info->io_mutex);
 				return ERROR_BUS_WR;
 			}
 			memcpy(outBuf, buff, toRead);
@@ -866,6 +907,8 @@ int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 
 		outBuf += toRead;
 	}
+
+	mutex_unlock(&info->io_mutex);
 
 	return OK;
 }
