@@ -131,6 +131,9 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_60_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21),	/* manual mode */
 	EXYNOS_DSI_CMD_SEQ(0x60, 0x01),	/* 60hz */
 	EXYNOS_DSI_CMD0(freq_update),
+
+	/* Changeable TE */
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB9, 0x00),
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_60);
 
@@ -149,6 +152,12 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_120_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0xBD, 0x23),	/* auto mode */
 	EXYNOS_DSI_CMD_SEQ(0x60, 0x00),	/* 120 hz */
 	EXYNOS_DSI_CMD0(freq_update),
+
+	/* Fixed TE */
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB9, 0x41),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB0, 0x00, 0x06, 0xB9),
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1),
+						0xB9, 0x07, 0xBA, 0x07, 0xBA, 0x07, 0xF2),
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120);
 
@@ -214,7 +223,8 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x4F, 0xF2);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0x0D);
-	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB9, 0x00, option);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0xB9);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB9, option);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x14, 0xB9);
 	EXYNOS_DCS_WRITE_TABLE(ctx, width);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
