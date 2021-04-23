@@ -21,5 +21,8 @@
 #define ST21NFC_SET_POLARITY_HIGH     _IOR(ST21NFC_MAGIC, 0x05, unsigned int)
 #define ST21NFC_GET_POLARITY	      _IOR(ST21NFC_MAGIC, 0x07, unsigned int)
 #define ST21NFC_RECOVERY              _IOR(ST21NFC_MAGIC, 0x08, unsigned int)
+#define ST21NFC_CLK_ENABLE            _IOR(ST21NFC_MAGIC, 0x11, unsigned int)
+#define ST21NFC_CLK_DISABLE           _IOR(ST21NFC_MAGIC, 0x12, unsigned int)
+#define ST21NFC_CLK_STATE             _IOR(ST21NFC_MAGIC, 0x13, unsigned int)
 
 #endif

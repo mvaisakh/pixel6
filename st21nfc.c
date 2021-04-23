@@ -37,8 +37,9 @@
 #define IDLE_CHARACTER 0x7e
 #define ST21NFC_POWER_STATE_MAX 3
 #define WAKEUP_SRC_TIMEOUT		(2000)
+#define EXYNOS_CLK_MASK		0x01
 
-#define DRIVER_VERSION "2.0.16"
+#define DRIVER_VERSION "2.0.17"
 
 #define PROP_PWR_MON_RW_ON_NTF nci_opcode_pack(NCI_GID_PROPRIETARY, 5)
 #define PROP_PWR_MON_RW_OFF_NTF nci_opcode_pack(NCI_GID_PROPRIETARY, 6)
@@ -182,6 +183,20 @@ static int st21nfc_clock_deselect(struct st21nfc_device *st21nfc_dev)
 	return 0;
 }
 
+static void st21nfc_exynos_clk_control(struct st21nfc_device *st21nfc_dev,
+				       bool enable)
+{
+	if (st21nfc_dev->clk_pad) {
+		if (enable) {
+			exynos_pmu_update(st21nfc_dev->clk_pad, EXYNOS_CLK_MASK,
+					  1);
+		} else {
+			exynos_pmu_update(st21nfc_dev->clk_pad, EXYNOS_CLK_MASK,
+					  0);
+		}
+	}
+}
+
 static irqreturn_t st21nfc_clkreq_irq_handler(int irq, void *dev_id)
 {
 	struct st21nfc_device *st21nfc_dev = dev_id;
@@ -189,11 +204,10 @@ static irqreturn_t st21nfc_clkreq_irq_handler(int irq, void *dev_id)
 
 	if (st21nfc_dev->pinctrl_en) {
 		if (value)
-			exynos_pmu_update(st21nfc_dev->clk_pad, 1, 1);
+			st21nfc_exynos_clk_control(st21nfc_dev, true);
 		else
-			exynos_pmu_update(st21nfc_dev->clk_pad, 1, 0);
+			st21nfc_exynos_clk_control(st21nfc_dev, false);
 	}
-
 	return IRQ_HANDLED;
 }
 
@@ -552,10 +566,11 @@ static int st21nfc_dev_open(struct inode *inode, struct file *filp)
 
 	if (st21nfc_dev->device_open) {
 		ret = -EBUSY;
-		dev_err(&st21nfc_dev->client->dev,
-			"%s : device already opened ret= %d\n", __func__, ret);
 	} else {
 		st21nfc_dev->device_open = true;
+		if (st21nfc_dev->clk_pad) {
+			st21nfc_exynos_clk_control(st21nfc_dev, true);
+		}
 	}
 	return ret;
 }
@@ -568,6 +583,9 @@ static int st21nfc_release(struct inode *inode, struct file *file)
 						       st21nfc_device);
 
 	st21nfc_dev->device_open = false;
+	if (st21nfc_dev->clk_pad) {
+		st21nfc_exynos_clk_control(st21nfc_dev, false);
+	}
 	return 0;
 }
 
@@ -670,6 +688,20 @@ static long st21nfc_dev_ioctl(struct file *filp, unsigned int cmd,
 				"%s : gpiod_direction_input failed\n",
 				__func__);
 			ret = -ENODEV;
+		}
+		break;
+	case ST21NFC_CLK_ENABLE:
+		st21nfc_exynos_clk_control(st21nfc_dev, true);
+		break;
+	case ST21NFC_CLK_DISABLE:
+		st21nfc_exynos_clk_control(st21nfc_dev, false);
+		break;
+	case ST21NFC_CLK_STATE:
+		if (st21nfc_dev->clk_pad == 0 ||
+			exynos_pmu_read(st21nfc_dev->clk_pad, &ret) < 0) {
+			ret = -ENODEV;
+		} else {
+			ret &= EXYNOS_CLK_MASK;
 		}
 		break;
 	default:
@@ -1002,16 +1034,15 @@ static int st21nfc_probe(struct i2c_client *client,
 			}
 		}
 
-		/* Set clk_run when clock pinctrl already enabled */
-		if (st21nfc_dev->pinctrl_en != 0) {
-			if (device_property_read_u32(dev,
-						"pmu_clk_pad",
-						&st21nfc_dev->clk_pad)) {
-				dev_err(dev,
-					"%s : PMU_CLKOUT_PAD offset is unset\n",
-					__func__);
-				st21nfc_dev->pinctrl_en = 0;
-			}
+		/* Get clk_pad value*/
+		if (device_property_read_u32(dev,
+					"pmu_clk_pad",
+					&st21nfc_dev->clk_pad)) {
+			dev_err(dev,
+				"%s : PMU_CLKOUT_PAD offset is unset\n",
+				__func__);
+			st21nfc_dev->clk_pad = 0;
+			st21nfc_dev->pinctrl_en = 0;
 		}
 
 		ret = st21nfc_clock_select(st21nfc_dev);
