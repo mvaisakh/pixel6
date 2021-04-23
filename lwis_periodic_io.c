@@ -178,12 +178,14 @@ static int process_io_entries(struct lwis_client *client,
 						   /*use_write_barrier=*/true);
 	}
 
+	mutex_lock(&lwis_dev->reg_rw_lock);
+
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, /*non_blocking=*/false,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
@@ -195,7 +197,7 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->io_result.offset = entry->rw.offset;
 			io_result->io_result.num_value_bytes = reg_value_bytewidth;
 			io_result->timestamp_ns = ktime_to_ns(lwis_get_time());
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, /*non_blocking=*/false,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
@@ -211,7 +213,7 @@ static int process_io_entries(struct lwis_client *client,
 			io_result->io_result.num_value_bytes = entry->rw_batch.size_in_bytes;
 			entry->rw_batch.buf = io_result->io_result.values;
 			io_result->timestamp_ns = ktime_to_ns(lwis_get_time());
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, /*non_blocking=*/false,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
@@ -226,7 +228,7 @@ static int process_io_entries(struct lwis_client *client,
 				goto event_push;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
-			ret = lwis_entry_read_assert(lwis_dev, entry, /*non_blocking=*/false);
+			ret = lwis_entry_read_assert(lwis_dev, entry);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -241,6 +243,7 @@ static int process_io_entries(struct lwis_client *client,
 	resp->batch_size = periodic_io->batch_count;
 
 event_push:
+	mutex_unlock(&lwis_dev->reg_rw_lock);
 	/* Use read memory barrier at the beginning of I/O entries if the access protocol
 	 * allows it */
 	if (lwis_dev->vops.register_io_barrier != NULL) {

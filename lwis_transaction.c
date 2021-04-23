@@ -76,7 +76,7 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry, b
 	val = ~entry->read_assert.val;
 	start = ktime_to_ms(lwis_get_time());
 	while (val != entry->read_assert.val) {
-		ret = lwis_entry_read_assert(lwis_dev, entry, non_blocking);
+		ret = lwis_entry_read_assert(lwis_dev, entry);
 		if (ret == 0) {
 			break;
 		}
@@ -91,13 +91,12 @@ int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry, b
 	return ret;
 }
 
-int lwis_entry_read_assert(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-			   bool non_blocking)
+int lwis_entry_read_assert(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
 {
 	uint64_t val;
 	int ret = 0;
 
-	ret = lwis_device_single_register_read(lwis_dev, non_blocking, entry->read_assert.bid,
+	ret = lwis_device_single_register_read(lwis_dev, entry->read_assert.bid,
 					       entry->read_assert.offset, &val,
 					       lwis_dev->native_value_bitwidth);
 	if (ret) {
@@ -168,27 +167,32 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 						   /*use_read_barrier=*/false,
 						   /*use_write_barrier=*/true);
 	}
+
+	if (!in_irq) {
+		mutex_lock(&lwis_dev->reg_rw_lock);
+	}
+
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, in_irq,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
-				goto event_push;
+				break;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ) {
 			io_result = (struct lwis_io_result *)read_buf;
 			io_result->bid = entry->rw.bid;
 			io_result->offset = entry->rw.offset;
 			io_result->num_value_bytes = reg_value_bytewidth;
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, in_irq,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
-				goto event_push;
+				break;
 			}
 			memcpy(io_result->values, &entry->rw.val, reg_value_bytewidth);
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
@@ -198,35 +202,39 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			io_result->offset = entry->rw_batch.offset;
 			io_result->num_value_bytes = entry->rw_batch.size_in_bytes;
 			entry->rw_batch.buf = io_result->values;
-			ret = lwis_dev->vops.register_io(lwis_dev, entry, in_irq,
+			ret = lwis_dev->vops.register_io(lwis_dev, entry,
 							 lwis_dev->native_value_bitwidth);
 			if (ret) {
 				resp->error_code = ret;
-				goto event_push;
+				break;
 			}
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
 			ret = lwis_entry_poll(lwis_dev, entry, in_irq);
 			if (ret) {
 				resp->error_code = ret;
-				goto event_push;
+				break;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
-			ret = lwis_entry_read_assert(lwis_dev, entry, in_irq);
+			ret = lwis_entry_read_assert(lwis_dev, entry);
 			if (ret) {
 				resp->error_code = ret;
-				goto event_push;
+				break;
 			}
 		} else {
 			dev_err(lwis_dev->dev, "Unrecognized io_entry command\n");
 			resp->error_code = -EINVAL;
-			goto event_push;
+			break;
 		}
 		resp->completion_index = i;
 	}
+
+	if (!in_irq) {
+		mutex_unlock(&lwis_dev->reg_rw_lock);
+	}
+
 	process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
 
-event_push:
 	/* Use read memory barrier at the end of I/O entries if the access protocol
 	 * allows it */
 	if (lwis_dev->vops.register_io_barrier != NULL) {

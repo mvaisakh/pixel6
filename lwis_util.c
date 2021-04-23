@@ -13,8 +13,8 @@
 #include "lwis_util.h"
 #include "lwis_device.h"
 
-int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				      uint64_t offset, uint64_t value, int access_size)
+int lwis_device_single_register_write(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				      uint64_t value, int access_size)
 {
 	int ret = 0;
 	struct lwis_io_entry entry = {};
@@ -38,7 +38,7 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blo
 		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/false,
 						   /*use_write_barrier=*/true);
 	}
-	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking, access_size);
+	ret = lwis_dev->vops.register_io(lwis_dev, &entry, access_size);
 	if (ret) {
 		dev_err(lwis_dev->dev,
 			"Register write bid %d offset 0x%llx value 0x%llx failed: %d", bid, offset,
@@ -47,8 +47,8 @@ int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blo
 	return ret;
 }
 
-int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				     uint64_t offset, uint64_t *value, int access_size)
+int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				     uint64_t *value, int access_size)
 {
 	int ret = -EINVAL;
 	struct lwis_io_entry entry = {};
@@ -58,8 +58,7 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_bloc
 		return -ENODEV;
 	}
 	if (lwis_dev->vops.register_io == NULL) {
-		dev_err(lwis_dev->dev,
-			"lwis_device_single_register_read: register_io undefined\n");
+		dev_err(lwis_dev->dev, "lwis_device_single_register_read: register_io undefined\n");
 		return -EINVAL;
 	}
 
@@ -67,7 +66,7 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_bloc
 	entry.rw.offset = offset;
 	entry.rw.bid = bid;
 
-	ret = lwis_dev->vops.register_io(lwis_dev, &entry, non_blocking, access_size);
+	ret = lwis_dev->vops.register_io(lwis_dev, &entry, access_size);
 	if (lwis_dev->vops.register_io_barrier) {
 		lwis_dev->vops.register_io_barrier(lwis_dev, /*use_read_barrier=*/true,
 						   /*use_write_barrier=*/false);

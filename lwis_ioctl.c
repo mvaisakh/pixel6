@@ -191,8 +191,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, false,
-					 lwis_dev->native_value_bitwidth);
+	ret = lwis_dev->vops.register_io(lwis_dev, read_entry, lwis_dev->native_value_bitwidth);
 	if (ret) {
 		dev_err_ratelimited(lwis_dev->dev, "Failed to read registers\n");
 		goto reg_read_exit;
@@ -255,8 +254,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 		return -EINVAL;
 	}
 
-	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, false,
-					 lwis_dev->native_value_bitwidth);
+	ret = lwis_dev->vops.register_io(lwis_dev, write_entry, lwis_dev->native_value_bitwidth);
 	if (ret) {
 		dev_err_ratelimited(lwis_dev->dev, "Failed to write registers\n");
 	}
@@ -272,8 +270,7 @@ static int register_modify(struct lwis_device *lwis_dev, struct lwis_io_entry *m
 {
 	int ret = 0;
 
-	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, false,
-					 lwis_dev->native_value_bitwidth);
+	ret = lwis_dev->vops.register_io(lwis_dev, modify_entry, lwis_dev->native_value_bitwidth);
 	if (ret) {
 		dev_err_ratelimited(lwis_dev->dev, "Failed to read registers for modify\n");
 	}
@@ -330,6 +327,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 						   /*use_read_barrier=*/false,
 						   /*use_write_barrier=*/true);
 	}
+	mutex_lock(&lwis_dev->reg_rw_lock);
 	for (i = 0; i < num_io_entries; i++) {
 		switch (io_entries[i].type) {
 		case LWIS_IO_ENTRY_MODIFY:
@@ -347,8 +345,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 			ret = lwis_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
 			break;
 		case LWIS_IO_ENTRY_READ_ASSERT:
-			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i],
-						     /*non_blocking=*/false);
+			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i]);
 			break;
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
@@ -360,6 +357,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 		}
 	}
 exit:
+	mutex_unlock(&lwis_dev->reg_rw_lock);
 	/* Use read memory barrier at the end of I/O entries if the access protocol
 	 * allows it */
 	if (lwis_dev->vops.register_io_barrier != NULL) {

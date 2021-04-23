@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
+#include <linux/preempt.h>
 #include <linux/slab.h>
 
 #include "lwis_i2c.h"
@@ -39,7 +40,7 @@ static struct mutex i2c_lock;
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size);
+				int access_size);
 
 static struct lwis_device_subclass_operations i2c_vops = {
 	.register_io = lwis_i2c_register_io,
@@ -95,10 +96,10 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 }
 
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size)
+				int access_size)
 {
-	/* I2C does not currently support non-blocking calls at all */
-	if (non_blocking) {
+	/* Running in interrupt context is not supported as i2c driver might sleep */
+	if (in_interrupt()) {
 		return -EAGAIN;
 	}
 	return lwis_i2c_io_entry_rw((struct lwis_i2c_device *)lwis_dev, entry);

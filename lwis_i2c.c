@@ -188,9 +188,7 @@ static int i2c_read(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t *valu
 	msg[1].len = value_bytes;
 	msg[1].buf = rbuf;
 
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_read_transfer(client, msg, offset, offset_bytes);
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	if (ret) {
 		dev_err(i2c->base_dev.dev, "I2C Read failed: Offset 0x%llx (%d)\n", offset, ret);
@@ -247,9 +245,7 @@ static int i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t valu
 	msg.buf = buf;
 	msg.len = msg_bytes;
 
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_write_transfer(client, &msg, offset, offset_bytes, value_bytes, value);
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	if (ret) {
 		dev_err(i2c->base_dev.dev, "I2C Write failed: Offset 0x%llx Value 0x%llx (%d)\n",
@@ -299,9 +295,7 @@ static int i2c_read_batch(struct lwis_i2c_device *i2c, uint64_t start_offset, ui
 	msg[1].len = read_buf_size;
 	msg[1].buf = read_buf;
 
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_read_transfer(client, msg, start_offset, offset_bytes);
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	if (ret) {
 		dev_err(i2c->base_dev.dev, "I2C Read Batch failed: Start Offset 0x%llx (%d)\n",
@@ -346,10 +340,8 @@ static int i2c_write_batch(struct lwis_i2c_device *i2c, uint64_t start_offset, u
 	msg.buf = buf;
 	msg.len = msg_bytes;
 
-	mutex_lock(&i2c->base_dev.reg_rw_lock);
 	ret = perform_write_batch_transfer(client, &msg, start_offset, offset_bytes, write_buf_size,
 					   write_buf);
-	mutex_unlock(&i2c->base_dev.reg_rw_lock);
 
 	if (ret) {
 		dev_err(i2c->base_dev.dev, "I2C Write Batch failed: Start Offset 0x%llx (%d)\n",

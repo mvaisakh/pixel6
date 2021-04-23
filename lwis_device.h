@@ -75,7 +75,7 @@ struct lwis_core {
 struct lwis_device_subclass_operations {
 	/* Called by lwis_device when device register needs to be read/written */
 	int (*register_io)(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-			   bool non_blocking, int access_size);
+			   int access_size);
 	/* Called by lwis_device when a read/write memory barrier needs to be inserted */
 	int (*register_io_barrier)(struct lwis_device *lwis_dev, bool use_read_barrier,
 				   bool use_write_barrier);

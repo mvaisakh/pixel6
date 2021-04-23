@@ -25,32 +25,26 @@ struct lwis_device;
  * write a single register for a given bid, offset and value on any device
  * that supports register writes.
  *
- * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
- * true when called with IRQs disabled, or from an ISR)
- *
  * Returns: 0 on success
  * -EAGAIN if non_blocking is true and the operation would need to block
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				      uint64_t offset, uint64_t value, int access_size);
+int lwis_device_single_register_write(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				      uint64_t value, int access_size);
 
 /*
  * lwis_device_single_register_read: A utility function that allows you to
  * read a single register for a given bid, offset and value on any device
  * that supports register reads.
  *
- * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
- * true when called with IRQs disabled, or from an ISR)
- *
  * Returns: 0 on success
  * -EAGAIN if non_blocking is true and the operation would need to block
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				     uint64_t offset, uint64_t *value, int access_size);
+int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				     uint64_t *value, int access_size);
 
 /*
  * lwis_device_type_to_string: Converts the LWIS device type into a human-

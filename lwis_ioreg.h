@@ -50,7 +50,7 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name);
  *  lwis_ioreg_io_entry_rw: Read/write registers via io_entry request.
  */
 int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_entry *entry,
-			   bool non_blocking, int access_size);
+			   int access_size);
 
 /*
  *  lwis_ioreg_read: Read single register.

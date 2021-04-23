@@ -28,7 +28,7 @@
 #define LWIS_DRIVER_NAME "lwis-top"
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size);
+				int access_size);
 static int lwis_top_close(struct lwis_device *lwis_dev);
 static struct lwis_device_subclass_operations top_vops = {
 	.register_io = lwis_top_register_io,
@@ -273,7 +273,7 @@ static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev)
 }
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size)
+				int access_size)
 {
 	struct lwis_top_device *top_dev = (struct lwis_top_device *)lwis_dev;
 	struct lwis_io_entry_rw_batch *rw_batch;
