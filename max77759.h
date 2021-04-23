@@ -17,6 +17,7 @@
 #define MAX77759_H_
 
 #include <linux/i2c.h>
+#include <linux/interrupt.h>
 
 #define SCNPRINTF(...) scnprintf(__VA_ARGS__)
 #include "max77759_regs.h"
