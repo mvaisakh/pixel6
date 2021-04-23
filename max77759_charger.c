@@ -737,6 +737,13 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 	if (ret < 0)
 		return -EIO;
 
+	/* re-enable wlc IC if disabled */
+	if (from_uc == GSU_MODE_WLC_TX) {
+		ret = gs101_wlc_en(uc_data, true);
+		if (ret < 0)
+			return ret;
+	}
+
 	uc_data->use_case = GSU_MODE_STANDBY;
 	return ret;
 }
