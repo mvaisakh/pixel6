@@ -14,8 +14,10 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
+#include <linux/of_irq.h>
+#include <linux/interrupt.h>
 #include <linux/regmap.h>
-#include "max20339.h"
 
 #define MAX20339_STATUS1			0x1
 #define MAX20339_STATUS1_VINVALID		BIT(5)
@@ -73,6 +75,7 @@ struct max20339_ovp {
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
 #endif
+	int irq_gpio;
 };
 
 static const struct regmap_range max20339_ovp_range[] = {
@@ -91,17 +94,20 @@ static const struct regmap_config max20339_regmap_config = {
 	.wr_table = &max20339_ovp_write_table,
 };
 
-void max20339_irq(void *data)
+static irqreturn_t max20339_irq(int irqno, void *data)
 {
 	struct max20339_ovp *ovp = data;
 	struct device *dev;
 	u8 buf[6];
 	int ret;
 
+	/* not really possible now */
 	if (!ovp)
-		return;
+		return IRQ_NONE;
 
 	wake_up_all(&ovp->gpio_get_wq);
+
+	/* TODO: check the actual status and return IRQ_NONE if none is set */
 
 	dev = &ovp->client->dev;
 	ret = regmap_bulk_read(ovp->regmap, MAX20339_STATUS1, buf, ARRAY_SIZE(buf));
@@ -111,8 +117,9 @@ void max20339_irq(void *data)
 			 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
 	else
 		dev_err(dev, "OVP TRIGGERED: Failed on reading status:%d\n", ret);
+
+	return IRQ_HANDLED;
 }
-EXPORT_SYMBOL_GPL(max20339_irq);
 
 static int max20339_init_regs(struct regmap *regmap, struct device *dev)
 {
@@ -328,19 +335,48 @@ static void max20339_gpio_set(struct gpio_chip *chip,
 }
 #endif
 
+/* HACK: will make max77729_pmic an interrupt controller and use the irq */
+static int max20339_setup_irq(struct max20339_ovp *ovp)
+{
+	struct device *dev = &ovp->client->dev;
+	int ret = -EINVAL;
+
+	ovp->irq_gpio = of_get_named_gpio(dev->of_node, "max20339,irq-gpio", 0);
+	if (ovp->irq_gpio < 0) {
+		dev_err(dev, "failed to get irq-gpio (%d)\n", ovp->irq_gpio);
+	} else {
+		const int irq = gpio_to_irq(ovp->irq_gpio);
+
+		ret = devm_request_threaded_irq(dev, irq, NULL,
+						max20339_irq,
+						IRQF_TRIGGER_FALLING |
+						IRQF_SHARED |
+						IRQF_ONESHOT,
+						"max2339_ovp",
+						ovp);
+
+		dev_err(dev, "ovp->irq_gpio=%d found irq=%d registered %d\n",
+			ovp->irq_gpio, irq, ret);
+	}
+
+	/* Read to clear interrupts */
+	max20339_irq(-1, ovp);
+
+	return ret;
+}
+
 static int max20339_probe(struct i2c_client *client,
 			  const struct i2c_device_id *i2c_id)
 {
 	struct max20339_ovp *ovp;
-	int ret = 0;
+	int rc, ret = 0;
 
 	ovp = devm_kzalloc(&client->dev, sizeof(*ovp), GFP_KERNEL);
 	if (!ovp)
 		return -ENOMEM;
 
 	ovp->client = client;
-	ovp->regmap = devm_regmap_init_i2c(client,
-					   &max20339_regmap_config);
+	ovp->regmap = devm_regmap_init_i2c(client, &max20339_regmap_config);
 	if (IS_ERR(ovp->regmap)) {
 		dev_err(&client->dev, "Regmap init failed\n");
 		return PTR_ERR(ovp->regmap);
@@ -349,9 +385,6 @@ static int max20339_probe(struct i2c_client *client,
 	max20339_init_regs(ovp->regmap, &client->dev);
 	i2c_set_clientdata(client, ovp);
 	init_waitqueue_head(&ovp->gpio_get_wq);
-
-	/* Read to clear interrupts */
-	max20339_irq(ovp);
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	/* Setup GPIO controller */
@@ -374,6 +407,10 @@ static int max20339_probe(struct i2c_client *client,
 	if (ret)
 		dev_err(&client->dev, "Failed to initialize gpio chip\n");
 #endif
+
+	rc = max20339_setup_irq(ovp);
+	if (rc < 0)
+		dev_err(&client->dev, "Init IRQ failed (%d)\n", rc);
 
 	return ret;
 }
