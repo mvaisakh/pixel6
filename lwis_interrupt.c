@@ -126,7 +126,9 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	struct lwis_single_event_info *event;
 	struct list_head *p;
 	uint64_t source_value, reset_value = 0;
+#ifdef LWIS_INTERRUPT_DEBUG
 	uint64_t mask_value;
+#endif
 	unsigned long flags;
 
 	/* Read the mask register */
@@ -173,6 +175,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	}
 	spin_unlock_irqrestore(&irq->lock, flags);
 
+#ifdef LWIS_INTERRUPT_DEBUG
 	/* Make sure the number of interrupts triggered matches the number of
 	 * events processed */
 	if (source_value != reset_value) {
@@ -193,6 +196,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 				irq->name, mask_value, source_value, reset_value);
 		}
 	}
+#endif
 error:
 	return IRQ_HANDLED;
 }
