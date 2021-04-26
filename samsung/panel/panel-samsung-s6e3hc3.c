@@ -10,12 +10,99 @@
  */
 
 #include <drm/drm_vblank.h>
+#include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <video/mipi_display.h>
 #include <trace/dpu_trace.h>
 
 #include "panel-samsung-drv.h"
+
+/**
+ * struct s6e3hc3_panel - panel specific runtime info
+ *
+ * This struct maintains s6e3hc3 panel specific runtime info, any fixed details about panel should
+ * most likely go into struct exynos_panel_desc
+ */
+struct s6e3hc3_panel {
+	/** @base: base panel struct */
+	struct exynos_panel base;
+
+	/** @early_exit_enabled: indicates whether panel is currently in early exit mode */
+	int early_exit_enabled;
+};
+
+#define to_spanel(ctx) container_of(ctx, struct s6e3hc3_panel, base)
+
+/**
+ * struct s6e3hc3_mode_data - panel mode specific details
+ *
+ * This struct maintains panel mode specific details used to help with transitions between
+ * different panel modes/refresh rates.
+ */
+struct s6e3hc3_mode_data {
+	/**
+	 * @auto_mode_cmd_set:
+	 *
+	 * This cmd set is sent to panel during mode switch to enable auto mode. This mode is
+	 * typically enabled when driver is allowed to change modes while idle. In this mode, the
+	 * panel will automatically drop down to lowest refresh rate when it becomes idle (no user
+	 * updates) without any sw/user involvement.
+	 *
+	 * If auto mode is being enabled, then we also assume early exit is also enabled in order to
+	 * get out of low refresh rate with minimal latency.
+	 *
+	 * If auto mode is not supported for a particular mode, then idle/wakeup cmd sets should be
+	 * defined to go into a lower refresh rate when sw detects idleness.
+	 */
+	const struct exynos_dsi_cmd_set *auto_mode_cmd_set;
+
+	/**
+	 * @manual_mode_cmd_set:
+	 *
+	 * This cmd set is sent to panel during mode switch to enable manual mode. This mode is
+	 * typically enabled when driver is not allowed to change modes while idle. In this mode,
+	 * the panel should remain in this mode (regardless of idleness) until we indicate
+	 * otherwise.
+	 *
+	 * If auto mode cmd set is defined, then manual mode cmd set should also be defined.
+	 */
+	const struct exynos_dsi_cmd_set *manual_mode_cmd_set;
+
+	/**
+	 * @common_mode_cmd_set:
+	 *
+	 * This cmd set is sent to panel for every mode switch after either manual or auto mode are
+	 * sent to panel.
+	 *
+	 * If manual or auto mode cmd sets are not supported, then this cmd set MUST be defined.
+	 * Otherwise if manual/auto mode cmd sets are defined this is optional.
+	 */
+	const struct exynos_dsi_cmd_set *common_mode_cmd_set;
+
+	/**
+	 * @idle_mode_cmd_set:
+	 *
+	 * When driver is allowed to change modes while idle, this function will be called when
+	 * display is going into self refresh (i.e. going idle) to go into lowest possible mode.
+	 *
+	 * This function is expected to be defined if auto mode cmd set is not defined, otherwise
+	 * this is optional.
+	 */
+	const struct exynos_dsi_cmd_set *idle_mode_cmd_set;
+
+	/**
+	 * @wakeup_mode_cmd_set:
+	 *
+	 * When driver is allowed to change modes while idle, this function will be called when
+	 * display is coming out of self refresh (i.e. waking up after idle) to go back to expected
+	 * operating mode/refresh rate.
+	 *
+	 * This function is expected be defined if idle mode cmd set is defined in order to revert
+	 * optimizations done while entering idle.
+	 */
+	const struct exynos_dsi_cmd_set *wakeup_mode_cmd_set;
+};
 
 static const unsigned char PPS_SETTING[] = {
 	0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x0C, 0x30,
@@ -119,48 +206,83 @@ static const struct exynos_binned_lp s6e3hc3_binned_lp[] = {
 	BINNED_LP_MODE_TIMING("high", 2047, s6e3hc3_lp_high_cmds, 0, 48)
 };
 
-static const struct exynos_dsi_cmd s6e3hc3_mode_60_cmds[] = {
-	/* disable fast exit */
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82),
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x10, 0xBD),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x00),
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x21, 0xBD),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x03, 0x00, 0x09, 0x00, 0x21, 0x00, 0x21, 0x00, 0x21, 0x00, 0x21,
-			   0x00, 0x21, 0x00, 0x00, 0x00, 0x03, 0x00, 0x06, 0x00, 0x09, 0x00, 0x0C,
-			   0x00, 0x0F, 0x00, 0x0F, 0x00, 0x0F),
+static const u8 early_exit_global_para[] = { 0xB0, 0x00, 0x10, 0xBD };
+static const u8 early_exit_step_global_para[] = { 0xB0, 0x00, 0x21, 0xBD };
 
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21),	/* manual mode */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x01),	/* 60hz */
-	EXYNOS_DSI_CMD0(freq_update),
-
+static const struct exynos_dsi_cmd s6e3hc3_early_exit_disable_cmds[] = {
 	/* Changeable TE */
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB9, 0x00),
+
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82),
+	EXYNOS_DSI_CMD0(early_exit_global_para),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x00),
+	EXYNOS_DSI_CMD0(early_exit_step_global_para),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x03, 0x00, 0x09, 0x00, 0x21, 0x00, 0x21, 0x00,
+				 0x21, 0x00, 0x21, 0x00, 0x21, 0x00, 0x00, 0x00,
+				 0x03, 0x00, 0x06, 0x00, 0x09, 0x00, 0x0C, 0x00,
+				 0x0F, 0x00, 0x0F, 0x00, 0x0F),
 };
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_60);
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_early_exit_disable);
 
-static const struct exynos_dsi_cmd s6e3hc3_mode_120_cmds[] = {
-	/* enable fast exit */
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x02),
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x10, 0xBD),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x10),
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x21, 0xBD),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x01, 0x00, 0x03, 0x00, 0x0B, 0x00, 0x0B, 0x00, 0x0B, 0x00, 0x0B,
-			   0x00, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-			   0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x00, 0x12, 0xBD),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x01, 0x00, 0x0B, 0x00, 0x03, 0x01), /* 10hz step setting */
-
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x23),	/* auto mode */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x00),	/* 120 hz */
-	EXYNOS_DSI_CMD0(freq_update),
-
+static const struct exynos_dsi_cmd s6e3hc3_early_exit_enable_cmds[] = {
 	/* Fixed TE */
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB9, 0x41),
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB0, 0x00, 0x06, 0xB9),
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1),
 						0xB9, 0x07, 0xBA, 0x07, 0xBA, 0x07, 0xF2),
+
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x02),
+	EXYNOS_DSI_CMD0(early_exit_global_para),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x10),
+	EXYNOS_DSI_CMD0(early_exit_step_global_para),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x01, 0x00, 0x03, 0x00, 0x0B, 0x00, 0x0B, 0x00,
+				 0x0B, 0x00, 0x0B, 0x00, 0x0B, 0x00, 0x00, 0x00,
+				 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				 0x00, 0x00, 0x00, 0x00, 0x00),
 };
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120);
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_early_exit_enable);
+
+static const u8 auto_step_global_para[] = { 0xB0, 0x00, 0x12, 0xBD };
+static const u8 auto_step_10hz[] = { 0xBD, 0x01, 0x00, 0x0B, 0x00, 0x03, 0x01 };
+static const u8 auto_mode[] = { 0xBD, 0x23 };
+static const u8 manual_mode[] = { 0xBD, 0x21 };
+static const u8 mode_set_120hz[] = { 0x60, 0x00 };
+static const u8 mode_set_60hz[] = { 0x60, 0x01 };
+
+static const struct exynos_dsi_cmd s6e3hc3_mode_120_auto_cmds[] = {
+	EXYNOS_DSI_CMD0(auto_step_global_para),
+	EXYNOS_DSI_CMD0(auto_step_10hz),
+
+	EXYNOS_DSI_CMD0(auto_mode),
+	EXYNOS_DSI_CMD0(mode_set_120hz),
+	EXYNOS_DSI_CMD0(freq_update),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_auto);
+
+static const struct exynos_dsi_cmd s6e3hc3_mode_120_manual_cmds[] = {
+	EXYNOS_DSI_CMD0(manual_mode),
+	EXYNOS_DSI_CMD0(mode_set_120hz),
+	EXYNOS_DSI_CMD0(freq_update),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_manual);
+
+static const struct s6e3hc3_mode_data s6e3hc3_mode_120 = {
+	.auto_mode_cmd_set = &s6e3hc3_mode_120_auto_cmd_set,
+	.manual_mode_cmd_set = &s6e3hc3_mode_120_manual_cmd_set,
+};
+
+static const struct exynos_dsi_cmd s6e3hc3_mode_60_common_cmds[] = {
+	EXYNOS_DSI_CMD0(manual_mode),
+	EXYNOS_DSI_CMD0(mode_set_60hz),
+	EXYNOS_DSI_CMD0(freq_update),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_60_common);
+
+static const struct s6e3hc3_mode_data s6e3hc3_mode_60 = {
+	.common_mode_cmd_set = &s6e3hc3_mode_60_common_cmd_set,
+	.idle_mode_cmd_set = &s6e3hc3_mode_120_auto_cmd_set,
+	.wakeup_mode_cmd_set = &s6e3hc3_mode_60_common_cmd_set,
+};
 
 static u8 s6e3hc3_get_te2_option(struct exynos_panel *ctx)
 {
@@ -234,20 +356,59 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 static void s6e3hc3_change_frequency(struct exynos_panel *ctx,
 				     const struct exynos_panel_mode *pmode)
 {
-	const struct exynos_dsi_cmd_set *mode_cmd_set;
+	const struct s6e3hc3_mode_data *mdata;
+	struct s6e3hc3_panel *spanel = to_spanel(ctx);
+	const bool auto_mode_preferred = ctx->panel_idle_enabled;
 
 	if (unlikely(!ctx))
 		return;
 
-	mode_cmd_set = pmode->priv_data;
-	if (!mode_cmd_set)
+	mdata = pmode->priv_data;
+	if (unlikely(!mdata))
 		return;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
-	exynos_panel_send_cmd_set(ctx, mode_cmd_set);
+	if (auto_mode_preferred && mdata->auto_mode_cmd_set) {
+		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_enable_cmd_set);
+		spanel->early_exit_enabled = true;
+
+		exynos_panel_send_cmd_set(ctx, mdata->auto_mode_cmd_set);
+	} else {
+		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_disable_cmd_set);
+		spanel->early_exit_enabled = false;
+
+		if (mdata->manual_mode_cmd_set)
+			exynos_panel_send_cmd_set(ctx, mdata->manual_mode_cmd_set);
+	}
+
+	if (mdata->common_mode_cmd_set)
+		exynos_panel_send_cmd_set(ctx, mdata->common_mode_cmd_set);
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 
 	dev_dbg(ctx->dev, "%s: change to %uhz\n", __func__, drm_mode_vrefresh(&pmode->mode));
+}
+
+static void s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
+{
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
+	const struct s6e3hc3_mode_data *mdata;
+	const struct exynos_dsi_cmd_set *cmdset;
+
+	if (unlikely(!pmode))
+		return;
+
+	mdata = pmode->priv_data;
+	if (unlikely(!mdata))
+		return;
+
+	cmdset = enable ? mdata->idle_mode_cmd_set : mdata->wakeup_mode_cmd_set;
+	if (cmdset) {
+		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+		exynos_panel_send_cmd_set(ctx, cmdset);
+		EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+
+		dev_dbg(ctx->dev, "%s: %s (%d)\n", __func__, pmode->mode.name, enable);
+	}
 }
 
 static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
@@ -353,31 +514,47 @@ static int s6e3hc3_enable(struct drm_panel *panel)
  */
 #define EARLY_EXIT_THRESHOLD_US 17000
 
+/**
+ * s6e3hc3_trigger_early_exit - trigger early exit command to panel
+ * @ctx: panel struct
+ *
+ * Sends a command to panel to indicate a frame is about to come in case its been a while since the
+ * last frame update and auto mode may have started to take effect and lowering refresh rate
+ */
+static void s6e3hc3_trigger_early_exit(struct exynos_panel *ctx)
+{
+	const ktime_t delta = ktime_sub(ktime_get(), ctx->last_commit_ts);
+	const s64 delta_us = ktime_to_us(delta);
+
+	if (delta_us < EARLY_EXIT_THRESHOLD_US) {
+		dev_dbg(ctx->dev, "skip early exit. %lldus since last commit\n",
+			delta_us);
+		return;
+	}
+
+	dev_dbg(ctx->dev, "sending early exit out cmd\n");
+
+	DPU_ATRACE_BEGIN(__func__);
+	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+	EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
+	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+	DPU_ATRACE_END(__func__);
+}
+
 static void s6e3hc3_commit_done(struct exynos_panel *ctx)
 {
-	if (!ctx->enabled)
+	const struct s6e3hc3_mode_data *mdata;
+	const struct s6e3hc3_panel *spanel = to_spanel(ctx);
+
+	if (!ctx->enabled || !ctx->current_mode)
 		return;
 
-	if (ctx->current_mode->priv_data == &s6e3hc3_mode_120_cmd_set) {
-		const ktime_t delta = ktime_sub(ktime_get(), ctx->last_commit_ts);
-		const s64 delta_us = ktime_to_us(delta);
+	mdata = ctx->current_mode->priv_data;
+	if (!mdata)
+		return;
 
-		if (delta_us < EARLY_EXIT_THRESHOLD_US) {
-			dev_dbg(ctx->dev, "skip early exit. %lldus since last commit\n",
-				delta_us);
-			return;
-		}
-
-		dev_dbg(ctx->dev, "sending early exit out cmd\n");
-
-		DPU_ATRACE_BEGIN("early_exit");
-		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
-		EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
-		EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
-		DPU_ATRACE_END("early_exit");
-	} else {
-		dev_dbg(ctx->dev, "not in 120hz mode\n");
-	}
+	if (spanel->early_exit_enabled)
+		s6e3hc3_trigger_early_exit(ctx);
 }
 
 static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
@@ -457,15 +634,6 @@ static bool s6e3hc3_is_mode_seamless(const struct exynos_panel *ctx,
 	       (c->flags == n->flags);
 }
 
-static void s6e3hc3_panel_init(struct exynos_panel *ctx)
-{
-	struct dentry *csroot = ctx->debugfs_cmdset_entry;
-
-	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_init_cmd_set, "init");
-	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_mode_120_cmd_set, "120");
-	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_mode_60_cmd_set, "60");
-}
-
 static u32 s6e3hc3_get_panel_rev(u32 id)
 {
 	u8 build_code;
@@ -489,6 +657,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 	{
 		/* 1440x3120 @ 60Hz */
 		.mode = {
+			.name = "1440x3120x60",
 			.clock = 298620,
 			.hdisplay = 1440,
 			.hsync_start = 1440 + 80, // add hfp
@@ -514,7 +683,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 			},
 			.underrun_param = &underrun_param,
 		},
-		.priv_data = &s6e3hc3_mode_60_cmd_set,
+		.priv_data = &s6e3hc3_mode_60,
 		.te2_timing = {
 			.rising_edge = 0,
 			.falling_edge = 48,
@@ -523,6 +692,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 	{
 		/* 1440x3120 @ 120Hz */
 		.mode = {
+			.name = "1440x3120x120",
 			.clock = 597240,
 			.hdisplay = 1440,
 			.hsync_start = 1440 + 80, // add hfp
@@ -548,7 +718,7 @@ static const struct exynos_panel_mode s6e3hc3_modes[] = {
 			},
 			.underrun_param = &underrun_param,
 		},
-		.priv_data = &s6e3hc3_mode_120_cmd_set,
+		.priv_data = &s6e3hc3_mode_120,
 		.te2_timing = {
 			.rising_edge = 0,
 			.falling_edge = 48,
@@ -588,6 +758,53 @@ static const struct exynos_panel_mode s6e3hc3_lp_mode = {
 	}
 };
 
+static void s6e3hc3_panel_mode_create_cmdset(struct exynos_panel *ctx,
+					     const struct exynos_panel_mode *pmode)
+{
+	struct dentry *root;
+	const struct s6e3hc3_mode_data *mdata = pmode->priv_data;
+
+	if (!mdata)
+		return;
+
+	root = debugfs_create_dir(pmode->mode.name, ctx->debugfs_cmdset_entry);
+	if (!root) {
+		dev_err(ctx->dev, "unable to create %s mode debugfs dir\n", pmode->mode.name);
+		return;
+	}
+
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->auto_mode_cmd_set, "auto_mode");
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->manual_mode_cmd_set, "manual_mode");
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->common_mode_cmd_set, "common_mode");
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->idle_mode_cmd_set, "idle");
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->wakeup_mode_cmd_set, "wakeup");
+}
+
+static void s6e3hc3_panel_init(struct exynos_panel *ctx)
+{
+	struct dentry *csroot = ctx->debugfs_cmdset_entry;
+	int i;
+
+	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_init_cmd_set, "init");
+	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_early_exit_enable_cmd_set,
+					   "early_exit_enable");
+	exynos_panel_debugfs_create_cmdset(ctx, csroot, &s6e3hc3_early_exit_disable_cmd_set,
+					   "early_exit_disable");
+	for (i = 0; i < ctx->desc->num_modes; i++)
+		s6e3hc3_panel_mode_create_cmdset(ctx, &ctx->desc->modes[i]);
+}
+
+static int s6e3hc3_panel_probe(struct mipi_dsi_device *dsi)
+{
+	struct s6e3hc3_panel *spanel;
+
+	spanel = devm_kzalloc(&dsi->dev, sizeof(*spanel), GFP_KERNEL);
+	if (!spanel)
+		return -ENOMEM;
+
+	return exynos_panel_common_init(dsi, &spanel->base);
+}
+
 static const struct drm_panel_funcs s6e3hc3_drm_funcs = {
 	.disable = exynos_panel_disable,
 	.unprepare = exynos_panel_unprepare,
@@ -612,6 +829,7 @@ static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.configure_te2_edges = exynos_panel_configure_te2_edges,
 	.update_te2 = s6e3hc3_update_te2,
 	.commit_done = s6e3hc3_commit_done,
+	.set_self_refresh = s6e3hc3_set_self_refresh,
 };
 
 const struct brightness_capability s6e3hc3_brightness_capability = {
@@ -677,7 +895,7 @@ static const struct of_device_id exynos_panel_of_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_panel_of_match);
 
 static struct mipi_dsi_driver exynos_panel_driver = {
-	.probe = exynos_panel_probe,
+	.probe = s6e3hc3_panel_probe,
 	.remove = exynos_panel_remove,
 	.driver = {
 		.name = "panel-samsung-s6e3hc3",
