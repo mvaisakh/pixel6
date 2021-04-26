@@ -47,7 +47,7 @@ static void unregister_panel_bridge(struct drm_bridge *bridge);
 int sec_ts_read_information(struct sec_ts_data *ts);
 
 #ifndef I2C_INTERFACE
-void sec_ts_spi_delay(u8 reg, u32 len)
+void sec_ts_spi_delay(u8 reg)
 {
 	u32 delay_us = 100;
 
@@ -61,7 +61,7 @@ void sec_ts_spi_delay(u8 reg, u32 len)
 		break;
 #endif
 	case SEC_TS_CMD_CUSTOMLIB_READ_PARAM:
-		delay_us = 70 + ((len * 3) >> 1);
+		delay_us = 95;
 		break;
 	case SEC_TS_READ_ALL_EVENT:
 		delay_us = 550;
@@ -386,7 +386,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			sec_ts_spi_delay(reg, len);
+			sec_ts_spi_delay(reg);
 
 			// read sequence start
 			spi_message_init(&msg);
@@ -556,7 +556,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			sec_ts_spi_delay(reg, len);
+			sec_ts_spi_delay(reg);
 
 			copy_size = 0;
 			remain = spi_read_len;
