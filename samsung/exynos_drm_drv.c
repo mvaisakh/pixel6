@@ -906,12 +906,18 @@ static int exynos_drm_platform_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void exynos_drm_platform_shutdown(struct platform_device *pdev)
+{
+	drm_atomic_helper_shutdown(platform_get_drvdata(pdev));
+}
+
 static struct platform_driver exynos_drm_platform_driver = {
-	.probe	= exynos_drm_platform_probe,
-	.remove	= exynos_drm_platform_remove,
 	.driver	= {
 		.name	= "exynos-drm",
 	},
+	.probe	= exynos_drm_platform_probe,
+	.remove	= exynos_drm_platform_remove,
+	.shutdown = exynos_drm_platform_shutdown,
 };
 
 static void exynos_drm_unregister_devices(void)
