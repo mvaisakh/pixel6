@@ -853,6 +853,7 @@ struct fts_ts_info {
 	spinlock_t fts_int;	/* Spinlock to protect interrupt toggling */
 	bool irq_enabled;	/* Interrupt state */
 
+	struct mutex io_mutex;	/* Protect access to the I/O */
 	struct mutex bus_mutex;	/* Protect access to the bus */
 	unsigned int bus_refmask; /* References to the bus */
 

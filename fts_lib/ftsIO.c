@@ -190,12 +190,12 @@ static int fts_writeRead_internal(struct fts_ts_info *info, u8 *cmd,
 		return ERROR_ALLOC;
 	}
 
-#ifdef I2C_INTERFACE
 	if (dma_safe == false) {
 		memcpy(info->io_write_buf, cmd, cmdLength);
 		cmd = info->io_write_buf;
 	}
 
+#ifdef I2C_INTERFACE
 	/* write msg */
 	I2CMsg[0].addr = (__u16)I2CSAD;
 	I2CMsg[0].flags = (__u16)0;
@@ -211,11 +211,6 @@ static int fts_writeRead_internal(struct fts_ts_info *info, u8 *cmd,
 	else
 		I2CMsg[1].buf = (__u8 *)outBuf;
 #else
-	if (dma_safe == false) {
-		memcpy(info->io_write_buf, cmd, cmdLength);
-		cmd = info->io_write_buf;
-	}
-
 	spi_message_init(&msg);
 
 	transfer[0].len = cmdLength;
@@ -283,22 +278,17 @@ static int fts_write_internal(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 		return ERROR_ALLOC;
 	}
 
-#ifdef I2C_INTERFACE
 	if (dma_safe == false) {
 		memcpy(info->io_write_buf, cmd, cmdLength);
 		cmd = info->io_write_buf;
 	}
 
+#ifdef I2C_INTERFACE
 	I2CMsg[0].addr = (__u16)I2CSAD;
 	I2CMsg[0].flags = (__u16)0;
 	I2CMsg[0].len = (__u16)cmdLength;
 	I2CMsg[0].buf = (__u8 *)cmd;
 #else
-	if (dma_safe == false) {
-		memcpy(info->io_write_buf, cmd, cmdLength);
-		cmd = info->io_write_buf;
-	}
-
 	spi_message_init(&msg);
 
 	transfer[0].len = cmdLength;
@@ -329,83 +319,6 @@ static int fts_write_internal(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 	}
 	return OK;
 }
-
-/**
-  * Write a FW command to the IC and check automatically the echo event
-  * @param cmd byte array containing the command to send
-  * @param cmdLength size of cmd
-  * @return OK if success, or an error code which specify the type of error
-  */
-static int fts_writeFwCmd_internal(struct fts_ts_info *info, u8 *cmd,
-				   int cmdLength, bool dma_safe)
-{
-	int ret = -1;
-	int ret2 = -1;
-	int retry = 0;
-#ifdef I2C_INTERFACE
-	struct i2c_msg I2CMsg[1];
-#else
-	struct spi_message msg;
-	struct spi_transfer transfer[1] = { { 0 } };
-#endif
-
-	if (dma_safe == false && cmdLength > sizeof(info->io_write_buf)) {
-		dev_err(info->dev, "%s: preallocated buffers are too small!\n", __func__);
-		return ERROR_ALLOC;
-	}
-
-#ifdef I2C_INTERFACE
-	if (dma_safe == false) {
-		memcpy(info->io_write_buf, cmd, cmdLength);
-		cmd = info->io_write_buf;
-	}
-
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)0;
-	I2CMsg[0].len = (__u16)cmdLength;
-	I2CMsg[0].buf = (__u8 *)cmd;
-#else
-	if (dma_safe == false) {
-		memcpy(info->io_write_buf, cmd, cmdLength);
-		cmd = info->io_write_buf;
-	}
-
-	spi_message_init(&msg);
-
-	transfer[0].len = cmdLength;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
-	transfer[0].tx_buf = cmd;
-	transfer[0].rx_buf = NULL;
-	spi_message_add_tail(&transfer[0], &msg);
-#endif
-
-	if (info->client == NULL)
-		return ERROR_BUS_O;
-	resetErrorList(info);
-	while (retry < I2C_RETRY && (ret < OK || ret2 < OK)) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(info->client->adapter, I2CMsg, 1);
-#else
-		ret = spi_sync(info->client, &msg);
-#endif
-		retry++;
-		if (ret >= 0)
-			ret2 = checkEcho(info, cmd, cmdLength);
-		if (ret < OK || ret2 < OK)
-			mdelay(I2C_WAIT_BEFORE_RETRY);
-		/* dev_err(info->dev, "fts_writeCmd: attempt %d\n", retry); */
-	}
-	if (ret < 0) {
-		dev_err(info->dev, "fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
-		return ERROR_BUS_W;
-	}
-	if (ret2 < OK) {
-		dev_err(info->dev, "fts_writeFwCmd: check echo ERROR %08X\n", ret2);
-		return ret2;
-	}
-	return OK;
-}
-
 
 /**
   * Perform two bus write and one bus read without any stop condition
@@ -442,7 +355,6 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 		return ERROR_ALLOC;
 	}
 
-#ifdef I2C_INTERFACE
 	if (dma_safe == false) {
 		memcpy(info->io_write_buf, writeCmd1, writeCmdLength);
 		writeCmd1 = info->io_write_buf;
@@ -450,6 +362,7 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 		readCmd1 = info->io_extra_write_buf;
 	}
 
+#ifdef I2C_INTERFACE
 	/* write msg */
 	I2CMsg[0].addr = (__u16)I2CSAD;
 	I2CMsg[0].flags = (__u16)0;
@@ -471,13 +384,6 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 	else
 		I2CMsg[2].buf = (__u8 *)outBuf;
 #else
-	if (dma_safe == false) {
-		memcpy(info->io_write_buf, writeCmd1, writeCmdLength);
-		writeCmd1 = info->io_write_buf;
-		memcpy(info->io_extra_write_buf, readCmd1, readCmdLength);
-		readCmd1 = info->io_extra_write_buf;
-	}
-
 	spi_message_init(&msg);
 
 	transfer[0].len = writeCmdLength;
@@ -527,7 +433,11 @@ static int fts_writeThenWriteRead_internal(struct fts_ts_info *info,
 /* Wrapper API for i2c read and write */
 int fts_read(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 {
-	return fts_read_internal(info, outBuf, byteToRead, false);
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_read_internal(info, outBuf, byteToRead, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_read_heap(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
@@ -538,8 +448,12 @@ int fts_read_heap(struct fts_ts_info *info, u8 *outBuf, int byteToRead)
 int fts_writeRead(struct fts_ts_info *info, u8 *cmd, int cmdLength, u8 *outBuf,
 		  int byteToRead)
 {
-	return fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_writeRead_internal(info, cmd, cmdLength, outBuf, byteToRead,
 					false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_writeRead_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength,
@@ -551,7 +465,11 @@ int fts_writeRead_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength,
 
 int fts_write(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_write_internal(info, cmd, cmdLength, false);
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_write_internal(info, cmd, cmdLength, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_write_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
@@ -561,21 +479,71 @@ int fts_write_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 
 int fts_writeFwCmd(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_writeFwCmd_internal(info, cmd, cmdLength, false);
+	int ret_write = 0;
+	int ret_echo = 0;
+	int retry = 0;
+
+	while (retry < I2C_RETRY) {
+		mutex_lock(&info->io_mutex);
+		ret_write = fts_write_internal(info, cmd, cmdLength, false);
+		mutex_unlock(&info->io_mutex);
+		retry++;
+		if (ret_write >= OK) {
+			ret_echo = checkEcho(info, cmd, cmdLength);
+			if (ret_echo >= OK)
+				break;
+		}
+		mdelay(I2C_WAIT_BEFORE_RETRY);
+	}
+	if (ret_write < OK) {
+		dev_err(info->dev, "fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
+		return ERROR_BUS_W;
+	} else if (ret_echo < OK) {
+		dev_err(info->dev, "fts_writeFwCmd: check echo ERROR %08X\n", ret_echo);
+		return ret_echo;
+	}
+
+	return OK;
 }
 
 int fts_writeFwCmd_heap(struct fts_ts_info *info, u8 *cmd, int cmdLength)
 {
-	return fts_writeFwCmd_internal(info, cmd, cmdLength, true);
+	int ret_write = 0;
+	int ret_echo = 0;
+	int retry = 0;
+
+	while (retry < I2C_RETRY) {
+		ret_write = fts_write_internal(info, cmd, cmdLength, true);
+		retry++;
+		if (ret_write >= OK) {
+			ret_echo = checkEcho(info, cmd, cmdLength);
+			if (ret_echo >= OK)
+				break;
+		}
+		mdelay(I2C_WAIT_BEFORE_RETRY);
+	}
+	if (ret_write < OK) {
+		dev_err(info->dev, "fts_writeFwCmd: ERROR %08X\n", ERROR_BUS_W);
+		return ERROR_BUS_W;
+	} else if (ret_echo < OK) {
+		dev_err(info->dev, "fts_writeFwCmd: check echo ERROR %08X\n", ret_echo);
+		return ret_echo;
+	}
+
+	return OK;
 }
 
 int fts_writeThenWriteRead(struct fts_ts_info *info, u8 *writeCmd1,
 			   int writeCmdLength, u8 *readCmd1, int readCmdLength,
 			   u8 *outBuf, int byteToRead)
 {
-	return fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
+	int ret;
+	mutex_lock(&info->io_mutex);
+	ret = fts_writeThenWriteRead_internal(info, writeCmd1, writeCmdLength,
 						readCmd1, readCmdLength,
 						outBuf, byteToRead, false);
+	mutex_unlock(&info->io_mutex);
+	return ret;
 }
 
 int fts_writeThenWriteRead_heap(struct fts_ts_info *info, u8 *writeCmd1,
@@ -601,49 +569,52 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 		  u64 address, u8 *data, int dataSize)
 {
 	u8 *finalCmd;
+	u8 *p;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
+	int ret = 0;
+
+	if(addrSize > sizeof(u64)) {
+		dev_err(info->dev, "%s: address size bigger than max allowed %lu. ERROR %08X\n",
+			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
+		return ERROR_OP_NOT_ALLOW;
+	}
+
+	mutex_lock(&info->io_mutex);
 
 	finalCmd = info->io_write_buf;
 
-	if (addrSize <= sizeof(u64)) {
-		while (remaining > 0) {
-			if (remaining >= WRITE_CHUNK) {
-				toWrite = WRITE_CHUNK;
-				remaining -= WRITE_CHUNK;
-			} else {
-				toWrite = remaining;
-				remaining = 0;
-			}
+	while (remaining > 0) {
+		if (remaining > WRITE_CHUNK)
+			toWrite = WRITE_CHUNK;
+		else
+			toWrite = remaining;
 
-			finalCmd[0] = cmd;
-			dev_dbg(info->dev, "%s: addrSize = %d\n", __func__, addrSize);
-			for (i = 0; i < addrSize; i++) {
-				finalCmd[i + 1] = (u8)((address >> ((addrSize -
-								     1 - i) *
-								    8)) & 0xFF);
-				dev_dbg(info->dev, "%s: cmd[%d] = %02X\n",
-					 __func__, i + 1, finalCmd[i + 1]);
-			}
+		finalCmd[0] = cmd;
+		dev_dbg(info->dev, "%s: addrSize = %d, address = %X\n",
+			__func__, addrSize, address);
 
-			memcpy(&finalCmd[addrSize + 1], data, toWrite);
+		p = (u8 *)&address + addrSize - 1;
+		for (i = 0; i < addrSize; i++)
+			finalCmd[i + 1] = *p--;
+		memcpy(&finalCmd[addrSize + 1], data, toWrite);
 
-			if (fts_write_heap(info, finalCmd, 1 + addrSize +
-					   toWrite) < OK) {
-				dev_err(info->dev, " %s: ERROR %08X\n",
-					 __func__, ERROR_BUS_W);
-				return ERROR_BUS_W;
-			}
-
-			address += toWrite;
-
-			data += toWrite;
+		ret = fts_write_heap(info, finalCmd, 1 + addrSize + toWrite);
+		if (ret < OK) {
+			ret = ERROR_BUS_W;
+			break;
 		}
-	} else
-		dev_err(info->dev, "%s: address size bigger than max allowed %lu... ERROR %08X\n",
-			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
 
-	return OK;
+		address += toWrite;
+		data += toWrite;
+		remaining -= toWrite;
+	}
+
+	mutex_unlock(&info->io_mutex);
+	if (ret < OK)
+		dev_err(info->dev, " %s: ERROR %08X\n", __func__, ret);
+
+	return ret;
 }
 
 /**
@@ -654,61 +625,66 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
   * @param address the starting address
   * @param outBuf pointer of a byte array which contain the bytes to read
   * @param byteToRead number of bytes to read
-  * @param hasDummyByte  if the first byte of each reading is dummy (must be
-  * skipped)
-  * set to 1, otherwise if it is valid set to 0 (or any other value)
+  * @param bytes_to_skip if need to skip the first byte of each reading,
+  * set to 1,
+  *  otherwise if the first byte is valid set to 0.
   * @return OK if success or an error code which specify the type of error
   */
 int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 		      u64 address, u8 *outBuf, int byteToRead,
-		      int hasDummyByte)
+		      int bytes_to_skip)
 {
 	u8 *finalCmd;
 	u8 *buff;
+	u8 *p;
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
+	int ret = 0;
+
+	if(addrSize > sizeof(u64)) {
+		dev_err(info->dev, "%s: address size bigger than max allowed %lu. ERROR %08X\n",
+			__func__, sizeof(u64), ERROR_OP_NOT_ALLOW);
+		return ERROR_OP_NOT_ALLOW;
+	}
+
+	mutex_lock(&info->io_mutex);
 
 	finalCmd = info->io_write_buf;
 	buff = info->io_read_buf;
 
 	while (remaining > 0) {
-		if (remaining >= READ_CHUNK) {
+		if (remaining > READ_CHUNK)
 			toRead = READ_CHUNK;
-			remaining -= READ_CHUNK;
-		} else {
+		else
 			toRead = remaining;
-			remaining = 0;
-		}
 
 		finalCmd[0] = cmd;
-		for (i = 0; i < addrSize; i++)
-			finalCmd[i + 1] = (u8)((address >> ((addrSize - 1 - i) *
-							    8)) & 0xFF);
+		dev_dbg(info->dev, "%s: addrSize = %d, address = %X\n",
+			__func__, addrSize, address);
 
-		if (hasDummyByte == 1) {
-			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
-					       buff, toRead + 1) < OK) {
-				dev_err(info->dev, "%s: read error... ERROR %08X\n",
-					__func__, ERROR_BUS_WR);
-				return ERROR_BUS_WR;
-			}
-			memcpy(outBuf, buff + 1, toRead);
-		} else {
-			if (fts_writeRead_heap(info, finalCmd, 1 + addrSize,
-					       buff, toRead) < OK) {
-				dev_err(info->dev, "%s: read error... ERROR %08X\n",
-					__func__, ERROR_BUS_WR);
-				return ERROR_BUS_WR;
-			}
-			memcpy(outBuf, buff, toRead);
+		p = (u8 *)&address + addrSize - 1;
+		for (i = 0; i < addrSize; i++)
+			finalCmd[i + 1] = *p--;
+
+		ret = fts_writeRead_heap(info, finalCmd, 1 + addrSize,
+					 buff, toRead + bytes_to_skip);
+		if (ret < OK) {
+			ret = ERROR_BUS_WR;
+			break;
 		}
+		memcpy(outBuf, buff + bytes_to_skip, toRead);
 
 		address += toRead;
-
 		outBuf += toRead;
+		remaining -= toRead;
 	}
 
-	return OK;
+	mutex_unlock(&info->io_mutex);
+	if (ret < OK)
+		dev_err(info->dev, "%s: read error... ERROR %08X\n",
+			__func__, ret);
+
+	return ret;
 }
 
 /**
@@ -732,55 +708,57 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 {
 	u8 *finalCmd1;
 	u8 *finalCmd2;
+	u8 *p;
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
+	int ret = 0;
+
+	mutex_lock(&info->io_mutex);
 
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
 
 	while (remaining > 0) {
-		if (remaining >= WRITE_CHUNK) {
+		if (remaining > WRITE_CHUNK)
 			toWrite = WRITE_CHUNK;
-			remaining -= WRITE_CHUNK;
-		} else {
+		else
 			toWrite = remaining;
-			remaining = 0;
-		}
 
 		finalCmd1[0] = cmd1;
+		p = (u8 *)&address + addrSize1 + addrSize2 - 1;
 		for (i = 0; i < addrSize1; i++)
-			finalCmd1[i + 1] = (u8)((address >> ((addrSize1 +
-							      addrSize2 - 1 -
-							      i) * 8)) & 0xFF);
+			finalCmd1[i + 1] = *p--;
 
 		finalCmd2[0] = cmd2;
-		for (i = addrSize1; i < addrSize1 + addrSize2; i++)
-			finalCmd2[i - addrSize1 + 1] = (u8)((address >>
-							     ((addrSize1 +
-							       addrSize2 - 1 -
-							       i) * 8)) & 0xFF);
+		for (i = 0; i < addrSize2; i++)
+			finalCmd2[i + 1] = *p--;
 
 		memcpy(&finalCmd2[addrSize2 + 1], data, toWrite);
 
-		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
-			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
-				__func__, ERROR_BUS_W);
-			return ERROR_BUS_W;
+		ret = fts_write_heap(info, finalCmd1, 1 + addrSize1);
+		if (ret < OK) {
+			ret = ERROR_BUS_W;
+			dev_err(info->dev, "%s: first write error. ERROR %08X\n",
+				__func__, ret);
+			break;
 		}
 
-		if (fts_write_heap(info, finalCmd2, 1 + addrSize2 + toWrite)
-				   < OK) {
-			dev_err(info->dev, "%s: second write error... ERROR %08X\n",
-				__func__, ERROR_BUS_W);
-			return ERROR_BUS_W;
+		ret = fts_write_heap(info, finalCmd2, 1 + addrSize2 + toWrite);
+		if (ret < OK) {
+			ret = ERROR_BUS_W;
+			dev_err(info->dev, "%s: second write error. ERROR %08X\n",
+				__func__, ret);
+			break;
 		}
 
 		address += toWrite;
-
 		data += toWrite;
+		remaining -= toWrite;
 	}
 
-	return OK;
+	mutex_unlock(&info->io_mutex);
+
+	return ret;
 }
 
 /**
@@ -789,13 +767,13 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
   * @param cmd1 byte containing the op code of first write
   * @param addrSize1 address size in byte of first write
   * @param cmd2 byte containing the op code of second write read
-  * @param addrSize2 address size in byte of second write	read
+  * @param addrSize2 address size in byte of second write read
   * @param address the starting address
   * @param outBuf pointer of a byte array which contain the bytes to read
   * @param byteToRead number of bytes to read
-  * @param hasDummyByte  if the first byte of each reading is dummy (must be
-  * skipped) set to 1,
-  *  otherwise if it is valid set to 0 (or any other value)
+  * @param bytes_to_skip if need to skip the first byte of each reading,
+  * set to 1,
+  *  otherwise if the first byte is valid set to 0.
   * @return OK if success or an error code which specify the type of error
   */
 /* this function works only if the sum of two addresses in the two commands is
@@ -803,69 +781,60 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1,
 int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 				   AddrSize addrSize1, u8 cmd2,
 				   AddrSize addrSize2, u64 address, u8 *outBuf,
-				   int byteToRead, int hasDummyByte)
+				   int byteToRead, int bytes_to_skip)
 {
 	u8 *finalCmd1;
 	u8 *finalCmd2;
 	u8 *buff;
+	u8 *p;
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
+	int ret = 0;
 
+	mutex_lock(&info->io_mutex);
 	finalCmd1 = info->io_write_buf;
 	finalCmd2 = info->io_extra_write_buf;
 	buff = info->io_read_buf;
 
 	while (remaining > 0) {
-		if (remaining >= READ_CHUNK) {
+		if (remaining > READ_CHUNK)
 			toRead = READ_CHUNK;
-			remaining -= READ_CHUNK;
-		} else {
+		else
 			toRead = remaining;
-			remaining = 0;
-		}
-
 
 		finalCmd1[0] = cmd1;
+		p = (u8 *)&address + addrSize1 + addrSize2 - 1;
 		for (i = 0; i < addrSize1; i++)
-			finalCmd1[i + 1] = (u8)((address >> ((addrSize1 +
-							      addrSize2 - 1 -
-							      i) * 8)) & 0xFF);
+			finalCmd1[i + 1] = *p--;
 
 		finalCmd2[0] = cmd2;
-		for (i = addrSize1; i < addrSize1 + addrSize2; i++)
-			finalCmd2[i - addrSize1 + 1] = (u8)((address >>
-							     ((addrSize1 +
-							       addrSize2 - 1 -
-							       i) * 8)) & 0xFF);
+		for (i = 0; i < addrSize2; i++)
+			finalCmd2[i + 1] = *p--;
 
-		if (fts_write_heap(info, finalCmd1, 1 + addrSize1) < OK) {
-			dev_err(info->dev, "%s: first write error... ERROR %08X\n",
-				__func__, ERROR_BUS_W);
-			return ERROR_BUS_W;
+		ret = fts_write_heap(info, finalCmd1, 1 + addrSize1);
+		if (ret < OK) {
+			ret = ERROR_BUS_W;
+			dev_err(info->dev, "%s: first write error. ERROR %08X\n",
+				__func__, ret);
+			break;
 		}
 
-		if (hasDummyByte == 1) {
-			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
-					       buff, toRead + 1) < OK) {
-				dev_err(info->dev, "%s: read error... ERROR %08X\n",
-					__func__, ERROR_BUS_WR);
-				return ERROR_BUS_WR;
-			}
-			memcpy(outBuf, buff + 1, toRead);
-		} else {
-			if (fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
-					       buff, toRead) < OK) {
-				dev_err(info->dev, "%s: read error... ERROR %08X\n",
-					__func__, ERROR_BUS_WR);
-				return ERROR_BUS_WR;
-			}
-			memcpy(outBuf, buff, toRead);
+		ret = fts_writeRead_heap(info, finalCmd2, 1 + addrSize2,
+					      buff, toRead + bytes_to_skip);
+		if (ret < OK) {
+			ret = ERROR_BUS_WR;
+			dev_err(info->dev, "%s: read error. ERROR %08X\n",
+					__func__, ret);
+			break;
 		}
+		memcpy(outBuf, buff + bytes_to_skip, toRead);
 
 		address += toRead;
-
 		outBuf += toRead;
+		remaining -= toRead;
 	}
 
-	return OK;
+	mutex_unlock(&info->io_mutex);
+
+	return ret;
 }

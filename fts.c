@@ -6273,6 +6273,7 @@ static int fts_probe(struct spi_device *client)
 
 	mutex_init(&(info->input_report_mutex));
 	mutex_init(&info->bus_mutex);
+	mutex_init(&info->io_mutex);
 
 	/* Assume screen is on throughout probe */
 	info->bus_refmask = FTS_BUS_REF_SCREEN_ON;

@@ -65,7 +65,7 @@ int fts_writeU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize,
 		  u64 address, u8 *data, int dataSize);
 /* chunked version of fts_writeRead */
 int fts_writeReadU8UX(struct fts_ts_info *info, u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf,
-			int byteToRead, int hasDummyByte);
+			int byteToRead, int bytes_to_skip);
 /* chunked, write followed by another write */
 int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1, AddrSize addrSize1, u8 cmd2,
 			       AddrSize addrSize2, u64 address, u8 *data,
@@ -74,5 +74,5 @@ int fts_writeU8UXthenWriteU8UX(struct fts_ts_info *info, u8 cmd1, AddrSize addrS
 int fts_writeU8UXthenWriteReadU8UX(struct fts_ts_info *info, u8 cmd1,
 				   AddrSize addrSize1, u8 cmd2,
 				   AddrSize addrSize2, u64 address, u8 *outBuf,
-				   int count, int hasDummyByte);
+				   int count, int bytes_to_skip);
 #endif
