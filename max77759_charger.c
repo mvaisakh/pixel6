@@ -701,7 +701,8 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			break;
 
 		case GSU_MODE_USB_OTG_WLC_RX:
-			need_stby = use_case != GSU_MODE_WLC_RX;
+			need_stby = use_case != GSU_MODE_WLC_RX &&
+				    use_case != GSU_MODE_USB_OTG;
 			break;
 
 		case GSU_MODE_USB_OTG_FRS:
