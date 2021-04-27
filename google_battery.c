@@ -321,6 +321,9 @@ struct batt_drv {
 
 	/* History Device */
 	struct gbms_storage_device *history;
+
+	/* Fan control */
+	int fan_level;
 };
 
 static int batt_chg_tier_stats_cstr(char *buff, int size,
@@ -4132,6 +4135,41 @@ static ssize_t batt_show_constant_charge_voltage(struct device *dev,
 static const DEVICE_ATTR(constant_charge_voltage, 0444,
 			 batt_show_constant_charge_voltage, NULL);
 
+#define FAN_LEVEL_MAX	5
+#define FAN_LEVEL_MIN	-1
+static ssize_t fan_level_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count) {
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+	int ret = 0;
+	int level;
+
+	ret = kstrtoint(buf, 0, &level);
+	if (ret < 0)
+		return ret;
+
+	if ((level < FAN_LEVEL_MIN) || (level > FAN_LEVEL_MAX))
+		return -ERANGE;
+
+	batt_drv->fan_level = level;
+	power_supply_changed(batt_drv->psy);
+
+	return count;
+}
+
+static ssize_t fan_level_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	// TODO
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", batt_drv->fan_level);
+}
+
+static const DEVICE_ATTR_RW(fan_level);
 /* ------------------------------------------------------------------------- */
 
 static int batt_init_fs(struct batt_drv *batt_drv)
@@ -4241,6 +4279,9 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_constant_charge_voltage);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create constant charge voltage\n");
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_fan_level);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create fan level\n");
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
