@@ -7,6 +7,7 @@
 
 #include <linux/debugfs.h>
 #include <linux/dma-buf.h>
+#include <linux/dma-direction.h>
 #include <linux/dma-fence.h>
 #include <linux/dma-mapping.h>
 #include <linux/ktime.h>
@@ -670,8 +671,8 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	tpu_addr_t tpu_addr;
 	uint i;
 
-	/* offset is not page-aligned */
-	if (offset_in_page(offset))
+	/* invalid DMA direction or offset is not page-aligned */
+	if (!valid_dma_direction(dir) || offset_in_page(offset))
 		return -EINVAL;
 	/* size == 0 or overflow */
 	if (offset + size <= offset)
@@ -786,7 +787,7 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 	tpu_addr_t tpu_addr;
 	int i;
 
-	if (arg->size == 0)
+	if (!valid_dma_direction(dir) || arg->size == 0)
 		return -EINVAL;
 	mutex_lock(&group->lock);
 	if (!edgetpu_device_group_is_finalized(group))

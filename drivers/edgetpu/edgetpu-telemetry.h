@@ -86,9 +86,9 @@ struct edgetpu_telemetry {
 	struct work_struct work;
 	/* Fallback function to call for default log/trace handling. */
 	void (*fallback_fn)(struct edgetpu_telemetry *tel);
-	struct mutex mmap_lock; /* protects is_mmapped */
-	/* Flag tracking when the telemetry buffer is mapped to user space. */
-	bool is_mmapped;
+	struct mutex mmap_lock; /* protects mmapped_count */
+	/* number of VMAs that are mapped to this telemetry buffer */
+	long mmapped_count;
 };
 
 struct edgetpu_telemetry_ctx {
@@ -142,8 +142,9 @@ void edgetpu_telemetry_mappings_show(struct edgetpu_dev *etdev,
 int edgetpu_mmap_telemetry_buffer(struct edgetpu_dev *etdev,
 				  enum edgetpu_telemetry_type type,
 				  struct vm_area_struct *vma);
-void edgetpu_munmap_telemetry_buffer(struct edgetpu_dev *etdev,
-				     enum edgetpu_telemetry_type type,
-				     struct vm_area_struct *vma);
+void edgetpu_telemetry_inc_mmap_count(struct edgetpu_dev *etdev,
+				      enum edgetpu_telemetry_type type);
+void edgetpu_telemetry_dec_mmap_count(struct edgetpu_dev *etdev,
+				      enum edgetpu_telemetry_type type);
 
 #endif /* __EDGETPU_TELEMETRY_H__ */

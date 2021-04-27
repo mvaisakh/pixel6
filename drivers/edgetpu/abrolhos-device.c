@@ -85,18 +85,18 @@ u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev)
 void edgetpu_chip_init(struct edgetpu_dev *etdev)
 {
 	int i;
-	struct abrolhos_platform_dev *etpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 
 	/* Disable the CustomBlock Interrupt. */
 	edgetpu_dev_write_32(etdev, HOST_NONSECURE_INTRSRCMASKREG, 0x1);
 
-	if (!etpdev->ssmt_base)
+	if (!abpdev->ssmt_base)
 		return;
 
 	/* Setup non-secure SCIDs, assume VID = SCID */
 	for (i = 0; i < EDGETPU_NCONTEXTS; i++) {
-		writel(i, SSMT_NS_READ_STREAM_VID_REG(etpdev->ssmt_base, i));
-		writel(i, SSMT_NS_WRITE_STREAM_VID_REG(etpdev->ssmt_base, i));
+		writel(i, SSMT_NS_READ_STREAM_VID_REG(abpdev->ssmt_base, i));
+		writel(i, SSMT_NS_WRITE_STREAM_VID_REG(abpdev->ssmt_base, i));
 	}
 }
 

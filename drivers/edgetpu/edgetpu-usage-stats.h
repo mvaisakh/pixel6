@@ -62,8 +62,18 @@ enum edgetpu_usage_counter_type {
 	EDGETPU_COUNTER_TPU_ACTIVE_CYCLES = 0,
 	/* Number of stalls caused by throttling. */
 	EDGETPU_COUNTER_TPU_THROTTLE_STALLS = 1,
+	/* Number of graph invocations. */
+	EDGETPU_COUNTER_INFERENCES = 2,
+	/* Number of TPU offload op invocations. */
+	EDGETPU_COUNTER_TPU_OPS = 3,
+	/* Number of times a TPU op invocation used its cached parameters. */
+	EDGETPU_COUNTER_PARAM_CACHE_HITS = 4,
+	/* Number of times a TPU op invocation had to cache its parameters. */
+	EDGETPU_COUNTER_PARAM_CACHE_MISSES = 5,
+	/* Number of times a context got preempted by another. */
+	EDGETPU_COUNTER_CONTEXT_PREEMPTS = 6,
 
-	EDGETPU_COUNTER_COUNT = 2, /* number of counters above */
+	EDGETPU_COUNTER_COUNT = 7, /* number of counters above */
 };
 
 /* Generic counter. Only reported if it has a value larger than 0. */
@@ -75,12 +85,68 @@ struct __packed edgetpu_usage_counter {
 	uint64_t value;
 };
 
+/* Defines different max watermarks we track. */
+/* Must be kept in sync with firmware MaxWatermarkType */
+enum edgetpu_usage_max_watermark_type {
+	/* Number of outstanding commands in VII trackers of all contexts. */
+	EDGETPU_MAX_WATERMARK_OUT_CMDS = 0,
+	/* Number of preempted contexts at any given time. */
+	EDGETPU_MAX_WATERMARK_PREEMPT_DEPTH = 1,
+
+	/* Number of watermark types above */
+	EDGETPU_MAX_WATERMARK_TYPE_COUNT = 2,
+};
+
+/* Max watermark. Only reported if it has a value larger than 0. */
+struct __packed edgetpu_usage_max_watermark {
+	/* What it counts. */
+	enum edgetpu_usage_max_watermark_type type;
+
+	/*
+	 * Maximum value since last initialization (virtual device join in
+	 * non-mobile, firmware boot on mobile).
+	 */
+	uint64_t value;
+};
+
+/* An enum to identify the tracked firmware threads. */
+/* Must be kept in sync with firmware enum class UsageTrackerThreadId. */
+enum edgetpu_usage_threadid {
+	EDGETPU_FW_THREAD_MAIN = 0,
+	EDGETPU_FW_THREAD_KCI_HANDLER = 1,
+	EDGETPU_FW_THREAD_POWER_ADMIN = 2,
+	EDGETPU_FW_THREAD_VII_SCHEDULER = 3,
+	EDGETPU_FW_THREAD_VII_HANDLER = 4,
+	EDGETPU_FW_THREAD_MCP_GRAPH_DRIVER = 5,
+	EDGETPU_FW_THREAD_SCP_GRAPH_DRIVER = 6,
+	EDGETPU_FW_THREAD_TPU_DRIVER = 7,
+	EDGETPU_FW_THREAD_RESTART_HANDLER = 8,
+	EDGETPU_FW_THREAD_POLL_SERVICE = 9,
+	EDGETPU_FW_THREAD_DMA_DRIVER = 10,
+	EDGETPU_FW_THREAD_GRAPH_DMA_DRIVER = 11,
+
+	/* Number of task identifiers above. */
+	EDGETPU_FW_THREAD_COUNT = 12,
+};
+
+/* Statistics related to a single thread in firmware. */
+/* Must be kept in sync with firmware struct ThreadStats. */
+struct edgetpu_thread_stats {
+	/* The thread in question. */
+	enum edgetpu_usage_threadid thread_id;
+
+	/* Maximum stack usage (in bytes) since last firmware boot. */
+	uint32_t max_stack_usage_bytes;
+};
+
 /* Must be kept in sync with firmware enum class UsageTrackerMetric::Type */
 enum edgetpu_usage_metric_type {
 	EDGETPU_METRIC_TYPE_RESERVED = 0,
 	EDGETPU_METRIC_TYPE_TPU_USAGE = 1,
 	EDGETPU_METRIC_TYPE_COMPONENT_ACTIVITY = 2,
 	EDGETPU_METRIC_TYPE_COUNTER = 3,
+	EDGETPU_METRIC_TYPE_THREAD_STATS = 4,
+	EDGETPU_METRIC_TYPE_MAX_WATERMARK = 5,
 };
 
 /*
@@ -94,6 +160,8 @@ struct edgetpu_usage_metric {
 		struct tpu_usage tpu_usage;
 		struct edgetpu_component_activity component_activity;
 		struct edgetpu_usage_counter counter;
+		struct edgetpu_thread_stats thread_stats;
+		struct edgetpu_usage_max_watermark max_watermark;
 	};
 };
 
@@ -104,6 +172,8 @@ struct edgetpu_usage_stats {
 	/* component utilization values reported by firmware */
 	int32_t component_utilization[EDGETPU_USAGE_COMPONENT_COUNT];
 	int64_t counter[EDGETPU_COUNTER_COUNT];
+	int64_t max_watermark[EDGETPU_MAX_WATERMARK_TYPE_COUNT];
+	int32_t thread_stack_max[EDGETPU_FW_THREAD_COUNT];
 	struct mutex usage_stats_lock;
 };
 

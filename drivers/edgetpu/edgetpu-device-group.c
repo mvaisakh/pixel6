@@ -1157,8 +1157,8 @@ error:
  */
 static struct edgetpu_host_map *
 alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
-			    u64 size, edgetpu_map_flag_t flags,
-			    struct page **pages, uint num_pages)
+			    edgetpu_map_flag_t flags, struct page **pages,
+			    uint num_pages)
 {
 	struct edgetpu_dev *etdev = group->etdev;
 	struct edgetpu_host_map *hmap;
@@ -1199,9 +1199,9 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 			sgt = &hmap->map.sgt;
 		else
 			sgt = &hmap->sg_tables[i];
-		ret = sg_alloc_table_from_pages(sgt, pages, num_pages,
-						host_addr & (PAGE_SIZE - 1),
-						size, GFP_KERNEL);
+		ret = sg_alloc_table_from_pages(sgt, pages, num_pages, 0,
+						num_pages * PAGE_SIZE,
+						GFP_KERNEL);
 		if (ret) {
 			etdev_dbg(etdev,
 				  "%s: sg_alloc_table_from_pages failed %u:%pK-%u: %d",
@@ -1223,8 +1223,6 @@ error_free_sgt:
 		sg_free_table(sgt);
 	}
 error:
-	for (i = 0; i < num_pages; i++)
-		unpin_user_page(pages[i]);
 	if (hmap) {
 		edgetpu_device_group_put(hmap->map.priv);
 		kfree(hmap->sg_tables);
@@ -1306,14 +1304,16 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 	struct page **pages;
 	int ret = -EINVAL;
 	u64 host_addr = arg->host_address;
-	u64 size = arg->size;
 	edgetpu_map_flag_t flags = arg->flags;
 	struct edgetpu_host_map *hmap;
-	struct edgetpu_mapping *map;
+	struct edgetpu_mapping *map = NULL;
 	struct edgetpu_dev *etdev;
 	enum edgetpu_context_id context_id;
 	const u32 mmu_flags = map_to_mmu_flags(flags) | EDGETPU_MMU_HOST;
+	int i;
 
+	if (!valid_dma_direction(flags & EDGETPU_MAP_DIR_MASK))
+		return -EINVAL;
 	/* Pin user pages before holding any lock. */
 	pages = edgetpu_pin_user_pages(group, arg, &num_pages);
 	if (IS_ERR(pages))
@@ -1323,20 +1323,20 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 	context_id = edgetpu_group_context_id_locked(group);
 	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = -EINVAL;
-		goto error_unlock_group;
+		goto error;
 	}
 	if (!IS_MIRRORED(flags)) {
 		if (arg->die_index >= group->n_clients) {
 			ret = -EINVAL;
-			goto error_unlock_group;
+			goto error;
 		}
 	}
 
-	hmap = alloc_mapping_from_useraddr(group, host_addr, size, flags, pages,
+	hmap = alloc_mapping_from_useraddr(group, host_addr, flags, pages,
 					   num_pages);
 	if (IS_ERR(hmap)) {
 		ret = PTR_ERR(hmap);
-		goto error_unlock_group;
+		goto error;
 	}
 
 	map = &hmap->map;
@@ -1345,27 +1345,27 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 		etdev = group->etdev;
 		ret = edgetpu_mmu_map(etdev, map, context_id, mmu_flags);
 		if (ret)
-			goto error_release_map;
+			goto error;
 		ret = edgetpu_device_group_map_iova_sgt(group, hmap);
 		if (ret) {
 			etdev_dbg(etdev,
 				  "group add translation failed %u:0x%llx",
 				  group->workload_id, map->device_address);
-			goto error_release_map;
+			goto error;
 		}
 	} else {
 		map->die_index = arg->die_index;
 		etdev = edgetpu_device_group_nth_etdev(group, map->die_index);
 		ret = edgetpu_mmu_map(etdev, map, context_id, mmu_flags);
 		if (ret)
-			goto error_release_map;
+			goto error;
 	}
 
 	ret = edgetpu_mapping_add(&group->host_mappings, map);
 	if (ret) {
 		etdev_dbg(etdev, "duplicate mapping %u:0x%llx",
 			  group->workload_id, map->device_address);
-		goto error_release_map;
+		goto error;
 	}
 
 	mutex_unlock(&group->lock);
@@ -1373,13 +1373,17 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 	kfree(pages);
 	return 0;
 
-error_release_map:
-	edgetpu_mapping_lock(&group->host_mappings);
-	/* this will free @hmap */
-	edgetpu_unmap_node(map);
-	edgetpu_mapping_unlock(&group->host_mappings);
-
-error_unlock_group:
+error:
+	if (map) {
+		edgetpu_mapping_lock(&group->host_mappings);
+		/* this will free @hmap */
+		edgetpu_unmap_node(map);
+		edgetpu_mapping_unlock(&group->host_mappings);
+	} else {
+		/* revert edgetpu_pin_user_pages() */
+		for (i = 0; i < num_pages; i++)
+			unpin_user_page(pages[i]);
+	}
 	mutex_unlock(&group->lock);
 	kfree(pages);
 	return ret;
@@ -1431,6 +1435,8 @@ int edgetpu_device_group_sync_buffer(struct edgetpu_device_group *group,
 	enum dma_data_direction dir = arg->flags & EDGETPU_MAP_DIR_MASK;
 	struct edgetpu_host_map *hmap;
 
+	if (!valid_dma_direction(dir))
+		return -EINVAL;
 	/* invalid if size == 0 or overflow */
 	if (arg->offset + arg->size <= arg->offset)
 		return -EINVAL;
@@ -1547,11 +1553,7 @@ int edgetpu_mmap_queue(struct edgetpu_device_group *group,
 	edgetpu_queue_mem *queue_mem;
 
 	mutex_lock(&group->lock);
-	/*
-	 * VII queues are available even when mailbox detached, no need to check
-	 * whether mailbox attached here.
-	 */
-	if (!edgetpu_device_group_is_finalized(group)) {
+	if (!edgetpu_group_finalized_and_attached(group)) {
 		ret = -EINVAL;
 		goto out;
 	}

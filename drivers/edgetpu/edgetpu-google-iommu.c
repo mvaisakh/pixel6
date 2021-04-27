@@ -235,7 +235,7 @@ out:
 int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
 #ifdef CONFIG_ABROLHOS
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 #endif
 	struct edgetpu_iommu *etiommu;
 	int ret;
@@ -272,17 +272,15 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	etdev->mmu_cookie = etiommu;
 	/* TODO (b/178571278): remove chipset specific code. */
 #ifdef CONFIG_ABROLHOS
-	if (!edgetpu_pdev->csr_iova)
+	if (!abpdev->csr_iova)
 		goto success;
 
 	etdev_dbg(etdev, "Mapping device CSRs: %llX -> %llX (%lu bytes)\n",
-		  edgetpu_pdev->csr_iova, edgetpu_pdev->csr_paddr,
-		  edgetpu_pdev->csr_size);
+		  abpdev->csr_iova, abpdev->csr_paddr, abpdev->csr_size);
 
 	/* Add an IOMMU translation for the CSR region */
-	ret = edgetpu_mmu_add_translation(etdev, edgetpu_pdev->csr_iova,
-					  edgetpu_pdev->csr_paddr,
-					  edgetpu_pdev->csr_size,
+	ret = edgetpu_mmu_add_translation(etdev, abpdev->csr_iova,
+					  abpdev->csr_paddr, abpdev->csr_size,
 					  IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV,
 					  EDGETPU_CONTEXT_KCI);
 	if (ret) {
@@ -309,7 +307,7 @@ void edgetpu_mmu_reset(struct edgetpu_dev *etdev)
 void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 {
 #ifdef CONFIG_ABROLHOS
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 #endif
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	int i, ret;
@@ -318,13 +316,13 @@ void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 		return;
 
 #ifdef CONFIG_ABROLHOS
-	if (edgetpu_pdev->csr_iova) {
-		edgetpu_mmu_remove_translation(&edgetpu_pdev->edgetpu_dev,
-					       edgetpu_pdev->csr_iova,
-					       edgetpu_pdev->csr_size,
+	if (abpdev->csr_iova) {
+		edgetpu_mmu_remove_translation(&abpdev->edgetpu_dev,
+					       abpdev->csr_iova,
+					       abpdev->csr_size,
 					       EDGETPU_CONTEXT_KCI);
 	}
-	edgetpu_pdev->csr_iova = 0;
+	abpdev->csr_iova = 0;
 #endif
 	ret = edgetpu_unregister_iommu_device_fault_handler(etdev);
 	if (ret)

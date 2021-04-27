@@ -10,8 +10,11 @@
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/mutex.h>
 #include <linux/types.h>
 #include <soc/google/bcl.h>
+#include <soc/google/bts.h>
+#include <soc/google/exynos_pm_qos.h>
 
 #include "abrolhos-debug-dump.h"
 #include "abrolhos-pm.h"
@@ -20,17 +23,24 @@
 #define to_abrolhos_dev(etdev)                                                 \
 	container_of(etdev, struct abrolhos_platform_dev, edgetpu_dev)
 
-struct edgetpu_platform_pwr {
+struct abrolhos_platform_pwr {
 	struct mutex policy_lock;
 	enum tpu_pwr_state curr_policy;
 	struct mutex state_lock;
 	u64 min_state;
 	u64 requested_state;
+	/* INT/MIF requests for memory bandwidth */
+	struct exynos_pm_qos_request int_min;
+	struct exynos_pm_qos_request mif_min;
+	/* BTS */
+	unsigned int performance_scenario;
+	int scenario_count;
+	struct mutex scenario_lock;
 };
 
 struct abrolhos_platform_dev {
 	struct edgetpu_dev edgetpu_dev;
-	struct edgetpu_platform_pwr platform_pwr;
+	struct abrolhos_platform_pwr platform_pwr;
 	int irq;
 	phys_addr_t fw_region_paddr;
 	size_t fw_region_size;

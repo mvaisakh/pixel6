@@ -34,14 +34,6 @@
 #define PM_QOS_MIF_MASK			(0xFFFF)
 #define PM_QOS_FACTOR			(1000)
 
-/* INT/MIF requests for memory bandwidth */
-static struct exynos_pm_qos_request int_min;
-static struct exynos_pm_qos_request mif_min;
-
-/* BTS */
-static unsigned int performance_scenario;
-static atomic64_t scenario_count = ATOMIC_INIT(0);
-
 /* Default power state: the lowest power state that keeps firmware running */
 static int power_state = TPU_DEEP_SLEEP_CLOCKS_SLOW;
 
@@ -130,8 +122,8 @@ static int abrolhos_pwr_state_get_locked(void *data, u64 *val)
 static int abrolhos_pwr_state_set(void *data, u64 val)
 {
 	struct edgetpu_dev *etdev = (typeof(etdev))data;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	int ret = 0;
 
 	mutex_lock(&platform_pwr->state_lock);
@@ -145,8 +137,8 @@ static int abrolhos_pwr_state_set(void *data, u64 val)
 static int abrolhos_pwr_state_get(void *data, u64 *val)
 {
 	struct edgetpu_dev *etdev = (typeof(etdev))data;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	int ret;
 
 	mutex_lock(&platform_pwr->state_lock);
@@ -158,8 +150,8 @@ static int abrolhos_pwr_state_get(void *data, u64 *val)
 static int abrolhos_min_pwr_state_set(void *data, u64 val)
 {
 	struct edgetpu_dev *etdev = (typeof(etdev))data;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	int ret = 0;
 
 	mutex_lock(&platform_pwr->state_lock);
@@ -173,8 +165,8 @@ static int abrolhos_min_pwr_state_set(void *data, u64 val)
 static int abrolhos_min_pwr_state_get(void *data, u64 *val)
 {
 	struct edgetpu_dev *etdev = (typeof(etdev))data;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 
 	mutex_lock(&platform_pwr->state_lock);
 	*val = platform_pwr->min_state;
@@ -184,15 +176,15 @@ static int abrolhos_min_pwr_state_get(void *data, u64 *val)
 
 static int abrolhos_pwr_policy_set(void *data, u64 val)
 {
-	struct abrolhos_platform_dev *edgetpu_pdev = (typeof(edgetpu_pdev))data;
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = (typeof(abpdev))data;
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	int ret;
 
 	mutex_lock(&platform_pwr->policy_lock);
 	ret = exynos_acpm_set_policy(TPU_ACPM_DOMAIN, val);
 
 	if (ret) {
-		dev_err(edgetpu_pdev->edgetpu_dev.dev,
+		dev_err(abpdev->edgetpu_dev.dev,
 			"unable to set policy %lld (ret %d)\n", val, ret);
 		mutex_unlock(&platform_pwr->policy_lock);
 		return ret;
@@ -205,8 +197,8 @@ static int abrolhos_pwr_policy_set(void *data, u64 val)
 
 static int abrolhos_pwr_policy_get(void *data, u64 *val)
 {
-	struct abrolhos_platform_dev *edgetpu_pdev = (typeof(edgetpu_pdev))data;
-	struct edgetpu_platform_pwr *platform_pwr = &edgetpu_pdev->platform_pwr;
+	struct abrolhos_platform_dev *abpdev = (typeof(abpdev))data;
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 
 	mutex_lock(&platform_pwr->policy_lock);
 	*val = platform_pwr->curr_policy;
@@ -443,7 +435,7 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm);
 static int abrolhos_power_up(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 	int ret = abrolhos_pwr_state_set(
 		etpm->etdev, abrolhos_get_initial_pwr_state(etdev->dev));
 	enum edgetpu_firmware_status firmware_status;
@@ -454,9 +446,9 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 		return ret;
 
 	/* Clear out log / trace buffers */
-	memset(edgetpu_pdev->log_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
+	memset(abpdev->log_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
 #if IS_ENABLED(CONFIG_EDGETPU_TELEMETRY_TRACE)
-	memset(edgetpu_pdev->trace_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
+	memset(abpdev->trace_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
 #endif
 
 	edgetpu_chip_init(etdev);
@@ -509,10 +501,10 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	if (ret) {
 		abrolhos_power_down(etpm);
 	} else {
-		if (!edgetpu_pdev->bcl_dev)
-			edgetpu_pdev->bcl_dev = gs101_retrieve_bcl_handle();
-		if (edgetpu_pdev->bcl_dev)
-			gs101_init_tpu_ratio(edgetpu_pdev->bcl_dev);
+		if (!abpdev->bcl_dev)
+			abpdev->bcl_dev = gs101_retrieve_bcl_handle();
+		if (abpdev->bcl_dev)
+			gs101_init_tpu_ratio(abpdev->bcl_dev);
 	}
 
 	return ret;
@@ -521,7 +513,7 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 static void
 abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 			      struct edgetpu_dev *etdev,
-			      struct abrolhos_platform_dev *edgetpu_pdev)
+			      struct abrolhos_platform_dev *abpdev)
 {
 	if (!edgetpu_pchannel_power_down(etdev, false))
 		return;
@@ -537,7 +529,7 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 	etdev_warn(etdev, "Forcing shutdown through power policy\n");
 	/* Request GSA shutdown to make sure the R52 core is reset */
 	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
-	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_OFF);
+	abrolhos_pwr_policy_set(abpdev, TPU_OFF);
 	pm_runtime_put_sync(etdev->dev);
 	/*
 	 * TODO: experiment on hardware to verify if this delay
@@ -547,34 +539,43 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 	 */
 	msleep(100);
 	pm_runtime_get_sync(etdev->dev);
-	abrolhos_pwr_policy_set(edgetpu_pdev, TPU_ACTIVE_OD);
+	abrolhos_pwr_policy_set(abpdev, TPU_ACTIVE_OD);
 }
 
 static void abrolhos_pm_cleanup_bts_scenario(struct edgetpu_dev *etdev)
 {
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
+	int performance_scenario = platform_pwr->performance_scenario;
+
 	if (!performance_scenario)
 		return;
-	while (atomic64_fetch_dec(&scenario_count) > 0) {
+
+	mutex_lock(&platform_pwr->scenario_lock);
+	while (platform_pwr->scenario_count) {
 		int ret = bts_del_scenario(performance_scenario);
 
 		if (ret) {
-			atomic64_set(&scenario_count, 0);
+			platform_pwr->scenario_count = 0;
 			etdev_warn_once(
 				etdev,
 				"error %d in cleaning up BTS scenario %u\n",
 				ret, performance_scenario);
-			return;
+			break;
 		}
+		platform_pwr->scenario_count--;
 	}
+	mutex_unlock(&platform_pwr->scenario_lock);
 }
 
 static void abrolhos_power_down(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	u64 val;
 	int res;
-	int min_state = edgetpu_pdev->platform_pwr.min_state;
+	int min_state = platform_pwr->min_state;
 
 	etdev_info(etdev, "Powering down\n");
 
@@ -583,12 +584,6 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 			   min_state);
 		return;
 	}
-
-	/* Remove our vote for INT/MIF state (if any) */
-	exynos_pm_qos_update_request(&int_min, 0);
-	exynos_pm_qos_update_request(&mif_min, 0);
-
-	abrolhos_pm_cleanup_bts_scenario(etdev);
 
 	if (abrolhos_pwr_state_get(etdev, &val)) {
 		etdev_warn(etdev, "Failed to read current power state\n");
@@ -602,30 +597,49 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	if (etdev->kci && edgetpu_firmware_status_locked(etdev) == FW_VALID) {
 		/* Update usage stats before we power off fw. */
 		edgetpu_kci_update_usage_locked(etdev);
-		abrolhos_pm_shutdown_firmware(edgetpu_pdev, etdev,
-					      edgetpu_pdev);
+		abrolhos_pm_shutdown_firmware(abpdev, etdev, abpdev);
 		edgetpu_kci_cancel_work_queues(etdev->kci);
 	}
 
-	res = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
+	res = gsa_send_tpu_cmd(abpdev->gsa_dev, GSA_TPU_SHUTDOWN);
 	if (res < 0)
 		etdev_warn(etdev, "GSA shutdown request failed (%d)\n", res);
 	abrolhos_pwr_state_set(etdev, TPU_OFF);
+
+	/* Remove our vote for INT/MIF state (if any) */
+	exynos_pm_qos_update_request(&platform_pwr->int_min, 0);
+	exynos_pm_qos_update_request(&platform_pwr->mif_min, 0);
+
+	abrolhos_pm_cleanup_bts_scenario(etdev);
 }
 
 static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 {
 	int ret;
 	struct edgetpu_dev *etdev = etpm->etdev;
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 	struct device *dev = etdev->dev;
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 
 	ret = abrolhos_pwr_state_init(dev);
 	if (ret)
 		return ret;
 
-	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
-	mutex_init(&edgetpu_pdev->platform_pwr.state_lock);
+	mutex_init(&platform_pwr->policy_lock);
+	mutex_init(&platform_pwr->state_lock);
+	mutex_init(&platform_pwr->scenario_lock);
+
+	exynos_pm_qos_add_request(&platform_pwr->int_min,
+				  PM_QOS_DEVICE_THROUGHPUT, 0);
+	exynos_pm_qos_add_request(&platform_pwr->mif_min, PM_QOS_BUS_THROUGHPUT,
+				  0);
+
+	platform_pwr->performance_scenario =
+		bts_get_scenindex("tpu_performance");
+	if (!platform_pwr->performance_scenario)
+		etdev_warn(etdev, "tpu_performance BTS scenario not found\n");
+	platform_pwr->scenario_count = 0;
+
 	ret = abrolhos_pwr_state_set(etdev,
 				     abrolhos_get_initial_pwr_state(dev));
 	if (ret)
@@ -658,17 +672,24 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 	debugfs_create_file("uart_rate", 0440, abrolhos_pwr_debugfs_dir, dev,
 			    &fops_tpu_uart_rate);
 	debugfs_create_file("policy", 0660, abrolhos_pwr_debugfs_dir,
-			    edgetpu_pdev, &fops_tpu_pwr_policy);
+			    abpdev, &fops_tpu_pwr_policy);
 	debugfs_create_file("core_pwr", 0660, abrolhos_pwr_debugfs_dir,
-			    edgetpu_pdev, &fops_tpu_core_pwr);
+			    abpdev, &fops_tpu_core_pwr);
 
 	return 0;
 }
 
 static void abrolhos_pm_before_destroy(struct edgetpu_pm *etpm)
 {
+	struct edgetpu_dev *etdev = etpm->etdev;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
+
 	debugfs_remove_recursive(abrolhos_pwr_debugfs_dir);
 	pm_runtime_disable(etpm->etdev->dev);
+	abrolhos_pm_cleanup_bts_scenario(etdev);
+	exynos_pm_qos_remove_request(&platform_pwr->int_min);
+	exynos_pm_qos_remove_request(&platform_pwr->mif_min);
 }
 
 static struct edgetpu_pm_handlers abrolhos_pm_handlers = {
@@ -680,66 +701,78 @@ static struct edgetpu_pm_handlers abrolhos_pm_handlers = {
 
 int abrolhos_pm_create(struct edgetpu_dev *etdev)
 {
-	exynos_pm_qos_add_request(&int_min, PM_QOS_DEVICE_THROUGHPUT, 0);
-	exynos_pm_qos_add_request(&mif_min, PM_QOS_BUS_THROUGHPUT, 0);
-
-	performance_scenario = bts_get_scenindex("tpu_performance");
-
-	if (!performance_scenario)
-		etdev_warn(etdev, "tpu_performance BTS scenario not found\n");
-
 	return edgetpu_pm_create(etdev, &abrolhos_pm_handlers);
 }
 
 void abrolhos_pm_destroy(struct edgetpu_dev *etdev)
 {
-	abrolhos_pm_cleanup_bts_scenario(etdev);
-	exynos_pm_qos_remove_request(&int_min);
-	exynos_pm_qos_remove_request(&mif_min);
-
 	edgetpu_pm_destroy(etdev);
 }
 
 void abrolhos_pm_set_pm_qos(struct edgetpu_dev *etdev, u32 pm_qos_val)
 {
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
 	s32 int_val = (pm_qos_val >> PM_QOS_INT_SHIFT) * PM_QOS_FACTOR;
 	s32 mif_val = (pm_qos_val & PM_QOS_MIF_MASK) * PM_QOS_FACTOR;
 
 	etdev_dbg(etdev, "%s: pm_qos request - int = %d mif = %d\n", __func__,
 		  int_val, mif_val);
 
-	exynos_pm_qos_update_request(&int_min, int_val);
-	exynos_pm_qos_update_request(&mif_min, mif_val);
+	exynos_pm_qos_update_request(&platform_pwr->int_min, int_val);
+	exynos_pm_qos_update_request(&platform_pwr->mif_min, mif_val);
 }
 
 static void abrolhos_pm_activate_bts_scenario(struct edgetpu_dev *etdev)
 {
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
+	int performance_scenario = platform_pwr->performance_scenario;
+
 	/* bts_add_scenario() keeps track of reference count internally.*/
 	int ret;
 
 	if (!performance_scenario)
 		return;
+	mutex_lock(&platform_pwr->scenario_lock);
 	ret = bts_add_scenario(performance_scenario);
 	if (ret)
 		etdev_warn_once(etdev, "error %d adding BTS scenario %u\n", ret,
 				performance_scenario);
 	else
-		atomic64_inc(&scenario_count);
+		platform_pwr->scenario_count++;
+
+	etdev_dbg(etdev, "BTS Scenario activated: %d\n",
+		  platform_pwr->scenario_count);
+	mutex_unlock(&platform_pwr->scenario_lock);
 }
 
 static void abrolhos_pm_deactivate_bts_scenario(struct edgetpu_dev *etdev)
 {
 	/* bts_del_scenario() keeps track of reference count internally.*/
 	int ret;
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_pwr *platform_pwr = &abpdev->platform_pwr;
+	int performance_scenario = platform_pwr->performance_scenario;
 
 	if (!performance_scenario)
 		return;
+	mutex_lock(&platform_pwr->scenario_lock);
+	if (!platform_pwr->scenario_count) {
+		etdev_warn(etdev, "Unbalanced bts deactivate\n");
+		mutex_unlock(&platform_pwr->scenario_lock);
+		return;
+	}
 	ret = bts_del_scenario(performance_scenario);
 	if (ret)
 		etdev_warn_once(etdev, "error %d deleting BTS scenario %u\n",
 				ret, performance_scenario);
 	else
-		atomic64_dec(&scenario_count);
+		platform_pwr->scenario_count--;
+
+	etdev_dbg(etdev, "BTS Scenario deactivated: %d\n",
+		  platform_pwr->scenario_count);
+	mutex_unlock(&platform_pwr->scenario_lock);
 }
 
 void abrolhos_pm_set_bts(struct edgetpu_dev *etdev, u32 bts_val)

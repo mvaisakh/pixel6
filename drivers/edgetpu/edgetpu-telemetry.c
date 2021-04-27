@@ -250,6 +250,16 @@ static void telemetry_mappings_show(struct edgetpu_telemetry *tel,
 		   tel->coherent_mem.host_addr, &tel->coherent_mem.dma_addr);
 }
 
+static void telemetry_inc_mmap_count(struct edgetpu_telemetry *tel, int dif)
+{
+	if (!tel->inited)
+		return;
+
+	mutex_lock(&tel->mmap_lock);
+	tel->mmapped_count += dif;
+	mutex_unlock(&tel->mmap_lock);
+}
+
 static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 				 struct edgetpu_telemetry *tel,
 				 struct vm_area_struct *vma)
@@ -261,33 +271,22 @@ static int telemetry_mmap_buffer(struct edgetpu_dev *etdev,
 
 	mutex_lock(&tel->mmap_lock);
 
-	if (!tel->is_mmapped) {
+	if (!tel->mmapped_count) {
 		ret = edgetpu_iremap_mmap(etdev, vma, &tel->coherent_mem);
 
 		if (!ret) {
 			tel->coherent_mem.host_addr = vma->vm_start;
-			tel->is_mmapped = true;
+			tel->mmapped_count = 1;
 		}
 	} else {
 		ret = -EBUSY;
-		etdev_warn(etdev, "Buffer is already mmapped");
+		etdev_warn(etdev, "%s is already mmapped %ld times", tel->name,
+			   tel->mmapped_count);
 	}
 
 	mutex_unlock(&tel->mmap_lock);
 
 	return ret;
-}
-
-static void telemetry_munmap_buffer(struct edgetpu_dev *etdev,
-				    struct edgetpu_telemetry *tel,
-				    struct vm_area_struct *vma)
-{
-	if (!tel->inited)
-		return;
-
-	mutex_lock(&tel->mmap_lock);
-	tel->is_mmapped = false;
-	mutex_unlock(&tel->mmap_lock);
 }
 
 static int telemetry_init(struct edgetpu_dev *etdev,
@@ -344,7 +343,7 @@ static int telemetry_init(struct edgetpu_dev *etdev,
 	tel->state = EDGETPU_TELEMETRY_ENABLED;
 	tel->inited = true;
 	mutex_init(&tel->mmap_lock);
-	tel->is_mmapped = false;
+	tel->mmapped_count = 0;
 
 	return 0;
 }
@@ -467,12 +466,18 @@ int edgetpu_mmap_telemetry_buffer(struct edgetpu_dev *etdev,
 		etdev, select_telemetry(etdev->telemetry, type), vma);
 }
 
-void edgetpu_munmap_telemetry_buffer(struct edgetpu_dev *etdev,
-				     enum edgetpu_telemetry_type type,
-				     struct vm_area_struct *vma)
+void edgetpu_telemetry_inc_mmap_count(struct edgetpu_dev *etdev,
+				      enum edgetpu_telemetry_type type)
 {
 	if (!etdev->telemetry)
 		return;
-	telemetry_munmap_buffer(etdev, select_telemetry(etdev->telemetry, type),
-				vma);
+	telemetry_inc_mmap_count(select_telemetry(etdev->telemetry, type), 1);
+}
+
+void edgetpu_telemetry_dec_mmap_count(struct edgetpu_dev *etdev,
+				      enum edgetpu_telemetry_type type)
+{
+	if (!etdev->telemetry)
+		return;
+	telemetry_inc_mmap_count(select_telemetry(etdev->telemetry, type), -1);
 }

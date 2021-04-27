@@ -133,6 +133,7 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 	phys_addr_t phys;
 	int ret;
 	unsigned long orig_pgoff = vma->vm_pgoff;
+	ulong vma_size, map_size;
 
 #ifdef CONFIG_ARM64
 	/*
@@ -157,8 +158,10 @@ int edgetpu_iremap_mmap(struct edgetpu_dev *etdev, struct vm_area_struct *vma,
 	phys = etmempool->base_phys_addr + offset;
 	etdev_dbg(etdev, "%s: virt = %llx phys = %llx\n",
 		  __func__, (u64)mem->vaddr, phys);
+	vma_size = vma->vm_end - vma->vm_start;
+	map_size = min(vma_size, mem->size);
 	ret = remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
-			      vma->vm_end - vma->vm_start, vma->vm_page_prot);
+			      map_size, vma->vm_page_prot);
 	vma->vm_pgoff = orig_pgoff;
 	return ret;
 }

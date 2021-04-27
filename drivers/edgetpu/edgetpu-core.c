@@ -37,6 +37,28 @@
 #include "edgetpu-wakelock.h"
 #include "edgetpu.h"
 
+enum edgetpu_vma_type {
+	VMA_INVALID,
+
+	VMA_FULL_CSR,
+	VMA_VII_CSR,
+	VMA_VII_CMDQ,
+	VMA_VII_RESPQ,
+	VMA_LOG,
+	VMA_TRACE,
+};
+
+/* structure to be set to vma->vm_private_data on mmap */
+struct edgetpu_vma_private {
+	struct edgetpu_client *client;
+	enum edgetpu_vma_type type;
+	/*
+	 * vm_private_data is copied when a VMA is split, using this reference
+	 * counter to know when should this object be freed.
+	 */
+	refcount_t count;
+};
+
 static atomic_t single_dev_count = ATOMIC_INIT(-1);
 
 static int edgetpu_mmap_full_csr(struct edgetpu_client *client,
@@ -59,52 +81,133 @@ static int edgetpu_mmap_full_csr(struct edgetpu_client *client,
 	return ret;
 }
 
-/*
- * Returns the wakelock event by mmap offset. Returns EDGETPU_WAKELOCK_EVENT_END
- * if the offset does not correspond to a wakelock event.
- */
-static enum edgetpu_wakelock_event mmap_wakelock_event(unsigned long pgoff)
+static enum edgetpu_vma_type mmap_vma_type(unsigned long pgoff)
 {
-	switch (pgoff) {
+	const unsigned long off = pgoff << PAGE_SHIFT;
+
+	switch (off) {
 	case 0:
+		return VMA_FULL_CSR;
+	case EDGETPU_MMAP_CSR_OFFSET:
+		return VMA_VII_CSR;
+	case EDGETPU_MMAP_CMD_QUEUE_OFFSET:
+		return VMA_VII_CMDQ;
+	case EDGETPU_MMAP_RESP_QUEUE_OFFSET:
+		return VMA_VII_RESPQ;
+	case EDGETPU_MMAP_LOG_BUFFER_OFFSET:
+		return VMA_LOG;
+	case EDGETPU_MMAP_TRACE_BUFFER_OFFSET:
+		return VMA_TRACE;
+	default:
+		return VMA_INVALID;
+	}
+}
+
+/*
+ * Returns the wakelock event by VMA type. Returns EDGETPU_WAKELOCK_EVENT_END
+ * if the type does not correspond to a wakelock event.
+ */
+static enum edgetpu_wakelock_event
+vma_type_to_wakelock_event(enum edgetpu_vma_type type)
+{
+	switch (type) {
+	case VMA_FULL_CSR:
 		return EDGETPU_WAKELOCK_EVENT_FULL_CSR;
-	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+	case VMA_VII_CSR:
 		return EDGETPU_WAKELOCK_EVENT_MBOX_CSR;
-	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
+	case VMA_VII_CMDQ:
 		return EDGETPU_WAKELOCK_EVENT_CMD_QUEUE;
-	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
+	case VMA_VII_RESPQ:
 		return EDGETPU_WAKELOCK_EVENT_RESP_QUEUE;
 	default:
 		return EDGETPU_WAKELOCK_EVENT_END;
 	}
 }
 
-static void edgetpu_vma_open(struct vm_area_struct *vma)
+static struct edgetpu_vma_private *
+edgetpu_vma_private_alloc(struct edgetpu_client *client,
+			  enum edgetpu_vma_type type)
 {
-	struct edgetpu_client *client = vma->vm_private_data;
-	enum edgetpu_wakelock_event evt = mmap_wakelock_event(vma->vm_pgoff);
+	struct edgetpu_vma_private *pvt = kmalloc(sizeof(*pvt), GFP_KERNEL);
 
-	if (evt != EDGETPU_WAKELOCK_EVENT_END)
-		edgetpu_wakelock_inc_event(client->wakelock, evt);
+	if (!pvt)
+		return NULL;
+	pvt->client = edgetpu_client_get(client);
+	pvt->type = type;
+	refcount_set(&pvt->count, 1);
+
+	return pvt;
 }
 
+static void edgetpu_vma_private_get(struct edgetpu_vma_private *pvt)
+{
+	WARN_ON_ONCE(!refcount_inc_not_zero(&pvt->count));
+}
+
+static void edgetpu_vma_private_put(struct edgetpu_vma_private *pvt)
+{
+	if (!pvt)
+		return;
+	if (refcount_dec_and_test(&pvt->count)) {
+		edgetpu_client_put(pvt->client);
+		kfree(pvt);
+	}
+}
+
+static void edgetpu_vma_open(struct vm_area_struct *vma)
+{
+	struct edgetpu_vma_private *pvt = vma->vm_private_data;
+	enum edgetpu_wakelock_event evt;
+	struct edgetpu_client *client;
+	struct edgetpu_dev *etdev;
+
+	edgetpu_vma_private_get(pvt);
+	client = pvt->client;
+	etdev = client->etdev;
+
+	evt = vma_type_to_wakelock_event(pvt->type);
+	if (evt != EDGETPU_WAKELOCK_EVENT_END)
+		edgetpu_wakelock_inc_event(client->wakelock, evt);
+
+	/* handle telemetry types */
+	switch (pvt->type) {
+	case VMA_LOG:
+		edgetpu_telemetry_inc_mmap_count(etdev, EDGETPU_TELEMETRY_LOG);
+		break;
+	case VMA_TRACE:
+		edgetpu_telemetry_inc_mmap_count(etdev,
+						 EDGETPU_TELEMETRY_TRACE);
+		break;
+	default:
+		break;
+	}
+}
+
+/* Records previously mmapped addresses were unmapped. */
 static void edgetpu_vma_close(struct vm_area_struct *vma)
 {
-	struct edgetpu_client *client = vma->vm_private_data;
-	enum edgetpu_wakelock_event evt = mmap_wakelock_event(vma->vm_pgoff);
+	struct edgetpu_vma_private *pvt = vma->vm_private_data;
+	struct edgetpu_client *client = pvt->client;
+	enum edgetpu_wakelock_event evt = vma_type_to_wakelock_event(pvt->type);
 	struct edgetpu_dev *etdev = client->etdev;
 
 	if (evt != EDGETPU_WAKELOCK_EVENT_END)
 		edgetpu_wakelock_dec_event(client->wakelock, evt);
 
-	/* TODO(b/184613387): check whole VMA range instead of the start only */
-	if (vma->vm_pgoff == EDGETPU_MMAP_LOG_BUFFER_OFFSET >> PAGE_SHIFT)
-		edgetpu_munmap_telemetry_buffer(etdev, EDGETPU_TELEMETRY_LOG,
-						vma);
-	else if (vma->vm_pgoff ==
-		 EDGETPU_MMAP_TRACE_BUFFER_OFFSET >> PAGE_SHIFT)
-		edgetpu_munmap_telemetry_buffer(etdev, EDGETPU_TELEMETRY_TRACE,
-						vma);
+	/* handle telemetry types */
+	switch (pvt->type) {
+	case VMA_LOG:
+		edgetpu_telemetry_dec_mmap_count(etdev, EDGETPU_TELEMETRY_LOG);
+		break;
+	case VMA_TRACE:
+		edgetpu_telemetry_dec_mmap_count(etdev,
+						 EDGETPU_TELEMETRY_TRACE);
+		break;
+	default:
+		break;
+	}
+
+	edgetpu_vma_private_put(pvt);
 }
 
 static const struct vm_operations_struct edgetpu_vma_ops = {
@@ -116,7 +219,9 @@ static const struct vm_operations_struct edgetpu_vma_ops = {
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 {
 	int ret = 0;
+	enum edgetpu_vma_type type;
 	enum edgetpu_wakelock_event evt;
+	struct edgetpu_vma_private *pvt;
 
 	if (vma->vm_start & ~PAGE_MASK) {
 		etdev_dbg(client->etdev,
@@ -128,61 +233,90 @@ int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma)
 	etdev_dbg(client->etdev, "%s: mmap pgoff = %lX\n", __func__,
 		  vma->vm_pgoff);
 
-	vma->vm_private_data = client;
-	vma->vm_ops = &edgetpu_vma_ops;
+	type = mmap_vma_type(vma->vm_pgoff);
+	if (type == VMA_INVALID)
+		return -EINVAL;
+	pvt = edgetpu_vma_private_alloc(client, type);
+	if (!pvt)
+		return -ENOMEM;
 
 	/* Mark the VMA's pages as uncacheable. */
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	/* Disable fancy things to ensure our event counters work. */
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP;
 
 	/* map all CSRs for debug purpose */
-	if (!vma->vm_pgoff) {
+	if (type == VMA_FULL_CSR) {
 		evt = EDGETPU_WAKELOCK_EVENT_FULL_CSR;
 		if (edgetpu_wakelock_inc_event(client->wakelock, evt)) {
 			ret = edgetpu_mmap_full_csr(client, vma);
 			if (ret)
-				edgetpu_wakelock_dec_event(client->wakelock,
-							   evt);
+				goto out_dec_evt;
 		} else {
 			ret = -EAGAIN;
 		}
-		return ret;
+		goto out_set_op;
 	}
 
-	/* Allow mapping log and telemetry buffers without creating a group */
-	if (vma->vm_pgoff == EDGETPU_MMAP_LOG_BUFFER_OFFSET >> PAGE_SHIFT)
-		return edgetpu_mmap_telemetry_buffer(
-			client->etdev, EDGETPU_TELEMETRY_LOG, vma);
-	if (vma->vm_pgoff == EDGETPU_MMAP_TRACE_BUFFER_OFFSET >> PAGE_SHIFT)
-		return edgetpu_mmap_telemetry_buffer(
+	/* Allow mapping log and telemetry buffers without a group */
+	if (type == VMA_LOG) {
+		ret = edgetpu_mmap_telemetry_buffer(client->etdev,
+						    EDGETPU_TELEMETRY_LOG, vma);
+		goto out_set_op;
+	}
+	if (type == VMA_TRACE) {
+		ret = edgetpu_mmap_telemetry_buffer(
 			client->etdev, EDGETPU_TELEMETRY_TRACE, vma);
+		goto out_set_op;
+	}
 
-	evt = mmap_wakelock_event(vma->vm_pgoff);
-	if (evt == EDGETPU_WAKELOCK_EVENT_END)
-		return -EINVAL;
-	if (!edgetpu_wakelock_inc_event(client->wakelock, evt))
-		return -EAGAIN;
+	evt = vma_type_to_wakelock_event(type);
+	/*
+	 * @type should always correspond to a valid event since we handled
+	 * telemetry mmaps above, still check evt != END in case new types are
+	 * added in the future.
+	 */
+	if (unlikely(evt == EDGETPU_WAKELOCK_EVENT_END)) {
+		ret = -EINVAL;
+		goto err_release_pvt;
+	}
+	if (!edgetpu_wakelock_inc_event(client->wakelock, evt)) {
+		ret = -EAGAIN;
+		goto err_release_pvt;
+	}
 
 	mutex_lock(&client->group_lock);
 	if (!client->group) {
 		ret = -EINVAL;
 		goto out_unlock;
 	}
-	switch (vma->vm_pgoff) {
-	case EDGETPU_MMAP_CSR_OFFSET >> PAGE_SHIFT:
+	switch (type) {
+	case VMA_VII_CSR:
 		ret = edgetpu_mmap_csr(client->group, vma);
 		break;
-	case EDGETPU_MMAP_CMD_QUEUE_OFFSET >> PAGE_SHIFT:
+	case VMA_VII_CMDQ:
 		ret = edgetpu_mmap_queue(client->group, MAILBOX_CMD_QUEUE, vma);
 		break;
-	case EDGETPU_MMAP_RESP_QUEUE_OFFSET >> PAGE_SHIFT:
+	case VMA_VII_RESPQ:
 		ret = edgetpu_mmap_queue(client->group, MAILBOX_RESP_QUEUE,
 					 vma);
+		break;
+	default: /* to appease compiler */
 		break;
 	}
 out_unlock:
 	mutex_unlock(&client->group_lock);
+out_dec_evt:
 	if (ret)
 		edgetpu_wakelock_dec_event(client->wakelock, evt);
+out_set_op:
+	if (!ret) {
+		vma->vm_private_data = pvt;
+		vma->vm_ops = &edgetpu_vma_ops;
+		return 0;
+	}
+err_release_pvt:
+	edgetpu_vma_private_put(pvt);
 	return ret;
 }
 

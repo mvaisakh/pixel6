@@ -472,11 +472,17 @@ int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_firmware *et_fw = etdev->firmware;
 	const struct edgetpu_firmware_handlers *handlers = et_fw->p->handlers;
-	int ret;
+	int ret = -1;
 
 	et_fw->p->status = FW_LOADING;
 	edgetpu_sw_wdt_stop(etdev);
-	if (handlers && handlers->prepare_run) {
+	/*
+	 * Try restarting the firmware first, fall back to normal firmware start
+	 * if this fails.
+	 */
+	if (handlers && handlers->restart)
+		ret = handlers->restart(et_fw);
+	if (ret && handlers && handlers->prepare_run) {
 		ret = handlers->prepare_run(et_fw, &et_fw->p->fw_desc.buf);
 		if (ret)
 			return ret;

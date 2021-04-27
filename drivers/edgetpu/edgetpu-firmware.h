@@ -147,6 +147,12 @@ struct edgetpu_firmware_handlers {
 			   struct edgetpu_firmware_buffer *fw_buf);
 	/* Firmware running, after successful handshake. */
 	void (*launch_complete)(struct edgetpu_firmware *et_fw);
+
+	/*
+	 * Optional platform-specific handler to restart an already loaded
+	 * firmware.
+	 */
+	int (*restart)(struct edgetpu_firmware *et_fw);
 };
 
 /*

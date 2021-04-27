@@ -209,17 +209,17 @@ static int abrolhos_parse_ssmt(struct abrolhos_platform_dev *etpdev)
 static int edgetpu_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct abrolhos_platform_dev *edgetpu_pdev;
+	struct abrolhos_platform_dev *abpdev;
 	struct resource *r;
 	struct edgetpu_mapped_resource regs;
 	int ret;
 
-	edgetpu_pdev = devm_kzalloc(dev, sizeof(*edgetpu_pdev), GFP_KERNEL);
-	if (!edgetpu_pdev)
+	abpdev = devm_kzalloc(dev, sizeof(*abpdev), GFP_KERNEL);
+	if (!abpdev)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, &edgetpu_pdev->edgetpu_dev);
-	edgetpu_pdev->edgetpu_dev.dev = dev;
+	platform_set_drvdata(pdev, &abpdev->edgetpu_dev);
+	abpdev->edgetpu_dev.dev = dev;
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (IS_ERR_OR_NULL(r)) {
@@ -235,17 +235,17 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	mutex_init(&edgetpu_pdev->platform_pwr.policy_lock);
-	edgetpu_pdev->platform_pwr.curr_policy = TPU_POLICY_MAX;
+	mutex_init(&abpdev->platform_pwr.policy_lock);
+	abpdev->platform_pwr.curr_policy = TPU_POLICY_MAX;
 
-	ret = abrolhos_pm_create(&edgetpu_pdev->edgetpu_dev);
+	ret = abrolhos_pm_create(&abpdev->edgetpu_dev);
 
 	if (ret) {
 		dev_err(dev, "Failed to initialize PM interface (%d)\n", ret);
 		return ret;
 	}
 
-	ret = edgetpu_platform_setup_fw_region(edgetpu_pdev);
+	ret = edgetpu_platform_setup_fw_region(abpdev);
 	if (ret) {
 		dev_err(dev, "%s setup fw regions failed: %d\n", DRIVER_NAME,
 			ret);
@@ -253,15 +253,15 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	}
 
 	ret = edgetpu_iremap_pool_create(
-		&edgetpu_pdev->edgetpu_dev,
+		&abpdev->edgetpu_dev,
 		/* Base virtual address (kernel address space) */
-		edgetpu_pdev->shared_mem_vaddr + EDGETPU_POOL_MEM_OFFSET,
+		abpdev->shared_mem_vaddr + EDGETPU_POOL_MEM_OFFSET,
 		/* Base DMA address */
 		EDGETPU_REMAPPED_DATA_ADDR + EDGETPU_POOL_MEM_OFFSET,
 		/* Base TPU address */
 		EDGETPU_REMAPPED_DATA_ADDR + EDGETPU_POOL_MEM_OFFSET,
 		/* Base physical address */
-		edgetpu_pdev->shared_mem_paddr + EDGETPU_POOL_MEM_OFFSET,
+		abpdev->shared_mem_paddr + EDGETPU_POOL_MEM_OFFSET,
 		/* Size */
 		EDGETPU_REMAPPED_DATA_SIZE - EDGETPU_POOL_MEM_OFFSET,
 		/* Granularity */
@@ -273,14 +273,13 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		goto out_cleanup_fw;
 	}
 
-	edgetpu_pdev->edgetpu_dev.mcp_id = -1;
-	edgetpu_pdev->edgetpu_dev.mcp_die_index = 0;
-	edgetpu_pdev->irq = platform_get_irq(pdev, 0);
-	ret = edgetpu_device_add(&edgetpu_pdev->edgetpu_dev, &regs);
+	abpdev->edgetpu_dev.mcp_id = -1;
+	abpdev->edgetpu_dev.mcp_die_index = 0;
+	abpdev->irq = platform_get_irq(pdev, 0);
+	ret = edgetpu_device_add(&abpdev->edgetpu_dev, &regs);
 
-	if (!ret && edgetpu_pdev->irq >= 0)
-		ret = edgetpu_register_irq(&edgetpu_pdev->edgetpu_dev,
-					   edgetpu_pdev->irq);
+	if (!ret && abpdev->irq >= 0)
+		ret = edgetpu_register_irq(&abpdev->edgetpu_dev, abpdev->irq);
 
 	if (ret) {
 		dev_err(dev, "%s edgetpu setup failed: %d\n", DRIVER_NAME,
@@ -288,25 +287,24 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 		goto out_destroy_iremap;
 	}
 
-	ret = abrolhos_parse_ssmt(edgetpu_pdev);
+	ret = abrolhos_parse_ssmt(abpdev);
 	if (ret)
 		dev_warn(
 			dev,
 			"SSMT setup failed (%d). Context isolation not enforced\n",
 			ret);
 
-	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_LOG,
-				   &edgetpu_pdev->log_mem);
-	abrolhos_get_telemetry_mem(edgetpu_pdev, EDGETPU_TELEMETRY_TRACE,
-				   &edgetpu_pdev->trace_mem);
+	abrolhos_get_telemetry_mem(abpdev, EDGETPU_TELEMETRY_LOG,
+				   &abpdev->log_mem);
+	abrolhos_get_telemetry_mem(abpdev, EDGETPU_TELEMETRY_TRACE,
+				   &abpdev->trace_mem);
 
-	ret = edgetpu_telemetry_init(&edgetpu_pdev->edgetpu_dev,
-				     &edgetpu_pdev->log_mem,
-				     &edgetpu_pdev->trace_mem);
+	ret = edgetpu_telemetry_init(&abpdev->edgetpu_dev, &abpdev->log_mem,
+				     &abpdev->trace_mem);
 	if (ret)
 		goto out_remove_device;
 
-	ret = mobile_edgetpu_firmware_create(&edgetpu_pdev->edgetpu_dev);
+	ret = mobile_edgetpu_firmware_create(&abpdev->edgetpu_dev);
 	if (ret) {
 		dev_err(dev,
 			"%s initialize firmware downloader failed: %d\n",
@@ -315,47 +313,47 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	}
 
 	dev_dbg(dev, "Creating thermal device\n");
-	edgetpu_pdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
+	abpdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
 
 	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
-		 edgetpu_pdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
+		 abpdev->edgetpu_dev.dev_name, GIT_REPO_TAG);
 
 	dev_dbg(dev, "Probe finished, powering down\n");
 	/* Turn the device off unless a client request is already received. */
-	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, false);
+	edgetpu_pm_shutdown(&abpdev->edgetpu_dev, false);
 
-	edgetpu_pdev->sscd_info.pdata = &sscd_pdata;
-	edgetpu_pdev->sscd_info.dev = &sscd_dev;
+	abpdev->sscd_info.pdata = &sscd_pdata;
+	abpdev->sscd_info.dev = &sscd_dev;
 
 	return ret;
 out_tel_exit:
-	edgetpu_telemetry_exit(&edgetpu_pdev->edgetpu_dev);
+	edgetpu_telemetry_exit(&abpdev->edgetpu_dev);
 out_remove_device:
-	edgetpu_device_remove(&edgetpu_pdev->edgetpu_dev);
+	edgetpu_device_remove(&abpdev->edgetpu_dev);
 out_destroy_iremap:
-	edgetpu_iremap_pool_destroy(&edgetpu_pdev->edgetpu_dev);
+	edgetpu_iremap_pool_destroy(&abpdev->edgetpu_dev);
 out_cleanup_fw:
-	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
+	edgetpu_platform_cleanup_fw_region(abpdev);
 out_shutdown:
 	dev_dbg(dev, "Probe finished with error %d, powering down\n", ret);
-	edgetpu_pm_shutdown(&edgetpu_pdev->edgetpu_dev, true);
+	edgetpu_pm_shutdown(&abpdev->edgetpu_dev, true);
 	return ret;
 }
 
 static int edgetpu_platform_remove(struct platform_device *pdev)
 {
 	struct edgetpu_dev *etdev = platform_get_drvdata(pdev);
-	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
+	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 
 	mobile_edgetpu_firmware_destroy(etdev);
-	if (edgetpu_pdev->irq >= 0)
-		edgetpu_unregister_irq(etdev, edgetpu_pdev->irq);
+	if (abpdev->irq >= 0)
+		edgetpu_unregister_irq(etdev, abpdev->irq);
 
 	edgetpu_pm_get(etdev->pm);
 	edgetpu_telemetry_exit(etdev);
 	edgetpu_device_remove(etdev);
 	edgetpu_iremap_pool_destroy(etdev);
-	edgetpu_platform_cleanup_fw_region(edgetpu_pdev);
+	edgetpu_platform_cleanup_fw_region(abpdev);
 	edgetpu_pm_put(etdev->pm);
 	edgetpu_pm_shutdown(etdev, true);
 	abrolhos_pm_destroy(etdev);

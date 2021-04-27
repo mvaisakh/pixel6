@@ -147,7 +147,54 @@ static void edgetpu_counter_update(
 
 	mutex_lock(&ustats->usage_stats_lock);
 	if (counter->type >= 0 && counter->type < EDGETPU_COUNTER_COUNT)
-		ustats->counter[counter->type] = counter->value;
+		ustats->counter[counter->type] += counter->value;
+	mutex_unlock(&ustats->usage_stats_lock);
+}
+
+static void edgetpu_max_watermark_update(
+	struct edgetpu_dev *etdev,
+	struct edgetpu_usage_max_watermark *max_watermark)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (!ustats)
+		return;
+
+	etdev_dbg(etdev, "%s: type=%d value=%llu\n", __func__,
+		  max_watermark->type, max_watermark->value);
+
+	if (max_watermark->type < 0 ||
+	    max_watermark->type >= EDGETPU_MAX_WATERMARK_TYPE_COUNT)
+		return;
+
+	mutex_lock(&ustats->usage_stats_lock);
+	if (max_watermark->value > ustats->max_watermark[max_watermark->type])
+		ustats->max_watermark[max_watermark->type] =
+			max_watermark->value;
+	mutex_unlock(&ustats->usage_stats_lock);
+}
+
+static void edgetpu_thread_stats_update(
+	struct edgetpu_dev *etdev,
+	struct edgetpu_thread_stats *thread_stats)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (!ustats)
+		return;
+
+	etdev_dbg(etdev, "%s: id=%d stackmax=%u\n", __func__,
+		  thread_stats->thread_id, thread_stats->max_stack_usage_bytes);
+
+	if (thread_stats->thread_id < 0 ||
+	    thread_stats->thread_id >= EDGETPU_FW_THREAD_COUNT)
+		return;
+
+	mutex_lock(&ustats->usage_stats_lock);
+	if (thread_stats->max_stack_usage_bytes >
+	    ustats->thread_stack_max[thread_stats->thread_id])
+		ustats->thread_stack_max[thread_stats->thread_id] =
+			thread_stats->max_stack_usage_bytes;
 	mutex_unlock(&ustats->usage_stats_lock);
 }
 
@@ -177,6 +224,14 @@ void edgetpu_usage_stats_process_buffer(struct edgetpu_dev *etdev, void *buf)
 			break;
 		case EDGETPU_METRIC_TYPE_COUNTER:
 			edgetpu_counter_update(etdev, &metric->counter);
+			break;
+		case EDGETPU_METRIC_TYPE_MAX_WATERMARK:
+			edgetpu_max_watermark_update(
+				etdev, &metric->max_watermark);
+			break;
+		case EDGETPU_METRIC_TYPE_THREAD_STATS:
+			edgetpu_thread_stats_update(
+				etdev, &metric->thread_stats);
 			break;
 		default:
 			etdev_dbg(etdev, "%s: %d: skip unknown type=%u",
@@ -209,13 +264,29 @@ static int64_t edgetpu_usage_get_counter(
 	enum edgetpu_usage_counter_type counter_type)
 {
 	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
-	int32_t val;
+	int64_t val;
 
 	if (counter_type >= EDGETPU_COUNTER_COUNT)
 		return -1;
 	edgetpu_kci_update_usage(etdev);
 	mutex_lock(&ustats->usage_stats_lock);
 	val = ustats->counter[counter_type];
+	mutex_unlock(&ustats->usage_stats_lock);
+	return val;
+}
+
+static int64_t edgetpu_usage_get_max_watermark(
+	struct edgetpu_dev *etdev,
+	enum edgetpu_usage_max_watermark_type max_watermark_type)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+	int64_t val;
+
+	if (max_watermark_type >= EDGETPU_MAX_WATERMARK_TYPE_COUNT)
+		return -1;
+	edgetpu_kci_update_usage(etdev);
+	mutex_lock(&ustats->usage_stats_lock);
+	val = ustats->max_watermark[max_watermark_type];
 	mutex_unlock(&ustats->usage_stats_lock);
 	return val;
 }
@@ -347,12 +418,163 @@ static ssize_t tpu_throttle_stall_count_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(tpu_throttle_stall_count);
 
+static ssize_t inference_count_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_INFERENCES);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(inference_count);
+
+static ssize_t tpu_op_count_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_TPU_OPS);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(tpu_op_count);
+
+static ssize_t param_cache_hit_count_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_PARAM_CACHE_HITS);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(param_cache_hit_count);
+
+static ssize_t param_cache_miss_count_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_PARAM_CACHE_MISSES);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(param_cache_miss_count);
+
+static ssize_t context_preempt_count_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_counter(etdev,
+					EDGETPU_COUNTER_CONTEXT_PREEMPTS);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+static DEVICE_ATTR_RO(context_preempt_count);
+
+static ssize_t outstanding_commands_max_show(
+	struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_max_watermark(
+			etdev, EDGETPU_MAX_WATERMARK_OUT_CMDS);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+
+static ssize_t outstanding_commands_max_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (ustats) {
+		mutex_lock(&ustats->usage_stats_lock);
+		ustats->max_watermark[EDGETPU_MAX_WATERMARK_OUT_CMDS] = 0;
+		mutex_unlock(&ustats->usage_stats_lock);
+	}
+
+	return count;
+}
+static DEVICE_ATTR_RW(outstanding_commands_max);
+
+static ssize_t preempt_depth_max_show(
+	struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	int64_t val;
+
+	val = edgetpu_usage_get_max_watermark(
+			etdev, EDGETPU_MAX_WATERMARK_PREEMPT_DEPTH);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+}
+
+static ssize_t preempt_depth_max_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (ustats) {
+		mutex_lock(&ustats->usage_stats_lock);
+		ustats->max_watermark[EDGETPU_MAX_WATERMARK_PREEMPT_DEPTH] = 0;
+		mutex_unlock(&ustats->usage_stats_lock);
+	}
+
+	return count;
+}
+static DEVICE_ATTR_RW(preempt_depth_max);
+
+static ssize_t fw_thread_stats_show(
+	struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+	int i;
+	ssize_t ret = 0;
+
+	edgetpu_kci_update_usage(etdev);
+	mutex_lock(&ustats->usage_stats_lock);
+
+	for (i = 0; i < EDGETPU_FW_THREAD_COUNT; i++) {
+		if (!ustats->thread_stack_max[i])
+			continue;
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret,
+				 "%u\t%u\n", i, ustats->thread_stack_max[i]);
+		/* Not checking ret < PAGE_SIZE is intended. */
+	}
+
+	mutex_unlock(&ustats->usage_stats_lock);
+	return ret;
+}
+static DEVICE_ATTR_RO(fw_thread_stats);
+
 static struct attribute *usage_stats_dev_attrs[] = {
 	&dev_attr_tpu_usage.attr,
 	&dev_attr_device_utilization.attr,
 	&dev_attr_tpu_utilization.attr,
 	&dev_attr_tpu_active_cycle_count.attr,
 	&dev_attr_tpu_throttle_stall_count.attr,
+	&dev_attr_inference_count.attr,
+	&dev_attr_tpu_op_count.attr,
+	&dev_attr_param_cache_hit_count.attr,
+	&dev_attr_param_cache_miss_count.attr,
+	&dev_attr_context_preempt_count.attr,
+	&dev_attr_outstanding_commands_max.attr,
+	&dev_attr_preempt_depth_max.attr,
+	&dev_attr_fw_thread_stats.attr,
 	NULL,
 };
 
