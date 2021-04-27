@@ -259,6 +259,12 @@ struct exynos_drm_crtc_state {
 	 */
 	u8 planes_updated : 1;
 
+	/**
+	 * @hibernation_exit: set when crtc is going out of hibernation, serves as
+	 *		      potential optimization to avoid full updates
+	 */
+	u8 hibernation_exit : 1;
+
 	unsigned int reserved_win_mask;
 	unsigned int visible_win_mask;
 	struct drm_rect partial_region;

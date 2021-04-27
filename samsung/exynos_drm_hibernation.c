@@ -111,7 +111,7 @@ retry:
 	if (!enable) {
 		struct exynos_drm_crtc_state *exynos_state = to_exynos_crtc_state(crtc_state);
 
-		exynos_state->skip_update = true;
+		exynos_state->hibernation_exit = true;
 	}
 
 	ret = drm_atomic_add_affected_connectors(state, crtc);

@@ -205,7 +205,10 @@ static int exynos_crtc_atomic_check(struct drm_crtc *crtc,
 	 * refresh that requires an update, however most mode set updates require planes to be
 	 * updated too, and/or we may actually want to just update encoder/bridges/connectors only.
 	 */
-	if (old_crtc_state->self_refresh_active && !crtc_state->color_mgmt_changed &&
+	if (new_exynos_state->hibernation_exit) {
+		new_exynos_state->skip_update = true;
+		crtc_state->no_vblank = true;
+	} else if (old_crtc_state->self_refresh_active && !crtc_state->color_mgmt_changed &&
 	    !new_exynos_state->planes_updated)
 		new_exynos_state->skip_update = true;
 
@@ -409,6 +412,7 @@ exynos_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 	copy->seamless_mode_changed = false;
 	copy->skip_update = false;
 	copy->planes_updated = false;
+	copy->hibernation_exit = false;
 
 	return &copy->base;
 }

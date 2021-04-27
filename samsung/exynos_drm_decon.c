@@ -32,6 +32,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/console.h>
 #include <linux/iommu.h>
+#include <trace/dpu_trace.h>
 #include <uapi/linux/sched/types.h>
 
 #include <soc/google/exynos-cpupm.h>
@@ -1054,6 +1055,30 @@ static int dpu_sysmmu_fault_handler(struct iommu_fault *fault, void *data)
 	return 0;
 }
 
+static ssize_t early_wakeup_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct decon_device *decon;
+	bool trigger;
+
+	if (!dev || !buf || !len) {
+		pr_err("%s: invalid input param(s)\n", __func__);
+		return -EINVAL;
+	}
+
+	if (kstrtobool(buf, &trigger) < 0)
+		return -EINVAL;
+
+	if (!trigger)
+		return len;
+
+	decon = dev_get_drvdata(dev);
+	kthread_queue_work(&decon->worker, &decon->early_wakeup_work);
+
+	return len;
+}
+static DEVICE_ATTR_WO(early_wakeup);
+
 static int decon_bind(struct device *dev, struct device *master, void *data)
 {
 	struct decon_device *decon = dev_get_drvdata(dev);
@@ -1095,6 +1120,7 @@ static int decon_bind(struct device *dev, struct device *master, void *data)
 		decon->bts.ops->init(decon);
 	}
 
+	device_create_file(dev, &dev_attr_early_wakeup);
 	decon_debug(decon, "%s -\n", __func__);
 	return 0;
 }
@@ -1105,6 +1131,7 @@ static void decon_unbind(struct device *dev, struct device *master,
 	struct decon_device *decon = dev_get_drvdata(dev);
 
 	decon_debug(decon, "%s +\n", __func__);
+	device_remove_file(dev, &dev_attr_early_wakeup);
 	if (IS_ENABLED(CONFIG_EXYNOS_BTS))
 		decon->bts.ops->deinit(decon);
 
@@ -1573,6 +1600,17 @@ err:
 	return ret;
 }
 
+static void decon_early_wakeup_work(struct kthread_work *work)
+{
+	struct decon_device *decon = container_of(work, struct decon_device,
+			early_wakeup_work);
+
+	DPU_ATRACE_BEGIN("decon_early_wakeup_work");
+	hibernation_block_exit(decon->hibernation);
+	hibernation_unblock_enter(decon->hibernation);
+	DPU_ATRACE_END("decon_early_wakeup_work");
+}
+
 static int decon_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -1626,6 +1664,7 @@ static int decon_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
+	kthread_init_work(&decon->early_wakeup_work, decon_early_wakeup_work);
 	decon_info(decon, "successfully probed");
 
 err:
