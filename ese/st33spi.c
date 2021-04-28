@@ -35,6 +35,7 @@
 #include <linux/of_gpio.h>
 
 #include <linux/uaccess.h>
+#include <linux/platform_data/spi-s3c64xx.h>
 
 #undef ST33NFC_QCOM
 
@@ -108,6 +109,11 @@ struct st33spi_data {
 	int nfcc_needs_poweron;
 	int sehal_needs_poweron;
 	int se_is_poweron;
+
+	/* GPIO for SPI_CS */
+	struct s3c64xx_spi_csinfo *st33spi_csinfo;
+	struct pinctrl *pinctrl;
+	int spi_state;
 };
 
 #define POWER_MODE_NONE -1
@@ -125,6 +131,94 @@ MODULE_PARM_DESC(bufsiz, "data bytes in biggest supported SPI message");
 #define DRIVER_VERSION "2.2.0"
 
 /*-------------------------------------------------------------------------*/
+static int st33spi_pinctrl_configure(struct st33spi_data *st33spi, bool enable)
+{
+	struct pinctrl_state *state;
+	int rc;
+
+	dev_info(&st33spi->spi->dev, "st33spi: configure pinctrl: %d\n", enable);
+
+	if (IS_ERR(st33spi->pinctrl)) {
+		dev_err(&st33spi->spi->dev, "could not get pinctrl\n");
+		return -ENODEV;
+	}
+	if (enable)
+		state = pinctrl_lookup_state(st33spi->pinctrl, "on");
+	else
+		state = pinctrl_lookup_state(st33spi->pinctrl, "off");
+
+	if (!IS_ERR_OR_NULL(state)) {
+		rc = pinctrl_select_state(st33spi->pinctrl, state);
+		if (unlikely(rc))
+			dev_err(&st33spi->spi->dev, "st33spi: failed to set pinctrl state\n");
+		return rc;
+	}
+	dev_err(&st33spi->spi->dev, "st33spi: failed to get pinctrl state\n");
+
+	return -EIO;
+}
+
+static ssize_t st33spi_state_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct spi_device *spi;
+	struct st33spi_data *st33spi;
+	spi = to_spi_device(dev);
+	if (spi == NULL)
+		return -ENODEV;
+
+	st33spi = spi_get_drvdata(spi);
+	if (st33spi == NULL)
+		return -ENODEV;
+
+	return scnprintf(buf, PAGE_SIZE, "state:%d, st33spi_cs:%d\n",
+			st33spi->spi_state, gpio_get_value(st33spi->st33spi_csinfo->line));
+}
+
+static ssize_t st33spi_state_store(struct device *dev,
+				struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct spi_device *spi;
+	struct st33spi_data *st33spi;
+	struct s3c64xx_spi_csinfo *cs;
+	int new_spi_state;
+
+	spi = to_spi_device(dev);
+	if (spi == NULL)
+		return -ENODEV;
+
+	st33spi = spi_get_drvdata(spi);
+	if (st33spi == NULL)
+		return -ENODEV;
+
+	cs = st33spi->st33spi_csinfo;
+	if (cs == NULL)
+		return -ENODEV;
+
+	if (!kstrtoint(buf, 10, &new_spi_state)) {
+		st33spi->spi_state = new_spi_state;
+		if (new_spi_state == 0) {
+			st33spi_pinctrl_configure(st33spi, false);
+		} else if (new_spi_state == 33) {
+			st33spi_pinctrl_configure(st33spi, true);
+		} else {
+			dev_err(dev, "%s: incorrect parameter\n", __func__);
+			return -EINVAL;
+		}
+	}
+	return count;
+}
+
+static DEVICE_ATTR_RW(st33spi_state);
+
+static struct attribute *st33spi_attrs[] = {
+	&dev_attr_st33spi_state.attr,
+	NULL,
+};
+
+static struct attribute_group st33spi_attr_grp = {
+	.attrs = st33spi_attrs,
+};
 
 static ssize_t st33spi_sync(struct st33spi_data *st33spi,
 			    struct spi_message *message)
@@ -192,6 +286,11 @@ static ssize_t st33spi_read(struct file *filp, char __user *buf, size_t count,
 
 	st33spi = filp->private_data;
 
+	if (st33spi == NULL || !st33spi->spi_state) {
+		dev_warn(&st33spi->spi->dev, "st33spi: spi is not enabled, abort read process\n");
+		return -EFAULT;
+	}
+
 	dev_dbg(&st33spi->spi->dev, "st33spi Read: %zu bytes\n", count);
 
 	mutex_lock(&st33spi->buf_lock);
@@ -225,6 +324,11 @@ static ssize_t st33spi_write(struct file *filp, const char __user *buf,
 		return -EMSGSIZE;
 
 	st33spi = filp->private_data;
+
+	if (st33spi == NULL || !st33spi->spi_state) {
+		dev_warn(&st33spi->spi->dev, "st33spi: spi is not enabled, abort write process\n");
+		return -EFAULT;
+	}
 
 	dev_dbg(&st33spi->spi->dev, "st33spi Write: %zu bytes\n", count);
 
@@ -587,10 +691,9 @@ static long st33spi_ioctl(struct file *filp, unsigned int cmd,
 		retval = __get_user(tmp, (__u32 __user *)arg);
 		dev_dbg(&st33spi->spi->dev,
 			 "st33spi ST33SPI_IOC_WR_POWER %d\n", retval);
-		if (retval == 0) {
+		if (retval == 0 && st33spi->spi_state) {
 			st33spi_power_set(st33spi, tmp ? 1 : 0);
-			dev_dbg(&st33spi->spi->dev, "SE_POWER_REQ set: %d\n",
-				 tmp);
+			dev_dbg(&st33spi->spi->dev, "SE_POWER_REQ set: %d\n", tmp);
 		}
 		break;
 	default:
@@ -708,6 +811,13 @@ static int st33spi_open(struct inode *inode, struct file *filp)
 		dev_dbg(&st33spi->spi->dev, "st33spi: nothing for minor %d\n",
 			iminor(inode));
 		goto err_find_dev;
+	}
+
+	if (st33spi == NULL || !st33spi->spi_state) {
+		dev_warn(&st33spi->spi->dev,
+				"st33spi: spi is not enabled, abort open process\n");
+		mutex_unlock(&device_list_lock);
+		return -EFAULT;
 	}
 
 	/* Authorize only 1 process to open the device. */
@@ -867,33 +977,32 @@ static inline void st33spi_probe_acpi(struct spi_device *spi)
 
 static int st33spi_parse_dt(struct device *dev, struct st33spi_data *pdata)
 {
-	int r = 0;
 	struct device_node *np = dev->of_node;
+	struct device_node *data_np;
 	const char *power_mode;
+	int st33spi_state;
 
 #ifndef GKI_MODULE
 	np = of_find_compatible_node(NULL, NULL, "st,st33spi");
 #endif
 
 	if (!np) {
-		return r;
+		return -ENODEV;
 	}
 
 	/* Read power mode. */
 	power_mode = of_get_property(np, "power_mode", NULL);
 	if (!power_mode) {
-		dev_info(dev, "%s: Default power mode: ST33\n",
-			 __FILE__);
+		dev_info(dev, "Default power mode: ST33\n");
 		pdata->power_gpio_mode = POWER_MODE_ST33;
 	} else if (!strcmp(power_mode, "ST33")) {
-		dev_info(dev, "%s: Power mode: ST33\n", __FILE__);
+		dev_info(dev, "Power mode: ST33\n");
 		pdata->power_gpio_mode = POWER_MODE_ST33;
 	} else if (!strcmp(power_mode, "none")) {
-		dev_info(dev, "%s: Power mode: none\n", __FILE__);
+		dev_info(dev, "Power mode: none\n");
 		pdata->power_gpio_mode = POWER_MODE_NONE;
 	} else {
-		dev_err(dev, "%s: Power mode unknown: %s\n", __FILE__,
-			power_mode);
+		dev_err(dev, "Power mode unknown: %s\n", power_mode);
 		return -EFAULT;
 	}
 
@@ -902,16 +1011,35 @@ static int st33spi_parse_dt(struct device *dev, struct st33spi_data *pdata)
 		pdata->gpiod_se_reset =
 			devm_gpiod_get(dev, "esereset", GPIOD_OUT_LOW);
 		if (IS_ERR(pdata->gpiod_se_reset)) {
-			dev_err(dev,
-				"%s : Unable to request esereset %d\n",
-				__func__,
-				IS_ERR(pdata->gpiod_se_reset));
+			dev_err(dev, "Unable to request esereset %d\n",
+					IS_ERR(pdata->gpiod_se_reset));
 			return -ENODEV;
 		}
 	} else {
-		dev_err(dev, "%s: ST54H mode not supported", __FILE__);
+		dev_err(dev, "ST54H mode not supported");
 	}
-	return r;
+
+	/* Read default st33spi state. */
+	data_np = of_get_child_by_name(np, "controller-data");
+	if (!data_np) {
+		dev_err(dev, "child node 'controller-data' not found\n");
+		return -ENODEV;
+	}
+
+	if (!of_property_read_u32(data_np, "cs-init-state", &st33spi_state)) {
+		pdata->spi_state = st33spi_state;
+	} else {
+		pdata->spi_state = 0;
+	}
+	dev_info(dev, "Default st33spi state: %d\n", pdata->spi_state);
+
+	pdata->pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(pdata->pinctrl)) {
+		dev_err(dev, "could not get pinctrl\n");
+		return -ENODEV;
+	}
+
+	return 0;
 }
 
 static int st33spi_probe(struct spi_device *spi)
@@ -932,8 +1060,7 @@ static int st33spi_probe(struct spi_device *spi)
 	BUILD_BUG_ON(N_SPI_MINORS > 256);
 	st33spi_major =
 		__register_chrdev(0, 0, N_SPI_MINORS, "spi", &st33spi_fops);
-	dev_info(&spi->dev, "Loading st33spi driver, major: %d\n",
-		 st33spi_major);
+	dev_info(&spi->dev, "Loading st33spi driver, major: %d\n", st33spi_major);
 
 	st33spi_class = class_create(THIS_MODULE, "st33spi");
 	if (IS_ERR(st33spi_class)) {
@@ -974,6 +1101,12 @@ static int st33spi_probe(struct spi_device *spi)
 		dev = device_create(st33spi_class, &spi->dev, st33spi->devt,
 				    st33spi, "st33spi");
 		status = PTR_ERR_OR_ZERO(dev);
+
+		status = sysfs_create_group(&dev->kobj, &st33spi_attr_grp);
+		if (status) {
+			dev_err(&spi->dev, "sysfs_create_group failed\n");
+		}
+		st33spi->st33spi_csinfo = spi_get_ctldata(spi);
 	} else {
 		dev_dbg(&spi->dev, "%s : no minor number available!\n",
 			__FILE__);
@@ -1013,6 +1146,12 @@ static int st33spi_probe(struct spi_device *spi)
 	if (status == 0) {
 		spi_set_drvdata(spi, st33spi);
 		(void)st33spi_parse_dt(&spi->dev, st33spi);
+		if (!st33spi->spi_state) {
+			dev_dbg(&spi->dev, "st33spi: probe - put spi pins to low \n");
+			st33spi_pinctrl_configure(st33spi, false);
+		} else {
+			st33spi_pinctrl_configure(st33spi, true);
+		}
 	} else {
 		kfree(st33spi);
 	}
