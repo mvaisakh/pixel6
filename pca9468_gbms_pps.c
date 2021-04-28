@@ -136,14 +136,16 @@ int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
 	/* not needed if tcpm-power-supply is not there */
 	ret = pps_init(&pca9468->pps_data, pca9468->dev, tcpm_psy);
 	if (ret == 0) {
-		const char *logname = "pca9468_tcpm";
-		int tmp;
-
-		tmp = pps_register_logbuffer(&pca9468->pps_data, logname);
-		pr_info("pca9468: PPS direct available, log:%s\n",
-			 tmp < 0 ? "none" : logname);
+		const char *logname = "pca9468";
 
 		pps_init_state(&pca9468->pps_data);
+		pca9468->log = logbuffer_register(logname);
+		if (IS_ERR(pca9468->log)) {
+			pr_info("pca9468: no logbuffer (%ld)\n", PTR_ERR(pca9468->log));
+			pca9468->log = NULL;
+		} else {
+			pps_set_logbuffer(&pca9468->pps_data, pca9468->log);
+		}
 	}
 
 check_online:

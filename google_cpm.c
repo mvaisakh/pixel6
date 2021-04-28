@@ -102,6 +102,8 @@ struct gcpm_drv  {
 	/* force a charger, this might have side effects */
 	int force_active;
 
+	struct logbuffer *log;
+
 	/* TCPM state for wired PPS charging */
 	const char *tcpm_psy_name;
 	struct power_supply *tcpm_psy;
@@ -1358,10 +1360,9 @@ static void gcpm_init_work(struct work_struct *work)
 			} else {
 				gcpm->tcpm_pps_data.port_data =
 					power_supply_get_drvdata(tcpm_psy);
-
 				pps_init_state(&gcpm->tcpm_pps_data);
-				pr_info("PPS available for %s\n",
-					gcpm->tcpm_psy_name);
+				pps_set_logbuffer(&gcpm->tcpm_pps_data, gcpm->log);
+				pps_log(&gcpm->tcpm_pps_data, "TCPM_PPS for %s", gcpm->tcpm_psy_name);
 			}
 
 		} else if (!tcpm_psy || !gcpm->log_psy_ratelimit) {
@@ -1395,10 +1396,10 @@ static void gcpm_init_work(struct work_struct *work)
 				pr_err("PPS init failure for %s (%d)\n",
 				       name, ret);
 			} else {
-				/* TODO: TBD */
 				gcpm->wlc_pps_data.port_data = NULL;
 				pps_init_state(&gcpm->wlc_pps_data);
-				pr_info("PPS available for %s\n", name);
+				pps_set_logbuffer(&gcpm->wlc_pps_data, gcpm->log);
+				pps_log(&gcpm->wlc_pps_data, "WLC_PPS for %s", gcpm->wlc_dc_name);
 			}
 
 		} else if (!gcpm->log_psy_ratelimit) {
@@ -1953,6 +1954,13 @@ static int google_cpm_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
+	gcpm->log = logbuffer_register("cpm");
+	if (IS_ERR(gcpm->log)) {
+		dev_err(gcpm->device, "Couldn't register logbuffer, (%ld)\n",
+			PTR_ERR(gcpm->log));
+		gcpm->log = NULL;
+	}
+
 	/* gcpm_pps_psy_cfg.of_node is used to find out the snk_pdos */
 	gcpm_pps_psy_cfg.drv_data = gcpm;
 	gcpm_pps_psy_cfg.of_node = pdev->dev.of_node;
@@ -1993,6 +2001,9 @@ static int google_cpm_remove(struct platform_device *pdev)
 
 	if (gcpm->wlc_dc_psy)
 		power_supply_put(gcpm->wlc_dc_psy);
+
+	if (gcpm->log)
+		logbuffer_unregister(gcpm->log);
 
 	return 0;
 }

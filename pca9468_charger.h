@@ -16,6 +16,7 @@
 #include <linux/thermal.h>
 #include <linux/pm_runtime.h>
 #include <linux/kernel.h>
+#include <misc/logbuffer.h>
 
 /* Google integration */
 #include "gbms_power_supply.h"
@@ -56,6 +57,7 @@ struct pca9468_platform_data {
  * @tcpm_phandle: lookup for tcpm power supply
  * @pps_work: pps work for PPS periodic time
  * @pps_data: internal data for dc_pps
+ * @log: logbuffer
  * @pd: phandle for qualcomm PMI usbpd-phy
  * @wlc_psy_name: power supply for wlc DC
  * @wlc_psy: wlc DC ps
@@ -141,6 +143,7 @@ struct pca9468_charger {
 	struct power_supply 	*pd;
 	struct delayed_work	pps_work;
 	struct pd_pps_data	pps_data;
+	struct logbuffer	*log;
 
 #ifdef CONFIG_THERMAL
 	struct thermal_zone_device *usb_tzd;

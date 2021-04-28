@@ -496,20 +496,9 @@ int pps_init_fs(struct pd_pps_data *pps_data, struct dentry *de)
 	return 0;
 }
 
-int pps_register_logbuffer(struct pd_pps_data *pps_data, const char *name)
+void pps_set_logbuffer(struct pd_pps_data *pps_data, struct logbuffer *log)
 {
-	int ret = 0;
-
-	if (!pps_data || !name)
-		return -EINVAL;
-
-	pps_data->log = logbuffer_register(name);
-	if (IS_ERR(pps_data->log)) {
-		ret = PTR_ERR(pps_data->log);
-		pps_data->log = NULL;
-	}
-
-	return ret;
+	pps_data->log = IS_ERR(log) ? NULL : log;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -652,7 +641,6 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	pps_data->pps_psy = pps_psy;
 	return 0;
 }
-// EXPORT_SYMBOL_GPL(pps_init);
 
 /* ------------------------------------------------------------------------- */
 

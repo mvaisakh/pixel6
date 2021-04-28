@@ -4375,6 +4375,8 @@ static int pca9468_remove(struct i2c_client *client)
 	if (pca9468_chg->usb_tzd)
 		thermal_zone_device_unregister(pca9468_chg->usb_tzd);
 #endif
+	if (pca9468_chg->log)
+		logbuffer_unregister(pca9468_chg->log);
 	return 0;
 }
 

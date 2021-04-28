@@ -130,8 +130,7 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 
 int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy);
 
-int pps_register_logbuffer(struct pd_pps_data *pps_data, const char *name);
-
+void pps_set_logbuffer(struct pd_pps_data *pps_data, struct logbuffer *log);
 void pps_log(struct pd_pps_data *pps, const char *fmt, ...);
 
 /* probe */
