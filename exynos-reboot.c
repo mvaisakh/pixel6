@@ -145,11 +145,9 @@ static void exynos_reboot_parse(const char *cmd)
 			value = REBOOT_MODE_CHARGE;
 		else if (!strcmp(cmd, "bootloader"))
 			value = REBOOT_MODE_BOOTLOADER;
-		else if (!strcmp(cmd, "fastboot") ||
-			 !strcmp(cmd, "userrequested,fastboot"))
+		else if (!strcmp(cmd, "fastboot"))
 			value = REBOOT_MODE_FASTBOOT;
-		else if (!strcmp(cmd, "recovery") ||
-			 !strcmp(cmd, "userrequested,recovery"))
+		else if (!strcmp(cmd, "recovery"))
 			value = REBOOT_MODE_RECOVERY;
 		else if (!strcmp(cmd, "dm-verity device corrupted"))
 			value = REBOOT_MODE_DMVERITY_CORRUPTED;
@@ -159,7 +157,10 @@ static void exynos_reboot_parse(const char *cmd)
 			value = REBOOT_MODE_SHUTDOWN_THERMAL;
 		else if (!strcmp(cmd, "from_fastboot") ||
 			 !strcmp(cmd, "shell") ||
-			 !strcmp(cmd, "userrequested"))
+			 !strcmp(cmd, "userrequested") ||
+			 !strcmp(cmd, "userrequested,fastboot") ||
+			 !strcmp(cmd, "userrequested,recovery") ||
+			 !strcmp(cmd, "userrequested,recovery,ui"))
 			value = REBOOT_MODE_NORMAL;
 		else
 			pr_err("Unknown reboot command: '%s'\n", cmd);
