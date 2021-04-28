@@ -132,7 +132,9 @@ int max_m5_needs_reset_model_data(const struct max_m5_data *m5_data);
  */
 static inline int max_m5_check_devname(u16 devname)
 {
-	return (devname >> 8) == 0x62;
+	const u16 radix = devname >> 8;
+
+	return radix == 0x62 || radix == 0x63;
 }
 
 /* b/177099997, handle TaskConfig = 351 */

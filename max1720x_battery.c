@@ -4634,6 +4634,7 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 
 	/* it might need devname later */
 	chip->devname = buf[1] << 8 | buf[0];
+	dev_info(chip->dev, "chip devname:0x%X\n", chip->devname);
 
 	ret = of_property_read_u32(chip->dev->of_node, "maxim,gauge-type",
 				   &gauge_type);
@@ -4653,16 +4654,15 @@ static int max17xxx_read_gauge_type(struct max1720x_chip *chip)
 	case 0x406: /* max1730x pass2 silicon */
 		gauge_type = MAX1730X_GAUGE_TYPE;
 		break;
-	case 0x630: /* for fake battery */
-		gauge_type = MAX_M5_GAUGE_TYPE;
+	default:
 		break;
-	case 0x110: /* for fake battery */
-		gauge_type = MAX1720X_GAUGE_TYPE;
-		break;
+	}
+
+	switch (chip->devname & 0x000F) {
+	case 0x1: /* max17201 or max17211 */
+	case 0x5: /* max17205 or max17215 */
 	default:
 		gauge_type = MAX1720X_GAUGE_TYPE;
-		dev_warn(chip->dev, "devname=%x defaults to %d\n",
-			 chip->devname, gauge_type);
 		break;
 	}
 
