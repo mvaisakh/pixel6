@@ -591,7 +591,7 @@ const struct brightness_capability s6e3hc3_brightness_capability = {
 		},
 		.percentage = {
 			.min = 0,
-			.max = 80,
+			.max = 62,
 		},
 	},
 	.hbm = {
@@ -604,7 +604,7 @@ const struct brightness_capability s6e3hc3_brightness_capability = {
 			.max = 4095,
 		},
 		.percentage = {
-			.min = 80,
+			.min = 62,
 			.max = 100,
 		},
 	},
