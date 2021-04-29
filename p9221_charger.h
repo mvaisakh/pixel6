@@ -437,6 +437,13 @@
 
 #define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
 
+/* for DD */
+#define TXID_TYPE_MASK			0xFF000000 /* bit[24-31] */
+#define TXID_TYPE_SHIFT			24
+#define TXID_DD_TYPE			0xE0
+#define P9221_POWER_MITIGATE_DELAY_MS   (10 * 1000)
+#define P9221_FOD_MAX_TIMES             3
+
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
 	ALIGN_MFG_CHECKING,
@@ -514,7 +521,7 @@ struct p9221_charger_platform_data {
 	u16				chip_id;
 	bool				has_wlc_dc;
 	bool				has_rtx;
-
+	u32				power_mitigate_threshold;
 	u32				alignment_scalar_low_current;
 	u32				alignment_scalar_high_current;
 	u32				alignment_offset_low_current;
@@ -577,6 +584,7 @@ struct p9221_charger_data {
 	struct delayed_work		icl_ramp_work;
 	struct delayed_work		txid_work;
 	struct delayed_work		rtx_work;
+	struct delayed_work		power_mitigation_work;
 	struct work_struct		uevent_work;
 	struct work_struct		rtx_disable_work;
 	struct alarm			icl_ramp_alarm;
@@ -649,9 +657,12 @@ struct p9221_charger_data {
 	bool				prop_mode_en;
 	bool				no_fod;
 	u16				fw_rev;
-
-	struct mutex stats_lock;
-	struct p9221_charge_stats chg_data;
+	struct mutex			stats_lock;
+	struct p9221_charge_stats	chg_data;
+	u32				mitigate_threshold;
+	u32				fod_cnt;
+	bool				trigger_power_mitigation;
+	bool				wait_for_online;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
