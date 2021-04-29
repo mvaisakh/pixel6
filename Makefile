@@ -18,6 +18,7 @@ GBMS_MODULES =	GOOGLE_BMS \
 		MAX1720X_BATTERY \
 		MAX_M5 \
 		PCA9468 \
+		PCA9468_GOOGLE \
 		MAX20339
 
 
@@ -76,6 +77,11 @@ pca9468-objs += pca9468_charger.o
 pca9468-objs += pca9468_gbms_pps.o
 pca9468-objs += google_dc_pps.o
 
+obj-$(CONFIG_PCA9468_GOOGLE)  += pca9468-google.o
+pca9468-google-objs += pca_charger.o
+pca9468-google-objs += pca9468_gbms_pps.o
+pca9468-google-objs += google_dc_pps.o
+
 # Alternate (untested) standalone for max77729f sans FG
 obj-$(CONFIG_MAX77729)		+= max77729.o
 max77729-objs += max77729_pmic.o
@@ -105,6 +111,7 @@ CFLAGS_max77729_charger.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max1720x_battery.o += $(WENUMS)
 CFLAGS_pca9468_charger.o += $(WENUMS)
 CFLAGS_pca9468_gbms_pps.o += $(WENUMS)
+CFLAGS_pca_charger.o += $(WENUMS)
 CFLAGS_google_battery.o += $(WENUMS)
 CFLAGS_google_ttf.o += -Wno-format
 CFLAGS_google_charger.o += -Wno-enum-conversion
