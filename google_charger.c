@@ -1569,7 +1569,10 @@ static void chg_work(struct work_struct *work)
 	struct power_supply *usb_psy = chg_drv->tcpm_psy ? chg_drv->tcpm_psy :
 				       chg_drv->usb_psy;
 	union gbms_ce_adapter_details ad = { .v = 0 };
-	int present, usb_online, wlc_online = 0, ext_online = 0, wlc_present = 0;
+	int wlc_online = 0, wlc_present = 0;
+	int ext_online = 0, ext_present = 0;
+	int usb_online, usb_present = 0;
+	int present, online;
 	int update_interval = -1;
 	bool chg_done = false;
 	int success, rc = 0;
@@ -1605,17 +1608,29 @@ static void chg_work(struct work_struct *work)
 	/* cause msc_update_charger_cb to ignore updates */
 	vote(chg_drv->msc_interval_votable, MSC_CHG_VOTER, true, 0);
 
+	/* NOTE: return online when usb is not defined */
 	usb_online = chg_usb_online(usb_psy);
+	/* NOTE: ask usb for present (when/if defined) */
+	if (chg_drv->usb_psy)
+		usb_present = GPSY_GET_PROP(chg_drv->usb_psy,
+					    POWER_SUPPLY_PROP_PRESENT);
+	else
+		usb_present = usb_online;
+
 	if (wlc_psy) {
 		wlc_online = GPSY_GET_PROP(wlc_psy, POWER_SUPPLY_PROP_ONLINE);
 		wlc_present = GPSY_GET_PROP(wlc_psy, POWER_SUPPLY_PROP_PRESENT);
 	}
-	if (ext_psy)
+
+	/* TODO: b/186905611 validate Defender with EXT */
+	if (ext_psy) {
 		ext_online = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_ONLINE);
+		ext_present = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_PRESENT);
+	}
 
 	/* ICL=0 on discharge will (might) cause usb online to go to 0 */
-	present = GPSY_GET_PROP(chg_drv->usb_psy, POWER_SUPPLY_PROP_PRESENT) ||
-		  wlc_present;
+	present =  usb_present || wlc_present || ext_present;
+	online = usb_online || wlc_online || ext_online;
 
 	if (usb_online  < 0 || wlc_online < 0 || ext_online < 0) {
 		pr_err("MSC_CHG error reading usb=%d wlc=%d ext=%d\n",
@@ -1623,7 +1638,7 @@ static void chg_work(struct work_struct *work)
 
 		/* TODO: maybe disable charging when this happens? */
 		goto rerun_error;
-	} else if (!usb_online && !wlc_online && !ext_online && !present) {
+	} else if (!online && !present) {
 		const bool stop_charging = chg_drv->stop_charging != 1;
 
 		rc = chg_start_bd_work(chg_drv);
