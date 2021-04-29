@@ -1614,7 +1614,7 @@ static void chg_work(struct work_struct *work)
 		ext_online = GPSY_GET_PROP(ext_psy, POWER_SUPPLY_PROP_ONLINE);
 
 	/* ICL=0 on discharge will (might) cause usb online to go to 0 */
-	present = GPSY_GET_PROP(usb_psy, POWER_SUPPLY_PROP_PRESENT) ||
+	present = GPSY_GET_PROP(chg_drv->usb_psy, POWER_SUPPLY_PROP_PRESENT) ||
 		  wlc_present;
 
 	if (usb_online  < 0 || wlc_online < 0 || ext_online < 0) {
