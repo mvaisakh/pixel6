@@ -642,6 +642,16 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	return 0;
 }
 
+void pps_free(struct pd_pps_data *pps_data)
+{
+	if (!pps_data || !pps_data->pps_psy)
+		return;
+	if (pps_data->pps_ws)
+		wakeup_source_unregister(pps_data->pps_ws);
+	pps_data->pps_psy = NULL;
+}
+
+
 /* ------------------------------------------------------------------------- */
 
 /*

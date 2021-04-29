@@ -96,6 +96,8 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 int pps_init_fs(struct pd_pps_data *pps_data, struct dentry *de);
 /* reset state and leave in DISABLED  */
 void pps_init_state(struct pd_pps_data *pps_data);
+/* free resources  */
+void pps_free(struct pd_pps_data *pps_data);
 
 /* Run the PPS state machine   */
 int pps_work(struct pd_pps_data *pps, struct power_supply *tcpm_psy);

@@ -1999,6 +1999,9 @@ static int google_cpm_remove(struct platform_device *pdev)
 		gcpm->chg_psy_avail[i] = NULL;
 	}
 
+	pps_free(&gcpm->wlc_pps_data);
+	pps_free(&gcpm->tcpm_pps_data);
+
 	if (gcpm->wlc_dc_psy)
 		power_supply_put(gcpm->wlc_dc_psy);
 

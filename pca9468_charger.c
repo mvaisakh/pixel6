@@ -4377,6 +4377,8 @@ static int pca9468_remove(struct i2c_client *client)
 #endif
 	if (pca9468_chg->log)
 		logbuffer_unregister(pca9468_chg->log);
+	pps_free(&pca9468_chg->pps_data);
+
 	return 0;
 }
 
