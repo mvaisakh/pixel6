@@ -644,6 +644,39 @@ static int gs101_wlc_tx_enable(struct max77759_usecase_data *uc_data,
 	return ret;
 }
 
+/* change p9412 CPOUT and adjust WCIN_REG */
+#define GS101_WLCRX_CPOUT_DFLT	0
+#define GS101_WLCRX_CPOUT_5_2V	1
+
+static int gs101_cpout_mode(struct max77759_usecase_data *uc_data, int mode)
+{
+	int ret;
+
+	/* do not change MW unless p9412 can be changed as well */
+	if (uc_data->cpout_ctl < 0)
+		return 0;
+
+	if (mode == GS101_WLCRX_CPOUT_5_2V) {
+		/* p9412: set CPOUT==5.2 only if on BPP */
+		gpio_set_value_cansleep(uc_data->cpout_ctl, 1);
+
+		/* NOTE: no DC_IN to MW when WCIN_REG==4_85 unless CPOUT==5.2 */
+		ret =  max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
+					       MAX77759_CHG_CNFG_12_WCIN_REG_MASK,
+					       MAX77759_CHG_CNFG_12_WCIN_REG_4_85);
+	} else {
+		/* p9412: reset CPOUT to default */
+		gpio_set_value_cansleep(uc_data->cpout_ctl, 0);
+
+		ret =  max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
+					       MAX77759_CHG_CNFG_12_WCIN_REG_MASK,
+					       MAX77759_CHG_CNFG_12_WCIN_REG_4_5);
+	}
+
+	return ret;
+}
+
+
 /*
  * Transition to standby (if needed) at the beginning of the sequences
  * @return <0 on error, 0 on success. ->use_case becomes GSU_MODE_STANDBY
@@ -956,38 +989,16 @@ static int gs101_wlctx_otg_en(struct max77759_usecase_data *uc_data, bool enable
 	return ret;
 }
 
-/* change p9412 CPOUT and adjust WCIN_REG */
-#define GS101_WLCRX_CPOUT_DFLT	0
-#define GS101_WLCRX_CPOUT_5_2V	1
-
-static int gs101_cpout_mode(struct max77759_usecase_data *uc_data, int mode)
+static int gs101_ext_bst_mode(struct max77759_usecase_data *uc_data, int mode)
 {
-	int ret;
 
-	/* do not change MW unless p9412 can be changed as well */
-	if (uc_data->cpout_ctl < 0)
-		return 0;
+	pr_debug("%s: ext_bst_mode=%d mode=%d\n", __func__, uc_data->ext_bst_mode, mode);
 
-	if (mode == GS101_WLCRX_CPOUT_5_2V) {
-		/* p9412: set CPOUT==5.2 only if on BPP */
-		gpio_set_value_cansleep(uc_data->cpout_ctl, 1);
+	if (uc_data->ext_bst_mode >= 0)
+		gpio_set_value_cansleep(uc_data->ext_bst_mode, mode);
 
-		/* NOTE: no DC_IN to MW when WCIN_REG==4_85 unless CPOUT==5.2 */
-		ret =  max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
-					       MAX77759_CHG_CNFG_12_WCIN_REG_MASK,
-					       MAX77759_CHG_CNFG_12_WCIN_REG_4_85);
-	} else {
-		/* p9412: reset CPOUT to default */
-		gpio_set_value_cansleep(uc_data->cpout_ctl, 0);
-
-		ret =  max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_12,
-					       MAX77759_CHG_CNFG_12_WCIN_REG_MASK,
-					       MAX77759_CHG_CNFG_12_WCIN_REG_4_5);
-	}
-
-	return ret;
+	return 0;
 }
-
 /*
  * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
  * -------------------------------------------------------------------------------------
@@ -1080,8 +1091,8 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 				ret = max77759_chg_reg_write(uc_data->client,
 							     MAX77759_CHG_CNFG_00,
 							     MAX77759_CHGR_MODE_ALL_OFF);
-				if (ret == 0 && uc_data->ext_bst_mode >= 0)
-					gpio_set_value_cansleep(uc_data->ext_bst_mode, 1);
+				if (ret == 0)
+					ret = gs101_ext_bst_mode(uc_data, 1);
 				if (ret == 0)
 					ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_5_2V);
 			}
@@ -1107,8 +1118,8 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 		/* b/179816224: OTG -> WLC_RX + OTG */
 		if (use_case == GSU_MODE_USB_OTG_WLC_RX) {
 			ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_5_2V);
-			if (ret == 0 && uc_data->ext_bst_mode >= 0)
-				gpio_set_value_cansleep(uc_data->ext_bst_mode, 1);
+			if (ret == 0)
+				ret = gs101_ext_bst_mode(uc_data, 1);
 		}
 	break;
 	case GSU_MODE_USB_OTG_WLC_TX:
@@ -1123,9 +1134,9 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 		/* b/179816224: WLC_RX + OTG -> OTG */
 		if (use_case == GSU_MODE_USB_OTG) {
 			/* it's in STBY, no need to reset gs101_otg_mode()  */
-			if (uc_data->ext_bst_mode >= 0)
-				gpio_set_value_cansleep(uc_data->ext_bst_mode, 0);
-			ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
+			ret = gs101_ext_bst_mode(uc_data, 0);
+			if (ret == 0)
+				ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
 		}
 	break;
 	case GSU_MODE_USB_OTG_FRS: {
@@ -1174,9 +1185,9 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 	case GSU_MODE_WLC_RX:
 		if (from_uc == GSU_MODE_USB_OTG_WLC_RX) {
 			/* to_stby brought to stby */
-			if (uc_data->ext_bst_mode >= 0)
-				gpio_set_value_cansleep(uc_data->ext_bst_mode, 0);
-			ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
+			ret = gs101_ext_bst_mode(uc_data, 0);
+			if (ret == 0)
+				ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
 			if (ret == 0)
 				ret = gs101_otg_mode(uc_data, GSU_MODE_USB_OTG);
 
