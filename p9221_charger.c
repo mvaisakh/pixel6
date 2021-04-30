@@ -813,8 +813,9 @@ static void p9221_align_work(struct work_struct *work)
 		charger->current_filtered -= current_filter_sample;
 
 	charger->current_filtered += (current_now / WLC_CURRENT_FILTER_LENGTH);
-	dev_dbg(&charger->client->dev, "current = %umA, avg_current = %umA\n",
-		current_now, charger->current_filtered);
+	if (charger->log_current_filtered)
+		dev_info(&charger->client->dev, "current = %umA, avg_current = %umA\n",
+			 current_now, charger->current_filtered);
 
 	current_scaling = charger->pdata->alignment_scalar *
 			  charger->current_filtered;
@@ -2970,6 +2971,30 @@ static ssize_t has_wlc_dc_store(struct device *dev,
 
 static DEVICE_ATTR_RW(has_wlc_dc);
 
+static ssize_t log_current_filtered_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", charger->log_current_filtered);
+}
+
+/* write '1' to enable logging */
+static ssize_t log_current_filtered_store(struct device *dev,
+					  struct device_attribute *attr,
+					  const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	charger->log_current_filtered = buf[0] == '1';
+	return count;
+}
+
+static DEVICE_ATTR_RW(log_current_filtered);
+
 
 static struct attribute *rtx_attributes[] = {
 	&dev_attr_rtx_sw.attr,
@@ -3011,6 +3036,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_ext_ben.attr,
 	&dev_attr_qi_vbus_en.attr,
 	&dev_attr_has_wlc_dc.attr,
+	&dev_attr_log_current_filtered.attr,
 	NULL
 };
 
