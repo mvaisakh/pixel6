@@ -639,6 +639,7 @@ static int gs101_wlc_tx_enable(struct max77759_usecase_data *uc_data,
 		if (ret == 0)
 			ret = max77759_ls2_mode(uc_data, 0);
 
+		/* STBY will re-enable WLC */
 	}
 
 	return ret;
@@ -762,21 +763,32 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 	/* from WLC_TX to STBY */
 	if (from_uc == GSU_MODE_WLC_TX) {
 		ret = gs101_wlc_tx_enable(uc_data, false);
-		if (ret < 0)
+		if (ret < 0) {
+			pr_err("%s: cannot tun off wlc_tx (%d)\n", __func__, ret);
 			return ret;
+		}
+
+		/* re-enable wlc IC if disabled */
+		ret = gs101_wlc_en(uc_data, true);
+		if (ret < 0)
+			pr_err("%s: cannot enable WLC (%d)\n", __func__, ret);
+	}
+
+	/*
+	 * There is no direct transition to STBY from BPP_RX+OTG  but we might
+	 * get here on error and when forcing raw values. This makes sure that
+	 * CPOUT is set to default.
+	 */
+	if (from_uc == GSU_MODE_USB_OTG_WLC_RX) {
+		ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
+		if (ret < 0)
+			pr_err("%s: cannot reset cpout (%d)\n", __func__, ret);
 	}
 
 	/* transition to STBY (might need to be up) */
 	ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_ALL_OFF);
 	if (ret < 0)
 		return -EIO;
-
-	/* re-enable wlc IC if disabled */
-	if (from_uc == GSU_MODE_WLC_TX) {
-		ret = gs101_wlc_en(uc_data, true);
-		if (ret < 0)
-			return ret;
-	}
 
 	uc_data->use_case = GSU_MODE_STANDBY;
 	return ret;
