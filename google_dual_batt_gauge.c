@@ -335,6 +335,9 @@ static int google_dual_batt_gauge_probe(struct platform_device *pdev)
 	psy_cfg.drv_data = dual_fg_drv;
 	psy_cfg.of_node = pdev->dev.of_node;
 
+	if (of_property_read_bool(pdev->dev.of_node, "google,psy-type-unknown"))
+		gdbatt_psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
+
 	dual_fg_drv->psy = devm_power_supply_register(dual_fg_drv->device,
 						   &gdbatt_psy_desc, &psy_cfg);
 	if (IS_ERR(dual_fg_drv->psy)) {
