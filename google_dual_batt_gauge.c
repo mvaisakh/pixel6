@@ -25,9 +25,11 @@
 #include "gbms_power_supply.h"
 #include "google_bms.h"
 #include "google_psy.h"
+#include "pmic-voter.h"
 
 #define MAX(x, y)	((x) < (y) ? (y) : (x))
 #define DUAL_FG_DELAY_INIT_MS	500
+#define DUAL_BATT_TEMP_VOTER	"daul_batt_temp"
 
 struct dual_fg_drv {
 	struct device *device;
@@ -42,6 +44,12 @@ struct dual_fg_drv {
 	struct mutex fg_lock;
 
 	struct delayed_work init_work;
+	struct votable	*fcc_votable;
+
+	struct gbms_chg_profile chg_profile;
+	u32 battery_capacity;
+	int vbatt_idx;
+	int cc_max;
 
 	bool init_complete;
 };
@@ -64,6 +72,27 @@ static enum power_supply_property gdbatt_fg_props[] = {
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
+
+static void gdbatt_select_cc_max(struct dual_fg_drv *dual_fg_drv, int base_temp, int flip_temp)
+{
+	struct gbms_chg_profile *profile = &dual_fg_drv->chg_profile;
+	int base_temp_idx, flip_temp_idx;
+	int base_cc_max, flip_cc_max, cc_max;
+
+	base_temp_idx = gbms_msc_temp_idx(profile, base_temp);
+	flip_temp_idx = gbms_msc_temp_idx(profile, flip_temp);
+
+	base_cc_max = GBMS_CCCM_LIMITS(profile, base_temp_idx, dual_fg_drv->vbatt_idx);
+	flip_cc_max = GBMS_CCCM_LIMITS(profile, flip_temp_idx, dual_fg_drv->vbatt_idx);
+	cc_max = (base_cc_max <= flip_cc_max) ? base_cc_max : flip_cc_max;
+
+	if (!dual_fg_drv->fcc_votable)
+		dual_fg_drv->fcc_votable = find_votable(VOTABLE_MSC_FCC);
+	if (dual_fg_drv->fcc_votable && cc_max != dual_fg_drv->cc_max) {
+		vote(dual_fg_drv->fcc_votable, DUAL_BATT_TEMP_VOTER, true, cc_max);
+		dual_fg_drv->cc_max = cc_max;
+	}
+}
 
 static int gdbatt_get_property(struct power_supply *psy,
 				 enum power_supply_property psp,
@@ -109,17 +138,22 @@ static int gdbatt_get_property(struct power_supply *psy,
 		val->intval = fg_1.intval + fg_2.intval;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
+		gdbatt_select_cc_max(dual_fg_drv, fg_1.intval, fg_2.intval);
+		val->intval = MAX(fg_1.intval, fg_2.intval);
+		break;
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
-		/* TODO: for low temp case need pick lower one */
 		val->intval = MAX(fg_1.intval, fg_2.intval);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		val->intval = (fg_1.intval + fg_2.intval)/2;
+		dual_fg_drv->vbatt_idx = gbms_msc_voltage_idx(&dual_fg_drv->chg_profile, val->intval);
 		break;
 	case GBMS_PROP_CAPACITY_RAW:
 	case POWER_SUPPLY_PROP_CAPACITY:
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
-	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 		val->intval = (fg_1.intval + fg_2.intval)/2;
 		break;
@@ -225,6 +259,29 @@ static struct power_supply_desc gdbatt_psy_desc = {
 
 /* ------------------------------------------------------------------------ */
 
+static int gdbatt_init_chg_profile(struct dual_fg_drv *dual_fg_drv)
+{
+	struct device_node *node = of_find_node_by_name(NULL, "google,battery");
+	struct gbms_chg_profile *profile = &dual_fg_drv->chg_profile;
+	int ret = 0;
+
+	if (profile->cccm_limits)
+		return 0;
+
+	ret = gbms_init_chg_profile(profile, node);
+	if (ret < 0)
+		return -EINVAL;
+
+	ret = of_property_read_u32(node, "google,chg-battery-capacity",
+				   &dual_fg_drv->battery_capacity);
+	if (ret < 0)
+		pr_warn("battery not present, no default capacity, zero charge table\n");
+
+	gbms_init_chg_table(&dual_fg_drv->chg_profile, dual_fg_drv->battery_capacity);
+
+	return ret;
+}
+
 static void google_dual_batt_gauge_init_work(struct work_struct *work)
 {
 	struct dual_fg_drv *dual_fg_drv = container_of(work, struct dual_fg_drv,
@@ -278,6 +335,10 @@ static void google_dual_batt_gauge_init_work(struct work_struct *work)
 			dual_fg_drv->second_fg_psy = NULL;
 		}
 	}
+
+	err = gdbatt_init_chg_profile(dual_fg_drv);
+	if (err < 0)
+		dev_info(dual_fg_drv->device,"fail to init chg profile (%d)\n", err);
 
 	mutex_init(&dual_fg_drv->fg_lock);
 	dual_fg_drv->init_complete = true;
@@ -360,6 +421,10 @@ static int google_dual_batt_gauge_probe(struct platform_device *pdev)
 
 static int google_dual_batt_gauge_remove(struct platform_device *pdev)
 {
+	struct dual_fg_drv *dual_fg_drv = platform_get_drvdata(pdev);
+
+	gbms_free_chg_profile(&dual_fg_drv->chg_profile);
+
 	return 0;
 }
 
