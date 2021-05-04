@@ -3281,9 +3281,19 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	}
 
 	if (chg_drv->wlc_psy) {
-		pval.intval = 1;
-		power_supply_set_property(chg_drv->wlc_psy,
-				POWER_SUPPLY_PROP_ONLINE, &pval);
+		ret = power_supply_get_property(chg_drv->wlc_psy,
+					        POWER_SUPPLY_PROP_ONLINE,
+                                                &pval);
+		if (ret < 0 || pval.intval == 0)
+			pval.intval = 1;
+
+		if (pval.intval > 0)
+			power_supply_set_property(chg_drv->wlc_psy,
+						  POWER_SUPPLY_PROP_ONLINE,
+						  &pval);
+
+		if (ret < 0 || pval.intval < 0)
+			pr_err("cannot set to ONLINE=%d (%d)\n", pval.intval, ret);
 	}
 
 	if (!chg_drv->dc_icl_votable)
