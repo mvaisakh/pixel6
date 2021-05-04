@@ -171,7 +171,12 @@ static int exynos_drm_connector_create_brightness_properties(struct drm_device *
 	prop = drm_property_create_bool(dev, 0, "hbm_on");
 	if (!prop)
 		return -ENOMEM;
-	p->hbm_on = prop;
+	p->global_hbm_on = prop;
+
+	prop = drm_property_create_bool(dev, 0, "local_hbm_mode");
+	if (!prop)
+		return -ENOMEM;
+	p->local_hbm_on = prop;
 
 	prop = drm_property_create_bool(dev, 0, "dimming_on");
 	if (!prop)

@@ -25,7 +25,8 @@ struct exynos_drm_connector_properties {
 	struct drm_property *min_luminance;
 	struct drm_property *hdr_formats;
 	struct drm_property *lp_mode;
-	struct drm_property *hbm_on;
+	struct drm_property *global_hbm_on;
+	struct drm_property *local_hbm_on;
 	struct drm_property *dimming_on;
 	struct drm_property *brightness_capability;
 	struct drm_property *brightness_level;
@@ -100,8 +101,11 @@ struct exynos_drm_connector_state {
 	/* @brightness_level: panel brightness level */
 	unsigned int brightness_level;
 
-	/* @hbm_on: hbm_on indicator */
-	bool hbm_on;
+	/* @global_hbm_on: global_hbm_on indicator */
+	bool global_hbm_on;
+
+	/* @local_hbm_on: local_hbm_on indicator */
+	bool local_hbm_on;
 
 	/* @dimming_on: dimming on indicator */
 	bool dimming_on;

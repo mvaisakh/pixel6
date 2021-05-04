@@ -591,10 +591,10 @@ int exynos_panel_disable(struct drm_panel *panel)
 			cancel_delayed_work_sync(&ctx->hbm.local_hbm.timeout_work);
 		}
 		if (exynos_panel_func->set_hbm_mode) {
-			cancel_work_sync(&ctx->hbm.global_hbm.ghbm_work);
-			if (ctx->hbm.global_hbm.commit) {
-				drm_crtc_commit_put(ctx->hbm.global_hbm.commit);
-				ctx->hbm.global_hbm.commit = NULL;
+			cancel_work_sync(&ctx->hbm.hbm_work);
+			if (ctx->hbm.commit) {
+				drm_crtc_commit_put(ctx->hbm.commit);
+				ctx->hbm.commit = NULL;
 			}
 		}
 	}
@@ -1088,9 +1088,12 @@ static int exynos_panel_connector_get_property(
 	if (property == p->brightness_level) {
 		*val = exynos_state->brightness_level;
 		dev_dbg(ctx->dev, "%s: brt(%llu)\n", __func__, *val);
-	} else if (property == p->hbm_on) {
-		*val = exynos_state->hbm_on;
-		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	} else if (property == p->global_hbm_on) {
+		*val = exynos_state->global_hbm_on;
+		dev_dbg(ctx->dev, "%s: global_hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	}  else if (property == p->local_hbm_on) {
+		*val = exynos_state->local_hbm_on;
+		dev_dbg(ctx->dev, "%s: local_hbm_on(%s)\n", __func__, *val ? "true" : "false");
 	} else if (property == p->dimming_on) {
 		*val = exynos_state->dimming_on;
 		dev_dbg(ctx->dev, "%s: dimming_on(%s)\n", __func__, *val ? "true" : "false");
@@ -1113,10 +1116,14 @@ static int exynos_panel_connector_set_property(
 	if (property == p->brightness_level) {
 		exynos_state->brightness_level = val;
 		dev_dbg(ctx->dev, "%s: brt(%u)\n", __func__, exynos_state->brightness_level);
-	} else if (property == p->hbm_on) {
-		exynos_state->hbm_on = val;
-		dev_dbg(ctx->dev, "%s: hbm_on(%s)\n", __func__,
-			 exynos_state->hbm_on ? "true" : "false");
+	} else if (property == p->global_hbm_on) {
+		exynos_state->global_hbm_on = val;
+		dev_dbg(ctx->dev, "%s: global_hbm_on(%s)\n", __func__,
+			 exynos_state->global_hbm_on ? "true" : "false");
+	} else if (property == p->local_hbm_on) {
+		exynos_state->local_hbm_on = val;
+		dev_dbg(ctx->dev, "%s: local_hbm_on(%s)\n", __func__,
+			 exynos_state->local_hbm_on ? "true" : "false");
 	} else if (property == p->dimming_on) {
 		exynos_state->dimming_on = val;
 		dev_dbg(ctx->dev, "%s: dimming_on(%s)\n", __func__,
@@ -1140,46 +1147,58 @@ static void exynos_panel_connector_atomic_commit(
 {
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
+	u8 update_flags = 0;
 
-	if (ctx->hbm.global_hbm.hbm_mode != exynos_new_state->hbm_on ||
-	    exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+	if (!exynos_panel_func)
+		return;
+
+	if (exynos_panel_func->set_hbm_mode &&
+		(ctx->hbm_mode != exynos_new_state->global_hbm_on))
+		update_flags |= HBM_FLAG_GHBM_UPDATE;
+
+	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level)
+		update_flags |= HBM_FLAG_BL_UPDATE;
+
+	if (exynos_panel_func->set_local_hbm_mode &&
+		(exynos_old_state->local_hbm_on != exynos_new_state->local_hbm_on))
+		update_flags |= HBM_FLAG_LHBM_UPDATE;
+
+	if (update_flags) {
 		struct drm_crtc_commit *commit = exynos_new_state->base.commit;
 		struct drm_crtc_commit *old_commit;
 
-		cancel_work_sync(&ctx->hbm.global_hbm.ghbm_work);
+		cancel_work_sync(&ctx->hbm.hbm_work);
 
 		if (commit)
 			drm_crtc_commit_get(commit);
 
-		mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
-		old_commit = ctx->hbm.global_hbm.commit;
+		mutex_lock(&ctx->hbm.hbm_work_lock);
+		old_commit = ctx->hbm.commit;
 		if (WARN_ON(old_commit))
 			drm_crtc_commit_put(old_commit);
 
-		ctx->hbm.global_hbm.commit = commit;
+		ctx->hbm.commit = commit;
 
-		if (ctx->hbm.global_hbm.hbm_mode != exynos_new_state->hbm_on) {
-			if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
-				ctx->hbm.global_hbm.update_hbm = true;
-				ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
-			}
-		}
+		if (update_flags & HBM_FLAG_GHBM_UPDATE)
+			ctx->hbm.request_global_hbm_mode = exynos_new_state->global_hbm_on;
 
-		if (exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
+		if (update_flags & HBM_FLAG_BL_UPDATE)
 			ctx->bl->props.brightness = exynos_new_state->brightness_level;
-			ctx->hbm.global_hbm.update_bl = true;
-		}
 
-		queue_work(ctx->hbm.wq, &ctx->hbm.global_hbm.ghbm_work);
-		mutex_unlock(&ctx->hbm.global_hbm.ghbm_work_lock);
+		if (update_flags & HBM_FLAG_LHBM_UPDATE)
+			ctx->hbm.local_hbm.request_hbm_mode = exynos_new_state->local_hbm_on;
+
+		ctx->hbm.update_flags = update_flags;
+		queue_work(ctx->hbm.wq, &ctx->hbm.hbm_work);
+		mutex_unlock(&ctx->hbm.hbm_work_lock);
 	}
 
 	if (exynos_old_state->dimming_on != exynos_new_state->dimming_on) {
-		if (exynos_panel_func && exynos_panel_func->set_dimming_on)
+		if (exynos_panel_func->set_dimming_on)
 			exynos_panel_func->set_dimming_on(ctx, exynos_new_state->dimming_on);
 	}
 
-	if (exynos_panel_func && exynos_panel_func->commit_done)
+	if (exynos_panel_func->commit_done)
 		exynos_panel_func->commit_done(ctx);
 
 	ctx->last_commit_ts = ktime_get();
@@ -2199,7 +2218,8 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->max_avg_luminance, desc->max_avg_luminance);
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
 	drm_object_attach_property(obj, p->brightness_level, 0);
-	drm_object_attach_property(obj, p->hbm_on, 0);
+	drm_object_attach_property(obj, p->global_hbm_on, 0);
+	drm_object_attach_property(obj, p->local_hbm_on, 0);
 	drm_object_attach_property(obj, p->dimming_on, 0);
 	drm_object_attach_property(obj, p->is_partial, desc->is_partial);
 
@@ -2489,15 +2509,16 @@ static void local_hbm_timeout_work(struct work_struct *work)
 	sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 }
 
-static void global_hbm_work(struct work_struct *work)
+static void hbm_work(struct work_struct *work)
 {
 	struct exynos_panel *ctx =
-			 container_of(work, struct exynos_panel, hbm.global_hbm.ghbm_work);
-	const struct exynos_panel_funcs *exynos_panel_func;
-	struct drm_crtc_commit *commit = ctx->hbm.global_hbm.commit;
+			 container_of(work, struct exynos_panel, hbm.hbm_work);
+	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
+	struct drm_crtc_commit *commit = ctx->hbm.commit;
+	bool handle_lhbm_timeout_work = false;
 	u32 fps, delay_us, timeout_ms;
 
-	dev_dbg(ctx->dev, "%s\n", __func__);
+	dev_dbg(ctx->dev, "%s (update_flags: 0x%02x)\n", __func__, ctx->hbm.update_flags);
 
 	mutex_lock(&ctx->mode_lock);
 	/* TODO: Change to ctx->current_mode->exynos_mode.vblank_usec when it's ready */
@@ -2511,7 +2532,7 @@ static void global_hbm_work(struct work_struct *work)
 	delay_us = delay_us * 105 / 100;
 
 	DPU_ATRACE_BEGIN("ghbm");
-	mutex_lock(&ctx->hbm.global_hbm.ghbm_work_lock);
+	mutex_lock(&ctx->hbm.hbm_work_lock);
 
 	WARN_ON(!commit);
 
@@ -2519,7 +2540,7 @@ static void global_hbm_work(struct work_struct *work)
 		int ret;
 
 		DPU_ATRACE_BEGIN("wait_for_flip");
-		ctx->hbm.global_hbm.commit = NULL;
+		ctx->hbm.commit = NULL;
 		ret = wait_for_completion_timeout(&commit->flip_done, timeout_ms);
 		WARN_ON(ret < 0);
 		drm_crtc_commit_put(commit);
@@ -2527,25 +2548,41 @@ static void global_hbm_work(struct work_struct *work)
 	}
 
 	usleep_range(delay_us, delay_us + 100);
-	if (ctx->hbm.global_hbm.update_hbm) {
+	if (ctx->hbm.update_flags & HBM_FLAG_LHBM_UPDATE) {
+		DPU_ATRACE_BEGIN("set_lhbm");
+		exynos_panel_func->set_local_hbm_mode(ctx, ctx->hbm.local_hbm.request_hbm_mode);
+		sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
+		handle_lhbm_timeout_work = true;
+		DPU_ATRACE_END("set_lhbm");
+	}
+
+	if (ctx->hbm.update_flags & HBM_FLAG_GHBM_UPDATE) {
 		DPU_ATRACE_BEGIN("set_hbm");
-		exynos_panel_func = ctx->desc->exynos_panel_func;
 		mutex_lock(&ctx->mode_lock);
-		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.global_hbm.hbm_mode);
+		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.request_global_hbm_mode);
 		mutex_unlock(&ctx->mode_lock);
-		ctx->hbm.global_hbm.update_hbm = false;
 		DPU_ATRACE_END("set_hbm");
 	}
 
-	if (ctx->hbm.global_hbm.update_bl) {
+	if (ctx->hbm.update_flags & HBM_FLAG_BL_UPDATE)
 		backlight_update_status(ctx->bl);
-		ctx->hbm.global_hbm.update_bl = false;
+
+	ctx->hbm.update_flags = 0;
+	mutex_unlock(&ctx->hbm.hbm_work_lock);
+
+	if (handle_lhbm_timeout_work) {
+		if (ctx->hbm.local_hbm.request_hbm_mode) {
+			queue_delayed_work(ctx->hbm.wq,
+				 &ctx->hbm.local_hbm.timeout_work,
+				 msecs_to_jiffies(ctx->hbm.local_hbm.max_timeout_ms));
+		} else {
+			cancel_delayed_work(&ctx->hbm.local_hbm.timeout_work);
+		}
 	}
-	mutex_unlock(&ctx->hbm.global_hbm.ghbm_work_lock);
-	DPU_ATRACE_END("ghbm");
+	DPU_ATRACE_END("hbm");
 }
 
-static void local_hbm_data_init(struct exynos_panel *ctx)
+static void hbm_data_init(struct exynos_panel *ctx)
 {
 	ctx->hbm.local_hbm.gamma_para_ready = false;
 	ctx->hbm.local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
@@ -2555,11 +2592,10 @@ static void local_hbm_data_init(struct exynos_panel *ctx)
 		dev_err(ctx->dev, "failed to create hbm workq!\n");
 	else {
 		INIT_DELAYED_WORK(&ctx->hbm.local_hbm.timeout_work, local_hbm_timeout_work);
-		INIT_WORK(&ctx->hbm.global_hbm.ghbm_work, global_hbm_work);
+		INIT_WORK(&ctx->hbm.hbm_work, hbm_work);
 	}
-	ctx->hbm.global_hbm.update_hbm = false;
-	ctx->hbm.global_hbm.update_bl = false;
-	mutex_init(&ctx->hbm.global_hbm.ghbm_work_lock);
+	ctx->hbm.update_flags = 0;
+	mutex_init(&ctx->hbm.hbm_work_lock);
 }
 
 static void exynos_panel_te2_init(struct exynos_panel *ctx)
@@ -2643,7 +2679,7 @@ int exynos_panel_common_init(struct mipi_dsi_device *dsi,
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func && (exynos_panel_func->set_hbm_mode
 				  || exynos_panel_func->set_local_hbm_mode))
-		local_hbm_data_init(ctx);
+		hbm_data_init(ctx);
 
 	if (exynos_panel_func && exynos_panel_func->get_te2_edges &&
 	    exynos_panel_func->configure_te2_edges &&

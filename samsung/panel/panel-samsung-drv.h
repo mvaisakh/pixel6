@@ -54,6 +54,10 @@
 #define PANEL_REV_LT(rev)	((rev) - 1)
 #define PANEL_REV_ALL_BUT(rev)	(PANEL_REV_ALL & ~(rev))
 
+#define HBM_FLAG_GHBM_UPDATE BIT(0)
+#define HBM_FLAG_BL_UPDATE   BIT(1)
+#define HBM_FLAG_LHBM_UPDATE BIT(2)
+
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
 	PANEL_STATE_LP,
@@ -411,6 +415,8 @@ struct exynos_panel {
 			u8 gamma_cmd[LOCAL_HBM_GAMMA_CMD_SIZE_MAX];
 			/* used for LHBM OFF to restore initial fps before LHBM ON */
 			int vrefresh;
+			/* request local hbm mode from atomic_commit */
+			bool request_hbm_mode;
 			/* indicate if local hbm enabled or not */
 			bool enabled;
 			/* max local hbm on period in ms */
@@ -419,15 +425,14 @@ struct exynos_panel {
 			struct delayed_work timeout_work;
 		} local_hbm;
 
-		struct global_hbm {
-			bool update_hbm;
-			bool hbm_mode;
-			bool update_bl;
-			/* send ghbm mipi commands asynchronously after frame start */
-			struct work_struct ghbm_work;
-			struct mutex ghbm_work_lock;
-			struct drm_crtc_commit *commit;
-		} global_hbm;
+		/* request global hbm mode from drm commit */
+		bool request_global_hbm_mode;
+		/* send mipi commands asynchronously after frame start */
+		struct work_struct hbm_work;
+		/* mipi command update flags in hbm_work */
+		u8 update_flags;
+		struct mutex hbm_work_lock;
+		struct drm_crtc_commit *commit;
 		struct workqueue_struct *wq;
 	} hbm;
 };
