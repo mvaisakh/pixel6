@@ -27,6 +27,7 @@
 #include "p9221-dt-bindings.h"
 #include "google_dc_pps.h"
 #include "google_bms.h"
+#include <linux/debugfs.h>
 
 #define P9221R5_OVER_CHECK_NUM		3
 
@@ -251,6 +252,9 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 	int fod_count = charger->pdata->fod_num;
 	int ret;
 	int retries = 3;
+
+	if (charger->no_fod)
+		goto no_fod;
 
 	if (!charger->pdata->fod_num && !charger->pdata->fod_epp_num)
 		goto no_fod;
@@ -4367,6 +4371,14 @@ static int p9221_charger_probe(struct i2c_client *client,
 		ret = sysfs_create_group(&charger->dev->kobj, &rtx_attr_group);
 		if (ret)
 			dev_info(&client->dev, "rtx sysfs_create_group failed\n");
+	}
+
+	charger->debug_entry = debugfs_create_dir("p9221_charger", 0);
+	if (IS_ERR_OR_NULL(charger->debug_entry)) {
+		charger->debug_entry = NULL;
+		dev_err(&client->dev, "Failed to create debug_entry\n");
+	} else {
+		debugfs_create_bool("no_fod", 0644, charger->debug_entry, &charger->no_fod);
 	}
 
 	/*

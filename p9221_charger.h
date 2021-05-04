@@ -539,6 +539,7 @@ struct p9221_charger_data {
 	struct bin_attribute		bin;
 	struct logbuffer		*log;
 	struct logbuffer		*rtx_log;
+	struct dentry			*debug_entry;
 	u16				chip_id;
 	int				online;
 	bool				enabled;
@@ -597,6 +598,7 @@ struct p9221_charger_data {
 	bool				chg_on_rtx;
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
+	bool				no_fod;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
