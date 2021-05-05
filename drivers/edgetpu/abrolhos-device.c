@@ -7,13 +7,14 @@
 
 #include <linux/irqreturn.h>
 
+#include "abrolhos-platform.h"
+#include "abrolhos-pm.h"
 #include "edgetpu-config.h"
 #include "edgetpu-debug-dump.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-mailbox.h"
-#include "abrolhos-platform.h"
-#include "abrolhos-pm.h"
 #include "edgetpu-telemetry.h"
+#include "edgetpu-wakelock.h"
 
 #define HOST_NONSECURE_INTRSRCMASKREG	0x000f0004
 
@@ -167,4 +168,75 @@ void edgetpu_chip_handle_reverse_kci(struct edgetpu_dev *etdev,
 			   __func__, resp->code);
 		break;
 	}
+}
+
+static int abrolhos_check_ext_mailbox_args(const char *func,
+					   struct edgetpu_dev *etdev,
+					   struct edgetpu_ext_mailbox *ext_mbox)
+{
+	if (ext_mbox->type != EDGETPU_EXT_MAILBOX_TYPE_TZ) {
+		etdev_err(etdev, "%s: Invalid type %d != %d\n", func,
+			  ext_mbox->type, EDGETPU_EXT_MAILBOX_TYPE_TZ);
+		return -EINVAL;
+	}
+	if (ext_mbox->count != 1) {
+		etdev_err(etdev, "%s: Invalid mailbox count: %d != 1\n", func,
+			  ext_mbox->count);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
+				     struct edgetpu_ext_mailbox *ext_mbox)
+{
+	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
+	int ret;
+
+	ret = abrolhos_check_ext_mailbox_args(__func__, client->etdev,
+					      ext_mbox);
+	if (ret)
+		return ret;
+
+	mutex_lock(&apdev->tz_mailbox_lock);
+	if (apdev->secure_client) {
+		etdev_err(client->etdev,
+			  "TZ mailbox already in use by PID %d\n",
+			  apdev->secure_client->pid);
+		mutex_unlock(&apdev->tz_mailbox_lock);
+		return -EBUSY;
+	}
+	apdev->secure_client = client;
+	ret = edgetpu_mailbox_enable_ext(client, ABROLHOS_TZ_MAILBOX_ID);
+	mutex_unlock(&apdev->tz_mailbox_lock);
+	return ret;
+}
+
+int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
+				     struct edgetpu_ext_mailbox *ext_mbox)
+{
+	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
+	int ret = 0;
+
+	ret = abrolhos_check_ext_mailbox_args(__func__, client->etdev,
+					      ext_mbox);
+	if (ret)
+		return ret;
+
+	mutex_lock(&apdev->tz_mailbox_lock);
+	if (!apdev->secure_client) {
+		etdev_err(client->etdev, "TZ mailbox already released\n");
+		mutex_unlock(&apdev->tz_mailbox_lock);
+		return -ENODEV;
+	}
+	if (apdev->secure_client != client) {
+		etdev_err(client->etdev,
+			  "TZ mailbox owned by different client\n");
+		mutex_unlock(&apdev->tz_mailbox_lock);
+		return -EBUSY;
+	}
+	apdev->secure_client = NULL;
+	ret = edgetpu_mailbox_disable_ext(client, ABROLHOS_TZ_MAILBOX_ID);
+	mutex_unlock(&apdev->tz_mailbox_lock);
+	return ret;
 }

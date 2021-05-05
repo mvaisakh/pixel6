@@ -611,6 +611,14 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	exynos_pm_qos_update_request(&platform_pwr->mif_min, 0);
 
 	abrolhos_pm_cleanup_bts_scenario(etdev);
+
+	/*
+	 * A client closing the edgetpu device or crashing can leave the
+	 * TZ mailbox in acquired state, but firmware loses state on power down.
+	 * Clear the state here just in case.
+	 */
+	abpdev->secure_client = NULL;
+
 }
 
 static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)

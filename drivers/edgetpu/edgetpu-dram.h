@@ -70,6 +70,9 @@ void edgetpu_device_dram_dmabuf_info_show(struct dma_buf *dmabuf,
 /* Return amount of on-device DRAM currently used in bytes. */
 size_t edgetpu_device_dram_used(struct edgetpu_dev *etdev);
 
+/* Return the amount of free device dram in bytes */
+size_t edgetpu_device_dram_available(struct edgetpu_dev *etdev);
+
 #else /* !CONFIG_EDGETPU_DEVICE_DRAM */
 
 static inline int edgetpu_device_dram_init(struct edgetpu_dev *etdev)
@@ -124,6 +127,11 @@ static inline void edgetpu_device_dram_dmabuf_info_show(struct dma_buf *dmabuf,
 }
 
 static inline size_t edgetpu_device_dram_used(struct edgetpu_dev *etdev)
+{
+	return 0;
+}
+
+static inline size_t edgetpu_device_dram_available(struct edgetpu_dev *etdev)
 {
 	return 0;
 }

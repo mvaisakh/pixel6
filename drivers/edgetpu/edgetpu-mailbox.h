@@ -17,6 +17,8 @@
 
 #define CIRCULAR_QUEUE_WRAP_BIT (1 << 10)
 #define CIRCULAR_QUEUE_INDEX_MASK (CIRCULAR_QUEUE_WRAP_BIT - 1)
+#define CIRCULAR_QUEUE_VALID_MASK                                              \
+	(CIRCULAR_QUEUE_INDEX_MASK | CIRCULAR_QUEUE_WRAP_BIT)
 #define CIRCULAR_QUEUE_WRAPPED(idx) ((idx) & CIRCULAR_QUEUE_WRAP_BIT)
 #define CIRCULAR_QUEUE_REAL_INDEX(idx) ((idx) & CIRCULAR_QUEUE_INDEX_MASK)
 
@@ -274,6 +276,12 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev);
 int edgetpu_mailbox_p2p_batch(struct edgetpu_mailbox_manager *mgr, uint n,
 			      uint skip_i, struct edgetpu_mailbox **mailboxes);
 
+/* Notify firmware of external mailboxes becoming active */
+int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids);
+
+/* Notify firmware of external mailboxes becoming inactive */
+int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_ids);
+
 /* Utilities of circular queue operations */
 
 /*
@@ -282,11 +290,18 @@ int edgetpu_mailbox_p2p_batch(struct edgetpu_mailbox_manager *mgr, uint n,
  */
 static inline u32 circular_queue_count(u32 head, u32 tail, u32 queue_size)
 {
+	u32 ret;
+
 	if (CIRCULAR_QUEUE_WRAPPED(tail) != CIRCULAR_QUEUE_WRAPPED(head))
-		return queue_size - CIRCULAR_QUEUE_REAL_INDEX(head) +
-		       CIRCULAR_QUEUE_REAL_INDEX(tail);
+		ret = queue_size - CIRCULAR_QUEUE_REAL_INDEX(head) +
+		      CIRCULAR_QUEUE_REAL_INDEX(tail);
 	else
-		return tail - head;
+		ret = tail - head;
+
+	if (unlikely(ret > queue_size))
+		return 0;
+
+	return ret;
 }
 
 /* Increases @index of a circular queue by @inc. */

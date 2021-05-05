@@ -955,13 +955,15 @@ int edgetpu_sync_fence_signal(struct edgetpu_signal_sync_fence_data *datap)
 	int errno;
 	int ret;
 
-	fence = sync_file_get_fence(datap->fence);
-	if (!fence)
-		return -EINVAL;
-
 	errno = datap->error;
 	if (errno > 0)
 		errno = -errno;
+	if (errno < -MAX_ERRNO)
+		return -EINVAL;
+
+	fence = sync_file_get_fence(datap->fence);
+	if (!fence)
+		return -EINVAL;
 
 	spin_lock_irq(fence->lock);
 	pr_debug("%s: %s-%s%llu-" SEQ_FMT " errno=%d\n", __func__,

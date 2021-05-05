@@ -416,4 +416,20 @@ void edgetpu_mark_probe_fail(struct edgetpu_dev *etdev);
  */
 int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev);
 
+/*
+ * "External mailboxes" below refers to mailboxes that are not handled
+ * directly by the DarwiNN runtime, such as secure or device-to-device.
+ *
+ * Chip specific code will typically keep track of state and inform the firmware
+ * that a mailbox has become active/inactive.
+ */
+
+/* Chip-specific code to acquire external mailboxes */
+int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
+				     struct edgetpu_ext_mailbox *ext_mbox);
+
+/* Chip-specific code to release external mailboxes */
+int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
+				     struct edgetpu_ext_mailbox *ext_mbox);
+
 #endif /* __EDGETPU_INTERNAL_H__ */

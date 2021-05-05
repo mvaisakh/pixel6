@@ -274,6 +274,19 @@ static struct edgetpu_kci_response_element *edgetpu_kci_fetch_responses(
 	/* loop until our head equals to CSR tail */
 	while (1) {
 		tail = EDGETPU_MAILBOX_RESP_QUEUE_READ_SYNC(kci->mailbox, tail);
+		/*
+		 * Make sure the CSR is read and reported properly by checking
+		 * if any bit higher than CIRCULAR_QUEUE_WRAP_BIT is set and if
+		 * the tail exceeds kci->mailbox->resp_queue_size.
+		 */
+		if (unlikely(tail & ~CIRCULAR_QUEUE_VALID_MASK ||
+			     CIRCULAR_QUEUE_REAL_INDEX(tail) >= size)) {
+			etdev_err_ratelimited(
+				kci->mailbox->etdev,
+				"Invalid response queue tail: 0x%x\n", tail);
+			break;
+		}
+
 		count = circular_queue_count(head, tail, size);
 		if (count == 0)
 			break;
@@ -662,8 +675,8 @@ static int edgetpu_kci_send_cmd_return_resp(
 		return -ETIMEDOUT;
 	}
 	if (resp->status != KCI_STATUS_OK) {
-		etdev_dbg(kci->mailbox->etdev, "%s: resp status=%u", __func__,
-			  resp->status);
+		etdev_err(kci->mailbox->etdev, "KCI cmd %u response status %u",
+			  cmd->code, resp->status);
 		return -ENOMSG;
 	}
 

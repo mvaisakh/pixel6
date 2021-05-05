@@ -41,6 +41,11 @@ typedef __u32 edgetpu_map_flag_t;
 #define EDGETPU_MAP_ATTR_PBHA_SHIFT	5
 #define EDGETPU_MAP_ATTR_PBHA_MASK	0xf
 
+/* External mailbox types */
+#define EDGETPU_EXT_MAILBOX_TYPE_TZ		1
+#define EDGETPU_EXT_MAILBOX_TYPE_GSA		2
+#define EDGETPU_EXT_MAILBOX_TYPE_DSP		3
+
 struct edgetpu_map_ioctl {
 	__u64 host_address;
 	__u64 size;		/* size of mapping in bytes */
@@ -457,5 +462,52 @@ struct edgetpu_fw_version {
  */
 #define EDGETPU_GET_TPU_TIMESTAMP \
 	_IOR(EDGETPU_IOCTL_BASE, 28, __u64)
+
+/*
+ * struct edgetpu_device_dram_usage
+ * @allocated:		size of allocated dram in bytes
+ * @available:		size of free device dram in bytes
+ */
+struct edgetpu_device_dram_usage {
+	__u64 allocated;
+	__u64 available;
+};
+
+/*
+ * Query the allocated and free device DRAM.
+ *
+ * @available and @allocated are set to 0 for chips without a device DRAM.
+ */
+#define EDGETPU_GET_DRAM_USAGE \
+	_IOR(EDGETPU_IOCTL_BASE, 29, struct edgetpu_device_dram_usage)
+
+/*
+ * struct edgetpu_ext_mailbox
+ * @client_id:		Client identifier (may not be needed depending on type)
+ * @attrs:		Array of mailbox attributes (pointer to
+ *			edgetpu_mailbox_attr, may be NULL depending on type)
+ * @type:		One of the EDGETPU_EXT_MAILBOX_xxx values
+ * @count:		Number of mailboxes to acquire
+ */
+struct edgetpu_ext_mailbox {
+	__u64 client_id;
+	__u64 attrs;
+	__u32 type;
+	__u32 count;
+};
+
+/*
+ * Acquire a chip-specific mailbox that is not directly managed by the TPU
+ * runtime. This can be a secure mailbox or a device-to-device mailbox.
+ */
+#define EDGETPU_ACQUIRE_EXT_MAILBOX \
+	_IOW(EDGETPU_IOCTL_BASE, 30, struct edgetpu_ext_mailbox)
+
+/*
+ * Release a chip-specific mailbox that is not directly managed by the TPU
+ * runtime. This can be a secure mailbox or a device-to-device mailbox.
+ */
+#define EDGETPU_RELEASE_EXT_MAILBOX \
+	_IOW(EDGETPU_IOCTL_BASE, 31, struct edgetpu_ext_mailbox)
 
 #endif /* __EDGETPU_H__ */

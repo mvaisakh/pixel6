@@ -218,6 +218,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	if (!abpdev)
 		return -ENOMEM;
 
+	mutex_init(&abpdev->tz_mailbox_lock);
+
 	platform_set_drvdata(pdev, &abpdev->edgetpu_dev);
 	abpdev->edgetpu_dev.dev = dev;
 

@@ -620,6 +620,43 @@ error_release:
 	return ret;
 }
 
+static int
+edgetpu_ioctl_dram_usage(struct edgetpu_dev *etdev,
+			 struct edgetpu_device_dram_usage __user *argp)
+{
+	struct edgetpu_device_dram_usage dram;
+
+	dram.allocated = edgetpu_device_dram_used(etdev);
+	dram.available = edgetpu_device_dram_available(etdev);
+	if (copy_to_user(argp, &dram, sizeof(*argp)))
+		return -EFAULT;
+	return 0;
+}
+
+static int
+edgetpu_ioctl_acquire_ext_mailbox(struct edgetpu_client *client,
+				  struct edgetpu_ext_mailbox __user *argp)
+{
+	struct edgetpu_ext_mailbox ext_mailbox;
+
+	if (copy_from_user(&ext_mailbox, argp, sizeof(ext_mailbox)))
+		return -EFAULT;
+
+	return edgetpu_chip_acquire_ext_mailbox(client, &ext_mailbox);
+}
+
+static int
+edgetpu_ioctl_release_ext_mailbox(struct edgetpu_client *client,
+				  struct edgetpu_ext_mailbox __user *argp)
+{
+	struct edgetpu_ext_mailbox ext_mailbox;
+
+	if (copy_from_user(&ext_mailbox, argp, sizeof(ext_mailbox)))
+		return -EFAULT;
+
+	return edgetpu_chip_release_ext_mailbox(client, &ext_mailbox);
+}
+
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 {
 	struct edgetpu_client *client = file->private_data;
@@ -699,6 +736,16 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 	case EDGETPU_GET_TPU_TIMESTAMP:
 		ret = edgetpu_ioctl_tpu_timestamp(client, argp);
 		break;
+	case EDGETPU_GET_DRAM_USAGE:
+		ret = edgetpu_ioctl_dram_usage(client->etdev, argp);
+		break;
+	case EDGETPU_ACQUIRE_EXT_MAILBOX:
+		ret = edgetpu_ioctl_acquire_ext_mailbox(client, argp);
+		break;
+	case EDGETPU_RELEASE_EXT_MAILBOX:
+		ret = edgetpu_ioctl_release_ext_mailbox(client, argp);
+		break;
+
 	default:
 		return -ENOTTY; /* unknown command */
 	}

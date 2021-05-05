@@ -205,7 +205,8 @@ void edgetpu_firmware_unlock(struct edgetpu_dev *etdev);
 
 
 /*
- * Returns the state of the firmware image currently loaded for this device
+ * Returns the state of the firmware image currently loaded for this device.
+ * Caller must hold firmware lock.
  */
 enum edgetpu_firmware_status
 edgetpu_firmware_status_locked(struct edgetpu_dev *etdev);

@@ -613,10 +613,14 @@ void edgetpu_device_group_leave(struct edgetpu_client *client)
 {
 	mutex_lock(&client->etdev->state_lock);
 	/*
-	 * The only chance that the state is not GOOD here is the wdt timeout
-	 * action is working. Let that worker perform the group leaving.
+	 * State might not be GOOD here if the wdt timeout
+	 * action is working or initial fw load failed.  If wdt worker
+	 * is running let it perform the group leaving.
 	 */
-	if (client->etdev->state == ETDEV_STATE_GOOD)
+	etdev_dbg(client->etdev, "%s: state=%u\n",
+		  __func__, client->etdev->state);
+	if (client->etdev->state == ETDEV_STATE_GOOD ||
+	    client->etdev->state == ETDEV_STATE_NOFW)
 		edgetpu_device_group_leave_locked(client);
 	mutex_unlock(&client->etdev->state_lock);
 }
@@ -1102,7 +1106,7 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 		return ERR_PTR(-EINVAL);
 	offset = host_addr & (PAGE_SIZE - 1);
 	/* overflow check */
-	if (unlikely(size + offset < size))
+	if (unlikely(size / PAGE_SIZE >= UINT_MAX || size + offset < size))
 		return ERR_PTR(-ENOMEM);
 	num_pages = (size + offset) / PAGE_SIZE;
 	if ((size + offset) % PAGE_SIZE)
@@ -1123,6 +1127,16 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 	 */
 	ret = pin_user_pages_fast(host_addr & PAGE_MASK, num_pages,
 				  FOLL_WRITE | FOLL_LONGTERM, pages);
+
+	/*
+	 * TODO(b/186876297): finds a way to detect the read / write permission.
+	 * The host pages might be read-only and could fail if we attempt to pin
+	 * it with FOLL_WRITE. Removes it and tries again.
+	 */
+	if (ret == -EFAULT)
+		ret = pin_user_pages_fast(host_addr & PAGE_MASK, num_pages,
+					  FOLL_LONGTERM, pages);
+
 	if (ret < 0) {
 		etdev_dbg(etdev, "get user pages failed %u:%pK-%u: %d",
 			  group->workload_id, (void *)host_addr, num_pages,

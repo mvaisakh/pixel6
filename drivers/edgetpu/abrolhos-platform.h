@@ -56,6 +56,10 @@ struct abrolhos_platform_dev {
 	struct edgetpu_coherent_mem trace_mem;
 	struct abrolhos_sscd_info sscd_info;
 	struct gs101_bcl_dev *bcl_dev;
+	/* Protects TZ Mailbox client pointer */
+	struct mutex tz_mailbox_lock;
+	/* TZ mailbox client */
+	struct edgetpu_client *secure_client;
 };
 
 #endif /* __ABROLHOS_PLATFORM_H__ */

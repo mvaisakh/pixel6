@@ -68,14 +68,13 @@ void edgetpu_wakelock_free(struct edgetpu_wakelock *wakelock)
 	kfree(wakelock);
 }
 
-bool edgetpu_wakelock_inc_event(struct edgetpu_wakelock *wakelock,
-				enum edgetpu_wakelock_event evt)
+bool edgetpu_wakelock_inc_event_locked(struct edgetpu_wakelock *wakelock,
+				       enum edgetpu_wakelock_event evt)
 {
 	bool ret = true;
 
 	if (NO_WAKELOCK(wakelock))
 		return true;
-	mutex_lock(&wakelock->lock);
 	if (!wakelock->req_count) {
 		ret = false;
 		etdev_warn(
@@ -93,18 +92,29 @@ bool edgetpu_wakelock_inc_event(struct edgetpu_wakelock *wakelock,
 					evt);
 		}
 	}
+	return ret;
+}
+
+bool edgetpu_wakelock_inc_event(struct edgetpu_wakelock *wakelock,
+				enum edgetpu_wakelock_event evt)
+{
+	bool ret;
+
+	if (NO_WAKELOCK(wakelock))
+		return true;
+	mutex_lock(&wakelock->lock);
+	ret = edgetpu_wakelock_inc_event_locked(wakelock, evt);
 	mutex_unlock(&wakelock->lock);
 	return ret;
 }
 
-bool edgetpu_wakelock_dec_event(struct edgetpu_wakelock *wakelock,
-				enum edgetpu_wakelock_event evt)
+bool edgetpu_wakelock_dec_event_locked(struct edgetpu_wakelock *wakelock,
+				       enum edgetpu_wakelock_event evt)
 {
 	bool ret = true;
 
 	if (NO_WAKELOCK(wakelock))
 		return true;
-	mutex_lock(&wakelock->lock);
 	if (!wakelock->event_count[evt]) {
 		ret = false;
 		etdev_warn(wakelock->etdev, "event %d unbalanced decreasing",
@@ -112,6 +122,18 @@ bool edgetpu_wakelock_dec_event(struct edgetpu_wakelock *wakelock,
 	} else {
 		--wakelock->event_count[evt];
 	}
+	return ret;
+}
+
+bool edgetpu_wakelock_dec_event(struct edgetpu_wakelock *wakelock,
+				enum edgetpu_wakelock_event evt)
+{
+	bool ret;
+
+	if (NO_WAKELOCK(wakelock))
+		return true;
+	mutex_lock(&wakelock->lock);
+	ret = edgetpu_wakelock_dec_event_locked(wakelock, evt);
 	mutex_unlock(&wakelock->lock);
 	return ret;
 }

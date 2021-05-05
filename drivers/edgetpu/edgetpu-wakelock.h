@@ -33,7 +33,8 @@
 	X(EDGETPU_WAKELOCK_EVENT_MBOX_CSR, 1),                                 \
 	X(EDGETPU_WAKELOCK_EVENT_CMD_QUEUE, 2),                                \
 	X(EDGETPU_WAKELOCK_EVENT_RESP_QUEUE, 3),                               \
-	X(EDGETPU_WAKELOCK_EVENT_END, 4)
+	X(EDGETPU_WAKELOCK_EVENT_EXT_MAILBOX, 4),                              \
+	X(EDGETPU_WAKELOCK_EVENT_END, 5)
 
 enum edgetpu_wakelock_event {
 #define X(name, val) name = val
@@ -82,6 +83,13 @@ void edgetpu_wakelock_free(struct edgetpu_wakelock *wakelock);
  */
 bool edgetpu_wakelock_inc_event(struct edgetpu_wakelock *wakelock,
 				enum edgetpu_wakelock_event evt);
+
+/*
+ * A version of the above where the caller holds the wakelock internal lock
+ * by calling edgetpu_wakelock_lock.
+ */
+bool edgetpu_wakelock_inc_event_locked(struct edgetpu_wakelock *wakelock,
+				       enum edgetpu_wakelock_event evt);
 /*
  * Decreases the event counter of @evt by one.
  *
@@ -94,6 +102,13 @@ bool edgetpu_wakelock_inc_event(struct edgetpu_wakelock *wakelock,
  */
 bool edgetpu_wakelock_dec_event(struct edgetpu_wakelock *wakelock,
 				enum edgetpu_wakelock_event evt);
+
+/*
+ * A version of the above where the caller holds the wakelock internal lock
+ * by calling edgetpu_wakelock_lock.
+ */
+bool edgetpu_wakelock_dec_event_locked(struct edgetpu_wakelock *wakelock,
+				       enum edgetpu_wakelock_event evt);
 
 /*
  * Holds the internal lock of @wakelock. Fields in @wakelock are protected when

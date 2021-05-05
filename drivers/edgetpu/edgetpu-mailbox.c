@@ -18,6 +18,7 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-wakelock.h"
 #include "edgetpu.h"
 
 /*
@@ -716,4 +717,54 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 			edgetpu_mailbox_reinit_vii(group);
 	}
 	mutex_unlock(&etdev->groups_lock);
+}
+
+int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids)
+{
+	int ret;
+
+	if (!edgetpu_wakelock_lock(client->wakelock)) {
+		etdev_err(client->etdev,
+			  "Enabling mailboxes %08x needs wakelock acquired\n",
+			  mailbox_ids);
+		edgetpu_wakelock_unlock(client->wakelock);
+		return -EAGAIN;
+	}
+
+	edgetpu_wakelock_inc_event_locked(client->wakelock,
+					  EDGETPU_WAKELOCK_EVENT_EXT_MAILBOX);
+
+	etdev_dbg(client->etdev, "Opening mailboxes: %08X\n", mailbox_ids);
+
+	ret = edgetpu_kci_open_device(client->etdev->kci, mailbox_ids);
+	if (ret)
+		etdev_err(client->etdev, "Open mailboxes %08x failed (%d)\n",
+			  mailbox_ids, ret);
+	edgetpu_wakelock_unlock(client->wakelock);
+	return ret;
+}
+
+int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_ids)
+{
+	int ret;
+
+	if (!edgetpu_wakelock_lock(client->wakelock)) {
+		etdev_err(client->etdev,
+			  "Disabling mailboxes %08x needs wakelock acquired\n",
+			  mailbox_ids);
+		edgetpu_wakelock_unlock(client->wakelock);
+		return -EAGAIN;
+	}
+
+	edgetpu_wakelock_dec_event_locked(client->wakelock,
+					  EDGETPU_WAKELOCK_EVENT_EXT_MAILBOX);
+
+	etdev_dbg(client->etdev, "Closing mailbox: %08X\n", mailbox_ids);
+	ret = edgetpu_kci_close_device(client->etdev->kci, mailbox_ids);
+
+	if (ret)
+		etdev_err(client->etdev, "Close mailboxes %08x failed (%d)\n",
+			  mailbox_ids, ret);
+	edgetpu_wakelock_unlock(client->wakelock);
+	return ret;
 }

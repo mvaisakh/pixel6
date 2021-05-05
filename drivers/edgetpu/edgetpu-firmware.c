@@ -312,6 +312,73 @@ edgetpu_firmware_get_build_time(struct edgetpu_firmware *et_fw)
 	return et_fw->p->fw_info.fw_build_time;
 }
 
+/*
+ * Grab firmware lock to protect against firmware state changes.
+ * Locks out firmware loading / unloading while caller performs ops that are
+ * incompatible with a change in firmware status.  Does not care whether or not
+ * the device is joined to a group.
+ */
+int edgetpu_firmware_lock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw)
+		return -EINVAL;
+	mutex_lock(&et_fw->p->fw_desc_lock);
+	return 0;
+}
+
+/* Drop f/w lock, let any pending firmware load proceed. */
+void edgetpu_firmware_unlock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw)
+		return;
+	mutex_unlock(&et_fw->p->fw_desc_lock);
+}
+
+/*
+ * Lock firmware for loading.  Disallow group join for device during load.
+ * Failed if device is already joined to a group and is in use.
+ */
+static int edgetpu_firmware_load_lock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw) {
+		etdev_err(
+			etdev,
+			"Cannot load firmware when no loader is available\n");
+		return -EINVAL;
+	}
+	mutex_lock(&et_fw->p->fw_desc_lock);
+
+	/* Disallow group join while loading, fail if already joined */
+	if (!edgetpu_set_group_join_lockout(etdev, true)) {
+		etdev_err(
+			etdev,
+			"Cannot load firmware because device is in use");
+		mutex_unlock(&et_fw->p->fw_desc_lock);
+		return -EBUSY;
+	}
+	return 0;
+}
+
+/* Unlock firmware after lock held for loading, re-allow group join. */
+static void edgetpu_firmware_load_unlock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw) {
+		etdev_dbg(etdev,
+			  "Unlock firmware when no loader available\n");
+		return;
+	}
+	edgetpu_set_group_join_lockout(etdev, false);
+	mutex_unlock(&et_fw->p->fw_desc_lock);
+}
+
 int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 				const char *name,
 				enum edgetpu_firmware_flags flags)
@@ -387,7 +454,7 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 	prev_state = etdev->state;
 	etdev->state = ETDEV_STATE_FWLOADING;
 	mutex_unlock(&etdev->state_lock);
-	ret = edgetpu_firmware_lock(etdev);
+	ret = edgetpu_firmware_load_lock(etdev);
 	if (ret) {
 		etdev_err(etdev, "%s: lock failed (%d)\n", __func__, ret);
 		mutex_lock(&etdev->state_lock);
@@ -408,7 +475,7 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 		ret = edgetpu_firmware_run_locked(et_fw, name, flags);
 	etdev->firmware = et_fw;
 	edgetpu_pm_put(etdev->pm);
-	edgetpu_firmware_unlock(etdev);
+	edgetpu_firmware_load_unlock(etdev);
 
 	mutex_lock(&etdev->state_lock);
 	if (ret == -EIO)
@@ -422,42 +489,7 @@ int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 	return ret;
 }
 
-int edgetpu_firmware_lock(struct edgetpu_dev *etdev)
-{
-	struct edgetpu_firmware *et_fw = etdev->firmware;
-
-	if (!et_fw) {
-		etdev_err(
-			etdev,
-			"Cannot load firmware when no loader is available\n");
-		return -EINVAL;
-	}
-	mutex_lock(&et_fw->p->fw_desc_lock);
-
-	/* Disallow group join while loading, fail if already joined */
-	if (!edgetpu_set_group_join_lockout(etdev, true)) {
-		etdev_err(
-			etdev,
-			"Cannot load firmware because device is in use");
-		mutex_unlock(&et_fw->p->fw_desc_lock);
-		return -EBUSY;
-	}
-	return 0;
-}
-
-void edgetpu_firmware_unlock(struct edgetpu_dev *etdev)
-{
-	struct edgetpu_firmware *et_fw = etdev->firmware;
-
-	if (!et_fw) {
-		etdev_dbg(etdev,
-			  "Unlock firmware when no loader available\n");
-		return;
-	}
-	edgetpu_set_group_join_lockout(etdev, false);
-	mutex_unlock(&et_fw->p->fw_desc_lock);
-}
-
+/* Caller must hold firmware lock. */
 enum edgetpu_firmware_status
 edgetpu_firmware_status_locked(struct edgetpu_dev *etdev)
 {
@@ -468,6 +500,7 @@ edgetpu_firmware_status_locked(struct edgetpu_dev *etdev)
 	return et_fw->p->status;
 }
 
+/* Caller must hold firmware lock for loading. */
 int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_firmware *et_fw = etdev->firmware;
@@ -680,10 +713,10 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 
 	edgetpu_abort_clients(etdev);
 
-	ret = edgetpu_firmware_lock(etdev);
+	ret = edgetpu_firmware_load_lock(etdev);
 	/*
-	 * edgetpu_firmware_lock() should always return success here as etdev
-	 * is already removed from all groups and fw loader exists.
+	 * edgetpu_firmware_load_lock() should always return success here as
+	 * etdev is already removed from all groups and fw loader exists.
 	 */
 	if (ret) {
 		etdev_err(etdev, "%s: lock failed (%d)\n", __func__, ret);
@@ -694,7 +727,7 @@ static void edgetpu_firmware_wdt_timeout_action(void *data)
 	if (!ret)
 		ret = edgetpu_firmware_restart_locked(etdev);
 	edgetpu_pm_put(etdev->pm);
-	edgetpu_firmware_unlock(etdev);
+	edgetpu_firmware_load_unlock(etdev);
 
 	mutex_lock(&etdev->state_lock);
 	if (ret == -EIO)
