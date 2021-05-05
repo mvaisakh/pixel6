@@ -693,7 +693,6 @@ static int nitrous_resume_device(struct device *dev)
 		(lpm->is_suspended ? "asleep" : "awake"));
 
 	nitrous_wake_controller(lpm, true);
-	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
 	lpm->is_suspended = false;
 
 	return 0;
