@@ -33,6 +33,7 @@
 #include "google_bms.h"
 #include "max_m5.h"
 #include "max77759.h"
+#include <soc/google/bcl.h>
 
 #define VD_BATTERY_VOLTAGE 4200
 #define VD_UPPER_LIMIT 3350
@@ -42,13 +43,6 @@
 #define THERMAL_IRQ_COUNTER_LIMIT 5
 #define THERMAL_HYST_LEVEL 100
 #define BATOILO_DET_30US 0x4
-
-enum PMIC_VDROOP_SENSOR {
-	VDROOP1,
-	VDROOP2,
-	VDROOP_MAX,
-};
-
 #define MAX77759_DEFAULT_MODE	MAX77759_CHGR_MODE_ALL_OFF
 
 /* CHG_DETAILS_01:CHG_DTLS */
@@ -65,15 +59,8 @@ enum PMIC_VDROOP_SENSOR {
 #define CHGR_DTLS_OFF_JEITA				0x0c
 #define CHGR_DTLS_OFF_TEMP				0x0d
 
-struct uvilo_stats {
-	ktime_t _time;
-	int capacity;
-	int voltage;
-};
-
 struct max77759_chgr_data {
 	struct device *dev;
-	struct device *mdev;
 
 	struct power_supply *psy;
 	struct power_supply *wcin_psy;
@@ -97,12 +84,6 @@ struct max77759_chgr_data {
 	struct i2c_client *pmic_i2c_client;
 
 	struct dentry *de;
-	atomic_t sysuvlo1_cnt;
-	atomic_t sysuvlo2_cnt;
-	atomic_t batoilo_cnt;
-	struct uvilo_stats sysuvlo1;
-	struct uvilo_stats sysuvlo2;
-	struct uvilo_stats batoilo;
 
 	atomic_t insel_cnt;
 	bool insel_clear;	/* when set, irq clears CHGINSEL_MASK */
@@ -121,14 +102,15 @@ struct max77759_chgr_data {
 	u32 debug_reg_address;
 
 	/* thermal */
-	struct thermal_zone_device *tz_vdroop[VDROOP_MAX];
-	int vdroop_counter[VDROOP_MAX];
-	unsigned int vdroop_lvl[VDROOP_MAX];
-	unsigned int vdroop_irq[VDROOP_MAX];
-	struct mutex vdroop_irq_lock[VDROOP_MAX];
-	struct delayed_work vdroop_irq_work[VDROOP_MAX];
+	struct thermal_zone_device *tz_vdroop[IFPMIC_SENSOR_MAX];
+	int triggered_counter[IFPMIC_SENSOR_MAX];
+	unsigned int triggered_lvl[IFPMIC_SENSOR_MAX];
+	unsigned int triggered_irq[IFPMIC_SENSOR_MAX];
+	struct mutex triggered_irq_lock[IFPMIC_SENSOR_MAX];
+	struct delayed_work triggered_irq_work[IFPMIC_SENSOR_MAX];
 
 	int chg_term_voltage;
+	struct gs101_bcl_dev *bcl_dev;
 };
 
 static inline int max77759_reg_read(struct regmap *regmap, uint8_t reg,
@@ -2911,39 +2893,6 @@ exit_done:
 
 static DEVICE_ATTR(fship_dtls, 0444, show_fship_dtls, NULL);
 
-static ssize_t show_sysuvlo1_cnt(struct device *dev,
-				 struct device_attribute *attr, char *buf)
-{
-	struct max77759_chgr_data *data = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n",
-			 atomic_read(&data->sysuvlo1_cnt));
-}
-
-static DEVICE_ATTR(sysuvlo1_cnt, 0444, show_sysuvlo1_cnt, NULL);
-
-static ssize_t show_sysuvlo2_cnt(struct device *dev,
-				 struct device_attribute *attr, char *buf)
-{
-	struct max77759_chgr_data *data = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n",
-			 atomic_read(&data->sysuvlo2_cnt));
-}
-
-static DEVICE_ATTR(sysuvlo2_cnt, 0444, show_sysuvlo2_cnt, NULL);
-
-static ssize_t show_batoilo_cnt(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct max77759_chgr_data *data = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n",
-			 atomic_read(&data->batoilo_cnt));
-}
-
-static DEVICE_ATTR(batoilo_cnt, 0444, show_batoilo_cnt, NULL);
-
 static int vdroop2_ok_get(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -3084,7 +3033,7 @@ static int sys_uvlo1_set(void *d, u64 val)
 	if (ret < 0)
 		return -EIO;
 
-	data->vdroop_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
 	return 0;
 }
@@ -3117,7 +3066,7 @@ static int sys_uvlo2_set(void *d, u64 val)
 	if (ret < 0)
 		return -EIO;
 
-	data->vdroop_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
 
 	return 0;
 }
@@ -3190,26 +3139,10 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	ret = device_create_file(data->dev, &dev_attr_fship_dtls);
 	if (ret != 0)
 		pr_err("Failed to create fship_dtls, ret=%d\n", ret);
-	ret = device_create_file(data->dev, &dev_attr_sysuvlo1_cnt);
-	if (ret != 0)
-		pr_err("Failed to create sysuvlo1_cnt, ret=%d\n", ret);
-	ret = device_create_file(data->dev, &dev_attr_sysuvlo2_cnt);
-	if (ret != 0)
-		pr_err("Failed to create sysuvlo2_cnt, ret=%d\n", ret);
-	ret = device_create_file(data->dev, &dev_attr_batoilo_cnt);
-	if (ret != 0)
-		pr_err("Failed to create bat_oilo_cnt, ret=%d\n", ret);
 
 	data->de = debugfs_create_dir("max77759_chg", 0);
 	if (IS_ERR_OR_NULL(data->de))
 		return -EINVAL;
-
-	debugfs_create_atomic_t("sysuvlo1_cnt", 0644, data->de,
-				&data->sysuvlo1_cnt);
-	debugfs_create_atomic_t("sysuvlo2_cnt", 0644, data->de,
-				&data->sysuvlo2_cnt);
-	debugfs_create_atomic_t("batoilo_cnt", 0644, data->de,
-				&data->batoilo_cnt);
 
 	debugfs_create_atomic_t("insel_cnt", 0644, data->de, &data->insel_cnt);
 	debugfs_create_bool("insel_clear", 0644, data->de, &data->insel_clear);
@@ -3271,12 +3204,12 @@ static int max77759_irq_work(struct max77759_chgr_data *data, u8 idx)
 	u8 chg_dtls1;
 	int ret;
 	u64 val;
-	struct delayed_work *irq_wq = &data->vdroop_irq_work[idx];
+	struct delayed_work *irq_wq = &data->triggered_irq_work[idx];
 
-	mutex_lock(&data->vdroop_irq_lock[idx]);
+	mutex_lock(&data->triggered_irq_lock[idx]);
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &chg_dtls1);
 	if (ret < 0) {
-		mutex_unlock(&data->vdroop_irq_lock[idx]);
+		mutex_unlock(&data->triggered_irq_lock[idx]);
 		return -ENODEV;
 	}
 	val = _chg_details_01_vdroop2_ok_get(chg_dtls1);
@@ -3286,17 +3219,17 @@ static int max77759_irq_work(struct max77759_chgr_data *data, u8 idx)
 		mod_delayed_work(system_wq, irq_wq,
 				   msecs_to_jiffies(VD_DELAY));
 	} else {
-		data->vdroop_counter[idx] = 0;
-		enable_irq(data->vdroop_irq[idx]);
+		data->triggered_counter[idx] = 0;
+		enable_irq(data->triggered_irq[idx]);
 	}
-	mutex_unlock(&data->vdroop_irq_lock[idx]);
+	mutex_unlock(&data->triggered_irq_lock[idx]);
 	return 0;
 }
 
 static void max77759_vdroop1_work(struct work_struct *work)
 {
 	struct max77759_chgr_data *chg_data =
-	    container_of(work, struct max77759_chgr_data, vdroop_irq_work[VDROOP1].work);
+	    container_of(work, struct max77759_chgr_data, triggered_irq_work[VDROOP1].work);
 
 	max77759_irq_work(chg_data, VDROOP1);
 }
@@ -3304,29 +3237,29 @@ static void max77759_vdroop1_work(struct work_struct *work)
 static void max77759_vdroop2_work(struct work_struct *work)
 {
 	struct max77759_chgr_data *chg_data =
-	    container_of(work, struct max77759_chgr_data, vdroop_irq_work[VDROOP2].work);
+	    container_of(work, struct max77759_chgr_data, triggered_irq_work[VDROOP2].work);
 
 	max77759_irq_work(chg_data, VDROOP2);
 }
 
-static void max77759_vdroop_irq_work(void *data, int id)
+static void max77759_triggered_irq_work(void *data, int id)
 {
 	struct max77759_chgr_data *chg_data = data;
 	struct thermal_zone_device *tvid = chg_data->tz_vdroop[id];
 
-	mutex_lock(&chg_data->vdroop_irq_lock[id]);
-	if (chg_data->vdroop_counter[id] == 0) {
-		chg_data->vdroop_counter[id] += 1;
+	mutex_lock(&chg_data->triggered_irq_lock[id]);
+	if (chg_data->triggered_counter[id] == 0) {
+		chg_data->triggered_counter[id] += 1;
 		if (tvid)
 			thermal_zone_device_update(tvid, THERMAL_EVENT_UNSPECIFIED);
 	}
-	disable_irq_nosync(chg_data->vdroop_irq[id]);
-	mod_delayed_work(system_wq, &chg_data->vdroop_irq_work[id],
+	disable_irq_nosync(chg_data->triggered_irq[id]);
+	mod_delayed_work(system_wq, &chg_data->triggered_irq_work[id],
 			 msecs_to_jiffies(VD_DELAY));
-	mutex_unlock(&chg_data->vdroop_irq_lock[id]);
+	mutex_unlock(&chg_data->triggered_irq_lock[id]);
 }
 
-static int uvilo_read_stats(struct uvilo_stats *dst, struct max77759_chgr_data *data)
+static int uvilo_read_stats(struct ocpsmpl_stats *dst, struct max77759_chgr_data *data)
 {
 	int ret;
 
@@ -3381,24 +3314,30 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
 		pr_debug("%s: SYS_UVLO1\n", __func__);
 
-		atomic_inc(&data->sysuvlo1_cnt);
-		uvilo_read_stats(&data->sysuvlo1, data);
-		max77759_vdroop_irq_work(data, VDROOP1);
+		if (data->bcl_dev) {
+			atomic_inc(&data->bcl_dev->if_triggered_cnt[VDROOP1]);
+			uvilo_read_stats(&data->bcl_dev->if_triggered_stats[VDROOP1], data);
+		}
+		max77759_triggered_irq_work(data, VDROOP1);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO2_I) {
 		pr_debug("%s: SYS_UVLO2\n", __func__);
 
-		atomic_inc(&data->sysuvlo2_cnt);
-		uvilo_read_stats(&data->sysuvlo2, data);
-		max77759_vdroop_irq_work(data, VDROOP2);
+		if (data->bcl_dev) {
+			atomic_inc(&data->bcl_dev->if_triggered_cnt[VDROOP2]);
+			uvilo_read_stats(&data->bcl_dev->if_triggered_stats[VDROOP2], data);
+		}
+		max77759_triggered_irq_work(data, VDROOP2);
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_BAT_OILO_I) {
 		pr_debug("%s: BAT_OILO\n", __func__);
 
-		atomic_inc(&data->batoilo_cnt);
-		uvilo_read_stats(&data->batoilo, data);
+		if (data->bcl_dev) {
+			atomic_inc(&data->bcl_dev->if_triggered_cnt[BATOILO]);
+			uvilo_read_stats(&data->bcl_dev->if_triggered_stats[BATOILO], data);
+		}
 	}
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
@@ -3506,17 +3445,17 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 static int max77759_vdroop_read_level(void *data, int *val, int id)
 {
 	struct max77759_chgr_data *chg_data = data;
-	int vdroop_counter = chg_data->vdroop_counter[id];
-	unsigned int vdroop_lvl = chg_data->vdroop_lvl[id];
+	int triggered_counter = chg_data->triggered_counter[id];
+	unsigned int triggered_lvl = chg_data->triggered_lvl[id];
 
-	if ((vdroop_counter != 0) && (vdroop_counter < THERMAL_IRQ_COUNTER_LIMIT)) {
-		*val = vdroop_lvl + THERMAL_HYST_LEVEL;
-		vdroop_counter += 1;
+	if ((triggered_counter != 0) && (triggered_counter < THERMAL_IRQ_COUNTER_LIMIT)) {
+		*val = triggered_lvl + THERMAL_HYST_LEVEL;
+		triggered_counter += 1;
 	} else {
-		*val = vdroop_lvl;
-		vdroop_counter = 0;
+		*val = triggered_lvl;
+		triggered_counter = 0;
 	}
-	chg_data->vdroop_counter[id] = vdroop_counter;
+	chg_data->triggered_counter[id] = triggered_counter;
 
 	return 0;
 }
@@ -3547,12 +3486,12 @@ static int max77759_init_vdroop(void *data_)
 	int ret = 0;
 	u8 regdata;
 
-	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP1], max77759_vdroop1_work);
-	INIT_DELAYED_WORK(&data->vdroop_irq_work[VDROOP2], max77759_vdroop2_work);
-	data->vdroop_counter[VDROOP1] = 0;
-	data->vdroop_counter[VDROOP2] = 0;
-	mutex_init(&data->vdroop_irq_lock[VDROOP1]);
-	mutex_init(&data->vdroop_irq_lock[VDROOP2]);
+	INIT_DELAYED_WORK(&data->triggered_irq_work[VDROOP1], max77759_vdroop1_work);
+	INIT_DELAYED_WORK(&data->triggered_irq_work[VDROOP2], max77759_vdroop2_work);
+	data->triggered_counter[VDROOP1] = 0;
+	data->triggered_counter[VDROOP2] = 0;
+	mutex_init(&data->triggered_irq_lock[VDROOP1]);
+	mutex_init(&data->triggered_irq_lock[VDROOP2]);
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_17, &regdata);
 	if (ret < 0)
@@ -3567,13 +3506,13 @@ static int max77759_init_vdroop(void *data_)
 	if (ret < 0)
 		return -ENODEV;
 
-	data->vdroop_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_16, &regdata);
 	if (ret < 0)
 		return -ENODEV;
 
-	data->vdroop_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
 
 	data->tz_vdroop[VDROOP1] = thermal_zone_of_sensor_register(data->dev,
 							      VDROOP1, data,
@@ -3597,30 +3536,6 @@ static int max77759_init_vdroop(void *data_)
 	}
 	return 0;
 }
-
-static ssize_t triggered_stats_show(struct device *dev, struct device_attribute *attr,
-                                    char *buf)
-{
-	struct max77759_chgr_data *data = dev_get_drvdata(dev);
-	int len = 0;
-
-	len = scnprintf(buf, PAGE_SIZE, "%-10s\t%s\t%s\t%s\t%s\n",
-			"Source", "Count", "Last Triggered", "Last SOC", "Last Voltage");
-
-	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "VDROOP1",
-			 atomic_read(&data->sysuvlo1_cnt),
-			 data->sysuvlo1._time, data->sysuvlo1.capacity, data->sysuvlo1.voltage);
-	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "VDROOP2",
-			 atomic_read(&data->sysuvlo2_cnt),
-			 data->sysuvlo2._time, data->sysuvlo2.capacity, data->sysuvlo2.voltage);
-	len += scnprintf(buf + len, PAGE_SIZE - len, "%-15s\t%d\t%lld\t\t%d\t\t%d\n", "BATOILO",
-			 atomic_read(&data->batoilo_cnt),
-			 data->batoilo._time, data->batoilo.capacity, data->batoilo.voltage);
-
-	return len;
-}
-
-static DEVICE_ATTR_RO(triggered_stats);
 
 static int max77759_charger_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
@@ -3654,9 +3569,6 @@ static int max77759_charger_probe(struct i2c_client *client,
 	data->fship_dtls = -1;
 	data->wden = false; /* TODO: read from DT */
 	mutex_init(&data->io_lock);
-	atomic_set(&data->sysuvlo1_cnt, 0);
-	atomic_set(&data->sysuvlo2_cnt, 0);
-	atomic_set(&data->batoilo_cnt, 0);
 	atomic_set(&data->insel_cnt, 0);
 	atomic_set(&data->early_topoff_cnt, 0);
 	i2c_set_clientdata(client, data);
@@ -3742,12 +3654,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	if (ret < 0)
 		pr_err("Couldn't register dc power supply (%d)\n", ret);
 
-	data->mdev = pmic_device_create(data, "max77759-mitigation");
-	if (data->mdev) {
-		ret = device_create_file(data->mdev, &dev_attr_triggered_stats);
-		if (ret)
-			dev_err(dev, "No mitigation device (%d)\n", ret);
-	}
+	data->bcl_dev = gs101_retrieve_bcl_handle();
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	return 0;
@@ -3761,8 +3668,6 @@ static int max77759_charger_remove(struct i2c_client *client)
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
 	if (data->tz_vdroop[VDROOP2])
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
-	if (data->mdev)
-		pmic_device_destroy(data->mdev->devt);
 
 	return 0;
 }
