@@ -1127,7 +1127,7 @@ static void exynos_panel_connector_atomic_commit(
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
 
-	if (exynos_old_state->hbm_on != exynos_new_state->hbm_on ||
+	if (ctx->hbm.global_hbm.hbm_mode != exynos_new_state->hbm_on ||
 	    exynos_old_state->brightness_level != exynos_new_state->brightness_level) {
 		struct drm_crtc_commit *commit = exynos_new_state->base.commit;
 		struct drm_crtc_commit *old_commit;
@@ -1144,7 +1144,7 @@ static void exynos_panel_connector_atomic_commit(
 
 		ctx->hbm.global_hbm.commit = commit;
 
-		if (exynos_old_state->hbm_on != exynos_new_state->hbm_on) {
+		if (ctx->hbm.global_hbm.hbm_mode != exynos_new_state->hbm_on) {
 			if (exynos_panel_func && exynos_panel_func->set_hbm_mode) {
 				ctx->hbm.global_hbm.update_hbm = true;
 				ctx->hbm.global_hbm.hbm_mode = exynos_new_state->hbm_on;
