@@ -485,6 +485,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 		of_node_put(event_info);
 		i++;
+		kfree(irq_events);
+		kfree(int_reg_bits);
 	}
 
 #ifdef LWIS_DT_DEBUG
