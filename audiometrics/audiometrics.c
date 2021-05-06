@@ -277,7 +277,21 @@ static ssize_t speaker_heartbeat_show(struct device *dev,
 	return counts;
 }
 
+static ssize_t codec_crashed_counter_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct audiometrics_priv_type *priv = dev_get_drvdata(dev);
+	int counts = 0;
 
+	if (IS_ERR_OR_NULL(priv))
+		return -EINVAL;
+
+	mutex_lock(&priv->lock);
+	counts = scnprintf(buf, PAGE_SIZE, "%d", priv->sz.codec_crashed_counter);
+	mutex_unlock(&priv->lock);
+
+	return counts;
+}
 
 static ssize_t hwinfo_part_number_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -421,11 +435,9 @@ static long amcs_cdev_unlocked_ioctl(struct file *file, unsigned int cmd, unsign
 			if (params.val[0] == AMCS_OP2_GET) {
 				params.val[1] =	priv->sz.codec_crashed_counter;
 				params.val[2] =	priv->sz.hs_codec_crashed_counter;
-				params.val[AMCS_PARAMS_LENGTH_MAX-1] =	(int32_t)AMCS_IOCTL_MAGIC;
 			} else if (params.val[0] == AMCS_OP2_SET) {
 				priv->sz.codec_crashed_counter = params.val[1];
 				priv->sz.hs_codec_crashed_counter = params.val[2];
-				params.val[AMCS_PARAMS_LENGTH_MAX-1] =	(int32_t)AMCS_IOCTL_MAGIC;
 			}
 			mutex_unlock(&priv->lock);
 
@@ -494,6 +506,7 @@ static DEVICE_ATTR_RO(speaker_heartbeat);
 static DEVICE_ATTR_RO(hwinfo_part_number);
 static DEVICE_ATTR_RO(wdsp_stat);
 static DEVICE_ATTR_RO(mic_broken_degrade);
+static DEVICE_ATTR_RO(codec_crashed_counter);
 
 
 static struct attribute *audiometrics_fs_attrs[] = {
@@ -506,6 +519,7 @@ static struct attribute *audiometrics_fs_attrs[] = {
 	&dev_attr_hwinfo_part_number.attr,
 	&dev_attr_wdsp_stat.attr,
 	&dev_attr_mic_broken_degrade.attr,
+	&dev_attr_codec_crashed_counter.attr,
 	NULL,
 };
 
