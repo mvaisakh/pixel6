@@ -201,6 +201,7 @@ struct chg_drv {
 	struct votable	*usb_icl_votable;
 	struct votable	*dc_suspend_votable;
 	struct votable	*dc_icl_votable;
+	struct votable	*fan_level_votable;
 
 	bool init_done;
 	bool batt_present;
@@ -1356,6 +1357,7 @@ static void bd_work(struct work_struct *work)
 		interval_ms = 1000;
 		goto bd_rerun;
 	}
+	vote(chg_drv->fan_level_votable, "MSC_BD", bd_state->triggered, FAN_LVL_HIGH);
 
 	/* reset on time since disconnect & optional temperature reading */
 	if (bd_state->bd_resume_time && delta_time > bd_state->bd_resume_time) {
@@ -3169,6 +3171,22 @@ static void chg_init_votables(struct chg_drv *chg_drv)
 
 }
 
+static int fan_get_level(struct chg_drv *chg_drv)
+{
+	struct chg_thermal_device *tdev =
+			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN];
+	int level = FAN_LVL_UNKNOWN;
+
+	if (tdev->current_level == 0)
+		level = FAN_LVL_NOT_CARE;
+	else if (tdev->current_level == tdev->thermal_levels)
+		level = FAN_LVL_ALARM;
+	else
+		level = FAN_LVL_MED;
+
+	return level;
+}
+
 static int chg_get_max_charge_cntl_limit(struct thermal_cooling_device *tcd,
 					 unsigned long *lvl)
 {
@@ -3262,6 +3280,13 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 		chg_drv->dc_icl_votable = find_votable("DC_ICL");
 
 	tdev->current_level = lvl;
+
+	if (!chg_drv->fan_level_votable)
+		chg_drv->fan_level_votable = find_votable("FAN_LEVEL");
+	if (chg_drv->fan_level_votable) {
+		const int fan_hint = fan_get_level(chg_drv);
+		vote(chg_drv->fan_level_votable, THERMAL_DAEMON_VOTER, true, fan_hint);
+	}
 
 	if (tdev->current_level == tdev->thermal_levels) {
 		if (chg_drv->dc_icl_votable)

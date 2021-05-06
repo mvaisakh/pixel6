@@ -368,6 +368,14 @@ const char *gbms_chg_ev_adapter_s(int adapter);
 #define VOTABLE_MSC_INTERVAL	"MSC_INTERVAL"
 #define VOTABLE_MSC_FCC		"MSC_FCC"
 #define VOTABLE_MSC_FV		"MSC_FV"
+#define VOTABLE_FAN_LEVEL	"FAN_LEVEL"
+
+#define FAN_LVL_UNKNOWN		-1
+#define FAN_LVL_NOT_CARE	0
+#define FAN_LVL_LOW		1
+#define FAN_LVL_MED		2
+#define FAN_LVL_HIGH		3
+#define FAN_LVL_ALARM		4
 
 /* Binned cycle count */
 #define GBMS_CCBIN_CSTR_SIZE	(GBMS_CCBIN_BUCKET_COUNT * 6 + 2)
