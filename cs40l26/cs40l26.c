@@ -296,7 +296,7 @@ static void cs40l26_pm_runtime_teardown(struct cs40l26_private *cs40l26)
 	cs40l26->pm_ready = false;
 }
 
-static int cs40l26_pm_state_transition(struct cs40l26_private *cs40l26,
+int cs40l26_pm_state_transition(struct cs40l26_private *cs40l26,
 		enum cs40l26_pm_state state)
 {
 	struct device *dev = cs40l26->dev;
@@ -554,13 +554,42 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 			dev_dbg(dev, "HALO Core is awake\n");
 			break;
 		case CS40L26_DSP_MBOX_F0_EST_START:
-			/* intentionally fall through */
+			dev_dbg(dev, "F0_EST_START\n");
+			break;
 		case CS40L26_DSP_MBOX_F0_EST_DONE:
-			/* intentionally fall through */
+			dev_dbg(dev, "F0_EST_DONE\n");
+			if (cs40l26->cal_requested &
+				CS40L26_CALIBRATION_CONTROL_REQUEST_F0_AND_Q) {
+				cs40l26->cal_requested &=
+				~CS40L26_CALIBRATION_CONTROL_REQUEST_F0_AND_Q;
+				/* for pm_runtime_get see trigger_calibration */
+				pm_runtime_mark_last_busy(cs40l26->dev);
+				pm_runtime_put_autosuspend(cs40l26->dev);
+			}
+			else {
+				dev_err(dev, "Unexpected mbox msg: %d", val);
+				return -EINVAL;
+			}
+
+			break;
 		case CS40L26_DSP_MBOX_REDC_EST_START:
-			/* intentionally fall through */
+			dev_dbg(dev, "REDC_EST_START\n");
+			break;
 		case CS40L26_DSP_MBOX_REDC_EST_DONE:
-			/* intentionally fall through */
+			dev_dbg(dev, "REDC_EST_DONE\n");
+			if (cs40l26->cal_requested &
+				CS40L26_CALIBRATION_CONTROL_REQUEST_REDC) {
+				cs40l26->cal_requested &=
+				~CS40L26_CALIBRATION_CONTROL_REQUEST_REDC;
+				/* for pm_runtime_get see trigger_calibration */
+				pm_runtime_mark_last_busy(cs40l26->dev);
+				pm_runtime_put_autosuspend(cs40l26->dev);
+			}
+			else {
+				dev_err(dev, "Unexpected mbox msg: %d", val);
+				return -EINVAL;
+			}
+			break;
 		case CS40L26_DSP_MBOX_SYS_ACK:
 			dev_err(dev, "Mbox buffer value (0x%X) not supported\n",
 					val);
@@ -1604,42 +1633,53 @@ static void cs40l26_set_gain_worker(struct work_struct *work)
 {
 	struct cs40l26_private *cs40l26 =
 		container_of(work, struct cs40l26_private, set_gain_work);
-	u32 val;
+	u16 amp_vol_pcm;
+	u32 reg, val;
 	int ret;
 
 	pm_runtime_get_sync(cs40l26->dev);
 	mutex_lock(&cs40l26->lock);
 
-	ret = regmap_update_bits(cs40l26->regmap, CS40L26_AMP_CTRL,
-			CS40L26_AMP_CTRL_VOL_PCM_MASK,
-			cs40l26->amp_vol_pcm << CS40L26_AMP_CTRL_VOL_PCM_SHIFT);
-	if (ret) {
-		dev_err(cs40l26->dev, "Failed to update digtal gain\n");
-		goto err_mutex;
-	}
-
-	ret = regmap_read(cs40l26->regmap, CS40L26_AMP_CTRL, &val);
-	if (ret) {
-		dev_err(cs40l26->dev, "Failed to read AMP control\n");
-		goto err_mutex;
-	}
-
 	switch (cs40l26->revid) {
 	case CS40L26_REVID_A0:
+		amp_vol_pcm = CS40L26_AMP_VOL_PCM_MAX & cs40l26->gain_pct;
+
+		ret = regmap_update_bits(cs40l26->regmap, CS40L26_AMP_CTRL,
+				CS40L26_AMP_CTRL_VOL_PCM_MASK, amp_vol_pcm <<
+				CS40L26_AMP_CTRL_VOL_PCM_SHIFT);
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to update digtal gain\n");
+			goto err_mutex;
+		}
+
+		ret = regmap_read(cs40l26->regmap, CS40L26_AMP_CTRL, &val);
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to read AMP control\n");
+			goto err_mutex;
+		}
+
 		ret = cs40l26_pseq_v1_add_pair(cs40l26,
 						CS40L26_AMP_CTRL, val, true);
+		if (ret)
+			dev_err(cs40l26->dev, "Failed to set gain in pseq\n");
 		break;
 	case CS40L26_REVID_A1:
-		ret = cs40l26_pseq_v2_add_write_reg_full(cs40l26,
-						CS40L26_AMP_CTRL, val, true);
+		val = cs40l26_attn_q21_2_vals[cs40l26->gain_pct];
+
+		/* Write Q21.2 value to SOURCE_ATTENUATION */
+		ret = cl_dsp_get_reg(cs40l26->dsp, "SOURCE_ATTENUATION",
+			CL_DSP_XM_UNPACKED_TYPE, CS40L26_EXT_ALGO_ID, &reg);
+		if (ret)
+			goto err_mutex;
+
+		ret = regmap_write(cs40l26->regmap, reg, val);
+		if (ret)
+			dev_err(cs40l26->dev, "Failed to set attenuation\n");
 		break;
 	default:
 		dev_err(cs40l26->dev, "Revid ID not supported: %02X\n",
 			cs40l26->revid);
 	}
-
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to set gain in pseq\n");
 
 err_mutex:
 	mutex_unlock(&cs40l26->lock);
@@ -1654,11 +1694,16 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 	struct device *dev = cs40l26->dev;
 	int ret = 0;
 	unsigned int reg, freq;
-	u32 index = 0, algo_id;
+	u32 index = 0, vibe_id, buzz_id;
 	u16 duration;
 
-	pm_runtime_get_sync(dev);
-	mutex_lock(&cs40l26->lock);
+	if (cs40l26->fw_mode == CS40L26_FW_MODE_RAM) {
+		buzz_id = CS40L26_BUZZGEN_ALGO_ID;
+		vibe_id = CS40L26_VIBEGEN_ALGO_ID;
+	} else {
+		buzz_id = CS40L26_BUZZGEN_ROM_ALGO_ID;
+		vibe_id = CS40L26_VIBEGEN_ROM_ALGO_ID;
+	}
 
 	if (cs40l26->effect->u.periodic.waveform == FF_CUSTOM)
 		index = cs40l26->trigger_indices[cs40l26->effect->id];
@@ -1669,9 +1714,25 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 	else
 		duration = cs40l26->effect->replay.length;
 
-	hrtimer_start(&cs40l26->vibe_timer,
+	pm_runtime_get_sync(dev);
+	mutex_lock(&cs40l26->lock);
+
+	if (duration == 0) { /* Handle special case with TIMEOUT_MS */
+		ret = cl_dsp_get_reg(cs40l26->dsp, "TIMEOUT_MS",
+				CL_DSP_XM_UNPACKED_TYPE, vibe_id, &reg);
+		if (ret)
+			goto err_mutex;
+
+		ret = regmap_write(cs40l26->regmap, reg, 0);
+		if (ret) {
+			dev_err(dev, "Failed to set haptic duration\n");
+			goto err_mutex;
+		}
+	} else {
+		hrtimer_start(&cs40l26->vibe_timer,
 			ktime_set(CS40L26_MS_TO_SECS(duration),
 			CS40L26_MS_TO_NS(duration % 1000)), HRTIMER_MODE_REL);
+	}
 
 	cs40l26_vibe_state_set(cs40l26, CS40L26_VIBE_STATE_HAPTIC);
 
@@ -1683,17 +1744,10 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 			goto err_mutex;
 		break;
 	case FF_SINE:
-		if (cs40l26->fw_mode == CS40L26_FW_MODE_RAM)
-			algo_id = CS40L26_BUZZGEN_ALGO_ID;
-		else
-			algo_id = CS40L26_BUZZGEN_ROM_ALGO_ID;
-
 		ret = cl_dsp_get_reg(cs40l26->dsp, "BUZZ_EFFECTS2_BUZZ_FREQ",
-				CL_DSP_XM_UNPACKED_TYPE, algo_id, &reg);
-		if (ret) {
-			dev_err(dev, "Failed to find BUZZGEN control\n");
+				CL_DSP_XM_UNPACKED_TYPE, buzz_id, &reg);
+		if (ret)
 			goto err_mutex;
-		}
 
 		freq = CS40L26_MS_TO_HZ(cs40l26->effect->u.periodic.period);
 
@@ -1739,19 +1793,42 @@ static void cs40l26_vibe_stop_worker(struct work_struct *work)
 {
 	struct cs40l26_private *cs40l26 = container_of(work,
 			struct cs40l26_private, vibe_stop_work);
+	unsigned int reg;
+	u32 algo_id;
 	int ret;
 
 	pm_runtime_get_sync(cs40l26->dev);
 	mutex_lock(&cs40l26->lock);
 
-	if (cs40l26->vibe_state == CS40L26_VIBE_STATE_STOPPED)
-		goto mutex_exit;
+	if (cs40l26->effect->u.periodic.waveform == FF_SINE) {
+		ret = cs40l26_ack_write(cs40l26, CS40L26_DSP_VIRTUAL1_MBOX_1,
+				CS40L26_STOP_PLAYBACK, CS40L26_DSP_MBOX_RESET);
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to stop playback\n");
+			goto mutex_exit;
+		}
+	} else {
+		if (cs40l26->fw_mode == CS40L26_FW_MODE_ROM)
+			algo_id = CS40L26_VIBEGEN_ROM_ALGO_ID;
+		else
+			algo_id = CS40L26_VIBEGEN_ALGO_ID;
 
-	ret = cs40l26_ack_write(cs40l26, CS40L26_DSP_VIRTUAL1_MBOX_1,
-		CS40L26_STOP_PLAYBACK, CS40L26_DSP_MBOX_RESET);
-	if (ret) {
-		dev_err(cs40l26->dev, "Failed to stop playback\n");
-		goto mutex_exit;
+		ret = cl_dsp_get_reg(cs40l26->dsp, "END_PLAYBACK",
+				CL_DSP_XM_UNPACKED_TYPE, algo_id, &reg);
+		if (ret)
+			goto mutex_exit;
+
+		ret = regmap_write(cs40l26->regmap, reg, 1);
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to end VIBE playback\n");
+			goto mutex_exit;
+		}
+
+		ret = regmap_write(cs40l26->regmap, reg, 0);
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to reset END_PLAYBACK\n");
+			goto mutex_exit;
+		}
 	}
 
 	cs40l26_vibe_state_set(cs40l26, CS40L26_VIBE_STATE_STOPPED);
@@ -1776,7 +1853,7 @@ static void cs40l26_set_gain(struct input_dev *dev, u16 gain)
 {
 	struct cs40l26_private *cs40l26 = input_get_drvdata(dev);
 
-	cs40l26->amp_vol_pcm = CS40L26_AMP_VOL_PCM_MAX & gain;
+	cs40l26->gain_pct = gain;
 
 	queue_work(cs40l26->vibe_workqueue, &cs40l26->set_gain_work);
 }
@@ -2214,12 +2291,23 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 	hrtimer_init(&cs40l26->vibe_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	cs40l26->vibe_timer.function = cs40l26_vibe_timer;
 
+
+
 	ret = sysfs_create_group(&cs40l26->input->dev.kobj,
 			&cs40l26_dev_attr_group);
-	if (ret)
+	if (ret) {
 		dev_err(dev, "Failed to create sysfs group: %d\n", ret);
-	else
-		cs40l26->vibe_init_success = true;
+		return ret;
+	}
+
+	ret = sysfs_create_group(&cs40l26->input->dev.kobj,
+			&cs40l26_dev_attr_cal_group);
+	if (ret){
+		dev_err(dev, "Failed to create cal sysfs group: %d\n", ret);
+		return ret;
+	}
+
+	cs40l26->vibe_init_success = true;
 
 	return ret;
 }
@@ -3096,9 +3184,12 @@ int cs40l26_remove(struct cs40l26_private *cs40l26)
 	if (cs40l26->vibe_timer.function)
 		hrtimer_cancel(&cs40l26->vibe_timer);
 
-	if (cs40l26->vibe_init_success)
+	if (cs40l26->vibe_init_success) {
 		sysfs_remove_group(&cs40l26->input->dev.kobj,
 				&cs40l26_dev_attr_group);
+		sysfs_remove_group(&cs40l26->input->dev.kobj,
+				&cs40l26_dev_attr_cal_group);
+	}
 
 	if (cs40l26->input)
 		input_unregister_device(cs40l26->input);

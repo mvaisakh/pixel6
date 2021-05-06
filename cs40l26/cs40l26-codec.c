@@ -302,9 +302,83 @@ static int cs40l26_tuning_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int cs40l26_volume_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct cs40l26_codec *codec =
+	snd_soc_component_get_drvdata(snd_soc_kcontrol_component(kcontrol));
+	struct cs40l26_private *cs40l26 = codec->core;
+	struct regmap *regmap = cs40l26->regmap;
+	struct device *dev = cs40l26->dev;
+	unsigned int val = 0, reg;
+	int ret;
+
+	ret = cl_dsp_get_reg(cs40l26->dsp, "VOLUMELEVEL",
+			CL_DSP_XM_UNPACKED_TYPE, CS40L26_A2H_ALGO_ID, &reg);
+	if (ret)
+		return ret;
+
+	pm_runtime_get_sync(dev);
+
+	ret = regmap_read(regmap, reg, &val);
+	if (ret) {
+		dev_err(dev, "Failed to get VOLUMELEVEL\n");
+		goto err_pm;
+	}
+
+	if (val == CS40L26_VOLUME_MAX)
+		val = CS40L26_VOLUME_MAX_STEPS;
+	else
+		val /= CS40L26_VOLUME_STEP_SIZE;
+
+err_pm:
+	pm_runtime_mark_last_busy(dev);
+	pm_runtime_put_autosuspend(dev);
+
+	ucontrol->value.integer.value[0] = val;
+
+	return ret;
+}
+
+static int cs40l26_volume_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct cs40l26_codec *codec =
+	snd_soc_component_get_drvdata(snd_soc_kcontrol_component(kcontrol));
+	struct cs40l26_private *cs40l26 = codec->core;
+	struct regmap *regmap = cs40l26->regmap;
+	struct device *dev = cs40l26->dev;
+	unsigned int val = 0, reg;
+	int ret;
+
+	ret = cl_dsp_get_reg(cs40l26->dsp, "VOLUMELEVEL",
+			CL_DSP_XM_UNPACKED_TYPE, CS40L26_A2H_ALGO_ID, &reg);
+	if (ret)
+		return ret;
+
+	val = ucontrol->value.integer.value[0];
+	if (val == CS40L26_VOLUME_MAX_STEPS)
+		val = CS40L26_VOLUME_MAX;
+	else
+		val *= CS40L26_VOLUME_STEP_SIZE;
+
+	pm_runtime_get_sync(dev);
+
+	ret = regmap_write(regmap, reg, val);
+	if (ret)
+		dev_err(dev, "Failed to set VOLUMELEVEL\n");
+
+	pm_runtime_mark_last_busy(dev);
+	pm_runtime_put_autosuspend(dev);
+
+	return ret;
+}
+
 static const struct snd_kcontrol_new cs40l26_controls[] = {
 	SOC_SINGLE_EXT("A2H Tuning", 0, 0, CS40L26_A2H_MAX_TUNINGS, 0,
 			cs40l26_tuning_get, cs40l26_tuning_put),
+	SOC_SINGLE_EXT("A2H Volume", 0, 0, CS40L26_VOLUME_MAX_STEPS, 0,
+			cs40l26_volume_get, cs40l26_volume_put),
 };
 
 static const char * const cs40l26_out_mux_texts[] = { "Off", "PCM", "A2H" };
@@ -446,8 +520,23 @@ static int cs40l26_pcm_hw_params(struct snd_pcm_substream *substream,
 			CS40L26_ASP_FSYNC_INV_MASK | CS40L26_ASP_BCLK_INV_MASK |
 			CS40L26_ASP_FMT_MASK | CS40L26_ASP_RX_WIDTH_MASK,
 			codec->daifmt);
-	if (ret)
+	if (ret) {
 		dev_err(codec->dev, "Failed to update ASP RX width\n");
+		goto err_pm;
+	}
+
+	ret = regmap_update_bits(codec->regmap, CS40L26_ASP_FRAME_CONTROL5,
+			CS40L26_ASP_RX1_SLOT_MASK | CS40L26_ASP_RX2_SLOT_MASK,
+			codec->tdm_slot[0] | (codec->tdm_slot[1] <<
+			CS40L26_ASP_RX2_SLOT_SHIFT));
+	if (ret) {
+		dev_err(codec->dev, "Failed to update ASP slot number\n");
+		goto err_pm;
+	}
+
+	dev_dbg(codec->dev, "ASP: %d bits in %d bit slots, slot #s: %d, %d\n",
+			asp_rx_wl, asp_rx_width, codec->tdm_slot[0],
+			codec->tdm_slot[1]);
 
 err_pm:
 	pm_runtime_mark_last_busy(codec->dev);
@@ -468,6 +557,18 @@ static int cs40l26_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 	}
 
 	codec->tdm_width = slot_width;
+	codec->tdm_slots = slots;
+
+	/* Reset to slots 0,1 if TDM is being disabled, and catch the case
+	 * where both RX1 and RX2 would be set to slot 0 since that causes
+	 * hardware to flag an error
+	 */
+	if (!slots || rx_mask == 0x1)
+		rx_mask = 0x3;
+
+	codec->tdm_slot[0] = ffs(rx_mask) - 1;
+	rx_mask &= ~(1 << codec->tdm_slot[0]);
+	codec->tdm_slot[1] = ffs(rx_mask) - 1;
 
 	return 0;
 }
@@ -507,6 +608,9 @@ static int cs40l26_codec_probe(struct snd_soc_component *component)
 
 	/* Default audio SCLK frequency */
 	codec->sysclk_rate = CS40L26_PLL_CLK_FRQ1;
+
+	codec->tdm_slot[0] = 0;
+	codec->tdm_slot[1] = 1;
 
 	return 0;
 }

@@ -678,7 +678,10 @@
 #define CS40L26_PM_ALGO_ID		0x0001F206
 #define CS40l26_SVC_ALGO_ID		0x0001F207
 #define CS40L26_VIBEGEN_ALGO_ID	0x000100BD
+#define CS40L26_LOGGER_ALGO_ID		0x0004013D
+#define CS40L26_EXT_ALGO_ID		0x0004013C
 
+#define CS40L26_VIBEGEN_ROM_ALGO_ID	0x000000BD
 #define CS40L26_BUZZGEN_ROM_ALGO_ID	0x0000F202
 #define CS40L26_PM_ROM_ALGO_ID		0x0000F206
 
@@ -759,6 +762,7 @@
 #define CS40L26_DSP_MBOX_CMD_DURATION_REPORT	0x03000001
 #define CS40L26_DSP_MBOX_CMD_START_I2S		0x03000002
 #define CS40L26_DSP_MBOX_CMD_STOP_I2S		0x03000003
+#define CS40L26_DSP_MBOX_CMD_LOGGER_MAX_RESET	0x03000004
 #define CS40L26_DSP_MBOX_CMD_A2H_REINIT	0x03000007
 
 #define CS40L26_DSP_MBOX_CMD_INDEX_MASK	GENMASK(28, 24)
@@ -766,13 +770,15 @@
 
 #define CS40L26_DSP_MBOX_CMD_PAYLOAD_MASK	GENMASK(23, 0)
 
+#define CS40L26_DSP_MBOX_CMD_INDEX_CALIBRATION_CONTROL 0x7
+
 #define CS40L26_DSP_MBOX_BUFFER_NUM_REGS	4
 
 #define CS40L26_DSP_MBOX_TRIGGER_COMPLETE	0x01000000
 #define CS40L26_DSP_MBOX_PM_AWAKE		0x02000002
 #define CS40L26_DSP_MBOX_F0_EST_START		0x07000011
 #define CS40L26_DSP_MBOX_F0_EST_DONE		0x07000021
-#define CS40L26_DSP_MBOX_REDC_EST_START	0x07000012
+#define CS40L26_DSP_MBOX_REDC_EST_START		0x07000012
 #define CS40L26_DSP_MBOX_REDC_EST_DONE		0x07000022
 #define CS40L26_DSP_MBOX_SYS_ACK		0x0A000000
 #define CS40L26_DSP_MBOX_PANIC			0x0C000000
@@ -787,7 +793,7 @@
 #define CS40L26_FW_ID			0x1800D4
 #define CS40L26_FW_ROM_MIN_REV		0x040000
 #define CS40L26_FW_A0_RAM_MIN_REV	0x050004
-#define CS40L26_FW_A1_RAM_MIN_REV	0x070001
+#define CS40L26_FW_A1_RAM_MIN_REV	0x070100
 
 #define CS40L26_CCM_CORE_RESET		0x00000200
 #define CS40L26_CCM_CORE_ENABLE	0x00000281
@@ -807,7 +813,7 @@
 #define CS40L26_CONTROL_PORT_READY_DELAY	3000
 
 /* haptic triggering */
-#define CS40L26_TIMEOUT_MS_MAX			5000 /* ms */
+#define CS40L26_TIMEOUT_MS_MAX			0x02AAAA /* ~ 174s */
 
 #define CS40L26_TRIGGER_EFFECT			1
 
@@ -1021,6 +1027,10 @@
 #define CS40L26_ASP_RX3_EN_MASK	BIT(18)
 #define CS40L26_ASP_RX3_EN_SHIFT	18
 
+#define CS40L26_ASP_RX1_SLOT_MASK	GENMASK(5, 0)
+#define CS40L26_ASP_RX2_SLOT_MASK	GENMASK(13, 8)
+#define CS40L26_ASP_RX2_SLOT_SHIFT	8
+
 #define CS40L26_CLASS_H_EN_MASK	BIT(4)
 #define CS40L26_CLASS_H_EN_SHIFT	4
 
@@ -1029,6 +1039,11 @@
 #define CS40L26_BST_CTL_SEL_CLASSH	0x1
 
 #define CS40L26_A2H_MAX_TUNINGS	5
+
+#define CS40L26_VOLUME_MAX_STEPS	100
+#define CS40L26_VOLUME_MAX		0x7FFFFF
+#define CS40L26_VOLUME_STEP_SIZE	(CS40L26_VOLUME_MAX / \
+					CS40L26_VOLUME_MAX_STEPS)
 
 /* OWT */
 #define CS40L26_WT_STR_MAX_LEN			512
@@ -1054,6 +1069,20 @@
 #define CS40L26_WT_TYPE10_WAVELEN_CALCULATED	0x800000
 #define CS40L26_WT_TYPE10_COMP_DURATION_FLAG	0x8
 
+/* Calibration */
+#define CS40L26_F0_EST_MIN 0xC8000
+#define CS40L26_F0_EST_MAX 0x7FC000
+#define CS40L26_Q_EST_MIN 0
+#define CS40L26_Q_EST_MAX 0x7FFFFF
+
+#define CS40L26_F0_EST_FREQ_SHIFT 14 /* centre, span, and f0 in Q10.14 */
+
+#define CS40L26_SVC_INITIALIZATION_PERIOD_MS 6
+#define CS40L26_REDC_CALIBRATION_BUFFER_MS 10
+#define CS40L26_F0_AND_Q_CALIBRATION_BUFFER_MS 100
+#define CS40L26_F0_CHIRP_DURATION_FACTOR 3662 /* t=factor*span/center */
+#define CS40L26_CALIBRATION_CONTROL_REQUEST_F0_AND_Q BIT(0)
+#define CS40L26_CALIBRATION_CONTROL_REQUEST_REDC BIT(1)
 
 /* MFD */
 #define CS40L26_NUM_MFD_DEVS		1
@@ -1267,12 +1296,14 @@ struct cs40l26_private {
 	bool fw_loaded;
 	bool pm_ready;
 	bool asp_enable;
-	u16 amp_vol_pcm;
 	u8 last_wksrc_pol;
 	u8 wksrc_sts;
 	u32 event_count;
 	u32 owt_wlength;
 	int num_owt_effects;
+	int cal_requested;
+	bool log_stream;
+	u16 gain_pct;
 };
 
 struct cs40l26_codec {
@@ -1285,6 +1316,8 @@ struct cs40l26_codec {
 	char *bin_file;
 	u32 daifmt;
 	int tdm_width;
+	int tdm_slots;
+	int tdm_slot[2];
 };
 
 struct cs40l26_pll_sysclk_config {
@@ -1300,6 +1333,8 @@ int cs40l26_pm_timeout_ms_get(struct cs40l26_private *cs40l26,
 		u32 *timeout_ms);
 int cs40l26_pm_timeout_ms_set(struct cs40l26_private *cs40l26,
 		u32 timeout_ms);
+int cs40l26_pm_state_transition(struct cs40l26_private *cs40l26,
+		enum cs40l26_pm_state state);
 int cs40l26_ack_write(struct cs40l26_private *cs40l26, u32 reg, u32 write_val,
 		u32 reset_val);
 int cs40l26_pseq_v1_multi_add_pair(struct cs40l26_private *cs40l26,
@@ -1330,9 +1365,11 @@ extern const struct regmap_config cs40l26_regmap;
 extern const struct mfd_cell cs40l26_devs[CS40L26_NUM_MFD_DEVS];
 extern const u8 cs40l26_pseq_v2_op_sizes[CS40L26_PSEQ_V2_NUM_OPS][2];
 extern const char * const cs40l26_ram_coeff_files[3];
+extern const u32 cs40l26_attn_q21_2_vals[101];
 
 
 /* sysfs */
 extern struct attribute_group cs40l26_dev_attr_group;
+extern struct attribute_group cs40l26_dev_attr_cal_group;
 
 #endif /* __CS40L26_H__ */
