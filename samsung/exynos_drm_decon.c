@@ -53,16 +53,16 @@
 struct decon_device *decon_drvdata[MAX_DECON_CNT];
 
 #define decon_info(decon, fmt, ...)	\
-pr_info("%s[%d]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
+pr_info("%s[%u]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
 
 #define decon_warn(decon, fmt, ...)	\
-pr_warn("%s[%d]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
+pr_warn("%s[%u]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
 
 #define decon_err(decon, fmt, ...)	\
-pr_err("%s[%d]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
+pr_err("%s[%u]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
 
 #define decon_debug(decon, fmt, ...)	\
-pr_debug("%s[%d]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
+pr_debug("%s[%u]: "fmt, decon->dev->driver->name, decon->id, ##__VA_ARGS__)
 
 #define SHADOW_UPDATE_TIMEOUT_US	(300 * USEC_PER_MSEC) /* 300ms */
 
@@ -1648,7 +1648,7 @@ static int decon_probe(struct platform_device *pdev)
 
 	kthread_init_worker(&decon->worker);
 	decon->thread = kthread_run(kthread_worker_fn, &decon->worker,
-				    "decon%d_kthread", decon->id);
+				    "decon%u_kthread", decon->id);
 	if (IS_ERR(decon->thread)) {
 		decon_err(decon, "failed to run display thread\n");
 		ret = PTR_ERR(decon->thread);

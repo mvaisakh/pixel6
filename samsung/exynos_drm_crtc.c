@@ -594,7 +594,7 @@ static void exynos_drm_crtc_print_state(struct drm_printer *p,
 	exynos_state = container_of(state, struct exynos_drm_crtc_state, base);
 
 	drm_printf(p, "\treserved_win_mask=0x%x\n", exynos_crtc_state->reserved_win_mask);
-	drm_printf(p, "\tDecon #%d (state:%d)\n", decon->id, decon->state);
+	drm_printf(p, "\tDecon #%u (state:%d)\n", decon->id, decon->state);
 	drm_printf(p, "\t\ttype=0x%x\n", cfg->out_type);
 	drm_printf(p, "\t\tsize=%dx%d\n", cfg->image_width, cfg->image_height);
 	if (cfg->mode.dsi_mode != DSI_MODE_NONE) {
@@ -811,7 +811,7 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	crtc = &exynos_crtc->base;
 
 	ret = drm_crtc_init_with_planes(drm_dev, crtc, plane, NULL,
-					&exynos_crtc_funcs, "exynos-crtc-%d",
+					&exynos_crtc_funcs, "exynos-crtc-%u",
 					decon->id);
 	if (ret < 0)
 		goto err_crtc;

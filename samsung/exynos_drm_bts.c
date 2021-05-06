@@ -741,9 +741,12 @@ static inline void dpu_bts_update_bw(struct decon_device *decon, struct bts_bw b
 	DPU_ATRACE_BEGIN("dpu_bts_update_bw");
 	ret = bts_update_bw(decon->bts.bw_idx, bw);
 	if (ret < 0) {
-		pr_warn("failed to update bw(%d) to bts(%d)\n", decon->bts.bw_idx, ret);
+		pr_warn("decon%u failed to update bw(%d) to bts(%d)\n", decon->id,
+			decon->bts.bw_idx, ret);
 		decon_dump_event_condition(decon, DPU_EVT_CONDITION_FAIL_UPDATE_BW);
 	}
+	DPU_ATRACE_INT("dpu_vote_peak_bw", bw.peak);
+	DPU_ATRACE_INT("dpu_vote_avg_bw", bw.read + bw.write);
 	DPU_ATRACE_END("dpu_bts_update_bw");
 }
 
@@ -751,6 +754,7 @@ static inline void dpu_bts_update_disp(struct decon_device *decon, u32 disp_freq
 {
 	DPU_ATRACE_BEGIN("dpu_bts_update_disp");
 	exynos_pm_qos_update_request(&decon->bts.disp_qos, disp_freq);
+	DPU_ATRACE_INT("dpu_vote_clock", disp_freq);
 	DPU_ATRACE_END("dpu_bts_update_disp");
 }
 

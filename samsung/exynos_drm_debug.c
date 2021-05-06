@@ -1470,7 +1470,7 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 
 	decon = container_of(nb, struct decon_device, itmon_nb);
 
-	pr_debug("%s: DECON%d +\n", __func__, decon->id);
+	pr_debug("%s: DECON%u +\n", __func__, decon->id);
 
 	if (decon->itmon_notified)
 		return NOTIFY_DONE;

@@ -109,7 +109,7 @@ int histogram_request_ioctl(struct drm_device *dev, void *data,
 	decon = exynos_crtc->ctx;
 	dqe = decon->dqe;
 	if (!dqe) {
-		pr_err("failed to get dqe from decon%d\n", decon->id);
+		pr_err("failed to get dqe from decon%u\n", decon->id);
 		return -ENODEV;
 	}
 
@@ -118,7 +118,7 @@ int histogram_request_ioctl(struct drm_device *dev, void *data,
 	 * This will be allowed for multiple observer in the future.
 	 */
 	if (dqe->state.event) {
-		pr_warn("decon%d histogram already registered\n", decon->id);
+		pr_warn("decon%u histogram already registered\n", decon->id);
 		return -EBUSY;
 	}
 	dqe->state.event = create_histogram_event(dev, file);
@@ -128,7 +128,7 @@ int histogram_request_ioctl(struct drm_device *dev, void *data,
 		return -EINVAL;
 	}
 
-	pr_debug("created histogram event(0x%pK) of decon%d\n",
+	pr_debug("created histogram event(0x%pK) of decon%u\n",
 			dqe->state.event, decon->id);
 
 	return 0;
@@ -155,7 +155,7 @@ int histogram_cancel_ioctl(struct drm_device *dev, void *data,
 	decon = exynos_crtc->ctx;
 	dqe = decon->dqe;
 	if (!dqe) {
-		pr_err("failed to get dqe from decon%d\n", decon->id);
+		pr_err("failed to get dqe from decon%u\n", decon->id);
 		return -ENODEV;
 	}
 
@@ -165,7 +165,7 @@ int histogram_cancel_ioctl(struct drm_device *dev, void *data,
 		dqe->state.event = NULL;
 	}
 
-	pr_debug("terminated histogram event of decon%d\n", decon->id);
+	pr_debug("terminated histogram event of decon%u\n", decon->id);
 
 	return 0;
 }
@@ -181,7 +181,7 @@ void handle_histogram_event(struct exynos_dqe *dqe)
 	pr_debug("Histogram event(0x%pK) will be handled\n", dqe->state.event);
 	dqe_reg_get_histogram_bins(&e->event.bins);
 	drm_send_event(dev, &e->base);
-	pr_debug("histogram event of decon%d signalled\n", dqe->decon->id);
+	pr_debug("histogram event of decon%u signalled\n", dqe->decon->id);
 	dqe->state.event = NULL;
 }
 

@@ -556,7 +556,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 						 fps_timeout(fps))) {
 			DPU_EVENT_LOG(DPU_EVT_FRAMESTART_TIMEOUT,
 					decon->id, NULL);
-			pr_warn("decon%d framestart timeout (%d fps)\n",
+			pr_warn("decon%u framestart timeout (%d fps)\n",
 					decon->id, fps);
 			decon_dump_all(decon);
 		}
