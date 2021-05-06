@@ -134,6 +134,7 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 	struct lwis_top_device *lwis_top_dev = (struct lwis_top_device *)lwis_dev;
 	struct lwis_device *trigger_dev;
 	struct lwis_event_subscribe_info *p;
+	struct hlist_node *tmp;
 	struct lwis_trigger_event_info *pending_event, *n;
 	unsigned long flags;
 	bool has_subscriber = false;
@@ -141,7 +142,8 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 	spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
 
 	/* Remove event from hash table */
-	hash_for_each_possible (lwis_top_dev->event_subscriber, p, node, trigger_event_id) {
+	hash_for_each_possible_safe (lwis_top_dev->event_subscriber, p, tmp, node,
+				     trigger_event_id) {
 		/* Clear pending events */
 		list_for_each_entry_safe (pending_event, n,
 					  &lwis_top_dev->emitted_event_list_tasklet, node) {
