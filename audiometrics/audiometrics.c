@@ -82,6 +82,37 @@ struct audiometrics_priv_type {
 	int amcs_major;
 };
 
+static void amcs_report_mic_uevent(uint32_t mic_state, struct audiometrics_priv_type *priv)
+{
+	char event[25] = "";
+	char *env[] = { event, NULL };
+
+	uint8_t mic_break =
+		mic_state & MIC_BREAK_STAT_MIC_BREAK_MASK;
+	uint8_t mic_degrade =
+		mic_state & MIC_BREAK_STAT_MIC_DEGRADE_MASK >> MIC_DEGRADE_SHIFT_BITS;
+
+	if (IS_ERR_OR_NULL(priv))
+		return;
+
+	if (IS_ERR_OR_NULL(priv->device))
+		return;
+
+	if (mic_break) {
+		snprintf(event, sizeof(event), "MIC_BREAK_STATUS=%d",
+			 mic_break);
+		kobject_uevent_env(&priv->device->kobj, KOBJ_CHANGE, env);
+	}
+
+	if (mic_degrade) {
+		snprintf(event, sizeof(event), "MIC_DEGRADE_STATUS=%d",
+			 mic_degrade);
+		kobject_uevent_env(&priv->device->kobj, KOBJ_CHANGE, env);
+	}
+
+	dev_dbg(&amcs_pdev->dev, "%s: (%d, %d)", __func__, mic_break, mic_degrade);
+}
+
 static ssize_t codec_state_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -379,6 +410,9 @@ static long amcs_cdev_unlocked_ioctl(struct file *file, unsigned int cmd, unsign
 			mutex_lock(&priv->lock);
 			priv->sz.mic_broken_degrade = (uint32_t)params.val[0];
 			mutex_unlock(&priv->lock);
+
+			if(priv->sz.mic_broken_degrade)
+				amcs_report_mic_uevent(priv->sz.mic_broken_degrade, priv);
 			ret = 0;
 		break;
 
