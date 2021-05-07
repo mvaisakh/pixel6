@@ -897,7 +897,7 @@ struct fts_ts_info {
 	ktime_t mf_downtime;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	struct tbn_context	*tbn;
+	u32 tbn_register_mask;
 #endif
 
 	/* Allow only one thread to execute diag command code*/

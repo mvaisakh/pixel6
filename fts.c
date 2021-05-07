@@ -5358,8 +5358,8 @@ static void fts_resume_work(struct work_struct *work)
 		return;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	if (info->tbn)
-		tbn_request_bus(info->tbn);
+	if (info->tbn_register_mask)
+		tbn_request_bus(info->tbn_register_mask);
 #endif
 
 	fts_set_switch_gpio(info, FTS_SWITCH_GPIO_VALUE_AP_MASTER);
@@ -5436,8 +5436,8 @@ static void fts_suspend_work(struct work_struct *work)
 	fts_set_switch_gpio(info, FTS_SWITCH_GPIO_VALUE_SLPI_MASTER);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	if (info->tbn)
-		tbn_release_bus(info->tbn);
+	if (info->tbn_register_mask)
+		tbn_release_bus(info->tbn_register_mask);
 #endif
 
 	info->sensor_sleep = true;
@@ -6172,12 +6172,12 @@ static int fts_probe(struct spi_device *client)
 	}
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	info->tbn = tbn_init(info->dev);
-	if (!info->tbn) {
-		dev_err(info->dev, "ERROR: failed to init tbn context\n");
+	if (register_tbn(&info->tbn_register_mask)) {
 		error = -ENODEV;
+		dev_err(info->dev, "Failed to register tbn context.");
 		goto ProbeErrorExit_2;
 	}
+	dev_info(info->dev, "tbn_register_mask = %#x.\n", info->tbn_register_mask);
 #endif
 
 	dev_info(info->dev, "SET GPIOS:\n");
@@ -6529,8 +6529,8 @@ ProbeErrorExit_3:
 
 ProbeErrorExit_2:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	if (info->tbn)
-		tbn_cleanup(info->tbn);
+	if (info->tbn_register_mask)
+		unregister_tbn(&info->tbn_register_mask);
 #endif
 	fts_get_reg(info, false);
 
@@ -6565,7 +6565,8 @@ static int fts_remove(struct spi_device *client)
 	dev_info(info->dev, "%s\n", __func__);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	tbn_cleanup(info->tbn);
+	if (info->tbn_register_mask)
+		unregister_tbn(&info->tbn_register_mask);
 #endif
 
 	fts_proc_remove(info);
