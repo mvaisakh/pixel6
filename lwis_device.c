@@ -1255,6 +1255,12 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 				lwis_clock_list_free(lwis_dev->clocks);
 				lwis_dev->clocks = NULL;
 			}
+			/* Release device critical interrupt list */
+			if (lwis_dev->critical_irq_event_list) {
+				lwis_dev_critical_irq_event_list_free(
+					lwis_dev->critical_irq_event_list);
+				lwis_dev->critical_irq_event_list = NULL;
+			}
 			/* Release device interrupt list */
 			if (lwis_dev->irqs) {
 				lwis_interrupt_list_free(lwis_dev->irqs);
@@ -1496,6 +1502,9 @@ static void __exit lwis_driver_exit(void)
 		/* Release device clock list */
 		if (lwis_dev->clocks)
 			lwis_clock_list_free(lwis_dev->clocks);
+		/* Release device critical interrupt list */
+		if (lwis_dev->critical_irq_event_list)
+			lwis_dev_critical_irq_event_list_free(lwis_dev->critical_irq_event_list);
 		/* Release device interrupt list */
 		if (lwis_dev->irqs)
 			lwis_interrupt_list_free(lwis_dev->irqs);

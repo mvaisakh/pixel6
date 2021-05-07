@@ -258,7 +258,6 @@ static int parse_critical_irq_events(struct lwis_device *lwis_dev, struct device
 	int critical_irq_events_num;
 	u64 critical_irq_events;
 	int i;
-	lwis_dev->critical_irq_events_present = false;
 	lwis_dev->critical_irq_event_list = NULL;
 
 	critical_irq_events_num =

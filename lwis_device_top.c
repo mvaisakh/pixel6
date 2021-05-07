@@ -99,9 +99,9 @@ static void subscribe_tasklet_func(unsigned long data)
 					trigger_event->trigger_event_timestamp, false);
 			}
 		}
+		kfree(trigger_event);
 	}
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
-	kfree(trigger_event);
 }
 
 static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_event_id,

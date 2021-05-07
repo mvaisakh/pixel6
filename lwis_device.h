@@ -253,8 +253,6 @@ struct lwis_device {
 	/* Power management hibernation state of the device */
 	int pm_hibernation;
 
-	/* Does critical-irq-events present */
-	bool critical_irq_events_present;
 	/* Critical IRQ events information */
 	struct lwis_device_critical_irq_event_list *critical_irq_event_list;
 };
