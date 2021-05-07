@@ -6,6 +6,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/net.h>
 #include <linux/printk.h>
 #include <linux/slab.h>
@@ -16,6 +17,9 @@
 #include <linux/delay.h>
 #include "touch_bus_negotiator.h"
 
+#define TBN_MODULE_NAME "touch_bus_negotiator"
+
+static struct tbn_context *tbn_context = NULL;
 
 enum tbn_operation {
 	AP_RELEASE_BUS,
@@ -65,8 +69,9 @@ int tbn_handshaking(struct tbn_context *tbn, enum tbn_operation operation)
 	unsigned int irq_type;
 	unsigned int timeout;
 	const char *msg;
+	int ret = 0;
 
-	if (!tbn || !tbn->connected)
+	if (!tbn || tbn->registered_mask == 0)
 		return 0;
 
 	if (operation == AP_REQUEST_BUS) {
@@ -90,40 +95,143 @@ int tbn_handshaking(struct tbn_context *tbn, enum tbn_operation operation)
 		enable_irq(tbn->aoc2ap_irq);
 		gpio_direction_output(tbn->ap2aoc_gpio, bus_owner);
 		if (wait_for_completion_timeout(wait_for_completion,
-						msecs_to_jiffies(timeout)) == 0) {
+						 msecs_to_jiffies(timeout)) == 0) {
 			dev_err(tbn->dev, "AP %s bus ... timeout!\n", msg);
 			complete_all(wait_for_completion);
+			ret = -ETIMEDOUT;
 		} else
 			dev_info(tbn->dev, "AP %s bus ... SUCCESS!\n", msg);
 		disable_irq_nosync(tbn->aoc2ap_irq);
 	}
 
-	return 0;
+	return ret;
 }
 
-int tbn_request_bus(struct tbn_context *tbn)
+int tbn_request_bus(u32 dev_mask)
 {
-	return tbn_handshaking(tbn, AP_REQUEST_BUS);
+	int ret = 0;
+
+	if (!tbn_context)
+		return -ENODEV;
+
+	mutex_lock(&tbn_context->dev_mask_mutex);
+
+	if ((dev_mask & tbn_context->registered_mask) == 0) {
+		mutex_unlock(&tbn_context->dev_mask_mutex);
+		dev_err(tbn_context->dev, "%s: dev_mask %#x is invalid.\n",
+			__func__, dev_mask);
+		return -EINVAL;
+	}
+
+	if (tbn_context->requested_dev_mask == 0) {
+		ret = tbn_handshaking(tbn_context, AP_REQUEST_BUS);
+	} else {
+		dev_dbg(tbn_context->dev,
+			 "%s: Bus already requested, requested_dev_mask %#x dev_mask %#x.\n",
+			 __func__, tbn_context->requested_dev_mask, dev_mask);
+	}
+	tbn_context->requested_dev_mask |= dev_mask;
+
+	mutex_unlock(&tbn_context->dev_mask_mutex);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(tbn_request_bus);
 
-int tbn_release_bus(struct tbn_context *tbn)
+int tbn_release_bus(u32 dev_mask)
 {
-	return tbn_handshaking(tbn, AP_RELEASE_BUS);
+	int ret = 0;
+
+	if (!tbn_context)
+		return -ENODEV;
+
+	mutex_lock(&tbn_context->dev_mask_mutex);
+
+	if ((dev_mask & tbn_context->registered_mask) == 0) {
+		mutex_unlock(&tbn_context->dev_mask_mutex);
+		dev_err(tbn_context->dev, "%s: dev_mask %#x is invalid.\n",
+			__func__, dev_mask);
+		return -EINVAL;
+	}
+
+	if (tbn_context->requested_dev_mask == 0) {
+		dev_warn(tbn_context->dev,
+			 "%s: Bus already released, dev_mask %#x.\n",
+			 __func__, dev_mask);
+		mutex_unlock(&tbn_context->dev_mask_mutex);
+		return 0;
+	}
+
+	/* Release the bus when the last requested_dev_mask bit releases. */
+	if (tbn_context->requested_dev_mask == dev_mask) {
+		ret = tbn_handshaking(tbn_context, AP_RELEASE_BUS);
+	} else {
+		dev_dbg(tbn_context->dev,
+			 "%s: Bus is still in use, requested_dev_mask %#x dev_mask %#x.\n",
+			 __func__, tbn_context->requested_dev_mask, dev_mask);
+	}
+
+	tbn_context->requested_dev_mask &= ~dev_mask;
+
+	mutex_unlock(&tbn_context->dev_mask_mutex);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(tbn_release_bus);
 
-struct tbn_context *tbn_init(struct device *dev)
+int register_tbn(u32 *output)
 {
-	int err = 0;
+	u32 i = 0;
+
+	if (!tbn_context)
+		return -ENODEV;
+
+	mutex_lock(&tbn_context->dev_mask_mutex);
+	for (i = 0; i < tbn_context->max_devices; i++) {
+		if (tbn_context->registered_mask & BIT_MASK(i))
+			continue;
+		tbn_context->registered_mask |= BIT_MASK(i);
+		/* Assume screen is on while registering tbn. */
+		tbn_context->requested_dev_mask |= BIT_MASK(i);
+		*output = BIT_MASK(i);
+		break;
+	}
+
+	mutex_unlock(&tbn_context->dev_mask_mutex);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(register_tbn);
+
+void unregister_tbn(u32 *output)
+{
+	if (!tbn_context)
+		return ;
+
+	mutex_lock(&tbn_context->dev_mask_mutex);
+	tbn_context->registered_mask &= ~(*output);
+	*output = 0;
+	mutex_unlock(&tbn_context->dev_mask_mutex);
+}
+EXPORT_SYMBOL_GPL(unregister_tbn);
+
+static int tbn_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
 	struct tbn_context *tbn = NULL;
 	struct device_node *np = dev->of_node;
+	int err = 0;
 
 	tbn = devm_kzalloc(dev, sizeof(struct tbn_context), GFP_KERNEL);
 	if (!tbn)
 		goto failed;
 
 	tbn->dev = dev;
+	tbn_context = tbn;
+	dev_set_drvdata(tbn->dev, tbn);
+
+	if (of_property_read_u32(np, "tbn,max_devices", &tbn->max_devices))
+		tbn->max_devices = 1;
 
 	if (of_property_read_bool(np, "tbn,ap2aoc_gpio") &&
 		of_property_read_bool(np, "tbn,aoc2ap_gpio")) {
@@ -167,12 +275,11 @@ struct tbn_context *tbn_init(struct device *dev)
 				__func__, tbn->aoc2ap_gpio);
 			goto failed;
 		}
-
-		tbn->connected = true;
 	} else {
 		tbn->mode = TBN_MODE_DISABLED;
-		tbn->connected = false;
 	}
+
+	mutex_init(&tbn->dev_mask_mutex);
 
 	init_completion(&tbn->bus_requested);
 	init_completion(&tbn->bus_released);
@@ -185,21 +292,50 @@ struct tbn_context *tbn_init(struct device *dev)
 
 	dev_dbg(tbn->dev, "bus negotiator initialized: %pK\n", tbn);
 
-	return tbn;
-
 failed:
-	return NULL;
+	return err;
 }
-EXPORT_SYMBOL_GPL(tbn_init);
 
-void tbn_cleanup(struct tbn_context *tbn)
+static int tbn_remove(struct platform_device *pdev)
 {
-	if (!tbn)
-		return;
+	struct tbn_context *tbn = dev_get_drvdata(&(pdev->dev));
 
-	dev_dbg(tbn->dev, "destructing bus negotiator: %pK\n", tbn);
+	free_irq(tbn->aoc2ap_irq, tbn);
+	if (gpio_is_valid(tbn->aoc2ap_gpio))
+		gpio_free(tbn->aoc2ap_gpio);
+	if (gpio_is_valid(tbn->aoc2ap_gpio))
+		gpio_free(tbn->aoc2ap_gpio);
+
+	return 0;
 }
-EXPORT_SYMBOL_GPL(tbn_cleanup);
+
+static struct of_device_id tbn_of_match_table[] = {
+	{
+		.compatible = TBN_MODULE_NAME,
+	},
+	{},
+};
+
+static struct platform_driver tbn_driver = {
+	.driver = {
+		.name = TBN_MODULE_NAME,
+		.of_match_table = tbn_of_match_table,
+	},
+	.probe = tbn_probe,
+	.remove = tbn_remove,
+};
+
+static int __init tbn_init(void)
+{
+	return platform_driver_register(&tbn_driver);
+}
+
+static void __exit tbn_exit(void)
+{
+	platform_driver_unregister(&tbn_driver);
+}
+module_init(tbn_init);
+module_exit(tbn_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Touch Bus Negotiator");
