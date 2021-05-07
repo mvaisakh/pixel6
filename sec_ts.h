@@ -1071,7 +1071,7 @@ struct sec_ts_data {
 	bool grips_leaved_once;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	struct tbn_context *tbn;
+	u32 tbn_register_mask;
 #endif
 
 	struct power_supply *wireless_psy;

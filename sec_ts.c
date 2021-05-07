@@ -4078,13 +4078,14 @@ static int sec_ts_probe(struct spi_device *client)
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	ts->tbn = tbn_init(&ts->client->dev);
-	if (!ts->tbn) {
-		input_err(true, &ts->client->dev,
-			  "%s: TBN initialization error\n", __func__);
+	if (register_tbn(&ts->tbn_register_mask)) {
 		ret = -ENODEV;
+		input_err(true, &ts->client->dev,
+			   "%s: Failed to register tbn context.\n", __func__);
 		goto err_init_tbn;
 	}
+	input_info(true, &ts->client->dev, "%s: tbn_register_mask = %#x.\n",
+		   __func__, ts->tbn_register_mask);
 #endif
 
 	if (gpio_is_valid(ts->plat_data->tsp_id))
@@ -4369,7 +4370,8 @@ err_allocate_input_dev_pad:
 		input_free_device(ts->input_dev);
 err_allocate_input_dev:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	tbn_cleanup(ts->tbn);
+	if (ts->tbn_register_mask)
+		unregister_tbn(&ts->tbn_register_mask);
 err_init_tbn:
 #endif
 
@@ -4863,7 +4865,8 @@ static int sec_ts_remove(struct spi_device *client)
 	ts->plat_data->power(ts, false);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	tbn_cleanup(ts->tbn);
+	if (ts->tbn_register_mask)
+		unregister_tbn(&ts->tbn_register_mask);
 #endif
 
 	if (gpio_is_valid(ts->plat_data->irq_gpio))
@@ -5144,8 +5147,8 @@ static void sec_ts_suspend_work(struct work_struct *work)
 	sec_set_switch_gpio(ts, SEC_SWITCH_GPIO_VALUE_SLPI_MASTER);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	if (ts->tbn)
-		tbn_release_bus(ts->tbn);
+	if (ts->tbn_register_mask)
+		tbn_release_bus(ts->tbn_register_mask);
 #endif
 	mutex_unlock(&ts->device_mutex);
 }
@@ -5161,8 +5164,8 @@ static void sec_ts_resume_work(struct work_struct *work)
 	mutex_lock(&ts->device_mutex);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-	if (ts->tbn)
-		tbn_request_bus(ts->tbn);
+	if (ts->tbn_register_mask)
+		tbn_request_bus(ts->tbn_register_mask);
 #endif
 
 	sec_set_switch_gpio(ts, SEC_SWITCH_GPIO_VALUE_AP_MASTER);
