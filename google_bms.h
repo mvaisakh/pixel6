@@ -105,6 +105,7 @@ enum gbms_msc_states_t {
 	MSC_NEXT,	/* in taper */
 	MSC_NYET,	/* in taper */
 	MSC_HEALTH,
+	MSC_HEALTH_PAUSE,
 	MSC_STATES_COUNT,
 };
 
@@ -233,6 +234,7 @@ enum chg_health_state {
 	CHG_HEALTH_INACTIVE = 0,
 	CHG_HEALTH_ENABLED,
 	CHG_HEALTH_ACTIVE,
+	CHG_HEALTH_PAUSE,
 };
 
 /* tier index used to log the session */
@@ -250,6 +252,8 @@ enum gbms_stats_tier_idx_t {
 	GBMS_STATS_AC_TI_ACTIVE,
 	GBMS_STATS_AC_TI_ENABLED_AON,
 	GBMS_STATS_AC_TI_ACTIVE_AON,
+	GBMS_STATS_AC_TI_PAUSE,
+	GBMS_STATS_AC_TI_PAUSE_AON,
 
 	/* TODO: rename, these are not really related to AC */
 	GBMS_STATS_AC_TI_FULL_CHARGE = 100,
@@ -277,6 +281,9 @@ struct batt_chg_health {
 #define CHG_HEALTH_REST_IS_ACTIVE(rest) \
 	((rest)->rest_state == CHG_HEALTH_ACTIVE)
 
+#define CHG_HEALTH_REST_IS_PAUSE(rest) \
+	((rest)->rest_state == CHG_HEALTH_PAUSE)
+
 #define CHG_HEALTH_REST_SOC(rest) (((rest)->always_on_soc != -1) ? \
 			(rest)->always_on_soc : (rest)->rest_soc)
 
@@ -300,6 +307,7 @@ struct gbms_charging_event {
 	/* health based charging */
 	struct batt_chg_health		ce_health;	/* updated on close */
 	struct gbms_ce_tier_stats	health_stats;	/* updated in HC */
+	struct gbms_ce_tier_stats	health_pause_stats;	/* updated in HCP */
 
 	/* other stats */
 	struct gbms_ce_tier_stats full_charge_stats;

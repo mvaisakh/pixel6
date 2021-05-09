@@ -1600,7 +1600,7 @@ static int batt_chg_tier_stats_cstr(char *buff, int size,
 			  tier_stat->time_other;
 	const static char *codes[] = {"n", "s", "d", "l", "v", "vo", "p", "f",
 					"t", "dl", "st", "tc", "r", "w", "rs",
-					"n", "ny", "h"};
+					"n", "ny", "h", "hp"};
 	long temp_avg, ibatt_avg, icl_avg;
 	int j, len = 0;
 
