@@ -3606,12 +3606,12 @@ static int pca9468_irq_init(struct pca9468_charger *pca9468,
 	      PCA9468_BIT_TIMER_M;
 	ret = regmap_write(pca9468->regmap, PCA9468_REG_INT1_MSK, msk);
 	if (ret < 0)
-		goto fail_wirte;
+		goto fail_write;
 
 	client->irq = irq;
 	return 0;
 
-fail_wirte:
+fail_write:
 	free_irq(irq, pca9468);
 fail_gpio:
 	gpio_free(pdata->irq_gpio);
@@ -3699,7 +3699,7 @@ static int pca9468_set_charging_enabled(struct pca9468_charger *pca9468, int ind
 		pca9468->charging_state = DC_STATE_CHECK_VBAT;
 		pca9468->timer_id = TIMER_VBATMIN_CHECK;
 
-		/* PD is alredy in PE_SNK_STATE */
+		/* PD is already in PE_SNK_STATE */
 		pca9468->timer_period = 0;
 		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				 msecs_to_jiffies(pca9468->timer_period));
@@ -4201,7 +4201,7 @@ static int pca9468_create_fs_entries(struct pca9468_charger *chip)
 
 
 static int pca9468_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+			 const struct i2c_device_id *id)
 {
 	static char *battery[] = { "pca9468-battery" };
 	struct power_supply_config mains_cfg = {};
@@ -4277,8 +4277,18 @@ static int pca9468_probe(struct i2c_client *client,
 	}
 
 	ret = pca9468_probe_pps(pca9468_chg);
-	if (ret < 0)
+	if (ret < 0) {
 		pr_warn("pca9468: PPS not available (%d)\n", ret);
+	} else {
+		const char *logname = "pca9468";
+
+		pca9468_chg->log = logbuffer_register(logname);
+		if (IS_ERR(pca9468_chg->log)) {
+			pr_err("%s: no logbuffer (%ld)\n", __func__,
+			       PTR_ERR(pca9468_chg->log));
+			pca9468_chg->log = NULL;
+		}
+	}
 
 	ret = pca9468_hw_ping(pca9468_chg);
 	if (ret < 0)
@@ -4316,15 +4326,6 @@ static int pca9468_probe(struct i2c_client *client,
 	ret = pca9468_create_fs_entries(pca9468_chg);
 	if (ret < 0)
 		dev_err(dev, "error while registering debugfs %d\n", ret);
-
-#ifdef CONFIG_DC_STEP_CHARGING
-	ret = pca9468_step_chg_init(pca9468_chg->dev);
-	if (ret < 0) {
-		dev_err(dev, "Couldn't init pca9468_step_chg_init ret=%d\n",
-			ret);
-		goto error;
-	}
-#endif
 
 #ifdef CONFIG_THERMAL
 	if (pdata->usb_tz_name) {
@@ -4369,9 +4370,6 @@ static int pca9468_remove(struct i2c_client *client)
 
 	wakeup_source_unregister(pca9468_chg->monitor_wake_lock);
 
-#ifdef CONFIG_DC_STEP_CHARGING
-	pca9468_step_chg_deinit();
-#endif
 #ifdef CONFIG_THERMAL
 	if (pca9468_chg->usb_tzd)
 		thermal_zone_device_unregister(pca9468_chg->usb_tzd);
@@ -4525,6 +4523,7 @@ module_i2c_driver(pca9468_driver);
 
 MODULE_AUTHOR("Clark Kim <clark.kim@nxp.com>");
 MODULE_AUTHOR("AleX Pelosi <apelosi@google.com>");
-MODULE_DESCRIPTION("PCA9468 charger driver");
+MODULE_AUTHOR("Wasb Liu <wasbliu@google.com>");
+MODULE_DESCRIPTION("PCA9468 gcharger driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("3.7.0");

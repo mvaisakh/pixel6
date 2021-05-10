@@ -136,16 +136,8 @@ int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
 	/* not needed if tcpm-power-supply is not there */
 	ret = pps_init(&pca9468->pps_data, pca9468->dev, tcpm_psy);
 	if (ret == 0) {
-		const char *logname = "pca9468";
-
+		pps_set_logbuffer(&pca9468->pps_data, pca9468->log);
 		pps_init_state(&pca9468->pps_data);
-		pca9468->log = logbuffer_register(logname);
-		if (IS_ERR(pca9468->log)) {
-			pr_info("pca9468: no logbuffer (%ld)\n", PTR_ERR(pca9468->log));
-			pca9468->log = NULL;
-		} else {
-			pps_set_logbuffer(&pca9468->pps_data, pca9468->log);
-		}
 	}
 
 check_online:
@@ -356,6 +348,9 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 		ret = -EINVAL;
 	}
 
+	logbuffer_log(pca9468->log, "%s online=%d ta_vol=%d (%d)", __func__,
+		      pca9468->mains_online, pca9468->ta_vol, ret);
+
 out:
 	return ret;
 }
@@ -406,7 +401,9 @@ int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 	pca9468->ta_max_pwr = (pca9468->ta_max_vol / 1000) *
 			      (pca9468->ta_max_cur / 1000);
 
-	dev_info(pca9468->dev, "%s wlc max_cur=%d max_pwr=%ld\n",
+	logbuffer_log(pca9468->log, "%s max_cur=%d max_pwr=%ld\n", __func__,
+		      pca9468->ta_max_cur, pca9468->ta_max_pwr);
+	dev_info(pca9468->dev, "%s max_cur=%d max_pwr=%ld\n",
 		 __func__, pca9468->ta_max_cur, pca9468->ta_max_pwr);
 
 	return 0;
