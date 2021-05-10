@@ -428,15 +428,30 @@ static void __dpp_disable(struct dpp_device *dpp)
 	if (dpp->state == DPP_STATE_OFF)
 		return;
 
+	if (dpp->hdr.state.eotf_lut) {
+		dpp->hdr.state.eotf_lut = NULL;
+		hdr_reg_set_eotf_lut(dpp->id, NULL);
+	}
+
+	if (dpp->hdr.state.oetf_lut) {
+		dpp->hdr.state.oetf_lut = NULL;
+		hdr_reg_set_oetf_lut(dpp->id, NULL);
+	}
+
+	if (dpp->hdr.state.gm) {
+		dpp->hdr.state.gm = NULL;
+		hdr_reg_set_gm(dpp->id, NULL);
+	}
+
+	if (dpp->hdr.state.tm) {
+		dpp->hdr.state.tm = NULL;
+		hdr_reg_set_tm(dpp->id, NULL);
+	}
+
 	disable_irq(dpp->dpp_irq);
 	disable_irq(dpp->dma_irq);
 
 	dpp_reg_deinit(dpp->id, false, dpp->attr);
-
-	dpp->hdr.state.eotf_lut = NULL;
-	dpp->hdr.state.oetf_lut = NULL;
-	dpp->hdr.state.gm = NULL;
-	dpp->hdr.state.tm = NULL;
 
 	set_protection(dpp, 0);
 	dpp->state = DPP_STATE_OFF;
