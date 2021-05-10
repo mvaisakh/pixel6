@@ -289,27 +289,16 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 
 /* WLC_DC ---------------------------------------------------------------- */
 /* call holding mutex_unlock(&pca9468->lock); */
-struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
+static struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
 {
-	const char *wlc_psy_name = pca9468->wlc_psy_name;
-
-	if (!wlc_psy_name) {
-		dev_err(pca9468->dev, "%s: WLC PS name not defined\n", __func__);
-		wlc_psy_name = "wireless";
-	}
-
 	if (!pca9468->wlc_psy) {
-		struct power_supply *psy;
+		const char *wlc_psy_name = pca9468->wlc_psy_name ?  : "wireless";
 
-		/* Get power supply name */
-		psy = power_supply_get_by_name(wlc_psy_name);
-		if (!psy) {
+		pca9468->wlc_psy = power_supply_get_by_name(wlc_psy_name);
+		if (!pca9468->wlc_psy) {
 			dev_err(pca9468->dev, "%s Cannot find %s power supply\n",
 				__func__, wlc_psy_name);
-			return NULL;
 		}
-
-		pca9468->wlc_psy = psy;
 	}
 
 	return pca9468->wlc_psy;
@@ -329,7 +318,6 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 
 	wlc_psy = pca9468_get_rx_psy(pca9468);
 	if (!wlc_psy) {
-		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
 		ret = -ENODEV;
 		goto out;
 	}
@@ -367,8 +355,10 @@ int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 	int ret = 0;
 
 	wlc_psy = pca9468_get_rx_psy(pca9468);
-	if (!wlc_psy)
+	if (!wlc_psy) {
+		dev_err(pca9468->dev, "Cannot find wireless power supply\n");
 		return -ENODEV;
+	}
 
 	/* Get the maximum voltage */
 	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
