@@ -1088,6 +1088,7 @@ static void cev_stats_init(struct gbms_charging_event *ce_data,
 
 	/* batt_chg_health_stats_close() will fix this */
 	cev_ts_init(&ce_data->health_stats, GBMS_STATS_AC_TI_INVALID);
+	cev_ts_init(&ce_data->health_pause_stats, GBMS_STATS_AC_TI_PAUSE);
 
 	cev_ts_init(&ce_data->full_charge_stats, GBMS_STATS_AC_TI_FULL_CHARGE);
 	cev_ts_init(&ce_data->high_soc_stats, GBMS_STATS_AC_TI_HIGH_SOC);
@@ -1298,7 +1299,7 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 					   temp, elap, cc,
 					   &ce_data->full_charge_stats);
 
-	} else if (msc_state == MSC_HEALTH) {
+	} else if (msc_state == MSC_HEALTH || msc_state == MSC_HEALTH_PAUSE) {
 		/*
 		 * It works because msc_logic call BEFORE updating msc_state.
 		 * NOTE: that OVERHEAT and CCLVL disable AC, I should not be
@@ -1309,7 +1310,6 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma,
 					   temp, elap, cc,
 					   &ce_data->health_stats);
-
 	} else {
 		const qnum_t soc = ssoc_get_capacity_raw(&batt_drv->ssoc_state);
 
@@ -1332,6 +1332,14 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
 					   elap, cc,
 					   &ce_data->overheat_stats);
+		tier = NULL;
+	}
+
+	if (msc_state == MSC_HEALTH_PAUSE) {
+		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma,
+					   temp, elap, cc,
+					   &ce_data->health_pause_stats);
+		/* not really needed here, add for sure */
 		tier = NULL;
 	}
 
@@ -1383,6 +1391,7 @@ static int batt_chg_health_vti(const struct batt_chg_health *chg_health)
 		break;
 	/* disconnected in active mode, TODO: log the deadline */
 	case CHG_HEALTH_ACTIVE:
+	case CHG_HEALTH_PAUSE:
 		if (aon_enabled)
 			tier_idx = GBMS_STATS_AC_TI_ACTIVE_AON;
 		else
@@ -1463,7 +1472,7 @@ static bool batt_chg_stats_close(struct batt_drv *batt_drv,
 		/* all charge tiers including health */
 		memcpy(ce_qual, &batt_drv->ce_data, sizeof(*ce_qual));
 
-		pr_info("MSC_STAT %s: elap=%lld ssoc=%d->%d v=%d->%d c=%d->%d hdl=%lld hrs=%d hti=%d\n",
+		pr_info("MSC_STAT %s: elap=%lld ssoc=%d->%d v=%d->%d c=%d->%d hdl=%lld hrs=%d hti=%d/%d\n",
 			reason,
 			ce_qual->last_update - ce_qual->first_update,
 			ce_qual->charging_stats.ssoc_in,
@@ -1474,7 +1483,8 @@ static bool batt_chg_stats_close(struct batt_drv *batt_drv,
 			ce_qual->charging_stats.cc_out,
 			ce_qual->ce_health.rest_deadline,
 			ce_qual->ce_health.rest_state,
-			ce_qual->health_stats.vtier_idx);
+			ce_qual->health_stats.vtier_idx,
+			ce_qual->health_pause_stats.vtier_idx);
 	}
 
 	return publish;
@@ -1679,6 +1689,9 @@ static int batt_health_stats_cstr(char *buff, int size,
 
 	len += batt_chg_tier_stats_cstr(&buff[len], size - len,
 						health_stats,
+						verbose);
+	len += batt_chg_tier_stats_cstr(&buff[len], size - len,
+						&ce_data->health_pause_stats,
 						verbose);
 	return len;
 }
@@ -2762,6 +2775,8 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 		batt_drv->msc_state = MSC_HEALTH;
 		/* make sure using rest_fv_uv when HEALTH_ACTIVE */
 		batt_drv->fv_uv = 0;
+	} else if (CHG_HEALTH_REST_IS_PAUSE(&batt_drv->chg_health)) {
+		batt_drv->msc_state = MSC_HEALTH_PAUSE;
 	}
 
 msc_logic_done:
@@ -3574,30 +3589,28 @@ static ssize_t batt_show_chg_details(struct device *dev,
 	 * are set on stats_close()
 	 */
 	if (batt_drv->chg_health.rest_state != CHG_HEALTH_INACTIVE) {
-		struct gbms_ce_tier_stats *health_stats =
-					&batt_drv->ce_data.health_stats;
-		const long elap = health_stats->time_fast +
-				  health_stats->time_taper +
-				  health_stats->time_other;
+		const struct gbms_ce_tier_stats *h = &batt_drv->ce_data.health_stats;
+		const struct gbms_ce_tier_stats *p = &batt_drv->ce_data.health_pause_stats;
+		const long elap_h = h->time_fast + h->time_taper + h->time_other;
+		const long elap_p = p->time_fast + p->time_taper + p->time_other;
 		const ktime_t now = get_boot_sec();
 		int vti;
 
 		vti = batt_chg_health_vti(&batt_drv->chg_health);
 		len += scnprintf(&buf[len], PAGE_SIZE - len,
-				"\nH: %d %d %ld %lld %lld %d",
+				"\nH: %d %d %ld %ld %lld %lld %d",
 				batt_drv->chg_health.rest_state,
-				vti,
-				elap,
-				now,
+				vti, elap_h, elap_p, now,
 				batt_drv->chg_health.rest_deadline,
 				batt_drv->chg_health.always_on_soc);
 
 		/* NOTE: vtier_idx is -1, can also check elap  */
-		if (health_stats->soc_in != -1)
+		if (h->soc_in != -1)
 			len += batt_chg_tier_stats_cstr(&buf[len],
-							PAGE_SIZE - len,
-							health_stats,
-							!!elap);
+							PAGE_SIZE - len, h, !!elap_h);
+		if (p->soc_in != -1)
+			len += batt_chg_tier_stats_cstr(&buf[len],
+							PAGE_SIZE - len, p, !!elap_p);
 	}
 
 	len += scnprintf(&buf[len], PAGE_SIZE - len, "\n");
