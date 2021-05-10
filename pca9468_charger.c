@@ -1054,8 +1054,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		} else {
 			/* Assume TA operation mode is CL mode */
 			/* Decrease TA current (50mA) */
-			pca9468->ta_cur = pca9468->ta_cur -
-						PD_MSG_TA_CUR_STEP;
+			pca9468->ta_cur = pca9468->ta_cur - PD_MSG_TA_CUR_STEP;
 			pr_debug("%s: Comp. Cont2-2: ta_cur=%u\n", __func__,
 				 pca9468->ta_cur);
 		}
@@ -1090,6 +1089,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 				} else {
 					/* Increase TA current (50mA) */
 					pca9468->ta_cur = pca9468->ta_cur + PD_MSG_TA_CUR_STEP;
+
 					pr_debug("%s: Comp. Cont3: ta_cur=%u\n",
 						 __func__, pca9468->ta_cur);
 
@@ -1157,8 +1157,8 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 				/* Increase TA current (50mA) */
 				pca9468->ta_cur = pca9468->ta_cur + PD_MSG_TA_CUR_STEP;
 
-				pr_debug("%s: Comp. Cont6: ta_cur=%u->%u\n", __func__,
-					 pca9468->ta_cur, pca9468->ta_cur);
+				pr_debug("%s: Comp. Cont6: ta_cur=%u\n",
+					 __func__, pca9468->ta_cur);
 
 				/* Send PD Message */
 				pca9468->timer_id = TIMER_PDMSG_SEND;
