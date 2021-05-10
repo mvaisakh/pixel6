@@ -409,11 +409,10 @@ int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 	return 0;
 }
 
-static int pca9468_get_ta_type(struct pca9468_charger *pca9468)
+/* called from start_direct_charging(), negative will abort */
+int pca9468_set_ta_type(struct pca9468_charger *pca9468, int pps_index)
 {
-	int ta_type = TA_TYPE_UNKNOWN;
-
-	if (pca9468->pps_index == PPS_INDEX_TCPM) {
+	if (pps_index == PPS_INDEX_TCPM) {
 		int ret;
 
 		ret = pca9468_usbpd_setup(pca9468);
@@ -422,24 +421,24 @@ static int pca9468_get_ta_type(struct pca9468_charger *pca9468)
 			return ret;
 		}
 
-		ta_type = TA_TYPE_USBPD;
-	} else if (pca9468->pps_index == PPS_INDEX_WLC) {
-		ta_type = TA_TYPE_WIRELESS;
-	}
-
-	return ta_type;
-}
-
-int pca9468_set_ta_type(struct pca9468_charger *pca9468)
-{
-	pca9468->ta_type = pca9468_get_ta_type(pca9468);
-	if (pca9468->ta_type == TA_TYPE_UNKNOWN)
-		return -EINVAL;
-
-	if (pca9468->ta_type == PPS_INDEX_TCPM)
+		pca9468->ta_type = TA_TYPE_USBPD;
 		pca9468->chg_mode = CHG_2TO1_DC_MODE;
-	else if (pca9468->ta_type == PPS_INDEX_WLC)
+	} else if (pps_index == PPS_INDEX_WLC) {
+		struct power_supply *wlc_psy;
+
+		wlc_psy = pca9468_get_rx_psy(pca9468);
+		if (!wlc_psy) {
+			dev_err(pca9468->dev, "Cannot find wireless power supply\n");
+			return -ENODEV;
+		}
+
+		pca9468->ta_type = TA_TYPE_WIRELESS;
 		pca9468->chg_mode = CHG_4TO1_DC_MODE;
+	} else {
+		pca9468->ta_type = TA_TYPE_UNKNOWN;
+		pca9468->chg_mode = 0;
+		return -EINVAL;
+	}
 
 	return 0;
 }

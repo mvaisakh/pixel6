@@ -239,10 +239,9 @@ int pca9468_request_pdo(struct pca9468_charger *pca9468);
 int pca9468_usbpd_setup(struct pca9468_charger *pca9468);
 int pca9468_send_pd_message(struct pca9468_charger *pca9468, unsigned int msg_type);
 int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468);
-struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468);
 int pca9468_send_rx_voltage(struct pca9468_charger *pca9468, unsigned int msg_type);
 int pca9468_get_rx_max_power(struct pca9468_charger *pca9468);
-int pca9468_set_ta_type(struct pca9468_charger *pca9468);
+int pca9468_set_ta_type(struct pca9468_charger *pca9468, int pps_index);
 
 /* GBMS integration */
 int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,

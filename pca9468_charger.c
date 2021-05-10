@@ -3026,8 +3026,8 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		goto error_done;
 
-	/* configure DC charging type */
-	ret = pca9468_set_ta_type(pca9468);
+	/* configure DC charging type for the requested index */
+	ret = pca9468_set_ta_type(pca9468, pca9468->pps_index);
 	pr_info("%s: Current ta_type=%d, chg_mode=%d\n", __func__,
 		pca9468->ta_type, pca9468->chg_mode);
 	if (ret < 0)
