@@ -2291,8 +2291,6 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 	hrtimer_init(&cs40l26->vibe_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	cs40l26->vibe_timer.function = cs40l26_vibe_timer;
 
-
-
 	ret = sysfs_create_group(&cs40l26->input->dev.kobj,
 			&cs40l26_dev_attr_group);
 	if (ret) {
