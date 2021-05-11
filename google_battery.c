@@ -50,6 +50,8 @@
 #define DEFAULT_BD_TRICKLE_RESET_SEC		(5 * 60)
 #define DEFAULT_HIGH_TEMP_UPDATE_THRESHOLD	550
 
+#define DEFAULT_HEALTH_SAFETY_MARGIN	(30 * 60)
+
 #define MSC_ERROR_UPDATE_INTERVAL		5000
 #define MSC_DEFAULT_UPDATE_INTERVAL		30000
 
@@ -2180,6 +2182,44 @@ static enum chg_health_state msc_health_active(const struct batt_drv *batt_drv)
 	return CHG_HEALTH_ENABLED;
 }
 
+#define HEALTH_PAUSE_DEBOUNCE 180
+#define HEALTH_PAUSE_MAX_SSOC 95
+static bool msc_health_pause(struct batt_drv *batt_drv, const ktime_t ttf,
+			      const ktime_t now,
+			      const enum chg_health_state rest_state) {
+	const struct gbms_charging_event *ce_data = &batt_drv->ce_data;
+	const struct gbms_ce_tier_stats	*h = &ce_data->health_stats;
+	const struct batt_chg_health *rest = &batt_drv->chg_health;
+	const ktime_t deadline = rest->rest_deadline;
+	const ktime_t safety_margin = DEFAULT_HEALTH_SAFETY_MARGIN;
+	const ktime_t elap_h = h->time_fast + h->time_taper + h->time_other;
+	const int ssoc = ssoc_get_capacity(&batt_drv->ssoc_state);
+
+	/*
+	 * Expected behavior:
+	 * 1. ACTIVE: small current run a while for ttf
+	 * 2. PAUSE: when time is enough to pause
+	 * 3. ACTIVE: when time out and back to ACTIVE charge
+	 */
+	if (rest_state != CHG_HEALTH_ACTIVE && rest_state != CHG_HEALTH_PAUSE)
+		return false;
+
+	/*
+	 * elap_h: running active for a while wait status and current stable
+	 * ssoc: transfer in high soc impact charge full condition, disable pause
+	 * behavior in high soc
+	 */
+	if (elap_h < HEALTH_PAUSE_DEBOUNCE || ssoc > HEALTH_PAUSE_MAX_SSOC)
+		return false;
+
+	/* check time meet PAUSE condition or not */
+	if (ttf > 0 && deadline > now + ttf + safety_margin)
+		return true;
+
+	return false;
+}
+
+
 /*
  * for logging, userspace should use
  *   deadline == 0 on fast replug (leave initial deadline ok)
@@ -2311,6 +2351,12 @@ static bool msc_logic_health(struct batt_drv *batt_drv)
 		goto done_exit;
 	}
 
+	/* Decide enter PAUSE state or not by time */
+	if (msc_health_pause(batt_drv, ttf, now, rest_state)) {
+		rest_state = CHG_HEALTH_PAUSE;
+		goto done_exit;
+	}
+
 	/*
 	 * rest_state here is either ENABLED or ACTIVE,
 	 * NOTE: State might transition from _ACTIVE to _ENABLED after a
@@ -2335,6 +2381,13 @@ done_exit:
 		fv_uv = profile->volt_limits[profile->volt_nb_limits - 1];
 
 		/* TODO: make sure that we wakeup when we are close to ttf */
+	} else if (rest_state == CHG_HEALTH_PAUSE) {
+		/*
+		 * pause charging behavior when the the deadline is longer than
+		 * expected charge time. return back to CHG_HEALTH_ACTIVE and
+		 * start health charge when now + ttf + margine close to deadline
+		*/
+		cc_max = 0;
 	}
 
 done_no_op:
