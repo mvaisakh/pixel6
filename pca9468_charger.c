@@ -914,10 +914,11 @@ static int pca9468_recover_ta(struct pca9468_charger *pca9468)
 	int ret;
 
 	if (pca9468->ta_type == TA_TYPE_WIRELESS) {
-		pca9468->ta_vol = 9000000;
+		/* TODO: recover TA to value before handoff, or use DT */
+		pca9468->ta_vol = 18000000;
 		ret = pca9468_send_rx_voltage(pca9468, WCRX_REQUEST_VOLTAGE);
 	} else {
-		/* TODO: recover TA to value before handoff */
+		/* TODO: recover TA to value before handoff, or use DT */
 		pca9468->ta_vol = 5000000;
 		pca9468->ta_cur = 3000000;
 		pca9468->ta_objpos = 1; /* PDO1 - fixed 5V */
