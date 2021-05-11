@@ -23,7 +23,7 @@ struct lwis_regulator_list *lwis_regulator_list_alloc(int num_regs)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_regulator_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_regulator_list), GFP_KERNEL);
 	if (!list) {
 		return ERR_PTR(-ENOMEM);
 	}

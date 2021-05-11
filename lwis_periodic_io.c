@@ -40,7 +40,7 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 		periodic_io = list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 		if (periodic_io->active) {
 			periodic_io_proxy =
-				kzalloc(sizeof(struct lwis_periodic_io_proxy), GFP_NOWAIT);
+				kmalloc(sizeof(struct lwis_periodic_io_proxy), GFP_NOWAIT);
 			if (!periodic_io_proxy) {
 				/* Non-fatal, skip this period */
 				pr_warn("Cannot allocate new periodic io proxy.\n");
@@ -85,7 +85,7 @@ static struct lwis_periodic_io_list *periodic_io_list_create_locked(struct lwis_
 {
 	ktime_t ktime;
 	struct lwis_periodic_io_list *periodic_io_list =
-		kzalloc(sizeof(struct lwis_periodic_io_list), GFP_ATOMIC);
+		kmalloc(sizeof(struct lwis_periodic_io_list), GFP_ATOMIC);
 	if (!periodic_io_list) {
 		pr_err("Cannot allocate new event list\n");
 		return NULL;
@@ -382,7 +382,7 @@ static int prepare_response(struct lwis_client *client, struct lwis_periodic_io 
 	resp_size = sizeof(struct lwis_periodic_io_response_header) +
 		    read_entries * sizeof(struct lwis_periodic_io_result) * info->batch_size +
 		    read_buf_size * info->batch_size;
-	periodic_io->resp = kzalloc(resp_size, GFP_KERNEL);
+	periodic_io->resp = kmalloc(resp_size, GFP_KERNEL);
 	if (!periodic_io->resp) {
 		pr_err_ratelimited("Cannot allocate periodic io response\n");
 		return -ENOMEM;

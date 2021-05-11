@@ -24,7 +24,7 @@ struct lwis_clock_list *lwis_clock_list_alloc(int num_clks)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_clock_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_clock_list), GFP_KERNEL);
 	if (!list) {
 		return ERR_PTR(-ENOMEM);
 	}

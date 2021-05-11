@@ -112,7 +112,7 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_
 	unsigned long flags;
 
 	struct lwis_trigger_event_info *trigger_event =
-		kzalloc(sizeof(struct lwis_trigger_event_info), GFP_ATOMIC);
+		kmalloc(sizeof(struct lwis_trigger_event_info), GFP_ATOMIC);
 	if (trigger_event == NULL) {
 		dev_err(lwis_top_dev->base_dev.dev, "Allocate trigger_event_info failed");
 		return;
@@ -206,7 +206,7 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 
 	/* If the subscription does not exist in hash table, create one */
-	new_subscription = kzalloc(sizeof(struct lwis_event_subscribe_info), GFP_KERNEL);
+	new_subscription = kmalloc(sizeof(struct lwis_event_subscribe_info), GFP_KERNEL);
 	if (!new_subscription) {
 		dev_err(lwis_top_dev->base_dev.dev,
 			"Failed to allocate memory for new subscription\n");

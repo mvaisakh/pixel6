@@ -42,13 +42,13 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_d
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_interrupt_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_interrupt_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate IRQ list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->irq = kzalloc(count * sizeof(struct lwis_interrupt), GFP_KERNEL);
+	list->irq = kmalloc(count * sizeof(struct lwis_interrupt), GFP_KERNEL);
 	if (!list->irq) {
 		pr_err("Failed to allocate IRQs\n");
 		kfree(list);

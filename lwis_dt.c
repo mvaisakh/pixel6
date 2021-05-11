@@ -373,13 +373,13 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 			goto error_event_infos;
 		}
 
-		irq_events = kzalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
+		irq_events = kmalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
 		if (IS_ERR_OR_NULL(irq_events)) {
 			ret = -ENOMEM;
 			goto error_event_infos;
 		}
 
-		int_reg_bits = kzalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
+		int_reg_bits = kmalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
 		if (IS_ERR_OR_NULL(int_reg_bits)) {
 			ret = -ENOMEM;
 			kfree(irq_events);

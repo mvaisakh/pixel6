@@ -43,7 +43,7 @@ static struct lwis_transaction_event_list *event_list_create(struct lwis_client 
 							     int64_t event_id)
 {
 	struct lwis_transaction_event_list *event_list =
-		kzalloc(sizeof(struct lwis_transaction_event_list), GFP_ATOMIC);
+		kmalloc(sizeof(struct lwis_transaction_event_list), GFP_ATOMIC);
 	if (!event_list) {
 		dev_err(client->lwis_dev->dev, "Cannot allocate new event list\n");
 		return NULL;
@@ -533,13 +533,14 @@ static int prepare_response_locked(struct lwis_client *client, struct lwis_trans
 	/* Revisit the use of GFP_ATOMIC here. Reason for this to be atomic is
 	 * because this function can be called by transaction_replace while
 	 * holding onto a spinlock. */
-	transaction->resp = kzalloc(resp_size, GFP_ATOMIC);
+	transaction->resp = kmalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
 		dev_err(client->lwis_dev->dev, "Cannot allocate transaction response\n");
 		return -ENOMEM;
 	}
 	transaction->resp->id = info->id;
 	transaction->resp->error_code = 0;
+	transaction->resp->completion_index = 0;
 	transaction->resp->num_entries = read_entries;
 	transaction->resp->results_size_bytes =
 		read_entries * sizeof(struct lwis_io_result) + read_buf_size;
@@ -601,7 +602,7 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 	uint8_t *resp_buf;
 
 	/* Construct a new instance for repeating transactions */
-	new_instance = kzalloc(sizeof(struct lwis_transaction), GFP_ATOMIC);
+	new_instance = kmalloc(sizeof(struct lwis_transaction), GFP_ATOMIC);
 	if (!new_instance) {
 		dev_err(client->lwis_dev->dev,
 			"Failed to allocate repeating transaction instance\n");
@@ -610,7 +611,7 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 	memcpy(&new_instance->info, &transaction->info, sizeof(struct lwis_transaction_info));
 
 	/* Allocate response buffer */
-	resp_buf = kzalloc(sizeof(struct lwis_transaction_response_header) +
+	resp_buf = kmalloc(sizeof(struct lwis_transaction_response_header) +
 				   transaction->resp->results_size_bytes,
 			   GFP_ATOMIC);
 	if (!resp_buf) {

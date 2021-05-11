@@ -110,13 +110,13 @@ struct lwis_gpios_list *lwis_gpios_list_alloc(int count)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_gpios_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_gpios_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate gpios list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->gpios_info = kzalloc(count * sizeof(struct lwis_gpios_info), GFP_KERNEL);
+	list->gpios_info = kmalloc(count * sizeof(struct lwis_gpios_info), GFP_KERNEL);
 	if (!list->gpios_info) {
 		pr_err("Failed to allocate lwis_gpios_info instances\n");
 		kfree(list);

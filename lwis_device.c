@@ -969,13 +969,13 @@ struct lwis_device_critical_irq_event_list *lwis_dev_critical_irq_event_list_all
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_device_critical_irq_event_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_device_critical_irq_event_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate power sequence list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	list->critical_event_id = kzalloc(count * sizeof(int64_t), GFP_KERNEL);
+	list->critical_event_id = kmalloc(count * sizeof(int64_t), GFP_KERNEL);
 	if (!list->critical_event_id) {
 		pr_err("Failed to allocate critical evnet id instances\n");
 		kfree(list);
@@ -1032,14 +1032,14 @@ struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_device_power_sequence_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_device_power_sequence_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate power sequence list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
 	list->seq_info =
-		kzalloc(count * sizeof(struct lwis_device_power_sequence_info), GFP_KERNEL);
+		kmalloc(count * sizeof(struct lwis_device_power_sequence_info), GFP_KERNEL);
 	if (!list->seq_info) {
 		pr_err("Failed to allocate lwis_device_power_sequence_info "
 		       "instances\n");

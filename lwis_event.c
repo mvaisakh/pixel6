@@ -93,7 +93,7 @@ lwis_client_event_state_find_or_create(struct lwis_client *lwis_client, int64_t 
 	/* If it doesn't, we'll have to create one */
 	if (unlikely(state == NULL)) {
 		/* Allocate a new state object */
-		new_state = kzalloc(sizeof(struct lwis_client_event_state), GFP_KERNEL);
+		new_state = kmalloc(sizeof(struct lwis_client_event_state), GFP_KERNEL);
 		/* Oh no, ENOMEM */
 		if (!new_state) {
 			dev_err(lwis_client->lwis_dev->dev,
@@ -219,7 +219,7 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 	/* If it doesn't, we'll have to create one */
 	if (unlikely(state == NULL)) {
 		/* Allocate a new state object */
-		new_state = kzalloc(sizeof(struct lwis_device_event_state), GFP_KERNEL);
+		new_state = kmalloc(sizeof(struct lwis_device_event_state), GFP_KERNEL);
 		/* Oh no, ENOMEM */
 		if (!new_state) {
 			dev_err(lwis_dev->dev, "Could not allocate lwis_device_event_state\n");
@@ -817,7 +817,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 		/* Restore the event lock */
 		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 		if (emit) {
-			event = kzalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
+			event = kmalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
 			if (!event) {
 				pr_err("Failed to allocate event entry\n");
 				return -ENOMEM;
@@ -994,7 +994,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
 		if (emit) {
-			event = kzalloc(sizeof(struct lwis_event_entry), GFP_ATOMIC);
+			event = kmalloc(sizeof(struct lwis_event_entry), GFP_ATOMIC);
 			if (!event) {
 				pr_err("Failed to allocate event entry\n");
 				return;
@@ -1043,7 +1043,7 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
 	list_for_each_safe (p, n, &lwis_dev->clients) {
 		lwis_client = list_entry(p, struct lwis_client, node);
 
-		event = kzalloc(sizeof(struct lwis_event_entry) + payload_size,
+		event = kmalloc(sizeof(struct lwis_event_entry) + payload_size,
 				GFP_ATOMIC);
 		if (!event) {
 			pr_err("Failed to allocate event entry\n");

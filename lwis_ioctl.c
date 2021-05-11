@@ -179,7 +179,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 		/* Save the userspace buffer address */
 		user_buf = read_entry->rw_batch.buf;
 		/* Allocate read buffer */
-		read_entry->rw_batch.buf = kzalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+		read_entry->rw_batch.buf = kmalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register read buffer\n");
@@ -234,7 +234,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 		user_buf = write_entry->rw_batch.buf;
 		/* Allocate write buffer and copy contents from userspace */
 		write_entry->rw_batch.buf =
-			kzalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+			kmalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register write buffer\n");
@@ -298,7 +298,7 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 		return ret;
 	}
 	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
-	io_entries = kzalloc(buf_size, GFP_KERNEL);
+	io_entries = kmalloc(buf_size, GFP_KERNEL);
 	if (!io_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
 		return -ENOMEM;
@@ -398,7 +398,7 @@ static int ioctl_buffer_alloc(struct lwis_client *lwis_client,
 	struct lwis_allocated_buffer *buffer;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+	buffer = kmalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer) {
 		dev_err(lwis_dev->dev, "Failed to allocated lwis_allocated_buffer\n");
 		return -ENOMEM;
@@ -465,7 +465,7 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client, struct lwis_buff
 	struct lwis_enrolled_buffer *buffer;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	buffer = kzalloc(sizeof(struct lwis_enrolled_buffer), GFP_KERNEL);
+	buffer = kmalloc(sizeof(struct lwis_enrolled_buffer), GFP_KERNEL);
 	if (!buffer) {
 		dev_err(lwis_dev->dev, "Failed to allocate lwis_enrolled_buffer struct\n");
 		return -ENOMEM;
@@ -627,7 +627,7 @@ static int ioctl_echo(struct lwis_device *lwis_dev, struct lwis_echo __user *msg
 		return 0;
 	}
 
-	buffer = kzalloc(echo_msg.size + 1, GFP_KERNEL);
+	buffer = kmalloc(echo_msg.size + 1, GFP_KERNEL);
 	if (!buffer) {
 		dev_err(lwis_dev->dev, "Failed to allocate buffer for echo message\n");
 		return -ENOMEM;
@@ -736,7 +736,7 @@ static int ioctl_event_control_set(struct lwis_client *lwis_client,
 
 	/*  Copy event controls from user buffer. */
 	buf_size = sizeof(struct lwis_event_control) * k_msg.num_event_controls;
-	k_event_controls = kzalloc(buf_size, GFP_KERNEL);
+	k_event_controls = kmalloc(buf_size, GFP_KERNEL);
 	if (!k_event_controls) {
 		dev_err(lwis_dev->dev, "Failed to allocate event controls\n");
 		return -ENOMEM;
@@ -876,7 +876,7 @@ static int construct_transaction(struct lwis_client *client,
 	uint8_t *k_buf;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	k_transaction = kzalloc(sizeof(struct lwis_transaction), GFP_KERNEL);
+	k_transaction = kmalloc(sizeof(struct lwis_transaction), GFP_KERNEL);
 	if (!k_transaction) {
 		dev_err(lwis_dev->dev, "Failed to allocate transaction info\n");
 		return -ENOMEM;
@@ -892,7 +892,7 @@ static int construct_transaction(struct lwis_client *client,
 
 	user_entries = k_transaction->info.io_entries;
 	entry_size = k_transaction->info.num_io_entries * sizeof(struct lwis_io_entry);
-	k_entries = kvzalloc(entry_size, GFP_KERNEL);
+	k_entries = kvmalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate transaction entries\n");
 		ret = -ENOMEM;
@@ -914,7 +914,7 @@ static int construct_transaction(struct lwis_client *client,
 	for (i = 0; i < k_transaction->info.num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kvzalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
+			k_buf = kvmalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(lwis_dev->dev,
 						    "Failed to allocate tx write buffer\n");
@@ -1068,7 +1068,7 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
-	k_entries = kzalloc(entry_size, GFP_KERNEL);
+	k_entries = kmalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate periodic io entries\n");
 		return -ENOMEM;
@@ -1088,7 +1088,7 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 	for (i = 0; i < num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kzalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
+			k_buf = kmalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1129,7 +1129,7 @@ static int prepare_periodic_io(struct lwis_client *client, struct lwis_periodic_
 	struct lwis_periodic_io_info *user_periodic_io;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	k_periodic_io = kzalloc(sizeof(struct lwis_periodic_io), GFP_KERNEL);
+	k_periodic_io = kmalloc(sizeof(struct lwis_periodic_io), GFP_KERNEL);
 	if (!k_periodic_io) {
 		dev_err(lwis_dev->dev, "Failed to allocate periodic io\n");
 		return -ENOMEM;
@@ -1222,7 +1222,7 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 	}
 
 	buf_size = sizeof(struct lwis_clk_setting) * k_msg.num_settings;
-	clk_settings = kzalloc(buf_size, GFP_KERNEL);
+	clk_settings = kmalloc(buf_size, GFP_KERNEL);
 	if (!clk_settings) {
 		dev_err(lwis_dev->dev, "Failed to allocate clock settings\n");
 		return -ENOMEM;
@@ -1258,7 +1258,7 @@ static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
 
 	// Copy qos settings from user buffer.
 	buf_size = sizeof(struct lwis_qos_setting) * k_msg.num_settings;
-	k_qos_settings = kzalloc(buf_size, GFP_KERNEL);
+	k_qos_settings = kmalloc(buf_size, GFP_KERNEL);
 	if (!k_qos_settings) {
 		dev_err(lwis_dev->dev, "Failed to allocate qos settings\n");
 		return -ENOMEM;

@@ -97,7 +97,7 @@ int lwis_ioreg_list_alloc(struct lwis_ioreg_device *ioreg_dev, int num_blocks)
 	}
 
 	list = &ioreg_dev->reg_list;
-	list->block = kzalloc(num_blocks * sizeof(struct lwis_ioreg), GFP_KERNEL);
+	list->block = kmalloc(num_blocks * sizeof(struct lwis_ioreg), GFP_KERNEL);
 	if (!list->block) {
 		return -ENOMEM;
 	}

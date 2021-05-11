@@ -24,7 +24,7 @@ struct lwis_phy_list *lwis_phy_list_alloc(int count)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_phy_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_phy_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate PHY list\n");
 		return ERR_PTR(-ENOMEM);
