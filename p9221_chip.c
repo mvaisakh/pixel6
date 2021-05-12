@@ -1612,21 +1612,21 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 }
 
 
-#define P9412_NUM_GPIOS			5
-#define P9412_MIN_GPIO			0
-#define P9412_MAX_GPIO			5
+#define P9XXX_NUM_GPIOS			5
+#define P9XXX_MIN_GPIO			0
+#define P9XXX_MAX_GPIO			5
 #define P9XXX_GPIO_CPOUT_EN		1
 #define P9412_GPIO_CPOUT21_EN		2
 #define P9XXX_GPIO_CPOUT_CTL_EN		3
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
-static int p9412_gpio_get_direction(struct gpio_chip *chip,
+static int p9xxx_gpio_get_direction(struct gpio_chip *chip,
 				    unsigned int offset)
 {
 	return GPIOF_DIR_OUT;
 }
 
-static int p9412_gpio_get(struct gpio_chip *chip, unsigned int offset)
+static int p9xxx_gpio_get(struct gpio_chip *chip, unsigned int offset)
 {
 	//struct p9221_charger_data *charger = gpiochip_get_data(chip);
 	int value = 0;
@@ -1650,7 +1650,7 @@ static int p9412_gpio_get(struct gpio_chip *chip, unsigned int offset)
 #define P9412_BPP_WLC_OTG_VOUT	5200
 
 
-static void p9412_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+static void p9xxx_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
 {
 	struct p9221_charger_data *charger = gpiochip_get_data(chip);
 	int ret = -EINVAL;
@@ -1685,15 +1685,15 @@ static void p9412_gpio_set(struct gpio_chip *chip, unsigned int offset, int valu
 			offset, value, ret);
 }
 
-void p9412_gpio_init(struct p9221_charger_data *charger)
+void p9xxx_gpio_init(struct p9221_charger_data *charger)
 {
 	charger->gpio.owner = THIS_MODULE;
-	charger->gpio.label = "p9412_gpio";
-	charger->gpio.get_direction = p9412_gpio_get_direction;
-	charger->gpio.get = p9412_gpio_get;
-	charger->gpio.set = p9412_gpio_set;
+	charger->gpio.label = "p9xxx_gpio";
+	charger->gpio.get_direction = p9xxx_gpio_get_direction;
+	charger->gpio.get = p9xxx_gpio_get;
+	charger->gpio.set = p9xxx_gpio_set;
 	charger->gpio.base = -1;
-	charger->gpio.ngpio = P9412_NUM_GPIOS;
+	charger->gpio.ngpio = P9XXX_NUM_GPIOS;
 	charger->gpio.can_sleep = true;
 }
 #endif

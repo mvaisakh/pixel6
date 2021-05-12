@@ -700,7 +700,7 @@ u8 p9221_crc8(u8 *pdata, size_t nbytes, u8 crc);
 bool p9221_is_epp(struct p9221_charger_data *charger);
 int p9221_wlc_disable(struct p9221_charger_data *charger, int disable, u8 reason);
 
-void p9412_gpio_init(struct p9221_charger_data *charger);
+void p9xxx_gpio_init(struct p9221_charger_data *charger);
 extern int p9221_chip_init_funcs(struct p9221_charger_data *charger,
 				 u16 chip_id);
 extern void p9221_chip_init_params(struct p9221_charger_data *charger,
