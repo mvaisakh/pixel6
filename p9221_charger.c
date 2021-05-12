@@ -1850,8 +1850,15 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 	 * Always write FOD, check dc_icl, send CSP
 	 */
 	if (dc_in) {
-		if (p9221_is_epp(charger))
+		if (p9221_is_epp(charger)) {
 			charger->chip_check_neg_power(charger);
+		} else if (charger->chip_id == P9222_CHIP_ID) {
+			ret = p9221_set_bpp_vout(charger);
+			if (ret)
+				dev_err(&charger->client->dev,
+					"cannot change VOUT (%d)\n", ret);
+		}
+
 		p9221_set_dc_icl(charger);
 		p9221_write_fod(charger);
 		if (!charger->dc_icl_bpp)
