@@ -60,6 +60,24 @@ struct edgetpu_host_map {
 	struct sg_table *sg_tables;
 };
 
+/*
+ * A helper structure for the return value of find_sg_to_sync().
+ */
+struct sglist_to_sync {
+	struct scatterlist *sg;
+	int nelems;
+	/*
+	 * The SG that has its length modified by find_sg_to_sync().
+	 * Can be NULL, which means no SG's length was modified.
+	 */
+	struct scatterlist *last_sg;
+	/*
+	 * find_sg_to_sync() will temporarily change the length of @last_sg.
+	 * This is used to restore the length.
+	 */
+	unsigned int orig_length;
+};
+
 #ifdef EDGETPU_HAS_MCP
 
 /* parameter to be used in async KCI jobs */
@@ -86,7 +104,7 @@ static int edgetpu_kci_leave_group_worker(struct kci_worker_param *param)
 	struct edgetpu_dev *etdev = edgetpu_device_group_nth_etdev(group, i);
 
 	etdev_dbg(etdev, "%s: leave group %u", __func__, group->workload_id);
-	edgetpu_kci_update_usage(etdev);
+	edgetpu_kci_update_usage_async(etdev);
 	edgetpu_kci_leave_group(etdev->kci);
 	return 0;
 }
@@ -147,7 +165,7 @@ static void edgetpu_group_kci_close_device(struct edgetpu_device_group *group)
 static void edgetpu_device_group_kci_leave(struct edgetpu_device_group *group)
 {
 #ifdef EDGETPU_HAS_MULTI_GROUPS
-	edgetpu_kci_update_usage(group->etdev);
+	edgetpu_kci_update_usage_async(group->etdev);
 	return edgetpu_group_kci_close_device(group);
 #else /* !EDGETPU_HAS_MULTI_GROUPS */
 	struct kci_worker_param *params =
@@ -1247,32 +1265,60 @@ error:
 }
 
 /*
- * Find the scatterlist covering range [start, end).
+ * Finds the scatterlist covering range [start, end).
  *
- * Returns NULL if:
- * - @start is larger than the whole SG table
+ * The found SG and number of elements will be stored in @sglist.
+ *
+ * To ensure the returned SG list strictly locates in range [start, end), the
+ * last SG's length is shrunk. Therefore caller must call
+ * restore_sg_after_sync(@sglist) after the DMA sync is performed.
+ *
+ * @sglist->nelems == 0 means the target range exceeds the whole SG table.
  */
-static struct scatterlist *find_sg_within(const struct sg_table *sgt, u64 start,
-					  u64 end, int *nelems)
+static void find_sg_to_sync(const struct sg_table *sgt, u64 start, u64 end,
+			    struct sglist_to_sync *sglist)
 {
-	struct scatterlist *sg, *sg_to_sync = NULL;
+	struct scatterlist *sg;
 	size_t cur_offset = 0;
 	int i;
 
-	*nelems = 0;
+	sglist->sg = NULL;
+	sglist->nelems = 0;
+	sglist->last_sg = NULL;
+	if (unlikely(end == 0))
+		return;
 	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
-		if (end <= cur_offset)
-			break;
 		if (cur_offset <= start && start < cur_offset + sg->length)
-			sg_to_sync = sg;
-		if (sg_to_sync)
-			(*nelems)++;
+			sglist->sg = sg;
+		if (sglist->sg)
+			++sglist->nelems;
 		cur_offset += sg->length;
+		if (end <= cur_offset) {
+			sglist->last_sg = sg;
+			sglist->orig_length = sg->length;
+			/*
+			 * To let the returned SG list have exact length as
+			 * [start, end).
+			 */
+			sg->length -= cur_offset - end;
+			break;
+		}
 	}
-
-	return sg_to_sync;
 }
 
+static void restore_sg_after_sync(struct sglist_to_sync *sglist)
+{
+	if (!sglist->last_sg)
+		return;
+	sglist->last_sg->length = sglist->orig_length;
+}
+
+/*
+ * Performs DMA sync of the mapping with region [offset, offset + size).
+ *
+ * Caller holds mapping's lock, to prevent @hmap being modified / removed by
+ * other processes.
+ */
 static int group_sync_host_map(struct edgetpu_device_group *group,
 			       struct edgetpu_host_map *hmap, u64 offset,
 			       u64 size, enum dma_data_direction dir,
@@ -1283,29 +1329,32 @@ static int group_sync_host_map(struct edgetpu_device_group *group,
 		for_cpu ? dma_sync_sg_for_cpu : dma_sync_sg_for_device;
 	struct edgetpu_dev *etdev;
 	struct sg_table *sgt;
-	struct scatterlist *sg;
+	struct sglist_to_sync sglist;
 	int i;
-	int nelems;
 
 	sgt = &hmap->map.sgt;
-	sg = find_sg_within(sgt, offset, end, &nelems);
-	if (!sg)
+	find_sg_to_sync(sgt, offset, end, &sglist);
+	if (!sglist.nelems)
 		return -EINVAL;
 
-	if (IS_MIRRORED(hmap->map.flags)) {
-		sync(group->etdev->dev, sg, nelems, dir);
-		for (i = 1; i < group->n_clients; i++) {
-			etdev = edgetpu_device_group_nth_etdev(group, i);
-			sg = find_sg_within(&hmap->sg_tables[i], offset, end,
-					    &nelems);
-			if (WARN_ON(!sg))
-				return -EINVAL;
-			sync(etdev->dev, sg, nelems, dir);
-		}
-	} else {
+	if (IS_MIRRORED(hmap->map.flags))
+		etdev = group->etdev;
+	else
 		etdev = edgetpu_device_group_nth_etdev(group,
 						       hmap->map.die_index);
-		sync(etdev->dev, sg, nelems, dir);
+	sync(etdev->dev, sglist.sg, sglist.nelems, dir);
+	restore_sg_after_sync(&sglist);
+
+	if (IS_MIRRORED(hmap->map.flags)) {
+		for (i = 1; i < group->n_clients; i++) {
+			etdev = edgetpu_device_group_nth_etdev(group, i);
+			find_sg_to_sync(&hmap->sg_tables[i], offset, end,
+					&sglist);
+			if (WARN_ON(!sglist.sg))
+				return -EINVAL;
+			sync(etdev->dev, sglist.sg, sglist.nelems, dir);
+			restore_sg_after_sync(&sglist);
+		}
 	}
 
 	return 0;

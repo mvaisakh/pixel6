@@ -12,6 +12,8 @@
 #include <linux/mutex.h>
 #include <linux/thermal.h>
 
+#include "edgetpu-internal.h"
+
 #define EDGETPU_COOLING_NAME "tpu_cooling"
 
 struct edgetpu_thermal {
@@ -22,6 +24,7 @@ struct edgetpu_thermal {
 	void *op_data;
 	unsigned long cooling_state;
 	unsigned int tpu_num_states;
+	struct edgetpu_dev *etdev;
 };
 
 struct edgetpu_state_pwr {
@@ -34,6 +37,7 @@ struct edgetpu_state_pwr {
  *
  * Returns -errno on error.
  */
-struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev);
+struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev,
+						struct edgetpu_dev *etdev);
 
 #endif /* __EDGETPU_THERMAL_H__ */

@@ -432,6 +432,14 @@ static void edgetpu_kci_handle_irq(struct edgetpu_mailbox *mailbox)
 	schedule_work(&kci->work);
 }
 
+static void edgetpu_kci_update_usage_work(struct work_struct *work)
+{
+	struct edgetpu_kci *kci =
+		container_of(work, struct edgetpu_kci, usage_work);
+
+	edgetpu_kci_update_usage(kci->mailbox->etdev);
+}
+
 int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 		     struct edgetpu_kci *kci)
 {
@@ -478,6 +486,7 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	init_waitqueue_head(&kci->wait_list_waitq);
 	INIT_WORK(&kci->work, edgetpu_kci_consume_responses_work);
 	edgetpu_reverse_kci_init(&kci->rkci);
+	INIT_WORK(&kci->usage_work, edgetpu_kci_update_usage_work);
 	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
 	return 0;
 }
@@ -507,7 +516,9 @@ int edgetpu_kci_reinit(struct edgetpu_kci *kci)
 
 void edgetpu_kci_cancel_work_queues(struct edgetpu_kci *kci)
 {
-	/* Cancel KCI and reverse KCI workers */
+	/* Cancel workers that may send KCIs. */
+	cancel_work_sync(&kci->usage_work);
+	/* Cancel KCI and reverse KCI workers. */
 	cancel_work_sync(&kci->work);
 	cancel_work_sync(&kci->rkci.work);
 }
@@ -516,10 +527,6 @@ void edgetpu_kci_release(struct edgetpu_dev *etdev, struct edgetpu_kci *kci)
 {
 	if (!kci)
 		return;
-	/*
-	 * Command/Response queues are managed (dmam_alloc_coherent()), we don't
-	 * need to free them.
-	 */
 
 	edgetpu_kci_cancel_work_queues(kci);
 
@@ -853,19 +860,42 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(struct edgetpu_kci *kci,
 	return flavor;
 }
 
+void edgetpu_kci_update_usage_async(struct edgetpu_dev *etdev)
+{
+	schedule_work(&etdev->kci->usage_work);
+}
+
 int edgetpu_kci_update_usage(struct edgetpu_dev *etdev)
 {
-	int ret;
+	int ret = -EAGAIN;
 
-	/* Quick return if device already powered down, else get PM ref. */
+	/* Quick return if device is already powered down. */
 	if (!edgetpu_is_powered(etdev))
 		return -EAGAIN;
-	ret = edgetpu_pm_get(etdev->pm);
-	if (ret)
-		return ret;
-	ret = edgetpu_kci_update_usage_locked(etdev);
+	/*
+	 * Lockout change in f/w load/unload status during usage update.
+	 * Skip usage update if the firmware is being updated now or is not
+	 * valid.
+	 */
+	if (!edgetpu_firmware_trylock(etdev))
+		return -EAGAIN;
 
-	edgetpu_pm_put(etdev->pm);
+	if (edgetpu_firmware_status_locked(etdev) != FW_VALID)
+		goto fw_unlock;
+	/*
+	 * This function may run in a worker that is being canceled when the
+	 * device is powering down, and the power down code holds the PM lock.
+	 * Using trylock to prevent cancel_work_sync() waiting forever.
+	 */
+	if (!edgetpu_pm_trylock(etdev->pm))
+		goto fw_unlock;
+
+	if (edgetpu_is_powered(etdev))
+		ret = edgetpu_kci_update_usage_locked(etdev);
+	edgetpu_pm_unlock(etdev->pm);
+
+fw_unlock:
+	edgetpu_firmware_unlock(etdev);
 	return ret;
 }
 
@@ -986,3 +1016,24 @@ int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids)
 		return -ENODEV;
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
+
+int edgetpu_kci_notify_throttling(struct edgetpu_dev *etdev, u32 level)
+{
+	struct edgetpu_command_element cmd = {
+		.code = KCI_CODE_NOTIFY_THROTTLING,
+		.dma = {
+			.flags = level,
+		},
+	};
+	int ret;
+
+	if (!etdev->kci)
+		return -ENODEV;
+	if (!edgetpu_pm_get_if_powered(etdev->pm))
+		return -EAGAIN;
+
+	ret =  edgetpu_kci_send_cmd(etdev->kci, &cmd);
+	edgetpu_pm_put(etdev->pm);
+	return ret;
+}
+

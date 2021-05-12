@@ -29,15 +29,18 @@ struct edgetpu_pm_private {
 	int power_up_count;
 };
 
-int edgetpu_pm_get(struct edgetpu_pm *etpm)
+/*
+ * Increases the counter and call the power_up callback.
+ *
+ * Returns zero on success.
+ *
+ * Caller holds etpm->p->lock.
+ */
+static int edgetpu_pm_get_locked(struct edgetpu_pm *etpm)
 {
+	int power_up_count = etpm->p->power_up_count++;
 	int ret = 0;
-	int power_up_count;
 
-	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
-		return 0;
-	mutex_lock(&etpm->p->lock);
-	power_up_count = etpm->p->power_up_count++;
 	if (!power_up_count) {
 		ret = etpm->p->handlers->power_up(etpm);
 		if (!ret)
@@ -46,6 +49,49 @@ int edgetpu_pm_get(struct edgetpu_pm *etpm)
 	if (ret)
 		etpm->p->power_up_count--;
 	etdev_dbg(etpm->etdev, "%s: %d\n", __func__, etpm->p->power_up_count);
+	return ret;
+}
+
+int edgetpu_pm_trylock(struct edgetpu_pm *etpm)
+{
+	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
+		return 1;
+	return mutex_trylock(&etpm->p->lock);
+}
+
+void edgetpu_pm_unlock(struct edgetpu_pm *etpm)
+{
+	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
+		return;
+	mutex_unlock(&etpm->p->lock);
+}
+
+bool edgetpu_pm_get_if_powered(struct edgetpu_pm *etpm)
+{
+	bool ret;
+
+	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
+		return true;
+	/* fast fail without holding the lock */
+	if (!etpm->p->power_up_count)
+		return false;
+	mutex_lock(&etpm->p->lock);
+	if (etpm->p->power_up_count)
+		ret = !edgetpu_pm_get_locked(etpm);
+	else
+		ret = false;
+	mutex_unlock(&etpm->p->lock);
+	return ret;
+}
+
+int edgetpu_pm_get(struct edgetpu_pm *etpm)
+{
+	int ret;
+
+	if (!etpm || !etpm->p->handlers || !etpm->p->handlers->power_up)
+		return 0;
+	mutex_lock(&etpm->p->lock);
+	ret = edgetpu_pm_get_locked(etpm);
 	mutex_unlock(&etpm->p->lock);
 	return ret;
 }

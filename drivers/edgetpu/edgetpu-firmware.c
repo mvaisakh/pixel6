@@ -313,6 +313,20 @@ edgetpu_firmware_get_build_time(struct edgetpu_firmware *et_fw)
 }
 
 /*
+ * Try edgetpu_firmware_lock() if it's not locked yet.
+ *
+ * Returns 1 if the lock is acquired successfully, 0 otherwise.
+ */
+int edgetpu_firmware_trylock(struct edgetpu_dev *etdev)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (!et_fw)
+		return 1;
+	return mutex_trylock(&et_fw->p->fw_desc_lock);
+}
+
+/*
  * Grab firmware lock to protect against firmware state changes.
  * Locks out firmware loading / unloading while caller performs ops that are
  * incompatible with a change in firmware status.  Does not care whether or not
@@ -395,7 +409,7 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 	memset(&new_fw_desc, 0, sizeof(new_fw_desc));
 	ret = edgetpu_firmware_load_locked(et_fw, &new_fw_desc, name, flags);
 	if (ret)
-		return ret;
+		goto out_failed;
 
 	etdev_dbg(et_fw->etdev, "run fw %s flags=0x%x", name, flags);
 	if (handlers && handlers->prepare_run) {
@@ -426,10 +440,15 @@ int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 
 	if (!ret && !is_bl1_run && handlers && handlers->launch_complete)
 		handlers->launch_complete(et_fw);
+	else if (ret && handlers && handlers->launch_failed)
+		handlers->launch_failed(et_fw, ret);
 	return ret;
 
 out_unload_new_fw:
 	edgetpu_firmware_unload_locked(et_fw, &new_fw_desc);
+out_failed:
+	if (handlers && handlers->launch_failed)
+		handlers->launch_failed(et_fw, ret);
 	return ret;
 }
 
@@ -498,6 +517,17 @@ edgetpu_firmware_status_locked(struct edgetpu_dev *etdev)
 	if (!et_fw)
 		return FW_INVALID;
 	return et_fw->p->status;
+}
+
+/* Caller must hold firmware lock. For unit tests. */
+void
+edgetpu_firmware_set_status_locked(struct edgetpu_dev *etdev,
+				   enum edgetpu_firmware_status status)
+{
+	struct edgetpu_firmware *et_fw = etdev->firmware;
+
+	if (et_fw)
+		et_fw->p->status = status;
 }
 
 /* Caller must hold firmware lock for loading. */

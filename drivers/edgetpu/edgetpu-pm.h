@@ -48,6 +48,24 @@ struct edgetpu_pm {
  */
 
 /*
+ * Tries to acquire the internal lock that ensures power_up_counter won't be
+ * modified.
+ *
+ * Returns 1 if the lock has been acquired successfully, 0 otherwise.
+ */
+int edgetpu_pm_trylock(struct edgetpu_pm *etpm);
+void edgetpu_pm_unlock(struct edgetpu_pm *etpm);
+
+/*
+ * Increase power_up_count if it's already powered on.
+ *
+ * Caller calls edgetpu_pm_put() to decrease power_up_count if this function
+ * returned true, otherwise put() shouldn't be called.
+ *
+ * Return false if device is not powered, true otherwise.
+ */
+bool edgetpu_pm_get_if_powered(struct edgetpu_pm *etpm);
+/*
  * Increase power_up_count for active state, power up the device if previous
  * power_up_count was zero.
  * Returns 0 on success or negative error value

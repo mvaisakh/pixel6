@@ -315,7 +315,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	}
 
 	dev_dbg(dev, "Creating thermal device\n");
-	abpdev->edgetpu_dev.thermal = devm_tpu_thermal_create(dev);
+	abpdev->edgetpu_dev.thermal =
+			devm_tpu_thermal_create(dev, &abpdev->edgetpu_dev);
 
 	dev_info(dev, "%s edgetpu initialized. Build: %s\n",
 		 abpdev->edgetpu_dev.dev_name, GIT_REPO_TAG);

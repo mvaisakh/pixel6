@@ -147,6 +147,8 @@ struct edgetpu_firmware_handlers {
 			   struct edgetpu_firmware_buffer *fw_buf);
 	/* Firmware running, after successful handshake. */
 	void (*launch_complete)(struct edgetpu_firmware *et_fw);
+	/* Firmware load failed or unsuccessful handshake. */
+	void (*launch_failed)(struct edgetpu_firmware *et_fw, int ret);
 
 	/*
 	 * Optional platform-specific handler to restart an already loaded
@@ -195,12 +197,12 @@ void edgetpu_firmware_mappings_show(struct edgetpu_dev *etdev,
 				    struct seq_file *s);
 
 /*
- * These two functions grab and release the internal firmware lock
- * and must be used before calling the helper functions suffixed with _locked
- * below
+ * These functions grab and release the internal firmware lock and must be used
+ * before calling the helper functions suffixed with _locked below.
  */
 
 int edgetpu_firmware_lock(struct edgetpu_dev *etdev);
+int edgetpu_firmware_trylock(struct edgetpu_dev *etdev);
 void edgetpu_firmware_unlock(struct edgetpu_dev *etdev);
 
 
@@ -210,6 +212,11 @@ void edgetpu_firmware_unlock(struct edgetpu_dev *etdev);
  */
 enum edgetpu_firmware_status
 edgetpu_firmware_status_locked(struct edgetpu_dev *etdev);
+
+/* Caller must hold firmware lock. For unit tests. */
+void
+edgetpu_firmware_set_status_locked(struct edgetpu_dev *etdev,
+				   enum edgetpu_firmware_status status);
 
 /*
  * Restarts the last firmware image loaded

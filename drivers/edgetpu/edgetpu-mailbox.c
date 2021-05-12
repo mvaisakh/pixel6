@@ -710,13 +710,66 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_list_group *l;
 	struct edgetpu_device_group *group;
+	struct edgetpu_device_group **groups;
+	size_t i, n = 0;
 
 	mutex_lock(&etdev->groups_lock);
+	groups = kmalloc_array(etdev->n_groups, sizeof(*groups), GFP_KERNEL);
+	if (unlikely(!groups)) {
+		/*
+		 * Either the runtime is misbehaving (creates tons of groups),
+		 * or the system is indeed OOM - we give up this restore
+		 * process, which makes the runtime unable to communicate with
+		 * the device through VII.
+		 */
+		mutex_unlock(&etdev->groups_lock);
+		return;
+	}
+	/*
+	 * Fetch the groups into an array to restore the VII without holding
+	 * etdev->groups_lock. To prevent the potential deadlock that
+	 * edgetpu_device_group_add() holds group->lock then etdev->groups_lock.
+	 */
 	etdev_for_each_group(etdev, l, group) {
-		if (!edgetpu_group_mailbox_detached_locked(group))
-			edgetpu_mailbox_reinit_vii(group);
+		/*
+		 * Quick skip without holding group->lock.
+		 * Disbanded groups can never go back to the normal state.
+		 */
+		if (edgetpu_device_group_is_disbanded(group))
+			continue;
+		/*
+		 * Increase the group reference to prevent the group being
+		 * released after we release groups_lock.
+		 */
+		groups[n++] = edgetpu_device_group_get(group);
 	}
 	mutex_unlock(&etdev->groups_lock);
+
+	/*
+	 * We are not holding @etdev->groups_lock, what may race is:
+	 *   1. The group is disbanding and being removed from @etdev.
+	 *   2. A new group is adding to @etdev
+	 *
+	 * For (1.) the group will be marked as DISBANDED, so we check whether
+	 * the group is finalized before performing VII re-init.
+	 *
+	 * For (2.), adding group to @etdev (edgetpu_device_group_add()) has
+	 * nothing to do with VII, its VII will be set when the group is
+	 * finalized.
+	 */
+	for (i = 0; i < n; i++) {
+		group = groups[i];
+		mutex_lock(&group->lock);
+		/*
+		 * If the group is just finalized or has mailbox attached in
+		 * another process, this re-init is redundant but isn't harmful.
+		 */
+		if (edgetpu_group_finalized_and_attached(group))
+			edgetpu_mailbox_reinit_vii(group);
+		mutex_unlock(&group->lock);
+		edgetpu_device_group_put(group);
+	}
+	kfree(groups);
 }
 
 int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids)

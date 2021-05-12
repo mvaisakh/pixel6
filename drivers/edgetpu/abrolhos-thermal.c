@@ -48,6 +48,7 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 	int ret;
 	struct edgetpu_thermal *cooling = cdev->devdata;
 	struct device *dev = cooling->dev;
+	struct edgetpu_dev *etdev = cooling->etdev;
 	unsigned long pwr_state;
 
 	if (state_original >= cooling->tpu_num_states) {
@@ -77,6 +78,18 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 			goto out;
 		}
 		cooling->cooling_state = state_original;
+		ret = edgetpu_kci_notify_throttling(etdev, pwr_state);
+		if (ret) {
+			/*
+			 * TODO(b/185596886) : After FW adds a handler for this
+			 * KCI, return the correct value of ret and change the
+			 * debug message to an error message
+			 */
+			etdev_dbg(
+			etdev, "Failed to notify FW about state %lu, error:%d",
+			pwr_state, ret);
+			ret = 0;
+		}
 	} else {
 		ret = -EALREADY;
 	}
@@ -307,7 +320,8 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 	return 0;
 }
 
-struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev)
+struct edgetpu_thermal
+*devm_tpu_thermal_create(struct device *dev, struct edgetpu_dev *etdev)
 {
 	struct edgetpu_thermal *thermal;
 	int err;
@@ -324,5 +338,6 @@ struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev)
 	}
 
 	devres_add(dev, thermal);
+	thermal->etdev = etdev;
 	return thermal;
 }

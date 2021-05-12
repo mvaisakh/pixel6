@@ -28,7 +28,7 @@ static int abrolhos_firmware_alloc_buffer(
 	size_t buffer_size =
 		abpdev->fw_region_size + MOBILE_FW_HEADER_SIZE;
 
-	fw_buf->vaddr = kzalloc(buffer_size, GFP_KERNEL);
+	fw_buf->vaddr = vmalloc(buffer_size);
 	if (!fw_buf->vaddr) {
 		etdev_err(etdev, "%s: failed to allocate buffer (%zu bytes)\n",
 			  __func__, buffer_size);
@@ -44,7 +44,7 @@ static void abrolhos_firmware_free_buffer(
 		struct edgetpu_firmware *et_fw,
 		struct edgetpu_firmware_buffer *fw_buf)
 {
-	kfree(fw_buf->vaddr);
+	vfree(fw_buf->vaddr);
 	fw_buf->vaddr = NULL;
 	fw_buf->dma_addr = 0;
 	fw_buf->alloc_size = 0;

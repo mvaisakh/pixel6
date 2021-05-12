@@ -108,6 +108,7 @@ enum edgetpu_kci_code {
 	KCI_CODE_CLOSE_DEVICE = 10,
 	KCI_CODE_FIRMWARE_INFO = 11,
 	KCI_CODE_GET_USAGE = 12,
+	KCI_CODE_NOTIFY_THROTTLING = 13,
 };
 
 /*
@@ -192,6 +193,7 @@ struct edgetpu_kci {
 	struct work_struct work;	/* worker of consuming responses */
 	/* Handler for reverse (firmware -> kernel) requests */
 	struct edgetpu_reverse_kci rkci;
+	struct work_struct usage_work;	/* worker that sends update usage KCI */
 };
 
 struct edgetpu_kci_device_group_detail {
@@ -279,7 +281,15 @@ enum edgetpu_fw_flavor edgetpu_kci_fw_info(
 	struct edgetpu_kci *kci, struct edgetpu_fw_info *fw_info);
 
 /*
- * Retrieve usage tracking data from firmware, update info on host.
+ * Schedules a worker to call edgetpu_kci_update_usage().
+ *
+ * For functions that don't require the usage to be updated immediately, use
+ * this function instead of edgetpu_kci_update_usage().
+ */
+void edgetpu_kci_update_usage_async(struct edgetpu_dev *etdev);
+
+/*
+ * Retrieves usage tracking data from firmware, update info on host.
  * Also used as a watchdog ping to firmware.
  *
  * Returns KCI response code on success or < 0 on error (typically -ETIMEDOUT).
@@ -341,5 +351,13 @@ int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids);
 
 /* Cancel work queues or wait until they're done */
 void edgetpu_kci_cancel_work_queues(struct edgetpu_kci *kci);
+
+/*
+ * Notify the firmware about throttling and the corresponding power level.
+ * The request is sent only if the device is already powered on.
+ *
+ * Returns KCI response code on success or < 0 on error (typically -ETIMEDOUT).
+ */
+int edgetpu_kci_notify_throttling(struct edgetpu_dev *etdev, u32 level);
 
 #endif /* __EDGETPU_KCI_H__ */
