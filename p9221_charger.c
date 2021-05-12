@@ -4713,7 +4713,8 @@ static int p9221_charger_probe(struct i2c_client *client,
 	}
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
-	if (charger->pdata->chip_id == P9412_CHIP_ID) {
+	if (charger->pdata->chip_id == P9412_CHIP_ID ||
+	    charger->pdata->chip_id == P9222_CHIP_ID) {
 		p9412_gpio_init(charger);
 		charger->gpio.parent = &client->dev;
 		charger->gpio.of_node = of_find_node_by_name(client->dev.of_node,

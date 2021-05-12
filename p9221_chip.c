@@ -1615,9 +1615,9 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 #define P9412_NUM_GPIOS			5
 #define P9412_MIN_GPIO			0
 #define P9412_MAX_GPIO			5
-#define P9412_GPIO_CPOUT_EN		1
+#define P9XXX_GPIO_CPOUT_EN		1
 #define P9412_GPIO_CPOUT21_EN		2
-#define P9412_GPIO_CPOUT_CTL_EN		3
+#define P9XXX_GPIO_CPOUT_CTL_EN		3
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 static int p9412_gpio_get_direction(struct gpio_chip *chip,
@@ -1632,12 +1632,12 @@ static int p9412_gpio_get(struct gpio_chip *chip, unsigned int offset)
 	int value = 0;
 
 	switch (offset) {
-	case P9412_GPIO_CPOUT_EN:
+	case P9XXX_GPIO_CPOUT_EN:
 		break;
 	case P9412_GPIO_CPOUT21_EN:
 		// read cap divider
 		break;
-	case P9412_GPIO_CPOUT_CTL_EN:
+	case P9XXX_GPIO_CPOUT_CTL_EN:
 		break;
 	default:
 		break;
@@ -1656,7 +1656,7 @@ static void p9412_gpio_set(struct gpio_chip *chip, unsigned int offset, int valu
 	int ret = -EINVAL;
 
 	switch (offset) {
-	case P9412_GPIO_CPOUT_EN:
+	case P9XXX_GPIO_CPOUT_EN:
 		/* take offline (if online) and set/reset QI_EN_L */
 		ret = p9221_wlc_disable(charger, !value, EPT_END_OF_CHARGE);
 		break;
@@ -1664,12 +1664,12 @@ static void p9412_gpio_set(struct gpio_chip *chip, unsigned int offset, int valu
 		/* TODO: no-op for FW38+ */
 		ret = p9412_capdiv_en(charger, !!value);
 		break;
-	case P9412_GPIO_CPOUT_CTL_EN:
+	case P9XXX_GPIO_CPOUT_CTL_EN:
 		/* b/174068520: set vout to 5.2 for BPP_WLC_RX+OTG */
 		if (value && !p9221_is_epp(charger))
-			ret = p9412_chip_set_vout_max(charger, P9412_BPP_WLC_OTG_VOUT);
+			ret = charger->chip_set_vout_max(charger, P9412_BPP_WLC_OTG_VOUT);
 		else if (value == 0 )
-			ret = p9412_chip_set_vout_max(charger, P9412_BPP_VOUT_DFLT);
+			ret = charger->chip_set_vout_max(charger, P9412_BPP_VOUT_DFLT);
 		else
 			ret = 0;
 		break;
