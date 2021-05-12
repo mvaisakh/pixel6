@@ -183,6 +183,8 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		dpu_event_save_freqs(&log->data.bts_update.freqs);
 		log->data.bts_update.peak = decon->bts.peak;
 		log->data.bts_update.prev_peak = decon->bts.prev_peak;
+		log->data.bts_update.rt_avg_bw = decon->bts.rt_avg_bw;
+		log->data.bts_update.prev_rt_avg_bw = decon->bts.prev_rt_avg_bw;
 		log->data.bts_update.total_bw = decon->bts.total_bw;
 		log->data.bts_update.prev_total_bw = decon->bts.prev_total_bw;
 		break;
@@ -190,6 +192,7 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 		dpu_event_save_freqs(&log->data.bts_cal.freqs);
 		log->data.bts_cal.disp_freq = decon->bts.max_disp_freq;
 		log->data.bts_cal.peak = decon->bts.peak;
+		log->data.bts_cal.rt_avg_bw = decon->bts.rt_avg_bw;
 		log->data.bts_cal.read_bw = decon->bts.read_bw;
 		log->data.bts_cal.write_bw = decon->bts.write_bw;
 		log->data.bts_cal.fps = decon->bts.fps;
@@ -379,13 +382,13 @@ static void dpu_print_log_rsc(char *buf, int len, struct dpu_log_rsc_occupancy *
 	sprintf(buf + len, "\t%s\t%s", str_chs, str_wins);
 }
 
-#define LOG_BUF_SIZE	128
+#define LOG_BUF_SIZE	160
 static int dpu_print_log_bts_update(char *buf, int len, struct dpu_log_bts_update *update)
 {
 	return scnprintf(buf + len, LOG_BUF_SIZE - len,
-			"\tmif(%lu) int(%lu) disp(%lu) peak(%u,%u) total(%u,%u)",
+			"\tmif(%lu) int(%lu) disp(%lu) peak(%u,%u) rt(%u,%u) total(%u,%u)",
 			update->freqs.mif_freq, update->freqs.int_freq, update->freqs.disp_freq,
-			update->prev_peak, update->peak,
+			update->prev_peak, update->peak, update->prev_rt_avg_bw, update->rt_avg_bw,
 			update->prev_total_bw, update->total_bw);
 }
 
@@ -582,10 +585,10 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 			break;
 		case DPU_EVT_BTS_CALC_BW:
 			scnprintf(buf + len, sizeof(buf) - len,
-					"\tdisp(%u) peak(%u) read(%u) write(%u) %uhz",
+					"\tdisp(%u) peak(%u) rt(%u) read(%u) write(%u) %uhz",
 					log->data.bts_cal.disp_freq, log->data.bts_cal.peak,
-					log->data.bts_cal.read_bw, log->data.bts_cal.write_bw,
-					log->data.bts_cal.fps);
+					log->data.bts_cal.rt_avg_bw, log->data.bts_cal.read_bw,
+					log->data.bts_cal.write_bw, log->data.bts_cal.fps);
 			break;
 		case DPU_EVT_DSIM_UNDERRUN:
 			scnprintf(buf + len, sizeof(buf) - len,

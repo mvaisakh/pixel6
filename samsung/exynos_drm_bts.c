@@ -37,7 +37,7 @@
 #define FRAME_TIME_NSEC		1000000000UL	/* 1sec */
 
 /* TODO: remove it after we move logic into bts driver */
-#define NUM_DRAM_CH		4
+#define NUM_INTERCONNECT_CH		4
 
 #define DPU_DEBUG_BTS(fmt, args...)	pr_debug("[BTS] "fmt,  ##args)
 #define DPU_INFO_BTS(fmt, args...)	pr_info("[BTS] "fmt,  ##args)
@@ -463,7 +463,6 @@ static u32 dpu_bts_find_max_overlap_bw(struct decon_device *decon,
 		DPU_DEBUG_BTS("  Overlap BW%d = %u\n", i, overlap_bw);
 		max_overlap_bw = max(max_overlap_bw, overlap_bw);
 	}
-	max_overlap_bw /= NUM_DRAM_CH;
 
 	return max_overlap_bw;
 }
@@ -533,12 +532,14 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
 	decon->bts.max_disp_freq = max_disp_ch_bw * 100 /
 			(decon->bts.bus_width * decon->bts.bus_util_pct);
 
-	/* TODO: the final INT should be max(max_peak_bw, total_peak_bw / NUM_DRAM_CH). It
-	 * needs some changes in bts driver to allow client request peak_bw. Before we lock down
-	 * the design, DPU requests max(max_ch_bw, max_overlap_bw / NUM_DRAM_CH) as peak. After
-	 * we ake write bw into account, we don't need to check it here.
+	/* TODO: the final INT should be max(max_peak_bw, total_peak_bw / NUM_DRAM_CH). It nees
+	 * some changes in bts driver to allow client request peak_bw. Before we lock down the
+	 * design, DPU requests max(max_ch_bw, max_overlap_bw / NUM_INTERCONNECT_CH) as peak.
+	 * After we take write bw into account, we don't need to check write bw here.
 	 */
-	decon->bts.peak = max3(max_disp_ch_bw, max_overlap_bw, decon->bts.write_bw);
+	decon->bts.peak = max3(max_disp_ch_bw, max_overlap_bw / NUM_INTERCONNECT_CH,
+				decon->bts.write_bw);
+	decon->bts.rt_avg_bw = max_overlap_bw;
 
 	for (i = 0; i < decon->win_cnt; ++i) {
 		u32 freq;
@@ -769,15 +770,17 @@ static void dpu_bts_update_resources(struct decon_device *decon, bool shadow_upd
 
 	/* update peak & R/W bandwidth per DPU port */
 	bw.peak = decon->bts.peak;
+	bw.rt = decon->bts.rt_avg_bw;
 	bw.read = decon->bts.read_bw;
 	bw.write = decon->bts.write_bw;
-	DPU_DEBUG_BTS("  peak = %u, read = %u, write = %u\n",
-			bw.peak, bw.read, bw.write);
+	DPU_DEBUG_BTS("  peak = %u, rt = %u, read = %u, write = %u\n",
+		bw.peak, bw.rt, bw.read, bw.write);
 
 	if (shadow_updated) {
 		/* after DECON h/w configs are updated to shadow SFR */
 		if (decon->bts.total_bw < decon->bts.prev_total_bw ||
-				decon->bts.peak < decon->bts.prev_peak)
+				decon->bts.peak < decon->bts.prev_peak ||
+				decon->bts.rt_avg_bw < decon->bts.prev_rt_avg_bw)
 			dpu_bts_update_bw(decon, bw);
 
 		if (decon->bts.max_disp_freq < decon->bts.prev_max_disp_freq)
@@ -785,10 +788,12 @@ static void dpu_bts_update_resources(struct decon_device *decon, bool shadow_upd
 
 		decon->bts.prev_total_bw = decon->bts.total_bw;
 		decon->bts.prev_peak = decon->bts.peak;
+		decon->bts.prev_rt_avg_bw = decon->bts.rt_avg_bw;
 		decon->bts.prev_max_disp_freq = decon->bts.max_disp_freq;
 	} else {
 		if (decon->bts.total_bw > decon->bts.prev_total_bw ||
-				decon->bts.peak > decon->bts.prev_peak)
+				decon->bts.peak > decon->bts.prev_peak ||
+				decon->bts.rt_avg_bw > decon->bts.prev_rt_avg_bw)
 			dpu_bts_update_bw(decon, bw);
 
 		if (decon->bts.max_disp_freq > decon->bts.prev_max_disp_freq)
@@ -812,6 +817,7 @@ static void dpu_bts_release_resources(struct decon_device *decon)
 	if (decon->config.out_type & DECON_OUT_DSI) {
 		dpu_bts_update_bw(decon, bw);
 		decon->bts.prev_peak = 0;
+		decon->bts.prev_rt_avg_bw = 0;
 		decon->bts.prev_total_bw = 0;
 		dpu_bts_update_disp(decon, 0);
 		decon->bts.prev_max_disp_freq = 0;
