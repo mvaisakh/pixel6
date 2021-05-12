@@ -2524,6 +2524,7 @@ static void global_hbm_work(struct work_struct *work)
 
 static void local_hbm_data_init(struct exynos_panel *ctx)
 {
+	ctx->hbm.local_hbm.gamma_para_ready = false;
 	ctx->hbm.local_hbm.max_timeout_ms = LOCAL_HBM_MAX_TIMEOUT_MS;
 	ctx->hbm.local_hbm.enabled = false;
 	ctx->hbm.wq = create_singlethread_workqueue("hbm_workq");

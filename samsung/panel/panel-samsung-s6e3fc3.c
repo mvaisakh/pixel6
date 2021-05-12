@@ -300,6 +300,45 @@ static void s6e3fc3_set_nolp_mode(struct exynos_panel *ctx,
 	dev_info(ctx->dev, "exit LP mode\n");
 }
 
+#define S6E3FC3_LOCAL_HBM_GAMMA_CMD_SIZE 6
+static int s6e3fc3_lhbm_gamma_read(struct exynos_panel *ctx)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	u8 *gamma_cmd = ctx->hbm.local_hbm.gamma_cmd;
+	int ret;
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_on_f0);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xCC); /* 10 bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x22, 0xD8); /* global para */
+	ret = mipi_dsi_dcs_read(dsi, 0xD8, gamma_cmd + 1, S6E3FC3_LOCAL_HBM_GAMMA_CMD_SIZE - 1);
+	if (ret == (S6E3FC3_LOCAL_HBM_GAMMA_CMD_SIZE - 1)) {
+		gamma_cmd[0] = 0x65;
+		ctx->hbm.local_hbm.gamma_para_ready = true;
+		ret = 0;
+	} else {
+		dev_err(ctx->dev, "fail to read LHBM gamma\n");
+		ret = -EIO;
+	}
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x28, 0xF2); /* global para*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xC4); /* 8 bit */
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_off_f0);
+	return ret;
+}
+
+static void s6e3fc3_lhbm_gamma_write(struct exynos_panel *ctx)
+{
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_on_f0);
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x28, 0xF2); /* global para*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xCC); /* 10 bit */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x03, 0xCD, 0x65); /* global para */
+	exynos_dcs_write(ctx, ctx->hbm.local_hbm.gamma_cmd,
+			 S6E3FC3_LOCAL_HBM_GAMMA_CMD_SIZE); /* write gamma */
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x28, 0xF2); /* global para*/
+	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF2, 0xC4); /* 8 bit */
+	EXYNOS_DCS_WRITE_TABLE(ctx, test_key_off_f0);
+}
+
 static int s6e3fc3_enable(struct drm_panel *panel)
 {
 	struct exynos_panel *ctx = container_of(panel, struct exynos_panel, panel);
@@ -322,6 +361,9 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 
 	if (ctx->panel_rev == PANEL_REV_PROTO1_1)
 		exynos_panel_send_cmd_set(ctx, &s6e3fc3_4_pwm_cmd_set);
+	else if (ctx->panel_rev >= PANEL_REV_EVT1_1)
+		if (ctx->hbm.local_hbm.gamma_para_ready)
+			s6e3fc3_lhbm_gamma_write(ctx);
 
 	/* DSC related configuration */
 	exynos_dcs_compression_mode(ctx, 0x1); /* DSC_DEC_ON */
@@ -411,6 +453,10 @@ static void s6e3fc3_panel_init(struct exynos_panel *ctx)
 
 	exynos_panel_debugfs_create_cmdset(ctx, csroot,
 					   &s6e3fc3_init_cmd_set, "init");
+
+	if (ctx->panel_rev >= PANEL_REV_EVT1_1)
+		if (!s6e3fc3_lhbm_gamma_read(ctx))
+			s6e3fc3_lhbm_gamma_write(ctx);
 }
 
 static u32 s6e3fc3_get_panel_rev(u32 id)

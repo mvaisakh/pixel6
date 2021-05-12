@@ -338,6 +338,7 @@ struct exynos_panel_desc {
 #define PANEL_ID_MAX		32
 #define PANEL_EXTINFO_MAX	16
 #define LOCAL_HBM_MAX_TIMEOUT_MS 1500 /* 1500 ms */
+#define LOCAL_HBM_GAMMA_CMD_SIZE_MAX 16
 
 struct exynos_bl_notifier {
 	u32 ranges[MAX_BL_RANGES];
@@ -404,6 +405,8 @@ struct exynos_panel {
 
 	struct {
 		struct local_hbm {
+			bool gamma_para_ready;
+			u8 gamma_cmd[LOCAL_HBM_GAMMA_CMD_SIZE_MAX];
 			/* indicate if local hbm enabled or not */
 			bool enabled;
 			/* max local hbm on period in ms */
