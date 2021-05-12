@@ -470,13 +470,11 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	/* battery demand comes from charging tier or thermal limit */
 	batt_demand = (gcpm->cc_max / 1000) * (gcpm->fv_uv / 1000);
 	/* TODO: handle capabilities based on index number */
-	if (batt_demand > gcpm->dc_limit_demand) {
+	if (batt_demand > gcpm->dc_limit_demand)
 		index = GCPM_INDEX_DC_ENABLE;
 
-		pr_debug("%s: index=%d/%d demand=%d > dc_limit=%d\n", __func__,
-			 index, gcpm->chg_psy_count, batt_demand,
-			 gcpm->dc_limit_demand);
-	}
+	pr_debug("%s: index=%d demand=%d, dc_limit=%d\n", __func__,
+		 index, batt_demand, gcpm->dc_limit_demand);
 
 	/* TODO: add debounce on demand */
 
@@ -521,7 +519,7 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 		return GCPM_DEFAULT_CHARGER;
 	}
 
-	/* thermals might have reduced demand and was tno caught from dc_limit */
+	/* thermals might have reduced demand and was not caught from dc_limit */
 	if (gcpm->cc_max <= gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
 		pr_debug("%s: cc_max=%d under cc_min=%d\n", __func__,
 			 gcpm->cc_max, gcpm->dc_limit_cc_min);
