@@ -2521,6 +2521,15 @@ static void sec_ts_read_vendor_event(struct sec_ts_data *ts,
 					status_data_2, status_data_1);
 			break;
 
+		case SEC_TS_EVENT_STATUS_ID_VSYNC:
+			ts->vsync = status_data_1;
+			if (ts->debug_status)
+				input_info(true,
+					&ts->client->dev,
+					"STATUS: vsync %d -> %d\n",
+					status_data_2, status_data_1);
+			break;
+
 		case SEC_TS_EVENT_STATUS_ID_WLC:
 			input_info(true,
 				&ts->client->dev,
@@ -3312,10 +3321,10 @@ static int sec_ts_parse_dt(struct spi_device *client)
 			  "%s: Failed to get tsp-icid gpio\n", __func__);
 	}
 
-	pdata->tsp_vsync = of_get_named_gpio(np, "sec,tsp_vsync_gpio", 0);
-	if (gpio_is_valid(pdata->tsp_vsync))
+	pdata->vsync_gpio = of_get_named_gpio(np, "sec,tsp_vsync_gpio", 0);
+	if (gpio_is_valid(pdata->vsync_gpio))
 		input_info(true, &client->dev, "%s: vsync %s\n", __func__,
-			gpio_get_value(pdata->tsp_vsync) ?
+			gpio_get_value(pdata->vsync_gpio) ?
 				"disable" : "enable");
 
 	pdata->irq_gpio = of_get_named_gpio(np, "sec,irq_gpio", 0);

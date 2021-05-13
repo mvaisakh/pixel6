@@ -761,6 +761,7 @@ struct sec_ts_gesture_status {
 /* status id for sec_ts event */
 #define SEC_TS_EVENT_STATUS_ID_HOPPING		0x33
 #define SEC_TS_EVENT_STATUS_ID_REPORT_RATE	0x34
+#define SEC_TS_EVENT_STATUS_ID_VSYNC		0x35
 #define SEC_TS_EVENT_STATUS_ID_NOISE		0x64
 #define SEC_TS_EVENT_STATUS_ID_WLC		0x66
 #define SEC_TS_EVENT_STATUS_ID_GRIP		0x69
@@ -1004,6 +1005,7 @@ struct sec_ts_data {
 	bool external_factory;
 
 	int report_rate;
+	int vsync;
 	int wet_mode;
 
 	unsigned char ito_test[4];		/* ito panel tx/rx chanel */
@@ -1142,7 +1144,7 @@ struct sec_ts_plat_data {
 	void (*enable_sync)(bool on);
 	int tsp_icid;
 	int tsp_id;
-	int tsp_vsync;
+	int vsync_gpio;
 	int switch_gpio;
 	int reset_gpio;
 

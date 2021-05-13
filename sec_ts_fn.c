@@ -1283,6 +1283,8 @@ static ssize_t status_show(struct device *dev,
 			     "Fingers#: %d\n", ts->touch_count);
 	written += scnprintf(buf + written, PAGE_SIZE - written,
 			     "Report rate: %d\n", ts->report_rate);
+	written += scnprintf(buf + written, PAGE_SIZE - written,
+			     "Vsync: %d\n", ts->vsync);
 out:
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, false);
