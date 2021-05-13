@@ -811,47 +811,73 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 	return ret;
 }
 
-static int pca9468_const_charge_voltage(struct pca9468_charger *pca9468);
-
-static int pca9468_comp_irdrop(struct pca9468_charger *pca9468, int fv_uv)
+/* TODO: tune offset and limit */
+static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 {
-	const int delta_offset = 25000; /* min headroom */
-	const int delta_limit = 75000; /* reduce at high voltage */
-	int vbat, v_float, delta = 0;
-	int ret = 0;
+	const int delta_offset = 20000;
+	const int delta_limit = 85000; /* reduce at high voltage? */
+	int ret, vbat, pca_vbat = 0, delta = 0;
 
 	ret = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
 	if (ret < 0)
 		goto error_done;
 
-	v_float = pca9468_const_charge_voltage(pca9468);
-	if (v_float > 0)
-		delta = fv_uv - vbat;
-	if (delta > 0)
-		delta += delta_offset;
+	pca_vbat = pca9468_read_adc(pca9468, ADCCH_VBAT);
+	if (pca_vbat < 0 || pca_vbat < vbat)
+		goto error_done;
+
+	delta = pca_vbat - vbat;
 	if (delta > delta_limit)
 		delta = delta_limit;
-	if (fv_uv + delta > PCA9468_COMP_VFLOAT_MAX)
-		fv_uv = PCA9468_COMP_VFLOAT_MAX;
 
-	/* will reset on disconnect */
-	if (fv_uv + delta > v_float)
-		ret = fv_uv + delta;
-	else
-		ret = -EINVAL;
+	delta += delta_offset;
+	if (fv_uv + delta > PCA9468_COMP_VFLOAT_MAX)
+		delta = PCA9468_COMP_VFLOAT_MAX - fv_uv;
 
 error_done:
-	pr_debug("%s: fv_uv=%d v_float=%d vbat=%d delta_v=%d actual=%d (%d)\n",
-		 __func__, pca9468->fv_uv, v_float, vbat, delta,
-		 pca9468->fv_uv + delta, ret);
+	pr_debug("%s: fv_uv=%d->%d pca_vbat=%d, vbat=%d delta_v=%d\n",
+		 __func__, fv_uv, fv_uv + delta, pca_vbat,
+		 ret < 0 ? ret : vbat, delta);
+
+	if (fv_uv + delta < pca_vbat) {
+		pr_err("%s: fv_uv=%d, comp_fv_uv=%d is lower than VBAT=%d\n",
+		       __func__, fv_uv, fv_uv + delta, pca_vbat);
+		return -EINVAL;
+	}
+
+	return fv_uv + delta;
+}
+
+static int pca9468_const_charge_voltage(struct pca9468_charger *pca9468);
+
+/* irdrop compensation for the pca9468 V_FLOAT, will only raise it */
+static int pca9468_comp_irdrop(struct pca9468_charger *pca9468)
+{
+	int ret = 0, v_float, fv_uv;
+
+	v_float = pca9468_const_charge_voltage(pca9468);
+	if (v_float < 0)
+		return -EIO;
+
+	fv_uv = pca9468_apply_irdrop(pca9468, pca9468->fv_uv);
+	if (fv_uv < 0)
+		return -EIO;
+
+	/* do not back down */
+	if (fv_uv > v_float) {
+		ret = pca9468_set_vfloat(pca9468, fv_uv);
+		pr_debug("%s: v_float=%u->%u (%d)\n", __func__,
+			 v_float, fv_uv, ret);
+	}
+
 	return ret;
 }
 
 /* TODO: remove this, just call  pca9468_read_status() */
 static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 {
-	int icn = -EINVAL, ibat = -EINVAL, vbat = -EINVAL, rc;
-	int status;
+	int icn = -EINVAL, ibat = -EINVAL, vbat = -EINVAL;
+	int rc, status;
 
 	status = pca9468_read_status(pca9468);
 	if (status < 0)
@@ -867,31 +893,17 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 		 __func__, status, icn, ibat, icn - ibat, vbat,
 		 pca9468->fv_uv, pca9468->cc_max);
 
-	/*
-	 * TODO: call from CCMODE_VFLT_LOOP in pca9468_charge_ccmode() or do
-	 * it in google_battery.
-	 */
-	if (status != CCMODE_VFLT_LOOP && status != CCMODE_VIN_UVLO) {
-		int ret, fv_uv;
-
-		fv_uv = pca9468_comp_irdrop(pca9468, pca9468->fv_uv);
-		if (fv_uv > 0)
-			ret = pca9468_set_vfloat(pca9468, fv_uv);
-	}
-
 error:
 	pr_debug("%s: CCMODE Status=%d\n", __func__, status);
 	return status;
 }
 
-
-/* Check CVMode Status */
+/* TODO: pca9468_check_ccmode_status() is similar */
 static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
 {
 	int ibat = -EINVAL, vbat = -EINVAL, rc;
 	int status;
 
-	/* Read STS_A */
 	status = pca9468_read_status(pca9468);
 	if (status < 0)
 		goto error;
@@ -1064,7 +1076,6 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 
 	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
-
 
 		/* compare IIN ADC with previous IIN ADC + 20mA */
 		if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
@@ -1428,14 +1439,12 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		/* IIN_CC - 50mA < IIN ADC < IIN_CC + 50mA  */
 		pr_debug("%s: Comp. End(valid): ta_vol=%u\n", __func__,
 			 pca9468->ta_vol);
-		/* Set timer */
+
 		/* Check the current charging state */
 		if (pca9468->charging_state == DC_STATE_CC_MODE) {
-			/* CC mode */
 			pca9468->timer_id = TIMER_CHECK_CCMODE;
 			pca9468->timer_period = PCA9468_CCMODE_CHECK1_T;
 		} else {
-			/* CV mode */
 			pca9468->timer_id = TIMER_CHECK_CVMODE;
 			pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
 		}
@@ -1998,28 +2007,18 @@ done:
 	return ret;
 }
 
-/* Called from CC and CV loops, needs mutex_lock(&pca9468->lock) */
+/*
+ * Apply pca9468->new_vfloat to the charging voltage.
+ * Called from CC and CV loops, needs mutex_lock(&pca9468->lock)
+ */
 static int pca9468_apply_new_vfloat(struct pca9468_charger *pca9468)
 {
-	int vbat, ret = 0;
-	int fv_uv;
+	int fv_uv, ret = 0;
 
-	vbat = pca9468_read_adc(pca9468, ADCCH_VBAT);
-	if (vbat < 0) {
-		pr_debug("%s: invalid vbat=%d\n", __func__, vbat);
-		goto error_done;
-	}
-
-	/* make sure new (compensated) float is over battery */
-	fv_uv = pca9468_comp_irdrop(pca9468, pca9468->new_vfloat);
-	if (fv_uv <= vbat) {
-		pr_err("%s: new_vfloat=%d, comp fv_uv=%d is lower than VBAT=%d ADC\n",
-			__func__, pca9468->new_vfloat, fv_uv, vbat);
-		goto error_done;
-	}
-
-	pr_debug("%s: new_vfloat=%d, fv_uv=%d VBAT=%d\n", __func__,
-		 pca9468->new_vfloat, fv_uv, vbat);
+	/* compensated float voltage, -EINVAL if under pca_vbat */
+	fv_uv = pca9468_apply_irdrop(pca9468, pca9468->new_vfloat);
+	if (fv_uv < 0)
+		return fv_uv;
 
 	/* actually change the hardware */
 	ret = pca9468_set_vfloat(pca9468, fv_uv);
@@ -2028,17 +2027,21 @@ static int pca9468_apply_new_vfloat(struct pca9468_charger *pca9468)
 
 	/* Restart the process (TODO: optimize this) */
 	ret = pca9468_reset_dcmode(pca9468);
-	if (ret == 0) {
+	if (ret < 0) {
+		pr_err("%s: cannot reset dcmode (%d)\n", __func__, ret);
+	} else {
 		pca9468->charging_state = DC_STATE_ADJUST_CC;
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 	}
 
 error_done:
+	pr_debug("%s: new_vfloat=%d, fv_uv=%d ret=%d\n", __func__,
+		 pca9468->new_vfloat, fv_uv, ret);
+
 	if (ret == 0)
 		pca9468->new_vfloat = 0;
 
-	pr_debug("%s: ret=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -2264,6 +2267,7 @@ static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 {
 	int iin, ccmode, vbatt, vin_vol;
+	bool apply_ircomp = false;
 	int ret = 0;
 
 	pr_debug("%s: ======START=======\n", __func__);
@@ -2276,7 +2280,6 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 	if (ret != 0)
 		goto error; // This is not active mode.
 
-	/* Check the status */
 	ccmode = pca9468_check_ccmode_status(pca9468);
 	if (ccmode < 0) {
 		ret = ccmode;
@@ -2286,6 +2289,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 	switch(ccmode) {
 	case CCMODE_IIN_LOOP:
 	case CCMODE_CHG_LOOP:	/* CHG_LOOP does't exist */
+		apply_ircomp = true;
 
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 			/* Decrease RX voltage (100mV) */
@@ -2329,7 +2333,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		break;
 
 	case CCMODE_LOOP_INACTIVE:
-		/* Check IIN ADC with IIN */
+
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
 		pr_debug("%s: iin=%d, iin_cc=%d, cc_max=%d\n", __func__,
 			 iin, pca9468->iin_cc, pca9468->cc_max);
@@ -2340,11 +2344,15 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 			ret = pca9468_ajdust_ccmode_wireless(pca9468, iin);
 		} else {
 			ret = pca9468_ajdust_ccmode_wired(pca9468, iin);
-
 		}
 
-		/* Save previous iin adc */
-		pca9468->prev_iin = iin;
+		if (ret < 0) {
+			pr_err("%s: %d", __func__, ret);
+		} else {
+			pca9468->prev_iin = iin;
+			apply_ircomp = true;
+		}
+
 		break;
 
 	case CCMODE_VIN_UVLO:
@@ -2363,6 +2371,15 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		goto error;
 	}
 
+	if (!pca9468->irdrop_comp_ok && apply_ircomp) {
+		int rc;
+
+		rc = pca9468_comp_irdrop(pca9468);
+		if (rc < 0)
+			pr_err("%s: cannot apply ircomp (%d)\n",
+			       __func__, rc);
+	}
+
 	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			 msecs_to_jiffies(pca9468->timer_period));
 error:
@@ -2375,6 +2392,7 @@ error:
 static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 {
 	int rc, ccmode, vin_vol, iin, ibat, ret = 0;
+	bool apply_ircomp = false;
 
 	pr_debug("%s: ======START======= \n", __func__);
 
@@ -2388,7 +2406,10 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 	if (ret != 0)
 		goto error_exit;
 
-	/* Check new vfloat request and new iin request */
+	/*
+	 * A change in VFLOAT here means that we have busted the tier, a
+	 * change in iin means that the thermal engine had changed cc_max
+	 */
 	if (pca9468->new_vfloat) {
 		ret = pca9468_apply_new_vfloat(pca9468);
 		if (ret < 0)
@@ -2445,6 +2466,9 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 				 __func__, pca9468->ta_cur,
 				 pca9468->ta_vol);
 		}
+
+		if (ret == 0)
+			apply_ircomp = true;
 		break;
 
 	case CCMODE_VFLT_LOOP:
@@ -2502,6 +2526,15 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 
 	default:
 		break;
+	}
+
+	if (!pca9468->irdrop_comp_ok && apply_ircomp) {
+		int rc;
+
+		rc = pca9468_comp_irdrop(pca9468);
+		if (rc < 0)
+			pr_err("%s: cannot apply ircomp (%d)\n",
+			       __func__, rc);
 	}
 
 done:
@@ -2652,7 +2685,10 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 	if (ret != 0)
 		goto error_exit;
 
-	/* Check new vfloat request and new iin request */
+	/*
+	 * A change in vfloat and cc_max here is a normal tier transition, a
+	 * change in iin  means that the thermal engine has changed cc_max.
+	 */
 	if (pca9468->new_vfloat) {
 		ret = pca9468_apply_new_vfloat(pca9468);
 		if (ret < 0)
