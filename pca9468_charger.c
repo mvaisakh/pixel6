@@ -2074,12 +2074,196 @@ done:
 	return ret;
 }
 
-/* 2:1 Direct Charging Adjust CC MODE control */
+/* called on loop inactive */
+static int pca9468_ajdust_ccmode_wireless(struct pca9468_charger *pca9468, int iin)
+{
+	/* IIN_ADC > IIN_CC -20mA ? */
+	if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
+		/* Input current is already over IIN_CC */
+		/* End RX voltage adjustment */
+		/* change charging state to CC mode */
+		pca9468->charging_state = DC_STATE_CC_MODE;
+
+		pr_debug("%s: CC adjust End: IIN_ADC=%d, rx_vol=%u\n",
+				__func__, iin, pca9468->ta_vol);
+
+		/* Clear TA increment flag */
+		pca9468->prev_inc = INC_NONE;
+		/* Go to CC mode */
+		pca9468->timer_id = TIMER_CHECK_CCMODE;
+		pca9468->timer_period = 0;
+
+	/* Check RX voltage */
+	} else if (pca9468->ta_vol == pca9468->ta_max_vol) {
+		/* RX voltage is already max value */
+		pr_debug("%s: CC adjust End: MAX value, rx_vol=%u\n",
+				__func__, pca9468->ta_vol);
+
+		/* Clear TA increment flag */
+		pca9468->prev_inc = INC_NONE;
+		/* Go to CC mode */
+		pca9468->timer_id = TIMER_CHECK_CCMODE;
+		pca9468->timer_period = 0;
+	} else {
+		/* Try to increase RX voltage(100mV) */
+		pca9468->ta_vol = pca9468->ta_vol + WCRX_VOL_STEP;
+		if (pca9468->ta_vol > pca9468->ta_max_vol)
+			pca9468->ta_vol = pca9468->ta_max_vol;
+
+		pr_debug("%s: CC adjust. Cont: rx_vol=%u\n",
+				__func__, pca9468->ta_vol);
+		/* Set RX voltage */
+		pca9468->timer_id = TIMER_PDMSG_SEND;
+		pca9468->timer_period = 0;
+	}
+
+	return 0;
+}
+
+/* called on loop inactive */
+static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
+{
+	/* USBPD TA is connected */
+	if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
+		/* IIN_ADC > IIN_CC -20mA ? */
+		/* Input current is already over IIN_CC */
+		/* End TA voltage and current adjustment */
+		/* change charging state to CC mode */
+		pca9468->charging_state = DC_STATE_CC_MODE;
+
+		pr_debug("%s: CC adjust End: IIN_ADC=%d, ta_vol=%u, ta_cur=%u\n",
+				__func__, iin, pca9468->ta_vol,
+				pca9468->ta_cur);
+
+		/* Clear TA increment flag */
+		pca9468->prev_inc = INC_NONE;
+		/* Go to CC mode */
+		pca9468->timer_id = TIMER_CHECK_CCMODE;
+		pca9468->timer_period = 0;
+
+	/* Check TA voltage */
+	} else if (pca9468->ta_vol == pca9468->ta_max_vol) {
+		/* TA voltage is already max value */
+		pr_debug("%s: CC adjust End: MAX value, ta_vol=%u, ta_cur=%u\n",
+				__func__, pca9468->ta_vol, pca9468->ta_cur);
+
+		/* Clear TA increment flag */
+		pca9468->prev_inc = INC_NONE;
+		/* Go to CC mode */
+		pca9468->timer_id = TIMER_CHECK_CCMODE;
+		pca9468->timer_period = 0;
+
+		/* Check TA tolerance
+		 * The current input current compares the final input
+		 * current(IIN_CC) with 100mA offset PPS current tolerance
+		 * has +/-150mA, so offset defined 100mA(tolerance +50mA)
+		 */
+	} else if (iin < (pca9468->iin_cc - PCA9468_TA_IIN_OFFSET)) {
+		/*
+		 * TA voltage too low to enter TA CC mode, so we
+		 * should increase TA voltage
+		 */
+		pca9468->ta_vol = pca9468->ta_vol + PCA9468_TA_VOL_STEP_ADJ_CC *
+					pca9468->chg_mode;
+
+		if (pca9468->ta_vol > pca9468->ta_max_vol)
+			pca9468->ta_vol = pca9468->ta_max_vol;
+
+		pr_debug("%s: CC adjust Cont: ta_vol=%u\n",
+				__func__, pca9468->ta_vol);
+		/* Set TA increment flag */
+		pca9468->prev_inc = INC_TA_VOL;
+		/* Send PD Message */
+		pca9468->timer_id = TIMER_PDMSG_SEND;
+		pca9468->timer_period = 0;
+
+	/* compare IIN ADC with previous IIN ADC + 20mA */
+	} else if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
+		/* TA can supply more current if TA voltage is high */
+		/* TA voltage too low for TA CC mode: increase it */
+		pca9468->ta_vol = pca9468->ta_vol +
+					PCA9468_TA_VOL_STEP_ADJ_CC *
+					pca9468->chg_mode;
+		if (pca9468->ta_vol > pca9468->ta_max_vol)
+			pca9468->ta_vol = pca9468->ta_max_vol;
+
+		pr_debug("%s: CC adjust Cont: ta_vol=%u\n",
+				__func__, pca9468->ta_vol);
+		/* Set TA increment flag */
+		pca9468->prev_inc = INC_TA_VOL;
+
+		/* Send PD Message */
+		pca9468->timer_id = TIMER_PDMSG_SEND;
+		pca9468->timer_period = 0;
+
+	/* Check the previous increment */
+	} else if (pca9468->prev_inc == INC_TA_CUR) {
+		/*
+		 * The previous increment is TA current, but input
+		 * current does not increase
+		 */
+
+		/* Try to increase TA voltage(40mV) */
+		pca9468->ta_vol = pca9468->ta_vol +
+					PCA9468_TA_VOL_STEP_ADJ_CC *
+					pca9468->chg_mode;
+		if (pca9468->ta_vol > pca9468->ta_max_vol)
+			pca9468->ta_vol = pca9468->ta_max_vol;
+
+		pr_debug("%s: CC adjust(flag) Cont: ta_vol=%u\n", __func__,
+			 pca9468->ta_vol);
+
+		/* Set TA increment flag */
+		pca9468->prev_inc = INC_TA_VOL;
+		/* Send PD Message */
+		pca9468->timer_id = TIMER_PDMSG_SEND;
+		pca9468->timer_period = 0;
+
+		/*
+		 * The previous increment is TA voltage, but input
+		 * current does not increase
+		 */
+
+		/* Try to increase TA current */
+		/* Check APDO max current */
+	} else if (pca9468->ta_cur == pca9468->ta_max_cur) {
+		/* TA current is maximum current */
+
+		pr_debug("%s: CC adjust End(MAX_CUR): IIN_ADC=%d, ta_vol=%u, ta_cur=%u\n",
+			 __func__, iin, pca9468->ta_vol, pca9468->ta_cur);
+
+		/* Clear TA increment flag */
+		pca9468->prev_inc = INC_NONE;
+		/* Go to CC mode */
+		pca9468->timer_id = TIMER_CHECK_CCMODE;
+		pca9468->timer_period = 0;
+	} else {
+		/* TA has tolerance and compensate it as real current */
+		/* Increase TA current(50mA) */
+		pca9468->ta_cur = pca9468->ta_cur + PD_MSG_TA_CUR_STEP;
+		if (pca9468->ta_cur > pca9468->ta_max_cur)
+			pca9468->ta_cur = pca9468->ta_max_cur;
+
+		pr_debug("%s: CC adjust Cont: ta_cur=%u\n", __func__,
+			 pca9468->ta_cur);
+
+		/* Set TA increment flag */
+		pca9468->prev_inc = INC_TA_CUR;
+		/* Send PD Message */
+		pca9468->timer_id = TIMER_PDMSG_SEND;
+		pca9468->timer_period = 0;
+	}
+
+	return 0;
+}
+
+/* 2:1 Direct Charging Adjust CC MODE control
+ * called at the beginnig of CC mode charging. Will be followed by
+ * pca9468_charge_ccmode with wich share some of the adjustments.
+ */
 static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 {
-	int iin, ccmode;
-	int vbatt;
-	int vin_vol;
+	int iin, ccmode, vbatt, vin_vol;
 	int ret = 0;
 
 	pr_debug("%s: ======START=======\n", __func__);
@@ -2152,178 +2336,11 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		if (iin < 0)
 			break;
 
-		/* Check the TA type first */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
-
-			/* IIN_ADC > IIN_CC -20mA ? */
-			if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
-				/* Input current is already over IIN_CC */
-				/* End RX voltage adjustment */
-				/* change charging state to CC mode */
-				pca9468->charging_state = DC_STATE_CC_MODE;
-
-				pr_debug("%s: CC adjust End: IIN_ADC=%d, rx_vol=%u\n",
-					 __func__, iin, pca9468->ta_vol);
-
-				/* Clear TA increment flag */
-				pca9468->prev_inc = INC_NONE;
-				/* Go to CC mode */
-				pca9468->timer_id = TIMER_CHECK_CCMODE;
-				pca9468->timer_period = 0;
-
-			/* Check RX voltage */
-			} else if (pca9468->ta_vol == pca9468->ta_max_vol) {
-				/* RX voltage is already max value */
-				pr_debug("%s: CC adjust End: MAX value, rx_vol=%u\n",
-					 __func__, pca9468->ta_vol);
-
-				/* Clear TA increment flag */
-				pca9468->prev_inc = INC_NONE;
-				/* Go to CC mode */
-				pca9468->timer_id = TIMER_CHECK_CCMODE;
-				pca9468->timer_period = 0;
-			} else {
-				/* Try to increase RX voltage(100mV) */
-				pca9468->ta_vol = pca9468->ta_vol + WCRX_VOL_STEP;
-				if (pca9468->ta_vol > pca9468->ta_max_vol)
-					pca9468->ta_vol = pca9468->ta_max_vol;
-
-				pr_debug("%s: CC adjust. Cont: rx_vol=%u\n",
-					 __func__, pca9468->ta_vol);
-				/* Set RX voltage */
-				pca9468->timer_id = TIMER_PDMSG_SEND;
-				pca9468->timer_period = 0;
-			}
-
-		/* USBPD TA is connected */
-		} else if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
-			/* IIN_ADC > IIN_CC -20mA ? */
-			/* Input current is already over IIN_CC */
-			/* End TA voltage and current adjustment */
-			/* change charging state to CC mode */
-			pca9468->charging_state = DC_STATE_CC_MODE;
-
-			pr_debug("%s: CC adjust End: IIN_ADC=%d, ta_vol=%u, ta_cur=%u\n",
-				 __func__, iin, pca9468->ta_vol,
-				 pca9468->ta_cur);
-
-			/* Clear TA increment flag */
-			pca9468->prev_inc = INC_NONE;
-			/* Go to CC mode */
-			pca9468->timer_id = TIMER_CHECK_CCMODE;
-			pca9468->timer_period = 0;
-
-		/* Check TA voltage */
-		} else if (pca9468->ta_vol == pca9468->ta_max_vol) {
-			/* TA voltage is already max value */
-			pr_debug("%s: CC adjust End: MAX value, ta_vol=%u, ta_cur=%u\n",
-				 __func__, pca9468->ta_vol, pca9468->ta_cur);
-
-			/* Clear TA increment flag */
-			pca9468->prev_inc = INC_NONE;
-			/* Go to CC mode */
-			pca9468->timer_id = TIMER_CHECK_CCMODE;
-			pca9468->timer_period = 0;
-
-		/* Check TA tolerance
-		 * The current input current compares the final input
-		 * current(IIN_CC) with 100mA offset PPS current tolerance
-		 * has +/-150mA, so offset defined 100mA(tolerance +50mA)
-		 */
-		} else if (iin < (pca9468->iin_cc - PCA9468_TA_IIN_OFFSET)) {
-			/*
-			 * TA voltage too low to enter TA CC mode, so we
-			 * should increase TA voltage
-			 */
-			pca9468->ta_vol = pca9468->ta_vol +
-					  PCA9468_TA_VOL_STEP_ADJ_CC *
-					  pca9468->chg_mode;
-
-			if (pca9468->ta_vol > pca9468->ta_max_vol)
-				pca9468->ta_vol = pca9468->ta_max_vol;
-
-			pr_debug("%s: CC adjust Cont: ta_vol=%u\n",
-				 __func__, pca9468->ta_vol);
-			/* Set TA increment flag */
-			pca9468->prev_inc = INC_TA_VOL;
-			/* Send PD Message */
-			pca9468->timer_id = TIMER_PDMSG_SEND;
-			pca9468->timer_period = 0;
-
-		/* compare IIN ADC with previous IIN ADC + 20mA */
-		} else if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
-			/* TA can supply more current if TA voltage is high */
-			/* TA voltage too low for TA CC mode: increase it */
-			pca9468->ta_vol = pca9468->ta_vol +
-					  PCA9468_TA_VOL_STEP_ADJ_CC *
-					  pca9468->chg_mode;
-			if (pca9468->ta_vol > pca9468->ta_max_vol)
-				pca9468->ta_vol = pca9468->ta_max_vol;
-
-			pr_debug("%s: CC adjust Cont: ta_vol=%u\n",
-				 __func__, pca9468->ta_vol);
-			/* Set TA increment flag */
-			pca9468->prev_inc = INC_TA_VOL;
-
-			/* Send PD Message */
-			pca9468->timer_id = TIMER_PDMSG_SEND;
-			pca9468->timer_period = 0;
-
-		/* Check the previous increment */
-		} else if (pca9468->prev_inc == INC_TA_CUR) {
-			/*
-			 * The previous increment is TA current, but input
-			 * current does not increase
-			 */
-
-			/* Try to increase TA voltage(40mV) */
-			pca9468->ta_vol = pca9468->ta_vol +
-					  PCA9468_TA_VOL_STEP_ADJ_CC *
-					  pca9468->chg_mode;
-			if (pca9468->ta_vol > pca9468->ta_max_vol)
-				pca9468->ta_vol = pca9468->ta_max_vol;
-
-			pr_debug("%s: CC adjust(flag) Cont: ta_vol=%u\n",
-				 __func__, pca9468->ta_vol);
-
-			/* Set TA increment flag */
-			pca9468->prev_inc = INC_TA_VOL;
-			/* Send PD Message */
-			pca9468->timer_id = TIMER_PDMSG_SEND;
-			pca9468->timer_period = 0;
-
-			/* The previous increment is TA voltage, but input
-			 * current does not increase
-			 */
-			/* Try to increase TA current */
-			/* Check APDO max current */
-		} else if (pca9468->ta_cur == pca9468->ta_max_cur) {
-			/* TA current is maximum current */
-
-			pr_debug("%s: CC adjust End(MAX_CUR): IIN_ADC=%d, ta_vol=%u, ta_cur=%u\n",
-				 __func__, iin, pca9468->ta_vol,
-				 pca9468->ta_cur);
-
-			/* Clear TA increment flag */
-			pca9468->prev_inc = INC_NONE;
-			/* Go to CC mode */
-			pca9468->timer_id = TIMER_CHECK_CCMODE;
-			pca9468->timer_period = 0;
+			ret = pca9468_ajdust_ccmode_wireless(pca9468, iin);
 		} else {
-			/* TA has tolerance and compensate it as real current */
-			/* Increase TA current(50mA) */
-			pca9468->ta_cur = pca9468->ta_cur + PD_MSG_TA_CUR_STEP;
-			if (pca9468->ta_cur > pca9468->ta_max_cur)
-				pca9468->ta_cur = pca9468->ta_max_cur;
+			ret = pca9468_ajdust_ccmode_wired(pca9468, iin);
 
-			pr_debug("%s: CC adjust Cont: ta_cur=%u\n",
-				 __func__, pca9468->ta_cur);
-
-			/* Set TA increment flag */
-			pca9468->prev_inc = INC_TA_CUR;
-			/* Send PD Message */
-			pca9468->timer_id = TIMER_PDMSG_SEND;
-			pca9468->timer_period = 0;
 		}
 
 		/* Save previous iin adc */
@@ -2357,10 +2374,7 @@ error:
 /* 2:1 Direct Charging CC MODE control */
 static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 {
-	int rc, ret = 0;
-	int ccmode;
-	int vin_vol, iin;
-	int ibat;
+	int rc, ccmode, vin_vol, iin, ibat, ret = 0;
 
 	pr_debug("%s: ======START======= \n", __func__);
 
