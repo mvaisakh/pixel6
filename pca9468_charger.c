@@ -2823,6 +2823,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 	if (vbat > pca9468->fv_uv) {
 		pr_err("%s: vbat adc=%d is higher than VFLOAT=%d\n", __func__,
 			vbat, pca9468->fv_uv);
+		ret = -EINVAL;
 		goto error;
 	}
 
