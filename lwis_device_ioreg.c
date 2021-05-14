@@ -22,6 +22,7 @@
 #include "lwis_init.h"
 #include "lwis_interrupt.h"
 #include "lwis_ioreg.h"
+#include "lwis_periodic_io.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -133,6 +134,64 @@ error_probe:
 	return ret;
 }
 
+#ifdef CONFIG_PM
+static int lwis_ioreg_device_suspend(struct device *dev)
+{
+	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
+	struct lwis_client *lwis_client, *n;
+	int ret = 0;
+
+	if (lwis_dev->enabled == 0) {
+		return ret;
+	}
+
+	list_for_each_entry_safe (lwis_client, n, &lwis_dev->clients, node) {
+		if (!lwis_client->is_enabled) {
+			continue;
+		}
+		/* Flush all periodic io to complete */
+		ret = lwis_periodic_io_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to wait for in-process periodic io to complete\n");
+		}
+
+		/* Flush all pending transactions */
+		ret = lwis_transaction_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+		}
+
+		/* Run cleanup transactions. */
+		lwis_transaction_client_cleanup(lwis_client);
+
+		lwis_client_event_states_clear(lwis_client);
+
+		lwis_client->is_enabled = false;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	ret = lwis_dev_power_down_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power down device\n");
+	}
+
+	lwis_device_event_states_clear_locked(lwis_dev);
+	lwis_dev->enabled = 0;
+	dev_warn(lwis_dev->dev, "Device disabled when syetem suspend\n");
+	mutex_unlock(&lwis_dev->client_lock);
+	return 0;
+}
+
+static int lwis_ioreg_device_resume(struct device *dev)
+{
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(lwis_ioreg_device_ops, lwis_ioreg_device_suspend,
+			 lwis_ioreg_device_resume);
+#endif
+
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
 	{ .compatible = LWIS_IOREG_DEVICE_COMPAT },
@@ -147,6 +206,7 @@ static struct platform_driver lwis_driver = {
 			.name = LWIS_DRIVER_NAME,
 			.owner = THIS_MODULE,
 			.of_match_table = lwis_id_match,
+			.pm = &lwis_ioreg_device_ops,
 		},
 };
 #else /* CONFIG_OF not defined */
