@@ -98,7 +98,7 @@ struct max77759_foreach_cb_data {
 
 	const char *reason;
 
-	bool chgr_on;	/* CC_MAX != 0 */
+	int chgr_on;	/* CC_MAX != 0 */
 	bool stby_on;	/* on disconnect, mode=0 */
 
 	int chgin_off;	/* input_suspend, mode=0 */

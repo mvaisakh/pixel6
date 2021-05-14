@@ -1223,6 +1223,13 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 	return ret;
 }
 
+#define cb_data_is_inflow_off(cb_data) \
+	((cb_data)->chgin_off && (cb_data)->wlcin_off)
+
+#define cb_data_is_chgr_on(cb_data) \
+	(cb_data->stby_on ? 0 : (cb_data->chgr_on >= 2))
+
+
 /*
  * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
  * -------------------------------------------------------------------------------------
@@ -1239,6 +1246,7 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
  */
 static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 {
+	const int chgr_on = cb_data_is_chgr_on(cb_data);
 	int usecase;
 	u8 mode;
 
@@ -1269,7 +1277,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 		mode = MAX77759_CHGR_MODE_OTG_BOOST_ON;
 	} else if (cb_data->wlc_rx) {
 		usecase = GSU_MODE_USB_OTG_WLC_RX;
-		if (cb_data->chgr_on)
+		if (chgr_on)
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 		else
 			mode = MAX77759_CHGR_MODE_BUCK_ON;
@@ -1285,9 +1293,6 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 	return usecase;
 }
 
-#define cb_data_is_inflow_off(cb_data) \
-	((cb_data)->chgin_off && (cb_data)->wlcin_off)
-
 /*
  * Determines the use case to switch to. This is device/system dependent and
  * will likely be factored to a separate file (compile module).
@@ -1295,7 +1300,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int buck_on = cb_data->chgin_off ? 0 : cb_data->buck_on;
-	const int chgr_on = cb_data->stby_on ? 0 : cb_data->chgr_on;
+	const int chgr_on = cb_data_is_chgr_on(cb_data);
 	int wlc_tx = cb_data->wlc_tx;
 	int usecase;
 	u8 mode;
@@ -1378,7 +1383,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (cb_data->dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
-		} else if (cb_data->stby_on && !cb_data->chgr_on) {
+		} else if (cb_data->stby_on && !chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
 		}
