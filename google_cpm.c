@@ -557,12 +557,12 @@ static void gcpm_pps_online(struct gcpm_drv *gcpm)
 }
 
 /* DC_ERROR_RETRY_MS <= DC_RUN_DELAY_MS */
-#define DC_ENABLE_DELAY_MS	5000
+#define DC_ENABLE_DELAY_MS	500
 #define DC_RUN_DELAY_MS		9000
 #define DC_ERROR_RETRY_MS	PPS_ERROR_RETRY_MS
 
 #define PPS_PROG_TIMEOUT_S	10
-#define PPS_PROG_RETRY_MS	5000
+#define PPS_PROG_RETRY_MS	2000
 #define PPS_ACTIVE_RETRY_MS	1500
 #define PPS_ACTIVE_TIMEOUT_S	25
 
@@ -820,9 +820,9 @@ static void gcpm_chg_select_work(struct work_struct *work)
 		gcpm->dc_state = DC_ENABLE_PASSTHROUGH;
 		gcpm->dc_index = index;
 
-		/* grace period of 5000ms, PPS Work not called during grace */
+		/* grace period of 500ms, PPS Work not called during grace */
 		gcpm->dc_start_time = get_boot_sec();
-		schedule_pps_interval = 5000;
+		schedule_pps_interval = DC_ENABLE_DELAY_MS;
 	}
 
 	if (schedule_pps_interval >= 0)
