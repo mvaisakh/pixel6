@@ -2302,9 +2302,6 @@ static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
 {
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 
-	if (unlikely(!ctx->initialized))
-		return;
-
 	if (ctx->enabled)
 		return;
 
