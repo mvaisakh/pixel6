@@ -34,9 +34,6 @@
 #define I2C_ON_STRING "on_i2c"
 #define I2C_OFF_STRING "off_i2c"
 
-/* Global declaration to synchronize access I2C bus */
-static struct mutex i2c_lock;
-
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
@@ -65,9 +62,9 @@ static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
 	/* Enable the I2C bus */
-	mutex_lock(&i2c_lock);
+	mutex_lock(lwis_dev->global_i2c_lock);
 	ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
-	mutex_unlock(&i2c_lock);
+	mutex_unlock(lwis_dev->global_i2c_lock);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Error enabling i2c bus (%d)\n", ret);
 		return ret;
@@ -83,9 +80,9 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 
 	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
 		/* Disable the I2C bus */
-		mutex_lock(&i2c_lock);
+		mutex_lock(lwis_dev->global_i2c_lock);
 		ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
-		mutex_unlock(&i2c_lock);
+		mutex_unlock(lwis_dev->global_i2c_lock);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
 			return ret;
@@ -297,7 +294,6 @@ int __init lwis_i2c_device_init(void)
 {
 	int ret = 0;
 
-	mutex_init(&i2c_lock);
 	pr_info("I2C device initialization\n");
 
 	ret = platform_driver_register(&lwis_driver);

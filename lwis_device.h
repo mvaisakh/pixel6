@@ -61,6 +61,7 @@ struct lwis_core {
 	struct idr *idr;
 	struct cdev *chr_dev;
 	struct mutex lock;
+	struct mutex global_i2c_lock;
 	dev_t lwis_devt;
 	int device_major;
 	struct list_head lwis_dev_list;
@@ -199,6 +200,8 @@ struct lwis_device {
 	int enabled;
 	/* Mutex used to synchronize access between clients */
 	struct mutex client_lock;
+	/* Mutex shared by all I2C devices */
+	struct mutex* global_i2c_lock;
 	/* Spinlock used to synchronize access to the device struct */
 	spinlock_t lock;
 	/* List of clients opened for this device */
