@@ -33,6 +33,9 @@ struct pca9468_platform_data {
 	/* NTC voltage threshold : 0~2.4V - uV unit */
 	unsigned int	ntc_th;
 
+	int		iin_max_offset;
+	int		iin_cc_comp_offset;
+
 #ifdef CONFIG_THERMAL
 	const char *usb_tz_name;
 #endif

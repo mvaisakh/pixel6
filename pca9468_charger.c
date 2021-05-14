@@ -91,13 +91,13 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* IIN_CC adc offset for accuracy */
 #define PCA9468_IIN_ADC_OFFSET		20000	/* uA */
 /* IIN_CC compensation offset */
-#define PCA9468_IIN_CC_COMP_OFFSET	75000	/* uA */
+#define PCA9468_IIN_CC_COMP_OFFSET	50000	/* uA */
 /* IIN_CC compensation offset in Power Limit Mode(Constant Power) TA */
 #define PCA9468_IIN_CC_COMP_OFFSET_CP	20000	/* uA */
 /* TA maximum voltage that can support CC in Constant Power Mode */
 #define PCA9468_TA_MAX_VOL_CP		9800000	/* 9760000uV --> 9800000uV */
 /* Offset for cc_max / 2 */
-#define PCA9468_IIN_MAX_OFFSET		125000
+#define PCA9468_IIN_MAX_OFFSET		0
 
 
 /* maximum retry counter for restarting charging */
@@ -1037,15 +1037,15 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 
 	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d\n",
 		 __func__, iin,
-		 pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset,
 		 pca9468->iin_cc,
-		 pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset,
 		 icn, ibat, pca9468->cc_max, rc);
 	if (iin < 0)
 		return iin;
 
 	/* Compare IIN ADC with target input current */
-	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
+	if (iin > (pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset)) {
 
 		/* TA current is higher than the target input current */
 		if (pca9468->ta_cur > pca9468->iin_cc) {
@@ -1075,7 +1075,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if (iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) {
 
 		/* compare IIN ADC with previous IIN ADC + 20mA */
 		if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
@@ -1247,7 +1247,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
  */
 static int pca9468_get_iin_max(struct pca9468_charger *pca9468, int cc_max)
 {
-	const int cc_limit = PCA9468_IIN_MAX_OFFSET + cc_max / 2;
+	const int cc_limit = pca9468->pdata->iin_max_offset + cc_max / 2;
 	int iin_max;
 
 	iin_max = min(pca9468->pdata->iin_cfg,  (unsigned int)cc_limit);
@@ -1281,7 +1281,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		return iin;
 
 	/* Compare IIN ADC with target input current */
-	if (iin > (pca9468->pdata->iin_cfg + PCA9468_IIN_CC_COMP_OFFSET)) {
+	if (iin > (pca9468->pdata->iin_cfg + pca9468->pdata->iin_cc_comp_offset)) {
 		/* TA current is higher than the target input current limit */
 		pca9468->ta_cur = pca9468->ta_cur - PD_MSG_TA_CUR_STEP;
 
@@ -1292,7 +1292,8 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		/* TA current is lower than the target input current */
 		/* IIN_ADC < IIN_CC -20mA */
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
-			const int iin_cc_lb = pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET;
+			const int iin_cc_lb = pca9468->iin_cc -
+				      pca9468->pdata->iin_cc_comp_offset;
 
 			/* Check IIN_ADC < IIN_CC - 50mA */
 			if (iin < iin_cc_lb) {
@@ -1300,7 +1301,8 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 				unsigned int val;
 
 				/* Set new IIN_CC to IIN_CC - 50mA */
-				pca9468->iin_cc = pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET;
+				pca9468->iin_cc = pca9468->iin_cc -
+					  pca9468->pdata->iin_cc_comp_offset;
 
 				/* Set new TA_MAX_VOL to TA_MAX_PWR/IIN_CC */
 				/* Adjust new IIN_CC with APDO resolution */
@@ -1382,15 +1384,15 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 
 	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d\n",
 		 __func__, iin,
-		 pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset,
 		 pca9468->iin_cc,
-		 pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset,
 		 icn, ibat, pca9468->cc_max, rc);
 	if (iin < 0)
 		return iin;
 
 	/* Compare IIN ADC with target input current */
-	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
+	if (iin > (pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset)) {
 		/* TA current is higher than the target input current */
 		/* Decrease TA voltage (20mV) */
 		pca9468->ta_vol = pca9468->ta_vol - PD_MSG_TA_VOL_STEP;
@@ -1400,7 +1402,7 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		/* Send PD Message */
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
-	} else if ((iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) ||
+	} else if ((iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) ||
 		   ibat < ibat_limit) {
 
 		if (ibat < ibat_limit)
@@ -1468,15 +1470,15 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 
 	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d\n",
 		 __func__, iin,
-		 pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset,
 		 pca9468->iin_cc,
-		 pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET,
+		 pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset,
 		 icn, ibat, pca9468->cc_max, rc);
 	if (iin < 0)
 		return iin;
 
 	/* Compare IIN ADC with target input current */
-	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
+	if (iin > (pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset)) {
 
 		/* RX current is higher than the target input current */
 		pca9468->ta_vol = pca9468->ta_vol - WCRX_VOL_STEP;
@@ -1486,7 +1488,7 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if (iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) {
 
 		/* RX current is lower than the target input current */
 		/* Compare RX max voltage */
@@ -1845,7 +1847,7 @@ static int pca9468_adjust_rx_voltage(struct pca9468_charger *pca9468)
 		return iin;
 
 	/* Compare IIN ADC with targer input current */
-	if (iin > (pca9468->iin_cc + PCA9468_IIN_CC_COMP_OFFSET)) {
+	if (iin > (pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset)) {
 		/* RX current is higher than the target input current */
 
 		/* Decrease RX voltage (100mV) */
@@ -1855,7 +1857,7 @@ static int pca9468_adjust_rx_voltage(struct pca9468_charger *pca9468)
 
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
-	} else if (iin < (pca9468->iin_cc - PCA9468_IIN_CC_COMP_OFFSET)) {
+	} else if (iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) {
 		/* RX current is lower than the target input current */
 
 		if (pca9468->ta_vol == pca9468->ta_max_vol) {
@@ -4095,6 +4097,20 @@ static int of_pca9468_dt(struct device *dev,
 	}
 	pr_info("%s: pca9468,ntc_th is %u\n", __func__, pdata->ntc_th);
 
+	/* iin offsets */
+	ret = of_property_read_u32(np_pca9468, "pca9468,iin-max-offset",
+				   &pdata->iin_max_offset);
+	if (ret)
+		pdata->iin_max_offset = PCA9468_IIN_MAX_OFFSET;
+	pr_info("%s: pca9468,iin_max_offset is %u\n", __func__, pdata->iin_max_offset);
+
+	ret = of_property_read_u32(np_pca9468, "pca9468,iin-cc_comp-offset",
+				   &pdata->iin_cc_comp_offset);
+	if (ret)
+		pdata->iin_cc_comp_offset = PCA9468_IIN_CC_COMP_OFFSET;
+	pr_info("%s: pca9468,iin_cc_comp_offset is %u\n", __func__, pdata->iin_cc_comp_offset);
+
+
 #ifdef CONFIG_THERMAL
 	/* USBC thermal zone */
 	ret = of_property_read_string(np_pca9468, "google,usb-port-tz-name",
@@ -4238,6 +4254,11 @@ static int pca9468_create_fs_entries(struct pca9468_charger *chip)
 
 	debugfs_create_file("data", 0644, chip->debug_root, chip, &register_debug_ops);
 	debugfs_create_x32("address", 0644, chip->debug_root, &chip->debug_address);
+
+	debugfs_create_u32("iin_max_offset", 0644, chip->debug_root,
+			   &chip->pdata->iin_max_offset);
+	debugfs_create_u32("iin_cc_comp_offset", 0644, chip->debug_root,
+			   &chip->pdata->iin_cc_comp_offset);
 
 	chip->debug_adc_channel = ADCCH_VOUT;
 	debugfs_create_file("adc_chan", 0644, chip->debug_root, chip,
