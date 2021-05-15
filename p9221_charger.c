@@ -1884,6 +1884,13 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 		if (charger->pdata->has_wlc_dc &&
 		    charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT))
 			dev_info(&charger->client->dev, "PROP_MODE: enable\n");
+
+		ret = p9221_reg_read_16(charger,
+					P9221_OTP_FW_MINOR_REV_REG,
+					&charger->fw_rev);
+		if (ret)
+			dev_err(&charger->client->dev,
+				"Could not get FW_REV: %d\n", ret);
 	}
 
 	/* We may have already gone online during check_det */
@@ -2929,6 +2936,17 @@ static ssize_t rtx_sw_store(struct device *dev,
 
 static DEVICE_ATTR_RW(rtx_sw);
 
+static ssize_t fw_rev_show(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+
+	return scnprintf(buf, PAGE_SIZE, "%04x\n", charger->fw_rev);
+}
+
+static DEVICE_ATTR_RO(fw_rev);
+
 static ssize_t p9382_show_rtx_boost(struct device *dev,
 				    struct device_attribute *attr,
 				    char *buf)
@@ -3335,6 +3353,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_has_wlc_dc.attr,
 	&dev_attr_log_current_filtered.attr,
 	&dev_attr_charge_stats.attr,
+	&dev_attr_fw_rev.attr,
 	NULL
 };
 
@@ -4495,6 +4514,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->align = WLC_ALIGN_ERROR;
 	charger->align_count = 0;
 	charger->is_mfg_google = false;
+	charger->fw_rev = 0;
 	charger->chip_id = charger->pdata->chip_id;
 	mutex_init(&charger->io_lock);
 	mutex_init(&charger->cmd_lock);

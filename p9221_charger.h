@@ -629,6 +629,7 @@ struct p9221_charger_data {
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
 	bool				no_fod;
+	u16				fw_rev;
 
 	struct p9221_charge_stats chg_data;
 
