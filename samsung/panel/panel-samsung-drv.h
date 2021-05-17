@@ -498,12 +498,18 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	  .falling_edge = falling }						\
 }
 
+#define EXYNOS_DCS_WRITE_PRINT_ERR(ctx, cmd, len, ret) do {	\
+	dev_err(ctx->dev, "failed to write cmd (%d)\n", ret);	\
+	print_hex_dump(KERN_ERR, "command: ",			\
+		DUMP_PREFIX_NONE, 16, 1, cmd, len, false);	\
+} while (0)
+
 #define EXYNOS_DCS_WRITE_SEQ(ctx, seq...) do {				\
 	u8 d[] = { seq };						\
 	int ret;							\
 	ret = exynos_dcs_write(ctx, d, ARRAY_SIZE(d));			\
 	if (ret < 0)							\
-		dev_err(ctx->dev, "failed to write cmd(%d)\n", ret);	\
+		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, d, ARRAY_SIZE(d), ret);	\
 } while (0)
 
 #define EXYNOS_DCS_WRITE_SEQ_DELAY(ctx, delay, seq...) do {		\
@@ -511,11 +517,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 	usleep_range(delay * 1000, delay * 1000 + 10);			\
 } while (0)
 
-#define EXYNOS_DCS_WRITE_TABLE(ctx, table) do {				\
-	int ret;							\
-	ret = exynos_dcs_write(ctx, table, ARRAY_SIZE(table));		\
-	if (ret < 0)							\
-		dev_err(ctx->dev, "failed to write cmd(%d)\n", ret);	\
+#define EXYNOS_DCS_WRITE_TABLE(ctx, table) do {					\
+	int ret;								\
+	ret = exynos_dcs_write(ctx, table, ARRAY_SIZE(table));			\
+	if (ret < 0)								\
+		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, table, ARRAY_SIZE(table), ret);	\
 } while (0)
 
 #define EXYNOS_DCS_WRITE_TABLE_DELAY(ctx, delay, table) do {		\
