@@ -509,6 +509,28 @@ static const struct exynos_dsi_cmd s6e3hc3_evt1_lhbm_off_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_lhbm_off);
 
+static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_on_cmds[] = {
+	EXYNOS_DSI_CMD0(unlock_cmd_f0),
+	EXYNOS_DSI_CMD0(unlock_cmd_f1),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x81), /* 2 cycle */
+	EXYNOS_DSI_CMD_SEQ(0xB1, 0x90),
+	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
+	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
+	EXYNOS_DSI_CMD0(lock_cmd_f1),
+	EXYNOS_DSI_CMD0(lock_cmd_f0),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_1_lhbm_on);
+
+static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_off_cmds[] = {
+	EXYNOS_DSI_CMD0(unlock_cmd_f0),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
+	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
+	EXYNOS_DSI_CMD_SEQ(0x60, 0x01),
+	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
+	EXYNOS_DSI_CMD0(lock_cmd_f0),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_1_lhbm_off);
+
 #define S6E3HC3_LOCAL_HBM_GAMMA_CMD_SIZE 6
 #define S6E3HC3_PANEL_ID3_DOE            0x20
 #define S6E3HC3_PANEL_ID3_DOE3           0x29
@@ -585,6 +607,36 @@ static void s6e3hc3_evt1_extra_lhbm_settings(struct exynos_panel *ctx,
 	}
 }
 
+static void s6e3hc3_evt1_1_extra_lhbm_settings(struct exynos_panel *ctx,
+				 bool local_hbm_en)
+{
+	dev_dbg(ctx->dev, "%s\n", __func__);
+
+	if (local_hbm_en)
+		exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_1_lhbm_on_cmd_set);
+	else
+		exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_1_lhbm_off_cmd_set);
+}
+
+static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
+				 bool local_hbm_en)
+{
+	if (ctx->panel_rev == PANEL_REV_EVT1)
+		s6e3hc3_evt1_extra_lhbm_settings(ctx, local_hbm_en);
+	else if (ctx->panel_rev == PANEL_REV_EVT1_1)
+		s6e3hc3_evt1_1_extra_lhbm_settings(ctx, local_hbm_en);
+}
+
+static inline is_local_gamma_supported(struct exynos_panel *ctx)
+{
+	if ((ctx->panel_rev == PANEL_REV_EVT1) &&
+			 s6e3hc3_panel_id3_doe3_config(ctx))
+		return true;
+	if (ctx->panel_rev >= PANEL_REV_EVT1_1)
+		return true;
+	return false;
+}
+
 static int s6e3hc3_enable(struct drm_panel *panel)
 {
 	struct exynos_panel *ctx = container_of(panel, struct exynos_panel, panel);
@@ -606,10 +658,10 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	exynos_panel_send_cmd_set(ctx, &s6e3hc3_init_cmd_set);
 	s6e3hc3_write_display_mode(ctx, mode); /* dimming and HBM */
 	s6e3hc3_change_frequency(ctx, pmode);
-	if ((ctx->panel_rev == PANEL_REV_EVT1) && s6e3hc3_panel_id3_doe3_config(ctx)) {
+	if (is_local_gamma_supported(ctx))
 		if (ctx->hbm.local_hbm.gamma_para_ready)
 			s6e3hc3_lhbm_gamma_write(ctx);
-	}
+
 
 	ctx->enabled = true;
 
@@ -674,6 +726,7 @@ static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 				 bool hbm_mode)
 {
 	const struct exynos_panel_mode *pmode = ctx->current_mode;
+	const int vrefresh = drm_mode_vrefresh(&pmode->mode);
 
 	ctx->hbm_mode = hbm_mode;
 
@@ -689,6 +742,15 @@ static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
 		}
 		EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
+	} else if (ctx->panel_rev == PANEL_REV_EVT1_1) {
+		if (ctx->hbm_mode) {
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+			if (vrefresh == 60)
+				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x01);
+			else if (vrefresh == 120)
+				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x10);
+			EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
+		}
 	}
 	s6e3hc3_write_display_mode(ctx, &pmode->mode);
 }
@@ -713,8 +775,7 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 
 	mutex_lock(&ctx->mode_lock);
 	ctx->hbm.local_hbm.enabled = local_hbm_en;
-	if (ctx->panel_rev == PANEL_REV_EVT1)
-		s6e3hc3_evt1_extra_lhbm_settings(ctx, local_hbm_en);
+	s6e3hc3_extra_lhbm_settings(ctx, local_hbm_en);
 	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
 	mutex_unlock(&ctx->mode_lock);
 
@@ -907,10 +968,9 @@ static void s6e3hc3_panel_init(struct exynos_panel *ctx)
 					   "early_exit_disable");
 	for (i = 0; i < ctx->desc->num_modes; i++)
 		s6e3hc3_panel_mode_create_cmdset(ctx, &ctx->desc->modes[i]);
-	if ((ctx->panel_rev == PANEL_REV_EVT1) && s6e3hc3_panel_id3_doe3_config(ctx)) {
+	if (is_local_gamma_supported(ctx))
 		if (!s6e3hc3_lhbm_gamma_read(ctx))
 			s6e3hc3_lhbm_gamma_write(ctx);
-	}
 }
 
 static int s6e3hc3_panel_probe(struct mipi_dsi_device *dsi)
