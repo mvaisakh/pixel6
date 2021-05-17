@@ -795,7 +795,6 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	/* Check STS_A */
 	if (reg_val & PCA9468_BIT_VIN_UV_STS) {
 		ret = CCMODE_VIN_UVLO;
 	} else if (reg_val & PCA9468_BIT_CHG_LOOP_STS) {
@@ -2390,6 +2389,30 @@ error:
 	return ret;
 }
 
+/* <0 error, 0 no new limits, >0 new limits */
+static int pca9468_apply_new_limits(struct pca9468_charger *pca9468)
+{
+	int ret = 0;
+
+	if (pca9468->new_iin && pca9468->new_iin < pca9468->iin_cc) {
+		ret = pca9468_apply_new_iin(pca9468);
+		if (ret == 0)
+			ret = 1;
+	} else if (pca9468->new_vfloat) {
+		ret = pca9468_apply_new_vfloat(pca9468);
+		if (ret == 0)
+			ret = 1;
+	} else if (pca9468->new_iin) {
+		ret = pca9468_apply_new_iin(pca9468);
+		if (ret == 0)
+			ret = 1;
+	} else {
+		return 0;
+	}
+
+	return ret;
+}
+
 /* 2:1 Direct Charging CC MODE control */
 static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 {
@@ -2410,23 +2433,16 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 
 	/*
 	 * A change in VFLOAT here means that we have busted the tier, a
-	 * change in iin means that the thermal engine had changed cc_max
+	 * change in iin means that the thermal engine had changed cc_max.
+	 * pca9468_apply_new_limits() changes pca9468->charging_state to
+	 * DC_STATE_ADJUST_TAVOL or DC_STATE_ADJUST_TACUR when new limits
+	 * need to be applied.
 	 */
-	if (pca9468->new_vfloat) {
-		ret = pca9468_apply_new_vfloat(pca9468);
-		if (ret < 0)
-			goto error_exit;
-
+	ret = pca9468_apply_new_limits(pca9468);
+	if (ret < 0)
+		goto error_exit;
+	if (ret > 0)
 		goto done;
-	}
-
-	if (pca9468->new_iin) {
-		ret = pca9468_apply_new_iin(pca9468);
-		if (ret < 0)
-			goto error_exit;
-
-		goto done;
-	}
 
 	/* Check the charging type */
 	ccmode = pca9468_check_ccmode_status(pca9468);
@@ -2691,21 +2707,11 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 	 * A change in vfloat and cc_max here is a normal tier transition, a
 	 * change in iin  means that the thermal engine has changed cc_max.
 	 */
-	if (pca9468->new_vfloat) {
-		ret = pca9468_apply_new_vfloat(pca9468);
-		if (ret < 0)
-			goto error_exit;
-
+	ret = pca9468_apply_new_limits(pca9468);
+	if (ret < 0)
+		goto error_exit;
+	if (ret > 0)
 		goto done;
-	}
-
-	if (pca9468->new_iin) {
-		ret = pca9468_apply_new_iin(pca9468);
-		if (ret < 0)
-			goto error_exit;
-
-		goto done;
-	}
 
 	cvmode = pca9468_check_cvmode_status(pca9468);
 	if (cvmode < 0) {
