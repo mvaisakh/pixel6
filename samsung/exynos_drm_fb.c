@@ -36,6 +36,8 @@
 #include "exynos_drm_gem.h"
 #include "exynos_drm_hibernation.h"
 
+extern const struct dpp_restriction dpp_drv_data;
+
 static const struct drm_framebuffer_funcs exynos_drm_fb_funcs = {
 	.destroy	= drm_gem_fb_destroy,
 	.create_handle	= drm_gem_fb_create_handle,
@@ -629,12 +631,14 @@ void exynos_drm_mode_config_init(struct drm_device *dev)
 	dev->mode_config.min_height = 0;
 
 	/*
-	 * set max width and height as default value(4096x4096).
+	 * set min/max width and height respecting dpp_drv_data config.
 	 * this value would be used to check framebuffer size limitation
 	 * at drm_mode_addfb().
 	 */
-	dev->mode_config.max_width = 4096;
-	dev->mode_config.max_height = 4096;
+	dev->mode_config.max_width = dpp_drv_data.dst_f_w.max;
+	dev->mode_config.max_height = dpp_drv_data.dst_f_h.max;
+	dev->mode_config.min_width = dpp_drv_data.dst_f_w.min;
+	dev->mode_config.min_height = dpp_drv_data.dst_f_h.min;
 
 	dev->mode_config.funcs = &exynos_drm_mode_config_funcs;
 	dev->mode_config.helper_private = &exynos_drm_mode_config_helpers;
