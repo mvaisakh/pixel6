@@ -3169,6 +3169,11 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			p9382_ben_cfg(charger, RTX_BEN_DISABLED);
 
 			ret = p9382_disable_dcin_en(charger, false);
+
+			if (charger->is_rtx_mode) {
+				pm_relax(charger->dev);
+				charger->is_rtx_mode = false;
+			}
 			goto exit;
 		}
 
