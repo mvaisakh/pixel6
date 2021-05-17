@@ -489,14 +489,14 @@ static inline int reg_to_resistance_micro_ohms(s16 val, u16 rsense)
 	return div_s64((s64) val * 1000 * rsense, 4096);
 }
 
-static inline int reg_to_cycles(s16 val, int gauge_type)
+static inline int reg_to_cycles(u32 val, int gauge_type)
 {
 	if (gauge_type == MAX_M5_GAUGE_TYPE) {
 		/* LSB: 1% of one cycle */
-		return DIV_ROUND_CLOSEST((int) val, 100);
+		return DIV_ROUND_CLOSEST(val, 100);
 	} else {
 		/* LSB: 16% of one cycle */
-		return DIV_ROUND_CLOSEST((int) val * 16, 100);
+		return DIV_ROUND_CLOSEST(val * 16, 100);
 	}
 }
 
@@ -1425,7 +1425,7 @@ static int max1720x_get_cycle_count(struct max1720x_chip *chip)
 	if (err < 0)
 		return err;
 
-	cycle_count = reg_to_cycles(reg_cycle, chip->gauge_type);
+	cycle_count = reg_to_cycles((u32)reg_cycle, chip->gauge_type);
 	if ((chip->cycle_count == -1) ||
 	    ((cycle_count + chip->cycle_count_offset) < chip->cycle_count))
 		chip->cycle_count_offset =
