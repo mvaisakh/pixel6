@@ -141,6 +141,9 @@ struct gcpm_drv  {
 
 	ktime_t dc_start_time;
 
+	/* Disable DC control */
+	int dc_ctl;
+
 	/* force check of the DC limit again (debug) */
 	bool new_dc_limit;
 
@@ -461,6 +464,13 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
  * falls under vbatt_low.
  * NOTE: program target before enabling chaging.
  */
+enum gcpm_dc_ctl_t {
+	GCPM_DC_CTL_DEFAULT = 0,
+	GCPM_DC_CTL_DISABLE_WIRED,
+	GCPM_DC_CTL_DISABLE_WIRELESS,
+	GCPM_DC_CTL_DISABLE_BOTH,
+};
+
 static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 {
 	struct power_supply *chg_psy;
@@ -468,12 +478,16 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	const int vbatt_max = gcpm->dc_limit_vbatt_max;
 	int batt_demand, index = GCPM_DEFAULT_CHARGER;
 
+
 	if (!gcpm->dc_init_complete)
 		return GCPM_DEFAULT_CHARGER;
 
 	/* taper_control only applies to DC (unless is forced) */
 	if (gcpm->force_active >= 0)
 		return gcpm->force_active;
+
+	if (gcpm->dc_ctl == GCPM_DC_CTL_DISABLE_BOTH)
+		return GCPM_DEFAULT_CHARGER;
 
 	/* keep on default until we have valid charging parameters */
 	if (gcpm->cc_max <= 0 || gcpm->fv_uv <= 0)
@@ -561,10 +575,16 @@ static void gcpm_pps_online(struct gcpm_drv *gcpm)
 	gcpm->out_uv = -1;
 
 	/* reset detection */
-	if (gcpm->tcpm_pps_data.pps_psy)
+	if (gcpm->tcpm_pps_data.pps_psy) {
 		pps_init_state(&gcpm->tcpm_pps_data);
-	if (gcpm->wlc_pps_data.pps_psy)
+		if (gcpm->dc_ctl & GCPM_DC_CTL_DISABLE_WIRED)
+			gcpm->tcpm_pps_data.stage = PPS_NOTSUPP;
+	}
+	if (gcpm->wlc_pps_data.pps_psy) {
 		pps_init_state(&gcpm->wlc_pps_data);
+		if (gcpm->dc_ctl & GCPM_DC_CTL_DISABLE_WIRELESS)
+			gcpm->wlc_pps_data.stage = PPS_NOTSUPP;
+	}
 	gcpm->pps_index = 0;
 }
 
@@ -1475,6 +1495,47 @@ static ssize_t dc_limit_vbatt_min_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(dc_limit_vbatt_min);
 
+static ssize_t dc_ctl_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", gcpm->dc_ctl);
+}
+
+static ssize_t dc_ctl_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+	int ret = 0, val;
+
+	ret = kstrtoint(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * 0: enable both (Default)
+	 * 1: disable wired-DC
+	 * 2: disable wireless-DC
+	 * 3: disable both
+	 */
+	switch (val) {
+		case GCPM_DC_CTL_DEFAULT:
+		case GCPM_DC_CTL_DISABLE_WIRED:
+		case GCPM_DC_CTL_DISABLE_WIRELESS:
+		case GCPM_DC_CTL_DISABLE_BOTH:
+			gcpm->dc_ctl = val;
+			break;
+		default:
+			return -EINVAL;
+	};
+
+	return count;
+}
+static DEVICE_ATTR_RW(dc_ctl);
+
 #define INIT_DELAY_MS 100
 #define INIT_RETRY_DELAY_MS 1000
 
@@ -1978,6 +2039,7 @@ static int google_cpm_probe(struct platform_device *pdev)
 
 	gcpm->device = &pdev->dev;
 	gcpm->force_active = -1;
+	gcpm->dc_ctl = GCPM_DC_CTL_DEFAULT;
 	gcpm->log_psy_ratelimit = LOG_PSY_RATELIMIT_CNT;
 	gcpm->chg_psy_retries = 10; /* chg_psy_retries *  INIT_RETRY_DELAY_MS */
 	gcpm->out_uv = -1;
@@ -2156,6 +2218,10 @@ static int google_cpm_probe(struct platform_device *pdev)
 	ret = device_create_file(gcpm->device, &dev_attr_dc_limit_vbatt_min);
 	if (ret)
 		dev_err(gcpm->device, "Failed to create dc_limit_vbatt_min\n");
+
+	ret = device_create_file(gcpm->device, &dev_attr_dc_ctl);
+	if (ret)
+		dev_err(gcpm->device, "Failed to create dc_crl\n");
 
 	/* give time to fg driver to start */
 	schedule_delayed_work(&gcpm->init_work,
