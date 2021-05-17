@@ -135,23 +135,14 @@ enum {
 	REG_STS_MAX
 };
 
-/* CC Mode Status */
+/* Status */
 enum {
-	CCMODE_CHG_LOOP,	/* TODO: There is no such thing */
-	CCMODE_VFLT_LOOP,
-	CCMODE_IIN_LOOP,
-	CCMODE_LOOP_INACTIVE,
-	CCMODE_VIN_UVLO,
-};
-
-/* CV Mode Status */
-enum {
-	CVMODE_CHG_LOOP,	/* TODO: There is no such thing */
-	CVMODE_VFLT_LOOP,
-	CVMODE_IIN_LOOP,
-	CVMODE_LOOP_INACTIVE,
-	CVMODE_CHG_DONE,
-	CVMODE_VIN_UVLO,
+	STS_MODE_CHG_LOOP,	/* TODO: There is no such thing */
+	STS_MODE_VFLT_LOOP,
+	STS_MODE_IIN_LOOP,
+	STS_MODE_LOOP_INACTIVE,
+	STS_MODE_CHG_DONE,
+	STS_MODE_VIN_UVLO,
 };
 
 /* Timer ID */
@@ -796,15 +787,15 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 		return ret;
 
 	if (reg_val & PCA9468_BIT_VIN_UV_STS) {
-		ret = CCMODE_VIN_UVLO;
+		ret = STS_MODE_VIN_UVLO;
 	} else if (reg_val & PCA9468_BIT_CHG_LOOP_STS) {
-		ret = CCMODE_CHG_LOOP; /* never */
+		ret = STS_MODE_CHG_LOOP; /* never */
 	} else if (reg_val & PCA9468_BIT_VFLT_LOOP_STS) {
-		ret = CCMODE_VFLT_LOOP;
+		ret = STS_MODE_VFLT_LOOP;
 	} else if (reg_val & PCA9468_BIT_IIN_LOOP_STS) {
-		ret = CCMODE_IIN_LOOP;
+		ret = STS_MODE_IIN_LOOP;
 	} else {
-		ret = CCMODE_LOOP_INACTIVE; /* lower IIN or TA to enter CC? */
+		ret = STS_MODE_LOOP_INACTIVE; /* lower IIN or TA to enter CC? */
 	}
 
 	return ret;
@@ -872,8 +863,7 @@ static int pca9468_comp_irdrop(struct pca9468_charger *pca9468)
 	return ret;
 }
 
-/* TODO: remove this, just call  pca9468_read_status() */
-static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
+static int pca9468_check_status(struct pca9468_charger *pca9468)
 {
 	int icn = -EINVAL, ibat = -EINVAL, vbat = -EINVAL;
 	int rc, status;
@@ -893,29 +883,7 @@ static int pca9468_check_ccmode_status(struct pca9468_charger *pca9468)
 		 pca9468->fv_uv, pca9468->cc_max);
 
 error:
-	pr_debug("%s: CCMODE Status=%d\n", __func__, status);
-	return status;
-}
-
-/* TODO: pca9468_check_ccmode_status() is similar */
-static int pca9468_check_cvmode_status(struct pca9468_charger *pca9468)
-{
-	int ibat = -EINVAL, vbat = -EINVAL, rc;
-	int status;
-
-	status = pca9468_read_status(pca9468);
-	if (status < 0)
-		goto error;
-
-	rc = pca9468_get_batt_info(pca9468, BATT_CURRENT, &ibat);
-	if (rc == 0)
-		rc = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
-
-	pr_debug("%s: status=%d ibat:%d, cc_max:%d , vbat:%d, fv:%d\n",
-		 __func__, status, ibat, pca9468->cc_max, vbat, pca9468->fv_uv);
-
-error:
-	pr_debug("%s: CVMODE Status=%d\n", __func__, status);
+	pr_debug("%s: Status=%d\n", __func__, status);
 	return status;
 }
 
@@ -1768,7 +1736,7 @@ static int pca9468_adjust_ta_voltage(struct pca9468_charger *pca9468)
 	pca9468->charging_state = DC_STATE_ADJUST_TAVOL;
 
 	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
-	pr_debug("%s: iin=%d, iin_cc=[%d%d%d], cc_max=%d\n", __func__,
+	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], cc_max=%d\n", __func__,
 		 iin,
 		 pca9468->iin_cc - PD_MSG_TA_CUR_STEP,
 		 pca9468->iin_cc,
@@ -2281,15 +2249,15 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 	if (ret != 0)
 		goto error; // This is not active mode.
 
-	ccmode = pca9468_check_ccmode_status(pca9468);
+	ccmode = pca9468_check_status(pca9468);
 	if (ccmode < 0) {
 		ret = ccmode;
 		goto error;
 	}
 
 	switch(ccmode) {
-	case CCMODE_IIN_LOOP:
-	case CCMODE_CHG_LOOP:	/* CHG_LOOP does't exist */
+	case STS_MODE_IIN_LOOP:
+	case STS_MODE_CHG_LOOP:	/* CHG_LOOP does't exist */
 		apply_ircomp = true;
 
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
@@ -2320,7 +2288,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CCMODE_VFLT_LOOP:
+	case STS_MODE_VFLT_LOOP:
 		vbatt = pca9468_read_adc(pca9468, ADCCH_VBAT);
 
 		pr_debug("%s: CC adjust End(VFLOAT): vbatt=%d, ta_vol=%u\n",
@@ -2333,7 +2301,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CCMODE_LOOP_INACTIVE:
+	case STS_MODE_LOOP_INACTIVE:
 
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
 		pr_debug("%s: iin=%d, iin_cc=%d, cc_max=%d\n", __func__,
@@ -2356,7 +2324,7 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 
 		break;
 
-	case CCMODE_VIN_UVLO:
+	case STS_MODE_VIN_UVLO:
 		/* VIN UVLO - just notification , it works by hardware */
 		vin_vol = pca9468_read_adc(pca9468, ADCCH_VIN);
 
@@ -2444,15 +2412,14 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 	if (ret > 0)
 		goto done;
 
-	/* Check the charging type */
-	ccmode = pca9468_check_ccmode_status(pca9468);
+	ccmode = pca9468_check_status(pca9468);
 	if (ccmode < 0) {
 		ret = ccmode;
 		goto error_exit;
 	}
 
 	switch(ccmode) {
-	case CCMODE_LOOP_INACTIVE:
+	case STS_MODE_LOOP_INACTIVE:
 
 		rc = pca9468_get_iin(pca9468, &ibat);
 		if (rc < 0)
@@ -2489,7 +2456,7 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 			apply_ircomp = true;
 		break;
 
-	case CCMODE_VFLT_LOOP:
+	case STS_MODE_VFLT_LOOP:
 		/* TODO: adjust fv_uv here based on real vbatt */
 
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
@@ -2500,8 +2467,8 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CCMODE_IIN_LOOP:
-	case CCMODE_CHG_LOOP:
+	case STS_MODE_IIN_LOOP:
+	case STS_MODE_CHG_LOOP:
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
 		pr_debug("%s: iin=%d, iin_cc=%d, cc_max=%d\n", __func__,
 			 iin, pca9468->iin_cc, pca9468->cc_max);
@@ -2530,7 +2497,7 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CCMODE_VIN_UVLO:
+	case STS_MODE_VIN_UVLO:
 		/* VIN UVLO - just notification, it works by hardware */
 		vin_vol = pca9468_read_adc(pca9468, ADCCH_VIN);
 
@@ -2587,15 +2554,15 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		goto error_exit;
 
 	/* Check the status */
-	cvmode = pca9468_check_cvmode_status(pca9468);
+	cvmode = pca9468_check_status(pca9468);
 	if (cvmode < 0) {
 		ret = cvmode;
 		goto error_exit;
 	}
 
 	switch(cvmode) {
-	case CVMODE_CHG_LOOP:
-	case CVMODE_IIN_LOOP:
+	case STS_MODE_CHG_LOOP:
+	case STS_MODE_IIN_LOOP:
 
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 			/* Decrease RX voltage (100mV) */
@@ -2625,7 +2592,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CVMODE_VFLT_LOOP:
+	case STS_MODE_VFLT_LOOP:
 		/* Check the TA type */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 			/* Decrease RX voltage (100mV) */
@@ -2646,7 +2613,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CVMODE_LOOP_INACTIVE:
+	case STS_MODE_LOOP_INACTIVE:
 		/* Exit Pre CV mode */
 		pr_debug("%s: PreCV End: ta_vol=%u, ta_cur=%u\n", __func__,
 			 pca9468->ta_vol, pca9468->ta_cur);
@@ -2659,7 +2626,7 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CVMODE_VIN_UVLO:
+	case STS_MODE_VIN_UVLO:
 		/* VIN UVLO - just notification , it works by hardware */
 		vin_vol = pca9468_read_adc(pca9468, ADCCH_VIN);
 
@@ -2713,14 +2680,14 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 	if (ret > 0)
 		goto done;
 
-	cvmode = pca9468_check_cvmode_status(pca9468);
+	cvmode = pca9468_check_status(pca9468);
 	if (cvmode < 0) {
 		ret = cvmode;
 		goto error_exit;
 	}
 
 	/* TODO: move to check cvmode_status */
-	if (cvmode == CVMODE_LOOP_INACTIVE) {
+	if (cvmode == STS_MODE_LOOP_INACTIVE) {
 		/* Read IIN_ADC */
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
 		pr_debug("%s: iin=%d, iin_topoff=%u\n", __func__, iin,
@@ -2731,13 +2698,13 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 		/* Compare iin with input topoff current */
 		if (iin < pca9468->pdata->iin_topoff) {
 			/* Change cvmode status to charging done */
-			cvmode = CVMODE_CHG_DONE;
+			cvmode = STS_MODE_CHG_DONE;
 			pr_debug("%s: CVMODE Status=%d\n", __func__, cvmode);
 		}
 	}
 
 	switch(cvmode) {
-	case CVMODE_CHG_DONE:
+	case STS_MODE_CHG_DONE:
 		/* Charging Done */
 		/* Keep CV mode until driver send stop charging */
 		pca9468->charging_state = DC_STATE_CHARGING_DONE;
@@ -2761,8 +2728,8 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
 		break;
 
-	case CVMODE_CHG_LOOP:
-	case CVMODE_IIN_LOOP:
+	case STS_MODE_CHG_LOOP:
+	case STS_MODE_IIN_LOOP:
 		/* Check the TA type */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 			/* Decrease RX Voltage (100mV) */
@@ -2793,7 +2760,7 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CVMODE_VFLT_LOOP:
+	case STS_MODE_VFLT_LOOP:
 		/* Check the TA type */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
 			/* Decrease RX voltage */
@@ -2814,12 +2781,12 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 		break;
 
-	case CVMODE_LOOP_INACTIVE:
+	case STS_MODE_LOOP_INACTIVE:
 		pca9468->timer_id = TIMER_CHECK_CVMODE;
 		pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
 		break;
 
-	case CVMODE_VIN_UVLO:
+	case STS_MODE_VIN_UVLO:
 		/* VIN UVLO - just notification, it works by hardware */
 		vin_vol = pca9468_read_adc(pca9468, ADCCH_VIN);
 		pr_debug("%s: CC VIN_UVLO: ta_cur=%u ta_vol=%u, vin_vol=%d\n",
