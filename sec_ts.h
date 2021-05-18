@@ -1079,8 +1079,9 @@ struct sec_ts_data {
 	struct notifier_block psy_nb;
 	bool wlc_online;
 	bool usb_present;
-	bool keep_wlc_mode;
-	ktime_t usb_changed_timestamp;
+	bool force_wlc;
+	ktime_t usb_changed_ktime;
+	ktime_t wlc_changed_ktime;
 
 	int (*sec_ts_write)(struct sec_ts_data *ts, u8 reg,
 				u8 *data, int len);

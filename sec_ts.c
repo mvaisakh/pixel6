@@ -5276,6 +5276,8 @@ static void sec_ts_charger_work(struct work_struct *work)
 	u8 charger_mode = SEC_TS_BIT_CHARGER_MODE_NO;
 	bool usb_present = ts->usb_present;
 	bool wlc_online = ts->wlc_online;
+	bool force_wlc = ts->force_wlc;
+	const u64 debounce_ms = 500;
 
 	/* usb case */
 	ret = power_supply_get_property(ts->usb_psy,
@@ -5299,29 +5301,42 @@ static void sec_ts_charger_work(struct work_struct *work)
 		}
 	}
 
-	/* rtx case */
-	/* ret = power_supply_get_property(ts->wireless_psy,
-					POWER_SUPPLY_PROP_RTX, &prop); */
-	if (ret == 0)
-		pr_debug("%s: RTX %s", __func__,
-			(!!prop.intval) ? "ON" : "OFF");
+	/*
+	* RTX case
+	*    ret = power_supply_get_property(ts->wireless_psy,
+	*                                    POWER_SUPPLY_PROP_RTX, &prop);
+	* if (ret == 0)
+	*  pr_debug("%s: RTX %s", __func__,
+	*          (!!prop.intval) ? "ON" : "OFF");
+	*/
 
+	/* Check if any change for usb and wlc */
 	if (usb_present == ts->usb_present &&
-	    wlc_online == ts->wlc_online &&
-	    ts->keep_wlc_mode == false)
+	    wlc_online == ts->wlc_online) {
+		input_dbg(true, &ts->client->dev,
+			"%s: usb_present(%d) and wlc_online(%d) no changed!",
+			__func__, usb_present, wlc_online);
 		return;
+	}
 
-	/* keep wlc mode if usb plug in w/ wlc off case */
-	if (ts->keep_wlc_mode) {
-		input_info(true, &ts->client->dev,
-			   "keep wlc mode after usb plug in during wlc online");
+	/* Force wlc case */
+	if (usb_present &&
+	    !wlc_online && ts->wlc_online &&
+	    ktime_before(ts->wlc_changed_ktime,
+		ktime_add_ms(ts->usb_changed_ktime, debounce_ms))) {
+		force_wlc = true;
 		charger_mode = SEC_TS_BIT_CHARGER_MODE_WIRELESS_CHARGER;
+		input_info(true, &ts->client->dev,
+			"%s: force wlc mode if usb present during wlc online.",
+			__func__);
+	} else {
+		force_wlc = false;
 	}
 
 	input_info(true, &ts->client->dev,
-		"%s: keep_wlc_mode %d, USB(%d->%d), WLC(%d->%d), charger_mode(%#x->%#x)",
+		"%s: force_wlc(%d->%d), usb_present(%d->%d), wlc_online(%d->%d), charger_mode(%#x->%#x)",
 		__func__,
-		ts->keep_wlc_mode,
+		ts->force_wlc, force_wlc,
 		ts->usb_present, usb_present,
 		ts->wlc_online, wlc_online,
 		ts->charger_mode, charger_mode);
@@ -5352,7 +5367,7 @@ static void sec_ts_charger_work(struct work_struct *work)
 	/* update final charger state */
 	ts->wlc_online = wlc_online;
 	ts->usb_present = usb_present;
-	ts->keep_wlc_mode = false;
+	ts->force_wlc = force_wlc;
 }
 #endif
 
@@ -5548,7 +5563,6 @@ static void unregister_panel_bridge(struct drm_bridge *bridge)
 static int sec_ts_psy_cb(struct notifier_block *nb,
 			       unsigned long val, void *data)
 {
-	u64 debounce = 500;
 	struct sec_ts_data *ts = container_of(nb, struct sec_ts_data, psy_nb);
 
 	pr_debug("%s: val %lu", __func__, val);
@@ -5560,22 +5574,11 @@ static int sec_ts_psy_cb(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	if (ts->usb_psy == data) {
-		ts->usb_changed_timestamp = ktime_get();
-		if (ts->wlc_online) {
-			input_dbg(true, &ts->client->dev,
-				"%s: ignore this usb_psy changed during wlc_online!",
-				__func__);
-			return NOTIFY_OK;
-		}
+		ts->usb_changed_ktime = ktime_get();
 	}
 
 	if (ts->wireless_psy != NULL && ts->wireless_psy == data) {
-		/* keep wlc mode after usb plug in during wlc online */
-		if (ts->wlc_online == true &&
-		    ts->usb_present == false &&
-		    ktime_before(ktime_get(),
-			ktime_add_ms(ts->usb_changed_timestamp, debounce)))
-			ts->keep_wlc_mode = true;
+		ts->wlc_changed_ktime = ktime_get();
 	}
 
 	if (ts->power_status == SEC_TS_STATE_POWER_ON)
