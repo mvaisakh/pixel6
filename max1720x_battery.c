@@ -3741,6 +3741,23 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 {
 	int ret;
 
+	if (!max_m5_fg_model_check_version(chip->model_data)) {
+		if (max_m5_needs_reset_model_data(chip->model_data)) {
+			ret = max_m5_reset_state_data(chip->model_data);
+			if (ret < 0)
+				dev_err(chip->dev, "GMSR: failed to erase RC2 saved model data"
+						" ret=%d\n", ret);
+			else
+				dev_warn(chip->dev, "GMSR: RC2 model data erased\n");
+		}
+
+		ret = max1720x_full_reset(chip);
+
+		dev_warn(chip->dev, "FG Version Changed, Reset (%d), Will Reload\n",
+			 ret);
+		return 0;
+	}
+
 	/* TODO add retries */
 	ret = max_m5_model_read_state(chip->model_data);
 	if (ret < 0) {
@@ -3756,25 +3773,6 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 
 		dev_err(chip->dev, "FG State Corrupt, Reset (%d), Will reload\n",
 			ret);
-		return 0;
-	}
-
-	if (!max_m5_fg_model_check_version(chip->model_data)) {
-		if (max_m5_needs_reset_model_data(chip->model_data)) {
-			ret = max_m5_reset_state_data(chip->model_data);
-			if (ret < 0)
-				dev_err(chip->dev, "GMSR: failed to erase RC2 saved model data"
-						   " ret=%d\n", ret);
-			else
-				dev_warn(chip->dev, "GMSR: RC2 model data erased\n");
-		}
-
-		ret = max1720x_full_reset(chip);
-		if (ret == 0)
-			ret = max_m5_model_read_state(chip->model_data);
-
-		dev_warn(chip->dev, "FG Version Changed, Reset (%d), Will Reload\n",
-			 ret);
 		return 0;
 	}
 

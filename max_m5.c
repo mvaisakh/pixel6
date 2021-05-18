@@ -407,6 +407,9 @@ int max_m5_needs_reset_model_data(const struct max_m5_data *m5_data)
 {
 	int read_rc, para_rc;
 
+	if (m5_data->force_reset_model_data)
+		return 1;
+
 	read_rc = max_m5_model_read_rc(m5_data);
 	if (read_rc < 0)
 		return 0;
@@ -1048,6 +1051,9 @@ void *max_m5_init_data(struct device *dev, struct device_node *node,
 	if (ret < 0 || temp > 255)
 		temp = MAX_M5_INVALID_VERSION;
 	m5_data->model_version = temp;
+
+	m5_data->force_reset_model_data =
+		of_property_read_bool(node, "maxim,force-reset-model-data");
 
 	/*
 	 * Initial values: check max_m5_model_read_state() for the registers

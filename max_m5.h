@@ -114,6 +114,7 @@ struct max_m5_data {
 	int custom_model_size;
 	u16 *custom_model;
 	u32 model_version;
+	bool force_reset_model_data;
 
 	/* to/from GMSR */
 	struct model_state_save model_save;
