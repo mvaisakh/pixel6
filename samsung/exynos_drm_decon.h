@@ -389,7 +389,7 @@ struct decon_device {
 	struct dpu_bts			bts;
 	struct decon_debug		d;
 	struct exynos_hibernation	*hibernation;
-	struct completion		framestart_done;
+	struct drm_pending_vblank_event *event;
 	struct exynos_dqe		*dqe;
 	struct task_struct		*thread;
 	struct kthread_worker		worker;

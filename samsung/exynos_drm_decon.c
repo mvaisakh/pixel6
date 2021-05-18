@@ -578,6 +578,42 @@ static void decon_disable_plane(struct exynos_drm_crtc *exynos_crtc,
 	decon_debug(decon, "%s -\n", __func__);
 }
 
+static void decon_send_vblank_event_locked(struct decon_device *decon)
+{
+	struct drm_crtc *crtc = &decon->crtc->base;
+	struct drm_device *dev = crtc->dev;
+
+	if (WARN_ON(!decon->event))
+		return;
+
+	spin_lock(&dev->event_lock);
+	drm_send_event_locked(dev, &decon->event->base);
+	spin_unlock(&dev->event_lock);
+
+	drm_crtc_vblank_put(crtc);
+
+	decon->event = NULL;
+}
+
+static void decon_arm_event_locked(struct exynos_drm_crtc *exynos_crtc)
+{
+	struct drm_crtc *crtc = &exynos_crtc->base;
+	struct decon_device *decon = exynos_crtc->ctx;
+	struct drm_pending_vblank_event *event = crtc->state->event;
+
+	if (!event)
+		return;
+
+	crtc->state->event = NULL;
+
+	/* in the rare case that event wasn't signaled before, signal it now */
+	if (WARN_ON(decon->event))
+		decon_send_vblank_event_locked(decon);
+
+	WARN_ON(drm_crtc_vblank_get(crtc) != 0);
+	decon->event = event;
+}
+
 static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 		struct drm_crtc_state *old_crtc_state)
 {
@@ -603,8 +639,11 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 		if (new_exynos_crtc_state->seamless_mode_changed)
 			decon_seamless_mode_set(exynos_crtc, old_crtc_state);
 
-		complete_all(&decon->framestart_done);
-		goto skip_update;
+		/* during skip update, send vblank event on next vsync instead of frame start */
+		if (!new_crtc_state->no_vblank)
+			exynos_crtc_handle_event(exynos_crtc);
+
+		return;
 	}
 
 	if (new_exynos_crtc_state->wb_type == EXYNOS_WB_CWB)
@@ -666,12 +705,9 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 
 	spin_lock_irqsave(&decon->slock, flags);
 	decon_reg_start(decon->id, &decon->config);
-	reinit_completion(&decon->framestart_done);
-	spin_unlock_irqrestore(&decon->slock, flags);
-
-skip_update:
 	if (!new_crtc_state->no_vblank)
-		exynos_crtc_handle_event(exynos_crtc);
+		decon_arm_event_locked(exynos_crtc);
+	spin_unlock_irqrestore(&decon->slock, flags);
 
 	DPU_EVENT_LOG(DPU_EVT_ATOMIC_FLUSH, decon->id, NULL);
 
@@ -1178,8 +1214,7 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 
 	if (irq_sts_reg & INT_PEND_DQE_DIMMING_END) {
 		decon->keep_unmask = false;
-		if (decon->framestart_done.done &&
-				decon->config.mode.op_mode == DECON_COMMAND_MODE)
+		if (!decon->event && decon->config.mode.op_mode == DECON_COMMAND_MODE)
 			decon_reg_set_trigger(decon->id, &decon->config.mode,
 					DECON_TRIG_MASK);
 
@@ -1212,8 +1247,8 @@ static irqreturn_t decon_fs_irq_handler(int irq, void *dev_data)
 	pending_irq = decon_reg_get_fs_interrupt_and_clear(decon->id);
 
 	if (pending_irq & DPU_FRAME_START_INT_PEND) {
-		complete(&decon->framestart_done);
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMESTART, decon->id, decon);
+		decon_send_vblank_event_locked(decon);
 		decon_debug(decon, "%s: frame start\n", __func__);
 		if (decon->config.mode.op_mode == DECON_VIDEO_MODE)
 			drm_crtc_handle_vblank(&decon->crtc->base);
@@ -1633,7 +1668,6 @@ static int decon_probe(struct platform_device *pdev)
 	decon_drvdata[decon->id] = decon;
 
 	spin_lock_init(&decon->slock);
-	init_completion(&decon->framestart_done);
 	init_waitqueue_head(&decon->framedone_wait);
 
 	decon->state = DECON_STATE_INIT;
