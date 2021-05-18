@@ -26,6 +26,12 @@ lwis-objs += platform/gs101/lwis_platform_gs101.o
 lwis-objs += platform/gs101/lwis_platform_gs101_dma.o
 endif
 
+# GS201 specific files
+ifeq ($(CONFIG_SOC_GS201), y)
+lwis-objs += platform/gs201/lwis_platform_gs201.o
+lwis-objs += platform/gs201/lwis_platform_gs201_dma.o
+endif
+
 # Device tree specific file
 ifeq ($(CONFIG_OF), y)
 lwis-objs += lwis_dt.o
