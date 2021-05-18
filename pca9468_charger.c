@@ -805,7 +805,7 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 {
 	const int delta_offset = 20000;
-	const int delta_limit = 85000; /* reduce at high voltage? */
+	const int delta_limit = 60000; /* reduce at low current, higher tiers */
 	int ret, vbat, pca_vbat = 0, delta = 0;
 
 	ret = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
@@ -878,12 +878,10 @@ static int pca9468_check_status(struct pca9468_charger *pca9468)
 	if (rc == 0)
 		rc = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
 
+error:
 	pr_debug("%s: status=%d icn:%d ibat:%d delta_c=%d, vbat:%d, fv:%d, cc_max:%d\n",
 		 __func__, status, icn, ibat, icn - ibat, vbat,
 		 pca9468->fv_uv, pca9468->cc_max);
-
-error:
-	pr_debug("%s: Status=%d\n", __func__, status);
 	return status;
 }
 
