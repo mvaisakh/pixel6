@@ -389,6 +389,8 @@ struct exynos_panel {
 	bool panel_idle_enabled;
 	/* indicates if panel is currently in idle mode */
 	bool panel_idle_active;
+	/* indicates self refresh is active */
+	bool self_refresh_active;
 
 	bool hbm_mode;
 	bool dimming_on;

@@ -409,15 +409,34 @@ static void s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	const struct exynos_panel_mode *pmode = ctx->current_mode;
 	const struct s6e3hc3_mode_data *mdata;
 	const struct exynos_dsi_cmd_set *cmdset;
+	const struct s6e3hc3_panel *spanel = to_spanel(ctx);
+	const bool idle_active = enable && is_auto_mode_preferred(ctx);
 
 	if (unlikely(!pmode))
+		return;
+
+	/* self refresh is not supported in lp mode since that always makes use of early exit */
+	if (pmode->exynos_mode.is_lp_mode)
 		return;
 
 	mdata = pmode->priv_data;
 	if (unlikely(!mdata))
 		return;
 
-	cmdset = enable && !ctx->hbm_mode ? mdata->idle_mode_cmd_set : mdata->wakeup_mode_cmd_set;
+	/*
+	 * detect case where idle is being disabled and we have early exit enabled
+	 * make a frequency update in order to disable early exit
+	 */
+	if (!idle_active && spanel->early_exit_enabled && !is_auto_mode_preferred(ctx))
+		s6e3hc3_change_frequency(ctx, pmode);
+
+	/* if there's no change in idle state then skip cmds */
+	if (ctx->panel_idle_active == idle_active)
+		return;
+
+	ctx->panel_idle_active = idle_active;
+
+	cmdset = idle_active ? mdata->idle_mode_cmd_set : mdata->wakeup_mode_cmd_set;
 	if (cmdset) {
 		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 		exynos_panel_send_cmd_set(ctx, cmdset);
