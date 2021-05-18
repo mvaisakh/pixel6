@@ -609,9 +609,20 @@ static int p9412_set_cc_send_size(struct p9221_charger_data *chgr, size_t len)
 {
 	int ret;
 
-	/* set packet type(BiDi 0x98) to 0x800 */
-	ret = chgr->reg_write_8(chgr, P9412_COM_PACKET_TYPE_ADDR,
-				BIDI_COM_PACKET_TYPE);
+	/* set as ADT type(Authentication) */
+	if (chgr->auth_type != 0) {
+		ret = chgr->reg_write_8(chgr, P9412_COM_PACKET_TYPE_ADDR,
+					(P9412_ADT_TYPE_AUTH << 3) |
+					(chgr->tx_len >> 8));
+		ret |= chgr->reg_write_8(chgr, P9412_COM_PACKET_TYPE_ADDR + 1,
+					 chgr->tx_len & 0xFF);
+		chgr->auth_type = 0;
+	} else {
+		/* set packet type(BiDi 0x98) to 0x800 */
+		ret = chgr->reg_write_8(chgr, P9412_COM_PACKET_TYPE_ADDR,
+					BIDI_COM_PACKET_TYPE);
+	}
+
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"Failed to write packet type %d\n", ret);

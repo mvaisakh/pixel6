@@ -431,7 +431,8 @@
 /* EPT code */
 #define EPT_END_OF_CHARGE			BIT(0)
 
-#define P9221_CRC8_POLYNOMIAL           0x07    /* (x^8) + x^2 + x + 1 */
+#define P9221_CRC8_POLYNOMIAL			0x07    /* (x^8) + x^2 + x + 1 */
+#define P9412_ADT_TYPE_AUTH			0x02
 
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
@@ -590,6 +591,7 @@ struct p9221_charger_data {
 	u32				tx_id;
 	u8				tx_id_str[(sizeof(u32) * 2) + 1];
 	u16				tx_len;
+	u16				auth_type;
 	bool				tx_done;
 	bool				tx_busy;
 	bool				com_busy;

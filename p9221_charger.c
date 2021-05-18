@@ -2527,6 +2527,26 @@ static ssize_t p9221_store_txlen(struct device *dev,
 
 static DEVICE_ATTR(txlen, 0200, NULL, p9221_store_txlen);
 
+static ssize_t authtype_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	int ret;
+	u16 type;
+
+	ret = kstrtou16(buf, 16, &type);
+	if (ret < 0)
+		return ret;
+
+	charger->auth_type = type;
+
+	return count;
+}
+
+static DEVICE_ATTR_WO(authtype);
+
 static ssize_t p9221_show_force_epp(struct device *dev,
 				    struct device_attribute *attr,
 				    char *buf)
@@ -3354,6 +3374,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_log_current_filtered.attr,
 	&dev_attr_charge_stats.attr,
 	&dev_attr_fw_rev.attr,
+	&dev_attr_authtype.attr,
 	NULL
 };
 
