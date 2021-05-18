@@ -39,6 +39,8 @@ int max777x9_pmic_reg_update(struct i2c_client *client,
 
 /* write to a register */
 int max77759_chg_reg_write(struct i2c_client *client, u8 reg, u8 value);
+/* write to a register */
+int max77759_chg_reg_read(struct i2c_client *client, u8 reg, u8 *value);
 /* udate a register */
 int max77759_chg_reg_update(struct i2c_client *client, u8 reg, u8 mask, u8 value);
 /* change the mode register */
@@ -147,6 +149,7 @@ struct max77759_usecase_data {
 
 	u8 otg_ilim;		/* TODO: TCPM to control this? */
 	u8 otg_vbyp;		/* TODO: TCPM to control this? */
+	u8 otg_orig;		/* restore value */
 
 	struct i2c_client *client;
 	bool init_done;

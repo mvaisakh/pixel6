@@ -178,6 +178,21 @@ int max77759_chg_reg_write(struct i2c_client *client, u8 reg, u8 value)
 }
 EXPORT_SYMBOL_GPL(max77759_chg_reg_write);
 
+int max77759_chg_reg_read(struct i2c_client *client, u8 reg, u8 *value)
+{
+	struct max77759_chgr_data *data;
+
+	if (!client)
+		return -ENODEV;
+
+	data = i2c_get_clientdata(client);
+	if (!data || !data->regmap)
+		return -ENODEV;
+
+	return max77759_reg_read(data->regmap, reg, value);
+}
+EXPORT_SYMBOL_GPL(max77759_chg_reg_read);
+
 int max77759_chg_reg_update(struct i2c_client *client,
 			    u8 reg, u8 mask, u8 value)
 {
@@ -659,6 +674,52 @@ static int gs101_cpout_mode(struct max77759_usecase_data *uc_data, int mode)
 	return ret;
 }
 
+static int max7759_otg_update_ilim(struct max77759_usecase_data *uc_data, int enable)
+{
+	u8 ilim;
+
+	if (uc_data->otg_orig == uc_data->otg_ilim)
+		return 0;
+
+	if (enable) {
+		int rc;
+
+		rc = max77759_chg_reg_read(uc_data->client, MAX77759_CHG_CNFG_05,
+					   &uc_data->otg_orig);
+		if (rc < 0) {
+			pr_err("%s: cannot read otg_ilim (%d), use default\n",
+			       __func__, rc);
+			uc_data->otg_orig = MAX77759_CHG_CNFG_05_OTG_ILIM_1500MA;
+		} else {
+			uc_data->otg_orig &= MAX77759_CHG_CNFG_05_OTG_ILIM_MASK;
+		}
+
+		ilim = uc_data->otg_ilim;
+	} else {
+		ilim = uc_data->otg_orig;
+	}
+
+	return max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_05,
+				      MAX77759_CHG_CNFG_05_OTG_ILIM_MASK,
+				      ilim);
+}
+
+static int max7759_otg_frs(struct max77759_usecase_data *uc_data, int enable)
+{
+	int ret;
+
+	ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_OTG_BOOST_ON);
+	if (ret < 0) {
+		pr_err("%s: cannot set CNFG_00 to 0xa ret:%d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = max7759_otg_update_ilim(uc_data, enable);
+	if (ret < 0)
+		pr_err("%s: cannot update otg_ilim: %d\n", __func__, ret);
+
+	return ret;
+}
 
 /*
  * Transition to standby (if needed) at the beginning of the sequences
@@ -722,8 +783,12 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			break;
 
 		case GSU_MODE_USB_OTG_FRS:
-			if (use_case == GSU_MODE_USB_OTG || use_case == GSU_MODE_USB_OTG_FRS)
+			if (use_case == GSU_MODE_USB_OTG_FRS)
 				break;
+			/*
+			 *  if (use_case == GSU_MODE_USB_OTG)
+			 * 	break;
+			 */
 			need_stby = true;
 			break;
 		case GSU_RAW_MODE:
@@ -741,6 +806,15 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 
 	if (!need_stby)
 		return 0;
+
+	/* there are no ways out of OTG FRS */
+	if (from_uc == GSU_MODE_USB_OTG_FRS) {
+		ret = max7759_otg_frs(uc_data, true);
+		if (ret < 0) {
+			pr_err("%s: cannot turn off OTG_FRS (%d)\n", __func__, ret);
+			return ret;
+		}
+	}
 
 	/* from WLC_TX to STBY */
 	if (from_uc == GSU_MODE_WLC_TX) {
@@ -868,7 +942,6 @@ static int gs101_otg_mode(struct max77759_usecase_data *uc_data, int to)
 	return ret;
 }
 
-
 /*
  * This must follow different paths depending on the platforms.
  *
@@ -941,7 +1014,6 @@ static int max7759_otg_enable(struct max77759_usecase_data *uc_data, int mode)
 	return ret;
 }
 
-
 /* configure ilim wlctx */
 static int gs101_wlctx_otg_en(struct max77759_usecase_data *uc_data, bool enable)
 {
@@ -951,11 +1023,9 @@ static int gs101_wlctx_otg_en(struct max77759_usecase_data *uc_data, bool enable
 		if (uc_data->sw_en > 0)
 			gpio_set_value_cansleep(uc_data->sw_en, 1);
 
-		ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_05,
-					MAX77759_CHG_CNFG_05_OTG_ILIM_MASK,
-					uc_data->otg_ilim);
+		ret = max7759_otg_update_ilim(uc_data, true);
 		if (ret < 0)
-			return ret;
+			pr_err("%s: cannot update otg_ilim (%d)\n", __func__, ret);
 
 		ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_18,
 					MAX77759_CHG_CNFG_18_OTG_V_PGM,
@@ -973,12 +1043,15 @@ static int gs101_wlctx_otg_en(struct max77759_usecase_data *uc_data, bool enable
 		if (uc_data->sw_en > 0)
 			gpio_set_value_cansleep(uc_data->sw_en, 0);
 
+		ret = max7759_otg_update_ilim(uc_data, false);
+		if (ret < 0)
+			pr_err("%s: cannot update otg_ilim (%d)\n", __func__, ret);
+
 		ret = 0;
 		/* TODO: restore initial value on MAX77759_CHG_CNFG_05 */
 		/* TODO: restore initial value on !MAX77759_CHG_CNFG_18 */
 		/* TODO: restore initial value on !MAX77759_CHG_CNFG_11 */
 	}
-
 
 	return ret;
 }
@@ -993,6 +1066,7 @@ static int gs101_ext_bst_mode(struct max77759_usecase_data *uc_data, int mode)
 
 	return 0;
 }
+
 /*
  * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
  * -------------------------------------------------------------------------------------
@@ -1062,6 +1136,17 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 		 * other than 0, then, the code has to be revisited.
 		 */
 	} break;
+
+	/* b/186535439 : USB_CHG->USB_OTG_FRS*/
+	case GSU_MODE_USB_CHG:
+	case GSU_MODE_USB_CHG_WLC_TX:
+		/* need to go through stby out of this */
+		if (use_case != GSU_MODE_USB_OTG_FRS)
+			return -EINVAL;
+
+		ret = max7759_otg_frs(uc_data, true);
+	break;
+
 
 	case GSU_MODE_WLC_TX:
 		/* b/179820595: WLC_TX -> WLC_TX + OTG */
@@ -1133,11 +1218,16 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 				ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
 		}
 	break;
+	/* TODO: */
 	case GSU_MODE_USB_OTG_FRS: {
 		/*
 		 * OTG source handover: OTG_FRS -> OTG
 		 * from EXT_BST (Regular OTG) to IF-PMIC OTG (FRS OTG)
 		 */
+		if (use_case != GSU_MODE_USB_OTG)
+			return -EINVAL;
+
+		/* TODO: */
 	} break;
 
 	default:
@@ -1439,11 +1529,18 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->cpout21_en = -EPROBE_DEFER;
 		uc_data->init_done = false;
 
-		/* TODO: read from device tree */
+		/* TODO: override in bootloader and remove */
 		ret = max77759_otg_ilim_ma_to_code(&uc_data->otg_ilim,
 						   GS101_OTG_ILIM_DEFAULT_MA);
 		if (ret < 0)
 			uc_data->otg_ilim = MAX77759_CHG_CNFG_05_OTG_ILIM_1500MA;
+		ret = max77759_chg_reg_read(uc_data->client, MAX77759_CHG_CNFG_05,
+					    &uc_data->otg_orig);
+		if (ret == 0) {
+			uc_data->otg_orig &= MAX77759_CHG_CNFG_05_OTG_ILIM_MASK;
+		} else {
+			uc_data->otg_orig = uc_data->otg_ilim;
+		}
 
 		ret = max77759_otg_vbyp_mv_to_code(&uc_data->otg_vbyp,
 						   GS101_OTG_VBYPASS_DEFAULT_MV);
