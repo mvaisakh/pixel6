@@ -292,7 +292,8 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 }
 
 int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_peak,
-			     unsigned int bw_kb_read, unsigned int bw_kb_write)
+			     unsigned int bw_kb_read, unsigned int bw_kb_write,
+			     unsigned int bw_kb_rt)
 {
 	int ret = 0;
 	struct bts_bw bts_request;
@@ -305,13 +306,15 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 	bts_request.peak = bw_kb_peak;
 	bts_request.read = bw_kb_read;
 	bts_request.write = bw_kb_write;
+	bts_request.rt = bw_kb_rt;
 	ret = bts_update_bw(lwis_dev->bts_index, bts_request);
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
-		dev_info(lwis_dev->dev,
-			 "Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u\n",
-			 lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write);
+		dev_info(
+			lwis_dev->dev,
+			"Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u, rt: %u\n",
+			lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write, bw_kb_rt);
 	}
 	return ret;
 }

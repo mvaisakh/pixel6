@@ -47,6 +47,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	int64_t peak_bw = 0;
 	int64_t read_bw = 0;
 	int64_t write_bw = 0;
+	int64_t rt_bw = 0;
 	struct lwis_device *target_dev = lwis_find_dev_by_id(qos_setting->device_id);
 	if (!target_dev) {
 		dev_err(lwis_dev->dev, "Can't find device by id: %d\n", qos_setting->device_id);
@@ -60,8 +61,9 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 		write_bw = qos_setting->write_bw;
 		peak_bw = (qos_setting->peak_bw > 0) ?
 				  qos_setting->peak_bw :
-				  ((read_bw > write_bw) ? read_bw : write_bw) / 4;
-		ret = lwis_platform_update_bts(target_dev, peak_bw, read_bw, write_bw);
+					((read_bw > write_bw) ? read_bw : write_bw) / 4;
+		rt_bw = (qos_setting->rt_bw > 0) ? qos_setting->rt_bw : 0;
+		ret = lwis_platform_update_bts(target_dev, peak_bw, read_bw, write_bw, rt_bw);
 		if (ret < 0) {
 			dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 		}

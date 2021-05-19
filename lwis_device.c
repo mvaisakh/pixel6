@@ -202,7 +202,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 	if (lwis_dev->enabled == 0) {
 		if (lwis_dev->bts_index != BTS_UNSUPPORTED) {
 			lwis_platform_update_bts(lwis_dev, /*bw_peak=*/0,
-						 /*bw_read=*/0, /*bw_write=*/0);
+						 /*bw_read=*/0, /*bw_write=*/0, /*bw_rt=*/0);
 		}
 		/* remove voted qos */
 		lwis_platform_remove_qos(lwis_dev);
