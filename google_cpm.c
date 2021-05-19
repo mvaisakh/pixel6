@@ -459,6 +459,9 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	const int vbatt_max = gcpm->dc_limit_vbatt_max;
 	int batt_demand, index = GCPM_DEFAULT_CHARGER;
 
+	if (!gcpm->dc_init_complete)
+		return GCPM_DEFAULT_CHARGER;
+
 	/* taper_control only applies to DC (unless is forced) */
 	if (gcpm->force_active >= 0)
 		return gcpm->force_active;
@@ -1467,11 +1470,13 @@ static void gcpm_init_work(struct work_struct *work)
 			!!gcpm->tcpm_psy, !!gcpm->wlc_dc_psy);
 
 		gcpm->dc_init_complete = true;
-
 	}
 
 	/* might run along set_property() */
 	mutex_unlock(&gcpm->chg_psy_lock);
+
+	if (gcpm->dc_init_complete)
+		mod_delayed_work(system_wq, &gcpm->select_work, 0);
 }
 
 /* ------------------------------------------------------------------------ */
