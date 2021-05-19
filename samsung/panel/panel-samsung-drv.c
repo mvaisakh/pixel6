@@ -1759,6 +1759,56 @@ static const struct file_operations exynos_dsi_payload_fops = {
 	.release	= single_release,
 };
 
+static int exynos_reset_panel(struct exynos_panel *ctx)
+{
+	if (!ctx) {
+		pr_debug("reset_panel: exynos_panel not exist\n");
+		return -EPERM;
+	}
+
+	if (IS_ERR_OR_NULL(ctx->reset_gpio)) {
+		pr_debug("reset_panel: reset_gpio is invalid\n");
+		return -EPERM;
+	}
+
+	gpiod_set_value(ctx->reset_gpio, 0);
+	pr_info("reset_panel: pull reset_gpio to low to reset panel\n");
+
+	return 0;
+}
+
+static ssize_t exynos_debugfs_reset_panel(struct file *file,
+			       const char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	bool reset_panel;
+	int ret;
+	struct mipi_dsi_device *dsi = file->private_data;
+	struct exynos_panel *ctx = mipi_dsi_get_drvdata(dsi);
+
+	if (!ctx->initialized || !ctx->enabled)
+		return -EPERM;
+
+	ret = kstrtobool_from_user(user_buf, count, &reset_panel);
+	if (ret)
+		return ret;
+
+	if (reset_panel) {
+		ret = exynos_reset_panel(ctx);
+		if (ret) {
+			pr_debug("reset_panel: reset panel failed\n");
+			return ret;
+		}
+	}
+
+	return count;
+}
+
+static const struct file_operations exynos_reset_panel_fops = {
+	.open = simple_open,
+	.write = exynos_debugfs_reset_panel,
+};
+
 static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 			 struct dentry *parent)
 {
@@ -1784,6 +1834,7 @@ static int exynos_dsi_debugfs_add(struct mipi_dsi_device *dsi,
 			    &exynos_dsi_payload_fops);
 
 	debugfs_create_file("name", 0600, parent, dsi, &exynos_dsi_name_fops);
+	debugfs_create_file("reset_panel",0200, parent, dsi, &exynos_reset_panel_fops);
 
 	return 0;
 }
