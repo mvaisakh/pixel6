@@ -7169,9 +7169,6 @@ static int cs40l2x_pbq_cancel(struct cs40l2x_private *cs40l2x)
 		if (ret)
 			return ret;
 
-		if (cs40l2x->event_control & CS40L2X_EVENT_END_ENABLED)
-			break;
-
 		cs40l2x_set_state(cs40l2x, CS40L2X_VIBE_STATE_STOPPED);
 		cs40l2x_wl_relax(cs40l2x);
 		break;
