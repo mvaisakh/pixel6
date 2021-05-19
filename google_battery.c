@@ -297,6 +297,9 @@ struct batt_drv {
 	uint32_t chg_sts_qual_time;
 	uint32_t chg_sts_delta_soc;
 
+	/* health charge margin time */
+	int health_safety_margin;
+
 	/* time to full */
 	struct batt_ttf_stats ttf_stats;
 	bool ttf_debounce;
@@ -2191,9 +2194,16 @@ static bool msc_health_pause(struct batt_drv *batt_drv, const ktime_t ttf,
 	const struct gbms_ce_tier_stats	*h = &ce_data->health_stats;
 	const struct batt_chg_health *rest = &batt_drv->chg_health;
 	const ktime_t deadline = rest->rest_deadline;
-	const ktime_t safety_margin = DEFAULT_HEALTH_SAFETY_MARGIN;
+	const ktime_t safety_margin = (ktime_t)batt_drv->health_safety_margin;
 	const ktime_t elap_h = h->time_fast + h->time_taper + h->time_other;
 	const int ssoc = ssoc_get_capacity(&batt_drv->ssoc_state);
+
+	/*
+	 * the safety marging cannot be less than 0 (it would subtract time from TTF and would
+         * cause AC to never meet 100% in time). Use 0<= to disable PAUSE.
+	 */
+	if (safety_margin <= 0)
+		return false;
 
 	/*
 	 * Expected behavior:
@@ -4296,6 +4306,44 @@ static ssize_t fan_level_show(struct device *dev,
 }
 
 static const DEVICE_ATTR_RW(fan_level);
+
+static ssize_t show_health_safety_margin(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 batt_drv->health_safety_margin);
+}
+
+static ssize_t set_health_safety_margin(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+	int ret = 0, val;
+
+	ret = kstrtoint(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * less than 0 is not accaptable: we will not reach full in time.
+	 * set to 0 to disable PAUSE but keep AC charge
+	 */
+	if (val < 0)
+		val = 0;
+
+	batt_drv->health_safety_margin = val;
+
+	return count;
+}
+
+static DEVICE_ATTR(health_safety_margin, 0660,
+		    show_health_safety_margin, set_health_safety_margin);
+
 /* ------------------------------------------------------------------------- */
 
 static int batt_init_fs(struct batt_drv *batt_drv)
@@ -4408,6 +4456,9 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_fan_level);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create fan level\n");
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_health_safety_margin);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create health safety margin\n");
 
 	de = debugfs_create_dir("google_battery", 0);
 	if (IS_ERR_OR_NULL(de))
@@ -5384,6 +5435,11 @@ static void google_battery_init_work(struct work_struct *work)
 				   &batt_drv->ssoc_state.ssoc_delta);
 	if (ret < 0)
 		batt_drv->ssoc_state.ssoc_delta = SSOC_DELTA;
+
+	ret = of_property_read_u32(node, "google,health-safety-margin",
+				   &batt_drv->health_safety_margin);
+	if (ret < 0)
+		batt_drv->health_safety_margin = DEFAULT_HEALTH_SAFETY_MARGIN;
 
 	/* cycle count is cached: read here bc SSOC, chg_profile might use it */
 	batt_update_cycle_count(batt_drv);
