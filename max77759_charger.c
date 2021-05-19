@@ -731,6 +731,7 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 {
 	const int from_uc = uc_data->use_case;
 	bool need_stby = false;
+	bool from_otg = false;
 	int ret;
 
 	switch (from_uc) {
@@ -754,7 +755,7 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			break;
 
 		case GSU_MODE_USB_OTG:
-
+			from_otg = true;
 			if (use_case == GSU_MODE_USB_OTG_FRS)
 				break;
 			if (use_case == GSU_MODE_USB_OTG_WLC_TX)
@@ -778,11 +779,13 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			break;
 
 		case GSU_MODE_USB_OTG_WLC_RX:
+			from_otg = true;
 			need_stby = use_case != GSU_MODE_WLC_RX &&
 				    use_case != GSU_MODE_USB_OTG;
 			break;
 
 		case GSU_MODE_USB_OTG_FRS:
+			from_otg = true;
 			if (use_case == GSU_MODE_USB_OTG_FRS)
 				break;
 			/*
@@ -795,14 +798,17 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			need_stby = true;
 			break;
 		case GSU_MODE_USB_OTG_WLC_TX:
+			from_otg = true;
+			need_stby = false;
+			break;
 		case GSU_MODE_STANDBY:
 		default:
 			need_stby = false;
 			break;
 	}
 
-	pr_debug("%s: use_case=%d->%d need_stby=%x\n", __func__,
-		 from_uc, use_case, need_stby);
+	pr_debug("%s: use_case=%d->%d from_otg=%d need_stby=%x\n", __func__,
+		 from_uc, use_case, from_otg, need_stby);
 
 	if (!need_stby)
 		return 0;
@@ -840,6 +846,10 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 		if (ret < 0)
 			pr_err("%s: cannot reset cpout (%d)\n", __func__, ret);
 	}
+
+	/* b/178458456 exit from all OTG cases need to reset the limit */
+	if (uc_data->otg_enable > 0)
+		gpio_set_value_cansleep(uc_data->otg_enable, 0);
 
 	/* transition to STBY (might need to be up) */
 	ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_ALL_OFF);
@@ -959,6 +969,10 @@ static int max7759_otg_enable(struct max77759_usecase_data *uc_data, int mode)
 	/* the code default to write to the MODE register */
 	if (uc_data->vin_is_valid >= 0) {
 
+		/* b/178458456 */
+		if (uc_data->otg_enable > 0)
+			gpio_set_value_cansleep(uc_data->otg_enable, 1);
+
 		/* NBC workaround */
 		ret = max77759_ls_mode(uc_data, 1);
 		if (ret < 0) {
@@ -1009,6 +1023,9 @@ static int max7759_otg_enable(struct max77759_usecase_data *uc_data, int mode)
 		/* time for VBUS to be on (could check PWRSTAT in MW) */
 		mdelay(30);
 
+		/* b/178458456 */
+		if (uc_data->otg_enable > 0)
+			gpio_set_value_cansleep(uc_data->otg_enable, 0);
 	}
 
 	return ret;
@@ -1521,6 +1538,8 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->lsw1_is_closed = -EPROBE_DEFER;
 		uc_data->lsw1_is_open = -EPROBE_DEFER;
 
+		uc_data->otg_enable = -EPROBE_DEFER;
+
 		uc_data->wlc_en = -EPROBE_DEFER;
 		uc_data->ext_bst_mode = -EPROBE_DEFER;
 
@@ -1565,6 +1584,10 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->lsw1_is_closed = of_get_named_gpio(node, "max77759,lsw1-is_closed", 0);
 	if (uc_data->lsw1_is_open == -EPROBE_DEFER)
 		uc_data->lsw1_is_open = of_get_named_gpio(node, "max77759,lsw1-is_open", 0);
+
+	/* all OTG cases, change INOVLO */
+	if (uc_data->otg_enable == -EPROBE_DEFER)
+		uc_data->otg_enable = of_get_named_gpio(node, "max77759,otg-enable", 0);
 
 	/*  wlc_rx: disable when chgin, CPOUT is safe */
 	if (uc_data->wlc_en == -EPROBE_DEFER)

@@ -132,6 +132,7 @@ struct max77759_usecase_data {
 	int bst_on;		/* ext boost */
 	int bst_sel;		/* 5V or 7.5V */
 	int ext_bst_ctl;	/* MW VENDOR_EXTBST_CTRL */
+	int otg_enable;		/* enter/exit from OTG cases */
 
 	int ls2_en;		/* OVP LS2, rtx case */
 	int sw_en;		/* OVP SW Enable, rtx+otg case */
