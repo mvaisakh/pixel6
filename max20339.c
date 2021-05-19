@@ -32,7 +32,9 @@
 #define MAX20339_INT3				0x6
 #define MAX20339_INTMASK1			0x7
 #define MAX20339_OVLOSEL			0x11
+#define MAX20339_OVLOSEL_INOVLOSEL_5_85		0x0
 #define MAX20339_OVLOSEL_INOVLOSEL_14_5		0x2
+#define MAX20339_OVLOSEL_INOVLOSEL_MASK		0x3
 #define MAX20339_IN_CTR_REG			0x10
 #define MAX20339_IN_CTR_SWEN_SHIFT		0
 #define MAX20339_IN_CTR_SWEN_MASK		GENMASK(1, 0)
@@ -55,9 +57,10 @@
 #define MAX20338_SW_CNTL_LSW2_OV_EN_SHIFT	5
 #define MAX20338_SW_CNTL_LSW2_OV_EN_MASK	0x20
 
+
 #define MAX20339_MIN_GPIO			0
-#define MAX20339_MAX_GPIO			7
-#define MAX20339_NUM_GPIOS			7
+#define MAX20339_MAX_GPIO			8
+#define MAX20339_NUM_GPIOS			8
 #define MAX20339_LSW1_OFF			0
 #define MAX20339_LSW2_OFF			1
 #define MAX20339_LSW1_STATUS_OFF		2
@@ -65,6 +68,7 @@
 #define MAX20339_IN_CTR_SWEN_OFF		4
 #define MAX20339_LSW1_IS_OPEN_OFF		5
 #define MAX20339_LSW1_IS_CLOSED_OFF		6
+#define MAX20339_OTG_ENA_OFF			7
 
 #define MAX20339_GPIO_GET_TIMEOUT_MS		100
 
@@ -315,6 +319,17 @@ static void max20339_gpio_set(struct gpio_chip *chip,
 		status_reg = MAX20339_STATUS1;
 		tmp = value ? MAX20339_IN_CTR_SWEN_FORCE_ON : MAX20339_IN_CTR_SWEN_FORCE_OFF;
 		break;
+
+	/* b/178458456 clear/reset INOVLO on enter/exit from OTG cases */
+	case MAX20339_OTG_ENA_OFF:
+		tmp = value ? MAX20339_OVLOSEL_INOVLOSEL_5_85 :
+		      MAX20339_OVLOSEL_INOVLOSEL_14_5;
+		ret = regmap_update_bits(ovp->regmap, MAX20339_OVLOSEL,
+					 MAX20339_OVLOSEL_INOVLOSEL_MASK,
+					 tmp);
+		if (ret < 0)
+			dev_err(&ovp->client->dev, "OVLOSEL update error: ret %d\n", ret);
+		return;
 	default:
 		return;
 	}
