@@ -1229,7 +1229,6 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 #define cb_data_is_chgr_on(cb_data) \
 	(cb_data->stby_on ? 0 : (cb_data->chgr_on >= 2))
 
-
 /*
  * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
  * -------------------------------------------------------------------------------------
@@ -1353,17 +1352,19 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 
 	} else if (cb_data->wlc_rx) {
 
-		/* will be in mode 4 if in stby */
-		if (!chgr_on) {
+		/* will be in mode 4 if in stby unless dc is enabled */
+		if (chgr_on) {
+			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
+			usecase = GSU_MODE_WLC_RX;
+		} else {
 			mode = MAX77759_CHGR_MODE_BUCK_ON;
 			usecase = GSU_MODE_WLC_RX;
-		} else if (cb_data->dc_on) {
+		}
+
+		if (cb_data->dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
 			dc_on = 1;
-		} else {
-			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
-			usecase = GSU_MODE_WLC_RX;
 		}
 
 	} else {
