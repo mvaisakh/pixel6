@@ -62,11 +62,13 @@
 
 /* behavior in taper */
 #define GCPM_TAPER_STEP_FV_MARGIN	0
-#define GCPM_TAPER_STEP_CC_STEP		100000
+#define GCPM_TAPER_STEP_CC_STEP		25000
 #define GCPM_TAPER_STEP_COUNT		5
 #define GCPM_TAPER_STEP_GRACE		10
 #define GCPM_TAPER_STEP_VOLTAGE		0
-#define GCPM_TAPER_STEP_INTERVAL_S	60
+#define GCPM_TAPER_STEP_CURRENT		0
+/* enough time for the charger to settle to a new limit */
+#define GCPM_TAPER_STEP_INTERVAL_S	120
 
 /* TODO: move to configuration */
 #define DC_TA_VMAX_MV		9800000
@@ -145,6 +147,7 @@ struct gcpm_drv  {
 	/* taper off of current at tier, voltage */
 	u32 taper_step_interval;	/* countdown interval in seconds */
 	u32 taper_step_voltage;		/* voltage before countdown */
+	u32 taper_step_current;		/* current before countdown */
 	u32 taper_step_grace;		/* steps from voltage before countdown */
 	u32 taper_step_count;		/* countdown steps before dc_done */
 	int taper_step;			/* actual countdown */
@@ -523,7 +526,7 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	}
 
 	/* thermals might have reduced demand and was not caught from dc_limit */
-	if (gcpm->cc_max <= gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
+	if (gcpm->cc_max < gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
 		pr_debug("%s: cc_max=%d under cc_min=%d\n", __func__,
 			 gcpm->cc_max, gcpm->dc_limit_cc_min);
 		return GCPM_DEFAULT_CHARGER;
@@ -713,7 +716,7 @@ static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
 	if (!dc_psy)
 		return true;
 
-	/* Optional voltage limit */
+	/* Optional dc voltage limit */
 	if (gcpm->taper_step_voltage) {
 		int vbatt;
 
@@ -724,24 +727,43 @@ static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
 			return false;
 	}
 
-	/* adjust ccharging voltage, current for the step */
+	/* Optional dc current limit */
+	if (gcpm->taper_step_current) {
+		int ret, ibatt;
+
+		/* TODO: use current average if available */
+		ret = GPSY_GET_INT_PROP(dc_psy, POWER_SUPPLY_PROP_CURRENT_NOW,
+					&ibatt);
+		if (ret < 0)
+			pr_err("%s: cannot current (%d)", __func__, ret);
+		else if (ibatt > gcpm->taper_step_current)
+			return false;
+	}
+
+	/* delta < 0 during the grace period */
 	fv_uv -= GCPM_TAPER_STEP_FV_MARGIN;
-	cc_max = cc_max - delta * GCPM_TAPER_STEP_CC_STEP;
+	cc_max -= delta * GCPM_TAPER_STEP_CC_STEP;
 	if (cc_max < gcpm->cc_max / 2)
 		cc_max = gcpm->cc_max / 2;
 
-	/* cc_max > gcpm->cc_max when delta < 0 */
+	/* increase of cc_max during the grace period will be ignored */
 	if (cc_max < gcpm->cc_max) {
 		int ret;
 
 		/* failure to preset stop taper and revert to main */
 		ret = gcpm_chg_preset(dc_psy, fv_uv, cc_max);
-		if (ret < 0)
+		pr_debug("CHG_CHK: taper_step=%d fv_uv=%d->%d, cc_max=%d->%d\n",
+			 taper_step, gcpm->fv_uv, fv_uv, gcpm->cc_max, cc_max);
+		if (ret < 0) {
+			pr_err("CHG_CHK: taper_step=%d failed, revert (%d)\n",
+			       taper_step, ret);
 			return true;
-	}
+		}
 
-	pr_debug("CHG_CHK: taper_step=%d fv_uv=%d->%d, cc_max=%d->%d\n",
-		 taper_step, gcpm->fv_uv, fv_uv, gcpm->cc_max, cc_max);
+	} else {
+		pr_debug("CHG_CHK: grace taper_step=%d fv_uv=%d, cc_max=%d\n",
+			 taper_step, gcpm->fv_uv, gcpm->cc_max);
+	}
 
 	/* not done */
 	return false;
@@ -1935,6 +1957,16 @@ static int google_cpm_probe(struct platform_device *pdev)
 				   &gcpm->taper_step_voltage);
 	if (ret < 0)
 		gcpm->taper_step_voltage = GCPM_TAPER_STEP_VOLTAGE;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-current",
+				   &gcpm->taper_step_current);
+	if (ret < 0)
+		gcpm->taper_step_current = GCPM_TAPER_STEP_CURRENT;
+
+	dev_err(gcpm->device, "ts_m=%d ts_ccs=%d ts_i=%d ts_cnt=%d ts_g=%d ts_v=%d ts_c=%d\n",
+		GCPM_TAPER_STEP_FV_MARGIN, GCPM_TAPER_STEP_CC_STEP,
+		gcpm->taper_step_interval, gcpm->taper_step_count,
+		gcpm->taper_step_grace, gcpm->taper_step_voltage,
+		gcpm->taper_step_current);
 
 	/* sysfs & debug */
 	gcpm->debug_entry = gcpm_init_fs(gcpm);
