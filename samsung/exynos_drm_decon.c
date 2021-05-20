@@ -583,7 +583,7 @@ static void decon_send_vblank_event_locked(struct decon_device *decon)
 	struct drm_crtc *crtc = &decon->crtc->base;
 	struct drm_device *dev = crtc->dev;
 
-	if (WARN_ON(!decon->event))
+	if (!decon->event)
 		return;
 
 	spin_lock(&dev->event_lock);
