@@ -6721,6 +6721,65 @@ static ssize_t cs40l2x_autosuspend_delay_store(struct device *dev,
 	return count;
 }
 
+static ssize_t cs40l2x_boost_ipk_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct cs40l2x_private *cs40l2x = cs40l2x_get_private(dev);
+
+	return sysfs_emit(buf, "%d\n", cs40l2x->pdata.boost_ipk);
+}
+
+static ssize_t cs40l2x_boost_ipk_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct cs40l2x_private *cs40l2x = cs40l2x_get_private(dev);
+	struct regmap *regmap = cs40l2x->regmap;
+	int ret;
+	unsigned int boost_ipk;
+	unsigned int bst_ipk_scaled;
+
+	ret = kstrtou32(buf, 10, &boost_ipk);
+	if (ret)
+		return -EINVAL;
+
+	if (boost_ipk == cs40l2x->pdata.boost_ipk)
+		return count;
+
+	if ((boost_ipk < 1600) || (boost_ipk > 4500)) {
+		dev_err(dev, "Invalid boost inductor peak current: %d mA\n", boost_ipk);
+		return -EINVAL;
+	}
+
+	pm_runtime_get_sync(cs40l2x->dev);
+	mutex_lock(&cs40l2x->lock);
+
+	bst_ipk_scaled = ((boost_ipk - 1600) / 50) + 0x10;
+
+	ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_PEAK_CUR,
+				 CS40L2X_BST_IPK_MASK, bst_ipk_scaled << CS40L2X_BST_IPK_SHIFT);
+	if (ret) {
+		dev_err(dev, "Failed to write boost inductor peak current:%d\n", ret);
+		goto err_mutex;
+	}
+
+	bst_ipk_scaled &= CS40L2X_BST_IPK_MASK;
+
+	ret = cs40l2x_wseq_replace(cs40l2x, CS40L2X_AMP_DIG_VOL_CTRL, bst_ipk_scaled);
+	if (ret) {
+		dev_err(dev, "Failed to replace boost inductor peak current:%d\n", ret);
+		goto err_mutex;
+	}
+	cs40l2x->pdata.boost_ipk = boost_ipk;
+
+err_mutex:
+	mutex_unlock(&cs40l2x->lock);
+	pm_runtime_mark_last_busy(cs40l2x->dev);
+	pm_runtime_put_autosuspend(cs40l2x->dev);
+
+	return count;
+}
+
 static DEVICE_ATTR(cp_trigger_index, 0660, cs40l2x_cp_trigger_index_show,
 		cs40l2x_cp_trigger_index_store);
 static DEVICE_ATTR(cp_trigger_queue, 0660, cs40l2x_cp_trigger_queue_show,
@@ -6860,6 +6919,7 @@ static DEVICE_ATTR(virtual_pwle_indexes, 0660,
 	cs40l2x_pwle_indexes_show, NULL);
 static DEVICE_ATTR(available_pwle_segments, 0660,
 	cs40l2x_available_pwle_segs_show, NULL);
+static DEVICE_ATTR(boost_ipk, 0660, cs40l2x_boost_ipk_show, cs40l2x_boost_ipk_store);
 
 static struct attribute *cs40l2x_dev_attrs[] = {
 	&dev_attr_cp_trigger_index.attr,
@@ -6937,6 +6997,7 @@ static struct attribute *cs40l2x_dev_attrs[] = {
 	&dev_attr_virtual_composite_indexes.attr,
 	&dev_attr_virtual_pwle_indexes.attr,
 	&dev_attr_available_pwle_segments.attr,
+	&dev_attr_boost_ipk.attr,
 	NULL,
 };
 
