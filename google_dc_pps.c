@@ -317,10 +317,10 @@ not_supp:
 static int pps_prog_online(struct pd_pps_data *pps,
 			   struct power_supply *tcpm_psy)
 {
+	union power_supply_propval pval = { .intval = PPS_PSY_PROG_ONLINE, };
 	int ret;
 
-	ret = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
-			    PPS_PSY_PROG_ONLINE);
+	ret = power_supply_set_property(tcpm_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
 	if (ret == -EOPNOTSUPP) {
 		pps->stage = PPS_NOTSUPP;
 	} else if (ret == 0) {
