@@ -2020,8 +2020,8 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 			msc_state = MSC_VSWITCH;
 			*vbatt_idx = batt_drv->vbatt_idx + 1;
 
-			pr_info("MSC_VSWITCH vt=%d vb=%d ibatt=%d\n",
-				vtier, vbatt, ibatt);
+			pr_info("MSC_VSWITCH vt=%d vb=%d ibatt=%d me=%d\n",
+				vtier, vbatt, ibatt, match_enable);
 		} else if (-ibatt == cc_max) {
 			/* pullback, double penalty if at full current */
 			msc_state = MSC_VOVER;
@@ -2031,6 +2031,7 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 				vtier, vbatt, ibatt,
 				batt_drv->fv_uv, *fv_uv);
 		} else {
+			/* simple pullback */
 			msc_state = MSC_PULLBACK;
 			pr_info("MSC_PULLBACK vt=%d vb=%d ibatt=%d fv_uv=%d->%d\n",
 				vtier, vbatt, ibatt,
@@ -2440,7 +2441,10 @@ static int msc_pm_hold(int msc_state)
 	case MSC_VSWITCH:
 	case MSC_NEXT:
 	case MSC_LAST:
+	case MSC_RSTC:
 	case MSC_HEALTH:
+	case MSC_WAIT:
+	case MSC_FAST:
 		pm_state = 0;  /* pm_relax */
 		break;
 	default:
@@ -2584,10 +2588,10 @@ static int msc_logic(struct batt_drv *batt_drv)
 		 */
 		if (batt_drv->checked_cv_cnt > 0) {
 			/* debounce period on tier switch */
-			msc_state = MSC_WAIT;
 			batt_drv->checked_cv_cnt -= 1;
 
-			pr_info("MSC_WAIT vt=%d vb=%d fv_uv=%d ibatt=%d cv_cnt=%d ov_cnt=%d t_cnt=%d\n",
+			pr_info("MSC_WAIT s:%d->%d vt=%d vb=%d fv_uv=%d ibatt=%d cv_cnt=%d ov_cnt=%d t_cnt=%d\n",
+				msc_state, MSC_WAIT,
 				vtier, vbatt, fv_uv, ibatt,
 				batt_drv->checked_cv_cnt,
 				batt_drv->checked_ov_cnt,
@@ -2596,29 +2600,34 @@ static int msc_logic(struct batt_drv *batt_drv)
 			if (-ibatt > cc_next_max)
 				batt_drv->checked_tier_switch_cnt = 0;
 
+			msc_state = MSC_WAIT;
 		} else if (-ibatt > cc_next_max) {
 			/* current over next tier, reset tier switch count */
-			msc_state = MSC_RSTC;
-			batt_drv->checked_tier_switch_cnt = 0;
-
-			pr_info("MSC_RSTC vt=%d vb=%d fv_uv=%d ibatt=%d cc_next_max=%d t_cnt=%d\n",
-				vtier, vbatt, fv_uv, ibatt, cc_next_max,
+			pr_info("MSC_RSTC s:%d->%d vt=%d vb=%d fv_uv=%d ibatt=%d cc_next_max=%d t_cnt=%d->0\n",
+				msc_state, MSC_RSTC, vtier, vbatt,
+				fv_uv, ibatt, cc_next_max,
 				batt_drv->checked_tier_switch_cnt);
+
+			batt_drv->checked_tier_switch_cnt = 0;
+			msc_state = MSC_RSTC;
 		} else if (batt_drv->checked_tier_switch_cnt >= switch_cnt) {
 			/* next tier, fv_uv detemined at MSC_SET */
-			msc_state = MSC_NEXT;
 			vbatt_idx = batt_drv->vbatt_idx + 1;
 
-			pr_info("MSC_NEXT tier vb=%d ibatt=%d vbatt_idx=%d->%d\n",
-				vbatt, ibatt, batt_drv->vbatt_idx, vbatt_idx);
+			pr_info("MSC_NEXT s:%d->%d tier vb=%d ibatt=%d vbatt_idx=%d->%d\n",
+				msc_state, MSC_NEXT, vbatt, ibatt,
+				batt_drv->vbatt_idx, vbatt_idx);
+
+			msc_state = MSC_NEXT;
 		} else {
 			/* current under next tier, +1 on tier switch count */
-			msc_state = MSC_NYET;
 			batt_drv->checked_tier_switch_cnt++;
 
-			pr_info("MSC_NYET ibatt=%d cc_next_max=%d t_cnt=%d\n",
-				ibatt, cc_next_max,
+			pr_info("MSC_NYET s:%d->%d ibatt=%d cc_next_max=%d t_cnt=%d\n",
+				msc_state, MSC_NYET, ibatt, cc_next_max,
 				batt_drv->checked_tier_switch_cnt);
+
+			msc_state = MSC_NYET;
 		}
 
 	}
