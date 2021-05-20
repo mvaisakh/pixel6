@@ -1247,6 +1247,7 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int chgr_on = cb_data_is_chgr_on(cb_data);
+	int dc_on = 0;
 	int usecase;
 	u8 mode;
 
@@ -1268,9 +1269,9 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 		}
 
+		/* b/188730136  OTG cases with DC on */
 		if (cb_data->dc_on)
 			pr_err("%s: TODO enable pps+OTG\n", __func__);
-		cb_data->dc_on = 0;
 	} else if (cb_data->wlc_tx) {
 		/* 7-2: WLC_TX -> WLC_TX + OTG */
 		usecase = GSU_MODE_USB_OTG_WLC_TX;
@@ -1281,14 +1282,13 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 		else
 			mode = MAX77759_CHGR_MODE_BUCK_ON;
-
 	} else if (cb_data->dc_on) {
 		return -EINVAL;
 	} else {
 		return -EINVAL;
 	}
 
-	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, cb_data->dc_on);
+	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, dc_on);
 	cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg, mode);
 	return usecase;
 }
@@ -1302,6 +1302,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 	const int buck_on = cb_data->chgin_off ? 0 : cb_data->buck_on;
 	const int chgr_on = cb_data_is_chgr_on(cb_data);
 	int wlc_tx = cb_data->wlc_tx;
+	int dc_on = 0;
 	int usecase;
 	u8 mode;
 
@@ -1341,6 +1342,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			pr_err("WLC_TX+DC is not supported yet\n");
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
+			dc_on = 1;
 		} else if (chgr_on) {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 			usecase = GSU_MODE_USB_CHG_WLC_TX;
@@ -1358,6 +1360,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		} else if (cb_data->dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
+			dc_on = 1;
 		} else {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 			usecase = GSU_MODE_WLC_RX;
@@ -1383,6 +1386,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (cb_data->dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
+			dc_on = 1;
 		} else if (cb_data->stby_on && !chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
@@ -1391,7 +1395,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 	}
 
 	/* reg might be ignored later */
-	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, cb_data->dc_on);
+	cb_data->reg = _chg_cnfg_00_cp_en_set(cb_data->reg, dc_on);
 	cb_data->reg = _chg_cnfg_00_mode_set(cb_data->reg, mode);
 
 	return usecase;
