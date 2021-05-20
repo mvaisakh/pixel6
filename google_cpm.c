@@ -1359,6 +1359,90 @@ static int gcpm_psy_changed(struct notifier_block *nb, unsigned long action,
 	return NOTIFY_OK;
 }
 
+static ssize_t dc_limit_demand_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", gcpm->dc_limit_demand);
+}
+static ssize_t dc_limit_demand_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+	int ret = 0;
+	u32 val;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	if (gcpm->dc_limit_demand != val) {
+		gcpm->dc_limit_demand = val;
+		gcpm->new_dc_limit = true;
+	}
+
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return count;
+}
+static DEVICE_ATTR_RW(dc_limit_demand);
+
+static ssize_t dc_limit_vbatt_max_show(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", gcpm->dc_limit_vbatt_max);
+}
+static ssize_t dc_limit_vbatt_max_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+	int ret = 0;
+	u32 val;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	gcpm->dc_limit_vbatt_max = val;
+
+	return count;
+}
+static DEVICE_ATTR_RW(dc_limit_vbatt_max);
+
+static ssize_t dc_limit_vbatt_min_show(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", gcpm->dc_limit_vbatt_min);
+}
+static ssize_t dc_limit_vbatt_min_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct gcpm_drv *gcpm = dev_get_drvdata(dev);
+	int ret = 0;
+	u32 val;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	gcpm->dc_limit_vbatt_min = val;
+
+	return count;
+}
+static DEVICE_ATTR_RW(dc_limit_vbatt_min);
+
 #define INIT_DELAY_MS 100
 #define INIT_RETRY_DELAY_MS 1000
 
@@ -2028,6 +2112,18 @@ static int google_cpm_probe(struct platform_device *pdev)
 		dev_err(gcpm->device, "Couldn't register gcpm_pps (%d)\n", ret);
 		return -ENODEV;
 	}
+
+	ret = device_create_file(gcpm->device, &dev_attr_dc_limit_demand);
+	if (ret)
+		dev_err(gcpm->device, "Failed to create dc_limit_demand\n");
+
+	ret = device_create_file(gcpm->device, &dev_attr_dc_limit_vbatt_max);
+	if (ret)
+		dev_err(gcpm->device, "Failed to create dc_limit_vbatt_max\n");
+
+	ret = device_create_file(gcpm->device, &dev_attr_dc_limit_vbatt_min);
+	if (ret)
+		dev_err(gcpm->device, "Failed to create dc_limit_vbatt_min\n");
 
 	/* give time to fg driver to start */
 	schedule_delayed_work(&gcpm->init_work,
