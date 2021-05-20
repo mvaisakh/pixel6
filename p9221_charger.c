@@ -353,7 +353,7 @@ error:
 	return ret;
 }
 
-/* call with lock on mutex_lock(&charger->chg_data.stats_lock) */
+/* call with lock on mutex_lock(&charger->stats_lock) */
 static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 {
 	int ret = 0;
@@ -480,11 +480,11 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	dev_info(&charger->client->dev, "Set offline\n");
 	logbuffer_log(charger->log, "offline\n");
 
-	mutex_lock(&charger->chg_data.stats_lock);
+	mutex_lock(&charger->stats_lock);
 	charger->online = false;
 	cancel_delayed_work(&charger->charge_stats_work);
 	p9221_dump_charge_stats(charger);
-	mutex_unlock(&charger->chg_data.stats_lock);
+	mutex_unlock(&charger->stats_lock);
 
 	charger->force_bpp = false;
 	charger->chg_on_rtx = false;
@@ -1074,6 +1074,7 @@ static int p9221_soc_data_dump(char *buff, int max_size,
 			 chg_data->soc_data[index].sys_mode);
 }
 
+/* needs mutex_lock(&charger->stats_lock); */
 static void p9221_dump_charge_stats(struct p9221_charger_data *charger)
 {
 	char buff[128];
@@ -1239,7 +1240,7 @@ static void p9221_charge_stats_work(struct work_struct *work)
 	const ktime_t start_time = chg_data->start_time;
 	const ktime_t elap = now - chg_data->start_time;
 
-	mutex_lock(&chg_data->stats_lock);
+	mutex_lock(&charger->stats_lock);
 
 	if (charger->online == 0 || charger->last_capacity < 0 || charger->last_capacity > 100)
 		goto unlock_done;
@@ -1273,7 +1274,7 @@ static void p9221_charge_stats_work(struct work_struct *work)
 			      msecs_to_jiffies(P9221_CHARGE_STATS_TIMEOUT_MS));
 
 unlock_done:
-	mutex_unlock(&chg_data->stats_lock);
+	mutex_unlock(&charger->stats_lock);
 }
 
 /* < 0 error, 0 = no changes, > 1 changed */
@@ -1342,7 +1343,7 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 {
 	int ret;
 
-	mutex_lock(&charger->chg_data.stats_lock);
+	mutex_lock(&charger->stats_lock);
 
 	if (charger->last_capacity == capacity)
 		goto unlock_done;
@@ -1361,7 +1362,7 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 		mod_delayed_work(system_wq, &charger->charge_stats_work, 0);
 
 unlock_done:
-	  mutex_unlock(&charger->chg_data.stats_lock);
+	  mutex_unlock(&charger->stats_lock);
 }
 
 static int p9221_set_property(struct power_supply *psy,
@@ -1679,7 +1680,7 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 
 	dev_info(&charger->client->dev, "Set online\n");
 
-	mutex_lock(&charger->chg_data.stats_lock);
+	mutex_lock(&charger->stats_lock);
 	charger->online = true;
 	charger->tx_busy = false;
 	charger->tx_done = true;
@@ -1688,7 +1689,7 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 
 	/* reset data for the new charging entry */
 	p9221_charge_stats_init(&charger->chg_data);
-	mutex_unlock(&charger->chg_data.stats_lock);
+	mutex_unlock(&charger->stats_lock);
 
 	ret = p9221_reg_read_8(charger, P9221_CUSTOMER_ID_REG, &cid);
 	if (ret)
@@ -3072,7 +3073,7 @@ static ssize_t p9221_show_chg_stats(struct device *dev,
 	struct p9221_charger_data *charger = i2c_get_clientdata(client);
 	int i, len = -ENODATA;
 
-	mutex_lock(&charger->chg_data.stats_lock);
+	mutex_lock(&charger->stats_lock);
 
 	if (charger->chg_data.cur_soc < 0)
 		goto enodata_done;
@@ -3091,7 +3092,7 @@ static ssize_t p9221_show_chg_stats(struct device *dev,
 	}
 
 enodata_done:
-	mutex_unlock(&charger->chg_data.stats_lock);
+	mutex_unlock(&charger->stats_lock);
 	return len;
 }
 
@@ -3105,14 +3106,14 @@ static ssize_t p9221_ctl_chg_stats(struct device *dev,
 	if (count < 1)
 		return -ENODATA;
 
-	mutex_lock(&charger->chg_data.stats_lock);
+	mutex_lock(&charger->stats_lock);
 	switch (buf[0]) {
 	case 0:
 	case '0':
 		p9221_charge_stats_init(&charger->chg_data);
 		break;
 	}
-	mutex_unlock(&charger->chg_data.stats_lock);
+	mutex_unlock(&charger->stats_lock);
 
 	return count;
 }
@@ -4539,7 +4540,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->chip_id = charger->pdata->chip_id;
 	mutex_init(&charger->io_lock);
 	mutex_init(&charger->cmd_lock);
-	mutex_init(&charger->chg_data.stats_lock);
+	mutex_init(&charger->stats_lock);
 	timer_setup(&charger->vrect_timer, p9221_vrect_timer_handler, 0);
 	timer_setup(&charger->align_timer, p9221_align_timer_handler, 0);
 	INIT_DELAYED_WORK(&charger->dcin_work, p9221_dcin_work);
@@ -4828,7 +4829,7 @@ static int p9221_charger_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&charger->notifier_work);
 	power_supply_unreg_notifier(&charger->nb);
 	mutex_destroy(&charger->io_lock);
-	mutex_destroy(&charger->chg_data.stats_lock);
+	mutex_destroy(&charger->stats_lock);
 	if (charger->log)
 		logbuffer_unregister(charger->log);
 	if (charger->rtx_log)

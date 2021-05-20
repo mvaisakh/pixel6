@@ -633,6 +633,7 @@ struct p9221_charger_data {
 	bool				no_fod;
 	u16				fw_rev;
 
+	struct mutex stats_lock;
 	struct p9221_charge_stats chg_data;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
