@@ -3026,14 +3026,12 @@ static int sys_uvlo1_set(void *d, u64 val)
 	struct max77759_chgr_data *data = d;
 	int ret;
 
-	if (val > 0xf)
-		return -EINVAL;
-
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_15, (u8) val);
 	if (ret < 0)
 		return -EIO;
 
-	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP *
+			(val & MAX77759_CHG_CNFG_15_SYS_UVLO1_MASK) + VD_LOWER_LIMIT);
 
 	return 0;
 }
@@ -3059,14 +3057,12 @@ static int sys_uvlo2_set(void *d, u64 val)
 	struct max77759_chgr_data *data = d;
 	int ret;
 
-	if (val > 0xf)
-		return -EINVAL;
-
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_CNFG_16, (u8) val);
 	if (ret < 0)
 		return -EIO;
 
-	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * val + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP *
+			(val & MAX77759_CHG_CNFG_16_SYS_UVLO2_MASK) + VD_LOWER_LIMIT);
 
 	return 0;
 }
