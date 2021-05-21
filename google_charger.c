@@ -65,6 +65,7 @@
 
 #define MAX_VOTER			"MAX_VOTER"
 #define THERMAL_DAEMON_VOTER		"THERMAL_DAEMON_VOTER"
+#define THERMAL_DAEMON_DC_VOTER		"THERMAL_DAEMON_DCVOTER"
 #define USER_VOTER			"USER_VOTER"	/* same as QCOM */
 #define MSC_CHG_VOTER			"msc_chg"
 #define MSC_CHG_FULL_VOTER		"msc_chg_full"
@@ -184,9 +185,12 @@ struct chg_drv {
 	const char *usb_psy_name;
 	bool usb_skip_probe;
 
-	/* */
+	/* thermal devices */
 	struct chg_thermal_device thermal_devices[CHG_TERMAL_DEVICES_COUNT];
 	bool therm_wlc_override_fcc;
+	/* thermal limits */
+	u32 *wlc_fcc_limits;
+	int wlc_fcc_levels;
 
 	/* */
 	u32 cv_update_interval;
@@ -201,6 +205,7 @@ struct chg_drv {
 	struct votable	*usb_icl_votable;
 	struct votable	*dc_suspend_votable;
 	struct votable	*dc_icl_votable;
+	struct votable	*dc_fcc_votable;
 	struct votable	*fan_level_votable;
 
 	bool init_done;
@@ -3220,8 +3225,10 @@ static int chg_therm_update_fcc(struct chg_drv *chg_drv)
 		wlc_online = GPSY_GET_PROP(chg_drv->wlc_psy,
 					POWER_SUPPLY_PROP_ONLINE);
 
+	/* WLC not online and FCC has a thermal level, restore it */
 	if (wlc_online <= 0 && tdev->current_level > 0)
 		fcc = tdev->thermal_mitigation[tdev->current_level];
+
 
 	ret = vote(chg_drv->msc_fcc_votable,
 			THERMAL_DAEMON_VOTER,
@@ -3270,14 +3277,22 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 			(struct chg_thermal_device *)tcd->devdata;
 	const bool changed = (tdev->current_level != lvl);
 	struct chg_drv *chg_drv = tdev->chg_drv;
+	int dc_fcc = -1, dc_icl = -1, ret;
 	union power_supply_propval pval;
-	int dc_icl = -1, ret;
+	int rdc, rfcc = 0;
 
 	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
 		return -EINVAL;
 
 	if (!chg_drv->dc_icl_votable)
 		chg_drv->dc_icl_votable = find_votable("DC_ICL");
+	if (!chg_drv->dc_fcc_votable && chg_drv->wlc_fcc_limits) {
+		chg_drv->dc_icl_votable = find_votable("DC_FCC");
+
+		/* HACK: fallback to FCC */
+		if (!chg_drv->dc_icl_votable)
+			chg_drv->dc_fcc_votable = chg_drv->msc_fcc_votable;
+	}
 
 	tdev->current_level = lvl;
 
@@ -3324,22 +3339,52 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	if (!chg_drv->dc_icl_votable)
 		return 0;
 
-	if (tdev->current_level != 0)
+	if (tdev->current_level != 0) {
 		dc_icl = tdev->thermal_mitigation[tdev->current_level];
+		if (chg_drv->wlc_fcc_limits)
+			dc_fcc = chg_drv->wlc_fcc_limits[tdev->current_level];
+	}
 
-	ret = vote(chg_drv->dc_icl_votable, THERMAL_DAEMON_VOTER,
-			(dc_icl != -1),
-			dc_icl);
+	rdc = vote(chg_drv->dc_icl_votable, THERMAL_DAEMON_VOTER,
+		   (dc_icl != -1), dc_icl);
 
-	if (ret < 0 || changed)
-		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d (%d)\n",
-			lvl, dc_icl, ret);
+	if (chg_drv->dc_fcc_votable)
+		rfcc = vote(chg_drv->dc_fcc_votable, THERMAL_DAEMON_DC_VOTER,
+			   (dc_fcc != -1), dc_fcc);
+
+	if (rdc < 0 || rfcc < 0 || changed)
+		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d dc_fcc=%d (%d, %d)\n",
+			lvl, dc_icl, dc_fcc, rdc, rfcc);
 
 	/* make sure that fcc is reset to max when charging from WLC*/
 	if (ret ==0)
 		(void)chg_therm_update_fcc(chg_drv);
 
 	return 0;
+}
+
+
+static u32* chg_read_limits(struct chg_drv *chg_drv, const char *name, int *len)
+{
+	struct device_node *node = chg_drv->device->of_node;
+	int rc, byte_len, levels;
+	u32 *limits;
+
+	if (!of_find_property(node, name, &byte_len))
+		return NULL;
+
+	limits = devm_kzalloc(chg_drv->device, byte_len, GFP_KERNEL);
+	if (!limits)
+		return NULL;
+
+
+	levels = byte_len / sizeof(u32);
+	rc = of_property_read_u32_array(node, name, limits, levels);
+	if (rc < 0)
+		return NULL;
+
+	*len = levels;
+	return limits;
 }
 
 static int chg_tdev_init(struct chg_thermal_device *tdev, const char *name,
@@ -3439,9 +3484,12 @@ static int chg_thermal_device_init(struct chg_drv *chg_drv)
 	chg_drv->therm_wlc_override_fcc =
 		of_property_read_bool(chg_drv->device->of_node,
 					"google,therm-wlc-overrides-fcc");
-	if (chg_drv->therm_wlc_override_fcc)
-		pr_info("WLC overrides FCC\n");
 
+	/* if present overrides FCC for WLC_DC charging */
+	chg_drv->wlc_fcc_limits = chg_read_limits(chg_drv, "google,wlc-fcc-thermal-limits",
+						  &chg_drv->wlc_fcc_levels);
+	pr_info("wlc-overrides-fcc=%d wlc-fcc-limits=%d\n",
+		chg_drv->therm_wlc_override_fcc, !!chg_drv->wlc_fcc_limits);
 	return 0;
 
 error_exit:
