@@ -2965,7 +2965,7 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 		 * pressure value instead
 		 */
 #ifndef SKIP_PRESSURE
-		dev_dbg(info->dev, "%s: Pressure is %i, but pointer is not leaving\n",
+		dev_err(info->dev, "%s: Pressure is %i, but pointer is not leaving.\n",
 		       __func__, z);
 #endif
 		z = 1; /* smallest non-zero pressure value */
@@ -4385,6 +4385,11 @@ static void fts_offload_report(void *handle,
 					 report->coords[i].minor * AREA_SCALE);
 
 #ifndef SKIP_PRESSURE
+			if ((int)report->coords[i].pressure <= 0) {
+				dev_err(info->dev,
+					"%s: Pressure is %i, but pointer is not leaving.\n",
+					__func__, (int)report->coords[i].pressure);
+			}
 			input_report_abs(info->input_dev, ABS_MT_PRESSURE,
 					 report->coords[i].pressure);
 #endif
