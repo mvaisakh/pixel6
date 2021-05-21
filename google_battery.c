@@ -1289,15 +1289,21 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 	}
 	cc = cc / 1000;
 
-	/* Update this charge tiers in parallel */
+	/* Note: To log new voltage tiers, add to list in go/pixel-vtier-defs */
+	/* ---  Log tiers in PARALLEL below ---  */
+
 	if (soc_real >= SSOC_HIGH_SOC)
 		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
 					   elap, cc,
 					   &ce_data->high_soc_stats);
 
-	/* TODO: log to new voltage tiers, list in go/pixel-vtier-defs */
-	if (batt_drv->batt_full) {
+	if (msc_state == MSC_HEALTH_PAUSE)
+		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
+					   elap, cc,
+					   &ce_data->health_pause_stats);
 
+	/* --- Log tiers in SERIES below --- */
+	if (batt_drv->batt_full) {
 
 		/* Override regular charge tiers when fully charged */
 		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma,
@@ -1309,6 +1315,12 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 		 * It works because msc_logic call BEFORE updating msc_state.
 		 * NOTE: that OVERHEAT and CCLVL disable AC, I should not be
 		 * here if either of them are set.
+		 * NOTE: We currently only log time when AC is affecting
+		 * charging. Thus, when disconnecting before this state, we will
+		 * log a GBMS_STATS_AC_TI_ENABLED tier with 0 time, and the
+		 * regular charge time is accumulated in normal charge tiers.
+		 * Similarly, once we reach 100%, we stop counting time in the
+		 * health tier and we rely on the full_charge_stats.
 		 */
 
 		/* tier used for TTF during HC, check msc_logic_health() */
@@ -1332,19 +1344,13 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 		tier = &ce_data->tier_stats[tier_idx];
 	}
 
+	/* --- Log tiers in PARALLEL that MUST NULL normal tiers below --- */
+
 	/* batt_drv->batt_health is protected with chg_lock, */
 	if (batt_drv->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
 		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
 					   elap, cc,
 					   &ce_data->overheat_stats);
-		tier = NULL;
-	}
-
-	if (msc_state == MSC_HEALTH_PAUSE) {
-		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma,
-					   temp, elap, cc,
-					   &ce_data->health_pause_stats);
-		/* not really needed here, add for sure */
 		tier = NULL;
 	}
 
@@ -1360,7 +1366,6 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 	 * Time/current spent in OVERHEAT or at CustomLevel should not
 	 * be booked to ce_data.tier_stats[tier_idx]
 	 */
-
 	if (!tier)
 		return;
 
@@ -1693,9 +1698,12 @@ static int batt_health_stats_cstr(char *buff, int size,
 		return len;
 
 	len += batt_chg_tier_stats_cstr(&buff[len], size - len,
-						health_stats,
-						verbose);
-	len += batt_chg_tier_stats_cstr(&buff[len], size - len,
+					health_stats,
+					verbose);
+
+	/* Only add pause tier logging if there is pause time */
+	if (ce_data->health_pause_stats.soc_in != -1)
+		len += batt_chg_tier_stats_cstr(&buff[len], size - len,
 						&ce_data->health_pause_stats,
 						verbose);
 	return len;
