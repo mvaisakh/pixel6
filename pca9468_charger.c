@@ -52,7 +52,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* Charging Sub Float Voltage default value */
 #define PCA9468_VFLOAT_SUB_DFT		5000000	/* 5000000uV */
 /* Charging Float Voltage max voltage for comp */
-#define PCA9468_COMP_VFLOAT_MAX		4400000	/* uV */
+#define PCA9468_COMP_VFLOAT_MAX		4450000	/* uV */
 
 /* Sense Resistance default value */
 #define PCA9468_SENSE_R_DFT		1	/* 10mOhm */
@@ -801,11 +801,23 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 	return ret;
 }
 
+/* 4.2V -> 75, 4.3V -> 45, 4.45V -> 0 */
+static int pca9468_irdrop_limit(int fv_uv)
+{
+	int delta;
+
+	/* 4.2V -> 250, 4.3V -> 150, 4.45V -> 0 */
+	delta = PCA9468_COMP_VFLOAT_MAX - fv_uv;
+	if (delta <= 0)
+		return 0;
+
+	return delta / 2 - (2 * delta) / 10;
+}
+
 /* TODO: tune offset and limit */
 static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 {
-	const int delta_offset = 20000;
-	const int delta_limit = 60000; /* reduce at low current, higher tiers */
+	const int delta_limit = pca9468_irdrop_limit(fv_uv);
 	int ret, vbat, pca_vbat = 0, delta = 0;
 
 	ret = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
@@ -820,7 +832,6 @@ static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 	if (delta > delta_limit)
 		delta = delta_limit;
 
-	delta += delta_offset;
 	if (fv_uv + delta > PCA9468_COMP_VFLOAT_MAX)
 		delta = PCA9468_COMP_VFLOAT_MAX - fv_uv;
 
