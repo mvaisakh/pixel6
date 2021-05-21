@@ -282,8 +282,6 @@ static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_60_common);
 
 static const struct s6e3hc3_mode_data s6e3hc3_mode_60 = {
 	.common_mode_cmd_set = &s6e3hc3_mode_60_common_cmd_set,
-	.idle_mode_cmd_set = &s6e3hc3_mode_120_auto_cmd_set,
-	.wakeup_mode_cmd_set = &s6e3hc3_mode_60_common_cmd_set,
 };
 
 static u8 s6e3hc3_get_te2_option(struct exynos_panel *ctx)
