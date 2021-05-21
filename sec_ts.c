@@ -47,7 +47,7 @@ static void unregister_panel_bridge(struct drm_bridge *bridge);
 int sec_ts_read_information(struct sec_ts_data *ts);
 
 #ifndef I2C_INTERFACE
-void sec_ts_spi_delay(u8 reg)
+u32 sec_ts_spi_delay(u8 reg, u32 data_len)
 {
 	u32 delay_us = 100;
 
@@ -61,7 +61,7 @@ void sec_ts_spi_delay(u8 reg)
 		break;
 #endif
 	case SEC_TS_CMD_CUSTOMLIB_READ_PARAM:
-		delay_us = 95;
+		delay_us = min(120 + (data_len >> 2), (u32) 500);
 		break;
 	case SEC_TS_READ_ALL_EVENT:
 		delay_us = 550;
@@ -84,6 +84,8 @@ void sec_ts_spi_delay(u8 reg)
 	}
 
 	usleep_range(delay_us, delay_us + 1);
+
+	return delay_us;
 }
 
 int sec_ts_spi_post_delay(u8 reg)
@@ -245,6 +247,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 #else
 	struct spi_message msg;
 	struct spi_transfer transfer[1] = { { 0 } };
+	u32 spi_delay_us = 0;
 	unsigned int i;
 	unsigned int spi_write_len = 0, spi_read_len = 0;
 	unsigned char write_checksum = 0x0, read_checksum = 0x0;
@@ -386,7 +389,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			sec_ts_spi_delay(reg);
+			spi_delay_us = sec_ts_spi_delay(reg, len);
 
 			// read sequence start
 			spi_message_init(&msg);
@@ -425,8 +428,8 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				ret = -EIO;
 
 				input_err(true, &ts->client->dev,
-					"%s: retry %d\n",
-					__func__, retry + 1);
+					  "%s: retry %d for 0x%02X size(%d) delay(%d)\n",
+					  __func__, retry + 1, reg, len, spi_delay_us);
 				ts->comm_err_count++;
 
 				usleep_range(1 * 1000, 1 * 1000);
@@ -556,7 +559,7 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 				continue;
 			}
 
-			sec_ts_spi_delay(reg);
+			sec_ts_spi_delay(reg, len);
 
 			copy_size = 0;
 			remain = spi_read_len;
@@ -2136,9 +2139,12 @@ static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
 
 	if (encoded_counter == 0 || encoded_data_size == 0 ||
 	    encoded_data_size > heatmap_array_len * 2) {
-		input_err(true, &ts->client->dev,
-			  "%s: Invalid encoded data size %d (%d)\n",
-			  __func__, encoded_data_size, encoded_counter);
+		if (ts->plat_data->encoded_read_fails < 20) {
+			ts->plat_data->encoded_read_fails++;
+			input_err(true, &ts->client->dev,
+				  "%s: Invalid encoded data size %d (%d)\n",
+				  __func__, encoded_data_size, encoded_counter);
+		}
 		return -EIO;
 	}
 
@@ -3520,6 +3526,8 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	if (of_property_read_u32(np, "sec,encoded_enable",
 		&pdata->encoded_enable) < 0)
 		pdata->encoded_enable = 0;
+
+	pdata->encoded_read_fails = 0;
 
 	if (of_property_read_u32(np, "sec,heatmap_mode",
 		&pdata->heatmap_mode) < 0)
@@ -5195,6 +5203,8 @@ static void sec_ts_resume_work(struct work_struct *work)
 #endif
 
 	sec_ts_set_grip_type(ts, ONLY_EDGE_HANDLER);
+
+	ts->plat_data->encoded_read_fails = 0;
 
 	if (ts->dex_mode) {
 		input_info(true, &ts->client->dev, "%s: set dex mode.\n",

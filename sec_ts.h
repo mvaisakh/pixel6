@@ -1121,6 +1121,7 @@ struct sec_ts_plat_data {
 	int mis_cal_check;
 	int heatmap_mode;
 	int encoded_enable;
+	int encoded_read_fails;
 #ifdef PAT_CONTROL
 	int pat_function;
 	int afe_base;
