@@ -1297,11 +1297,6 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 					   elap, cc,
 					   &ce_data->high_soc_stats);
 
-	if (msc_state == MSC_HEALTH_PAUSE)
-		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
-					   elap, cc,
-					   &ce_data->health_pause_stats);
-
 	/* --- Log tiers in SERIES below --- */
 	if (batt_drv->batt_full) {
 
@@ -1310,15 +1305,25 @@ static void batt_chg_stats_update(struct batt_drv *batt_drv, int temp_idx,
 					   temp, elap, cc,
 					   &ce_data->full_charge_stats);
 
-	} else if (msc_state == MSC_HEALTH || msc_state == MSC_HEALTH_PAUSE) {
+	} else if (msc_state == MSC_HEALTH_PAUSE) {
+
+		/*
+		 * We log the pause tier in different AC tier groups so that we
+		 * can capture pause time separately.
+		 */
+		batt_chg_stats_update_tier(batt_drv, temp_idx, ibatt_ma, temp,
+					   elap, cc,
+					   &ce_data->health_pause_stats);
+
+	} else if (msc_state == MSC_HEALTH) {
 		/*
 		 * It works because msc_logic call BEFORE updating msc_state.
 		 * NOTE: that OVERHEAT and CCLVL disable AC, I should not be
 		 * here if either of them are set.
-		 * NOTE: We currently only log time when AC is affecting
-		 * charging. Thus, when disconnecting before this state, we will
-		 * log a GBMS_STATS_AC_TI_ENABLED tier with 0 time, and the
-		 * regular charge time is accumulated in normal charge tiers.
+		 * NOTE: We currently only log time when AC is ACTIVE.
+		 * Thus, when disconnecting in ENABLED state, we will log a
+		 * GBMS_STATS_AC_TI_ENABLED tier with no time, and the regular
+		 * charge time is accumulated in normal charge tiers.
 		 * Similarly, once we reach 100%, we stop counting time in the
 		 * health tier and we rely on the full_charge_stats.
 		 */
@@ -2204,6 +2209,7 @@ static bool msc_health_pause(struct batt_drv *batt_drv, const ktime_t ttf,
 	const struct batt_chg_health *rest = &batt_drv->chg_health;
 	const ktime_t deadline = rest->rest_deadline;
 	const ktime_t safety_margin = (ktime_t)batt_drv->health_safety_margin;
+	/* Note: We only capture ACTIVE time in health stats */
 	const ktime_t elap_h = h->time_fast + h->time_taper + h->time_other;
 	const int ssoc = ssoc_get_capacity(&batt_drv->ssoc_state);
 
@@ -2231,7 +2237,7 @@ static bool msc_health_pause(struct batt_drv *batt_drv, const ktime_t ttf,
 	if (elap_h < HEALTH_PAUSE_DEBOUNCE || ssoc > HEALTH_PAUSE_MAX_SSOC)
 		return false;
 
-	/* check time meet PAUSE condition or not */
+	/* check if time meets the PAUSE condition or not */
 	if (ttf > 0 && deadline > now + ttf + safety_margin)
 		return true;
 
@@ -3825,6 +3831,7 @@ static ssize_t chg_health_show_stage(struct device *dev,
 	case CHG_HEALTH_ENABLED:
 		s = "Enabled";
 		break;
+	case CHG_HEALTH_PAUSE:
 	case CHG_HEALTH_ACTIVE:
 		s = "Active";
 		break;
@@ -5001,6 +5008,12 @@ static int gbatt_get_status(struct batt_drv *batt_drv,
 
 	if (batt_drv->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
 		val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		return 0;
+	}
+
+	if (batt_drv->msc_state == MSC_HEALTH_PAUSE) {
+		/* Expect AC to discharge in PAUSE. However, UI must persist */
+		val->intval = POWER_SUPPLY_STATUS_CHARGING;
 		return 0;
 	}
 
