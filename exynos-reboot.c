@@ -26,8 +26,6 @@
 #endif
 #include <soc/google/exynos-el3_mon.h>
 #include <soc/google/debug-snapshot.h>
-/* TODO: temporary workaround. must remove. see b/169128860  */
-#include <linux/soc/samsung/exynos-smc.h>
 #include "../../bms/google_bms.h"
 
 #define EXYNOS_PMU_SYSIP_DAT0		(0x0810)
@@ -62,7 +60,6 @@ static void exynos_power_off(void)
 	int power_gpio = -1;
 	unsigned int keycode = 0;
 	struct device_node *np, *pp;
-	int ret;
 
 	np = of_find_node_by_path("/gpio_keys");
 	if (!np)
@@ -93,11 +90,7 @@ static void exynos_power_off(void)
 			exynos_acpm_reboot();
 #endif
 			pr_emerg("Set PS_HOLD Low.\n");
-			ret = rmw_priv_reg(pmu_alive_base + shutdown_offset, shutdown_trigger, 0);
-			/* TODO: remove following fallback. see b/169128860 */
-			if (ret)
-				regmap_update_bits(pmureg, shutdown_offset, shutdown_trigger, 0);
-
+			rmw_priv_reg(pmu_alive_base + shutdown_offset, shutdown_trigger, 0);
 			++poweroff_try;
 			pr_emerg("Should not reach here! (poweroff_try:%d)\n", poweroff_try);
 		} else {
@@ -117,13 +110,7 @@ static void exynos_reboot_mode_set(u32 val)
 	u32 reboot_mode;
 	phys_addr_t reboot_cmd_addr = pmu_alive_base + reboot_cmd_offset;
 
-	ret = set_priv_reg(reboot_cmd_addr, val);
-	/* TODO: remove following fallback. see b/169128860 */
-	if (ret) {
-		pr_info("%s(): failed to set addr %pap via set_priv_reg, using regmap\n",
-			__func__, &reboot_cmd_addr);
-		regmap_write(pmureg, reboot_cmd_offset, val);
-	}
+	set_priv_reg(reboot_cmd_addr, val);
 
 	if (s2mpg10_get_rev_id() > S2MPG10_EVT0 && rsbm_supported) {
 		reboot_mode = val | BMS_RSBM_VALID;
@@ -193,7 +180,6 @@ static struct notifier_block exynos_reboot_nb = {
 
 static int exynos_restart_handler(struct notifier_block *this, unsigned long mode, void *cmd)
 {
-	int ret;
 #if IS_ENABLED(CONFIG_GS_ACPM)
 	exynos_acpm_reboot();
 #endif
@@ -204,11 +190,7 @@ static int exynos_restart_handler(struct notifier_block *this, unsigned long mod
 	if (s2mpg10_get_rev_id() == S2MPG10_EVT0 ||
 	    !rsbm_supported ||
 	    dbg_snapshot_get_panic_status()) {
-		ret = set_priv_reg(pmu_alive_base + warm_reboot_offset, warm_reboot_trigger);
-
-		/* TODO: this is a temporary workaround. must remove. see b/169128860 */
-		if (ret == SMC_CMD_PRIV_REG || ret == -EINVAL)
-			regmap_write(pmureg, warm_reboot_offset, warm_reboot_trigger);
+		set_priv_reg(pmu_alive_base + warm_reboot_offset, warm_reboot_trigger);
 	} else {
 		pr_emerg("Set PS_HOLD Low.\n");
 		mdelay(2);
