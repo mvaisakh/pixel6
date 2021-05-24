@@ -91,11 +91,6 @@ struct edgetpu_coherent_mem {
 #endif
 };
 
-struct edgetpu_reg_window {
-	uint start_reg_offset;
-	size_t size;
-};
-
 struct edgetpu_device_group;
 struct edgetpu_p2p_csr_map;
 struct edgetpu_remote_dram_map;
@@ -128,8 +123,6 @@ struct edgetpu_client {
 	dma_addr_t *p2p_csrs_dma_addrs;
 	/* Peer DRAM dma addrs for this client, if has on-device DRAM */
 	dma_addr_t *remote_drams_dma_addrs;
-	/* range of device CSRs mmap()'able */
-	struct edgetpu_reg_window reg_window;
 	/* Per-client request to keep device active */
 	struct edgetpu_wakelock *wakelock;
 	/* Bit field of registered per die events */
@@ -170,10 +163,6 @@ struct edgetpu_dev {
 	struct cdev cdev;	   /* cdev char device structure */
 	dev_t devno;		   /* char device dev_t */
 	char dev_name[EDGETPU_DEVICE_NAME_MAX];
-	struct {
-		struct mutex lock;
-		uint count;	   /* number times device currently opened */
-	} open;
 	struct edgetpu_mapped_resource regs; /* ioremapped CSRs */
 	struct dentry *d_entry;    /* debugfs dir for this device */
 	struct mutex state_lock;   /* protects state of this device */

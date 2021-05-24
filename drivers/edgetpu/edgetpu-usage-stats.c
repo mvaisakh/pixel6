@@ -17,6 +17,7 @@
 #include "abrolhos-pm.h"
 
 static enum tpu_pwr_state tpu_states_arr[] = {
+	TPU_ACTIVE_UUD,
 	TPU_ACTIVE_SUD,
 	TPU_ACTIVE_UD,
 	TPU_ACTIVE_NOM,
@@ -148,6 +149,22 @@ static void edgetpu_counter_update(
 	mutex_lock(&ustats->usage_stats_lock);
 	if (counter->type >= 0 && counter->type < EDGETPU_COUNTER_COUNT)
 		ustats->counter[counter->type] += counter->value;
+	mutex_unlock(&ustats->usage_stats_lock);
+}
+
+static void edgetpu_counter_clear(
+	struct edgetpu_dev *etdev,
+	enum edgetpu_usage_counter_type counter_type)
+{
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+
+	if (!ustats)
+		return;
+	if (counter_type >= EDGETPU_COUNTER_COUNT)
+		return;
+
+	mutex_lock(&ustats->usage_stats_lock);
+	ustats->counter[counter_type] = 0;
 	mutex_unlock(&ustats->usage_stats_lock);
 }
 
@@ -403,7 +420,18 @@ static ssize_t tpu_active_cycle_count_show(struct device *dev,
 					EDGETPU_COUNTER_TPU_ACTIVE_CYCLES);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(tpu_active_cycle_count);
+
+static ssize_t tpu_active_cycle_count_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf,
+					    size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_ACTIVE_CYCLES);
+	return count;
+}
+static DEVICE_ATTR_RW(tpu_active_cycle_count);
 
 static ssize_t tpu_throttle_stall_count_show(struct device *dev,
 					     struct device_attribute *attr,
@@ -416,7 +444,18 @@ static ssize_t tpu_throttle_stall_count_show(struct device *dev,
 					EDGETPU_COUNTER_TPU_THROTTLE_STALLS);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(tpu_throttle_stall_count);
+
+static ssize_t tpu_throttle_stall_count_store(struct device *dev,
+					      struct device_attribute *attr,
+					      const char *buf,
+					      size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_THROTTLE_STALLS);
+	return count;
+}
+static DEVICE_ATTR_RW(tpu_throttle_stall_count);
 
 static ssize_t inference_count_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
@@ -428,7 +467,18 @@ static ssize_t inference_count_show(struct device *dev,
 					EDGETPU_COUNTER_INFERENCES);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(inference_count);
+
+static ssize_t inference_count_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf,
+				     size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_INFERENCES);
+	return count;
+}
+static DEVICE_ATTR_RW(inference_count);
 
 static ssize_t tpu_op_count_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -440,7 +490,18 @@ static ssize_t tpu_op_count_show(struct device *dev,
 					EDGETPU_COUNTER_TPU_OPS);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(tpu_op_count);
+
+static ssize_t tpu_op_count_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf,
+				  size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_OPS);
+	return count;
+}
+static DEVICE_ATTR_RW(tpu_op_count);
 
 static ssize_t param_cache_hit_count_show(struct device *dev,
 					  struct device_attribute *attr,
@@ -453,7 +514,18 @@ static ssize_t param_cache_hit_count_show(struct device *dev,
 					EDGETPU_COUNTER_PARAM_CACHE_HITS);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(param_cache_hit_count);
+
+static ssize_t param_cache_hit_count_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf,
+					   size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_PARAM_CACHE_HITS);
+	return count;
+}
+static DEVICE_ATTR_RW(param_cache_hit_count);
 
 static ssize_t param_cache_miss_count_show(struct device *dev,
 					   struct device_attribute *attr,
@@ -466,7 +538,18 @@ static ssize_t param_cache_miss_count_show(struct device *dev,
 					EDGETPU_COUNTER_PARAM_CACHE_MISSES);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(param_cache_miss_count);
+
+static ssize_t param_cache_miss_count_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf,
+					    size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_PARAM_CACHE_MISSES);
+	return count;
+}
+static DEVICE_ATTR_RW(param_cache_miss_count);
 
 static ssize_t context_preempt_count_show(struct device *dev,
 					  struct device_attribute *attr,
@@ -479,7 +562,18 @@ static ssize_t context_preempt_count_show(struct device *dev,
 					EDGETPU_COUNTER_CONTEXT_PREEMPTS);
 	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
 }
-static DEVICE_ATTR_RO(context_preempt_count);
+
+static ssize_t context_preempt_count_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf,
+					   size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+
+	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_CONTEXT_PREEMPTS);
+	return count;
+}
+static DEVICE_ATTR_RW(context_preempt_count);
 
 static ssize_t outstanding_commands_max_show(
 	struct device *dev, struct device_attribute *attr, char *buf)

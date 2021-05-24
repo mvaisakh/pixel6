@@ -79,14 +79,9 @@ int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
 
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
-	mutex_lock(&etdev->open.lock);
 	client = edgetpu_client_add(etdev);
-	if (IS_ERR(client)) {
-		mutex_unlock(&etdev->open.lock);
+	if (IS_ERR(client))
 		return PTR_ERR(client);
-	}
-	etdev->open.count++;
-	mutex_unlock(&etdev->open.lock);
 	file->private_data = client;
 	return 0;
 }
@@ -110,28 +105,27 @@ static int edgetpu_fs_release(struct inode *inode, struct file *file)
 	etdev = client->etdev;
 
 	wakelock_count = edgetpu_wakelock_lock(client->wakelock);
-
+	mutex_lock(&client->group_lock);
 	/*
-	 * TODO(b/180528495): remove pm_get when disbanding can be performed
-	 * with device off.
+	 * @wakelock = 0 means the device might be powered off. And for group with a non-detachable
+	 * mailbox, its mailbox is removed when the group is released, in such case we need to
+	 * ensure the device is powered to prevent kernel panic on programming VII mailbox CSRs.
+	 *
+	 * For mailbox-detachable groups the mailbox had been removed when the wakelock was
+	 * released, edgetpu_device_group_release() doesn't need the device be powered in this case.
 	 */
-	if (client->group && !wakelock_count) {
+	if (!wakelock_count && client->group && !client->group->mailbox_detachable) {
 		wakelock_count = 1;
 		edgetpu_pm_get(etdev->pm);
 	}
-
+	mutex_unlock(&client->group_lock);
 	edgetpu_wakelock_unlock(client->wakelock);
 
 	edgetpu_client_remove(client);
 
-	mutex_lock(&etdev->open.lock);
-	if (etdev->open.count)
-		--etdev->open.count;
-
 	/* count was zero if client previously released its wake lock */
 	if (wakelock_count)
 		edgetpu_pm_put(etdev->pm);
-	mutex_unlock(&etdev->open.lock);
 	return 0;
 }
 
@@ -227,10 +221,7 @@ static int edgetpu_ioctl_finalize_group(struct edgetpu_client *client)
 	group = client->group;
 	if (!group || !edgetpu_device_group_is_leader(group, client))
 		goto out_unlock;
-	/*
-	 * TODO(b/180528495): remove pm_get when finalization can be performed
-	 * with device off.
-	 */
+	/* Finalization has to be performed with device on. */
 	if (!wakelock_count) {
 		ret = edgetpu_pm_get(client->etdev->pm);
 		if (ret) {

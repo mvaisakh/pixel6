@@ -78,6 +78,25 @@ struct edgetpu_vii {
 	edgetpu_queue_mem resp_queue_mem;
 };
 
+/*
+ * Structure for recording the driver state vs FW state.
+ *
+ * Example usage:
+ *   @state is a bit mask that denotes each mailbox to which an "OPEN_DEVICE"
+ *   KCI has been sent.
+ *   @fw_state is the bit mask of mailbox IDs for which the FW has received the
+ *   "OPEN_DEVICE" KCI.
+ *   In usual cases @state always equals @fw_state. But when the FW is reloaded,
+ *   @fw_state is reset to zero, then this structure can be used to know the FW
+ *   state is out-of-sync and need further actions.
+ */
+struct edgetpu_handshake {
+	struct mutex lock;
+	/* fields protected by @lock */
+	u32 state;
+	u32 fw_state;
+};
+
 typedef u32 (*get_csr_base_t)(uint index);
 
 struct edgetpu_mailbox_manager {
@@ -94,6 +113,7 @@ struct edgetpu_mailbox_manager {
 	get_csr_base_t get_context_csr_base;
 	get_csr_base_t get_cmd_queue_csr_base;
 	get_csr_base_t get_resp_queue_csr_base;
+	struct edgetpu_handshake open_devices;
 };
 
 /* the structure to configure a mailbox manager */
@@ -165,9 +185,9 @@ enum mailbox_queue_type {
  * Allocations are device-managed so no release function is needed to free the
  * manager.
  */
-struct edgetpu_mailbox_manager *edgetpu_mailbox_create_mgr(
-		struct edgetpu_dev *etdev,
-		const struct edgetpu_mailbox_manager_desc *desc);
+struct edgetpu_mailbox_manager *
+edgetpu_mailbox_create_mgr(struct edgetpu_dev *etdev,
+			   const struct edgetpu_mailbox_manager_desc *desc);
 
 /* interrupt handler */
 irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr);
@@ -281,6 +301,23 @@ int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids);
 
 /* Notify firmware of external mailboxes becoming inactive */
 int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_ids);
+
+/*
+ * Activates @mailbox_ids, OPEN_DEVICE KCI will be sent.
+ *
+ * If @mailbox_ids are known to be activated, KCI is not sent and this function
+ * returns 0.
+ *
+ * Returns what edgetpu_kci_open_device() returned.
+ * Caller ensures device is powered on.
+ */
+int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_ids);
+/*
+ * Similar to edgetpu_mailbox_activate() but sends CLOSE_DEVICE KCI instead.
+ */
+int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_ids);
+/* Sets @eh->fw_state to 0. */
+void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh);
 
 /* Utilities of circular queue operations */
 

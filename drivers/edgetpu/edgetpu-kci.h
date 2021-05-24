@@ -343,10 +343,20 @@ int edgetpu_kci_shutdown(struct edgetpu_kci *kci);
 int edgetpu_kci_get_debug_dump(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 			       size_t size);
 
-/* Inform the firmware to prepare to serve the VII of @mailbox_ids. */
+/*
+ * Inform the firmware to prepare to serve the VII of @mailbox_ids.
+ *
+ * You usually shouldn't call this directly - consider using
+ * edgetpu_mailbox_activate() instead.
+ */
 int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_ids);
 
-/* Inform the firmware the VII with @mailbox_ids are closed. */
+/*
+ * Inform the firmware the VII with @mailbox_ids are closed.
+ *
+ * You usually shouldn't call this directly - consider using
+ * edgetpu_mailbox_deactivate() instead.
+ */
 int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids);
 
 /* Cancel work queues or wait until they're done */

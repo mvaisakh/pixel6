@@ -542,9 +542,9 @@ void edgetpu_mailbox_free_queue(struct edgetpu_dev *etdev,
 /*
  * Creates a mailbox manager, one edgetpu device has one manager.
  */
-struct edgetpu_mailbox_manager *edgetpu_mailbox_create_mgr(
-		struct edgetpu_dev *etdev,
-		const struct edgetpu_mailbox_manager_desc *desc)
+struct edgetpu_mailbox_manager *
+edgetpu_mailbox_create_mgr(struct edgetpu_dev *etdev,
+			   const struct edgetpu_mailbox_manager_desc *desc)
 {
 	struct edgetpu_mailbox_manager *mgr;
 	uint total = 0;
@@ -575,6 +575,7 @@ struct edgetpu_mailbox_manager *edgetpu_mailbox_create_mgr(
 	if (!mgr->mailboxes)
 		return ERR_PTR(-ENOMEM);
 	rwlock_init(&mgr->mailboxes_lock);
+	mutex_init(&mgr->open_devices.lock);
 
 	return mgr;
 }
@@ -787,11 +788,11 @@ int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids)
 	edgetpu_wakelock_inc_event_locked(client->wakelock,
 					  EDGETPU_WAKELOCK_EVENT_EXT_MAILBOX);
 
-	etdev_dbg(client->etdev, "Opening mailboxes: %08X\n", mailbox_ids);
+	etdev_dbg(client->etdev, "Enabling mailboxes: %08X\n", mailbox_ids);
 
-	ret = edgetpu_kci_open_device(client->etdev->kci, mailbox_ids);
+	ret = edgetpu_mailbox_activate(client->etdev, mailbox_ids);
 	if (ret)
-		etdev_err(client->etdev, "Open mailboxes %08x failed (%d)\n",
+		etdev_err(client->etdev, "Activate mailboxes %08x failed: %d",
 			  mailbox_ids, ret);
 	edgetpu_wakelock_unlock(client->wakelock);
 	return ret;
@@ -812,12 +813,55 @@ int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_ids)
 	edgetpu_wakelock_dec_event_locked(client->wakelock,
 					  EDGETPU_WAKELOCK_EVENT_EXT_MAILBOX);
 
-	etdev_dbg(client->etdev, "Closing mailbox: %08X\n", mailbox_ids);
-	ret = edgetpu_kci_close_device(client->etdev->kci, mailbox_ids);
+	etdev_dbg(client->etdev, "Disabling mailbox: %08X\n", mailbox_ids);
+	ret = edgetpu_mailbox_deactivate(client->etdev, mailbox_ids);
 
 	if (ret)
-		etdev_err(client->etdev, "Close mailboxes %08x failed (%d)\n",
+		etdev_err(client->etdev, "Deactivate mailboxes %08x failed: %d",
 			  mailbox_ids, ret);
 	edgetpu_wakelock_unlock(client->wakelock);
 	return ret;
+}
+
+int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_ids)
+{
+	struct edgetpu_handshake *eh = &etdev->mailbox_manager->open_devices;
+	u32 to_send;
+	int ret = 0;
+
+	mutex_lock(&eh->lock);
+	to_send = mailbox_ids & ~eh->fw_state;
+	if (to_send)
+		ret = edgetpu_kci_open_device(etdev->kci, to_send);
+	if (!ret) {
+		eh->state |= mailbox_ids;
+		eh->fw_state |= mailbox_ids;
+	}
+	mutex_unlock(&eh->lock);
+	return ret;
+}
+
+int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_ids)
+{
+	struct edgetpu_handshake *eh = &etdev->mailbox_manager->open_devices;
+	u32 to_send;
+	int ret = 0;
+
+	mutex_lock(&eh->lock);
+	to_send = mailbox_ids & eh->fw_state;
+	if (to_send)
+		ret = edgetpu_kci_close_device(etdev->kci, to_send);
+	if (!ret) {
+		eh->state &= ~mailbox_ids;
+		eh->fw_state &= ~mailbox_ids;
+	}
+	mutex_unlock(&eh->lock);
+	return ret;
+}
+
+void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh)
+{
+	mutex_lock(&eh->lock);
+	eh->fw_state = 0;
+	mutex_unlock(&eh->lock);
 }

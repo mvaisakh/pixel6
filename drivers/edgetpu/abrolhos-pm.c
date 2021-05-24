@@ -409,6 +409,7 @@ static int abrolhos_get_initial_pwr_state(struct device *dev)
 	case TPU_DEEP_SLEEP_CLOCKS_SLOW:
 	case TPU_DEEP_SLEEP_CLOCKS_FAST:
 	case TPU_RETENTION_CLOCKS_SLOW:
+	case TPU_ACTIVE_UUD:
 	case TPU_ACTIVE_SUD:
 	case TPU_ACTIVE_UD:
 	case TPU_ACTIVE_NOM:
@@ -438,7 +439,6 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
 	int ret = abrolhos_pwr_state_set(
 		etpm->etdev, abrolhos_get_initial_pwr_state(etdev->dev));
-	enum edgetpu_firmware_status firmware_status;
 
 	etdev_info(etpm->etdev, "Powering up\n");
 
@@ -465,19 +465,26 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	if (!etdev->firmware)
 		return 0;
 
-	firmware_status = edgetpu_firmware_status_locked(etdev);
-	if (firmware_status == FW_LOADING)
+	/*
+	 * Why this function uses edgetpu_firmware_*_locked functions without explicitly holding
+	 * edgetpu_firmware_lock:
+	 *
+	 * edgetpu_pm_get() is called in two scenarios - one is when the firmware loading is
+	 * attempting, another one is when the user-space clients need the device be powered
+	 * (usually through acquiring the wakelock).
+	 *
+	 * For the first scenario edgetpu_firmware_is_loading() below shall return true.
+	 * For the second scenario we are indeed called without holding the firmware lock, but the
+	 * firmware loading procedures (i.e. the first scenario) always call edgetpu_pm_get() before
+	 * changing the firmware state, and edgetpu_pm_get() is blocked until this function
+	 * finishes. In short, we are protected by the PM lock.
+	 */
+
+	if (edgetpu_firmware_is_loading(etdev))
 		return 0;
 
 	/* attempt firmware run */
-	mutex_lock(&etdev->state_lock);
-	if (etdev->state == ETDEV_STATE_FWLOADING) {
-		mutex_unlock(&etdev->state_lock);
-		return -EAGAIN;
-	}
-	etdev->state = ETDEV_STATE_FWLOADING;
-	mutex_unlock(&etdev->state_lock);
-	switch (firmware_status) {
+	switch (edgetpu_firmware_status_locked(etdev)) {
 	case FW_VALID:
 		ret = edgetpu_firmware_restart_locked(etdev);
 		break;
@@ -489,15 +496,6 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	default:
 		break;
 	}
-	mutex_lock(&etdev->state_lock);
-	if (ret == -EIO)
-		etdev->state = ETDEV_STATE_BAD; /* f/w handshake error */
-	else if (ret)
-		etdev->state = ETDEV_STATE_NOFW; /* other errors */
-	else
-		etdev->state = ETDEV_STATE_GOOD; /* f/w handshake success */
-	mutex_unlock(&etdev->state_lock);
-
 	if (ret) {
 		abrolhos_power_down(etpm);
 	} else {
@@ -519,27 +517,14 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 		return;
 
 	etdev_warn(etdev, "Firmware shutdown request failed!\n");
-	etdev_warn(etdev, "Attempting firmware restart\n");
+	etdev_warn(etdev, "Requesting early GSA reset\n");
 
-	if (!edgetpu_firmware_restart_locked(etdev) &&
-	    !edgetpu_pchannel_power_down(etdev, false))
-		return;
-
-	edgetpu_kci_cancel_work_queues(etdev->kci);
-	etdev_warn(etdev, "Forcing shutdown through power policy\n");
-	/* Request GSA shutdown to make sure the R52 core is reset */
-	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
-	abrolhos_pwr_policy_set(abpdev, TPU_OFF);
-	pm_runtime_put_sync(etdev->dev);
 	/*
-	 * TODO: experiment on hardware to verify if this delay
-	 * is needed, what is a good value or an alternative way
-	 * to make sure the power policy request turned the
-	 * device off.
+	 * p-channel failed, request GSA shutdown to make sure the R52 core is
+	 * reset.
+	 * The GSA->APM request will clear any pending DVFS status from R52.
 	 */
-	msleep(100);
-	pm_runtime_get_sync(etdev->dev);
-	abrolhos_pwr_policy_set(abpdev, TPU_ACTIVE_OD);
+	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
 }
 
 static void abrolhos_pm_cleanup_bts_scenario(struct edgetpu_dev *etdev)

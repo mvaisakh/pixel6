@@ -684,8 +684,10 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 		goto err_put;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_device_group_is_finalized(group)) {
+		ret = edgetpu_group_errno(group);
 		goto err_unlock_group;
+	}
 
 	dmap = alloc_dmabuf_map(group, flags);
 	if (!dmap) {
@@ -753,9 +755,10 @@ int edgetpu_unmap_dmabuf(struct edgetpu_device_group *group, u32 die_index,
 	int ret = -EINVAL;
 
 	mutex_lock(&group->lock);
-	/* the group is disbanded means all the mappings have been released */
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_device_group_is_finalized(group)) {
+		ret = edgetpu_group_errno(group);
 		goto out_unlock;
+	}
 	edgetpu_mapping_lock(mappings);
 	map = edgetpu_mapping_find_locked(mappings, die_index, tpu_addr);
 	if (!map)
@@ -790,8 +793,10 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 	if (!valid_dma_direction(dir) || arg->size == 0)
 		return -EINVAL;
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group))
+	if (!edgetpu_device_group_is_finalized(group)) {
+		ret = edgetpu_group_errno(group);
 		goto err_unlock_group;
+	}
 	/* checks not all FDs are ignored */
 	for (i = 0; i < group->n_clients; i++)
 		if (arg->dmabuf_fds[i] != EDGETPU_IGNORE_FD)
@@ -880,7 +885,7 @@ static void edgetpu_dma_fence_release(struct dma_fence *fence)
 	struct edgetpu_dma_fence *etfence = to_etfence(fence);
 	unsigned long flags;
 
-	if (!fence)
+	if (!etfence)
 		return;
 
 	spin_lock_irqsave(&etfence_list_lock, flags);
@@ -911,17 +916,26 @@ static const struct dma_fence_ops edgetpu_dma_fence_ops = {
 
 int edgetpu_sync_fence_create(struct edgetpu_create_sync_fence_data *datap)
 {
-	int fd;
+	int fd = get_unused_fd_flags(O_CLOEXEC);
 	int ret;
 	struct edgetpu_dma_fence *etfence;
 	struct sync_file *sync_file;
 	unsigned long flags;
 
+	if (fd < 0)
+		return fd;
 	etfence = kzalloc(sizeof(*etfence), GFP_KERNEL);
-	if (!etfence)
-		return -ENOMEM;
+	if (!etfence) {
+		ret = -ENOMEM;
+		goto err_put_fd;
+	}
 
 	spin_lock_init(&etfence->lock);
+	/*
+	 * If sync_file_create() fails, fence release is called on dma_fence_put(). A valid
+	 * list_head is needed for list_del().
+	 */
+	INIT_LIST_HEAD(&etfence->etfence_list);
 	memcpy(&etfence->timeline_name, &datap->timeline_name,
 	       EDGETPU_SYNC_TIMELINE_NAME_LEN - 1);
 
@@ -933,19 +947,20 @@ int edgetpu_sync_fence_create(struct edgetpu_create_sync_fence_data *datap)
 	dma_fence_put(&etfence->fence);
 	if (!sync_file) {
 		ret = -ENOMEM;
-		goto err_freefence;
+		/* doesn't need kfree(etfence) here: dma_fence_put does it for us */
+		goto err_put_fd;
 	}
 
-	fd = get_unused_fd_flags(O_CLOEXEC);
-	datap->fence = fd;
-	fd_install(fd, sync_file->file);
 	spin_lock_irqsave(&etfence_list_lock, flags);
 	list_add_tail(&etfence->etfence_list, &etfence_list_head);
 	spin_unlock_irqrestore(&etfence_list_lock, flags);
+
+	fd_install(fd, sync_file->file);
+	datap->fence = fd;
 	return 0;
 
-err_freefence:
-	kfree(etfence);
+err_put_fd:
+	put_unused_fd(fd);
 	return ret;
 }
 
@@ -966,6 +981,11 @@ int edgetpu_sync_fence_signal(struct edgetpu_signal_sync_fence_data *datap)
 		return -EINVAL;
 
 	spin_lock_irq(fence->lock);
+	/* don't signal fence twice */
+	if (unlikely(test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &fence->flags))) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
 	pr_debug("%s: %s-%s%llu-" SEQ_FMT " errno=%d\n", __func__,
 		 fence->ops->get_driver_name(fence),
 		 fence->ops->get_timeline_name(fence), fence->context,
@@ -973,6 +993,8 @@ int edgetpu_sync_fence_signal(struct edgetpu_signal_sync_fence_data *datap)
 	if (errno)
 		dma_fence_set_error(fence, errno);
 	ret = dma_fence_signal_locked(fence);
+
+out_unlock:
 	spin_unlock_irq(fence->lock);
 	dma_fence_put(fence);
 	return ret;

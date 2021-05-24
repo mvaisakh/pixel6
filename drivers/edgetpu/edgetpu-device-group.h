@@ -34,6 +34,13 @@ enum edgetpu_device_group_status {
 	EDGETPU_DEVICE_GROUP_WAITING,
 	/* Most operations can only apply on a finalized group. */
 	EDGETPU_DEVICE_GROUP_FINALIZED,
+	/*
+	 * When a fatal error occurs, groups in FINALIZED status are transformed
+	 * into this state. Operations on groups with this status mostly return
+	 * ECANCELED. Once a member leaves an ERRORED group, the status is
+	 * transitioned to DISBANDED.
+	 */
+	EDGETPU_DEVICE_GROUP_ERRORED,
 	/* No operations except member leaving can be performed. */
 	EDGETPU_DEVICE_GROUP_DISBANDED,
 };
@@ -126,10 +133,10 @@ struct edgetpu_list_group {
 /*
  * Returns if the group is waiting for members to join.
  *
- * Must be called with lock held.
+ * Caller holds @group->lock.
  */
-static inline bool edgetpu_device_group_is_waiting(
-		const struct edgetpu_device_group *group)
+static inline bool
+edgetpu_device_group_is_waiting(const struct edgetpu_device_group *group)
 {
 	return group->status == EDGETPU_DEVICE_GROUP_WAITING;
 }
@@ -137,7 +144,7 @@ static inline bool edgetpu_device_group_is_waiting(
 /*
  * Returns if the group is finalized.
  *
- * Must be called with lock held.
+ * Caller holds @group->lock.
  */
 static inline bool
 edgetpu_device_group_is_finalized(const struct edgetpu_device_group *group)
@@ -146,14 +153,38 @@ edgetpu_device_group_is_finalized(const struct edgetpu_device_group *group)
 }
 
 /*
+ * Returns if the group is errored.
+ *
+ * Caller holds @group->lock.
+ */
+static inline bool
+edgetpu_device_group_is_errored(const struct edgetpu_device_group *group)
+{
+	return group->status == EDGETPU_DEVICE_GROUP_ERRORED;
+}
+
+/*
  * Returns if the group is disbanded.
  *
- * Must be called with lock held.
+ * Caller holds @group->lock.
  */
-static inline bool edgetpu_device_group_is_disbanded(
-		const struct edgetpu_device_group *group)
+static inline bool
+edgetpu_device_group_is_disbanded(const struct edgetpu_device_group *group)
 {
 	return group->status == EDGETPU_DEVICE_GROUP_DISBANDED;
+}
+
+/*
+ * Returns -ECANCELED if the status of group is ERRORED, otherwise returns
+ * -EINVAL.
+ *
+ * Caller holds @group->lock.
+ */
+static inline int edgetpu_group_errno(struct edgetpu_device_group *group)
+{
+	if (edgetpu_device_group_is_errored(group))
+		return -ECANCELED;
+	return -EINVAL;
 }
 
 /* Increases ref_count of @group by one and returns @group. */
@@ -220,8 +251,7 @@ static inline struct edgetpu_dev *edgetpu_device_group_nth_etdev(
 }
 
 /*
- * Let @client leave the group it belongs to. Caller should hold the client's
- * etdev state_lock.
+ * Let @client leave the group it belongs to.
  *
  * If @client is the leader of a group, the group will be marked as "disbanded".
  *
@@ -235,9 +265,6 @@ static inline struct edgetpu_dev *edgetpu_device_group_nth_etdev(
  * @client->group will be removed from @client->etdev->groups.
  * @client->group will be set as NULL.
  */
-void edgetpu_device_group_leave_locked(struct edgetpu_client *client);
-
-/* Let @client leave the group. Device should be in good state, warn if not. */
 void edgetpu_device_group_leave(struct edgetpu_client *client);
 
 /* Returns whether @client is the leader of @group. */

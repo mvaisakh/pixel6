@@ -23,6 +23,10 @@
 #define pin_user_pages_fast get_user_pages_fast
 #define unpin_user_page put_page
 
+#ifndef untagged_addr
+#define untagged_addr(addr) (addr)
+#endif
+
 #endif /* FOLL_PIN */
 
 #endif /* __MM_BACKPORT_H__ */

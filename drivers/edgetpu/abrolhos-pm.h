@@ -48,6 +48,7 @@ static inline int exynos_acpm_set_policy(unsigned int id, unsigned long policy)
  * 4:		Sleep Clocks Off
  * 5:		Sleep Clocks Slow
  * 6:		Retention Clocks Slow
+ * 226000:	Ultra Underdrive @226MHz
  * 500000:	Super Underdrive @500MHz
  * 800000:	Underdrive @800MHz
  * 1000000:	Nominal @1066MHz
@@ -61,6 +62,7 @@ enum tpu_pwr_state {
 	TPU_SLEEP_CLOCKS_OFF       = 4,
 	TPU_SLEEP_CLOCKS_SLOW      = 5,
 	TPU_RETENTION_CLOCKS_SLOW  = 6,
+	TPU_ACTIVE_UUD = 226000,
 	TPU_ACTIVE_SUD = 500000,
 	TPU_ACTIVE_UD  = 800000,
 	TPU_ACTIVE_NOM = 1066000,

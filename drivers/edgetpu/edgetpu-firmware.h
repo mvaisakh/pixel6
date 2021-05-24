@@ -205,6 +205,8 @@ int edgetpu_firmware_lock(struct edgetpu_dev *etdev);
 int edgetpu_firmware_trylock(struct edgetpu_dev *etdev);
 void edgetpu_firmware_unlock(struct edgetpu_dev *etdev);
 
+/* Returns whether the firmware loading work is ongoing. */
+bool edgetpu_firmware_is_loading(struct edgetpu_dev *etdev);
 
 /*
  * Returns the state of the firmware image currently loaded for this device.
