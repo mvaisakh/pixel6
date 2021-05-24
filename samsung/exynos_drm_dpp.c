@@ -29,6 +29,9 @@
 #include <linux/soc/samsung/exynos-smc.h>
 #include <linux/dma-heap.h>
 
+#include <dt-bindings/soc/google/gs101-devfreq.h>
+#include <soc/google/exynos-devfreq.h>
+
 #include <hdr_cal.h>
 #include <regs-dpp.h>
 
@@ -258,12 +261,8 @@ static void dpp_test_fixed_config_params(struct dpp_params_info *config, u32 w,
 	config->h_ratio = (config->src.w << 20) / config->dst.w;
 	config->v_ratio = (config->src.h << 20) / config->dst.h;
 
-	/* TODO: scaling will be implemented later */
-	config->is_scale = false;
-	/* TODO: blocking mode will be implemented later */
 	config->is_block = false;
-	/* TODO: very big count.. recovery will be not working... */
-	config->rcv_num = 0x7FFFFFFF;
+	config->rcv_num = exynos_devfreq_get_domain_freq(DEVFREQ_DISP) ? : 0x7FFFFFFF;
 }
 
 static void dpp_convert_plane_state_to_config(struct dpp_params_info *config,
@@ -362,12 +361,8 @@ static void dpp_convert_plane_state_to_config(struct dpp_params_info *config,
 		config->v_ratio = (config->src.h << 20) / config->dst.h;
 	}
 
-	/* TODO: scaling will be implemented later */
-	config->is_scale = false;
-	/* TODO: blocking mode will be implemented later */
 	config->is_block = false;
-	/* TODO: very big count.. recovery will be not working... */
-	config->rcv_num = 0x7FFFFFFF;
+	config->rcv_num = exynos_devfreq_get_domain_freq(DEVFREQ_DISP) ? : 0x7FFFFFFF;
 }
 
 static void __dpp_enable(struct dpp_device *dpp)

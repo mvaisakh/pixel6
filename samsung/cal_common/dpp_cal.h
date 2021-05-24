@@ -170,7 +170,6 @@ struct dpp_params_info {
 	u32 c_hd_stride;    /* Chrominance header stride */
 	u32 c_pl_stride;    /* Chrominance payload stride */
 
-	bool is_scale;
 	bool is_block;
 	u32 format;
 	dma_addr_t addr[MAX_PLANE_ADDR_CNT];
