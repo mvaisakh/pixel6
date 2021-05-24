@@ -577,6 +577,9 @@ static int max_m5_check_state_data(struct model_state_save *state)
 	if (state->rcomp0 == 0xFF)
 		return -ERANGE;
 
+	if (state->tempco == 0xFFFF)
+		return -ERANGE;
+
 	bad_residual = state->qresidual00 == 0xffff &&
 		       state->qresidual10 == 0xffff &&
 		       state->qresidual20 == 0xffff &&
@@ -663,6 +666,9 @@ int max_m5_model_check_state(struct max_m5_data *m5_data)
 	bool bad_residual;
 
 	if (fg_param->rcomp0 == 0xFF)
+		return -ERANGE;
+
+	if (fg_param->tempco == 0xFFFF)
 		return -ERANGE;
 
 	bad_residual = fg_param->qresidual00 == 0xffff &&

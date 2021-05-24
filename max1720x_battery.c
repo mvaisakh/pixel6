@@ -2048,6 +2048,9 @@ static int max1720x_set_property(struct power_supply *psy,
 	pm_runtime_put_sync(chip->dev);
 	mutex_unlock(&chip->model_lock);
 
+	if (!chip->model_state_valid)
+		return -EAGAIN;
+
 	switch (psp) {
 	case GBMS_PROP_BATT_CE_CTRL:
 
@@ -3589,7 +3592,7 @@ static void max1720x_model_work(struct work_struct *work)
 	if (chip->model_reload >= MAX_M5_LOAD_MODEL_REQUEST) {
 		const unsigned long delay = msecs_to_jiffies(60 * 1000);
 
-		schedule_delayed_work(&chip->model_work, delay);
+		mod_delayed_work(system_wq, &chip->model_work, delay);
 	}
 
 	if (new_model) {
