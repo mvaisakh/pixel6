@@ -5290,12 +5290,14 @@ static void sec_ts_charger_work(struct work_struct *work)
 	const u64 debounce_ms = 500;
 
 	/* usb case */
-	ret = power_supply_get_property(ts->usb_psy,
-					POWER_SUPPLY_PROP_PRESENT, &prop);
-	if (ret == 0) {
-		usb_present = !!prop.intval;
-		if (usb_present)
-			charger_mode = SEC_TS_BIT_CHARGER_MODE_WIRE_CHARGER;
+	if (ts->usb_psy != NULL) {
+		ret = power_supply_get_property(ts->usb_psy,
+						POWER_SUPPLY_PROP_PRESENT, &prop);
+		if (ret == 0) {
+			usb_present = !!prop.intval;
+			if (usb_present)
+				charger_mode = SEC_TS_BIT_CHARGER_MODE_WIRE_CHARGER;
+		}
 	}
 
 	/* wlc case */
