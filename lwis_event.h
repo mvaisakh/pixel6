@@ -254,8 +254,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
  *
  * Also, no transactions will be triggered by error events.
  */
-void lwis_device_error_event_emit(struct lwis_device *lwis_dev,
-				  int64_t event_id, void *payload,
+void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void *payload,
 				  size_t payload_size);
 
 /*
@@ -320,6 +319,6 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
  * Returns: 0 on success, -EINVAL if event id not found in trigger device.
  */
 int lwis_device_event_update_subscriber(struct lwis_device *lwis_dev, int64_t event_id,
-	bool has_subscriber);
+					bool has_subscriber);
 
 #endif /* LWIS_EVENT_H_ */

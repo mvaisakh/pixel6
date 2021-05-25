@@ -201,7 +201,7 @@ struct lwis_device {
 	/* Mutex used to synchronize access between clients */
 	struct mutex client_lock;
 	/* Mutex shared by all I2C devices */
-	struct mutex* global_i2c_lock;
+	struct mutex *global_i2c_lock;
 	/* Spinlock used to synchronize access to the device struct */
 	spinlock_t lock;
 	/* List of clients opened for this device */

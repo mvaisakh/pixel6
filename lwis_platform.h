@@ -49,6 +49,7 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev);
  *  updating bts requirement.
  */
 int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_peak,
-			     unsigned int bw_kb_read, unsigned int bw_kb_write, unsigned int bw_kb_rt);
+			     unsigned int bw_kb_read, unsigned int bw_kb_write,
+			     unsigned int bw_kb_rt);
 
 #endif /* LWIS_PLATFORM_H_ */
