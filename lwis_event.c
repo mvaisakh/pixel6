@@ -18,6 +18,9 @@
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
+/* Maximum number of pending events in the event queues */
+#define MAX_NUM_PENDING_EVENTS 64
+
 /*
  * lwis_client_event_state_find_locked: Looks through the provided client's
  * event state list and tries to find a lwis_client_event_state object with the
@@ -407,7 +410,8 @@ int lwis_client_event_control_get(struct lwis_client *lwis_client, int64_t event
 }
 
 static int event_queue_get_front(struct lwis_client *lwis_client, struct list_head *event_queue,
-				 bool should_remove_entry, struct lwis_event_entry **event_out)
+				 size_t *event_queue_size, bool should_remove_entry,
+				 struct lwis_event_entry **event_out)
 {
 	/* Our client event object */
 	struct lwis_event_entry *event;
@@ -425,6 +429,7 @@ static int event_queue_get_front(struct lwis_client *lwis_client, struct list_he
 	if (should_remove_entry) {
 		/* Delete from the queue */
 		list_del(&event->node);
+		(*event_queue_size)--;
 	}
 	if (event_out) {
 		/* Copy it over */
@@ -440,7 +445,8 @@ static int event_queue_get_front(struct lwis_client *lwis_client, struct list_he
 	return 0;
 }
 
-static void event_queue_clear(struct lwis_client *lwis_client, struct list_head *event_queue)
+static void event_queue_clear(struct lwis_client *lwis_client, struct list_head *event_queue,
+			      size_t *event_queue_size)
 {
 	struct list_head *it_event, *it_tmp;
 	struct lwis_event_entry *event;
@@ -452,6 +458,7 @@ static void event_queue_clear(struct lwis_client *lwis_client, struct list_head 
 		list_del(&event->node);
 		kfree(event);
 	}
+	*event_queue_size = 0;
 	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 }
 
@@ -459,6 +466,7 @@ int lwis_client_event_pop_front(struct lwis_client *lwis_client,
 				struct lwis_event_entry **event_out)
 {
 	return event_queue_get_front(lwis_client, &lwis_client->event_queue,
+				     &lwis_client->event_queue_size,
 				     /*should_remove_entry=*/true, event_out);
 }
 
@@ -466,18 +474,20 @@ int lwis_client_event_peek_front(struct lwis_client *lwis_client,
 				 struct lwis_event_entry **event_out)
 {
 	return event_queue_get_front(lwis_client, &lwis_client->event_queue,
+				     &lwis_client->event_queue_size,
 				     /*should_remove_entry=*/false, event_out);
 }
 
 void lwis_client_event_queue_clear(struct lwis_client *lwis_client)
 {
-	event_queue_clear(lwis_client, &lwis_client->event_queue);
+	event_queue_clear(lwis_client, &lwis_client->event_queue, &lwis_client->event_queue_size);
 }
 
 int lwis_client_error_event_pop_front(struct lwis_client *lwis_client,
 				      struct lwis_event_entry **event_out)
 {
 	return event_queue_get_front(lwis_client, &lwis_client->error_event_queue,
+				     &lwis_client->error_event_queue_size,
 				     /*should_remove_entry=*/true, event_out);
 }
 
@@ -485,12 +495,14 @@ int lwis_client_error_event_peek_front(struct lwis_client *lwis_client,
 				       struct lwis_event_entry **event_out)
 {
 	return event_queue_get_front(lwis_client, &lwis_client->error_event_queue,
+				     &lwis_client->error_event_queue_size,
 				     /*should_remove_entry=*/false, event_out);
 }
 
 void lwis_client_error_event_queue_clear(struct lwis_client *lwis_client)
 {
-	event_queue_clear(lwis_client, &lwis_client->error_event_queue);
+	event_queue_clear(lwis_client, &lwis_client->error_event_queue,
+			  &lwis_client->error_event_queue_size);
 }
 
 /*
@@ -517,7 +529,16 @@ static int lwis_client_event_push_back(struct lwis_client *lwis_client,
 
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 
+	if (lwis_client->event_queue_size >= MAX_NUM_PENDING_EVENTS) {
+		dev_warn_ratelimited(lwis_client->lwis_dev->dev,
+				     "Failed to push to event queue, exceeded size limit of %d\n",
+				     MAX_NUM_PENDING_EVENTS);
+		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+		return -EOVERFLOW;
+	}
+
 	list_add_tail(&event->node, &lwis_client->event_queue);
+	lwis_client->event_queue_size++;
 
 	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
@@ -538,7 +559,17 @@ static int lwis_client_error_event_push_back(struct lwis_client *lwis_client,
 
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 
+	if (lwis_client->error_event_queue_size >= MAX_NUM_PENDING_EVENTS) {
+		dev_warn_ratelimited(
+			lwis_client->lwis_dev->dev,
+			"Failed to push to error event queue, exceeded size limit of %d\n",
+			MAX_NUM_PENDING_EVENTS);
+		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+		return -EOVERFLOW;
+	}
+
 	list_add_tail(&event->node, &lwis_client->error_event_queue);
+	lwis_client->error_event_queue_size++;
 
 	spin_unlock_irqrestore(&lwis_client->event_lock, flags);
 
@@ -749,6 +780,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	/* Flags for IRQ disable */
 	unsigned long flags;
 	bool has_subscriber;
+	int ret;
 
 	/* Lock and disable to prevent event_states from changing */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
@@ -782,7 +814,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 
 	/* Run internal handler if any */
 	if (lwis_dev->vops.event_emitted) {
-		int ret = lwis_dev->vops.event_emitted(lwis_dev, event_id, &payload, &payload_size);
+		ret = lwis_dev->vops.event_emitted(lwis_dev, event_id, &payload, &payload_size);
 		if (ret) {
 			dev_warn(lwis_dev->dev, "Warning: vops.event_emitted returned %d\n", ret);
 		}
@@ -809,7 +841,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 		if (emit) {
 			event = kmalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
 			if (!event) {
-				pr_err("Failed to allocate event entry\n");
+				dev_err(lwis_dev->dev, "Failed to allocate event entry\n");
 				return -ENOMEM;
 			}
 
@@ -825,7 +857,13 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 			} else {
 				event->event_info.payload_buffer = NULL;
 			}
-			lwis_client_event_push_back(lwis_client, event);
+			ret = lwis_client_event_push_back(lwis_client, event);
+			if (ret) {
+				dev_err(lwis_dev->dev, "Failed to push event 0x%llx to queue\n",
+					event_id);
+				kfree(event);
+				return ret;
+			}
 		}
 
 		/* Trigger transactions, if there's any that matches this event
@@ -988,7 +1026,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 		if (emit) {
 			event = kmalloc(sizeof(struct lwis_event_entry), GFP_ATOMIC);
 			if (!event) {
-				pr_err("Failed to allocate event entry\n");
+				dev_err(lwis_dev->dev, "Failed to allocate event entry\n");
 				return;
 			}
 
@@ -997,7 +1035,12 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 			event->event_info.timestamp_ns = timestamp;
 			event->event_info.payload_size = 0;
 			event->event_info.payload_buffer = NULL;
-			lwis_client_event_push_back(lwis_client, event);
+			if (lwis_client_event_push_back(lwis_client, event)) {
+				dev_err(lwis_dev->dev, "Failed to push event 0x%llx to queue\n",
+					event_id);
+				kfree(event);
+				return;
+			}
 		}
 
 		if (lwis_transaction_event_trigger(lwis_client, event_id, event_counter,
@@ -1035,7 +1078,7 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 
 		event = kmalloc(sizeof(struct lwis_event_entry) + payload_size, GFP_ATOMIC);
 		if (!event) {
-			pr_err("Failed to allocate event entry\n");
+			dev_err(lwis_dev->dev, "Failed to allocate event entry\n");
 			return;
 		}
 		event->event_info.event_id = event_id;
@@ -1049,6 +1092,11 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 		} else {
 			event->event_info.payload_buffer = NULL;
 		}
-		lwis_client_error_event_push_back(lwis_client, event);
+		if (lwis_client_error_event_push_back(lwis_client, event)) {
+			dev_err(lwis_dev->dev, "Failed to push error event 0x%llx to queue\n",
+				event_id);
+			kfree(event);
+			return;
+		}
 	}
 }

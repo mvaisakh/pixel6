@@ -272,7 +272,9 @@ struct lwis_client {
 	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
 	/* Queue of pending events to be consumed by userspace */
 	struct list_head event_queue;
+	size_t event_queue_size;
 	struct list_head error_event_queue;
+	size_t error_event_queue_size;
 	/* Spinlock used to synchronize access to event states and queue */
 	spinlock_t event_lock;
 	/* Event wait queue for waking up userspace */
