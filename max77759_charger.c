@@ -1831,12 +1831,12 @@ static void max77759_mode_callback(struct gvotable_election *el,
 
 	dev_info(data->dev, "%s:%s raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
 		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d"
-		" chgin_off=%d wlcin_off=%d\n",
+		" chgin_off=%d wlcin_off=%d frs_on=%d\n",
 		__func__, trigger ? trigger : "<>",
 		cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx,
-		cb_data.chgin_off, cb_data.wlcin_off);
+		cb_data.chgin_off, cb_data.wlcin_off, cb_data.frs_on);
 
 	/* just use raw "as is", no changes to switches etc */
 	if (cb_data.use_raw) {
