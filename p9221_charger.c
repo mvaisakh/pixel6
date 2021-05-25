@@ -2779,6 +2779,87 @@ static ssize_t ptmc_id_show(struct device *dev,
 
 static DEVICE_ATTR_RO(ptmc_id);
 
+static void feature_update(struct p9221_charger_feature *chg_fts,
+			   uint64_t id, uint64_t ft)
+{
+	struct p9221_charger_feature_entry *oldest_entry;
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	int idx;
+	u32 oldest;
+
+	chg_fts->age++;
+
+	oldest = 0;
+	oldest_entry = entry;
+
+	for (idx = 0; idx < chg_fts->num_entries; idx++) {
+		u32 age = chg_fts->age - entry->last_use;
+
+		if (entry->quickid == id)
+			goto store;
+
+		if (age > oldest) {
+			oldest_entry = entry;
+			oldest = age;
+		}
+		entry++;
+	}
+
+	/* Not found, space still left, entry points to free spot. */
+	if (idx < P9XXX_CHARGER_FEATURE_CACHE_SIZE)
+		chg_fts->num_entries++;
+	else
+		entry = oldest_entry;
+
+store:
+	entry->quickid = id;
+	entry->features = ft;
+	entry->last_use = chg_fts->age;
+	if (entry->features == 0)
+		entry->last_use = 0;
+}
+
+static ssize_t features_store(struct device *dev,
+                              struct device_attribute *attr,
+                              const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	uint64_t id, ft;
+	int ret;
+
+	ret = sscanf(buf, "%llx:%llx", &id, &ft);
+	if (ret != 2)
+		return -EINVAL;
+
+	feature_update(&charger->chg_features, id, ft);
+
+	return count;
+}
+
+static ssize_t features_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct p9221_charger_data *charger = i2c_get_clientdata(client);
+	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	int idx;
+	ssize_t len = 0;
+
+	for (idx = 0; idx < chg_fts->num_entries; idx++, entry++) {
+		if (entry->quickid == 0 || entry->features == 0)
+			continue;
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 "%llx:%llx\n",
+				 entry->quickid,
+				 entry->features);
+	}
+	return len;
+}
+
+static DEVICE_ATTR_RW(features);
 
 /* ------------------------------------------------------------------------ */
 static ssize_t rx_lvl_show(struct device *dev,
@@ -3387,6 +3468,7 @@ static struct attribute *p9221_attributes[] = {
 	&dev_attr_charge_stats.attr,
 	&dev_attr_fw_rev.attr,
 	&dev_attr_authtype.attr,
+	&dev_attr_features.attr,
 	NULL
 };
 

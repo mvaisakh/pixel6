@@ -434,6 +434,8 @@
 #define P9221_CRC8_POLYNOMIAL			0x07    /* (x^8) + x^2 + x + 1 */
 #define P9412_ADT_TYPE_AUTH			0x02
 
+#define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
+
 enum p9221_align_mfg_chk_state {
 	ALIGN_MFG_FAILED = -1,
 	ALIGN_MFG_CHECKING,
@@ -466,6 +468,18 @@ struct p9221_charge_stats {
 	int of_freq;
 	int last_soc;
 	struct mutex stats_lock;
+};
+
+struct p9221_charger_feature_entry {
+	u64 quickid;
+	u64 features;
+	u32 last_use;
+};
+
+struct p9221_charger_feature {
+	struct p9221_charger_feature_entry entries[P9XXX_CHARGER_FEATURE_CACHE_SIZE];
+	int num_entries;
+	u32 age;
 };
 
 struct p9221_charger_platform_data {
@@ -571,6 +585,7 @@ struct p9221_charger_data {
 	struct logbuffer		*log;
 	struct logbuffer		*rtx_log;
 	struct dentry			*debug_entry;
+	struct p9221_charger_feature	chg_features;
 	u16				chip_id;
 	int				online;
 	bool				enabled;
