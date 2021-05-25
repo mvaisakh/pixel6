@@ -748,10 +748,12 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 		case GSU_MODE_WLC_TX:
 			need_stby = use_case != GSU_MODE_USB_OTG_WLC_TX &&
 				    use_case != GSU_MODE_USB_CHG_WLC_TX &&
-				    use_case != GSU_MODE_USB_DC_WLC_TX;
+				    use_case != GSU_MODE_USB_DC_WLC_TX &&
+				    use_case != GSU_MODE_USB_OTG_FRS;
 			break;
 		case GSU_MODE_USB_CHG_WLC_TX:
-			need_stby = use_case != GSU_MODE_USB_CHG;
+			need_stby = use_case != GSU_MODE_USB_CHG &&
+				    use_case != GSU_MODE_USB_OTG_WLC_TX;
 			break;
 
 		case GSU_MODE_USB_OTG:
@@ -786,14 +788,13 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 
 		case GSU_MODE_USB_OTG_FRS:
 			from_otg = true;
-			if (use_case == GSU_MODE_USB_OTG_FRS)
-				break;
+			need_stby = use_case != GSU_MODE_USB_OTG_FRS &&
+				    use_case != GSU_MODE_USB_OTG_WLC_TX;
+			break;
 			/*
 			 *  if (use_case == GSU_MODE_USB_OTG)
 			 * 	break;
 			 */
-			need_stby = true;
-			break;
 		case GSU_RAW_MODE:
 			need_stby = true;
 			break;
@@ -807,7 +808,7 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			break;
 	}
 
-	pr_debug("%s: use_case=%d->%d from_otg=%d need_stby=%x\n", __func__,
+	pr_info("%s: use_case=%d->%d from_otg=%d need_stby=%x\n", __func__,
 		 from_uc, use_case, from_otg, need_stby);
 
 	if (!need_stby)
@@ -1158,7 +1159,7 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 	case GSU_MODE_USB_CHG:
 	case GSU_MODE_USB_CHG_WLC_TX:
 		/* need to go through stby out of this */
-		if (use_case != GSU_MODE_USB_OTG_FRS)
+		if (use_case != GSU_MODE_USB_OTG_FRS && use_case != GSU_MODE_USB_OTG_WLC_TX)
 			return -EINVAL;
 
 		ret = max7759_otg_frs(uc_data, true);
@@ -1237,6 +1238,10 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 	break;
 	/* TODO: */
 	case GSU_MODE_USB_OTG_FRS: {
+		if (use_case == GSU_MODE_USB_OTG_WLC_TX) {
+			ret = gs101_wlc_tx_enable(uc_data, true);
+			break;
+		}
 		/*
 		 * OTG source handover: OTG_FRS -> OTG
 		 * from EXT_BST (Regular OTG) to IF-PMIC OTG (FRS OTG)
