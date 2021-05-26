@@ -413,6 +413,7 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 	struct power_supply *dc_psy;
 	int ret;
 
+	/* ENABLE will be called by the dc_pps workloop */
 	ret = gcpm_chg_start(gcpm, index);
 	if (ret < 0) {
 		pr_err("PPS_DC: index=%d not started (%d)\n", index, ret);
@@ -857,6 +858,29 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	mutex_unlock(&gcpm->chg_psy_lock);
 }
 
+static int gcpm_start_default(struct gcpm_drv *gcpm)
+{
+	struct power_supply *chg_psy = gcpm_chg_get_default(gcpm);
+	int ret;
+
+	/* gcpm_chg_offline set GBMS_PROP_CHARGING_ENABLED = 0 */
+	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 1);
+	if (ret < 0) {
+		pr_debug("%s: failed 2 enable charging on default (%d)\n",
+			 __func__, ret);
+		return ret;
+	}
+
+	/* (re) online and start the default charger */
+	ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+	if (ret < 0) {
+		pr_debug("%s: failed 2 start default (%d)\n", __func__, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 {
 	struct power_supply *chg_psy = gcpm_chg_get_default(gcpm);
@@ -886,16 +910,10 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 		pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
 			__func__, gcpm->dc_state, pps_done);
 
-	/* gcpm_chg_offline set GBMS_PROP_CHARGING_ENABLED = 0 */
-	ret = GPSY_SET_PROP(chg_psy, GBMS_PROP_CHARGING_ENABLED, 1);
-	if (ret < 0)
-		pr_debug("%s: fail 2 enable charging on default (%d)\n",
-			 __func__, ret);
-	/* (re) start the default charger */
-	ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+	ret = gcpm_start_default(gcpm);
 	if (ret < 0) {
-		pr_debug("%s: fail 2 start default, dc_state=%d pps_done=%d (%d)\n",
-			__func__, gcpm->dc_state, pps_done >= 0 ? : pps_done, ret);
+		pr_err("%s: fail 2 restart default, dc_state=%d pps_done=%d (%d)\n",
+		       __func__, gcpm->dc_state, pps_done >= 0 ? : pps_done, ret);
 		return -EAGAIN;
 	}
 
@@ -999,7 +1017,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 
 			ret = gcpm_chg_offline(gcpm, gcpm->dc_index);
 			if (ret == 0)
-				ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+				ret = gcpm_start_default(gcpm);
 			if (ret < 0) {
 				pr_err("PPS_Work: cannot online default %d\n", ret);
 				pps_ui = DC_ERROR_RETRY_MS;
@@ -1458,7 +1476,7 @@ static void gcpm_init_work(struct work_struct *work)
 		if (ret < 0)
 			pr_err("%s: no ps notifier, ret=%d\n", __func__, ret);
 
-		ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+		ret = gcpm_start_default(gcpm);
 		if (ret < 0)
 			pr_err("%s: default %s not online, ret=%d\n", __func__,
 			       gcpm_psy_name(def_psy), ret);
