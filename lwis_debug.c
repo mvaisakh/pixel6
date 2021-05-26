@@ -12,6 +12,7 @@
 #include <linux/fs.h>
 #include <linux/hashtable.h>
 #include <linux/list.h>
+#include <linux/string.h>
 
 #include "lwis_buffer.h"
 #include "lwis_debug.h"
@@ -19,6 +20,27 @@
 #include "lwis_event.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
+
+#define PRINT_BUFFER_SIZE 128
+/* Printing the log buffer line by line as printk does not work well with large chunks of data */
+static void print_to_log(char *buffer)
+{
+	int size;
+	char tmpbuf[PRINT_BUFFER_SIZE + 1];
+	char *start = buffer;
+	char *end = strchr(buffer, '\n');
+	while (end != NULL) {
+		size = end - start + 1;
+		if (size > PRINT_BUFFER_SIZE) {
+			size = PRINT_BUFFER_SIZE;
+		}
+		memcpy(tmpbuf, start, size);
+		tmpbuf[size] = '\0';
+		pr_info("%s", tmpbuf);
+		start = end + 1;
+		end = strchr(start, '\n');
+	}
+}
 
 static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
@@ -279,7 +301,7 @@ int lwis_debug_print_device_info(struct lwis_device *lwis_dev)
 		dev_err(lwis_dev->dev, "Failed to generate device info");
 		return ret;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 	return 0;
 }
 
@@ -288,14 +310,14 @@ int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev)
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 8192;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate event states info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -306,14 +328,14 @@ int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev)
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 10240;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate transaction info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -324,14 +346,14 @@ int lwis_debug_print_buffer_info(struct lwis_device *lwis_dev)
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 2048;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate buffer info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -363,7 +385,7 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf, size_t 
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 8192;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
@@ -383,7 +405,7 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf, siz
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 10240;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
@@ -404,7 +426,7 @@ static ssize_t buffer_info_read(struct file *fp, char __user *user_buf, size_t c
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 2048;
-	char *buffer = kmalloc(buffer_size, GFP_KERNEL);
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
