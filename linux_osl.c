@@ -1206,7 +1206,11 @@ osl_timer_del(osl_t *osh, osl_timer_t *t)
 int
 kernel_read_compat(struct file *file, loff_t offset, char *addr, unsigned long count)
 {
+#ifdef DHD_SUPPORT_VFS_CALL
 	return (int)kernel_read(file, addr, (size_t)count, &offset);
+#else
+	return 0;
+#endif /* DHD_SUPPORT_VFS_CALL */
 }
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)) */
 
