@@ -527,7 +527,7 @@ static int gcpm_chg_select(const struct gcpm_drv *gcpm)
 	}
 
 	/* thermals might have reduced demand and was not caught from dc_limit */
-	if (gcpm->cc_max < gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
+	if (gcpm->cc_max <= gcpm->dc_limit_cc_min && index != GCPM_DEFAULT_CHARGER) {
 		pr_debug("%s: cc_max=%d under cc_min=%d\n", __func__,
 			 gcpm->cc_max, gcpm->dc_limit_cc_min);
 		return GCPM_DEFAULT_CHARGER;
