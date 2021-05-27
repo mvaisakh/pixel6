@@ -206,7 +206,7 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
 #define CALI_GAMMA_HEADER_SIZE	3
 #define S6E3HC2_GAMMA_BAND_LEN 45
 
-/**
+/*
  * s6e3hc2_gamma_info - Information used to access gamma data on s6e3hc2.
  * @cmd: Command to use when writing/reading gamma from the DDIC.
  * @len: Total number of bytes to write/read from DDIC, including prefix_len.
@@ -214,12 +214,14 @@ static const struct exynos_panel_mode s6e3hc2_fhd_modes[] = {
  *     from the DDIC. This is a subset of len.
  * @flash_offset: Address offset to use when reading from flash.
  */
-const struct s6e3hc2_gamma_info {
+struct s6e3hc2_gamma_info {
 	u8 cmd;
 	u32 len;
 	u32 prefix_len;
 	u32 flash_offset;
-} s6e3hc2_gamma_tables[] = {
+};
+
+const struct s6e3hc2_gamma_info s6e3hc2_gamma_tables[] = {
 	/* order of commands matter due to use of cmds grouping */
 	{ 0xC8, S6E3HC2_GAMMA_BAND_LEN * 3, 0, 0x0000 },
 	{ 0xC9, S6E3HC2_GAMMA_BAND_LEN * 4, 0, 0x0087 },
