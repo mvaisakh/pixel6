@@ -539,10 +539,11 @@ static int lwis_client_event_push_back(struct lwis_client *lwis_client,
 	spin_lock_irqsave(&lwis_client->event_lock, flags);
 
 	if (lwis_client->event_queue_size >= MAX_NUM_PENDING_EVENTS) {
-		dev_warn_ratelimited(lwis_client->lwis_dev->dev,
-				     "Failed to push to event queue, exceeded size limit of %d\n",
-				     MAX_NUM_PENDING_EVENTS);
 		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
+		/* Send an error event to userspace to handle the overflow */
+		lwis_device_error_event_emit(lwis_client->lwis_dev,
+					     LWIS_ERROR_EVENT_ID_EVENT_QUEUE_OVERFLOW,
+					     /*payload=*/NULL, /*payload_size=*/0);
 		return -EOVERFLOW;
 	}
 
