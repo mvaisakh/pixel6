@@ -775,7 +775,6 @@ static int pca9468_get_ibatt(struct pca9468_charger *pca9468, int *info)
 	return pca9468_get_batt_info(pca9468, BATT_CURRENT, info);
 }
 
-
 static int pca9468_read_status(struct pca9468_charger *pca9468)
 {
 	unsigned int reg_val;
@@ -801,24 +800,34 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 	return ret;
 }
 
-/* 4.2V -> 75, 4.3V -> 45, 4.45V -> 0 */
+/*
+ * TODO: add formula and/or use device tree entries to configure. Can use
+ * delta = PCA9468_COMP_VFLOAT_MAX to reduce the limit as float voltage
+ * increases.
+ * NOTE: how does this change with temperature, battery age?
+ */
 static int pca9468_irdrop_limit(int fv_uv)
 {
-	int delta;
+	int delta = 75000;
 
-	/* 4.2V -> 250, 4.3V -> 150, 4.45V -> 0 */
-	delta = PCA9468_COMP_VFLOAT_MAX - fv_uv;
-	if (delta <= 0)
-		return 0;
+	if (fv_uv < 4300000)
+		delta = 105000;
+	if (fv_uv >= PCA9468_COMP_VFLOAT_MAX)
+		delta = 0;
 
-	return delta / 2 - (2 * delta) / 10;
+	return delta;
 }
 
-/* TODO: tune offset and limit */
+/* use max limit,  */
 static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 {
 	const int delta_limit = pca9468_irdrop_limit(fv_uv);
 	int ret, vbat, pca_vbat = 0, delta = 0;
+	const bool adaptive = false;
+
+	/* use classic irdrop */
+	if (pca9468->irdrop_comp_ok)
+		goto error_done;
 
 	ret = pca9468_get_batt_info(pca9468, BATT_VOLTAGE, &vbat);
 	if (ret < 0)
@@ -828,9 +837,13 @@ static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 	if (pca_vbat < 0 || pca_vbat < vbat)
 		goto error_done;
 
-	delta = pca_vbat - vbat;
-	if (delta > delta_limit)
+	if (adaptive) {
+		delta = pca_vbat - vbat;
+		if (delta > delta_limit)
+			delta = delta_limit;
+	} else {
 		delta = delta_limit;
+	}
 
 	if (fv_uv + delta > PCA9468_COMP_VFLOAT_MAX)
 		delta = PCA9468_COMP_VFLOAT_MAX - fv_uv;
@@ -3689,8 +3702,8 @@ static int get_const_charge_current(struct pca9468_charger *pca9468)
 /* Return the constant charge voltage programmed into the charger in uV. */
 static int pca9468_const_charge_voltage(struct pca9468_charger *pca9468)
 {
-	int ret, intval;
 	unsigned int val;
+	int ret;
 
 	if (!pca9468->mains_online)
 		return -ENODATA;
@@ -3699,9 +3712,7 @@ static int pca9468_const_charge_voltage(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	intval = (val * 5 + 3725) * 1000;
-
-	return intval;
+	return (val * 5 + 3725) * 1000;
 }
 
 #define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
