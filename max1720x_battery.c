@@ -2410,7 +2410,7 @@ static int max1720x_read_batt_id(int *batt_id, const struct max1720x_chip *chip)
 	if (rc < 0) {
 		dev_err(chip->dev, "failed to get batt-id rc=%d\n", rc);
 		*batt_id = -1;
-		return -EINVAL;
+		return -EPROBE_DEFER;
 	}
 
 	*batt_id = temp_id;
