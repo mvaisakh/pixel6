@@ -112,19 +112,29 @@ static void nitrous_prepare_uart_tx_locked(struct nitrous_bt_lpm *lpm)
 static irqreturn_t nitrous_host_wake_isr(int irq, void *data)
 {
 	struct nitrous_bt_lpm *lpm = data;
+	int host_wake;
 
-	dev_dbg(lpm->dev, "Host wake IRQ: %u\n", gpiod_get_value(lpm->gpio_host_wake));
+	host_wake = gpiod_get_value(lpm->gpio_host_wake);
+	dev_dbg(lpm->dev, "Host wake IRQ: %u\n", host_wake);
+
 	if (lpm->rfkill_blocked) {
 		dev_err(lpm->dev, "Unexpected Host wake IRQ\n");
 		logbuffer_log(lpm->log, "Unexpected Host wake IRQ");
 		return IRQ_HANDLED;
 	}
 
-	pm_runtime_get(lpm->dev);
-	exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
-	logbuffer_log(lpm->log, "host_wake_isr");
-	pm_runtime_mark_last_busy(lpm->dev);
-	pm_runtime_put_autosuspend(lpm->dev);
+	/* Check whether host_wake is ACTIVE (== 1) */
+	if (host_wake == 1) {
+		logbuffer_log(lpm->log, "host_wake_isr asserted");
+		pm_runtime_get(lpm->dev);
+		exynos_update_ip_idle_status(lpm->idle_btip_index, STATUS_BUSY);
+		pm_stay_awake(lpm->dev);
+	} else {
+		logbuffer_log(lpm->log, "host_wake_isr de-asserted");
+		pm_runtime_mark_last_busy(lpm->dev);
+		pm_runtime_put_autosuspend(lpm->dev);
+		pm_wakeup_dev_event(lpm->dev, NITROUS_AUTOSUSPEND_DELAY, false);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -163,9 +173,9 @@ static int nitrous_lpm_runtime_enable(struct nitrous_bt_lpm *lpm)
 		return 0;
 	}
 
+	/* Set irq_host_wake as a trigger edge interrupt. */
 	rc = devm_request_irq(lpm->dev, lpm->irq_host_wake, nitrous_host_wake_isr,
-			lpm->wake_polarity ? IRQF_TRIGGER_RISING : IRQF_TRIGGER_FALLING,
-			"bt_host_wake", lpm);
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "bt_host_wake", lpm);
 	if (unlikely(rc)) {
 		dev_err(lpm->dev, "Unable to request IRQ for bt_host_wake GPIO\n");
 		logbuffer_log(lpm->log, "Unable to request IRQ for bt_host_wake GPIO");
@@ -194,6 +204,7 @@ static void nitrous_lpm_runtime_disable(struct nitrous_bt_lpm *lpm)
 
 	devm_free_irq(lpm->dev, lpm->irq_host_wake, lpm);
 	device_init_wakeup(lpm->dev, false);
+	pm_relax(lpm->dev);
 	pm_runtime_disable(lpm->dev);
 	pm_runtime_set_suspended(lpm->dev);
 
@@ -416,6 +427,7 @@ static int nitrous_lpm_init(struct nitrous_bt_lpm *lpm)
 			goto fail;
 		}
 	}
+
 	return 0;
 
 fail:
