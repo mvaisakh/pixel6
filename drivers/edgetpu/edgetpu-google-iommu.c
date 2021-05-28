@@ -240,13 +240,10 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 	idr_init(&etiommu->domain_pool);
 	mutex_init(&etiommu->pool_lock);
 	etiommu->iommu_group = iommu_group_get(etdev->dev);
-	if (etiommu->iommu_group) {
+	if (etiommu->iommu_group)
 		iommu_group_set_name(etiommu->iommu_group, "edgetpu");
-		dev_dbg(etdev->dev, "iommu group id %d setup\n",
-			iommu_group_id(etiommu->iommu_group));
-	} else {
+	else
 		dev_warn(etdev->dev, "device has no iommu group\n");
-	}
 
 	iommu_dev_enable_feature(etdev->dev, IOMMU_DEV_FEAT_AUX);
 	if (!iommu_dev_feature_enabled(etdev->dev, IOMMU_DEV_FEAT_AUX))
