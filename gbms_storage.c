@@ -1288,11 +1288,11 @@ static int __init gbms_storage_init(void)
 		gbms_storage_parse_provider_refs(node);
 	}
 
-	if (has_bee)
-		schedule_delayed_work(&bee_work, msecs_to_jiffies(0));
-
 	gbms_storage_init_done = true;
 	pr_info("gbms_storage init done\n");
+
+	if (has_bee)
+		schedule_delayed_work(&bee_work, msecs_to_jiffies(0));
 
 	rootdir = debugfs_create_dir("gbms_storage", NULL);
 	if (IS_ERR_OR_NULL(rootdir))
