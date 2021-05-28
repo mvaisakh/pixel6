@@ -962,12 +962,9 @@ static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 	pca9468->prev_inc = INC_NONE;
 	pca9468->chg_mode = CHG_NO_DC_MODE;
 
-	/*
-	 * TODO: these values come from the device tree and not from
-	 * PCA9468_*_CFG_DFT: do not change them while running the algo.
-	 */
-	pca9468->pdata->iin_cfg = PCA9468_IIN_CFG_DFT;
-	//pca9468->pdata->v_float = PCA9468_VFLOAT_DFT;
+	/* restore to config */
+	pca9468->pdata->iin_cfg = pca9468->pdata->iin_cfg_dt;
+	pca9468->pdata->v_float = pca9468->pdata->v_float_dt;
 
 	/*
 	 * Clear charging configuration
@@ -1790,16 +1787,14 @@ static int pca9468_adjust_ta_voltage(struct pca9468_charger *pca9468)
 		pca9468->timer_period = 0;
 	} else if (iin < (pca9468->iin_cc - PD_MSG_TA_CUR_STEP)) {
 		/* TA current is lower than the target input current */
-		/* Compare TA max voltage */
-		if (pca9468->ta_vol == pca9468->ta_max_vol) {
 
-			/* TA current is already the maximum voltage */
+		if (pca9468->ta_vol == pca9468->ta_max_vol) {
+			/* TA TA voltage is already at the maximum voltage */
 
 			pr_debug("%s: adj. End1, ta_cur=%u, ta_vol=%u, iin_cc=%u, chg_mode=%u\n",
 				 __func__, pca9468->ta_cur, pca9468->ta_vol,
 				 pca9468->iin_cc, pca9468->chg_mode);
 
-			/* Return charging state to the previous state */
 			pca9468_return_to_loop(pca9468);
 		} else {
 			/* Increase TA voltage (20mV) */
@@ -1820,7 +1815,6 @@ static int pca9468_adjust_ta_voltage(struct pca9468_charger *pca9468)
 			 __func__, pca9468->ta_cur, pca9468->ta_vol,
 			 pca9468->iin_cc, pca9468->chg_mode);
 
-		/* Return charging state to the previous state */
 		pca9468_return_to_loop(pca9468);
 	}
 
@@ -2081,10 +2075,15 @@ done:
 /* called on loop inactive */
 static int pca9468_ajdust_ccmode_wireless(struct pca9468_charger *pca9468, int iin)
 {
+	pr_debug("%s: iin=%d, iin_cc=%d iin_cc_low_adc=%d ta_vol=%d ta_max_vol=%d\n", __func__,
+		iin,  pca9468->iin_cc, pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET,
+		pca9468->ta_vol, pca9468->ta_max_vol);
+
 	/* IIN_ADC > IIN_CC -20mA ? */
 	if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
 		/* Input current is already over IIN_CC */
 		/* End RX voltage adjustment */
+
 		/* change charging state to CC mode */
 		pca9468->charging_state = DC_STATE_CC_MODE;
 
@@ -2100,8 +2099,8 @@ static int pca9468_ajdust_ccmode_wireless(struct pca9468_charger *pca9468, int i
 	/* Check RX voltage */
 	} else if (pca9468->ta_vol == pca9468->ta_max_vol) {
 		/* RX voltage is already max value */
-		pr_debug("%s: CC adjust End: MAX value, rx_vol=%u\n",
-				__func__, pca9468->ta_vol);
+		pr_debug("%s: CC adjust End: MAX value, rx_vol=%u max=%d\n",
+				__func__, pca9468->ta_vol, pca9468->ta_max_vol);
 
 		/* Clear TA increment flag */
 		pca9468->prev_inc = INC_NONE;
@@ -2127,6 +2126,7 @@ static int pca9468_ajdust_ccmode_wireless(struct pca9468_charger *pca9468, int i
 /* called on loop inactive */
 static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 {
+
 	/* USBPD TA is connected */
 	if (iin > (pca9468->iin_cc - PCA9468_IIN_ADC_OFFSET)) {
 		/* IIN_ADC > IIN_CC -20mA ? */
@@ -4080,20 +4080,22 @@ static int of_pca9468_dt(struct device *dev,
 
 	/* input current limit */
 	ret = of_property_read_u32(np_pca9468, "pca9468,input-current-limit",
-				   &pdata->iin_cfg);
+				   &pdata->iin_cfg_dt);
 	if (ret) {
 		pr_warn("%s: pca9468,input-current-limit is Empty\n", __func__);
-		pdata->iin_cfg = PCA9468_IIN_CFG_DFT;
+		pdata->iin_cfg_dt = PCA9468_IIN_CFG_DFT;
 	}
+	pdata->iin_cfg = pdata->iin_cfg_dt;
 	pr_info("%s: pca9468,iin_cfg is %u\n", __func__, pdata->iin_cfg);
 
 	/* charging float voltage */
 	ret = of_property_read_u32(np_pca9468, "pca9468,float-voltage",
-				   &pdata->v_float);
+				   &pdata->v_float_dt);
 	if (ret) {
 		pr_warn("%s: pca9468,float-voltage is Empty\n", __func__);
-		pdata->v_float = PCA9468_VFLOAT_DFT;
+		pdata->v_float_dt = PCA9468_VFLOAT_DFT;
 	}
+	pdata->v_float = pdata->v_float_dt;
 	pr_info("%s: pca9468,v_float is %u\n", __func__, pdata->v_float);
 
 	/* input topoff current */
