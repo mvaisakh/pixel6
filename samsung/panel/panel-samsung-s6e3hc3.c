@@ -499,15 +499,25 @@ static const struct exynos_dsi_cmd s6e3hc3_evt1_doe_lhbm_on_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_doe_lhbm_on);
 
-static const struct exynos_dsi_cmd s6e3hc3_evt1_lhbm_off_cmds[] = {
+static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_60hz_cmds[] = {
 	EXYNOS_DSI_CMD0(unlock_cmd_f0),
 	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
 	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x01), /* reset fps change */
+	EXYNOS_DSI_CMD_SEQ(0x60, 0x01), /* 60 hz */
 	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
 	EXYNOS_DSI_CMD0(lock_cmd_f0),
 };
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_lhbm_off);
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_hbm_off_60hz);
+
+static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_120hz_cmds[] = {
+	EXYNOS_DSI_CMD0(unlock_cmd_f0),
+	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
+	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
+	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
+	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
+	EXYNOS_DSI_CMD0(lock_cmd_f0),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_hbm_off_120hz);
 
 static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_on_cmds[] = {
 	EXYNOS_DSI_CMD0(unlock_cmd_f0),
@@ -520,16 +530,6 @@ static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_on_cmds[] = {
 	EXYNOS_DSI_CMD0(lock_cmd_f0),
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_1_lhbm_on);
-
-static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_off_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
-	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x01),
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_1_lhbm_off);
 
 #define S6E3HC3_LOCAL_HBM_GAMMA_CMD_SIZE 6
 #define S6E3HC3_PANEL_ID3_DOE            0x20
@@ -587,44 +587,45 @@ static void s6e3hc3_lhbm_gamma_write(struct exynos_panel *ctx)
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 }
 
-static void s6e3hc3_evt1_extra_lhbm_settings(struct exynos_panel *ctx,
+static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
 				 bool local_hbm_en)
 {
 	u32 id;
 
-	if (!s6e3hc3_get_panel_id3(ctx, &id))
-		return;
-
-	dev_dbg(ctx->dev, "%s (panel id3: %02x)\n", __func__, id);
-
-	if (local_hbm_en) {
-		if (!(id & S6E3HC3_PANEL_ID3_DOE))
-			exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_por_lhbm_on_cmd_set);
-		else
-			exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_doe_lhbm_on_cmd_set);
-	} else {
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_lhbm_off_cmd_set);
+	dev_dbg(ctx->dev, "%s(panel_rev: 0x%x)\n", __func__, ctx->panel_rev);
+	if (ctx->panel_rev >= PANEL_REV_EVT1) {
+		if (local_hbm_en) {
+			if (ctx->panel_rev == PANEL_REV_EVT1) {
+				if (!s6e3hc3_get_panel_id3(ctx, &id)) {
+					dev_err(ctx->dev,
+						"fail to get panel id and load evt1 por settings!\n");
+					exynos_panel_send_cmd_set(ctx,
+						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
+					return;
+				}
+				if (id & S6E3HC3_PANEL_ID3_DOE) {
+					exynos_panel_send_cmd_set(ctx,
+						&s6e3hc3_evt1_doe_lhbm_on_cmd_set);
+				} else {
+					exynos_panel_send_cmd_set(ctx,
+						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
+				}
+			} else if (ctx->panel_rev >= PANEL_REV_EVT1_1) {
+				exynos_panel_send_cmd_set(ctx,
+					&s6e3hc3_evt1_1_lhbm_on_cmd_set);
+			}
+		} else {
+			if (ctx->hbm.local_hbm.vrefresh == 60) {
+				exynos_panel_send_cmd_set(ctx,
+					&s6e3hc3_evtandafter_hbm_off_60hz_cmd_set);
+			} else if (ctx->hbm.local_hbm.vrefresh == 120) {
+				exynos_panel_send_cmd_set(ctx,
+					&s6e3hc3_evtandafter_hbm_off_120hz_cmd_set);
+			} else {
+				dev_err(ctx->dev, "unsupported refresh rate!\n");
+			}
+		}
 	}
-}
-
-static void s6e3hc3_evt1_1_extra_lhbm_settings(struct exynos_panel *ctx,
-				 bool local_hbm_en)
-{
-	dev_dbg(ctx->dev, "%s\n", __func__);
-
-	if (local_hbm_en)
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_1_lhbm_on_cmd_set);
-	else
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_evt1_1_lhbm_off_cmd_set);
-}
-
-static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
-				 bool local_hbm_en)
-{
-	if (ctx->panel_rev == PANEL_REV_EVT1)
-		s6e3hc3_evt1_extra_lhbm_settings(ctx, local_hbm_en);
-	else if (ctx->panel_rev == PANEL_REV_EVT1_1)
-		s6e3hc3_evt1_1_extra_lhbm_settings(ctx, local_hbm_en);
 }
 
 static inline is_local_gamma_supported(struct exynos_panel *ctx)
@@ -769,11 +770,14 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 {
 	struct drm_mode_config *config;
 	struct drm_crtc *crtc = NULL;
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
 
 	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
 	mutex_lock(&ctx->mode_lock);
+	if (local_hbm_en)
+		ctx->hbm.local_hbm.vrefresh = drm_mode_vrefresh(&pmode->mode);
 	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_extra_lhbm_settings(ctx, local_hbm_en);
 	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);

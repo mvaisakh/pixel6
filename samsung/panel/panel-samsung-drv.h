@@ -407,6 +407,8 @@ struct exynos_panel {
 		struct local_hbm {
 			bool gamma_para_ready;
 			u8 gamma_cmd[LOCAL_HBM_GAMMA_CMD_SIZE_MAX];
+			/* used for LHBM OFF to restore initial fps before LHBM ON */
+			int vrefresh;
 			/* indicate if local hbm enabled or not */
 			bool enabled;
 			/* max local hbm on period in ms */
