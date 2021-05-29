@@ -462,6 +462,7 @@ struct p9221_charge_stats {
 	int cur_soc;
 	int volt_conf;
 	int cur_conf;
+	int mfg_code;
 	int of_freq;
 	int last_soc;
 	struct mutex stats_lock;

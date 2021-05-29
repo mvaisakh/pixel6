@@ -953,6 +953,7 @@ static void p9221_update_head_stats(struct p9221_charger_data *charger)
 {
 	u32 vout_mv, iout_ma;
 	u32 wlc_freq = 0;
+	u16 mfg_code;
 	u8 sys_mode;
 	int ret;
 
@@ -975,9 +976,14 @@ static void p9221_update_head_stats(struct p9221_charger_data *charger)
 	} else if (!charger->dc_icl_votable) {
 		iout_ma = 0;
 	} else {
-		iout_ma = get_effective_result(charger->dc_icl_votable);
-		if (iout_ma < 0)
+		int iout_ua;
+
+		/* the unit charger->dc_icl_votable is uA, need to change to mA */
+		iout_ua = get_effective_result(charger->dc_icl_votable);
+		if (iout_ua < 0)
 			iout_ma = 0;
+		else
+			iout_ma = iout_ua / 1000;
 	}
 	charger->chg_data.cur_conf = iout_ma;
 
@@ -991,6 +997,11 @@ static void p9221_update_head_stats(struct p9221_charger_data *charger)
 			vout_mv = 0;
 	}
 	charger->chg_data.volt_conf = vout_mv;
+
+	ret = p9xxx_chip_get_tx_mfg_code(charger, &mfg_code);
+	if (ret)
+		mfg_code = 0;
+	charger->chg_data.mfg_code = (int)mfg_code;
 }
 
 static void p9221_update_soc_stats(struct p9221_charger_data *charger,
@@ -1050,10 +1061,10 @@ static void p9221_update_soc_stats(struct p9221_charger_data *charger,
 static int p9221_chg_data_head_dump(char *buff, int max_size,
 				    const struct p9221_charge_stats *chg_data)
 {
-	return scnprintf(buff, max_size, "A:%d,%d,%d,%d,%d",
+	return scnprintf(buff, max_size, "A:%d,%d,%d,%d,%d,%d",
 			 chg_data->adapter_type, chg_data->cur_soc,
 			 chg_data->volt_conf, chg_data->cur_conf,
-			 chg_data->of_freq);
+			 chg_data->mfg_code, chg_data->of_freq);
 }
 static int p9221_soc_data_dump(char *buff, int max_size,
 			       const struct p9221_charge_stats *chg_data,
