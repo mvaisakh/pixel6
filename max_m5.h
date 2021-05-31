@@ -98,6 +98,7 @@ struct model_state_save {
 	u16 qresidual30;
 	u16 mixcap;
 	u16 halftime;
+	u8 crc;
 } __attribute__((packed));
 
 struct max_m5_data {

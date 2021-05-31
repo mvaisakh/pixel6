@@ -17,6 +17,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": %s " fmt, __func__
 
+#include <linux/crc8.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -40,6 +41,9 @@
 
 #define MAX_M5_TASKPERIOD_175MS	0x1680
 #define MAX_M5_TASKPERIOD_351MS	0x2D00
+
+#define MAX_M5_CRC8_POLYNOMIAL		0x07	/* (x^8) + x^2 + x + 1 */
+DECLARE_CRC8_TABLE(m5_crc8_table);
 
 static void dump_model(struct device *dev, u16 *data, int count)
 {
@@ -591,6 +595,30 @@ static int max_m5_check_state_data(struct model_state_save *state)
 	return 0;
 }
 
+static u8 max_m5_crc(u8 *pdata, size_t nbytes, u8 crc)
+{
+	return crc8(m5_crc8_table, pdata, nbytes, crc);
+}
+
+static u8 max_m5_data_crc(char *reason, struct model_state_save *state)
+{
+	u8 crc;
+
+	/* Last byte is for saving CRC */
+	crc = max_m5_crc((u8 *)state, sizeof(struct model_state_save) - 1,
+			  CRC8_INIT_VALUE);
+
+	pr_info("%s gmsr: %X %X %X %X %X %X %X %X %X %X %X %X (%X)\n",
+		reason, state->rcomp0, state->tempco,
+		state->fullcaprep, state->fullcapnom,
+		state->qresidual00, state->qresidual10,
+		state->qresidual20, state->qresidual30,
+		state->cycles, state->mixcap,
+		state->halftime, state->crc, crc);
+
+	return crc;
+}
+
 /*
  * Load parameters and model state from permanent storage.
  * Called on boot after POR
@@ -598,6 +626,7 @@ static int max_m5_check_state_data(struct model_state_save *state)
 int max_m5_load_state_data(struct max_m5_data *m5_data)
 {
 	struct max_m5_custom_parameters *cp = &m5_data->parameters;
+	u8 crc;
 	int ret;
 
 	if (!m5_data)
@@ -614,6 +643,10 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 	ret = max_m5_check_state_data(&m5_data->model_save);
 	if (ret < 0)
 		return ret;
+
+	crc = max_m5_data_crc("restore", &m5_data->model_save);
+	if (crc != m5_data->model_save.crc)
+		return -EINVAL;
 
 	cp->rcomp0 = m5_data->model_save.rcomp0;
 	cp->tempco = m5_data->model_save.tempco;
@@ -635,6 +668,7 @@ int max_m5_load_state_data(struct max_m5_data *m5_data)
 int max_m5_save_state_data(struct max_m5_data *m5_data)
 {
 	struct max_m5_custom_parameters *cp = &m5_data->parameters;
+	struct model_state_save rb;
 	int ret = 0;
 
 	m5_data->model_save.rcomp0 = cp->rcomp0;
@@ -650,13 +684,40 @@ int max_m5_save_state_data(struct max_m5_data *m5_data)
 	m5_data->model_save.mixcap = m5_data->mixcap;
 	m5_data->model_save.halftime = m5_data->halftime;
 
+	m5_data->model_save.crc = max_m5_data_crc("save",
+				  &m5_data->model_save);
+
 	ret = gbms_storage_write(GBMS_TAG_GMSR,
 				 (const void *)&m5_data->model_save,
 				 sizeof(m5_data->model_save));
 	if (ret < 0)
 		return ret;
 
-	return ret == sizeof(m5_data->model_save) ? 0 : -ERANGE;
+	if (ret != sizeof(m5_data->model_save))
+		return -ERANGE;
+
+	/* Read back to make sure data all good */
+	ret = gbms_storage_read(GBMS_TAG_GMSR, &rb, sizeof(rb));
+	if (ret < 0) {
+		dev_info(m5_data->dev, "Read Back Data Failed ret=%d\n", ret);
+		return ret;
+	}
+
+	if (rb.rcomp0 != m5_data->model_save.rcomp0 ||
+	    rb.tempco != m5_data->model_save.tempco ||
+	    rb.fullcaprep != m5_data->model_save.fullcaprep ||
+	    rb.fullcapnom != m5_data->model_save.fullcapnom ||
+	    rb.qresidual00 != m5_data->model_save.qresidual00 ||
+	    rb.qresidual10 != m5_data->model_save.qresidual10 ||
+	    rb.qresidual20 != m5_data->model_save.qresidual20 ||
+	    rb.qresidual30 != m5_data->model_save.qresidual30 ||
+	    rb.cycles != m5_data->model_save.cycles ||
+	    rb.mixcap != m5_data->model_save.mixcap ||
+	    rb.halftime != m5_data->model_save.halftime ||
+	    rb.crc != m5_data->model_save.crc)
+		return -EINVAL;
+
+	return 0;
 }
 
 /* 0 ok, < 0 error. Call after reading from the FG */
@@ -1073,6 +1134,8 @@ void *max_m5_init_data(struct device *dev, struct device_node *node,
 	ret = max_m5_read_taskperiod(&m5_data->cap_lsb, regmap);
 	if (ret < 0)
 		dev_err(dev, "Cannot set TaskPeriod (%d)\n", ret);
+
+	crc8_populate_msb(m5_crc8_table, MAX_M5_CRC8_POLYNOMIAL);
 
 	m5_data->custom_model = model;
 	m5_data->regmap = regmap;
