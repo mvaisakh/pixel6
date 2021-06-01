@@ -196,10 +196,11 @@ static ssize_t st33spi_state_store(struct device *dev,
 		return -ENODEV;
 
 	if (!kstrtoint(buf, 10, &new_spi_state)) {
-		st33spi->spi_state = new_spi_state;
 		if (new_spi_state == 0) {
+                        st33spi->spi_state = 0;
 			st33spi_pinctrl_configure(st33spi, false);
 		} else if (new_spi_state == 33) {
+                        st33spi->spi_state = 1;
 			st33spi_pinctrl_configure(st33spi, true);
 		} else {
 			dev_err(dev, "%s: incorrect parameter\n", __func__);
