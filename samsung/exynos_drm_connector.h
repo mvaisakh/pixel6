@@ -17,6 +17,13 @@
 #define MIN_WIN_BLOCK_WIDTH	8
 #define MIN_WIN_BLOCK_HEIGHT	1
 
+enum exynos_hbm_mode {
+	HBM_OFF = 0,
+	HBM_ON_IRC_ON,
+	HBM_ON_IRC_OFF,
+	HBM_STATE_MAX
+};
+
 struct exynos_drm_connector;
 
 /** Private DSI msg flags **/
@@ -30,7 +37,7 @@ struct exynos_drm_connector_properties {
 	struct drm_property *min_luminance;
 	struct drm_property *hdr_formats;
 	struct drm_property *lp_mode;
-	struct drm_property *global_hbm_on;
+	struct drm_property *global_hbm_mode;
 	struct drm_property *local_hbm_on;
 	struct drm_property *dimming_on;
 	struct drm_property *brightness_capability;
@@ -107,8 +114,8 @@ struct exynos_drm_connector_state {
 	/* @brightness_level: panel brightness level */
 	unsigned int brightness_level;
 
-	/* @global_hbm_on: global_hbm_on indicator */
-	bool global_hbm_on;
+	/* @global_hbm_mode: global_hbm_mode indicator */
+	enum exynos_hbm_mode global_hbm_mode;
 
 	/* @local_hbm_on: local_hbm_on indicator */
 	bool local_hbm_on;

@@ -162,6 +162,11 @@ static int exynos_drm_connector_create_brightness_properties(struct drm_device *
 {
 	struct drm_property *prop;
 	struct exynos_drm_connector_properties *p = dev_get_exynos_connector_properties(dev);
+	static const struct drm_prop_enum_list hbm_enum_list[] = {
+		{ HBM_OFF, "Off" },
+		{ HBM_ON_IRC_ON, "On IRC On" },
+		{ HBM_ON_IRC_OFF, "On IRC Off" },
+	};
 
 	prop = drm_property_create(dev, DRM_MODE_PROP_BLOB|DRM_MODE_PROP_IMMUTABLE,
 		 "brightness_capability", 0);
@@ -171,10 +176,11 @@ static int exynos_drm_connector_create_brightness_properties(struct drm_device *
 	}
 	p->brightness_capability = prop;
 
-	prop = drm_property_create_bool(dev, 0, "hbm_on");
+	prop = drm_property_create_enum(dev, 0, "hbm_mode",
+				hbm_enum_list, ARRAY_SIZE(hbm_enum_list));
 	if (!prop)
 		return -ENOMEM;
-	p->global_hbm_on = prop;
+	p->global_hbm_mode = prop;
 
 	prop = drm_property_create_bool(dev, 0, "local_hbm_mode");
 	if (!prop)

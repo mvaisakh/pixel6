@@ -642,11 +642,11 @@ static void s6e3hc2_write_display_mode(struct exynos_panel *ctx,
 	if (drm_mode_vrefresh(mode) == 90)
 		val |= S6E3HC2_WRCTRLD_FRAME_RATE_BIT;
 
-	if (ctx->hbm_mode)
+	if (IS_HBM_ON(ctx->hbm_mode))
 		val |= S6E3HC2_WRCTRLD_HBM_BIT;
 
 	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n",
-		__func__, val, ctx->hbm_mode ? "on" : "off", drm_mode_vrefresh(mode));
+		__func__, val, IS_HBM_ON(ctx->hbm_mode) ? "on" : "off", drm_mode_vrefresh(mode));
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
@@ -792,11 +792,11 @@ static int s6e3hc2_panel_disable(struct drm_panel *panel)
 }
 
 static void s6e3hc2_set_hbm_mode(struct exynos_panel *exynos_panel,
-				bool hbm_mode)
+				enum exynos_hbm_mode mode)
 {
 	const struct exynos_panel_mode *pmode = exynos_panel->current_mode;
 
-	exynos_panel->hbm_mode = hbm_mode;
+	exynos_panel->hbm_mode = mode;
 
 	s6e3hc2_write_display_mode(exynos_panel, &pmode->mode);
 }

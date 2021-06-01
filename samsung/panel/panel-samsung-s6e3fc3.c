@@ -262,7 +262,7 @@ static void s6e3fc3_update_wrctrld(struct exynos_panel *ctx)
 {
 	u8 val = S6E3FC3_WRCTRLD_BCTRL_BIT;
 
-	if (ctx->hbm_mode)
+	if (IS_HBM_ON(ctx->hbm_mode))
 		val |= S6E3FC3_WRCTRLD_HBM_BIT;
 
 	if (ctx->hbm.local_hbm.enabled)
@@ -273,7 +273,7 @@ static void s6e3fc3_update_wrctrld(struct exynos_panel *ctx)
 
 	dev_dbg(ctx->dev,
 		"%s(wrctrld:0x%x, hbm: %s, dimming: %s, local_hbm: %s)\n",
-		__func__, val, ctx->hbm_mode ? "on" : "off",
+		__func__, val, IS_HBM_ON(ctx->hbm_mode) ? "on" : "off",
 		ctx->dimming_on ? "on" : "off",
 		ctx->hbm.local_hbm.enabled ? "on" : "off");
 
@@ -384,18 +384,32 @@ static int s6e3fc3_enable(struct drm_panel *panel)
 }
 
 static void s6e3fc3_set_hbm_mode(struct exynos_panel *exynos_panel,
-				 bool hbm_mode)
+				enum exynos_hbm_mode mode)
 {
-	exynos_panel->hbm_mode = hbm_mode;
+	const bool hbm_update =
+		(IS_HBM_ON(exynos_panel->hbm_mode) != IS_HBM_ON(mode));
+	const bool irc_update =
+		(IS_HBM_ON_IRC_OFF(exynos_panel->hbm_mode) != IS_HBM_ON_IRC_OFF(mode));
 
-	if (exynos_panel->panel_rev == PANEL_REV_PROTO1_1) {
-		if (hbm_mode)
-			exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_1_pwm_cmd_set);
-		else
-			exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_4_pwm_cmd_set);
+	exynos_panel->hbm_mode = mode;
+
+	if (hbm_update) {
+		if (exynos_panel->panel_rev == PANEL_REV_PROTO1_1) {
+			if (IS_HBM_ON(mode))
+				exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_1_pwm_cmd_set);
+			else
+				exynos_panel_send_cmd_set(exynos_panel, &s6e3fc3_4_pwm_cmd_set);
+		}
+		s6e3fc3_update_wrctrld(exynos_panel);
 	}
-
-	s6e3fc3_update_wrctrld(exynos_panel);
+	if (irc_update) {
+		EXYNOS_DCS_WRITE_SEQ(exynos_panel, 0xF0, 0x5A, 0x5A);
+		EXYNOS_DCS_WRITE_SEQ(exynos_panel, 0xB0, 0x03, 0x8F);
+		EXYNOS_DCS_WRITE_SEQ(exynos_panel, 0x8F, IS_HBM_ON_IRC_OFF(mode) ? 0x05 : 0x25);
+		EXYNOS_DCS_WRITE_SEQ(exynos_panel, 0xF0, 0xA5, 0xA5);
+	}
+	dev_info(exynos_panel->dev, "hbm_on=%d hbm_ircoff=%d\n", IS_HBM_ON(exynos_panel->hbm_mode),
+		 IS_HBM_ON_IRC_OFF(exynos_panel->hbm_mode));
 }
 
 static void s6e3fc3_set_dimming_on(struct exynos_panel *exynos_panel,

@@ -390,7 +390,7 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 static inline bool is_auto_mode_preferred(struct exynos_panel *ctx)
 {
 	/* don't want to enable auto mode/early exit during hbm */
-	if (ctx->hbm_mode)
+	if (IS_HBM_ON(ctx->hbm_mode))
 		return false;
 
 	return ctx->panel_idle_enabled;
@@ -571,7 +571,7 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 {
 	u8 val = S6E3HC3_WRCTRLD_BCTRL_BIT;
 
-	if (ctx->hbm_mode)
+	if (IS_HBM_ON(ctx->hbm_mode))
 		val |= S6E3HC3_WRCTRLD_HBM_BIT;
 
 	if (ctx->hbm.local_hbm.enabled)
@@ -582,7 +582,7 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 
 	dev_dbg(ctx->dev,
 		"%s(wrctrld:0x%x, hbm: %s, dimming: %s local_hbm: %s)\n",
-		__func__, val, ctx->hbm_mode ? "on" : "off",
+		__func__, val, IS_HBM_ON(ctx->hbm_mode) ? "on" : "off",
 		ctx->dimming_on ? "on" : "off",
 		ctx->hbm.local_hbm.enabled ? "on" : "off");
 
@@ -872,31 +872,42 @@ static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
 }
 
 static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
-				 bool hbm_mode)
+				 enum exynos_hbm_mode mode)
 {
 	const struct exynos_panel_mode *pmode = ctx->current_mode;
+	const bool hbm_update =
+		(IS_HBM_ON(ctx->hbm_mode) != IS_HBM_ON(mode));
+	const bool irc_update =
+		(IS_HBM_ON_IRC_OFF(ctx->hbm_mode) != IS_HBM_ON_IRC_OFF(mode));
 
-	if (hbm_mode == ctx->hbm_mode)
+	if (mode == ctx->hbm_mode)
 		return;
 
 	if (unlikely(!pmode || !pmode->priv_data))
 		return;
 
-	ctx->hbm_mode = hbm_mode;
+	ctx->hbm_mode = mode;
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
-
-	if (hbm_mode) {
-		s6e3hc3_set_self_refresh(ctx, false);
-		s6e3hc3_set_hbm_extra_setting(ctx, hbm_mode);
-		s6e3hc3_write_display_mode(ctx, &pmode->mode);
-	} else {
-		s6e3hc3_set_hbm_extra_setting(ctx, hbm_mode);
-		s6e3hc3_write_display_mode(ctx, &pmode->mode);
-		s6e3hc3_set_self_refresh(ctx, ctx->self_refresh_active);
+	if (hbm_update) {
+		if (IS_HBM_ON(mode)) {
+			s6e3hc3_set_self_refresh(ctx, false);
+			s6e3hc3_set_hbm_extra_setting(ctx, mode);
+			s6e3hc3_write_display_mode(ctx, &pmode->mode);
+		} else {
+			s6e3hc3_set_hbm_extra_setting(ctx, mode);
+			s6e3hc3_write_display_mode(ctx, &pmode->mode);
+			s6e3hc3_set_self_refresh(ctx, ctx->self_refresh_active);
+		}
+	}
+	if (irc_update) {
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x02, 0xB6, 0x1D);
+		EXYNOS_DCS_WRITE_SEQ(ctx, 0x1D, IS_HBM_ON_IRC_OFF(mode) ? 0x05 : 0x25);
 	}
 
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+	dev_info(ctx->dev, "hbm_on=%d hbm_ircoff=%d\n", IS_HBM_ON(ctx->hbm_mode),
+		 IS_HBM_ON_IRC_OFF(ctx->hbm_mode));
 }
 
 static void s6e3hc3_set_dimming_on(struct exynos_panel *ctx,

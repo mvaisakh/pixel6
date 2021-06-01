@@ -611,7 +611,7 @@ int exynos_panel_disable(struct drm_panel *panel)
 	const struct exynos_panel_funcs *exynos_panel_func;
 
 	ctx->enabled = false;
-	ctx->hbm_mode = false;
+	ctx->hbm_mode = HBM_OFF;
 	ctx->dimming_on = false;
 	ctx->self_refresh_active = false;
 	ctx->panel_idle_vrefresh = 0;
@@ -1174,7 +1174,7 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 		   desc->min_luminance, desc->max_luminance,
 		   desc->max_avg_luminance);
 	drm_printf(p, "\thdr_formats: 0x%x\n", desc->hdr_formats);
-	drm_printf(p, "\thbm_on: %s\n", ctx->hbm_mode ? "true" : "false");
+	drm_printf(p, "\thbm_mode: %u\n", ctx->hbm_mode);
 	drm_printf(p, "\tdimming_on: %s\n", ctx->dimming_on ? "true" : "false");
 	drm_printf(p, "\tis_partial: %s\n", desc->is_partial ? "true" : "false");
 
@@ -1194,9 +1194,9 @@ static int exynos_panel_connector_get_property(
 	if (property == p->brightness_level) {
 		*val = exynos_state->brightness_level;
 		dev_dbg(ctx->dev, "%s: brt(%llu)\n", __func__, *val);
-	} else if (property == p->global_hbm_on) {
-		*val = exynos_state->global_hbm_on;
-		dev_dbg(ctx->dev, "%s: global_hbm_on(%s)\n", __func__, *val ? "true" : "false");
+	} else if (property == p->global_hbm_mode) {
+		*val = exynos_state->global_hbm_mode;
+		dev_dbg(ctx->dev, "%s: global_hbm_mode(%llu)\n", __func__, *val);
 	}  else if (property == p->local_hbm_on) {
 		*val = exynos_state->local_hbm_on;
 		dev_dbg(ctx->dev, "%s: local_hbm_on(%s)\n", __func__, *val ? "true" : "false");
@@ -1226,11 +1226,11 @@ static int exynos_panel_connector_set_property(
 		exynos_state->pending_update_flags |= HBM_FLAG_BL_UPDATE;
 		exynos_state->brightness_level = val;
 		dev_dbg(ctx->dev, "%s: brt(%u)\n", __func__, exynos_state->brightness_level);
-	} else if (property == p->global_hbm_on) {
+	} else if (property == p->global_hbm_mode) {
 		exynos_state->pending_update_flags |= HBM_FLAG_GHBM_UPDATE;
-		exynos_state->global_hbm_on = val;
-		dev_dbg(ctx->dev, "%s: global_hbm_on(%s)\n", __func__,
-			 exynos_state->global_hbm_on ? "true" : "false");
+		exynos_state->global_hbm_mode = val;
+		dev_dbg(ctx->dev, "%s: global_hbm_mode(%u)\n", __func__,
+			 exynos_state->global_hbm_mode);
 	} else if (property == p->local_hbm_on) {
 		exynos_state->pending_update_flags |= HBM_FLAG_LHBM_UPDATE;
 		exynos_state->local_hbm_on = val;
@@ -1277,7 +1277,7 @@ static void exynos_panel_commit_properties(
 
 	if ((conn_state->pending_update_flags & HBM_FLAG_GHBM_UPDATE) &&
 		exynos_panel_func->set_hbm_mode &&
-		(ctx->hbm_mode != conn_state->global_hbm_on))
+		(ctx->hbm_mode != conn_state->global_hbm_mode))
 		update_flags |= HBM_FLAG_GHBM_UPDATE;
 
 	if ((conn_state->pending_update_flags & HBM_FLAG_BL_UPDATE) &&
@@ -1310,7 +1310,7 @@ static void exynos_panel_commit_properties(
 		ctx->hbm.commit = commit;
 
 		if (update_flags & HBM_FLAG_GHBM_UPDATE)
-			ctx->hbm.request_global_hbm_mode = conn_state->global_hbm_on;
+			ctx->hbm.request_global_hbm_mode = conn_state->global_hbm_mode;
 
 		if (update_flags & HBM_FLAG_BL_UPDATE)
 			ctx->bl->props.brightness = conn_state->brightness_level;
@@ -1486,7 +1486,7 @@ static int exynos_drm_connector_check_state(struct exynos_panel *ctx,
 	struct exynos_drm_connector_state *exynos_connector_state =
 		to_exynos_connector_state(connector_state);
 
-	if (exynos_connector_state->global_hbm_on && exynos_connector_state->local_hbm_on) {
+	if (exynos_connector_state->global_hbm_mode && exynos_connector_state->local_hbm_on) {
 		dev_err(ctx->dev, "invalid state - both LHBM and GHBM on");
 		return -EINVAL;
 	}
@@ -1986,7 +1986,7 @@ static ssize_t hbm_mode_store(struct device *dev,
 	struct exynos_panel *ctx = bl_get_data(bd);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	const struct exynos_panel_mode *pmode;
-	bool hbm_en;
+	u32 hbm_mode;
 	int ret;
 
 	if (!funcs || !funcs->set_hbm_mode) {
@@ -2009,13 +2009,13 @@ static ssize_t hbm_mode_store(struct device *dev,
 		goto unlock;
 	}
 
-	ret = kstrtobool(buf, &hbm_en);
-	if (ret) {
+	ret = kstrtouint(buf, 0, &hbm_mode);
+	if (ret || (hbm_mode >= HBM_STATE_MAX)) {
 		dev_err(ctx->dev, "invalid hbm_mode value\n");
 		goto unlock;
 	}
 
-	funcs->set_hbm_mode(ctx, hbm_en);
+	funcs->set_hbm_mode(ctx, hbm_mode);
 
 	backlight_state_changed(bd);
 unlock:
@@ -2030,7 +2030,7 @@ static ssize_t hbm_mode_show(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", ctx->hbm_mode);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", ctx->hbm_mode);
 }
 
 static DEVICE_ATTR_RW(hbm_mode);
@@ -2184,8 +2184,11 @@ static ssize_t state_show(struct device *dev,
 		show_mode = false;
 	} else if (is_backlight_lp_state(bl)) {
 		statestr = "LP";
+	} else if (IS_HBM_ON(ctx->hbm_mode)) {
+		statestr = IS_HBM_ON_IRC_OFF(ctx->hbm_mode) ?
+				"HBM IRC_OFF" : "HBM";
 	} else {
-		statestr = (ctx->hbm_mode) ? "HBM" : "On";
+		statestr = "On";
 	}
 
 	mutex_unlock(&ctx->bl_state_lock);
@@ -2203,7 +2206,8 @@ static ssize_t state_show(struct device *dev,
 			/* overwrite \n and continue the string */
 			const u8 str_len = ret_cnt - 1;
 
-			ret_cnt = scnprintf(buf + str_len, PAGE_SIZE - str_len, ": %dx%d@%d\n",
+			ret_cnt = scnprintf(buf + str_len, PAGE_SIZE - str_len,
+				      ": %dx%d@%d\n",
 				      pmode->mode.hdisplay, pmode->mode.vdisplay,
 				      exynos_get_actual_vrefresh(ctx));
 			if (ret_cnt > 0)
@@ -2441,7 +2445,7 @@ static int exynos_panel_attach_properties(struct exynos_panel *ctx)
 	drm_object_attach_property(obj, p->max_avg_luminance, desc->max_avg_luminance);
 	drm_object_attach_property(obj, p->hdr_formats, desc->hdr_formats);
 	drm_object_attach_property(obj, p->brightness_level, 0);
-	drm_object_attach_property(obj, p->global_hbm_on, 0);
+	drm_object_attach_property(obj, p->global_hbm_mode, 0);
 	drm_object_attach_property(obj, p->local_hbm_on, 0);
 	drm_object_attach_property(obj, p->dimming_on, 0);
 	drm_object_attach_property(obj, p->sync_rr_switch, 0);

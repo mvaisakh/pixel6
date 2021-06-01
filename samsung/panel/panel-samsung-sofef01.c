@@ -44,11 +44,11 @@ static void sofef01_write_display_mode(struct exynos_panel *ctx,
 {
 	u8 val = SOFEF01_WRCTRLD_BCTRL_BIT;
 
-	if (ctx->hbm_mode)
+	if (IS_HBM_ON(ctx->hbm_mode))
 		val |= SOFEF01_WRCTRLD_HBM_BIT;
 
 	dev_dbg(ctx->dev, "%s(wrctrld:0x%x, hbm: %s, refresh: %uhz)\n",
-		__func__, val, ctx->hbm_mode ? "on" : "off", drm_mode_vrefresh(mode));
+		__func__, val, IS_HBM_ON(ctx->hbm_mode) ? "on" : "off", drm_mode_vrefresh(mode));
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 }
@@ -116,11 +116,11 @@ static int sofef01_enable(struct drm_panel *panel)
 }
 
 static void sofef01_set_hbm_mode(struct exynos_panel *exynos_panel,
-				bool hbm_mode)
+				enum exynos_hbm_mode mode)
 {
 	const struct exynos_panel_mode *pmode = exynos_panel->current_mode;
 
-	exynos_panel->hbm_mode = hbm_mode;
+	exynos_panel->hbm_mode = mode;
 
 	sofef01_write_display_mode(exynos_panel, &pmode->mode);
 }

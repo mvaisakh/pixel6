@@ -73,6 +73,9 @@
 #define HBM_FLAG_LHBM_UPDATE    BIT(2)
 #define HBM_FLAG_DIMMING_UPDATE BIT(3)
 
+#define IS_HBM_ON(mode)	((mode) >= HBM_ON_IRC_ON && (mode) < HBM_STATE_MAX)
+#define IS_HBM_ON_IRC_OFF(mode)	(((mode) == HBM_ON_IRC_OFF))
+
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
 	PANEL_STATE_LP,
@@ -147,7 +150,7 @@ struct exynos_panel_funcs {
 	 * mode enablement. If this is not defined, it means that panel does not
 	 * support HBM
 	 */
-	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, bool hbm_mode);
+	void (*set_hbm_mode)(struct exynos_panel *exynos_panel, enum exynos_hbm_mode mode);
 
 	/**
 	 * @set_dimming_on:
@@ -430,7 +433,7 @@ struct exynos_panel {
 	 */
 	unsigned int panel_idle_vrefresh;
 
-	bool hbm_mode;
+	enum exynos_hbm_mode hbm_mode;
 	bool dimming_on;
 	/* request_dimming_on from drm commit */
 	bool request_dimming_on;
@@ -467,7 +470,7 @@ struct exynos_panel {
 		} local_hbm;
 
 		/* request global hbm mode from drm commit */
-		bool request_global_hbm_mode;
+		enum exynos_hbm_mode request_global_hbm_mode;
 		/* send mipi commands asynchronously after frame start */
 		struct work_struct hbm_work;
 		/* mipi command update flags in hbm_work */
