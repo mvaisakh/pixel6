@@ -371,6 +371,8 @@ struct exynos_panel {
 	struct regulator *vddd;
 	struct regulator *vddr_en;
 	struct regulator *vddr;
+	u32 vddd_normal_uV;
+	u32 vddd_lp_uV;
 	struct exynos_drm_connector exynos_connector;
 	struct drm_bridge bridge;
 	const struct exynos_panel_desc *desc;

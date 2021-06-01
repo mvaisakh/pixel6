@@ -208,6 +208,7 @@ static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 {
 	struct device *dev = ctx->dev;
 	struct regulator *reg;
+	int ret;
 
 	ctx->vddi = devm_regulator_get(dev, "vddi");
 	if (IS_ERR(ctx->vddi)) {
@@ -225,6 +226,19 @@ static int exynos_panel_parse_regulators(struct exynos_panel *ctx)
 	if (!PTR_ERR_OR_ZERO(reg)) {
 		pr_info("panel vddd found\n");
 		ctx->vddd = reg;
+	}
+
+	ret = of_property_read_u32(dev->of_node, "vddd-normal-microvolt", &ctx->vddd_normal_uV);
+	if (ret)
+		ctx->vddd_normal_uV = 0;
+
+	ret = of_property_read_u32(dev->of_node, "vddd-lp-microvolt", &ctx->vddd_lp_uV);
+	if (ret) {
+		ctx->vddd_lp_uV = 0;
+		if (ctx->vddd_normal_uV != 0) {
+			pr_warn("ignore vddd normal %u\n", ctx->vddd_normal_uV);
+			ctx->vddd_normal_uV = 0;
+		}
 	}
 
 	reg = devm_regulator_get_optional(dev, "vddr_en");
@@ -2421,8 +2435,13 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 
 		if (is_lp_mode && funcs->set_lp_mode) {
 			funcs->set_lp_mode(ctx, pmode);
+			if (ctx->vddd && ctx->vddd_lp_uV)
+				regulator_set_voltage(ctx->vddd, ctx->vddd_lp_uV, ctx->vddd_lp_uV);
 			need_update_backlight = true;
 		} else if (was_lp_mode && !is_lp_mode && funcs->set_nolp_mode) {
+			if (ctx->vddd && ctx->vddd_normal_uV)
+				regulator_set_voltage(ctx->vddd, ctx->vddd_normal_uV,
+						      ctx->vddd_normal_uV);
 			funcs->set_nolp_mode(ctx, pmode);
 			state_changed = true;
 			need_update_backlight = true;
