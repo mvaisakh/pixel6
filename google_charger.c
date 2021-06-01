@@ -89,6 +89,8 @@
 #define FCC_CDEV_NAME "fcc"
 #define WLC_OF_CDEV_NAME "google,wlc_charger"
 #define WLC_CDEV_NAME "dc_icl"
+#define WLC_FCC_OF_CDEV_NAME "google,wlc_fcc_charger"
+#define WLC_FCC_CDEV_NAME "wlc_fcc"
 
 #define PPS_CC_TOLERANCE_PCT_DEFAULT	5
 #define PPS_CC_TOLERANCE_PCT_MAX	10
@@ -98,9 +100,11 @@
 struct chg_drv;
 
 enum chg_thermal_devices {
-	CHG_TERMAL_DEVICES_COUNT = 2,
 	CHG_TERMAL_DEVICE_FCC = 0,
-	CHG_TERMAL_DEVICE_DC_IN = 1,
+	CHG_TERMAL_DEVICE_DC_IN,
+	CHG_TERMAL_DEVICE_WLC_FCC,
+
+	CHG_TERMAL_DEVICES_COUNT,
 };
 
 struct chg_thermal_device {
@@ -188,9 +192,6 @@ struct chg_drv {
 	/* thermal devices */
 	struct chg_thermal_device thermal_devices[CHG_TERMAL_DEVICES_COUNT];
 	bool therm_wlc_override_fcc;
-	/* thermal limits */
-	u32 *wlc_fcc_limits;
-	int wlc_fcc_levels;
 
 	/* */
 	u32 cv_update_interval;
@@ -3295,22 +3296,14 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 			(struct chg_thermal_device *)tcd->devdata;
 	const bool changed = (tdev->current_level != lvl);
 	struct chg_drv *chg_drv = tdev->chg_drv;
-	int dc_fcc = -1, dc_icl = -1, ret;
 	union power_supply_propval pval;
-	int rdc, rfcc = 0;
+	int dc_icl = -1, rdc = 0, ret = 0;
 
 	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
 		return -EINVAL;
 
 	if (!chg_drv->dc_icl_votable)
 		chg_drv->dc_icl_votable = find_votable("DC_ICL");
-	if (!chg_drv->dc_fcc_votable && chg_drv->wlc_fcc_limits) {
-		chg_drv->dc_icl_votable = find_votable("DC_FCC");
-
-		/* HACK: fallback to FCC */
-		if (!chg_drv->dc_icl_votable)
-			chg_drv->dc_fcc_votable = chg_drv->msc_fcc_votable;
-	}
 
 	tdev->current_level = lvl;
 
@@ -3351,58 +3344,105 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 						  &pval);
 
 		if (ret < 0 || pval.intval < 0)
-			pr_err("cannot set to ONLINE=%d (%d)\n", pval.intval, ret);
+			pr_err("MSC_THERM_DC cannot set to ONLINE=%d (%d)\n",
+			       pval.intval, ret);
 	}
 
 	if (!chg_drv->dc_icl_votable)
 		return 0;
 
-	if (tdev->current_level != 0) {
+	if (tdev->current_level != 0)
 		dc_icl = tdev->thermal_mitigation[tdev->current_level];
-		if (chg_drv->wlc_fcc_limits)
-			dc_fcc = chg_drv->wlc_fcc_limits[tdev->current_level];
-	}
 
 	rdc = vote(chg_drv->dc_icl_votable, THERMAL_DAEMON_VOTER,
 		   (dc_icl != -1), dc_icl);
 
-	if (chg_drv->dc_fcc_votable)
-		rfcc = vote(chg_drv->dc_fcc_votable, THERMAL_DAEMON_DC_VOTER,
-			   (dc_fcc != -1), dc_fcc);
-
-	if (rdc < 0 || rfcc < 0 || changed)
-		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d dc_fcc=%d (%d, %d)\n",
-			lvl, dc_icl, dc_fcc, rdc, rfcc);
+	if (rdc < 0 || changed)
+		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d (%d)\n",
+			lvl, dc_icl, rdc);
 
 	/* make sure that fcc is reset to max when charging from WLC*/
-	if (ret ==0)
+	if (ret == 0)
 		(void)chg_therm_update_fcc(chg_drv);
 
 	return 0;
 }
 
-
-static u32* chg_read_limits(struct chg_drv *chg_drv, const char *name, int *len)
+static int chg_set_wlc_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
+					     unsigned long lvl)
 {
-	struct device_node *node = chg_drv->device->of_node;
-	int rc, byte_len, levels;
-	u32 *limits;
+	struct chg_thermal_device *tdev =
+			(struct chg_thermal_device *)tcd->devdata;
+	const bool changed = (tdev->current_level != lvl);
+	struct chg_drv *chg_drv = tdev->chg_drv;
+	union power_supply_propval pval;
+	int dc_fcc = -1, rfcc = 0, ret = 0;
 
-	if (!of_find_property(node, name, &byte_len))
-		return NULL;
+	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
+		return -EINVAL;
 
-	limits = devm_kzalloc(chg_drv->device, byte_len, GFP_KERNEL);
-	if (!limits)
-		return NULL;
+	if (!chg_drv->dc_fcc_votable) {
+		chg_drv->dc_fcc_votable = find_votable("DC_FCC");
 
+		/* HACK: fallback to FCC */
+		if (!chg_drv->dc_fcc_votable)
+			chg_drv->dc_fcc_votable = chg_drv->msc_fcc_votable;
+	}
 
-	levels = byte_len / sizeof(u32);
-	rc = of_property_read_u32_array(node, name, limits, levels);
-	if (rc < 0)
-		return NULL;
+	tdev->current_level = lvl;
 
-	*len = levels;
-	return limits;
+	if (tdev->current_level == tdev->thermal_levels) {
+		if (chg_drv->dc_fcc_votable)
+			vote(chg_drv->dc_fcc_votable,
+				THERMAL_DAEMON_DC_VOTER, true, 0);
+
+		/* WLC set the wireless charger offline b/119501863 */
+		if (chg_drv->wlc_psy) {
+			pval.intval = 0;
+			power_supply_set_property(chg_drv->wlc_psy,
+				POWER_SUPPLY_PROP_ONLINE, &pval);
+		}
+
+		pr_info("MSC_THERM_DC_FCC lvl=%ld dc disable\n", lvl);
+
+		return 0;
+	}
+
+	if (chg_drv->wlc_psy) {
+		ret = power_supply_get_property(chg_drv->wlc_psy,
+					        POWER_SUPPLY_PROP_ONLINE,
+                                                &pval);
+		if (ret < 0 || pval.intval == 0)
+			pval.intval = 1;
+
+		if (pval.intval > 0)
+			power_supply_set_property(chg_drv->wlc_psy,
+						  POWER_SUPPLY_PROP_ONLINE,
+						  &pval);
+
+		if (ret < 0 || pval.intval < 0)
+			pr_err("MSC_THERM_DC_FCC cannot set to ONLINE=%d (%d)\n",
+			       pval.intval, ret);
+	}
+
+	if (!chg_drv->dc_fcc_votable)
+		return 0;
+
+	if (tdev->current_level != 0)
+		dc_fcc = tdev->thermal_mitigation[tdev->current_level];
+
+	rfcc = vote(chg_drv->dc_fcc_votable, THERMAL_DAEMON_DC_VOTER,
+		   (dc_fcc != -1), dc_fcc);
+
+	if (rfcc < 0 || changed)
+		pr_info("MSC_THERM_DC_FCC lvl=%ld dc_fcc=%d (%d)\n",
+			lvl, dc_fcc, rfcc);
+
+	/* make sure that fcc is reset to max when charging from WLC*/
+	if (ret == 0)
+		(void)chg_therm_update_fcc(chg_drv);
+
+	return 0;
 }
 
 static int chg_tdev_init(struct chg_thermal_device *tdev, const char *name,
@@ -3429,6 +3469,8 @@ static int chg_tdev_init(struct chg_thermal_device *tdev, const char *name,
 	if (rc < 0) {
 		dev_err(chg_drv->device,
 			"Couldn't read limits for %s rc = %d\n", name, rc);
+		devm_kfree(chg_drv->device, tdev->thermal_mitigation);
+		tdev->thermal_mitigation = NULL;
 		return -ENODATA;
 	}
 
@@ -3449,73 +3491,102 @@ static const struct thermal_cooling_device_ops chg_dc_icl_tcd_ops = {
 	.set_cur_state = chg_set_dc_in_charge_cntl_limit,
 };
 
-/* ls /sys/devices/virtual/thermal/cdev-by-name/ */
-static int chg_thermal_device_init(struct chg_drv *chg_drv)
+static const struct thermal_cooling_device_ops chg_wlc_fcc_tcd_ops = {
+	.get_max_state = chg_get_max_charge_cntl_limit,
+	.get_cur_state = chg_get_cur_charge_cntl_limit,
+	.set_cur_state = chg_set_wlc_fcc_charge_cntl_limit,
+};
+
+static int
+chg_thermal_device_register(const char *of_name,
+			    const char *tcd_name,
+			    struct chg_thermal_device *ctdev,
+			    const struct thermal_cooling_device_ops *ops)
 {
-	int rc;
 	struct device_node *cooling_node = NULL;
 
-	rc = chg_tdev_init(&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_FCC],
-				"google,thermal-mitigation", chg_drv);
-	if (rc == 0) {
-		struct chg_thermal_device *fcc =
-			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_FCC];
+	cooling_node = of_find_node_by_name(NULL, of_name);
+	if (!cooling_node) {
+		pr_err("No %s OF node for cooling device\n",
+		       of_name);
+		return -EINVAL;
+	}
 
-		cooling_node = of_find_node_by_name(NULL, FCC_OF_CDEV_NAME);
-		if (!cooling_node) {
-			pr_err("No %s OF node for cooling device\n",
-				FCC_OF_CDEV_NAME);
-		}
+	ctdev->tcd = thermal_of_cooling_device_register(cooling_node,
+							tcd_name,
+							ctdev,
+							ops);
 
-		fcc->tcd = thermal_of_cooling_device_register(
-						cooling_node,
-						FCC_CDEV_NAME,
-						fcc,
-						&chg_fcc_tcd_ops);
-		if (IS_ERR(fcc->tcd)) {
-			pr_err("error registering fcc cooling device\n");
-			return -EINVAL;
+	if (IS_ERR_OR_NULL(ctdev->tcd)) {
+		pr_err("error registering %s cooling device (%ld)\n",
+		       tcd_name, PTR_ERR(ctdev->tcd));
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/* ls /dev/thermal/cdev-by-name/ */
+static int chg_thermal_device_init(struct chg_drv *chg_drv)
+{
+	struct chg_thermal_device *ctdev_fcc, *ctdev_dc, *ctdev_wlcfcc;
+	int rfcc, rdc, rwfcc;
+
+	ctdev_fcc = &chg_drv->thermal_devices[CHG_TERMAL_DEVICE_FCC];
+	rfcc = chg_tdev_init(ctdev_fcc, "google,thermal-mitigation", chg_drv);
+	if (rfcc == 0) {
+		rfcc = chg_thermal_device_register(FCC_OF_CDEV_NAME,
+						   FCC_CDEV_NAME,
+						   ctdev_fcc,
+						   &chg_fcc_tcd_ops);
+		if (rfcc) {
+			devm_kfree(chg_drv->device,
+				   ctdev_fcc->thermal_mitigation);
+			ctdev_fcc->thermal_mitigation = NULL;
 		}
 	}
 
-	rc = chg_tdev_init(&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN],
-				"google,wlc-thermal-mitigation", chg_drv);
-	if (rc == 0) {
-		struct chg_thermal_device *dc_icl =
-			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN];
-		cooling_node = NULL;
-		cooling_node = of_find_node_by_name(NULL, WLC_OF_CDEV_NAME);
-		if (!cooling_node) {
-			pr_err("No %s OF node for cooling device\n",
-				WLC_OF_CDEV_NAME);
+	ctdev_dc = &chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN];
+	rdc = chg_tdev_init(ctdev_dc, "google,wlc-thermal-mitigation", chg_drv);
+	if (rdc == 0) {
+		rdc = chg_thermal_device_register(WLC_OF_CDEV_NAME,
+						  WLC_CDEV_NAME,
+						  ctdev_dc,
+						  &chg_dc_icl_tcd_ops);
+		if (rdc) {
+			devm_kfree(chg_drv->device,
+				   ctdev_dc->thermal_mitigation);
+			ctdev_dc->thermal_mitigation = NULL;
 		}
+	}
 
-		dc_icl->tcd = thermal_of_cooling_device_register(
-						cooling_node,
-						WLC_CDEV_NAME,
-						dc_icl,
-						&chg_dc_icl_tcd_ops);
-		if (IS_ERR(dc_icl->tcd))
-			goto error_exit;
+	ctdev_wlcfcc = &chg_drv->thermal_devices[CHG_TERMAL_DEVICE_WLC_FCC];
+	rwfcc = chg_tdev_init(ctdev_wlcfcc, "google,wlc-fcc-thermal-mitigation",
+			      chg_drv);
+	if (rwfcc == 0) {
+		rwfcc = chg_thermal_device_register(WLC_FCC_OF_CDEV_NAME,
+						    WLC_FCC_CDEV_NAME,
+						    ctdev_wlcfcc,
+						    &chg_wlc_fcc_tcd_ops);
+		if (rwfcc) {
+			devm_kfree(chg_drv->device,
+				   ctdev_wlcfcc->thermal_mitigation);
+			ctdev_wlcfcc->thermal_mitigation = NULL;
+		}
 	}
 
 	chg_drv->therm_wlc_override_fcc =
 		of_property_read_bool(chg_drv->device->of_node,
 					"google,therm-wlc-overrides-fcc");
 
-	/* if present overrides FCC for WLC_DC charging */
-	chg_drv->wlc_fcc_limits = chg_read_limits(chg_drv, "google,wlc-fcc-thermal-limits",
-						  &chg_drv->wlc_fcc_levels);
-	pr_info("wlc-overrides-fcc=%d wlc-fcc-limits=%d\n",
-		chg_drv->therm_wlc_override_fcc, !!chg_drv->wlc_fcc_limits);
-	return 0;
+	pr_info("wlc-overrides-fcc=%d thermal-mitigation=%d "
+		"wlc-thermal-mitigation=%d wlc-fcc-thermal-mitigation=%d\n",
+		chg_drv->therm_wlc_override_fcc,
+		!!ctdev_fcc->thermal_mitigation,
+		!!ctdev_dc->thermal_mitigation,
+		!!ctdev_wlcfcc->thermal_mitigation);
 
-error_exit:
-	pr_err("error registering dc_icl cooling device\n");
-	thermal_cooling_device_unregister(
-		chg_drv->thermal_devices[CHG_TERMAL_DEVICE_FCC].tcd);
-
-	return -EINVAL;
+	return (rfcc | rdc | rwfcc);
 }
 
 static struct power_supply *psy_get_by_name(struct chg_drv *chg_drv,
