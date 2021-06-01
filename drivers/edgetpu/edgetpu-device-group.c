@@ -469,7 +469,6 @@ static bool edgetpu_clients_groupable(const struct edgetpu_client *client1,
 {
 	struct edgetpu_dev *etdev1 = client1->etdev, *etdev2 = client2->etdev;
 
-	/* TODO(b/159394046): perform more checks */
 	return etdev1->mcp_id == etdev2->mcp_id &&
 	       etdev1->mcp_die_index != etdev2->mcp_die_index;
 }

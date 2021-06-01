@@ -653,7 +653,22 @@ static ssize_t fw_thread_stats_show(
 	mutex_unlock(&ustats->usage_stats_lock);
 	return ret;
 }
-static DEVICE_ATTR_RO(fw_thread_stats);
+
+static ssize_t fw_thread_stats_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_usage_stats *ustats = etdev->usage_stats;
+	int i;
+
+	mutex_lock(&ustats->usage_stats_lock);
+	for (i = 0; i < EDGETPU_FW_THREAD_COUNT; i++)
+		ustats->thread_stack_max[i] = 0;
+	mutex_unlock(&ustats->usage_stats_lock);
+	return count;
+}
+static DEVICE_ATTR_RW(fw_thread_stats);
 
 static struct attribute *usage_stats_dev_attrs[] = {
 	&dev_attr_tpu_usage.attr,

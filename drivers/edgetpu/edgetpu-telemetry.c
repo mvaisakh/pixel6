@@ -144,9 +144,7 @@ static void edgetpu_fw_log(struct edgetpu_telemetry *log)
 			       start);
 		if (entry.length == 0 || entry.length > max_length) {
 			header->head = header->tail;
-#if 0 /* TODO(b/170340226): add me back */
 			etdev_err_ratelimited(etdev, "log queue is corrupted");
-#endif
 			break;
 		}
 		copy_with_wrap(header, buffer, entry.length, queue_size, start);

@@ -97,7 +97,7 @@ static int etdev_add_translations(struct edgetpu_dev *etdev,
 				  enum dma_data_direction dir,
 				  enum edgetpu_context_id ctx_id)
 {
-	const int prot = __dma_dir_to_iommu_prot(dir);
+	const int prot = __dma_dir_to_iommu_prot(dir, etdev->dev);
 	uint i;
 	u64 offset = 0;
 	int ret;
@@ -280,11 +280,12 @@ static void dmabuf_map_callback_release(struct edgetpu_mapping *map)
 		container_of(map, struct edgetpu_dmabuf_map, map);
 	struct edgetpu_device_group *group = map->priv;
 	const enum dma_data_direction dir = edgetpu_host_dma_dir(map->dir);
-	const tpu_addr_t tpu_addr = map->device_address;
+	tpu_addr_t tpu_addr = map->device_address;
 	struct edgetpu_dev *etdev;
 	uint i;
 
 	if (tpu_addr) {
+		tpu_addr -= dmap->offset;
 		if (IS_MIRRORED(map->flags)) {
 			group_unmap_dmabuf(group, dmap, tpu_addr);
 		} else {
@@ -339,19 +340,13 @@ static void dmabuf_map_callback_show(struct edgetpu_mapping *map,
 		container_of(map, struct edgetpu_dmabuf_map, map);
 
 	if (IS_MIRRORED(dmap->map.flags))
-		seq_printf(
-			s,
-			"  <%s> mirrored: iova=0x%llx pages=%llu %s offset=0x%llx",
-			dmap->dmabufs[0]->exp_name, map->device_address,
-			dmap->size / PAGE_SIZE, edgetpu_dma_dir_rw_s(map->dir),
-			dmap->offset);
+		seq_printf(s, "  <%s> mirrored: iova=0x%llx pages=%llu %s",
+			   dmap->dmabufs[0]->exp_name, map->device_address, dmap->size / PAGE_SIZE,
+			   edgetpu_dma_dir_rw_s(map->dir));
 	else
-		seq_printf(
-			s,
-			"  <%s> die %u: iova=0x%llx pages=%llu %s offset=0x%llx",
-			dmap->dmabufs[0]->exp_name, map->die_index,
-			map->device_address, dmap->size / PAGE_SIZE,
-			edgetpu_dma_dir_rw_s(map->dir), dmap->offset);
+		seq_printf(s, "  <%s> die %u: iova=0x%llx pages=%llu %s",
+			   dmap->dmabufs[0]->exp_name, map->die_index, map->device_address,
+			   dmap->size / PAGE_SIZE, edgetpu_dma_dir_rw_s(map->dir));
 
 	edgetpu_device_dram_dmabuf_info_show(dmap->dmabufs[0], s);
 	seq_puts(s, " dma=");
@@ -502,12 +497,11 @@ err_free:
 }
 
 /*
- * Duplicates @sgt in region [@offset, @offset + @size] to @out.
+ * Duplicates @sgt in region [0, @size) to @out.
  * Only duplicates the "page" parts in @sgt, DMA addresses and lengths are not
  * considered.
  */
-static int dup_sgt_in_region(struct sg_table *sgt, u64 offset, u64 size,
-			     struct sg_table *out)
+static int dup_sgt_in_region(struct sg_table *sgt, u64 size, struct sg_table *out)
 {
 	uint n = 0;
 	u64 cur_offset = 0;
@@ -519,9 +513,8 @@ static int dup_sgt_in_region(struct sg_table *sgt, u64 offset, u64 size,
 	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
 		size_t pg_len = sg->length + sg->offset;
 
-		if (offset < cur_offset + pg_len)
-			n++;
-		if (offset + size <= cur_offset + pg_len)
+		n++;
+		if (size <= cur_offset + pg_len)
 			break;
 		cur_offset += pg_len;
 	}
@@ -532,23 +525,16 @@ static int dup_sgt_in_region(struct sg_table *sgt, u64 offset, u64 size,
 	new_sg = out->sgl;
 	for_each_sg(sgt->sgl, sg, sgt->orig_nents, i) {
 		size_t pg_len = sg->length + sg->offset;
+		struct page *page = sg_page(sg);
+		unsigned int len = pg_len;
+		u64 remain_size = size - cur_offset;
 
-		if (offset < cur_offset + pg_len) {
-			struct page *page = sg_page(sg);
-			unsigned int len = pg_len;
-			u64 remain_size = offset + size - cur_offset;
+		if (remain_size < pg_len)
+			len -= pg_len - remain_size;
+		sg_set_page(new_sg, page, len, 0);
+		new_sg = sg_next(new_sg);
 
-			if (cur_offset < offset) {
-				page = nth_page(page, (offset - cur_offset) >>
-							      PAGE_SHIFT);
-				len -= offset - cur_offset;
-			}
-			if (remain_size < pg_len)
-				len -= pg_len - remain_size;
-			sg_set_page(new_sg, page, len, 0);
-			new_sg = sg_next(new_sg);
-		}
-		if (offset + size <= cur_offset + pg_len)
+		if (size <= cur_offset + pg_len)
 			break;
 		cur_offset += pg_len;
 	}
@@ -556,13 +542,12 @@ static int dup_sgt_in_region(struct sg_table *sgt, u64 offset, u64 size,
 }
 
 /*
- * Copy the DMA addresses and lengths in region [@offset, @offset + @size) from
+ * Copy the DMA addresses and lengths in region [0, @size) from
  * @sgt to @out.
  *
  * The DMA addresses will be condensed when possible.
  */
-static void shrink_sgt_dma_in_region(struct sg_table *sgt, u64 offset, u64 size,
-				     struct sg_table *out)
+static void shrink_sgt_dma_in_region(struct sg_table *sgt, u64 size, struct sg_table *out)
 {
 	u64 cur_offset = 0;
 	struct scatterlist *sg, *prv_sg = NULL, *cur_sg;
@@ -571,20 +556,12 @@ static void shrink_sgt_dma_in_region(struct sg_table *sgt, u64 offset, u64 size,
 	out->nents = 0;
 	for (sg = sgt->sgl; sg;
 	     cur_offset += sg_dma_len(sg), sg = sg_next(sg)) {
-		u64 remain_size = offset + size - cur_offset;
+		u64 remain_size = size - cur_offset;
 		dma_addr_t dma;
 		size_t len;
 
-		/* hasn't touched the first covered sg */
-		if (offset >= cur_offset + sg_dma_len(sg))
-			continue;
 		dma = sg_dma_address(sg);
 		len = sg_dma_len(sg);
-		/* offset exceeds current sg */
-		if (offset > cur_offset) {
-			dma += offset - cur_offset;
-			len -= offset - cur_offset;
-		}
 		if (remain_size < sg_dma_len(sg))
 			len -= sg_dma_len(sg) - remain_size;
 		if (prv_sg &&
@@ -603,15 +580,14 @@ static void shrink_sgt_dma_in_region(struct sg_table *sgt, u64 offset, u64 size,
 	}
 }
 
-static int entry_set_shrunk_sgt(struct dmabuf_map_entry *entry, u64 offset,
-				u64 size)
+static int entry_set_shrunk_sgt(struct dmabuf_map_entry *entry, u64 size)
 {
 	int ret;
 
-	ret = dup_sgt_in_region(entry->sgt, offset, size, &entry->shrunk_sgt);
+	ret = dup_sgt_in_region(entry->sgt, size, &entry->shrunk_sgt);
 	if (ret)
 		return ret;
-	shrink_sgt_dma_in_region(entry->sgt, offset, size, &entry->shrunk_sgt);
+	shrink_sgt_dma_in_region(entry->sgt, size, &entry->shrunk_sgt);
 	return 0;
 }
 
@@ -621,10 +597,8 @@ static int entry_set_shrunk_sgt(struct dmabuf_map_entry *entry, u64 offset,
  *
  * Fields of @entry will be set on success.
  */
-static int etdev_attach_dmabuf_to_entry(struct edgetpu_dev *etdev,
-					struct dma_buf *dmabuf,
-					struct dmabuf_map_entry *entry,
-					u64 offset, u64 size,
+static int etdev_attach_dmabuf_to_entry(struct edgetpu_dev *etdev, struct dma_buf *dmabuf,
+					struct dmabuf_map_entry *entry, u64 size,
 					enum dma_data_direction dir)
 {
 	struct dma_buf_attachment *attachment;
@@ -641,7 +615,7 @@ static int etdev_attach_dmabuf_to_entry(struct edgetpu_dev *etdev,
 	}
 	entry->attachment = attachment;
 	entry->sgt = sgt;
-	ret = entry_set_shrunk_sgt(entry, offset, size);
+	ret = entry_set_shrunk_sgt(entry, size);
 	if (ret)
 		goto err_unmap;
 
@@ -663,7 +637,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	struct dma_buf *dmabuf;
 	edgetpu_map_flag_t flags = arg->flags;
 	const u64 offset = arg->offset;
-	const u64 size = PAGE_ALIGN(arg->size);
+	u64 size;
 	const enum dma_data_direction dir =
 		edgetpu_host_dma_dir(flags & EDGETPU_MAP_DIR_MASK);
 	struct edgetpu_dev *etdev;
@@ -674,13 +648,14 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	/* invalid DMA direction or offset is not page-aligned */
 	if (!valid_dma_direction(dir) || offset_in_page(offset))
 		return -EINVAL;
-	/* size == 0 or overflow */
-	if (offset + size <= offset)
-		return -EINVAL;
+	/* TODO(b/189278468): entirely ignore @offset */
+	if (offset != 0)
+		etdev_warn_ratelimited(group->etdev,
+				       "Non-zero offset for dmabuf mapping is deprecated");
 	dmabuf = dma_buf_get(arg->dmabuf_fd);
 	if (IS_ERR(dmabuf))
 		return PTR_ERR(dmabuf);
-	if (offset + size > dmabuf->size)
+	if (offset >= dmabuf->size)
 		goto err_put;
 
 	mutex_lock(&group->lock);
@@ -698,13 +673,12 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	get_dma_buf(dmabuf);
 	dmap->dmabufs[0] = dmabuf;
 	dmap->offset = offset;
-	dmap->size = size;
+	dmap->size = size = dmabuf->size;
 	if (IS_MIRRORED(flags)) {
 		for (i = 0; i < group->n_clients; i++) {
 			etdev = edgetpu_device_group_nth_etdev(group, i);
-			ret = etdev_attach_dmabuf_to_entry(etdev, dmabuf,
-							   &dmap->entries[i],
-							   offset, size, dir);
+			ret = etdev_attach_dmabuf_to_entry(etdev, dmabuf, &dmap->entries[i], size,
+							   dir);
 			if (ret)
 				goto err_release_map;
 		}
@@ -718,8 +692,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 			ret = -EINVAL;
 			goto err_release_map;
 		}
-		ret = etdev_attach_dmabuf_to_entry(
-			etdev, dmabuf, &dmap->entries[0], offset, size, dir);
+		ret = etdev_attach_dmabuf_to_entry(etdev, dmabuf, &dmap->entries[0], size, dir);
 		if (ret)
 			goto err_release_map;
 		ret = etdev_map_dmabuf(etdev, dmap, dir, &tpu_addr);
@@ -727,11 +700,11 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 			goto err_release_map;
 		dmap->map.die_index = arg->die_index;
 	}
-	dmap->map.device_address = tpu_addr;
+	dmap->map.device_address = tpu_addr + offset;
 	ret = edgetpu_mapping_add(&group->dmabuf_mappings, &dmap->map);
 	if (ret)
 		goto err_release_map;
-	arg->device_address = tpu_addr;
+	arg->device_address = dmap->map.device_address;
 	mutex_unlock(&group->lock);
 	dma_buf_put(dmabuf);
 	return 0;
@@ -825,8 +798,7 @@ int edgetpu_map_bulk_dmabuf(struct edgetpu_device_group *group,
 		if (!bmap->dmabufs[i])
 			continue;
 		etdev = edgetpu_device_group_nth_etdev(group, i);
-		ret = etdev_attach_dmabuf_to_entry(etdev, bmap->dmabufs[i],
-						   &bmap->entries[i], 0,
+		ret = etdev_attach_dmabuf_to_entry(etdev, bmap->dmabufs[i], &bmap->entries[i],
 						   bmap->size, dir);
 		if (ret)
 			goto err_release_bmap;

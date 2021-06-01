@@ -366,7 +366,13 @@ irqreturn_t edgetpu_chip_irq_handler(int irq, void *arg);
  *
  * Returns 0 on success, otherwise -errno.
  */
-int edgetpu_setup_mmu(struct edgetpu_dev *etdev);
+int edgetpu_chip_setup_mmu(struct edgetpu_dev *etdev);
+
+/*
+ * Reverts edgetpu_chip_setup_mmu().
+ * This is called during device removal.
+ */
+void edgetpu_chip_remove_mmu(struct edgetpu_dev *etdev);
 
 /* Read TPU timestamp */
 u64 edgetpu_chip_tpu_timestamp(struct edgetpu_dev *etdev);
@@ -386,6 +392,9 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev);
 
 /* Remove TPU client */
 void edgetpu_client_remove(struct edgetpu_client *client);
+
+/* Handle chip-specific client removal */
+void edgetpu_chip_client_remove(struct edgetpu_client *client);
 
 /* mmap() device/queue memory */
 int edgetpu_mmap(struct edgetpu_client *client, struct vm_area_struct *vma);

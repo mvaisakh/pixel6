@@ -118,6 +118,7 @@ static inline unsigned long map_to_dma_attr(edgetpu_map_flag_t flags, bool map)
 
 int edgetpu_mmu_attach(struct edgetpu_dev *dev, void *mmu_info);
 void edgetpu_mmu_detach(struct edgetpu_dev *dev);
+
 /**
  * Re-attach to previously attached MMU.
  *

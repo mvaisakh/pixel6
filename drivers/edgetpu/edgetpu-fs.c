@@ -1036,11 +1036,18 @@ static const struct file_operations syncfences_ops = {
 	.release = single_release,
 };
 
-static void edgetpu_debugfs_global_setup(void)
+static int edgetpu_debugfs_global_setup(void)
 {
 	edgetpu_debugfs_dir = debugfs_create_dir("edgetpu", NULL);
+	if (IS_ERR(edgetpu_debugfs_dir)) {
+		pr_err(DRIVER_NAME " error creating edgetpu debugfs dir: %ld\n",
+		       PTR_ERR(edgetpu_debugfs_dir));
+		return PTR_ERR(edgetpu_debugfs_dir);
+	}
+
 	debugfs_create_file("syncfences", 0440, edgetpu_debugfs_dir, NULL,
 			    &syncfences_ops);
+	return 0;
 }
 
 int __init edgetpu_fs_init(void)

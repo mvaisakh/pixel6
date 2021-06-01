@@ -14,9 +14,6 @@
 #include <linux/types.h>
 #include <linux/version.h>
 
-#ifdef CONFIG_ABROLHOS
-#include "abrolhos-platform.h"
-#endif
 #include "edgetpu-internal.h"
 #include "edgetpu-mapping.h"
 #include "edgetpu-mmu.h"
@@ -234,9 +231,6 @@ out:
 /* mmu_info is unused and NULL for IOMMU version, let IOMMU API supply info */
 int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 {
-#ifdef CONFIG_ABROLHOS
-	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
-#endif
 	struct edgetpu_iommu *etiommu;
 	int ret;
 
@@ -270,28 +264,6 @@ int edgetpu_mmu_attach(struct edgetpu_dev *etdev, void *mmu_info)
 
 	/* etiommu initialization done */
 	etdev->mmu_cookie = etiommu;
-	/* TODO (b/178571278): remove chipset specific code. */
-#ifdef CONFIG_ABROLHOS
-	if (!abpdev->csr_iova)
-		goto success;
-
-	etdev_dbg(etdev, "Mapping device CSRs: %llX -> %llX (%lu bytes)\n",
-		  abpdev->csr_iova, abpdev->csr_paddr, abpdev->csr_size);
-
-	/* Add an IOMMU translation for the CSR region */
-	ret = edgetpu_mmu_add_translation(etdev, abpdev->csr_iova,
-					  abpdev->csr_paddr, abpdev->csr_size,
-					  IOMMU_READ | IOMMU_WRITE | IOMMU_PRIV,
-					  EDGETPU_CONTEXT_KCI);
-	if (ret) {
-		etdev_err(etdev, "Unable to map device CSRs into IOMMU\n");
-		edgetpu_unregister_iommu_device_fault_handler(etdev);
-		etdev->mmu_cookie = NULL;
-		goto err_free;
-	}
-
-success:
-#endif
 	return 0;
 
 err_free:
@@ -306,24 +278,12 @@ void edgetpu_mmu_reset(struct edgetpu_dev *etdev)
 
 void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 {
-#ifdef CONFIG_ABROLHOS
-	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
-#endif
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	int i, ret;
 
 	if (!etiommu)
 		return;
 
-#ifdef CONFIG_ABROLHOS
-	if (abpdev->csr_iova) {
-		edgetpu_mmu_remove_translation(&abpdev->edgetpu_dev,
-					       abpdev->csr_iova,
-					       abpdev->csr_size,
-					       EDGETPU_CONTEXT_KCI);
-	}
-	abpdev->csr_iova = 0;
-#endif
 	ret = edgetpu_unregister_iommu_device_fault_handler(etdev);
 	if (ret)
 		etdev_warn(etdev,
@@ -364,7 +324,7 @@ static int get_iommu_map_params(struct edgetpu_dev *etdev,
 {
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	size_t size = 0;
-	int prot = __dma_dir_to_iommu_prot(map->dir);
+	int prot = __dma_dir_to_iommu_prot(map->dir, etdev->dev);
 	struct iommu_domain *domain;
 	int i;
 	struct scatterlist *sg;
@@ -461,7 +421,7 @@ int edgetpu_mmu_map_iova_sgt(struct edgetpu_dev *etdev, tpu_addr_t iova,
 			     struct sg_table *sgt, enum dma_data_direction dir,
 			     enum edgetpu_context_id context_id)
 {
-	const int prot = __dma_dir_to_iommu_prot(edgetpu_host_dma_dir(dir));
+	const int prot = __dma_dir_to_iommu_prot(edgetpu_host_dma_dir(dir), etdev->dev);
 	const tpu_addr_t orig_iova = iova;
 	struct scatterlist *sg;
 	int i;
@@ -550,7 +510,7 @@ tpu_addr_t edgetpu_mmu_tpu_map(struct edgetpu_dev *etdev, dma_addr_t down_addr,
 	struct iommu_domain *default_domain =
 		iommu_get_domain_for_dev(etdev->dev);
 	phys_addr_t paddr;
-	int prot = __dma_dir_to_iommu_prot(dir);
+	int prot = __dma_dir_to_iommu_prot(dir, etdev->dev);
 
 	domain = get_domain_by_context_id(etdev, context_id);
 	/*
@@ -602,7 +562,7 @@ tpu_addr_t edgetpu_mmu_tpu_map_sgt(struct edgetpu_dev *etdev,
 	phys_addr_t paddr;
 	dma_addr_t iova, cur_iova;
 	size_t size;
-	int prot = __dma_dir_to_iommu_prot(dir);
+	int prot = __dma_dir_to_iommu_prot(dir, etdev->dev);
 	struct scatterlist *sg;
 	int ret;
 	int i;

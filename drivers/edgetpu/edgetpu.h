@@ -273,13 +273,9 @@ struct edgetpu_sync_ioctl {
 	_IOW(EDGETPU_IOCTL_BASE, 16, struct edgetpu_sync_ioctl)
 
 struct edgetpu_map_dmabuf_ioctl {
-	/*
-	 * Offset within the dma-buf to be mapped in bytes.
-	 *
-	 * Must be page-aligned.
-	 */
+	/* Deprecated; pass 0 to keep compatibility. */
 	__u64 offset;
-	/* Size to be mapped in bytes. */
+	/* Ignored; the entire dma-buf is mapped. */
 	__u64 size;
 	/*
 	 * Returned TPU VA.
@@ -310,7 +306,6 @@ struct edgetpu_map_dmabuf_ioctl {
  * On success, @device_address is set and the syscall returns zero.
  *
  * EINVAL: If @offset is not page-aligned.
- * EINVAL: If @size is zero.
  * EINVAL: (for EDGETPU_MAP_NONMIRRORED case) If @die_index exceeds the number
  *         of clients in the group.
  * EINVAL: If the target device group is disbanded.
@@ -321,9 +316,8 @@ struct edgetpu_map_dmabuf_ioctl {
  * Un-map address previously mapped by EDGETPU_MAP_DMABUF.
  *
  * Only fields @die_index and @device_address in the third argument will be
- * used, other fields such as @size and @offset will be fetched from the
- * kernel's internal records. If the buffer was requested as
- * EDGETPU_MAP_MIRRORED, @die_index is ignored as well.
+ * used, other fields will be fetched from the kernel's internal records. If the
+ * buffer was requested as EDGETPU_MAP_MIRRORED, @die_index is ignored as well.
  *
  * EINVAL: If @device_address is not found.
  * EINVAL: If the target device group is disbanded.

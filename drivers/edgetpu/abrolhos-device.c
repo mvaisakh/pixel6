@@ -240,3 +240,13 @@ int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
 	mutex_unlock(&apdev->tz_mailbox_lock);
 	return ret;
 }
+
+void edgetpu_chip_client_remove(struct edgetpu_client *client)
+{
+	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
+
+	mutex_lock(&apdev->tz_mailbox_lock);
+	if (apdev->secure_client == client)
+		apdev->secure_client = NULL;
+	mutex_unlock(&apdev->tz_mailbox_lock);
+}

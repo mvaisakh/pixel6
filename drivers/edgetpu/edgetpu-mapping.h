@@ -7,6 +7,7 @@
 #ifndef __EDGETPU_MAPPING_H__
 #define __EDGETPU_MAPPING_H__
 
+#include <linux/device.h>
 #include <linux/dma-direction.h>
 #include <linux/iommu.h>
 #include <linux/mutex.h>
@@ -14,6 +15,10 @@
 #include <linux/scatterlist.h>
 #include <linux/seq_file.h>
 #include <linux/types.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#include <linux/dma-map-ops.h>
+#endif
 
 #include "edgetpu-internal.h"
 
@@ -139,13 +144,14 @@ void edgetpu_mapping_clear(struct edgetpu_mapping_root *mappings);
 void edgetpu_mappings_show(struct edgetpu_mapping_root *mappings,
 			   struct seq_file *s);
 
-static inline int __dma_dir_to_iommu_prot(enum dma_data_direction dir)
+static inline int __dma_dir_to_iommu_prot(enum dma_data_direction dir, struct device *dev)
 {
-	int prot = 0;
-
-#ifdef EDGETPU_IS_IO_COHERENT
-	prot = IOMMU_CACHE;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+	int prot = dev_is_dma_coherent(dev) ? IOMMU_CACHE : 0;
+#else
+	int prot = 0;	/* hardcode to non-dma-coherent for prior kernels */
 #endif
+
 	switch (dir) {
 	case DMA_BIDIRECTIONAL:
 		return prot | IOMMU_READ | IOMMU_WRITE;

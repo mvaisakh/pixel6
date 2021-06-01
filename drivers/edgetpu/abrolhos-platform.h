@@ -47,9 +47,6 @@ struct abrolhos_platform_dev {
 	void *shared_mem_vaddr;
 	phys_addr_t shared_mem_paddr;
 	size_t shared_mem_size;
-	phys_addr_t csr_paddr;
-	dma_addr_t csr_iova;
-	size_t csr_size;
 	struct device *gsa_dev;
 	void __iomem *ssmt_base;
 	struct edgetpu_coherent_mem log_mem;

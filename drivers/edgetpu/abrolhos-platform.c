@@ -82,7 +82,6 @@ edgetpu_platform_setup_fw_region(struct abrolhos_platform_dev *etpdev)
 	struct resource r;
 	struct device_node *np;
 	int err;
-	u32 csr_phys, csr_iova, csr_size;
 	size_t region_map_size =
 		EDGETPU_FW_SIZE_MAX + EDGETPU_REMAPPED_DATA_SIZE;
 
@@ -133,32 +132,7 @@ edgetpu_platform_setup_fw_region(struct abrolhos_platform_dev *etpdev)
 	}
 	etpdev->shared_mem_paddr = r.start + EDGETPU_REMAPPED_DATA_OFFSET;
 
-	err = of_property_read_u32(dev->of_node, "csr-iova", &csr_iova);
-	/* Device did not define a CSR region */
-	if (err)
-		return 0;
-
-	/* If an IOVA was found, we must also have physical address and size */
-	err = of_property_read_u32(dev->of_node, "csr-phys", &csr_phys);
-	if (err) {
-		dev_err(dev, "Device tree: invalid CSR physical address\n");
-		goto out_unmap;
-	}
-
-	err = of_property_read_u32(dev->of_node, "csr-size", &csr_size);
-	if (err) {
-		dev_err(dev, "Device tree: invalid CSR size\n");
-		goto out_unmap;
-	}
-
-	etpdev->csr_paddr = csr_phys;
-	etpdev->csr_iova = csr_iova;
-	etpdev->csr_size = csr_size;
 	return 0;
-out_unmap:
-	memunmap(etpdev->shared_mem_vaddr);
-	etpdev->shared_mem_vaddr = NULL;
-	return err;
 }
 
 static void edgetpu_platform_cleanup_fw_region(
@@ -172,7 +146,7 @@ static void edgetpu_platform_cleanup_fw_region(
 	etpdev->shared_mem_vaddr = NULL;
 }
 
-int edgetpu_setup_mmu(struct edgetpu_dev *etdev)
+int edgetpu_chip_setup_mmu(struct edgetpu_dev *etdev)
 {
 	int ret;
 
@@ -181,6 +155,11 @@ int edgetpu_setup_mmu(struct edgetpu_dev *etdev)
 	if (ret)
 		dev_err(etdev->dev, "failed to attach IOMMU: %d\n", ret);
 	return ret;
+}
+
+void edgetpu_chip_remove_mmu(struct edgetpu_dev *etdev)
+{
+	edgetpu_mmu_detach(etdev);
 }
 
 static int abrolhos_parse_ssmt(struct abrolhos_platform_dev *etpdev)

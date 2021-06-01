@@ -389,7 +389,7 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 			etdev->dev_name, ret);
 		goto remove_dev;
 	}
-	ret = edgetpu_setup_mmu(etdev);
+	ret = edgetpu_chip_setup_mmu(etdev);
 	if (ret)
 		goto remove_dev;
 
@@ -398,20 +398,20 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	etdev->kci = devm_kzalloc(etdev->dev, sizeof(*etdev->kci), GFP_KERNEL);
 	if (!etdev->kci) {
 		ret = -ENOMEM;
-		goto detach_mmu;
+		goto remove_usage_stats;
 	}
 
 	etdev->telemetry =
 		devm_kzalloc(etdev->dev, sizeof(*etdev->telemetry), GFP_KERNEL);
 	if (!etdev->telemetry) {
 		ret = -ENOMEM;
-		goto detach_mmu;
+		goto remove_usage_stats;
 	}
 
 	ret = edgetpu_kci_init(etdev->mailbox_manager, etdev->kci);
 	if (ret) {
 		etdev_err(etdev, "edgetpu_kci_init returns %d\n", ret);
-		goto detach_mmu;
+		goto remove_usage_stats;
 	}
 
 	ret = edgetpu_device_dram_init(etdev);
@@ -432,9 +432,9 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 remove_kci:
 	/* releases the resources of KCI */
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
-detach_mmu:
+remove_usage_stats:
 	edgetpu_usage_stats_exit(etdev);
-	edgetpu_mmu_detach(etdev);
+	edgetpu_chip_remove_mmu(etdev);
 remove_dev:
 	edgetpu_mark_probe_fail(etdev);
 	edgetpu_fs_remove(etdev);
@@ -448,7 +448,7 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 	edgetpu_device_dram_exit(etdev);
 	edgetpu_mailbox_remove_all(etdev->mailbox_manager);
 	edgetpu_usage_stats_exit(etdev);
-	edgetpu_mmu_detach(etdev);
+	edgetpu_chip_remove_mmu(etdev);
 	edgetpu_fs_remove(etdev);
 }
 
@@ -522,6 +522,7 @@ void edgetpu_client_remove(struct edgetpu_client *client)
 	    1 << perdie_event_id_to_num(EDGETPU_PERDIE_EVENT_TRACES_AVAILABLE))
 		edgetpu_telemetry_unset_event(etdev, EDGETPU_TELEMETRY_TRACE);
 
+	edgetpu_chip_client_remove(client);
 	edgetpu_client_put(client);
 }
 
