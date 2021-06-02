@@ -3303,7 +3303,10 @@ static void pca9468_timer_work(struct work_struct *work)
 	case TIMER_ADJUST_TAVOL:
 		mutex_lock(&pca9468->lock);
 
-		ret = pca9468_adjust_ta_voltage(pca9468);
+		if (pca9468->ta_type == TA_TYPE_WIRELESS)
+			ret = pca9468_adjust_rx_voltage(pca9468);
+		else
+			ret = pca9468_adjust_ta_voltage(pca9468);
 		if (ret < 0) {
 			mutex_unlock(&pca9468->lock);
 			goto error;
