@@ -717,6 +717,9 @@ static void p9221_init_align(struct p9221_charger_data *charger)
 	charger->current_filtered = 0;
 	charger->current_sample_cnt = 0;
 	charger->mfg_check_count = 0;
+	/* Disable misaligned message in high power mode, b/159066422 */
+	if (charger->prop_mode_en == true)
+		return;
 	schedule_delayed_work(&charger->align_work,
 			      msecs_to_jiffies(P9221_ALIGN_DELAY_MS));
 }
@@ -831,6 +834,10 @@ static void p9221_align_work(struct work_struct *work)
 
 	struct p9221_charger_data *charger = container_of(work,
 			struct p9221_charger_data, align_work.work);
+
+	/* Disable misaligned message in high power mode, b/159066422 */
+	if (charger->prop_mode_en == true)
+		return;
 
 	if ((charger->chip_id == P9221_CHIP_ID) &&
 	    (charger->pdata->alignment_freq == NULL))
