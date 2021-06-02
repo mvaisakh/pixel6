@@ -1653,7 +1653,16 @@ static void chg_work(struct work_struct *work)
 			goto rerun_error;
 
 		if (stop_charging) {
+			int ret;
+
 			pr_info("MSC_CHG no power source, disabling charging\n");
+
+			ret = GPSY_SET_PROP(chg_drv->chg_psy, GBMS_PROP_CHARGING_ENABLED, 0);
+			if (ret < 0) {
+				pr_err("MSC_CHG failed to set CHARGING_ENABLED to 0 (%d)\n", ret);
+				if (ret == -EAGAIN)
+					goto rerun_error;
+			}
 
 			vote(chg_drv->msc_chg_disable_votable,
 			     MSC_CHG_VOTER, true, 0);
@@ -1724,8 +1733,17 @@ update_charger:
 
 		/* chg_drv->stop_charging set on disconnect, reset on connect */
 		if (chg_drv->stop_charging != 0) {
+			int ret;
+
 			pr_info("MSC_CHG power source usb=%d wlc=%d, ext=%d enabling charging\n",
 				usb_online, wlc_online, ext_online);
+
+			ret = GPSY_SET_PROP(chg_drv->chg_psy, GBMS_PROP_CHARGING_ENABLED, 1);
+			if (ret < 0) {
+				pr_err("MSC_CHG failed to set CHARGING_ENABLED to 1 (%d)\n", ret);
+				if (ret == -EAGAIN)
+					goto rerun_error;
+			}
 
 			vote(chg_drv->msc_chg_disable_votable,
 			     MSC_CHG_VOTER, false, 0);
