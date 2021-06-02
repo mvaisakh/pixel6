@@ -287,6 +287,7 @@ event_push:
 			lwis_pending_event_push(pending_events, info->emit_success_event_id,
 						(void *)resp, resp_size);
 			periodic_io->batch_count = 0;
+			resp->batch_size = 0;
 		}
 	}
 	return ret;
