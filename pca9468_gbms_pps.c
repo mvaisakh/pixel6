@@ -246,18 +246,23 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 }
 
 /*
- * Get the max current/voltage/power of APDO from the CC/PD driver
+ * Get the max current/voltage/power of APDO from the CC/PD driver.
+ *
  * Initialize &pca9468->ta_max_vol, &pca9468->ta_max_cur, &pca9468->ta_max_pwr
  * initialize pca9468->pps_data and &pca9468->ta_objpos also
  *
  * call holding mutex_unlock(&pca9468->lock);
  */
-int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
+int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468,
+			       unsigned int ta_max_vol,
+			       unsigned int ta_max_cur)
 {
 	int ret = 0;
 
-	/* default APDO */
-	pca9468->ta_objpos = 0;
+	/* limits */
+	pca9468->ta_objpos = 0; /* if !=0 will return the ca */
+	pca9468->ta_max_vol = ta_max_vol;
+	pca9468->ta_max_cur = ta_max_cur;
 
 	/* check the phandle */
 	ret = pca9468_usbpd_setup(pca9468);
@@ -280,7 +285,7 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468)
 		return ret;
 	}
 
-	pr_debug("%s APDO pos=%u max_v=%u max_c=%u max_pwr=%lu\n", __func__,
+	pr_debug("%s: APDO pos=%u max_v=%u max_c=%u max_pwr=%lu\n", __func__,
 		 pca9468->ta_objpos, pca9468->ta_max_vol, pca9468->ta_max_cur,
 		 pca9468->ta_max_pwr);
 

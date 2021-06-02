@@ -73,7 +73,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 /* Maximum TA voltage threshold */
 #define PCA9468_TA_MAX_VOL		9800000 /* uV */
 /* Maximum TA current threshold, set to max(cc_max) / 2 */
-#define PCA9468_TA_MAX_CUR		2500000	 /* uA */
+#define PCA9468_TA_MAX_CUR		2600000	 /* uA */
 /* Minimum TA current threshold */
 #define PCA9468_TA_MIN_CUR		1000000	/* uA - PPS minimum current */
 
@@ -1239,7 +1239,7 @@ static int pca9468_get_iin_max(struct pca9468_charger *pca9468, int cc_max)
 	const int cc_limit = pca9468->pdata->iin_max_offset + cc_max / 2;
 	int iin_max;
 
-	iin_max = min(pca9468->pdata->iin_cfg,  (unsigned int)cc_limit);
+	iin_max = min(pca9468->pdata->iin_cfg, (unsigned int)cc_limit);
 
 	pr_debug("%s: iin_max=%d iin_cfg=%u cc_max=%d cc_limit=%d\n", __func__,
 		 iin_max,  pca9468->pdata->iin_cfg, cc_max, cc_limit);
@@ -1304,7 +1304,8 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 				val = val * PD_MSG_TA_VOL_STEP; /* uV */
 
 				/* Set new TA_MAX_VOL */
-				pca9468->ta_max_vol = min(val, (unsigned)PCA9468_TA_MAX_VOL * pca9468->chg_mode);
+				pca9468->ta_max_vol = min(val, (unsigned)PCA9468_TA_MAX_VOL *
+							  pca9468->chg_mode);
 
 				/* Increase TA voltage(40mV) */
 				pca9468->ta_vol = pca9468->ta_vol + PD_MSG_TA_VOL_STEP * 2;
@@ -1529,7 +1530,7 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 
 /*
  * iin limit for 2:1 for the adapter and chg_mode
- * Miminm between the confguration, cc_max (scaled with offset) and the
+ * Minimum between the confguration, cc_max (scaled with offset) and the
  * adapter capabilities.
  */
 static int pca9468_get_iin_limit(struct pca9468_charger *pca9468)
@@ -1592,9 +1593,9 @@ static int pca9468_set_wired_dc(struct pca9468_charger *pca9468, int vbat)
 	pca9468->ta_max_vol = min(val, (unsigned long)PCA9468_TA_MAX_VOL *
 				  pca9468->chg_mode);
 
-	/* MAX[8000mV*chg_mode, 2*VBAT_ADC*chg_mode+500 mV] */
+	/* MAX[8000mV * chg_mode, 2 * VBAT_ADC * chg_mode + 500 mV] */
 	pca9468->ta_vol = max(PCA9468_TA_MIN_VOL_PRESET * pca9468->chg_mode,
-				2 * vbat * pca9468->chg_mode + PCA9468_TA_VOL_PRE_OFFSET);
+			      2 * vbat * pca9468->chg_mode + PCA9468_TA_VOL_PRE_OFFSET);
 
 	/* PPS voltage resolution is 20mV */
 	val = pca9468->ta_vol / PD_MSG_TA_VOL_STEP;
@@ -1892,8 +1893,9 @@ static int pca9468_apply_new_iin(struct pca9468_charger *pca9468)
 {
 	int ret;
 
-	pr_debug("%s: new_iin=%d (cc_max), charging_state=%d\n", __func__,
-		 pca9468->new_iin, pca9468->charging_state);
+	pr_debug("%s: new_iin=%d (cc_max), ta_type=%d charging_state=%d\n",
+		 __func__, pca9468->new_iin, pca9468->ta_type,
+		 pca9468->charging_state);
 
 	/*
 	 * new_iin is used as a flag to trigger the process which might span
@@ -2907,22 +2909,32 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 			 __func__, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc, pca9468->chg_mode);
 	} else {
+		const unsigned int ta_max_vol = PCA9468_TA_MAX_VOL * pca9468->chg_mode;
+
 		/*
-		 * ->ta_max_cur is too high for startup, needs to target
-		 * CC before hitting max current AND work to ta_max_cur
-		 * from there.
+		 * Get the APDO max for 2:1 mode.
+		 * Returns ->ta_max_vol, ->ta_max_cur, ->ta_max_pwr and
+		 * ->ta_objpos for the given ta_max_vol and ta_max_cur.
 		 */
-
-		pca9468->ta_max_vol = PCA9468_TA_MAX_VOL * pca9468->chg_mode;
-
-		/* Get the APDO max for 2:1 mode */
-		ret = pca9468_get_apdo_max_power(pca9468);
+		ret = pca9468_get_apdo_max_power(pca9468, ta_max_vol, PCA9468_TA_MAX_CUR);
+		if (ret < 0) {
+			pr_warn("%s: No APDO to support 2:1 for %d\n", __func__,
+				PCA9468_TA_MAX_CUR);
+			ret = pca9468_get_apdo_max_power(pca9468, ta_max_vol, 0);
+		}
 		if (ret < 0) {
 			pr_err("%s: No APDO to support 2:1\n", __func__);
 			pca9468->chg_mode = CHG_NO_DC_MODE;
 			goto error;
 		}
 
+
+
+		/*
+		 * ->ta_max_cur is too high for startup, needs to target
+		 * CC before hitting max current AND work to ta_max_cur
+		 * from there.
+		 */
 		ret = pca9468_set_wired_dc(pca9468, vbat);
 		if (ret < 0) {
 			pr_err("%s: set wired failed (%d)\n", __func__, ret);
@@ -2933,6 +2945,7 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 		pr_debug("%s: Preset DC, objpos=%d ta_max_vol=%u, ta_max_cur=%u, ta_max_pwr=%lu, iin_cc=%u, chg_mode=%u\n",
 			 __func__, pca9468->ta_objpos, pca9468->ta_max_vol, pca9468->ta_max_cur,
 			 pca9468->ta_max_pwr, pca9468->iin_cc, pca9468->chg_mode);
+
 	}
 
 error:
