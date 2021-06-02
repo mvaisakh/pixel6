@@ -1029,13 +1029,18 @@ int pps_request_pdo(struct pd_pps_data *pps_data, unsigned int ta_idx,
 
 /* ------------------------------------------------------------------------- */
 
-/* max APDO power from the TCPM source */
+/*
+ * return the first APDO from the TCPM source which voltage greater or equal
+ * to *ta_max_vol and current greater or equal to *ta_max_cur.
+ * NOTE: 0 in ta_max_vol and ta_max_cur will select the first APDO.
+ */
 int pps_get_apdo_max_power(struct pd_pps_data *pps_data, unsigned int *ta_idx,
 			   unsigned int *ta_max_vol, unsigned int *ta_max_cur,
 			   unsigned long *ta_max_pwr)
 {
 	int max_current, max_voltage, max_power;
 	const int ta_max_vol_mv = *ta_max_vol / 1000;
+	const int ta_max_cur_mv = *ta_max_cur / 1000;
 	int i;
 
 	if (!pps_data)
@@ -1061,22 +1066,27 @@ int pps_get_apdo_max_power(struct pd_pps_data *pps_data, unsigned int *ta_idx,
 		*ta_max_pwr = max_power * 1000; /* uW */
 	}
 
-	/* Get the TA  maximum current and voltage for APDOs */
+	/* Get the first APDO that that exceeds the limits */
 	for (i = 0; i < pps_data->nr_src_cap; i++) {
 		const u32 pdo = pps_data->src_caps[i];
+		bool voltage_ok, current_ok;
 
 		if (pdo_type(pdo) != PDO_TYPE_APDO)
 			continue;
 
 		max_current = pdo_pps_apdo_max_current(pdo); /* mA */
 		max_voltage = pdo_pps_apdo_max_voltage(pdo); /* mV */
-		/* stop on first */
-		if (max_voltage > ta_max_vol_mv) {
+
+		/* stop on first match */
+		voltage_ok = max_voltage >= ta_max_vol_mv;
+		current_ok = max_current >= ta_max_cur_mv;
+		if (voltage_ok && current_ok) {
 			*ta_max_vol = max_voltage * 1000;	/* uV */
 			*ta_max_cur = max_current * 1000;	/* uA */
 			*ta_idx = i + 1;
 			return 0;
 		}
+
 	}
 
 	pr_debug("%s: max_uv (%u) and max_ua (%u) out of APDO src caps\n",
