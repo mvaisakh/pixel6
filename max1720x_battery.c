@@ -1244,6 +1244,9 @@ static void max1720x_restore_battery_qh_capacity(struct max1720x_chip *chip)
 	chip->previous_qh = current_qh;
 	dev_info(chip->dev, "QH value restored to %d\n",
 		 chip->previous_qh);
+
+	/* init chip for max1720x done here, change to RepSOC */
+	chip->reg_prop_capacity_raw = MAX1720X_REPSOC;
 }
 
 static void max1720x_handle_update_nconvgcfg(struct max1720x_chip *chip,
