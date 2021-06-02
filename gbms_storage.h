@@ -38,7 +38,7 @@
 /* Battery manufacturer info length */
 #define GBMS_MINF_LEN	30
 /* Gauge Model State Restore */
-#define GBMS_GMSR_LEN	22
+#define GBMS_GMSR_LEN	23
 
 
 #define GBMS_CCBIN_BUCKET_COUNT	10
