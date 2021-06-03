@@ -196,6 +196,8 @@ enum dpu_event_type {
 	DPU_EVT_ATOMIC_COMMIT,
 	DPU_EVT_TE_INTERRUPT,
 
+	DPU_EVT_DECON_RUNTIME_SUSPEND,
+	DPU_EVT_DECON_RUNTIME_RESUME,
 	DPU_EVT_ENTER_HIBERNATION_IN,
 	DPU_EVT_ENTER_HIBERNATION_OUT,
 	DPU_EVT_EXIT_HIBERNATION_IN,
@@ -281,6 +283,7 @@ struct dpu_log_atomic {
 
 /* Event log structure for DPU power domain status */
 struct dpu_log_pd {
+	enum decon_state decon_state;
 	bool rpm_active;
 };
 

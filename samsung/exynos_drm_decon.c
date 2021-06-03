@@ -1736,6 +1736,8 @@ static int decon_runtime_suspend(struct device *dev)
 	if (decon->dqe)
 		exynos_dqe_reset(decon->dqe);
 
+	DPU_EVENT_LOG(DPU_EVT_DECON_RUNTIME_SUSPEND, decon->id, NULL);
+
 	decon_debug(decon, "suspended\n");
 
 	return 0;
@@ -1750,6 +1752,8 @@ static int decon_runtime_resume(struct device *dev)
 
 	if (decon->res.aclk_disp)
 		clk_prepare_enable(decon->res.aclk_disp);
+
+	DPU_EVENT_LOG(DPU_EVT_DECON_RUNTIME_RESUME, decon->id, NULL);
 
 	decon_debug(decon, "resumed\n");
 
