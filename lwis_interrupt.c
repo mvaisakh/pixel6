@@ -149,6 +149,11 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 		goto error;
 	}
 
+	/* Nothing is triggered, just return */
+	if (source_value == 0) {
+		return IRQ_HANDLED;
+	}
+
 	spin_lock_irqsave(&irq->lock, flags);
 	list = irq->lwis_dev->critical_irq_event_list;
 	list_for_each (p, &irq->enabled_event_infos) {
@@ -171,6 +176,11 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 					       /*in_irq=*/true);
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
+		}
+
+		/* All enabled and triggered interrupts are handled */
+		if (source_value == reset_value) {
+			break;
 		}
 	}
 	spin_unlock_irqrestore(&irq->lock, flags);
