@@ -25,6 +25,8 @@ struct lwis_single_event_info {
 	int64_t event_id;
 	/* Bit # in the status/reset/mask registers */
 	int int_reg_bit;
+	/* If critical, print during ISR */
+	bool is_critical;
 	/* Reference to the device event state */
 	struct lwis_device_event_state *state;
 	/* Node in the lwis_interrupt->event_infos hash table */
@@ -120,8 +122,6 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq, int64_t 
 static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 {
 	int ret;
-	int i;
-	struct lwis_device_critical_irq_event_list *list;
 	struct lwis_interrupt *irq = (struct lwis_interrupt *)data;
 	struct lwis_single_event_info *event;
 	struct list_head *p;
@@ -155,20 +155,9 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	}
 
 	spin_lock_irqsave(&irq->lock, flags);
-	list = irq->lwis_dev->critical_irq_event_list;
 	list_for_each (p, &irq->enabled_event_infos) {
 		event = list_entry(p, struct lwis_single_event_info, node_enabled);
 
-		/* Check if this critical events need to be printed */
-		if (list != NULL && list->count > 0) {
-			for (i = 0; i < list->count; ++i) {
-				if (list->critical_event_id[i] == event->event_id) {
-					dev_err_ratelimited(irq->lwis_dev->dev,
-							    "Caught critical IRQ(%s) event(%lld)\n",
-							    irq->name, event->event_id);
-				}
-			}
-		}
 		/* Check if this event needs to be emitted */
 		if ((source_value >> event->int_reg_bit) & 0x1) {
 			/* Emit the event */
@@ -176,6 +165,13 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 					       /*in_irq=*/true);
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
+
+			/* If considered critical, print the event */
+			if (event->is_critical) {
+				dev_err_ratelimited(irq->lwis_dev->dev,
+						    "Caught critical IRQ(%s) event(0x%llx)\n",
+						    irq->name, event->event_id);
+			}
 		}
 
 		/* All enabled and triggered interrupts are handled */
@@ -216,10 +212,12 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg, bool mask_toggled,
-				  int irq_reg_access_size)
+				  int irq_reg_access_size, int64_t *critical_events,
+				  size_t critical_events_num)
 {
-	int i;
+	int i, j;
 	unsigned long flags;
+	bool is_critical = false;
 	BUG_ON(int_reg_bits_num != irq_events_num);
 
 	/* Protect the structure */
@@ -245,6 +243,15 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 			return -ENOMEM;
 		}
 
+		/* Check to see if this event is considered critical */
+		is_critical = false;
+		for (j = 0; j < critical_events_num; j++) {
+			if (critical_events[j] == irq_events[i]) {
+				is_critical = true;
+				break;
+			}
+		}
+
 		/* Fill the device id info in event id bit[47..32] */
 		irq_events[i] |= (int64_t)(list->lwis_dev->id & 0xFFFF) << 32;
 		/* Grab the device state outside of the spinlock */
@@ -252,6 +259,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 			lwis_device_event_state_find_or_create(list->lwis_dev, irq_events[i]);
 		new_event->event_id = irq_events[i];
 		new_event->int_reg_bit = int_reg_bits[i];
+		new_event->is_critical = is_critical;
 
 		spin_lock_irqsave(&list->irq[index].lock, flags);
 		/* Check for duplicate events */

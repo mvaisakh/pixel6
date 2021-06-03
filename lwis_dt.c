@@ -252,13 +252,12 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	return 0;
 }
 
-static int parse_critical_irq_events(struct lwis_device *lwis_dev, struct device_node *event_info)
+static int parse_critical_irq_events(struct device_node *event_info, u64** irq_events)
 {
 	int ret;
 	int critical_irq_events_num;
 	u64 critical_irq_events;
 	int i;
-	lwis_dev->critical_irq_event_list = NULL;
 
 	critical_irq_events_num =
 		of_property_count_elems_of_size(event_info, "critical-irq-events", 8);
@@ -267,11 +266,10 @@ static int parse_critical_irq_events(struct lwis_device *lwis_dev, struct device
 		return 0;
 	}
 
-	lwis_dev->critical_irq_event_list =
-		lwis_dev_critical_irq_event_list_alloc(critical_irq_events_num);
-	if (IS_ERR(lwis_dev->critical_irq_event_list)) {
-		pr_err("Failed to allocate critical irq events list\n");
-		return PTR_ERR(lwis_dev->critical_irq_event_list);
+	*irq_events = kmalloc(sizeof(u64) * critical_irq_events_num, GFP_KERNEL);
+	if (*irq_events == NULL) {
+		pr_err("Failed to allocate memory for critical events\n");
+		return 0;
 	}
 
 	for (i = 0; i < critical_irq_events_num; ++i) {
@@ -279,17 +277,14 @@ static int parse_critical_irq_events(struct lwis_device *lwis_dev, struct device
 						 &critical_irq_events);
 		if (ret < 0) {
 			pr_err("Error adding critical irq events[%d]\n", i);
-			lwis_dev_critical_irq_event_list_free(lwis_dev->critical_irq_event_list);
-			lwis_dev->critical_irq_event_list = NULL;
-			return ret;
+			kfree(*irq_events);
+			*irq_events = NULL;
+			return 0;
 		}
-		lwis_dev->critical_irq_event_list->critical_event_id[i] = critical_irq_events;
+		*irq_events[i] = critical_irq_events;
 	}
 
-#ifdef LWIS_DT_DEBUG
-	lwis_dev_critical_irq_event_list_print(lwis_dev->critical_irq_event_list);
-#endif
-	return 0;
+	return critical_irq_events_num;
 }
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
@@ -344,8 +339,10 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		u64 irq_mask_reg;
 		int irq_events_num;
 		int int_reg_bits_num;
+		int critical_events_num = 0;
 		u64 *irq_events;
 		u32 *int_reg_bits;
+		u64 *critical_events = NULL;
 		int irq_reg_bid = -1;
 		int irq_reg_bid_count;
 		/* To match default value of reg-addr/value-bitwidth. */
@@ -353,11 +350,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
 
-		ret = parse_critical_irq_events(lwis_dev, event_info);
-		if (ret) {
-			pr_err("Error getting critical-irq-event from dt: %d\n", ret);
-			goto error_event_infos;
-		}
+		critical_events_num = parse_critical_irq_events(event_info, &critical_events);
 
 		irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
 		if (irq_events_num <= 0) {
@@ -470,11 +463,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		irq_mask_reg_toggle = of_property_read_bool(event_info, "irq-mask-reg-toggle");
 
 		of_property_read_u32(event_info, "irq-reg-bitwidth", &irq_reg_bitwidth);
-		ret = lwis_interrupt_set_event_info(lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
-						    (int64_t *)irq_events, irq_events_num,
-						    int_reg_bits, int_reg_bits_num, irq_src_reg,
-						    irq_reset_reg, irq_mask_reg,
-						    irq_mask_reg_toggle, irq_reg_bitwidth);
+
+		ret = lwis_interrupt_set_event_info(
+			lwis_dev->irqs, i, irq_reg_space, irq_reg_bid, (int64_t *)irq_events,
+			irq_events_num, int_reg_bits, int_reg_bits_num, irq_src_reg, irq_reset_reg,
+			irq_mask_reg, irq_mask_reg_toggle, irq_reg_bitwidth,
+			(int64_t *)critical_events, critical_events_num);
 		if (ret) {
 			pr_err("Error setting event info for interrupt %d %d\n", i, ret);
 			kfree(irq_events);

@@ -96,7 +96,8 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg, bool mask_toggled,
-				  int irq_reg_access_size);
+				  int irq_reg_access_size, int64_t *critical_events,
+				  size_t critical_events_num);
 
 /*
  * lwis_interrupt_event_enable: Handles masking and unmasking interrupts when
