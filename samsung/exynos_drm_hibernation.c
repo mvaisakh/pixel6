@@ -43,7 +43,8 @@ static bool is_camera_operating(struct exynos_hibernation *hiber)
 
 static inline bool is_hibernation_enabled(struct exynos_hibernation *hiber)
 {
-	return hiber && hiber->enabled;
+	/* hibernation is only supported in command mode */
+	return hiber && hiber->enabled && hiber->decon->config.mode.op_mode == DECON_COMMAND_MODE;
 }
 
 static inline bool is_hibernaton_blocked(struct exynos_hibernation *hiber)
