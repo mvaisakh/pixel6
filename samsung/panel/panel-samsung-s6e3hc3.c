@@ -1078,8 +1078,8 @@ const struct brightness_capability s6e3hc3_brightness_capability = {
 			.max = 800,
 		},
 		.level = {
-			.min = 3311,
-			.max = 4095,
+			.min = 2232,
+			.max = 3152,
 		},
 		.percentage = {
 			.min = 62,
@@ -1092,7 +1092,7 @@ const struct exynos_panel_desc samsung_s6e3hc3 = {
 	.dsc_pps = PPS_SETTING,
 	.dsc_pps_len = ARRAY_SIZE(PPS_SETTING),
 	.data_lane_cnt = 4,
-	.max_brightness = 4095,
+	.max_brightness = 3152,
 	.dft_brightness = 1023,
 	.brt_capability = &s6e3hc3_brightness_capability,
 	/* supported HDR format bitmask : 1(DOLBY_VISION), 2(HDR10), 3(HLG) */
