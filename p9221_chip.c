@@ -1454,6 +1454,7 @@ void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->reg_set_pp_buf_addr = P9412_PP_SEND_BUF_START;
 		chgr->reg_get_pp_buf_addr = P9412_PP_RECV_BUF_START;
 		chgr->set_cmd_ccactivate_bit = P9412_COM_CCACTIVATE;
+		chgr->reg_set_fod_addr = P9221R5_FOD_REG;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->reg_tx_id_addr = P9382_PROP_TX_ID_REG;
@@ -1462,6 +1463,7 @@ void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->reg_set_pp_buf_addr = P9382A_DATA_SEND_BUF_START;
 		chgr->reg_get_pp_buf_addr = P9382A_DATA_RECV_BUF_START;
 		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
+		chgr->reg_set_fod_addr = P9221R5_FOD_REG;
 		break;
 	case P9222_CHIP_ID:
 		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
@@ -1470,6 +1472,7 @@ void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->reg_set_pp_buf_addr = P9221R5_DATA_SEND_BUF_START;
 		chgr->reg_get_pp_buf_addr = P9221R5_DATA_RECV_BUF_START;
 		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
+		chgr->reg_set_fod_addr = P9222RE_FOD_REG;
 		break;
 	default:
 		chgr->reg_tx_id_addr = P9221R5_PROP_TX_ID_REG;
@@ -1478,6 +1481,7 @@ void p9221_chip_init_params(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->reg_set_pp_buf_addr = P9221R5_DATA_SEND_BUF_START;
 		chgr->reg_get_pp_buf_addr = P9221R5_DATA_RECV_BUF_START;
 		chgr->set_cmd_ccactivate_bit = P9221R5_COM_CCACTIVATE;
+		chgr->reg_set_fod_addr = P9221R5_FOD_REG;
 		break;
 	}
 }

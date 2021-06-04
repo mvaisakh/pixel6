@@ -280,12 +280,12 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 		char s[P9221R5_NUM_FOD * 3 + 1];
 		u8 fod_read[P9221R5_NUM_FOD];
 
-		dev_info(&charger->client->dev, "Writing %s FOD (n=%d reg=%02x try=%d)\n",
-			 epp ? "EPP" : "BPP", fod_count, P9221R5_FOD_REG,
-			 retries);
+		dev_info(&charger->client->dev,
+			 "Writing %s FOD (n=%d reg=%02x try=%d)\n",
+			 epp ? "EPP" : "BPP", fod_count,
+			 charger->reg_set_fod_addr, retries);
 
-		ret = p9221_reg_write_n(charger, P9221R5_FOD_REG, fod,
-					fod_count);
+		ret = p9xxx_chip_set_fod_reg(charger, fod, fod_count);
 		if (ret) {
 			dev_err(&charger->client->dev,
 				"Could not write FOD: %d\n", ret);
@@ -293,8 +293,7 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 		}
 
 		/* Verify the FOD has been written properly */
-		ret = p9221_reg_read_n(charger, P9221R5_FOD_REG, fod_read,
-				       fod_count);
+		ret = p9xxx_chip_get_fod_reg(charger, fod_read, fod_count);
 		if (ret) {
 			dev_err(&charger->client->dev,
 				"Could not read back FOD: %d\n", ret);
@@ -2209,7 +2208,7 @@ static ssize_t p9221_show_status(struct device *dev,
 	}
 
 	/* FOD Register */
-	ret = p9221_reg_read_n(charger, P9221R5_FOD_REG, tmp, P9221R5_NUM_FOD);
+	ret = p9xxx_chip_get_fod_reg(charger, tmp, P9221R5_NUM_FOD);
 	count += scnprintf(buf + count, PAGE_SIZE - count, "fod         : ");
 	if (ret)
 		count += scnprintf(buf + count, PAGE_SIZE - count,

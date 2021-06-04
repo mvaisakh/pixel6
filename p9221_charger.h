@@ -270,6 +270,7 @@
 #define P9222RE_OP_FREQ_REG			0x5C
 #define P9222RE_ILIM_SET_REG			0x60
 #define P9222_COM_REG				0x62
+#define P9222RE_FOD_REG				0x84
 #define P9222RE_EPP_REQ_NEGOTIATED_POWER_REG	0xBD
 #define P9222RE_TX_MFG_CODE_REG			0x106
 
@@ -667,6 +668,7 @@ struct p9221_charger_data {
 	u16				set_cmd_ccactivate_bit;
 	u16				reg_set_pp_buf_addr;
 	u16				reg_get_pp_buf_addr;
+	u16				reg_set_fod_addr;
 
 	int (*reg_read_n)(struct p9221_charger_data *chgr, u16 reg,
 			  void *buf, size_t n);
@@ -763,4 +765,8 @@ enum p9382_rtx_err {
       -ENOTSUPP : chgr->reg_write_n(chgr, chgr->reg_set_pp_buf_addr, data, len))
 #define p9xxx_chip_get_pp_buf(chgr, data, len) (chgr->reg_get_pp_buf_addr == 0 ? \
       -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_get_pp_buf_addr, data, len))
+#define p9xxx_chip_set_fod_reg(chgr, data, len) (chgr->reg_set_fod_addr == 0 ? \
+      -ENOTSUPP : chgr->reg_write_n(chgr, chgr->reg_set_fod_addr, data, len))
+#define p9xxx_chip_get_fod_reg(chgr, data, len) (chgr->reg_set_fod_addr == 0 ? \
+      -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_set_fod_addr, data, len))
 #endif /* __P9221_CHARGER_H__ */
