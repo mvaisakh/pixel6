@@ -382,14 +382,14 @@ static void dpu_bts_sum_all_decon_bw(struct decon_device *decon, u32 ch_bw[])
 		return;
 	}
 
-	for (i = 0; i < MAX_DECON_CNT; ++i)
+	for (i = 0; i < MAX_AXI_PORT; ++i)
 		decon->bts.ch_bw[decon->id][i] = ch_bw[i];
 
 	for (i = 0; i < MAX_DECON_CNT; ++i) {
 		if (decon->id == i)
 			continue;
 
-		for (j = 0; j < MAX_DECON_CNT; ++j)
+		for (j = 0; j < MAX_AXI_PORT; ++j)
 			ch_bw[j] += decon->bts.ch_bw[i][j];
 	}
 }
@@ -471,7 +471,7 @@ static u32 dpu_bts_find_max_disp_ch_bw(struct decon_device *decon,
 		struct dpu_bts_win_config *config)
 {
 	int i, j;
-	u32 disp_ch_bw[MAX_DECON_CNT];
+	u32 disp_ch_bw[MAX_AXI_PORT];
 	u32 max_disp_ch_bw;
 
 	/* DPU AXI bandwidth requirement */
@@ -485,7 +485,7 @@ static u32 dpu_bts_find_max_disp_ch_bw(struct decon_device *decon,
 		if (config[i].state != DPU_WIN_STATE_BUFFER)
 			continue;
 
-		if (ch_num >= MAX_DECON_CNT) {
+		if (ch_num >= MAX_AXI_PORT) {
 			pr_err("invalid DPU AXI channel number %u\n", ch_num);
 			continue;
 		}
@@ -508,12 +508,12 @@ static u32 dpu_bts_find_max_disp_ch_bw(struct decon_device *decon,
 	/* must be considered other decon's bw */
 	dpu_bts_sum_all_decon_bw(decon, disp_ch_bw);
 
-	for (i = 0; i < MAX_DECON_CNT; ++i)
+	for (i = 0; i < MAX_AXI_PORT; ++i)
 		if (disp_ch_bw[i])
 			DPU_DEBUG_BTS("  AXI_DPU%d = %u\n", i, disp_ch_bw[i]);
 
 	max_disp_ch_bw = disp_ch_bw[0];
-	for (i = 1; i < MAX_DECON_CNT; ++i)
+	for (i = 1; i < MAX_AXI_PORT; ++i)
 		max_disp_ch_bw = max(max_disp_ch_bw, disp_ch_bw[i]);
 
 	return max_disp_ch_bw;
@@ -572,7 +572,7 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon)
 static void dpu_bts_share_bw_info(int id)
 {
 	int i, j;
-	struct decon_device *decon[3];
+	struct decon_device *decon[MAX_DECON_CNT];
 
 	for (i = 0; i < MAX_DECON_CNT; i++)
 		decon[i] = NULL;
@@ -584,7 +584,7 @@ static void dpu_bts_share_bw_info(int id)
 		if (id == i || decon[i] == NULL)
 			continue;
 
-		for (j = 0; j < MAX_DECON_CNT; ++j)
+		for (j = 0; j < MAX_AXI_PORT; ++j)
 			decon[i]->bts.ch_bw[id][j] =
 				decon[id]->bts.ch_bw[id][j];
 	}
@@ -748,6 +748,7 @@ static inline void dpu_bts_update_bw(struct decon_device *decon, struct bts_bw b
 	}
 	DPU_ATRACE_INT("dpu_vote_peak_bw", bw.peak);
 	DPU_ATRACE_INT("dpu_vote_avg_bw", bw.read + bw.write);
+	DPU_ATRACE_INT("dpu_vote_rt_bw", bw.rt);
 	DPU_ATRACE_END("dpu_bts_update_bw");
 }
 
@@ -853,7 +854,7 @@ static void dpu_bts_init(struct decon_device *decon)
 	decon->bts.dvfs_max_disp_freq =
 			(u32)cal_dfs_get_max_freq(ACPM_DVFS_DISP);
 
-	for (i = 0; i < MAX_DECON_CNT; i++)
+	for (i = 0; i < MAX_AXI_PORT; i++)
 		decon->bts.ch_bw[decon->id][i] = 0;
 
 	DPU_DEBUG_BTS("BTS_BW_TYPE(%d)\n", decon->bts.bw_idx);

@@ -17,6 +17,7 @@
 
 #define MAX_WIN_PER_DECON	6
 #define MAX_DECON_CNT		3
+#define MAX_AXI_PORT		3
 #define BTS_DFS_MAX		7 /* DPU DVFS Level */
 
 #define DECON_BLENDING_PREMULT		0
