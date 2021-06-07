@@ -64,7 +64,18 @@ static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 
 	/* Enable the I2C bus */
 	mutex_lock(lwis_dev->global_i2c_lock);
+
+#if IS_ENABLED(CONFIG_INPUT_STMVL53L1)
+	if (is_shared_i2c_with_stmvl53l1(i2c_dev->state_pinctrl))
+		ret = shared_i2c_set_state(&i2c_dev->client->dev,
+					   i2c_dev->state_pinctrl,
+					   I2C_ON_STRING);
+	else
+		ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
+#else
 	ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
+#endif
+
 	mutex_unlock(lwis_dev->global_i2c_lock);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Error enabling i2c bus (%d)\n", ret);
@@ -78,6 +89,22 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 {
 	int ret;
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
+
+#if IS_ENABLED(CONFIG_INPUT_STMVL53L1)
+	if (is_shared_i2c_with_stmvl53l1(i2c_dev->state_pinctrl)) {
+		/* Disable the shared i2c bus */
+		mutex_lock(lwis_dev->global_i2c_lock);
+		ret = shared_i2c_set_state(&i2c_dev->client->dev,
+					   i2c_dev->state_pinctrl,
+					   I2C_OFF_STRING);
+		mutex_unlock(lwis_dev->global_i2c_lock);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n",
+				ret);
+		}
+		return ret;
+	}
+#endif
 
 	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
 		/* Disable the I2C bus */
