@@ -183,8 +183,10 @@ int register_tbn(u32 *output)
 {
 	u32 i = 0;
 
-	if (!tbn_context)
-		return -ENODEV;
+	if (!tbn_context) {
+		pr_warn("%s: tbn_context doesn't exist.", __func__);
+		return 0;
+	}
 
 	mutex_lock(&tbn_context->dev_mask_mutex);
 	for (i = 0; i < tbn_context->max_devices; i++) {
