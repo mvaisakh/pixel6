@@ -192,10 +192,13 @@ edgetpu_mailbox_create_mgr(struct edgetpu_dev *etdev,
 /* interrupt handler */
 irqreturn_t edgetpu_mailbox_handle_irq(struct edgetpu_mailbox_manager *mgr);
 
-/* removes the mailbox previously requested from a mailbox manager */
-int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr,
-			   struct edgetpu_mailbox *mailbox);
-/* removes all the mailboxes previously requested */
+/*
+ * Removes the mailbox previously requested from a mailbox manager.
+ *
+ * This function doesn't change the state of mailbox enable/disable.
+ */
+int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr, struct edgetpu_mailbox *mailbox);
+/* Removes and disables all the mailboxes previously requested. */
 void edgetpu_mailbox_remove_all(struct edgetpu_mailbox_manager *mgr);
 
 /* configure mailbox */
@@ -231,11 +234,14 @@ void edgetpu_mailbox_inc_resp_queue_head(struct edgetpu_mailbox *mailbox,
  * Request the mailbox with mailbox_id equals @id.
  * @id = 0 means there is no preference, @mgr will return a spare mailbox.
  *
+ * Caller calls edgetpu_mailbox_enable() to enable the returned mailbox.
+ *
  * -EBUSY is returned if the requested @id is used or there is no mailbox
  * available.
  */
 struct edgetpu_mailbox *
 edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id);
+
 /*
  * Validates the mailbox attributes.
  * Returns 0 if valid, otherwise a negative errno.
@@ -424,5 +430,17 @@ static inline u32 circular_queue_inc(u32 index, u32 inc, u32 queue_size)
 	EDGETPU_MAILBOX_WRITE(mailbox, mailbox->resp_queue_csr_base, \
 			      struct edgetpu_mailbox_resp_queue_csr, field, \
 			      value)
+
+/* Enables a mailbox by setting CSR. */
+static inline void edgetpu_mailbox_enable(struct edgetpu_mailbox *mailbox)
+{
+	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+}
+
+/* Disables a mailbox by setting CSR. */
+static inline void edgetpu_mailbox_disable(struct edgetpu_mailbox *mailbox)
+{
+	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 0);
+}
 
 #endif /* __EDGETPU_MAILBOX_H__ */

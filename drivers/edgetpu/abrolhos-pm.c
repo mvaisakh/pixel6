@@ -639,7 +639,7 @@ static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)
 		return ret;
 	abrolhos_pwr_debugfs_dir =
 		debugfs_create_dir("power", edgetpu_fs_debugfs_dir());
-	if (!abrolhos_pwr_debugfs_dir) {
+	if (IS_ERR_OR_NULL(abrolhos_pwr_debugfs_dir)) {
 		etdev_warn(etdev, "Failed to create debug FS power");
 		/* don't fail the procedure on debug FS creation fails */
 		return 0;

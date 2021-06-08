@@ -381,7 +381,7 @@ static ssize_t tpu_usage_clear(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(tpu_usage, 0644, tpu_usage_show, tpu_usage_clear);
+static DEVICE_ATTR(tpu_usage, 0664, tpu_usage_show, tpu_usage_clear);
 
 static ssize_t device_utilization_show(struct device *dev,
 				       struct device_attribute *attr,
@@ -431,7 +431,8 @@ static ssize_t tpu_active_cycle_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_ACTIVE_CYCLES);
 	return count;
 }
-static DEVICE_ATTR_RW(tpu_active_cycle_count);
+static DEVICE_ATTR(tpu_active_cycle_count, 0664, tpu_active_cycle_count_show,
+		   tpu_active_cycle_count_store);
 
 static ssize_t tpu_throttle_stall_count_show(struct device *dev,
 					     struct device_attribute *attr,
@@ -455,7 +456,9 @@ static ssize_t tpu_throttle_stall_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_THROTTLE_STALLS);
 	return count;
 }
-static DEVICE_ATTR_RW(tpu_throttle_stall_count);
+static DEVICE_ATTR(tpu_throttle_stall_count, 0664,
+		   tpu_throttle_stall_count_show,
+		   tpu_throttle_stall_count_store);
 
 static ssize_t inference_count_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
@@ -478,7 +481,8 @@ static ssize_t inference_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_INFERENCES);
 	return count;
 }
-static DEVICE_ATTR_RW(inference_count);
+static DEVICE_ATTR(inference_count, 0664, inference_count_show,
+		   inference_count_store);
 
 static ssize_t tpu_op_count_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -501,7 +505,7 @@ static ssize_t tpu_op_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_TPU_OPS);
 	return count;
 }
-static DEVICE_ATTR_RW(tpu_op_count);
+static DEVICE_ATTR(tpu_op_count, 0664, tpu_op_count_show, tpu_op_count_store);
 
 static ssize_t param_cache_hit_count_show(struct device *dev,
 					  struct device_attribute *attr,
@@ -525,7 +529,8 @@ static ssize_t param_cache_hit_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_PARAM_CACHE_HITS);
 	return count;
 }
-static DEVICE_ATTR_RW(param_cache_hit_count);
+static DEVICE_ATTR(param_cache_hit_count, 0664, param_cache_hit_count_show,
+		   param_cache_hit_count_store);
 
 static ssize_t param_cache_miss_count_show(struct device *dev,
 					   struct device_attribute *attr,
@@ -549,7 +554,8 @@ static ssize_t param_cache_miss_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_PARAM_CACHE_MISSES);
 	return count;
 }
-static DEVICE_ATTR_RW(param_cache_miss_count);
+static DEVICE_ATTR(param_cache_miss_count, 0664, param_cache_miss_count_show,
+		   param_cache_miss_count_store);
 
 static ssize_t context_preempt_count_show(struct device *dev,
 					  struct device_attribute *attr,
@@ -573,7 +579,8 @@ static ssize_t context_preempt_count_store(struct device *dev,
 	edgetpu_counter_clear(etdev, EDGETPU_COUNTER_CONTEXT_PREEMPTS);
 	return count;
 }
-static DEVICE_ATTR_RW(context_preempt_count);
+static DEVICE_ATTR(context_preempt_count, 0664, context_preempt_count_show,
+		   context_preempt_count_store);
 
 static ssize_t outstanding_commands_max_show(
 	struct device *dev, struct device_attribute *attr, char *buf)
@@ -601,7 +608,9 @@ static ssize_t outstanding_commands_max_store(
 
 	return count;
 }
-static DEVICE_ATTR_RW(outstanding_commands_max);
+static DEVICE_ATTR(outstanding_commands_max, 0664,
+		   outstanding_commands_max_show,
+		   outstanding_commands_max_store);
 
 static ssize_t preempt_depth_max_show(
 	struct device *dev, struct device_attribute *attr, char *buf)
@@ -629,7 +638,8 @@ static ssize_t preempt_depth_max_store(
 
 	return count;
 }
-static DEVICE_ATTR_RW(preempt_depth_max);
+static DEVICE_ATTR(preempt_depth_max, 0664, preempt_depth_max_show,
+		   preempt_depth_max_store);
 
 static ssize_t fw_thread_stats_show(
 	struct device *dev, struct device_attribute *attr, char *buf)
@@ -668,7 +678,8 @@ static ssize_t fw_thread_stats_store(
 	mutex_unlock(&ustats->usage_stats_lock);
 	return count;
 }
-static DEVICE_ATTR_RW(fw_thread_stats);
+static DEVICE_ATTR(fw_thread_stats, 0664, fw_thread_stats_show,
+		   fw_thread_stats_store);
 
 static struct attribute *usage_stats_dev_attrs[] = {
 	&dev_attr_tpu_usage.attr,

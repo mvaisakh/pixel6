@@ -487,7 +487,7 @@ int edgetpu_kci_init(struct edgetpu_mailbox_manager *mgr,
 	INIT_WORK(&kci->work, edgetpu_kci_consume_responses_work);
 	edgetpu_reverse_kci_init(&kci->rkci);
 	INIT_WORK(&kci->usage_work, edgetpu_kci_update_usage_work);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+	edgetpu_mailbox_enable(mailbox);
 	return 0;
 }
 
@@ -509,7 +509,7 @@ int edgetpu_kci_reinit(struct edgetpu_kci *kci)
 	if (ret)
 		return ret;
 	edgetpu_mailbox_init_doorbells(mailbox);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+	edgetpu_mailbox_enable(mailbox);
 
 	return 0;
 }

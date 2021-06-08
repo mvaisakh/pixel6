@@ -646,21 +646,36 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	uint i;
 
 	/* invalid DMA direction or offset is not page-aligned */
-	if (!valid_dma_direction(dir) || offset_in_page(offset))
+	if (!valid_dma_direction(dir) || offset_in_page(offset)) {
+		etdev_dbg(group->etdev,
+			  "%s: valid=%d offset_in_page=%lu offset=0x%llx\n",
+			  __func__, valid_dma_direction(dir),
+			  offset_in_page(offset), offset);
 		return -EINVAL;
+	}
 	/* TODO(b/189278468): entirely ignore @offset */
 	if (offset != 0)
 		etdev_warn_ratelimited(group->etdev,
 				       "Non-zero offset for dmabuf mapping is deprecated");
 	dmabuf = dma_buf_get(arg->dmabuf_fd);
-	if (IS_ERR(dmabuf))
+	if (IS_ERR(dmabuf)) {
+		etdev_dbg(group->etdev, "%s: dma_buf_get returns %ld\n",
+			  __func__, PTR_ERR(dmabuf));
 		return PTR_ERR(dmabuf);
-	if (offset >= dmabuf->size)
+	}
+	if (offset >= dmabuf->size) {
+		etdev_dbg(group->etdev,
+			  "%s: offset=0x%llx > dmabuf size=%zx\n",
+			  __func__, offset, dmabuf->size);
 		goto err_put;
+	}
 
 	mutex_lock(&group->lock);
 	if (!edgetpu_device_group_is_finalized(group)) {
 		ret = edgetpu_group_errno(group);
+		etdev_dbg(group->etdev,
+			  "%s: edgetpu_device_group_is_finalized returns %d\n",
+			  __func__, ret);
 		goto err_unlock_group;
 	}
 
@@ -679,31 +694,53 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 			etdev = edgetpu_device_group_nth_etdev(group, i);
 			ret = etdev_attach_dmabuf_to_entry(etdev, dmabuf, &dmap->entries[i], size,
 							   dir);
-			if (ret)
+			if (ret) {
+				etdev_dbg(group->etdev,
+					  "%s: etdev_attach_dmabuf_to_entry returns %d\n",
+					  __func__, ret);
 				goto err_release_map;
+			}
 		}
 		ret = group_map_dmabuf(group, dmap, dir, &tpu_addr);
-		if (ret)
+		if (ret) {
+			etdev_dbg(group->etdev,
+				  "%s: group_map_dmabuf returns %d\n",
+				  __func__, ret);
 			goto err_release_map;
+		}
 		dmap->map.die_index = ALL_DIES;
 	} else {
 		etdev = edgetpu_device_group_nth_etdev(group, arg->die_index);
 		if (!etdev) {
+			etdev_dbg(group->etdev,
+				  "%s: edgetpu_device_group_nth_etdev returns NULL\n",
+				  __func__);
 			ret = -EINVAL;
 			goto err_release_map;
 		}
 		ret = etdev_attach_dmabuf_to_entry(etdev, dmabuf, &dmap->entries[0], size, dir);
-		if (ret)
+		if (ret) {
+			etdev_dbg(group->etdev,
+				  "%s: etdev_attach_dmabuf_to_entry returns %d\n",
+				  __func__, ret);
 			goto err_release_map;
+		}
 		ret = etdev_map_dmabuf(etdev, dmap, dir, &tpu_addr);
-		if (ret)
+		if (ret) {
+			etdev_dbg(group->etdev,
+				  "%s: etdev_map_dmabuf returns %d\n",
+				  __func__, ret);
 			goto err_release_map;
+		}
 		dmap->map.die_index = arg->die_index;
 	}
 	dmap->map.device_address = tpu_addr + offset;
 	ret = edgetpu_mapping_add(&group->dmabuf_mappings, &dmap->map);
-	if (ret)
+	if (ret) {
+		etdev_dbg(group->etdev, "%s: edgetpu_mapping_add returns %d\n",
+			  __func__, ret);
 		goto err_release_map;
+	}
 	arg->device_address = dmap->map.device_address;
 	mutex_unlock(&group->lock);
 	dma_buf_put(dmabuf);

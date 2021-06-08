@@ -80,12 +80,6 @@ edgetpu_mailbox_create_locked(struct edgetpu_mailbox_manager *mgr, uint index)
 	return mailbox;
 }
 
-/* Disables a mailbox via setting CSR. */
-static void edgetpu_mailbox_disable(struct edgetpu_mailbox *mailbox)
-{
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 0);
-}
-
 /*
  * Disables the @index-th mailbox via setting CSR. Doesn't need
  * @mgr->mailboxes[index] be allocated.
@@ -203,12 +197,12 @@ int edgetpu_mailbox_set_queue(struct edgetpu_mailbox *mailbox,
 /* Reset mailbox queues, clear out any commands/responses left from before. */
 void edgetpu_mailbox_reset(struct edgetpu_mailbox *mailbox)
 {
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 0);
+	edgetpu_mailbox_disable(mailbox);
 	EDGETPU_MAILBOX_CMD_QUEUE_WRITE(mailbox, head, 0);
 	edgetpu_mailbox_set_cmd_queue_tail(mailbox, 0);
 	edgetpu_mailbox_set_resp_queue_head(mailbox, 0);
 	EDGETPU_MAILBOX_RESP_QUEUE_WRITE(mailbox, tail, 0);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+	edgetpu_mailbox_enable(mailbox);
 }
 
 /* Sets the priority of @mailbox. */
@@ -263,6 +257,8 @@ edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id)
  *
  * Returns 0 on success, or a negative errno on error.
  * Returns -EBUSY if any mailbox is using.
+ *
+ * Caller calls edgetpu_mailbox_enable() to enable the returned mailboxes.
  */
 int edgetpu_mailbox_p2p_batch(struct edgetpu_mailbox_manager *mgr, uint n,
 			      uint skip_i, struct edgetpu_mailbox **mailboxes)
@@ -343,8 +339,7 @@ out:
  * Removes a mailbox from the manager.
  * Returns 0 on success.
  */
-int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr,
-			   struct edgetpu_mailbox *mailbox)
+int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr, struct edgetpu_mailbox *mailbox)
 {
 	unsigned long flags;
 
@@ -357,7 +352,6 @@ int edgetpu_mailbox_remove(struct edgetpu_mailbox_manager *mgr,
 	}
 
 	mgr->mailboxes[mailbox->mailbox_id] = NULL;
-	edgetpu_mailbox_disable(mailbox);
 	/* KCI mailbox is a special case */
 	if (mailbox->mailbox_id == KERNEL_MAILBOX_INDEX)
 		edgetpu_kci_release(mgr->etdev, mailbox->internal.kci);
@@ -467,7 +461,7 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 	mailbox->internal.group = edgetpu_device_group_get(group);
 	vii->etdev = group->etdev;
 	vii->mailbox = mailbox;
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+	edgetpu_mailbox_enable(mailbox);
 	return 0;
 }
 
@@ -479,6 +473,7 @@ void edgetpu_mailbox_remove_vii(struct edgetpu_vii *vii)
 	edgetpu_mailbox_free_queue(etdev, vii->mailbox, &vii->cmd_queue_mem);
 	edgetpu_mailbox_free_queue(etdev, vii->mailbox, &vii->resp_queue_mem);
 	if (vii->mailbox) {
+		edgetpu_mailbox_disable(vii->mailbox);
 		edgetpu_device_group_put(vii->mailbox->internal.group);
 		edgetpu_mailbox_remove(etdev->mailbox_manager, vii->mailbox);
 		vii->mailbox = NULL;
@@ -704,7 +699,7 @@ void edgetpu_mailbox_reinit_vii(struct edgetpu_device_group *group)
 	edgetpu_mailbox_set_queue(mailbox, MAILBOX_RESP_QUEUE,
 				  group->vii.resp_queue_mem.tpu_addr,
 				  resp_queue_size);
-	EDGETPU_MAILBOX_CONTEXT_WRITE(mailbox, context_enable, 1);
+	edgetpu_mailbox_enable(mailbox);
 }
 
 void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev)

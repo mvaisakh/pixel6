@@ -303,7 +303,7 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 
 	d = debugfs_create_dir("cooling", edgetpu_fs_debugfs_dir());
 	/* don't let debugfs creation failure abort the init procedure */
-	if (!d)
+	if (IS_ERR_OR_NULL(d))
 		dev_warn(dev, "failed to create debug fs for cooling");
 	thermal->dev = dev;
 	thermal->cooling_root = d;

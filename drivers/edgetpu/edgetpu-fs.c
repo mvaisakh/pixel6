@@ -933,8 +933,10 @@ static void edgetpu_fs_setup_debugfs(struct edgetpu_dev *etdev)
 {
 	etdev->d_entry =
 		debugfs_create_dir(etdev->dev_name, edgetpu_debugfs_dir);
-	if (!etdev->d_entry)
+	if (IS_ERR_OR_NULL(etdev->d_entry)) {
+		etdev_warn(etdev, "Failed to setup debugfs\n");
 		return;
+	}
 	debugfs_create_file("mappings", 0440, etdev->d_entry,
 			    etdev, &mappings_ops);
 	debugfs_create_file("statusregs", 0440, etdev->d_entry, etdev,
@@ -1036,18 +1038,16 @@ static const struct file_operations syncfences_ops = {
 	.release = single_release,
 };
 
-static int edgetpu_debugfs_global_setup(void)
+static void edgetpu_debugfs_global_setup(void)
 {
 	edgetpu_debugfs_dir = debugfs_create_dir("edgetpu", NULL);
-	if (IS_ERR(edgetpu_debugfs_dir)) {
-		pr_err(DRIVER_NAME " error creating edgetpu debugfs dir: %ld\n",
-		       PTR_ERR(edgetpu_debugfs_dir));
-		return PTR_ERR(edgetpu_debugfs_dir);
+	if (IS_ERR_OR_NULL(edgetpu_debugfs_dir)) {
+		pr_warn(DRIVER_NAME " error creating edgetpu debugfs dir\n");
+		return;
 	}
 
 	debugfs_create_file("syncfences", 0440, edgetpu_debugfs_dir, NULL,
 			    &syncfences_ops);
-	return 0;
 }
 
 int __init edgetpu_fs_init(void)
