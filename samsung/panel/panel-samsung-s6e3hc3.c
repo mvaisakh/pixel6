@@ -353,21 +353,21 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
 }
 
-static void s6e3hc3_change_frequency(struct exynos_panel *ctx,
-				     const struct exynos_panel_mode *pmode)
+static inline bool is_auto_mode_preferred(struct exynos_panel *ctx)
 {
-	const struct s6e3hc3_mode_data *mdata;
+	/* don't want to enable auto mode/early exit during hbm */
+	if (ctx->hbm_mode)
+		return false;
+
+	return ctx->panel_idle_enabled;
+}
+
+static void s6e3hc3_update_early_exit_mode(struct exynos_panel *ctx,
+				     const struct s6e3hc3_mode_data *mdata)
+{
 	struct s6e3hc3_panel *spanel = to_spanel(ctx);
-	const bool auto_mode_preferred = ctx->panel_idle_enabled;
+	const bool auto_mode_preferred = is_auto_mode_preferred(ctx);
 
-	if (unlikely(!ctx))
-		return;
-
-	mdata = pmode->priv_data;
-	if (unlikely(!mdata))
-		return;
-
-	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 	if (auto_mode_preferred && mdata->auto_mode_cmd_set) {
 		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_enable_cmd_set);
 		spanel->early_exit_enabled = true;
@@ -383,6 +383,22 @@ static void s6e3hc3_change_frequency(struct exynos_panel *ctx,
 
 	if (mdata->common_mode_cmd_set)
 		exynos_panel_send_cmd_set(ctx, mdata->common_mode_cmd_set);
+}
+
+static void s6e3hc3_change_frequency(struct exynos_panel *ctx,
+				     const struct exynos_panel_mode *pmode)
+{
+	const struct s6e3hc3_mode_data *mdata;
+
+	if (unlikely(!ctx))
+		return;
+
+	mdata = pmode->priv_data;
+	if (unlikely(!mdata))
+		return;
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+	s6e3hc3_update_early_exit_mode(ctx, mdata);
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 
 	dev_dbg(ctx->dev, "%s: change to %uhz\n", __func__, drm_mode_vrefresh(&pmode->mode));
@@ -401,7 +417,7 @@ static void s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	if (unlikely(!mdata))
 		return;
 
-	cmdset = enable ? mdata->idle_mode_cmd_set : mdata->wakeup_mode_cmd_set;
+	cmdset = enable && !ctx->hbm_mode ? mdata->idle_mode_cmd_set : mdata->wakeup_mode_cmd_set;
 	if (cmdset) {
 		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 		exynos_panel_send_cmd_set(ctx, cmdset);
@@ -723,17 +739,11 @@ static void s6e3hc3_commit_done(struct exynos_panel *ctx)
 		s6e3hc3_trigger_early_exit(ctx);
 }
 
-static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
+static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
 				 bool hbm_mode)
 {
-	const struct exynos_panel_mode *pmode = ctx->current_mode;
-	const int vrefresh = drm_mode_vrefresh(&pmode->mode);
-
-	ctx->hbm_mode = hbm_mode;
-
 	if (ctx->panel_rev == PANEL_REV_PROTO1) {
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
-		if (ctx->hbm_mode) {
+		if (hbm_mode) {
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x00);
 			usleep_range(17000, 17010);
@@ -742,18 +752,47 @@ static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
 		}
-		EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
 	} else if (ctx->panel_rev == PANEL_REV_EVT1_1) {
-		if (ctx->hbm_mode) {
-			EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
+		if (hbm_mode) {
+			const struct exynos_panel_mode *pmode = ctx->current_mode;
+			const int vrefresh = drm_mode_vrefresh(&pmode->mode);
+
 			if (vrefresh == 60)
 				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x01);
 			else if (vrefresh == 120)
 				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x10);
-			EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0xA5, 0xA5);
 		}
 	}
-	s6e3hc3_write_display_mode(ctx, &pmode->mode);
+}
+
+static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
+				 bool hbm_mode)
+{
+	const struct exynos_panel_mode *pmode = ctx->current_mode;
+	const struct s6e3hc3_mode_data *mdata;
+
+	if (hbm_mode == ctx->hbm_mode)
+		return;
+
+	if (unlikely(!pmode || !pmode->priv_data))
+		return;
+
+	ctx->hbm_mode = hbm_mode;
+	mdata = pmode->priv_data;
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
+
+	if (hbm_mode) {
+		s6e3hc3_update_early_exit_mode(ctx, mdata);
+		s6e3hc3_set_hbm_extra_setting(ctx, hbm_mode);
+		s6e3hc3_write_display_mode(ctx, &pmode->mode);
+	} else {
+		s6e3hc3_set_hbm_extra_setting(ctx, hbm_mode);
+		s6e3hc3_write_display_mode(ctx, &pmode->mode);
+		s6e3hc3_update_early_exit_mode(ctx, mdata);
+	}
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 }
 
 static void s6e3hc3_set_dimming_on(struct exynos_panel *ctx,
