@@ -1449,17 +1449,12 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			return -EOPNOTSUPP;
 
 		/*
-		 * proprietary mode is enabled at connect ->chip_prop_mode_en()
+		 * run ->chip_prop_mode_en() if proprietary mode isn't enabled
 		 * (i.e. with p9412_prop_mode_enable())
-		 *
-		 * the script check for proprietary mode when enabling DC_PPS.
-		 * We might want to split this to 2 steps:
-		 *  1) check whether proprietary mode is possible on this
-		 *     adapter and enable it at low power (if required
-		 *     for GPP)
-		 *  2) perform the full sequence when PPS_PSY_PROG_ONLINE
-		 *     is requested.
 		 */
+		if (!charger->prop_mode_en)
+			charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT);
+
 		if (!charger->prop_mode_en)
 			return -EOPNOTSUPP;
 
@@ -2051,11 +2046,6 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 		p9221_write_fod(charger);
 		if (!charger->dc_icl_bpp)
 			p9221_icl_ramp_start(charger);
-
-		/* I am not sure that this needs to be done all the time */
-		if (charger->pdata->has_wlc_dc &&
-		    charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT))
-			dev_info(&charger->client->dev, "PROP_MODE: enable\n");
 
 		ret = p9221_reg_read_16(charger,
 					P9221_OTP_FW_MINOR_REV_REG,
