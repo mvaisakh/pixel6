@@ -1015,6 +1015,8 @@ error:
  */
 static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 {
+	const int iin_high = pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset;
+	const int iin_low = pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset;
 	int rc, ibat, icn = -EINVAL, iin = -EINVAL;
 
 	/* IIN = IBAT+SYSLOAD */
@@ -1024,17 +1026,15 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 	if (rc == 0)
 		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
 
-	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d\n",
-		 __func__, iin,
-		 pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset,
-		 pca9468->iin_cc,
-		 pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset,
-		 icn, ibat, pca9468->cc_max, rc);
+	pr_debug("%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d prev_iin=%d\n",
+		 __func__, iin, iin_low, pca9468->iin_cc, iin_high,
+		 icn, ibat, pca9468->cc_max, rc,
+		 pca9468->prev_iin);
 	if (iin < 0)
 		return iin;
 
 	/* Compare IIN ADC with target input current */
-	if (iin > (pca9468->iin_cc + pca9468->pdata->iin_cc_comp_offset)) {
+	if (iin > iin_high) {
 
 		/* TA current is higher than the target input current */
 		if (pca9468->ta_cur > pca9468->iin_cc) {
@@ -1064,7 +1064,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 
-	} else if (iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) {
+	} else if (iin < iin_low) {
 
 		/* compare IIN ADC with previous IIN ADC + 20mA */
 		if (iin > (pca9468->prev_iin + PCA9468_IIN_ADC_OFFSET)) {
@@ -1137,7 +1137,6 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 						 __func__, pca9468->ta_vol,
 						 pca9468->ta_cur);
 
-					/* Set timer */
 					pca9468->timer_id = TIMER_CHECK_CCMODE;
 					pca9468->timer_period = PCA9468_CCMODE_CHECK1_T;
 				} else {
@@ -1154,17 +1153,17 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 					pca9468->prev_inc = INC_TA_VOL;
 				}
 			} else {
+				const unsigned int ta_cur = pca9468->ta_cur +
+							    PD_MSG_TA_CUR_STEP;
+
 				/* Increase TA current (50mA) */
+				pr_debug("%s: Comp. Cont6: ta_cur=%u->%u\n",
+					 __func__, pca9468->ta_cur, ta_cur);
+
 				pca9468->ta_cur = pca9468->ta_cur + PD_MSG_TA_CUR_STEP;
-
-				pr_debug("%s: Comp. Cont6: ta_cur=%u\n",
-					 __func__, pca9468->ta_cur);
-
-				/* Send PD Message */
 				pca9468->timer_id = TIMER_PDMSG_SEND;
 				pca9468->timer_period = 0;
 
-				/* Set TA increment flag */
 				pca9468->prev_inc = INC_TA_CUR;
 			}
 
@@ -1203,7 +1202,6 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 			/* Increase TA voltage (20mV) */
 			pca9468->ta_vol = pca9468->ta_vol + PD_MSG_TA_VOL_STEP;
 
-
 			pr_debug("%s: Comp. Cont8: ta_vol=%u->%u\n", __func__,
 				 pca9468->ta_vol, pca9468->ta_vol);
 
@@ -1223,6 +1221,9 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 		/* Set timer */
 		pca9468->timer_id = TIMER_CHECK_CCMODE;
 		pca9468->timer_period = PCA9468_CCMODE_CHECK1_T;
+
+		/* b/186969924: reset increment state on valid */
+		pca9468->prev_inc = INC_NONE;
 	}
 
 	/* Save previous iin adc */
@@ -1344,9 +1345,11 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 		pr_debug("%s: Comp. End(valid): ta_vol=%u\n", __func__,
 			 pca9468->ta_vol);
 
-		/* Set timer */
 		pca9468->timer_id = TIMER_CHECK_CCMODE;
 		pca9468->timer_period = PCA9468_CCMODE_CHECK2_T;
+
+		/* b/186969924: reset increment state on valid */
+		pca9468->prev_inc = INC_NONE;
 	}
 
 	/* Save previous iin adc */
@@ -2196,10 +2199,9 @@ static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 	} else if (pca9468->prev_inc == INC_TA_CUR) {
 		/*
 		 * The previous increment is TA current, but input
-		 * current does not increase
+		 * current does not increase. Try with voltage.
 		 */
 
-		/* Try to increase TA voltage(40mV) */
 		pca9468->ta_vol = pca9468->ta_vol +
 					PCA9468_TA_VOL_STEP_ADJ_CC *
 					pca9468->chg_mode;
@@ -2209,9 +2211,7 @@ static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 		pr_debug("%s: CC adjust(flag) Cont: ta_vol=%u\n", __func__,
 			 pca9468->ta_vol);
 
-		/* Set TA increment flag */
 		pca9468->prev_inc = INC_TA_VOL;
-		/* Send PD Message */
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 
@@ -2228,8 +2228,8 @@ static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 		pr_debug("%s: CC adjust End(MAX_CUR): IIN_ADC=%d, ta_vol=%u, ta_cur=%u\n",
 			 __func__, iin, pca9468->ta_vol, pca9468->ta_cur);
 
-		/* Clear TA increment flag */
 		pca9468->prev_inc = INC_NONE;
+
 		/* Go to CC mode */
 		pca9468->timer_id = TIMER_CHECK_CCMODE;
 		pca9468->timer_period = 0;
@@ -2243,9 +2243,7 @@ static int pca9468_ajdust_ccmode_wired(struct pca9468_charger *pca9468, int iin)
 		pr_debug("%s: CC adjust Cont: ta_cur=%u\n", __func__,
 			 pca9468->ta_cur);
 
-		/* Set TA increment flag */
 		pca9468->prev_inc = INC_TA_CUR;
-		/* Send PD Message */
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
 	}
