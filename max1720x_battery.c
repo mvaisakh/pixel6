@@ -1940,6 +1940,9 @@ static int max1720x_get_property(struct power_supply *psy,
 		if (err == 0)
 			val->intval = reg_to_seconds(data);
 		break;
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+		val->intval = -1;
+		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		err = REGMAP_READ(map, MAX1720X_AVGVCELL, &data);
 		if (err == 0)
@@ -2051,13 +2054,17 @@ static int max1720x_set_property(struct power_supply *psy,
 	pm_runtime_put_sync(chip->dev);
 	mutex_unlock(&chip->model_lock);
 
-	if (!chip->model_state_valid)
-		return -EAGAIN;
-
 	switch (psp) {
 	case GBMS_PROP_BATT_CE_CTRL:
 
 		mutex_lock(&ce->batt_ce_lock);
+
+		if (chip->gauge_type == MAX_M5_GAUGE_TYPE &&
+		    !chip->model_state_valid) {
+			mutex_unlock(&ce->batt_ce_lock);
+			return -EAGAIN;
+		}
+
 		if (val->intval) {
 
 			if (!ce->cable_in) {
@@ -2079,7 +2086,8 @@ static int max1720x_set_property(struct power_supply *psy,
 
 		/* check cycle count, save state, check drift if needed */
 		delay_ms = max1720x_check_drift_delay(&chip->drift_data);
-		mod_delayed_work(system_wq, &chip->model_work, delay_ms);
+		mod_delayed_work(system_wq, &chip->model_work,
+				 msecs_to_jiffies(delay_ms));
 
 		break;
 	default:
