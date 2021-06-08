@@ -1061,7 +1061,8 @@ static void panel_update_idle_mode_locked(struct exynos_panel *ctx)
 	if (!ctx->enabled || !funcs->set_self_refresh)
 		return;
 
-	funcs->set_self_refresh(ctx, ctx->self_refresh_active);
+	if (funcs->set_self_refresh(ctx, ctx->self_refresh_active))
+		exynos_panel_update_te2(ctx);
 }
 
 static ssize_t panel_idle_store(struct device *dev, struct device_attribute *attr,
@@ -2513,7 +2514,7 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 	if (!ctx->enabled || exynos_panel_init(ctx)) {
 		drm_panel_enable(&ctx->panel);
 		need_update_backlight = true;
-        }
+	}
 
 	if (ctx->self_refresh_active) {
 		dev_dbg(ctx->dev, "self refresh state : %s\n", __func__);

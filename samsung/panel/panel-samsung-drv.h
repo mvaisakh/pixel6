@@ -289,8 +289,11 @@ struct exynos_panel_funcs {
 	 *
 	 * Called when display self refresh state has changed. While in self refresh state, the
 	 * panel can optimize for power assuming that there are no pending updates.
+	 *
+	 * Returns true if underlying mode was updated to reflect new self refresh state,
+	 * otherwise returns false if no action was taken.
 	 */
-	void (*set_self_refresh)(struct exynos_panel *exynos_panel, bool enable);
+	bool (*set_self_refresh)(struct exynos_panel *exynos_panel, bool enable);
 };
 
 /**
