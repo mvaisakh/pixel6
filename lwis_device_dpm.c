@@ -66,6 +66,20 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 		ret = lwis_platform_update_bts(target_dev, peak_bw, read_bw, write_bw, rt_bw);
 		if (ret < 0) {
 			dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
+			break;
+		}
+		if (qos_setting->frequency_hz >= 0 && lwis_dev->id == target_dev->id) {
+			/* vote to qos if frequency is specified. The vote only available for dpm
+			 * device
+			 */
+			ret = lwis_platform_update_qos(lwis_dev,
+						       (int)(qos_setting->frequency_hz / 1000),
+						       qos_setting->clock_family);
+			if (ret) {
+				dev_err(lwis_dev->dev,
+					"Failed to vote to qos for clock family %d\n",
+					qos_setting->clock_family);
+			}
 		}
 		break;
 	case CLOCK_FAMILY_TNR:
