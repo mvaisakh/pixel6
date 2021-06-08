@@ -859,8 +859,10 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 			}
 			ret = lwis_client_event_push_back(lwis_client, event);
 			if (ret) {
-				dev_err(lwis_dev->dev, "Failed to push event 0x%llx to queue\n",
-					event_id);
+				dev_err_ratelimited(
+					lwis_dev->dev,
+					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
+					event_id, event_counter);
 				kfree(event);
 				return ret;
 			}
@@ -893,8 +895,9 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 	ret = lwis_device_event_emit_impl(lwis_dev, event_id, payload, payload_size,
 					  &pending_events, in_irq);
 	if (ret) {
-		dev_err(lwis_dev->dev, "lwis_device_event_emit_impl failed: event ID %llx\n",
-			event_id);
+		dev_err_ratelimited(lwis_dev->dev,
+				    "lwis_device_event_emit_impl failed: event ID 0x%llx\n",
+				    event_id);
 		return ret;
 	}
 
@@ -1036,8 +1039,10 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 			event->event_info.payload_size = 0;
 			event->event_info.payload_buffer = NULL;
 			if (lwis_client_event_push_back(lwis_client, event)) {
-				dev_err(lwis_dev->dev, "Failed to push event 0x%llx to queue\n",
-					event_id);
+				dev_err_ratelimited(
+					lwis_dev->dev,
+					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
+					event_id, event_counter);
 				kfree(event);
 				return;
 			}
@@ -1093,8 +1098,9 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 			event->event_info.payload_buffer = NULL;
 		}
 		if (lwis_client_error_event_push_back(lwis_client, event)) {
-			dev_err(lwis_dev->dev, "Failed to push error event 0x%llx to queue\n",
-				event_id);
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Failed to push error event to queue: ID 0x%llx\n",
+					    event_id);
 			kfree(event);
 			return;
 		}
