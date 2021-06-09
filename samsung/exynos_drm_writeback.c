@@ -82,13 +82,16 @@ static void wb_convert_connector_state_to_config(struct dpp_params_info *config,
 				const struct exynos_drm_writeback_state *state)
 {
 	struct drm_framebuffer *fb = state->base.writeback_job->fb;
+	const struct drm_crtc_state *crtc_state = state->base.crtc->state;
 
 	pr_debug("%s +\n", __func__);
 
 	config->src.x = 0;
 	config->src.y = 0;
-	config->src.w = config->src.f_w = fb->width;
-	config->src.h = config->src.f_h = fb->height;
+	config->src.w = crtc_state->mode.hdisplay;
+	config->src.h = crtc_state->mode.vdisplay;
+	config->src.f_w = fb->width;
+	config->src.f_h = fb->height;
 
 	config->comp_type = COMP_TYPE_NONE;
 
@@ -126,12 +129,6 @@ static int writeback_atomic_check(struct drm_encoder *encoder,
 		return 0;
 
 	fb = conn_state->writeback_job->fb;
-	if (fb->width != crtc_state->mode.hdisplay ||
-			fb->height != crtc_state->mode.vdisplay) {
-		pr_err("Invalid framebuffer size %ux%u\n", fb->width,
-				fb->height);
-		return -EINVAL;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(writeback_formats); i++)
 		if (fb->format->format == writeback_formats[i])
