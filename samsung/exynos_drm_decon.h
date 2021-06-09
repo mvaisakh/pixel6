@@ -447,6 +447,14 @@ void DPU_EVENT_LOG_ATOMIC_COMMIT(int index);
 void DPU_EVENT_LOG_CMD(struct dsim_device *dsim, u8 type, u8 d0, u16 len);
 void decon_force_vblank_event(struct decon_device *decon);
 
+#if IS_ENABLED(CONFIG_EXYNOS_BTS)
+void decon_mode_bts_pre_update(struct decon_device *decon,
+				const struct drm_crtc_state *crtc_state);
+#else
+void decon_mode_bts_pre_update(struct decon_device *decon,
+				const struct drm_crtc_state *crtc_state) { }
+#endif
+
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 int dpu_itmon_notifier(struct notifier_block *nb, unsigned long action,
 		void *data);

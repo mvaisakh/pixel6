@@ -310,7 +310,7 @@ static void exynos_atomic_bts_pre_update(struct drm_device *dev,
 {
 	struct decon_device *decon;
 	struct drm_crtc *crtc;
-	const struct drm_crtc_state *new_crtc_state;
+	struct drm_crtc_state *new_crtc_state;
 	struct drm_plane *plane;
 	const struct drm_plane_state *old_plane_state, *new_plane_state;
 	struct dpu_bts_win_config *win_config;
@@ -388,8 +388,7 @@ static void exynos_atomic_bts_pre_update(struct drm_device *dev,
 		}
 
 		DPU_EVENT_LOG_ATOMIC_COMMIT(decon->id);
-		decon->bts.ops->calc_bw(decon);
-		decon->bts.ops->update_bw(decon, false);
+		decon_mode_bts_pre_update(decon, new_crtc_state);
 	}
 }
 

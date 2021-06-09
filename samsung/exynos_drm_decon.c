@@ -706,9 +706,6 @@ static void decon_atomic_flush(struct exynos_drm_crtc *exynos_crtc,
 
 	decon_reg_all_win_shadow_update_req(decon->id);
 
-	if (atomic_add_unless(&decon->bts.delayed_update, -1, 0))
-		decon_mode_update_bts(decon, &new_crtc_state->mode);
-
 	if (new_exynos_crtc_state->seamless_mode_changed)
 		decon_seamless_mode_set(exynos_crtc, old_crtc_state);
 
@@ -807,25 +804,33 @@ static void decon_mode_set(struct exynos_drm_crtc *crtc,
 static void decon_seamless_mode_bts_update(struct decon_device *decon,
 					   const struct drm_display_mode *mode)
 {
+	DPU_ATRACE_BEGIN(__func__);
 	/*
 	 * when going from high->low refresh rate need to run with the higher fps while the
 	 * switch takes effect in display, this could happen within 2 vsyncs in the worst case
 	 */
 	if (decon->bts.fps > drm_mode_vrefresh(mode)) {
 		atomic_set(&decon->bts.delayed_update, 2);
-		return;
+	} else {
+		decon_mode_update_bts(decon, mode);
+		atomic_set(&decon->bts.delayed_update, 0);
 	}
+	DPU_ATRACE_END(__func__);
+}
 
-	decon_mode_update_bts(decon, mode);
-	atomic_set(&decon->bts.delayed_update, 0);
+void decon_mode_bts_pre_update(struct decon_device *decon,
+				const struct drm_crtc_state *crtc_state)
+{
+	const struct exynos_drm_crtc_state *exynos_crtc_state = to_exynos_crtc_state(crtc_state);
+
+	if (exynos_crtc_state->seamless_mode_changed)
+		decon_seamless_mode_bts_update(decon, &crtc_state->adjusted_mode);
+	else if (!atomic_add_unless(&decon->bts.delayed_update, -1, 0))
+		decon_mode_update_bts(decon, &crtc_state->mode);
 
 	decon->bts.ops->calc_bw(decon);
 	decon->bts.ops->update_bw(decon, false);
 }
-#else
-static inline void
-decon_seamless_mode_bts_update(struct decon_device *decon,
-			       const struct drm_display_mode *mode) { }
 #endif
 
 static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
@@ -844,8 +849,6 @@ static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 	adjusted_mode = &crtc_state->adjusted_mode;
 
 	decon_debug(decon, "seamless mode set to %s\n", mode->name);
-
-	decon_seamless_mode_bts_update(decon, adjusted_mode);
 
 	for_each_new_connector_in_state(old_state, conn, conn_state, i) {
 		const struct drm_encoder_helper_funcs *funcs;
