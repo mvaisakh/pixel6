@@ -1257,8 +1257,9 @@ int dpu_init_debug(struct decon_device *decon)
 		goto err_event_log;
 	}
 
-	debugfs_create_file("hibernation", 0664, crtc->debugfs_entry, decon,
-			&hibernation_fops);
+	if (decon->hibernation)
+		debugfs_create_file("hibernation", 0664, crtc->debugfs_entry, decon,
+				&hibernation_fops);
 	debugfs_create_u32("underrun_cnt", 0664, crtc->debugfs_entry, &decon->d.underrun_cnt);
 	debugfs_create_u32("crc_cnt", 0444, crtc->debugfs_entry, &decon->d.crc_cnt);
 	debugfs_create_u32("ecc_cnt", 0444, crtc->debugfs_entry, &decon->d.ecc_cnt);
