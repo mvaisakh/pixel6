@@ -458,6 +458,7 @@ struct p9221_soc_data {
 	int pout_min;
 	int pout_max;
 	int of_freq;
+	int alignment;
 	int vrect;
 	int iout;
 	int die_temp;
@@ -466,16 +467,18 @@ struct p9221_soc_data {
 };
 
 struct p9221_charge_stats {
+	struct mutex stats_lock;
 	ktime_t start_time;
 	struct p9221_soc_data soc_data[WLC_SOC_STATS_LEN];
 	int adapter_type;
 	int cur_soc;
 	int volt_conf;
 	int cur_conf;
-	int mfg_code;
 	int of_freq;
 	int last_soc;
-	struct mutex stats_lock;
+
+	u32 adapter_capabilities[5];
+	u32 receiver_state[2];
 };
 
 struct p9221_charger_feature_entry {

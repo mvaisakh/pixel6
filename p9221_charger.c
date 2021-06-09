@@ -1039,11 +1039,44 @@ static void p9221_charge_stats_init(struct p9221_charge_stats *chg_data)
 	chg_data->cur_soc = -1;
 }
 
+static int p9221_stats_init_capabilities(struct p9221_charger_data *charger)
+{
+	struct p9221_charge_stats *chg_data = &charger->chg_data;
+	const u8 ac_ver = 0;
+	const u8 flags = 0;
+	u8 sys_mode = 0;
+	u16 ptmc_id = 0;
+	int ret = 0;
+
+	ret = p9xxx_chip_get_tx_mfg_code(charger, &ptmc_id);
+	ret |= charger->chip_get_sys_mode(charger, &sys_mode);
+
+	chg_data->adapter_capabilities[0] = flags << 8 | ac_ver;
+	chg_data->adapter_capabilities[1] = ptmc_id;
+
+	chg_data->receiver_state[0] = sys_mode;
+
+	return ret ? -EIO : 0;
+}
+
+static int p9221_stats_update_state(struct p9221_charger_data *charger)
+{
+	struct p9221_charge_stats *chg_data = &charger->chg_data;
+	u8 flags = 0;
+
+	flags |= charger->prop_mode_en << 0;
+	flags |= charger->is_mfg_google << 1;
+	flags |= charger->wlc_dc_enabled << 2;
+
+	chg_data->adapter_capabilities[0] |= flags << 8;
+
+	return 0;
+}
+
 static void p9221_update_head_stats(struct p9221_charger_data *charger)
 {
 	u32 vout_mv, iout_ma;
 	u32 wlc_freq = 0;
-	u16 mfg_code;
 	u8 sys_mode;
 	int ret;
 
@@ -1087,11 +1120,6 @@ static void p9221_update_head_stats(struct p9221_charger_data *charger)
 			vout_mv = 0;
 	}
 	charger->chg_data.volt_conf = vout_mv;
-
-	ret = p9xxx_chip_get_tx_mfg_code(charger, &mfg_code);
-	if (ret)
-		mfg_code = 0;
-	charger->chg_data.mfg_code = (int)mfg_code;
 }
 
 static void p9221_update_soc_stats(struct p9221_charger_data *charger,
@@ -1133,6 +1161,7 @@ static void p9221_update_soc_stats(struct p9221_charger_data *charger,
 	soc_data->sys_mode = sys_mode;
 	soc_data->die_temp = temp;
 	soc_data->of_freq = wlc_freq;
+	soc_data->alignment = charger->alignment;
 
 	cur_pout = vrect_mv * iout_ma;
 	if ((soc_data->pout_min == 0) || (soc_data->pout_min > cur_pout))
@@ -1151,17 +1180,30 @@ static void p9221_update_soc_stats(struct p9221_charger_data *charger,
 static int p9221_chg_data_head_dump(char *buff, int max_size,
 				    const struct p9221_charge_stats *chg_data)
 {
-	return scnprintf(buff, max_size, "A:%d,%d,%d,%d,%d,%d",
+	int len = 0;
+
+	len = scnprintf(&buff[len], max_size - len, "A:%d,%d,%d,%d,%d\n",
 			 chg_data->adapter_type, chg_data->cur_soc,
 			 chg_data->volt_conf, chg_data->cur_conf,
-			 chg_data->mfg_code, chg_data->of_freq);
+			 chg_data->of_freq);
+
+	len += scnprintf(&buff[len], max_size - len, "D:%x,%x,%x,%x,%x, %x,%x",
+			 chg_data->adapter_capabilities[0],
+			 chg_data->adapter_capabilities[1],
+			 chg_data->adapter_capabilities[2],
+			 chg_data->adapter_capabilities[3],
+			 chg_data->adapter_capabilities[4],
+			 chg_data->receiver_state[0],
+			 chg_data->receiver_state[1]);
+
+	return len;
 }
+
 static int p9221_soc_data_dump(char *buff, int max_size,
 			       const struct p9221_charge_stats *chg_data,
 			       int index)
 {
-	return scnprintf(buff, max_size,
-			 "%d:%d,%d,%ld,%d,%d,%d,%d,%d,%d",
+	return scnprintf(buff, max_size, "%d:%d, %d,%ld,%d, %d,%d, %d,%d,%d,%d",
 			 index,
 			 chg_data->soc_data[index].elapsed_time,
 			 chg_data->soc_data[index].pout_min / 100000,
@@ -1169,6 +1211,7 @@ static int p9221_soc_data_dump(char *buff, int max_size,
 			 chg_data->soc_data[index].elapsed_time/ 100000,
 			 chg_data->soc_data[index].pout_max / 100000,
 			 chg_data->soc_data[index].of_freq,
+			 chg_data->soc_data[index].alignment,
 			 chg_data->soc_data[index].vrect,
 			 chg_data->soc_data[index].iout,
 			 chg_data->soc_data[index].die_temp,
@@ -1364,13 +1407,15 @@ static void p9221_charge_stats_work(struct work_struct *work)
 		 * on wlc start. Debounce by 10 seconds.
 		 */
 		p9221_update_head_stats(charger);
+		p9221_stats_init_capabilities(charger);
 		chg_data->start_time = 0;
 	}
+
+	p9221_stats_update_state(charger);
 
 	/* SOC changed, store data to the last one. */
 	if (chg_data->last_soc != charger->last_capacity)
 		p9221_update_soc_stats(charger, chg_data->last_soc);
-
 	/* update currect_soc data */
 	p9221_update_soc_stats(charger, charger->last_capacity);
 
