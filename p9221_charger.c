@@ -71,6 +71,7 @@ static void p9221_charge_stats_init(struct p9221_charge_stats *chg_data);
 static void p9221_dump_charge_stats(struct p9221_charger_data *charger);
 static bool p9221_has_dd(struct p9221_charger_data *charger);
 static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger);
+static int p9221_set_bpp_vout(struct p9221_charger_data *charger);
 
 static char *align_status_str[] = {
 	"...", "M2C", "OK", "-1"
@@ -1857,6 +1858,14 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 	p9221_charge_stats_init(&charger->chg_data);
 	mutex_unlock(&charger->stats_lock);
 
+	if (charger->chip_id == P9222_CHIP_ID) {
+		dev_err(&charger->client->dev, "P9222 change VOUT to 5V\n");
+		ret = p9221_set_bpp_vout(charger);
+		if (ret)
+			dev_err(&charger->client->dev,
+				"cannot change VOUT (%d)\n", ret);
+	}
+
 	ret = p9221_reg_read_8(charger, P9221_CUSTOMER_ID_REG, &cid);
 	if (ret)
 		dev_err(&charger->client->dev, "Could not get ID: %d\n", ret);
@@ -2033,14 +2042,8 @@ static void p9221_notifier_check_dc(struct p9221_charger_data *charger)
 	 * Always write FOD, check dc_icl, send CSP
 	 */
 	if (dc_in) {
-		if (p9221_is_epp(charger)) {
+		if (p9221_is_epp(charger))
 			charger->chip_check_neg_power(charger);
-		} else if (charger->chip_id == P9222_CHIP_ID) {
-			ret = p9221_set_bpp_vout(charger);
-			if (ret)
-				dev_err(&charger->client->dev,
-					"cannot change VOUT (%d)\n", ret);
-		}
 
 		p9221_set_dc_icl(charger);
 		p9221_write_fod(charger);
