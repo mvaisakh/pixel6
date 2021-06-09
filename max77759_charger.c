@@ -1631,6 +1631,8 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	if (uc_data->ext_bst_mode == -EPROBE_DEFER)
 		uc_data->ext_bst_mode = of_get_named_gpio(node, "max77759,extbst-mode", 0);
 
+	if ((uc_data->cpout_en == -EPROBE_DEFER) || (uc_data->cpout_ctl == -EPROBE_DEFER))
+		return false;
 	/* TODO: handle platform specific differences..
 	       uc_data->ls2_en != -EPROBE_DEFER &&
 	       uc_data->lsw1_is_closed != -EPROBE_DEFER &&
