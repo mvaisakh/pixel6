@@ -54,6 +54,14 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 		return -ENOENT;
 	}
 
+	/* b/190270885 : We see some ramdump issues due to dpm qos updates
+	 * when device is disabled. We might disallow to update qos on this case.
+	 */
+	if (target_dev->enabled == 0 && target_dev->type != DEVICE_TYPE_DPM) {
+		dev_warn(target_dev->dev, "%s disabled, no need to update qos\n", target_dev->name);
+		return ret;
+	}
+
 	switch (qos_setting->clock_family) {
 	case CLOCK_FAMILY_MIF:
 	case CLOCK_FAMILY_INT:
