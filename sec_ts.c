@@ -986,6 +986,8 @@ static int sec_ts_read_from_customlib(struct sec_ts_data *ts, u8 *data, int len)
 		input_err(true, &ts->client->dev,
 			"%s: fail to write custom library command\n", __func__);
 
+	usleep_range(100, 100);
+
 	ret = sec_ts_read(ts, SEC_TS_CMD_CUSTOMLIB_READ_PARAM, (u8 *)data, len);
 	if (ret < 0)
 		input_err(true, &ts->client->dev,
