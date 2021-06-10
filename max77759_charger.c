@@ -1038,38 +1038,45 @@ static int gs101_wlctx_otg_en(struct max77759_usecase_data *uc_data, bool enable
 	int ret;
 
 	if (enable) {
-		if (uc_data->sw_en > 0)
+		/* this should be already set */
+		if (uc_data->sw_en >= 0)
 			gpio_set_value_cansleep(uc_data->sw_en, 1);
 
 		ret = max7759_otg_update_ilim(uc_data, true);
 		if (ret < 0)
 			pr_err("%s: cannot update otg_ilim (%d)\n", __func__, ret);
 
+		/* need this to be able to program ->otg_vbyp */
 		ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_18,
-					MAX77759_CHG_CNFG_18_OTG_V_PGM,
-					enable ? MAX77759_CHG_CNFG_18_OTG_V_PGM : 0);
-		if (ret < 0)
+					      MAX77759_CHG_CNFG_18_OTG_V_PGM,
+					      MAX77759_CHG_CNFG_18_OTG_V_PGM);
+		if (ret < 0) {
+			pr_err("%s: cannot set otg_v_pgm (%d)\n", __func__, ret);
 			return ret;
+                }
 
 		ret = max77759_chg_reg_write(uc_data->client, MAX77759_CHG_CNFG_11,
-					uc_data->otg_vbyp);
+					     uc_data->otg_vbyp);
 	} else {
 		/* TODO: Discharge IN/OUT nodes with AO37 should be done in TCPM */
 
 		mdelay(100);
 
-		if (uc_data->sw_en > 0)
-			gpio_set_value_cansleep(uc_data->sw_en, 0);
+		/* "bad things will happen (tm)" if you force off ->sw_en */
 
 		ret = max7759_otg_update_ilim(uc_data, false);
 		if (ret < 0)
-			pr_err("%s: cannot update otg_ilim (%d)\n", __func__, ret);
+			pr_err("%s: cannot restore otg_ilim (%d)\n", __func__, ret);
+
+		/* TODO: restore initial value on !MAX77759_CHG_CNFG_11 */
+
+		ret = max77759_chg_reg_update(uc_data->client, MAX77759_CHG_CNFG_18,
+					      MAX77759_CHG_CNFG_18_OTG_V_PGM, 0);
+		if (ret < 0)
+			pr_err("%s: cannot reset otg_v_pgm (%d)\n", __func__, ret);
 
 		ret = 0;
-		/* TODO: restore initial value on MAX77759_CHG_CNFG_05 */
-		/* TODO: restore initial value on !MAX77759_CHG_CNFG_18 */
-		/* TODO: restore initial value on !MAX77759_CHG_CNFG_11 */
-	}
+        }
 
 	return ret;
 }
@@ -1168,8 +1175,13 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 
 	case GSU_MODE_WLC_TX:
 		/* b/179820595: WLC_TX -> WLC_TX + OTG */
-		if (use_case == GSU_MODE_USB_OTG_WLC_TX)
-			ret = gs101_wlctx_otg_en(uc_data, true);
+		if (use_case == GSU_MODE_USB_OTG_WLC_TX) {
+			ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_OTG_BOOST_ON);
+			if (ret < 0) {
+				pr_err("%s: cannot set CNFG_00 to 0xa ret:%d\n",  __func__, ret);
+				return ret;
+			}
+		}
 	break;
 
 	case GSU_MODE_WLC_RX:
