@@ -1193,10 +1193,9 @@ static int sec_ts_ptflib_reinit(struct sec_ts_data *ts)
 	return 0;
 }
 
-static int sec_ts_ptflib_rle_decoder(struct sec_ts_data *ts,
-				     const u16 *in_array,
-				     const int in_array_size, u16 *out_array,
-				     const int out_array_max_size)
+static int sec_ts_ptflib_decoder(struct sec_ts_data *ts, const u16 *in_array,
+				 const int in_array_size, u16 *out_array,
+				 const int out_array_max_size)
 {
 	const u16 ESCAPE_MASK = 0xF000;
 	const u16 ESCAPE_BIT = 0x8000;
@@ -1205,32 +1204,35 @@ static int sec_ts_ptflib_rle_decoder(struct sec_ts_data *ts,
 	int j;
 	int out_array_size = 0;
 	u16 prev_word = 0;
+	u16 repetition = 0;
 
 	for (i = 0; i < in_array_size; i++) {
 		u16 curr_word = in_array[i];
 		if ((curr_word & ESCAPE_MASK) == ESCAPE_BIT) {
-			u16 repetition = (curr_word & ~ESCAPE_MASK) - 1;
-			if (out_array_size + repetition > out_array_max_size) {
-				input_err(true, &ts->client->dev,
-					  "%s: decoding failed at %d.\n",
-					  __func__, i);
-				return -1;
-			}
+			repetition = (curr_word & ~ESCAPE_MASK) - 1;
+			if (out_array_size + repetition > out_array_max_size)
+				break;
+
 			for (j = 0; j < repetition; j++) {
 				*out_array++ = prev_word;
 				out_array_size++;
 			}
 		} else {
-			if (out_array_size + 1 > out_array_max_size) {
-				input_err(true, &ts->client->dev,
-					  "%s: decoding failed at %d.\n",
-					  __func__, i);
-				return -1;
-			}
+			if (out_array_size >= out_array_max_size)
+				break;
+
 			*out_array++ = curr_word;
 			out_array_size++;
 			prev_word = curr_word;
 		}
+	}
+
+	if (i != in_array_size || out_array_size != out_array_max_size) {
+		input_info(true, &ts->client->dev,
+			   "%s: %d (in=%d, out=%d, rep=%d, out_max=%d).\n",
+			   __func__, i, in_array_size, out_array_size,
+			   repetition, out_array_max_size);
+		return -1;
 	}
 
 	return out_array_size;
@@ -2106,10 +2108,9 @@ static void sec_ts_populate_coordinate_channel(struct sec_ts_data *ts,
 	}
 }
 
-#define PTFLIB_ENCODED_COUNTER_OFFSET_LSB	0xA8
-#define PTFLIB_ENCODED_COUNTER_OFFSET_MSB	0x00
-#define PTFLIB_ENCODED_DATA_OFFSET_LSB		0xAE
-#define PTFLIB_ENCODED_DATA_OFFSET_MSB		0x00
+#define PTFLIB_ENCODED_COUNTER_OFFSET		0x00A8
+#define PTFLIB_ENCODED_COUNTER_READ_SIZE	6
+#define PTFLIB_ENCODED_DATA_READ_SIZE		338
 static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
 					   struct touch_offload_frame *frame,
 					   int channel)
@@ -2117,12 +2118,17 @@ static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
 	u32 heatmap_array_len = 0;
 	u32 decoded_size = 0;
 	u32 encoded_counter = 0;
-	u8 r_data[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	u16 read_src_offset = 0;
+	int read_src_size = 0;
+	u8 *r_data;
 	u16 encoded_data_size = 0;
+	u16 first_word = 0;
 	int i;
 	int x;
 	int y;
 	int ret = 0;
+	ktime_t timestamp_read_start;
+	ktime_t timestamp_read_end;
 	struct TouchOffloadData2d *mutual_strength =
 		(struct TouchOffloadData2d *)frame->channel_data[channel];
 
@@ -2132,75 +2138,71 @@ static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
 	mutual_strength->header.channel_size =
 		TOUCH_OFFLOAD_FRAME_SIZE_2D(mutual_strength->rx_size,
 					    mutual_strength->tx_size);
-
-	r_data[0] = PTFLIB_ENCODED_COUNTER_OFFSET_LSB;
-	r_data[1] = PTFLIB_ENCODED_COUNTER_OFFSET_MSB;
-	ret = sec_ts_read_from_customlib(ts, r_data, sizeof(r_data));
-	if (ret < 0) {
-		input_err(true, &ts->client->dev,
-			"%s: Read customlib's data size failed\n",
-				__func__);
-		return -EIO;
-	}
-
-	heatmap_array_len = mutual_strength->tx_size * mutual_strength->rx_size;
-	encoded_counter = le32_to_cpup((uint32_t *) r_data);
-	encoded_data_size = le16_to_cpup((uint16_t *) &r_data[4]);
-
-	if (encoded_counter == 0 || encoded_data_size == 0 ||
-	    encoded_data_size > heatmap_array_len * 2) {
-		if (ts->plat_data->encoded_read_fails < 20) {
-			ts->plat_data->encoded_read_fails++;
-			input_err(true, &ts->client->dev,
-				  "%s: Invalid encoded data size %d (%d)\n",
-				  __func__, encoded_data_size, encoded_counter);
-		}
-		return -EIO;
-	}
+	heatmap_array_len = ts->tx_count * ts->rx_count;
 
 	if (!ts->encoded_buff) {
-		ts->encoded_buff = kmalloc(heatmap_array_len * 2, GFP_KERNEL);
+		ts->encoded_buff = kmalloc(
+		    heatmap_array_len * 2 + PTFLIB_ENCODED_COUNTER_READ_SIZE,
+		    GFP_KERNEL);
 		if (!ts->encoded_buff) {
 			input_err(true, &ts->client->dev,
 				  "%s: kmalloc for encoded_buff failed.\n",
 				  __func__);
 			return -ENOMEM;
-		} else {
-			input_info(true, &ts->client->dev,
-				   "%s: kmalloc for encoded_buff was successful.\n",
-				   __func__);
 		}
 	}
 
 	/* Read encoded heatmap from customlib. */
-	*((u8 *) ts->encoded_buff) = PTFLIB_ENCODED_DATA_OFFSET_LSB;
-	*(((u8 *) ts->encoded_buff) + 1) = PTFLIB_ENCODED_DATA_OFFSET_MSB;
-	ret = sec_ts_read_from_customlib(ts, (u8 *) ts->encoded_buff,
-					 encoded_data_size);
+	read_src_offset = PTFLIB_ENCODED_COUNTER_OFFSET;
+	read_src_size = PTFLIB_ENCODED_COUNTER_READ_SIZE +
+	    PTFLIB_ENCODED_DATA_READ_SIZE;
+	r_data = (u8 *) ts->encoded_buff;
+	r_data[0] = read_src_offset & 0xFF;
+	r_data[1] = (read_src_offset >> 8) & 0xFF;
+	timestamp_read_start = ktime_get();
+	ret = sec_ts_read_from_customlib(ts, r_data, read_src_size);
 	if (ret < 0) {
 		input_err(true, &ts->client->dev,
-			  "%s: Read encoded data (size=%d) failed.\n",
-			  __func__, encoded_data_size);
+			  "%s: Read customlib failed, offset(0x%04X)) size(%d)\n",
+			  __func__, read_src_offset, read_src_size);
 		return -EIO;
 	}
+	timestamp_read_end = ktime_get();
 
-	decoded_size = sec_ts_ptflib_rle_decoder(
-	    ts, (u16 *) ts->encoded_buff, encoded_data_size / 2,
-	    (u16 *) ts->heatmap_buff, heatmap_array_len);
+	encoded_counter = le32_to_cpup((uint32_t *) r_data);
+	encoded_data_size = le16_to_cpup((uint16_t *) &r_data[4]);
+	first_word = le16_to_cpup((uint16_t *) &r_data[6]);
+
+	if (encoded_counter == 0 || encoded_data_size == 0 ||
+	    first_word == 0x8FFF ||
+	    encoded_data_size > PTFLIB_ENCODED_DATA_READ_SIZE) {
+		decoded_size = 0;
+	} else {
+		decoded_size = sec_ts_ptflib_decoder(ts, (u16 *) (r_data + 6),
+						     encoded_data_size / 2,
+						     (u16 *) ts->heatmap_buff,
+						     heatmap_array_len);
+	}
+
+	ts->plat_data->encoded_frame_counter++;
 	if (decoded_size != heatmap_array_len) {
+		ts->plat_data->encoded_skip_counter++;
 		input_info(true, &ts->client->dev,
-			   "%s: Decoding data failed (decoded_size=%d).",
-			   __func__, decoded_size);
+			  "%s: %d (%d,0x%04X,0x%04X,%d) ts(%lld,%lld)\n",
+			  __func__, encoded_counter,
+			  encoded_data_size & 0x0FFF, encoded_data_size,
+			  first_word, decoded_size,
+			  ktime_us_delta(timestamp_read_start, ts->timestamp),
+			  ktime_us_delta(timestamp_read_end,
+					 timestamp_read_start));
 		return -EIO;
 	}
 
 	i = 0;
-	for (y = mutual_strength->rx_size - 1; y >= 0; y--) {
-		for (x = mutual_strength->tx_size - 1; x >= 0; x--) {
+	for (y = mutual_strength->rx_size - 1; y >= 0; y--)
+		for (x = mutual_strength->tx_size - 1; x >= 0; x--)
 			((uint16_t *) mutual_strength->data)[i++] =
 			    ts->heatmap_buff[x * mutual_strength->rx_size + y];
-		}
-	}
 
 	return 0;
 }
@@ -3538,7 +3540,8 @@ static int sec_ts_parse_dt(struct spi_device *client)
 		pdata->encoded_enable = 0;
 
 	pdata->is_heatmap_enabled = false;
-	pdata->encoded_read_fails = 0;
+	pdata->encoded_frame_counter = 0;
+	pdata->encoded_skip_counter = 0;
 
 	if (of_property_read_u32(np, "sec,heatmap_mode",
 		&pdata->heatmap_mode) < 0)
@@ -5127,6 +5130,9 @@ static void sec_ts_suspend_work(struct work_struct *work)
 	int ret = 0;
 
 	input_info(true, &ts->client->dev, "%s\n", __func__);
+	input_info(true, &ts->client->dev, "%s: encoded skipped %d/%d\n",
+		   __func__, ts->plat_data->encoded_skip_counter,
+		   ts->plat_data->encoded_frame_counter);
 
 	mutex_lock(&ts->device_mutex);
 
@@ -5220,7 +5226,8 @@ static void sec_ts_resume_work(struct work_struct *work)
 	sec_ts_set_grip_type(ts, ONLY_EDGE_HANDLER);
 
 	ts->plat_data->is_heatmap_enabled = false;
-	ts->plat_data->encoded_read_fails = 0;
+	ts->plat_data->encoded_frame_counter = 0;
+	ts->plat_data->encoded_skip_counter = 0;
 
 	if (ts->dex_mode) {
 		input_info(true, &ts->client->dev, "%s: set dex mode.\n",

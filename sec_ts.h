@@ -1122,7 +1122,8 @@ struct sec_ts_plat_data {
 	int heatmap_mode;
 	bool is_heatmap_enabled;
 	int encoded_enable;
-	int encoded_read_fails;
+	int encoded_frame_counter;
+	int encoded_skip_counter;
 #ifdef PAT_CONTROL
 	int pat_function;
 	int afe_base;
