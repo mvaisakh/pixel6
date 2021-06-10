@@ -284,6 +284,11 @@ static int gcpm_chg_online(struct gcpm_drv *gcpm, struct power_supply *chg_psy)
 	bool preset_ok = true;
 	int ret;
 
+	if (!gcpm) {
+		pr_err("%s: invalid charger\n", __func__);
+		return -EINVAL;
+	}
+
 	/* preset the new charger */
 	ret = gcpm_chg_preset(chg_psy, gcpm->fv_uv, gcpm->cc_max);
 	if (ret < 0)
@@ -858,7 +863,7 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	mutex_unlock(&gcpm->chg_psy_lock);
 }
 
-static int gcpm_start_default(struct gcpm_drv *gcpm)
+static int gcpm_enable_default(struct gcpm_drv *gcpm)
 {
 	struct power_supply *chg_psy = gcpm_chg_get_default(gcpm);
 	int ret;
@@ -881,9 +886,14 @@ static int gcpm_start_default(struct gcpm_drv *gcpm)
 	return 0;
 }
 
+/* online the default charger (do not change active, nor enable) */
+static int gcpm_online_default(struct gcpm_drv *gcpm)
+{
+	return gcpm_chg_online(gcpm, gcpm_chg_get_default(gcpm));
+}
+
 static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 {
-	struct power_supply *chg_psy = gcpm_chg_get_default(gcpm);
 	const int active_index = gcpm->chg_psy_active; /* will change */
 	const int dc_state = gcpm->dc_state; /* will change */
 	int pps_done, ret;
@@ -892,7 +902,7 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 		return 0;
 
 	/* online the default charger (do not change active, nor enable) */
-	ret = gcpm_chg_online(gcpm, chg_psy);
+	ret = gcpm_online_default(gcpm);
 	if (ret < 0)
 		pr_warn("%s: Cannot online default (%d)", __func__, ret);
 
@@ -910,7 +920,7 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 		pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
 			__func__, gcpm->dc_state, pps_done);
 
-	ret = gcpm_start_default(gcpm);
+	ret = gcpm_enable_default(gcpm);
 	if (ret < 0) {
 		pr_err("%s: fail 2 restart default, dc_state=%d pps_done=%d (%d)\n",
 		       __func__, gcpm->dc_state, pps_done >= 0 ? : pps_done, ret);
@@ -1017,7 +1027,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 
 			ret = gcpm_chg_offline(gcpm, gcpm->dc_index);
 			if (ret == 0)
-				ret = gcpm_start_default(gcpm);
+				ret = gcpm_enable_default(gcpm);
 			if (ret < 0) {
 				pr_err("PPS_Work: cannot online default %d\n", ret);
 				pps_ui = DC_ERROR_RETRY_MS;
@@ -1160,14 +1170,34 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	/* also route to the active charger */
 	case GBMS_PROP_CHARGE_DISABLE:
 		/*
-		 * google_charger send this on disconnect.
+		 * google_charger send this on disconnect and on input_suspend
 		 * TODO: reset DC state and PPS detection, disable dc
 		 */
-		pr_info("%s: ChargeDisable value=%d\n", __func__, pval->intval);
-		if (pval->intval && gcpm->dc_state == DC_DISABLED)
-			gcpm->dc_state = DC_IDLE;
+               pr_info("%s: ChargeDisable value=%d dc_index=%d dc_state=%d\n",
+                       __func__, pval->intval, gcpm->dc_index, gcpm->dc_state);
+		if (pval->intval) {
+			/* default is disabled when DC is running */
+			ret = gcpm_dc_stop(gcpm,  gcpm->chg_psy_active);
+			if (ret == -EAGAIN)
+				return -EAGAIN;
+			ret = gcpm_pps_offline(gcpm);
+			if (ret < 0)
+				pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
+					__func__, gcpm->dc_state, ret);
+			/* no-op if dc was NOT running */
+			ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
+			if (ret < 0)
+				pr_err("%s: cannot start default (%d)\n",
+				       __func__, ret);
 
-		ta_check = true;
+			/* route = true -> route call to active */
+		} else if (gcpm->dc_state != DC_IDLE) {
+			/* always restart with default */
+			gcpm->dc_state = DC_IDLE;
+			gcpm_pps_online(gcpm);
+			ta_check = true;
+		}
+
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		ta_check = true;
@@ -1560,7 +1590,7 @@ static void gcpm_init_work(struct work_struct *work)
 		if (ret < 0)
 			pr_err("%s: no ps notifier, ret=%d\n", __func__, ret);
 
-		ret = gcpm_start_default(gcpm);
+		ret = gcpm_enable_default(gcpm);
 		if (ret < 0)
 			pr_err("%s: default %s not online, ret=%d\n", __func__,
 			       gcpm_psy_name(def_psy), ret);
