@@ -583,6 +583,8 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 			pr_warn("decon%u framestart timeout (%d fps)\n",
 					decon->id, fps);
 			decon_dump_all(decon);
+
+			decon_force_vblank_event(decon);
 		}
 		DPU_ATRACE_END("wait_for_crtc_flip");
 

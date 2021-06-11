@@ -595,6 +595,15 @@ static void decon_send_vblank_event_locked(struct decon_device *decon)
 	decon->event = NULL;
 }
 
+void decon_force_vblank_event(struct decon_device *decon)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&decon->slock, flags);
+	decon_send_vblank_event_locked(decon);
+	spin_unlock_irqrestore(&decon->slock, flags);
+}
+
 static void decon_arm_event_locked(struct exynos_drm_crtc *exynos_crtc)
 {
 	struct drm_crtc *crtc = &exynos_crtc->base;
