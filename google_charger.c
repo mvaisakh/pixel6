@@ -3038,7 +3038,8 @@ msc_done:
 	return 0;
 }
 
-/* NOTE: we need a single source of truth. Charging can be disabled via the
+/*
+ * NOTE: we need a single source of truth. Charging can be disabled via the
  * votable and directy setting the property.
  */
 static int msc_chg_disable_cb(struct votable *votable, void *data,
@@ -3050,8 +3051,7 @@ static int msc_chg_disable_cb(struct votable *votable, void *data,
 	if (!chg_drv->chg_psy)
 		return 0;
 
-	rc = GPSY_SET_PROP(chg_drv->chg_psy,
-			GBMS_PROP_CHARGE_DISABLE, chg_disable);
+	rc = GPSY_SET_PROP(chg_drv->chg_psy, GBMS_PROP_CHARGE_DISABLE, chg_disable);
 	if (rc < 0) {
 		dev_err(chg_drv->device, "Couldn't %s charging rc=%d\n",
 				chg_disable ? "disable" : "enable", rc);
