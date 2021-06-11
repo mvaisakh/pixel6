@@ -19,7 +19,7 @@
 #include "lwis_util.h"
 
 /* Maximum number of pending events in the event queues */
-#define MAX_NUM_PENDING_EVENTS 64
+#define MAX_NUM_PENDING_EVENTS 256
 
 /*
  * lwis_client_event_state_find_locked: Looks through the provided client's
