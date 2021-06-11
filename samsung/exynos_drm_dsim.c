@@ -2444,7 +2444,7 @@ static int dsim_resume(struct device *dev)
 
 static const struct dev_pm_ops dsim_pm_ops = {
 	SET_RUNTIME_PM_OPS(dsim_runtime_suspend, dsim_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(dsim_suspend, dsim_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(dsim_suspend, dsim_resume)
 };
 
 struct platform_driver dsim_driver = {
