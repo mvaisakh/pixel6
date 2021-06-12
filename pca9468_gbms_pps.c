@@ -521,8 +521,9 @@ int pca9468_get_status(struct pca9468_charger *pca9468)
 	case DC_STATE_START_CV:
 	case DC_STATE_CV_MODE:
 		return POWER_SUPPLY_STATUS_CHARGING;
+	/* cpm will need to stop it */
 	case DC_STATE_CHARGING_DONE:
-		return POWER_SUPPLY_STATUS_FULL;
+		return POWER_SUPPLY_STATUS_CHARGING;
 	default:
 		break;
 	}

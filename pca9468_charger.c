@@ -1939,8 +1939,8 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468, int iin)
 		return 0;
 	}
 
-	pr_debug("%s: iin=%d, new_iin=%d state=%d\n", __func__,
-		 iin, pca9468->new_iin, pca9468->charging_state);
+	pr_debug("%s: new_iin=%d->%d state=%d\n", __func__,
+		 pca9468->new_iin, iin, pca9468->charging_state);
 
 	/* same as previous request nevermind */
 	if (pca9468->iin_cc == pca9468->new_iin)
@@ -2672,13 +2672,37 @@ error_exit:
 	return ret;
 }
 
+static int pca9468_check_eoc(struct pca9468_charger *pca9468)
+{
+	const int eoc_tolerance = 25000; /* 25mV under max float voltage */
+	const int vlimit = PCA9468_COMP_VFLOAT_MAX - eoc_tolerance;
+	int iin, vbat;
+
+	iin = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (iin < 0) {
+		pr_err("%s: iin=%d\n", __func__, iin);
+		return iin;
+	}
+
+	vbat = pca9468_read_adc(pca9468, ADCCH_VBAT);
+	if (vbat < 0) {
+		pr_err("%s: vbat=%d\n", __func__, vbat);
+		return vbat;
+	}
+
+	pr_debug("%s: iin=%d, topoff=%u, vbat=%d vlimit=%d\n", __func__,
+		 iin, pca9468->pdata->iin_topoff,
+		 vbat, vlimit);
+
+	return iin < pca9468->pdata->iin_topoff && vbat >= vlimit;
+}
+
 /* 2:1 Direct Charging CV MODE control */
 static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 {
 	int ret = 0;
 	int cvmode;
 	int vin_vol;
-	int iin = 0;
 
 	pr_debug("%s: ======START=======\n", __func__);
 
@@ -2708,47 +2732,35 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 		goto error_exit;
 	}
 
-	/* TODO: move to check cvmode_status */
 	if (cvmode == STS_MODE_LOOP_INACTIVE) {
-		/* Read IIN_ADC */
-		iin = pca9468_read_adc(pca9468, ADCCH_IIN);
-		pr_debug("%s: iin=%d, iin_topoff=%u\n", __func__, iin,
-			 pca9468->pdata->iin_topoff);
-		if (iin < 0)
+		ret = pca9468_check_eoc(pca9468);
+		if (ret < 0)
 			goto error_exit;
-
-		/* Compare iin with input topoff current */
-		if (iin < pca9468->pdata->iin_topoff) {
-			/* Change cvmode status to charging done */
+		if (ret)
 			cvmode = STS_MODE_CHG_DONE;
-			pr_debug("%s: CVMODE Status=%d\n", __func__, cvmode);
-		}
 	}
 
 	switch(cvmode) {
-	case STS_MODE_CHG_DONE:
-		/* Charging Done */
+	case STS_MODE_CHG_DONE: {
+		const bool done_already = pca9468->charging_state ==
+					  DC_STATE_CHARGING_DONE;
+
 		/* Keep CV mode until driver send stop charging */
 		pca9468->charging_state = DC_STATE_CHARGING_DONE;
 		power_supply_changed(pca9468->mains);
 
-		/* Need to implement notification function */
-		/* TODO: notify DONE charger here */
-
-		pr_debug("%s: CV Done\n", __func__);
-
+		/* _cpm already came in */
 		if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
-			/* notification function called stop */
 			pr_debug("%s: Already stop DC\n", __func__);
 			break;
 		}
 
-		/* Notification function does not stop timer work yet */
-		/* Keep the charging done state */
-		/* Set timer */
+		pr_debug("%s: done_already=%d charge Done\n", __func__,
+			 done_already);
+
 		pca9468->timer_id = TIMER_CHECK_CVMODE;
 		pca9468->timer_period = PCA9468_CVMODE_CHECK_T;
-		break;
+	} break;
 
 	case STS_MODE_CHG_LOOP:
 	case STS_MODE_IIN_LOOP:
@@ -3365,7 +3377,6 @@ static void pca9468_timer_work(struct work_struct *work)
 		break;
 	}
 
-
 	/* Check the charging state again */
 	if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
 		cancel_delayed_work(&pca9468->timer_work);
@@ -3734,6 +3745,14 @@ static int pca9468_set_charging_enabled(struct pca9468_charger *pca9468, int ind
 	if (index < 0 || index >= PPS_INDEX_MAX)
 		return -EINVAL;
 
+	/* Done is detected in CV when iin goes UNDER topoff. */
+	if (pca9468->charging_state == DC_STATE_CHARGING_DONE)
+		index = 0;
+
+	pr_debug("%s: pps_idx=%d->%d charging_state=%d timer_id=%d\n",
+		 __func__, pca9468->pps_index, index, pca9468->charging_state,
+		 pca9468->timer_id);
+
 	if (index == 0) {
 		/* this is the same as stop charging */
 		pca9468->pps_index = 0;
@@ -3767,10 +3786,6 @@ static int pca9468_set_charging_enabled(struct pca9468_charger *pca9468, int ind
 
 		/* Set the initial charging step */
 		power_supply_changed(pca9468->mains);
-	} else {
-		pr_debug("%s: ping pps_idx=%d charging_state=%d timer_id=%d\n",
-			 __func__, pca9468->pps_index, pca9468->charging_state,
-			 pca9468->timer_id);
 	}
 
 	return 0;
