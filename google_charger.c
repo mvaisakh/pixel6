@@ -3525,8 +3525,10 @@ static int chg_set_wlc_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 		chg_drv->dc_fcc_votable = find_votable("DC_FCC");
 
 		/* HACK: fallback to FCC */
-		if (!chg_drv->dc_fcc_votable)
+		if (!chg_drv->dc_fcc_votable) {
 			chg_drv->dc_fcc_votable = chg_drv->msc_fcc_votable;
+			pr_warn("%s: DC_FCC uses msc_fcc votable\n", __func__);
+		}
 	}
 
 	/* dc_fcc == -1 on level 0 */

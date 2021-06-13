@@ -314,6 +314,8 @@ static int pps_prog_online(struct pd_pps_data *pps,
 	int ret;
 
 	ret = power_supply_set_property(tcpm_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
+	pr_debug("%s: name=%s ret=%d\n", __func__, pps_name(tcpm_psy), ret);
+
 	if (ret == -EOPNOTSUPP) {
 		pps->stage = PPS_NOTSUPP;
 	} else if (ret == 0) {
