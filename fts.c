@@ -131,6 +131,8 @@ void release_all_touches(struct fts_ts_info *info)
 	unsigned int type = MT_TOOL_FINGER;
 	int i;
 
+	mutex_lock(&info->input_report_mutex);
+
 	for (i = 0; i < TOUCH_ID_MAX; i++) {
 #ifdef STYLUS_MODE
 		if (test_bit(i, &info->stylus_id))
@@ -151,6 +153,9 @@ void release_all_touches(struct fts_ts_info *info)
 	}
 	input_report_key(info->input_dev, BTN_TOUCH, 0);
 	input_sync(info->input_dev);
+
+	mutex_unlock(&info->input_report_mutex);
+
 	info->touch_id = 0;
 	info->palm_touch_mask = 0;
 	info->grip_touch_mask = 0;
@@ -158,7 +163,6 @@ void release_all_touches(struct fts_ts_info *info)
 	info->stylus_id = 0;
 #endif
 }
-
 
 /**
   * @defgroup file_nodes Driver File Nodes
@@ -2955,6 +2959,8 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 	if (!info->resume_bit)
 		goto no_report;
 
+	mutex_lock(&info->input_report_mutex);
+
 	touchType = event[1] & 0x0F;
 	touchId = (event[1] & 0xF0) >> 4;
 
@@ -3039,6 +3045,7 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 		break;
 
 	default:
+		mutex_unlock(&info->input_report_mutex);
 		dev_err(info->dev, "%s : Invalid touch type = %d ! No Report...\n",
 			__func__, touchType);
 		goto no_report;
@@ -3083,6 +3090,7 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 	/* dev_info(info->dev, "%s :  Event 0x%02x - ID[%d], (x, y) = (%3d, %3d)
 	 * Size = %d\n",
 	 *	__func__, *event, touchId, x, y, touchType); */
+	mutex_unlock(&info->input_report_mutex);
 
 	return true;
 no_report:
@@ -3099,6 +3107,8 @@ static bool fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 	unsigned char touchId;
 	unsigned int tool = MT_TOOL_FINGER;
 	u8 touchType;
+
+	mutex_lock(&info->input_report_mutex);
 
 	touchType = event[1] & 0x0F;
 	touchId = (event[1] & 0xF0) >> 4;
@@ -3132,6 +3142,7 @@ static bool fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 		break;
 
 	default:
+		mutex_unlock(&info->input_report_mutex);
 		dev_err(info->dev, "%s : Invalid touch type = %d ! No Report...\n",
 			__func__, touchType);
 		return false;
@@ -3150,6 +3161,8 @@ static bool fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	}
 #endif
+
+	mutex_unlock(&info->input_report_mutex);
 
 	return true;
 }
@@ -4310,11 +4323,12 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	if (!info->offload.offload_running) {
 #endif
-
+	mutex_lock(&info->input_report_mutex);
 	if (info->touch_id == 0)
 		input_report_key(info->input_dev, BTN_TOUCH, 0);
 
 	input_sync(info->input_dev);
+	mutex_unlock(&info->input_report_mutex);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	}
@@ -4368,6 +4382,8 @@ static void fts_offload_report(void *handle,
 	bool touch_down = 0;
 	int i;
 
+	mutex_lock(&info->input_report_mutex);
+
 	input_set_timestamp(info->input_dev, report->timestamp);
 
 	for (i = 0; i < MAX_COORDS; i++) {
@@ -4409,6 +4425,8 @@ static void fts_offload_report(void *handle,
 	input_report_key(info->input_dev, BTN_TOUCH, touch_down);
 
 	input_sync(info->input_dev);
+
+	mutex_unlock(&info->input_report_mutex);
 }
 #endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
 
@@ -6307,7 +6325,7 @@ static int fts_probe(struct spi_device *client)
 
 	mutex_init(&info->diag_cmd_lock);
 
-	mutex_init(&(info->input_report_mutex));
+	mutex_init(&info->input_report_mutex);
 	mutex_init(&info->bus_mutex);
 	mutex_init(&info->io_mutex);
 
