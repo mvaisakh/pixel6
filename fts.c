@@ -4036,16 +4036,31 @@ static int update_motion_filter(struct fts_ts_info *info)
 
 int fts_enable_grip(struct fts_ts_info *info, bool enable)
 {
-	static uint8_t enable_cmd[] = {
+	uint8_t enable_cmd[] = {
 		0xC0, 0x03, 0x10, 0xFF, 0x03, 0x00, 0x00, 0x00, 0x00};
-	static uint8_t disable_cmd[] = {
+	uint8_t disable_cmd[] = {
 		0xC0, 0x03, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t left_size_cmd[] =
+		{0xC0, 0x03, 0x20, 0x00/* unit: px */, 0x00, 0x00, 0x00, 0x5F, 0x09};
+	uint8_t right_size_cmd[] =
+		{0xC0, 0x03, 0x21, 0x00/* unit: px */, 0x00, 0x00, 0x00, 0x5F, 0x09};
 	int res;
 
-	if (enable)
+	if (enable) {
+		if (info->board->fw_grip_area) {
+			left_size_cmd[3] = info->board->fw_grip_area;
+			right_size_cmd[3] = info->board->fw_grip_area;
+			res = fts_write(info, left_size_cmd, sizeof(left_size_cmd));
+			res = fts_write(info, right_size_cmd, sizeof(right_size_cmd));
+		}
 		res = fts_write(info, enable_cmd, sizeof(enable_cmd));
-	else
+	} else {
+		if (info->board->fw_grip_area) {
+			res = fts_write(info, left_size_cmd, sizeof(left_size_cmd));
+			res = fts_write(info, right_size_cmd, sizeof(right_size_cmd));
+		}
 		res = fts_write(info, disable_cmd, sizeof(disable_cmd));
+	}
 	if (res < 0)
 		dev_err(info->dev, "%s: fts_write failed with res=%d.\n",
 			__func__, res);
@@ -6096,6 +6111,10 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	if(!bdata->device_name)
 		bdata->device_name = FTS_TS_DRV_NAME;
 	dev_info(dev, "device_name = %s\n", bdata->device_name);
+
+	if (of_property_read_u8(np, "st,grip_area", &bdata->fw_grip_area))
+		bdata->fw_grip_area = 0;
+	dev_info(dev, "Firmware grip area = %u\n", bdata->fw_grip_area);
 
 	return OK;
 }

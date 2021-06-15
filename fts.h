@@ -318,6 +318,7 @@ struct fts_hw_platform_data {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 	u32 offload_id;
 #endif
+	u8 fw_grip_area;
 };
 
 /* Bits for the bus reference mask */
