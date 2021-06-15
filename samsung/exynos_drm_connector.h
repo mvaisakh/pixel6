@@ -31,6 +31,7 @@ struct exynos_drm_connector_properties {
 	struct drm_property *brightness_capability;
 	struct drm_property *brightness_level;
 	struct drm_property *is_partial;
+	struct drm_property *sync_rr_switch;
 };
 
 struct exynos_display_dsc {
@@ -129,6 +130,12 @@ struct exynos_drm_connector_state {
 	 * @partial: Specify whether this panel supports partial update feature.
 	 */
 	struct exynos_display_partial partial;
+
+	/*
+	 * @sync_rr_switch: Indicating if the refresh rate switch command and the
+	 *		    frame scanout should happen in the same vsync period.
+	 */
+	bool sync_rr_switch;
 };
 
 #define to_exynos_connector_state(connector_state) \

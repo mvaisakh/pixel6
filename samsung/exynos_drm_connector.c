@@ -191,6 +191,11 @@ static int exynos_drm_connector_create_brightness_properties(struct drm_device *
 		return -ENOMEM;
 	p->brightness_level = prop;
 
+	prop = drm_property_create_bool(dev, 0, "sync_rr_switch");
+	if (!prop)
+		return -ENOMEM;
+	p->sync_rr_switch = prop;
+
 	return 0;
 }
 
