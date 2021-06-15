@@ -1120,6 +1120,7 @@ struct sec_ts_plat_data {
 	int bringup;
 	int mis_cal_check;
 	int heatmap_mode;
+	bool is_heatmap_enabled;
 	int encoded_enable;
 	int encoded_read_fails;
 #ifdef PAT_CONTROL

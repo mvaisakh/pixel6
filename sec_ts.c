@@ -1438,7 +1438,7 @@ static void update_motion_filter(struct sec_ts_data *ts)
 static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 {
 	struct sec_ts_data *ts = container_of(v4l2, struct sec_ts_data, v4l2);
-	const struct sec_ts_plat_data *pdata = ts->plat_data;
+	struct sec_ts_plat_data *pdata = ts->plat_data;
 	int result;
 	int max_x = v4l2->format.width;
 	int max_y = v4l2->format.height;
@@ -1461,30 +1461,38 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 		u8 enable;
 		struct heatmap_report report = {0};
 
-		result = sec_ts_read(ts,
-			SEC_TS_CMD_HEATMAP_ENABLE, &enable, 1);
-		if (result < 0) {
-			input_err(true, &ts->client->dev,
-				 "%s: read reg %#x failed, returned %i\n",
-				__func__, SEC_TS_CMD_HEATMAP_ENABLE, result);
-			return false;
-		}
-
-		if (!enable) {
-			enable = 1;
-			result = sec_ts_write(ts,
+		if (!pdata->is_heatmap_enabled) {
+			result = sec_ts_read(ts,
 				SEC_TS_CMD_HEATMAP_ENABLE, &enable, 1);
-			if (result < 0)
+			if (result < 0) {
 				input_err(true, &ts->client->dev,
-					"%s: enable local heatmap failed, returned %i\n",
-					__func__, result);
-			/*
-			 * After local heatmap enabled, it takes `1/SCAN_RATE`
-			 * time to make data ready. But, we don't want to wait
-			 * here to cause overhead. Just drop this and wait for
-			 * next reading.
-			 */
-			return false;
+					  "%s: read reg %#x failed, returned %i\n",
+					  __func__,
+					  SEC_TS_CMD_HEATMAP_ENABLE, result);
+				return false;
+			}
+
+			if (!enable) {
+				enable = 1;
+				result = sec_ts_write(ts,
+					SEC_TS_CMD_HEATMAP_ENABLE, &enable, 1);
+				if (result < 0)
+					input_err(true, &ts->client->dev,
+						"%s: enable local heatmap failed, returned %i\n",
+						__func__, result);
+				else
+					pdata->is_heatmap_enabled = true;
+				/*
+				 * After local heatmap enabled, it takes
+				 * `1/SCAN_RATE` time to make data ready. But,
+				 * we don't want to wait here to cause
+				 * overhead. Just drop this and wait for next
+				 * reading.
+				 */
+				return false;
+			} else {
+				ts->plat_data->is_heatmap_enabled = true;
+			}
 		}
 
 		result = sec_ts_read(ts, SEC_TS_CMD_HEATMAP_READ,
@@ -3529,6 +3537,7 @@ static int sec_ts_parse_dt(struct spi_device *client)
 		&pdata->encoded_enable) < 0)
 		pdata->encoded_enable = 0;
 
+	pdata->is_heatmap_enabled = false;
 	pdata->encoded_read_fails = 0;
 
 	if (of_property_read_u32(np, "sec,heatmap_mode",
@@ -4513,6 +4522,7 @@ static void sec_ts_reset_work(struct work_struct *work)
 	sec_ts_start_device(ts);
 
 	ts->reset_is_on_going = false;
+	ts->plat_data->is_heatmap_enabled = false;
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_RESET, false);
 }
@@ -5209,6 +5219,7 @@ static void sec_ts_resume_work(struct work_struct *work)
 
 	sec_ts_set_grip_type(ts, ONLY_EDGE_HANDLER);
 
+	ts->plat_data->is_heatmap_enabled = false;
 	ts->plat_data->encoded_read_fails = 0;
 
 	if (ts->dex_mode) {
