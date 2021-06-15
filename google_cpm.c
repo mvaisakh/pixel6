@@ -1178,8 +1178,10 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 		if (pval->intval) {
 			/* default is disabled when DC is running */
 			ret = gcpm_dc_stop(gcpm,  gcpm->chg_psy_active);
-			if (ret == -EAGAIN)
+			if (ret == -EAGAIN) {
+				mutex_unlock(&gcpm->chg_psy_lock);
 				return -EAGAIN;
+			}
 			ret = gcpm_pps_offline(gcpm);
 			if (ret < 0)
 				pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
