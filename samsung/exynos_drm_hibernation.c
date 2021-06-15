@@ -320,7 +320,11 @@ int exynos_hibernation_suspend(struct exynos_hibernation *hiber)
 	if (!hiber)
 		return 0;
 
+	/* cancel any scheduled delayed work, do it synchronously instead */
 	kthread_cancel_delayed_work_sync(&hiber->dwork);
+
+	/* make sure all work is complete (including async commits) */
+	kthread_flush_worker(&hiber->decon->worker);
 
 	return _exynos_hibernation_run(hiber, false);
 }
