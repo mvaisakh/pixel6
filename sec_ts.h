@@ -928,6 +928,7 @@ struct sec_ts_data {
 	struct v4l2_heatmap v4l2;
 	strength_t *heatmap_buff;
 	strength_t *encoded_buff;
+	bool heatmap_init_done;
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)

@@ -2863,7 +2863,9 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	 */
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	if (processed_pointer_event) {
-		heatmap_read(&ts->v4l2, ktime_to_ns(ts->timestamp));
+		if (ts->heatmap_init_done) {
+			heatmap_read(&ts->v4l2, ktime_to_ns(ts->timestamp));
+		}
 
 		/* palm */
 		if (last_tid_palm_state == 0 &&
@@ -3447,7 +3449,7 @@ static int sec_ts_parse_dt(struct spi_device *client)
 			return -EINVAL;
 		}
 	} else {
-		input_err(true, dev, "%s: Failed to get switch_gpio\n",
+		input_info(true, dev, "%s: unavailable switch_gpio!\n",
 			  __func__);
 	}
 
@@ -3958,6 +3960,43 @@ static void sec_ts_device_init(struct sec_ts_data *ts)
 #endif
 }
 
+static int sec_ts_heatmap_init(struct sec_ts_data *ts)
+{
+	int ret = 0;
+
+	if (ts->heatmap_init_done) {
+		input_info(true, &ts->client->dev, "%s: already init done!\n",
+			__func__);
+		return ret;
+	}
+
+	input_info(true, &ts->client->dev, "%s\n", __func__);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+	/*
+	 * Heatmap_probe must be called before irq routine is registered,
+	 * because heatmap_read is called from the irq context.
+	 * If the ISR runs before heatmap_probe is finished, it will invoke
+	 * heatmap_read and cause NPE, since read_frame would not yet be set.
+	 */
+	ts->v4l2.parent_dev = &ts->client->dev;
+	ts->v4l2.input_dev = ts->input_dev;
+	ts->v4l2.read_frame = read_heatmap_raw;
+	ts->v4l2.width = ts->tx_count;
+	ts->v4l2.height = ts->rx_count;
+	/* 120 Hz operation */
+	ts->v4l2.timeperframe.numerator = 1;
+	ts->v4l2.timeperframe.denominator = 120;
+	ret = heatmap_probe(&ts->v4l2);
+	if (ret == 0) {
+		ts->heatmap_init_done = true;
+	} else {
+		input_err(true, &ts->client->dev,
+			"%s: fail! ret %d\n", __func__, ret);
+	}
+#endif
+	return ret;
+}
+
 #ifdef USE_CHARGER_WORK
 static struct notifier_block sec_ts_psy_nb;
 #endif
@@ -4181,6 +4220,7 @@ static int sec_ts_probe(struct spi_device *client)
 		sec_ts_delay(70);
 	ts->power_status = SEC_TS_STATE_POWER_ON;
 	ts->external_factory = false;
+	ts->heatmap_init_done = false;
 
 	ret = sec_ts_wait_for_ready(ts, SEC_TS_ACK_BOOT_COMPLETE);
 	if (ret < 0) {
@@ -4192,18 +4232,32 @@ static int sec_ts_probe(struct spi_device *client)
 			input_err(true, &ts->client->dev,
 				  "%s: could not read boot status. Assuming no device connected.\n",
 				  __func__);
+			ret = -EPROBE_DEFER;
 			goto err_init;
 		}
 
-		input_info(true, &ts->client->dev,
-			   "%s: Attempting to reflash the firmware. Boot status = 0x%02X\n",
-			   __func__, boot_status);
-		if (boot_status != SEC_TS_STATUS_BOOT_MODE)
+		switch (boot_status) {
+		case SEC_TS_STATUS_BOOT_MODE:
 			input_err(true, &ts->client->dev,
-				  "%s: device is not in bootloader mode!\n",
-				  __func__);
-
-		ts->is_fw_corrupted = true;
+				"%s: boot timeout(status %#x)! Reflash FW to recover.\n",
+				__func__, boot_status);
+			sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FW_UPDATE, true);
+			ret = sec_ts_firmware_update_on_probe(ts, true);
+			sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FW_UPDATE, false);
+			if (ret) {
+				ts->is_fw_corrupted = true;
+				ret = -EPROBE_DEFER;
+				goto err_init;
+			}
+			break;
+		case SEC_TS_STATUS_APP_MODE:
+		default:
+			input_err(true, &ts->client->dev,
+				"%s: boot timeout(status %#x)! Reset system to recover.\n",
+				__func__, boot_status);
+			sec_ts_system_reset(ts, RESET_MODE_HW, true, false);
+			break;
+		}
 	}
 
 	input_info(true, &client->dev, "%s: power enable\n", __func__);
@@ -4231,28 +4285,13 @@ static int sec_ts_probe(struct spi_device *client)
 	/* init motion filter mode */
 	ts->use_default_mf = 0;
 	ts->mf_state = SEC_TS_MF_FILTERED;
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-	/*
-	 * Heatmap_probe must be called before irq routine is registered,
-	 * because heatmap_read is called from the irq context.
-	 * If the ISR runs before heatmap_probe is finished, it will invoke
-	 * heatmap_read and cause NPE, since read_frame would not yet be set.
-	 */
-	ts->v4l2.parent_dev = &ts->client->dev;
-	ts->v4l2.input_dev = ts->input_dev;
-	ts->v4l2.read_frame = read_heatmap_raw;
-	ts->v4l2.width = ts->tx_count;
-	ts->v4l2.height = ts->rx_count;
-	/* 120 Hz operation */
-	ts->v4l2.timeperframe.numerator = 1;
-	ts->v4l2.timeperframe.denominator = 120;
-	ret = heatmap_probe(&ts->v4l2);
-	if (ret) {
-		input_err(true, &ts->client->dev,
-			"%s: Heatmap probe failed\n", __func__);
-		goto err_irq;
+
+	/* init heatmap */
+	if (ts->is_fw_corrupted == false) {
+		ret = sec_ts_heatmap_init(ts);
+		if (ret)
+			goto err_irq;
 	}
-#endif
 
 	input_info(true, &ts->client->dev, "%s: request_irq = %d\n", __func__,
 			client->irq);
@@ -4641,10 +4680,11 @@ static void sec_ts_fw_update_work(struct work_struct *work)
 		if (ret == SEC_TS_ERR_NA) {
 			ts->is_fw_corrupted = false;
 			sec_ts_device_init(ts);
-		} else
+		} else {
 			input_info(true, &ts->client->dev,
 				"%s: fail to sec_ts_fw_init 0x%x\n",
 				__func__, ret);
+		}
 	}
 
 	if (ts->is_fw_corrupted == false)
