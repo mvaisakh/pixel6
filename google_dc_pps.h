@@ -90,6 +90,11 @@ struct pd_pps_data {
 /* */
 #define pps_is_disabled(x) (((x) == PPS_NOTSUPP) || ((x) == PPS_DISABLED))
 
+#define pps_name(pps_psy) \
+	((pps_psy) && (pps_psy)->desc && (pps_psy)->desc->name ? \
+		(pps_psy)->desc->name : "<>")
+
+
 struct dentry;
 int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 	     struct power_supply *pps_psy);

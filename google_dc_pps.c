@@ -45,12 +45,6 @@
 
 #define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
 
-#define pps_name(pps_psy) \
-	((pps_psy) && (pps_psy)->desc && (pps_psy)->desc->name ? \
-		(pps_psy)->desc->name : "<>")
-
-
-
 void pps_log(struct pd_pps_data *pps, const char *fmt, ...)
 {
 	va_list args;

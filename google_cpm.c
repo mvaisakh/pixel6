@@ -253,8 +253,8 @@ static int gcpm_chg_offline(struct gcpm_drv *gcpm, int index)
 	if (ret == 0 && gcpm->chg_psy_active == index)
 		gcpm->chg_psy_active = -1;
 
-	pr_info("%s: active=%d->%d offline_ok=%d\n", __func__,
-		 active_index, gcpm->chg_psy_active, ret == 0);
+	pr_info("%s: %s active=%d->%d offline_ok=%d\n", __func__,
+		 pps_name(chg_psy), active_index, gcpm->chg_psy_active, ret == 0);
 
 	return ret;
 }
@@ -264,6 +264,8 @@ static int gcpm_chg_preset(struct power_supply *chg_psy, int fv_uv, int cc_max)
 {
 	const char *name = gcpm_psy_name(chg_psy);
 	int ret;
+
+	pr_debug("%s: fv_uv=%d, cc_max=%d\n", __func__, fv_uv, cc_max);
 
 	ret = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
 			    fv_uv);
@@ -434,7 +436,7 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 		return -ENODEV;
 	}
 
-	/* set IIN_CFG, */
+	/* set IIN_CFG */
 	ret = GPSY_SET_PROP(dc_psy, POWER_SUPPLY_PROP_CURRENT_MAX,
 			    gcpm->out_ua);
 	if (ret < 0) {
@@ -1725,9 +1727,6 @@ static int gcpm_debug_set_active(void *data, u64 val)
 
 	mutex_lock(&gcpm->chg_psy_lock);
 	gcpm->force_active = intval;
-	/* always reset DC STATE */
-	gcpm->dc_state = DC_IDLE;
-	gcpm_pps_online(gcpm);
 	mod_delayed_work(system_wq, &gcpm->select_work, 0);
 	mutex_unlock(&gcpm->chg_psy_lock);
 
