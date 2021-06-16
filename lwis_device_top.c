@@ -92,13 +92,11 @@ static void subscribe_tasklet_func(unsigned long data)
 		hash_for_each_possible (lwis_top_dev->event_subscriber, p, node,
 					trigger_event->trigger_event_id) {
 			if (p->event_id == trigger_event->trigger_event_id) {
-				spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 				/* Notify subscriber an event is happening */
 				lwis_device_external_event_emit(
 					p->receiver_dev, trigger_event->trigger_event_id,
 					trigger_event->trigger_event_count,
 					trigger_event->trigger_event_timestamp, false);
-				spin_lock_irqsave(&lwis_top_dev->base_dev.lock, flags);
 			}
 		}
 		kfree(trigger_event);
