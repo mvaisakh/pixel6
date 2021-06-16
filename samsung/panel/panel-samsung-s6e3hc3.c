@@ -70,6 +70,19 @@ struct s6e3hc3_mode_data {
 	const struct exynos_dsi_cmd_set *manual_mode_cmd_set;
 
 	/**
+	 * @manual_mode_ghbm_cmd_set:
+	 *
+	 * This cmd set is sent to panel during mode switch to enable manual mode in GHBM on
+	 * because the manual mode command is different in normal and global high brightness
+	 * modes. This mode is typically enabled when driver is not allowed to change modes
+	 * while idle. In this mode, the panel should remain in this mode (regardless of
+	 * idleness) until we indicate otherwise.
+	 *
+	 * If auto mode cmd set is defined, then manual mode cmd set should also be defined.
+	 */
+	const struct exynos_dsi_cmd_set *manual_mode_ghbm_cmd_set;
+
+	/**
 	 * @common_mode_cmd_set:
 	 *
 	 * This cmd set is sent to panel for every mode switch after either manual or auto mode are
@@ -249,6 +262,7 @@ static const u8 auto_step_10hz[] = { 0xBD, 0x01, 0x00, 0x0B, 0x00, 0x03, 0x01 };
 static const u8 auto_mode[] = { 0xBD, 0x23 };
 static const u8 manual_mode[] = { 0xBD, 0x21 };
 static const u8 mode_set_120hz[] = { 0x60, 0x00 };
+static const u8 mode_set_120hz_GHBM[] = { 0x60, 0x10 };
 static const u8 mode_set_60hz[] = { 0x60, 0x01 };
 
 static const struct exynos_dsi_cmd s6e3hc3_mode_120_auto_cmds[] = {
@@ -268,9 +282,17 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_120_manual_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_manual);
 
+static const struct exynos_dsi_cmd s6e3hc3_mode_120_ghbm_manual_cmds[] = {
+	EXYNOS_DSI_CMD0(manual_mode),
+	EXYNOS_DSI_CMD0(mode_set_120hz_GHBM),
+	EXYNOS_DSI_CMD0(freq_update),
+};
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_ghbm_manual);
+
 static const struct s6e3hc3_mode_data s6e3hc3_mode_120 = {
 	.auto_mode_cmd_set = &s6e3hc3_mode_120_auto_cmd_set,
 	.manual_mode_cmd_set = &s6e3hc3_mode_120_manual_cmd_set,
+	.manual_mode_ghbm_cmd_set = &s6e3hc3_mode_120_ghbm_manual_cmd_set,
 };
 
 static const struct exynos_dsi_cmd s6e3hc3_mode_60_common_cmds[] = {
@@ -377,8 +399,13 @@ static void s6e3hc3_update_early_exit_mode(struct exynos_panel *ctx,
 		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_disable_cmd_set);
 		spanel->early_exit_enabled = false;
 
-		if (mdata->manual_mode_cmd_set)
-			exynos_panel_send_cmd_set(ctx, mdata->manual_mode_cmd_set);
+		if (ctx->hbm_mode) {
+			if (mdata->manual_mode_ghbm_cmd_set)
+				exynos_panel_send_cmd_set(ctx, mdata->manual_mode_ghbm_cmd_set);
+		} else {
+			if (mdata->manual_mode_cmd_set)
+				exynos_panel_send_cmd_set(ctx, mdata->manual_mode_cmd_set);
+		}
 	}
 
 	if (mdata->common_mode_cmd_set)
@@ -784,15 +811,17 @@ static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
 		}
-	} else if (ctx->panel_rev == PANEL_REV_EVT1_1) {
-		if (hbm_mode) {
-			const struct exynos_panel_mode *pmode = ctx->current_mode;
-			const int vrefresh = drm_mode_vrefresh(&pmode->mode);
+	} else if (ctx->panel_rev >= PANEL_REV_EVT1_1) {
+		const struct exynos_panel_mode *pmode = ctx->current_mode;
+		const int vrefresh = drm_mode_vrefresh(&pmode->mode);
 
-			if (vrefresh == 60)
-				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x01);
-			else if (vrefresh == 120)
-				EXYNOS_DCS_WRITE_SEQ(ctx, 0x60, 0x10);
+		if (vrefresh == 60) {
+			EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_60hz);
+		} else if (vrefresh == 120) {
+			if (hbm_mode)
+				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz_GHBM);
+			else
+				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz);
 		}
 	}
 }
@@ -1053,6 +1082,8 @@ static void s6e3hc3_panel_mode_create_cmdset(struct exynos_panel *ctx,
 
 	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->auto_mode_cmd_set, "auto_mode");
 	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->manual_mode_cmd_set, "manual_mode");
+	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->manual_mode_ghbm_cmd_set,
+					   "manual_ghbm_mode");
 	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->common_mode_cmd_set, "common_mode");
 	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->idle_mode_cmd_set, "idle");
 	exynos_panel_debugfs_create_cmdset(ctx, root, mdata->wakeup_mode_cmd_set, "wakeup");
