@@ -373,6 +373,15 @@ int lwis_client_event_control_set(struct lwis_client *lwis_client,
 
 		if (lwis_client_event_get_trigger_device_id(control->event_id) !=
 		    lwis_client->lwis_dev->id) {
+			/* b/187758268 for fixing the hard LOCKUP
+			 * when running LWIS cross-device tests.
+			 */
+			if (lwis_client->lwis_dev->type == DEVICE_TYPE_TOP) {
+				dev_err(lwis_client->lwis_dev->dev,
+					"Disallow top device being the receiver device\n");
+				return -EPERM;
+			}
+
 			if (new_flags != 0) {
 				ret = lwis_client_event_subscribe(lwis_client, control->event_id);
 				if (ret) {
