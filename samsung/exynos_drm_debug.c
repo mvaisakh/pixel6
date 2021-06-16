@@ -420,6 +420,7 @@ static const char *get_event_name(enum dpu_event_type type)
 		"DSIM_DISABLED",		"DSIM_COMMAND",
 		"DSIM_ULPS_ENTER",		"DSIM_ULPS_EXIT",
 		"DSIM_UNDERRUN",		"DSIM_FRAMEDONE",
+		"DSIM_PH_FIFO_TIMEOUT",		"DSIM_PL_FIFO_TIMEOUT",
 		"DPP_FRAMEDONE",		"DMA_RECOVERY",
 		"ATOMIC_COMMIT",		"TE_INTERRUPT",
 		"DECON_RUNTIME_SUSPEND",	"DECON_RUNTIME_RESUME",
@@ -483,6 +484,30 @@ static bool is_skip_dpu_event_dump(enum dpu_event_type type, enum dpu_event_cond
 		case DPU_EVT_BTS_RELEASE_BW:
 		case DPU_EVT_BTS_CALC_BW:
 		case DPU_EVT_BTS_UPDATE_BW:
+			return false;
+		default:
+			return true;
+		}
+	}
+
+	if (condition == DPU_EVT_CONDITION_FIFO_TIMEOUT) {
+		switch (type) {
+		case DPU_EVT_DECON_FRAMEDONE:
+		case DPU_EVT_DECON_FRAMESTART:
+		case DPU_EVT_DSIM_COMMAND:
+		case DPU_EVT_DSIM_ULPS_ENTER:
+		case DPU_EVT_DSIM_ULPS_EXIT:
+		case DPU_EVT_DSIM_FRAMEDONE:
+		case DPU_EVT_DSIM_PH_FIFO_TIMEOUT:
+		case DPU_EVT_DSIM_PL_FIFO_TIMEOUT:
+		case DPU_EVT_ATOMIC_COMMIT:
+		case DPU_EVT_TE_INTERRUPT:
+		case DPU_EVT_DECON_RUNTIME_SUSPEND:
+		case DPU_EVT_DECON_RUNTIME_RESUME:
+		case DPU_EVT_ENTER_HIBERNATION_OUT:
+		case DPU_EVT_EXIT_HIBERNATION_OUT:
+		case DPU_EVT_ATOMIC_BEGIN:
+		case DPU_EVT_ATOMIC_FLUSH:
 			return false;
 		default:
 			return true;
@@ -1464,6 +1489,7 @@ void decon_dump_event_condition(const struct decon_device *decon,
 
 	switch (condition) {
 	case DPU_EVT_CONDITION_UNDERRUN:
+	case DPU_EVT_CONDITION_FIFO_TIMEOUT:
 		print_log_size = dpu_event_print_underrun;
 		break;
 	case DPU_EVT_CONDITION_FAIL_UPDATE_BW:

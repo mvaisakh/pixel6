@@ -1593,6 +1593,8 @@ static int dsim_host_detach(struct mipi_dsi_host *host,
 
 static int __dsim_wait_for_ph_fifo_empty(struct dsim_device *dsim)
 {
+	const struct decon_device *decon = dsim_get_decon(dsim);
+
 	dsim_debug(dsim, "wait for packet header fifo empty\n");
 
 	if (!wait_for_completion_timeout(&dsim->ph_wr_comp, MIPI_WR_TIMEOUT)) {
@@ -1603,6 +1605,12 @@ static int __dsim_wait_for_ph_fifo_empty(struct dsim_device *dsim)
 		}
 
 		dsim_warn(dsim, "timeout: packet header fifo empty\n");
+		if (decon) {
+			DPU_EVENT_LOG(DPU_EVT_DSIM_PH_FIFO_TIMEOUT, decon->id,
+					NULL);
+			decon_dump_event_condition(decon,
+						DPU_EVT_CONDITION_FIFO_TIMEOUT);
+		}
 		return -ETIMEDOUT;
 	}
 
@@ -1611,6 +1619,8 @@ static int __dsim_wait_for_ph_fifo_empty(struct dsim_device *dsim)
 
 static int __dsim_wait_for_pl_fifo_empty(struct dsim_device *dsim)
 {
+	const struct decon_device *decon = dsim_get_decon(dsim);
+
 	dsim_debug(dsim, "wait for packet payload fifo empty\n");
 
 	if (!wait_for_completion_timeout(&dsim->pl_wr_comp, MIPI_WR_TIMEOUT)) {
@@ -1621,6 +1631,12 @@ static int __dsim_wait_for_pl_fifo_empty(struct dsim_device *dsim)
 		}
 
 		dsim_warn(dsim, "timeout: packet payload fifo empty\n");
+		if (decon) {
+			DPU_EVENT_LOG(DPU_EVT_DSIM_PL_FIFO_TIMEOUT, decon->id,
+					NULL);
+			decon_dump_event_condition(decon,
+						DPU_EVT_CONDITION_FIFO_TIMEOUT);
+		}
 		return -ETIMEDOUT;
 	}
 
