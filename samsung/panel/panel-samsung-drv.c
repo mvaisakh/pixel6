@@ -1894,6 +1894,7 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 		dev_err(ctx->dev, "panel is not enabled\n");
 		return -EPERM;
 	}
+
 	if (!funcs || !funcs->set_local_hbm_mode) {
 		dev_err(ctx->dev, "Local HBM is not supported\n");
 		return -ENOTSUPP;
@@ -1905,6 +1906,7 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 		return ret;
 	}
 
+	dev_info(ctx->dev, "%s: set LHBM to %d\n", __func__, local_hbm_en);
 	funcs->set_local_hbm_mode(ctx, local_hbm_en);
 	sysfs_notify(&bd->dev.kobj, NULL, "local_hbm_mode");
 	if (local_hbm_en) {
@@ -2516,6 +2518,7 @@ static void local_hbm_timeout_work(struct work_struct *work)
 
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
+	dev_info(ctx->dev, "%s: turn off LHBM\n", __func__);
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, false);
 	sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 }
@@ -2527,13 +2530,15 @@ static void hbm_work(struct work_struct *work)
 	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
 	struct drm_crtc_commit *commit = ctx->hbm.commit;
 	bool handle_lhbm_timeout_work = false;
-	u32 fps, delay_us, timeout_ms;
+	u32 delay_us, timeout_ms;
+	int fps;
 
 	dev_dbg(ctx->dev, "%s (update_flags: 0x%02x)\n", __func__, ctx->hbm.update_flags);
 
 	mutex_lock(&ctx->mode_lock);
 	/* TODO: Change to ctx->current_mode->exynos_mode.vblank_usec when it's ready */
 	fps = drm_mode_vrefresh(&ctx->current_mode->mode);
+	WARN_ON(fps < 0);
 	mutex_unlock(&ctx->mode_lock);
 
 	delay_us = USEC_PER_SEC / fps / 2;
@@ -2561,6 +2566,8 @@ static void hbm_work(struct work_struct *work)
 	usleep_range(delay_us, delay_us + 100);
 	if (ctx->hbm.update_flags & HBM_FLAG_LHBM_UPDATE) {
 		DPU_ATRACE_BEGIN("set_lhbm");
+		dev_info(ctx->dev, "%s: set LHBM to %d (%dHz)\n",
+			__func__, ctx->hbm.local_hbm.request_hbm_mode, fps);
 		exynos_panel_func->set_local_hbm_mode(ctx, ctx->hbm.local_hbm.request_hbm_mode);
 		sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 		handle_lhbm_timeout_work = true;

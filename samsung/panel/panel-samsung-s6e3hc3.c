@@ -450,6 +450,18 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 }
 
+static void s6e3hc3_set_lp_mode(struct exynos_panel *ctx,
+		const struct exynos_panel_mode *pmode)
+{
+	if (ctx->hbm.local_hbm.enabled == true) {
+		/* TODO: turn off LHBM to avoid underrun */
+		dev_err(ctx->dev, "LHBM is on while switching to LP mode `%s`\n",
+			pmode->mode.name);
+	}
+
+	exynos_panel_set_lp_mode(ctx, pmode);
+}
+
 static void s6e3hc3_set_nolp_mode(struct exynos_panel *ctx,
 				  const struct exynos_panel_mode *pmode)
 {
@@ -515,7 +527,7 @@ static const struct exynos_dsi_cmd s6e3hc3_evt1_doe_lhbm_on_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_doe_lhbm_on);
 
-static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_60hz_cmds[] = {
+static const struct exynos_dsi_cmd s6e3hc3_evtandafter_lhbm_off_60hz_cmds[] = {
 	EXYNOS_DSI_CMD0(unlock_cmd_f0),
 	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
 	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
@@ -523,9 +535,9 @@ static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_60hz_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
 	EXYNOS_DSI_CMD0(lock_cmd_f0),
 };
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_hbm_off_60hz);
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_lhbm_off_60hz);
 
-static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_120hz_cmds[] = {
+static const struct exynos_dsi_cmd s6e3hc3_evtandafter_lhbm_off_120hz_cmds[] = {
 	EXYNOS_DSI_CMD0(unlock_cmd_f0),
 	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
 	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
@@ -533,7 +545,7 @@ static const struct exynos_dsi_cmd s6e3hc3_evtandafter_hbm_off_120hz_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
 	EXYNOS_DSI_CMD0(lock_cmd_f0),
 };
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_hbm_off_120hz);
+static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_lhbm_off_120hz);
 
 static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_on_cmds[] = {
 	EXYNOS_DSI_CMD0(unlock_cmd_f0),
@@ -610,6 +622,8 @@ static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
 
 	dev_dbg(ctx->dev, "%s(panel_rev: 0x%x)\n", __func__, ctx->panel_rev);
 	if (ctx->panel_rev >= PANEL_REV_EVT1) {
+		const int vrefresh = drm_mode_vrefresh(&ctx->current_mode->mode);
+
 		if (local_hbm_en) {
 			if (ctx->panel_rev == PANEL_REV_EVT1) {
 				if (!s6e3hc3_get_panel_id3(ctx, &id)) {
@@ -619,27 +633,26 @@ static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
 						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
 					return;
 				}
-				if (id & S6E3HC3_PANEL_ID3_DOE) {
+
+				if (id & S6E3HC3_PANEL_ID3_DOE)
 					exynos_panel_send_cmd_set(ctx,
 						&s6e3hc3_evt1_doe_lhbm_on_cmd_set);
-				} else {
+				else
 					exynos_panel_send_cmd_set(ctx,
 						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
-				}
-			} else if (ctx->panel_rev >= PANEL_REV_EVT1_1) {
+			} else {
 				exynos_panel_send_cmd_set(ctx,
 					&s6e3hc3_evt1_1_lhbm_on_cmd_set);
 			}
 		} else {
-			if (ctx->hbm.local_hbm.vrefresh == 60) {
+			if (vrefresh == 60)
 				exynos_panel_send_cmd_set(ctx,
-					&s6e3hc3_evtandafter_hbm_off_60hz_cmd_set);
-			} else if (ctx->hbm.local_hbm.vrefresh == 120) {
+					&s6e3hc3_evtandafter_lhbm_off_60hz_cmd_set);
+			else if (vrefresh == 120)
 				exynos_panel_send_cmd_set(ctx,
-					&s6e3hc3_evtandafter_hbm_off_120hz_cmd_set);
-			} else {
+					&s6e3hc3_evtandafter_lhbm_off_120hz_cmd_set);
+			else
 				dev_err(ctx->dev, "unsupported refresh rate!\n");
-			}
 		}
 	}
 }
@@ -683,7 +696,7 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	ctx->enabled = true;
 
 	if (pmode->exynos_mode.is_lp_mode)
-		exynos_panel_set_lp_mode(ctx, pmode);
+		s6e3hc3_set_lp_mode(ctx, pmode);
 	else
 		EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
 
@@ -807,17 +820,36 @@ static void s6e3hc3_set_dimming_on(struct exynos_panel *ctx,
 static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 				 bool local_hbm_en)
 {
-	const struct exynos_panel_mode *pmode = ctx->current_mode;
+	const struct exynos_panel_mode *pmode;
 
 	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
 	mutex_lock(&ctx->mode_lock);
-	if (local_hbm_en)
-		ctx->hbm.local_hbm.vrefresh = drm_mode_vrefresh(&pmode->mode);
+	pmode = ctx->current_mode;
+	if (unlikely(pmode == NULL)) {
+		dev_err(ctx->dev, "%s: unknown current mode\n", __func__);
+		mutex_unlock(&ctx->mode_lock);
+		return;
+	}
+
+	if (local_hbm_en) {
+		const int vrefresh = drm_mode_vrefresh(&pmode->mode);
+		/* Start from EVT1, it needs set `freq set` to 120hz for enabling LHBM.
+		 * Therefore we need to make sure current mode is 120hz before turn on
+		 * LHBM to avoid `freq set` out of sync problem.
+		 */
+		if (vrefresh != 120) {
+			dev_err(ctx->dev, "unexpected mode `%s` while enabling LHBM, give up\n",
+				pmode->mode.name);
+			mutex_unlock(&ctx->mode_lock);
+			return;
+		}
+	}
+
 	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_extra_lhbm_settings(ctx, local_hbm_en);
-	s6e3hc3_write_display_mode(ctx, &ctx->current_mode->mode);
+	s6e3hc3_write_display_mode(ctx, &pmode->mode);
 	mutex_unlock(&ctx->mode_lock);
 
 	if (!(ctx->hbm.update_flags & HBM_FLAG_LHBM_UPDATE)) {
@@ -841,6 +873,11 @@ static void s6e3hc3_mode_set(struct exynos_panel *ctx,
 {
 	if (!ctx->enabled)
 		return;
+
+	/* Start from EVT1, LHBM requires set `freq set` to 120hz */
+	if (ctx->hbm.local_hbm.enabled == true)
+		dev_warn(ctx->dev, "do mode change (`%s`) unexpectedly when LHBM is ON\n",
+			pmode->mode.name);
 
 	s6e3hc3_change_frequency(ctx, pmode);
 }
@@ -1040,7 +1077,7 @@ static const struct drm_panel_funcs s6e3hc3_drm_funcs = {
 
 static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.set_brightness = exynos_panel_set_brightness,
-	.set_lp_mode = exynos_panel_set_lp_mode,
+	.set_lp_mode = s6e3hc3_set_lp_mode,
 	.set_nolp_mode = s6e3hc3_set_nolp_mode,
 	.set_binned_lp = exynos_panel_set_binned_lp,
 	.set_hbm_mode = s6e3hc3_set_hbm_mode,
