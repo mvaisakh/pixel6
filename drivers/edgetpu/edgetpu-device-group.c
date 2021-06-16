@@ -1267,8 +1267,13 @@ alloc_mapping_from_useraddr(struct edgetpu_device_group *group, u64 host_addr,
 	return hmap;
 
 error_free_sgt:
-	while (i > 0) {
-		i--;
+	/*
+	 * Starting from kernel version 5.10, the caller must call sg_free_table
+	 * to clean up any leftover allocations if sg_alloc_table_from_pages
+	 * returns non-0 for failures. Calling sg_free_table is also fine with
+	 * older kernel versions since sg_free_table handles this properly.
+	 */
+	for (; i >= 0; i--) {
 		if (i == 0)
 			sgt = &hmap->map.sgt;
 		else

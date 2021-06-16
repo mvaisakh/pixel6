@@ -570,24 +570,4 @@ struct edgetpu_ext_mailbox_ioctl {
 #define EDGETPU_GET_FATAL_ERRORS \
 	_IOR(EDGETPU_IOCTL_BASE, 32, __u32)
 
-/* Fatal error event bitmasks... */
-/* Firmware crash in non-restartable thread */
-#define EDGETPU_ERROR_FW_CRASH		0x1
-/* Host or device watchdog timeout */
-#define EDGETPU_ERROR_WATCHDOG_TIMEOUT	0x2
-/* Thermal shutdown */
-#define EDGETPU_ERROR_THERMAL_STOP	0x4
-/* TPU hardware inaccessible: link fail, memory protection unit blocking... */
-#define EDGETPU_ERROR_HW_NO_ACCESS	0x8
-/* Various hardware failures */
-#define EDGETPU_ERROR_HW_FAIL		0x10
-
-/*
- * Return fatal errors raised for the client's device group, as a bitmask of
- * the above fatal error event codes, or zero if no errors encountered or
- * client is not part of a device group.
- */
-#define EDGETPU_GET_FATAL_ERRORS \
-	_IOR(EDGETPU_IOCTL_BASE, 32, __u32)
-
 #endif /* __EDGETPU_H__ */
