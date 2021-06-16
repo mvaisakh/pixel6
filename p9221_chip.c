@@ -19,6 +19,7 @@
 #include <misc/logbuffer.h>
 #include "p9221_charger.h"
 
+static int p9412_capdiv_en(struct p9221_charger_data *chgr, u8 mode);
 /* Simple Chip Specific Accessors */
 /*
  * chip_get_rx_ilim
@@ -839,7 +840,7 @@ static int p9412_send_eop(struct p9221_charger_data *chgr, u8 reason)
 		ret = chgr->chip_set_cmd(chgr, P9221R5_COM_SENDEPT);
 
 	/* Change P9412 mode to Disable Mode */
-	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, 0);
+	ret = p9412_capdiv_en(chgr, 0);
 	if (ret < 0)
 		dev_err(&chgr->client->dev,
 			"fail to switch cap to disable mode\n");
@@ -1114,15 +1115,14 @@ static void p9222_check_neg_power(struct p9221_charger_data *chgr)
 	chgr->dc_icl_epp_neg = P9XXX_DC_ICL_EPP_750;
 }
 
-/* For high power mode */
-static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+static int p9221_capdiv_en(struct p9221_charger_data *chgr, u8 mode)
 {
 	return -ENOTSUPP;
 }
 
-static int p9412_capdiv_en(struct p9221_charger_data *chgr, bool enable)
+static int p9412_capdiv_en(struct p9221_charger_data *chgr, u8 mode)
 {
-	const u8 mask = enable ? CDMODE_CAP_DIV_MODE : 0;
+	const u8 mask = mode;
 	int ret, loops;
 	u8 cdmode;
 
@@ -1154,10 +1154,19 @@ static int p9412_capdiv_en(struct p9221_charger_data *chgr, bool enable)
 	return ((cdmode & mask) == mask) ? 0 :  -ETIMEDOUT;
 }
 
+/* For high power mode */
+static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+{
+	return -ENOTSUPP;
+}
+
 static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	int ret, loops;
 	u8 val8, cdmode, txpwr, pwr_stp, mode_sts, err_sts, prop_cur_pwr, prop_req_pwr;
+
+	if (p9xxx_is_capdiv_en(chgr))
+		goto err_exit;
 
 	ret = chgr->chip_get_sys_mode(chgr, &val8);
 	if (ret) {
@@ -1166,10 +1175,8 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		return 0;
 	}
 
-	if (val8 == P9XXX_SYS_OP_MODE_PROPRIETARY) {
-		chgr->prop_mode_en = true;
-		goto err_exit;
-	}
+	if (val8 == P9XXX_SYS_OP_MODE_PROPRIETARY)
+		goto enable_capdiv;
 
 	ret = p9xxx_chip_get_tx_mfg_code(chgr, &chgr->mfg);
 	if (chgr->mfg != WLC_MFG_GOOGLE) {
@@ -1201,7 +1208,7 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	/*
 	 * Step 2: Enable Proprietary Mode: write 0x01 to 0x4F (0x4E bit8)
 	 */
-	ret =chgr->chip_set_cmd(chgr, PROP_MODE_EN_CMD);
+	ret = chgr->chip_set_cmd(chgr, PROP_MODE_EN_CMD);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to send PROP_MODE_EN_CMD\n");
@@ -1225,36 +1232,18 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	if (!chgr->prop_mode_en)
 		goto err_exit;
 
+enable_capdiv:
 	/*
 	 * Step 4: enable Cap Divider configuration:
 	 * write 0x02 to 0x101 then write 0x40 to 0x4E
 	 */
-	ret = chgr->reg_write_8(chgr, P9412_CDMODE_REQ_REG, CDMODE_CAP_DIV_MODE);
+	ret = p9412_capdiv_en(chgr, CDMODE_CAP_DIV_MODE);
 	if (ret) {
 		dev_err(&chgr->client->dev,
-                        "PROP_MODE: fail to enable Cap Div mode\n");
+			"PROP_MODE: fail to enable Cap Div mode\n");
 		goto err_exit;
-	}
-	ret = chgr->chip_set_cmd(chgr, INIT_CAP_DIV_CMD);
-	if (ret) {
-		dev_err(&chgr->client->dev,
-			"PROP_MODE: fail to send INIT_CAP_DIV_CMD\n");
-		goto err_exit;
-	}
-
-	msleep(50);
-
-	/* verify the change to Cap Divider mode */
-	for (loops = 30 ; loops ; loops--) {
-		ret = chgr->reg_read_8(chgr, P9412_CDMODE_STS_REG, &cdmode);
-		if ((ret == 0) && (cdmode & CDMODE_CAP_DIV_MODE))
-			break;
-		if (ret < 0)
-			goto err_exit;
-		msleep(100);
-	}
-	if (!(cdmode & CDMODE_CAP_DIV_MODE))
-		goto err_exit;
+	} else
+		chgr->prop_mode_en = true;
 
 	/*
 	 * Step 5: Read TX potential power register (0xC4)
@@ -1522,6 +1511,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		chgr->chip_send_txid = p9xxx_send_txid;
 		chgr->chip_send_csp_in_txmode = p9xxx_send_csp_in_txmode;
+		chgr->chip_capdiv_en = p9412_capdiv_en;
 		break;
 	case P9382A_CHIP_ID:
 		chgr->rtx_state = RTX_AVAILABLE;
@@ -1550,6 +1540,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		chgr->chip_send_txid = p9xxx_send_txid;
 		chgr->chip_send_csp_in_txmode = p9xxx_send_csp_in_txmode;
+		chgr->chip_capdiv_en = p9221_capdiv_en;
 		break;
 	case P9222_CHIP_ID:
 		chgr->chip_get_iout = p9222_chip_get_iout;
@@ -1584,6 +1575,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_check_neg_power = p9222_check_neg_power;
 		chgr->chip_send_txid = p9221_send_txid;
 		chgr->chip_send_csp_in_txmode = p9221_send_csp_in_txmode;
+		chgr->chip_capdiv_en = p9221_capdiv_en;
 		break;
 	default:
 		chgr->rtx_state = RTX_NOTSUPPORTED;
@@ -1612,6 +1604,7 @@ int p9221_chip_init_funcs(struct p9221_charger_data *chgr, u16 chip_id)
 		chgr->chip_check_neg_power = p9xxx_check_neg_power;
 		chgr->chip_send_txid = p9221_send_txid;
 		chgr->chip_send_csp_in_txmode = p9221_send_csp_in_txmode;
+		chgr->chip_capdiv_en = p9221_capdiv_en;
 		break;
 	}
 
@@ -1663,12 +1656,11 @@ static int p9xxx_gpio_get(struct gpio_chip *chip, unsigned int offset)
 
 #define P9412_BPP_VOUT_DFLT	5000
 #define P9412_BPP_WLC_OTG_VOUT	5200
-
-
 static void p9xxx_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
 {
 	struct p9221_charger_data *charger = gpiochip_get_data(chip);
 	int ret = -EINVAL;
+	u8 mode;
 
 	switch (offset) {
 	case P9XXX_GPIO_CPOUT_EN:
@@ -1677,7 +1669,8 @@ static void p9xxx_gpio_set(struct gpio_chip *chip, unsigned int offset, int valu
 		break;
 	case P9412_GPIO_CPOUT21_EN:
 		/* TODO: no-op for FW38+ */
-		ret = p9412_capdiv_en(charger, !!value);
+		mode = !!value ? CDMODE_CAP_DIV_MODE : 0;
+		ret = p9412_capdiv_en(charger, mode);
 		break;
 	case P9XXX_GPIO_CPOUT_CTL_EN:
 		if (p9221_is_epp(charger)) {

@@ -744,10 +744,12 @@ struct p9221_charger_data {
 	void (*chip_check_neg_power)(struct p9221_charger_data *chgr);
 	int (*chip_send_txid)(struct p9221_charger_data *chgr);
 	int (*chip_send_csp_in_txmode)(struct p9221_charger_data *chgr, u8 stat);
+	int (*chip_capdiv_en)(struct p9221_charger_data *chgr, u8 mode);
 };
 
 u8 p9221_crc8(u8 *pdata, size_t nbytes, u8 crc);
 bool p9221_is_epp(struct p9221_charger_data *charger);
+bool p9xxx_is_capdiv_en(struct p9221_charger_data *charger);
 int p9221_wlc_disable(struct p9221_charger_data *charger, int disable, u8 reason);
 
 void p9xxx_gpio_init(struct p9221_charger_data *charger);

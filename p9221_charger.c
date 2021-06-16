@@ -252,6 +252,21 @@ out:
 	return false;
 }
 
+bool p9xxx_is_capdiv_en(struct p9221_charger_data *charger)
+{
+	int ret;
+	u8 cdmode;
+
+	if (charger->chip_id != P9412_CHIP_ID)
+		return false;
+
+	ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
+	if ((ret == 0) && (cdmode & CDMODE_CAP_DIV_MODE))
+		return true;
+
+	return false;
+}
+
 static void p9221_write_fod(struct p9221_charger_data *charger)
 {
 	bool epp = false;
@@ -463,10 +478,13 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
 }
 
-/* TODO: should we also change the state of the load switch etc? */
+#define EPP_MODE_REQ_PWR		15
 static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 {
 	const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+	const int req_pwr = EPP_MODE_REQ_PWR;
+	int ret;
+	u8 cdmode;
 
 	if (!charger->wlc_dc_enabled)
 		return 0;
@@ -474,6 +492,40 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 	charger->wlc_dc_enabled = false;
 	if (dc_sw_gpio >= 0)
 		gpio_set_value_cansleep(dc_sw_gpio, 0);
+
+	/* Check it's in Cap Div mode */
+	ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
+	if (ret == 0)
+		dev_info(&charger->client->dev,
+			 "p9221_reset_wlc_dc: cdmode_reg=%02x\n", cdmode);
+	if (cdmode & CDMODE_BYPASS_MODE)
+		return 0;
+
+	/* Change the Requested Power to 15W */
+	ret = charger->reg_write_8(charger, P9412_PROP_REQ_PWR_REG, req_pwr * 2);
+	if (ret == 0) {
+		ret = charger->chip_set_cmd(charger, PROP_REQ_PWR_CMD);
+		if (ret)
+			dev_err(&charger->client->dev,
+				"p9221_reset_wlc_dc: Fail to request Tx power(%d)\n", ret);
+	}
+
+	msleep(3000);
+
+	/* Request Bypass mode */
+	ret = charger->chip_capdiv_en(charger, CDMODE_BYPASS_MODE);
+	if (ret) {
+		dev_err(&charger->client->dev,
+			"p9221_reset_wlc_dc: Fail to change to bypass mode(%d)\n", ret);
+	} else {
+		ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
+		if (ret == 0) {
+			dev_info(&charger->client->dev,
+				 "p9221_reset_wlc_dc: cdmode_reg=%02x\n", cdmode);
+			charger->prop_mode_en = false;
+		}
+	}
+
 	return 0;
 }
 
@@ -1531,13 +1583,14 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			return -EOPNOTSUPP;
 
 		/*
-		 * run ->chip_prop_mode_en() if proprietary mode isn't enabled
+		 * run ->chip_prop_mode_en() if proprietary mode or cap divider
+		 * mode isn't enabled
 		 * (i.e. with p9412_prop_mode_enable())
 		 */
-		if (!charger->prop_mode_en)
+		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
 			charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT);
 
-		if (!charger->prop_mode_en)
+		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
 			return -EOPNOTSUPP;
 
 		charger->wlc_dc_enabled = true;
