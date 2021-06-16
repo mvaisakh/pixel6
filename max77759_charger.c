@@ -101,16 +101,18 @@ struct max77759_chgr_data {
 	/* debug interface, register to read or write */
 	u32 debug_reg_address;
 
-	/* thermal */
+	/* thermal BCL */
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	struct thermal_zone_device *tz_vdroop[IFPMIC_SENSOR_MAX];
 	int triggered_counter[IFPMIC_SENSOR_MAX];
 	unsigned int triggered_lvl[IFPMIC_SENSOR_MAX];
 	unsigned int triggered_irq[IFPMIC_SENSOR_MAX];
 	struct mutex triggered_irq_lock[IFPMIC_SENSOR_MAX];
 	struct delayed_work triggered_irq_work[IFPMIC_SENSOR_MAX];
+	struct gs101_bcl_dev *bcl_dev;
+#endif
 
 	int chg_term_voltage;
-	struct gs101_bcl_dev *bcl_dev;
 };
 
 static inline int max77759_reg_read(struct regmap *regmap, uint8_t reg,
@@ -3031,6 +3033,7 @@ exit_done:
 
 static DEVICE_ATTR(fship_dtls, 0444, show_fship_dtls, NULL);
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 static int vdroop2_ok_get(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -3206,7 +3209,7 @@ static int sys_uvlo2_set(void *d, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(sys_uvlo2_fops, sys_uvlo2_get, sys_uvlo2_set, "0x%llx\n");
-
+#endif
 
 /* write to INPUT_MASK_CLR in to re-enable detection */
 static int max77759_chgr_input_mask_clear(struct max77759_chgr_data *data)
@@ -3284,6 +3287,7 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 	debugfs_create_atomic_t("early_topoff_cnt", 0644, data->de,
 				&data->early_topoff_cnt);
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	debugfs_create_file("vdroop2_ok", 0400, data->de, data,
 			    &vdroop2_ok_fops);
 	debugfs_create_file("vdp1_stp_bst", 0600, data->de, data,
@@ -3296,6 +3300,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 			    &sys_uvlo2_fops);
 	debugfs_create_file("bat_oilo", 0600, data->de, data,
 			    &bat_oilo_fops);
+#endif
+
 	debugfs_create_file("input_mask_clear", 0600, data->de, data,
 			    &input_mask_clear_fops);
 
@@ -3333,6 +3339,7 @@ static u8 max77759_int_mask[MAX77759_CHG_INT_COUNT] = {
 	  MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M),
 };
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 static int max77759_irq_work(struct max77759_chgr_data *data, u8 idx)
 {
 	u8 chg_dtls1;
@@ -3411,6 +3418,7 @@ static int uvilo_read_stats(struct ocpsmpl_stats *dst, struct max77759_chgr_data
 	dst->_time = ktime_to_ms(ktime_get());
 	return (dst->capacity == -1 || dst->voltage == -1) ? -EIO : 0;
 }
+#endif
 
 static irqreturn_t max77759_chgr_irq(int irq, void *client)
 {
@@ -3445,6 +3453,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		atomic_inc(&data->insel_cnt);
 	}
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
 		pr_debug("%s: SYS_UVLO1\n", __func__);
 
@@ -3473,6 +3482,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 			uvilo_read_stats(&data->bcl_dev->if_triggered_stats[BATOILO], data);
 		}
 	}
+#endif
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
@@ -3576,6 +3586,7 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 static int max77759_vdroop_read_level(void *data, int *val, int id)
 {
 	struct max77759_chgr_data *chg_data = data;
@@ -3611,8 +3622,6 @@ static const struct thermal_zone_of_device_ops vdroop1_tz_ops = {
 static const struct thermal_zone_of_device_ops vdroop2_tz_ops = {
 	.get_temp = max77759_vdroop2_read_temp,
 };
-
-
 
 static int max77759_init_vdroop(void *data_)
 {
@@ -3670,6 +3679,13 @@ static int max77759_init_vdroop(void *data_)
 	}
 	return 0;
 }
+#else
+static int max77759_init_vdroop(void *data_)
+{
+	return 0;
+}
+#endif
+
 
 static int max77759_charger_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
@@ -3788,7 +3804,9 @@ static int max77759_charger_probe(struct i2c_client *client,
 	if (ret < 0)
 		pr_err("Couldn't register dc power supply (%d)\n", ret);
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	data->bcl_dev = gs101_retrieve_bcl_handle();
+#endif
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
 	return 0;
@@ -3796,13 +3814,14 @@ static int max77759_charger_probe(struct i2c_client *client,
 
 static int max77759_charger_remove(struct i2c_client *client)
 {
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	struct max77759_chgr_data *data = i2c_get_clientdata(client);
 
 	if (data->tz_vdroop[VDROOP1])
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
 	if (data->tz_vdroop[VDROOP2])
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
-
+#endif
 	return 0;
 }
 
