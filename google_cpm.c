@@ -153,6 +153,8 @@ struct gcpm_drv  {
 	u32 taper_step_current;		/* current before countdown */
 	u32 taper_step_grace;		/* steps from voltage before countdown */
 	u32 taper_step_count;		/* countdown steps before dc_done */
+	u32 taper_step_fv_margin;		/* countdown steps before dc_done */
+	u32 taper_step_cc_step;		/* countdown steps before dc_done */
 	int taper_step;			/* actual countdown */
 
 	/* policy: power demand limit for DC charging */
@@ -769,8 +771,8 @@ static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
 	}
 
 	/* delta < 0 during the grace period */
-	fv_uv -= GCPM_TAPER_STEP_FV_MARGIN;
-	cc_max -= delta * GCPM_TAPER_STEP_CC_STEP;
+	fv_uv -= gcpm->taper_step_fv_margin;
+	cc_max -= delta * gcpm->taper_step_cc_step;
 	if (cc_max < gcpm->cc_max / 2)
 		cc_max = gcpm->cc_max / 2;
 
@@ -1860,6 +1862,181 @@ static int gcpm_debug_taper_ctl_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_ctl_fops, gcpm_debug_taper_ctl_get,
 			gcpm_debug_taper_ctl_set, "%llu\n");
 
+static int gcpm_debug_taper_step_fv_margin_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_fv_margin;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_fv_margin_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_fv_margin = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_fv_margin_fops, gcpm_debug_taper_step_fv_margin_get,
+			gcpm_debug_taper_step_fv_margin_set, "%llu\n");
+
+static int gcpm_debug_taper_step_cc_step_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_cc_step;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_cc_step_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_cc_step = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_cc_step_fops, gcpm_debug_taper_step_cc_step_get,
+			gcpm_debug_taper_step_cc_step_set, "%llu\n");
+
+static int gcpm_debug_taper_step_count_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_count;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_count_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_count = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_count_fops, gcpm_debug_taper_step_count_get,
+			gcpm_debug_taper_step_count_set, "%llu\n");
+
+static int gcpm_debug_taper_step_grace_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_grace;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_grace_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_grace = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_grace_fops, gcpm_debug_taper_step_grace_get,
+			gcpm_debug_taper_step_grace_set, "%llu\n");
+
+static int gcpm_debug_taper_step_voltage_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_voltage;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_voltage_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_voltage = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_voltage_fops, gcpm_debug_taper_step_voltage_get,
+			gcpm_debug_taper_step_voltage_set, "%llu\n");
+
+static int gcpm_debug_taper_step_current_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_current;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_current_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_current = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_current_fops, gcpm_debug_taper_step_current_get,
+			gcpm_debug_taper_step_current_set, "%llu\n");
+
+static int gcpm_debug_taper_step_interval_get(void *data, u64 *val)
+{
+	struct gcpm_drv *gcpm = data;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	*val = gcpm->taper_step_interval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+	return 0;
+}
+
+static int gcpm_debug_taper_step_interval_set(void *data, u64 val)
+{
+	struct gcpm_drv *gcpm = data;
+	const int intval = (int)val;
+
+	mutex_lock(&gcpm->chg_psy_lock);
+	gcpm->taper_step_interval = intval;
+	mutex_unlock(&gcpm->chg_psy_lock);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(gcpm_debug_taper_step_interval_fops, gcpm_debug_taper_step_interval_get,
+			gcpm_debug_taper_step_interval_set, "%llu\n");
+
 static struct dentry *gcpm_init_fs(struct gcpm_drv *gcpm)
 {
 	struct dentry *de;
@@ -1874,6 +2051,13 @@ static struct dentry *gcpm_init_fs(struct gcpm_drv *gcpm)
 			    &gcpm_debug_dc_limit_demand_fops);
 	debugfs_create_file("pps_stage", 0644, de, gcpm, &gcpm_debug_pps_stage_fops);
 	debugfs_create_file("taper_ctl", 0644, de, gcpm, &gcpm_debug_taper_ctl_fops);
+	debugfs_create_file("taper_step_fv_margin", 0644, de, gcpm, &gcpm_debug_taper_step_fv_margin_fops);
+	debugfs_create_file("taper_step_cc_step", 0644, de, gcpm, &gcpm_debug_taper_step_cc_step_fops);
+	debugfs_create_file("taper_step_count", 0644, de, gcpm, &gcpm_debug_taper_step_count_fops);
+	debugfs_create_file("taper_step_grace", 0644, de, gcpm, &gcpm_debug_taper_step_grace_fops);
+	debugfs_create_file("taper_step_voltage", 0644, de, gcpm, &gcpm_debug_taper_step_voltage_fops);
+	debugfs_create_file("taper_step_current", 0644, de, gcpm, &gcpm_debug_taper_step_current_fops);
+	debugfs_create_file("taper_step_interval", 0644, de, gcpm, &gcpm_debug_taper_step_interval_fops);
 
 	return de;
 }
@@ -2135,6 +2319,14 @@ static int google_cpm_probe(struct platform_device *pdev)
 
 	/* taper control */
 	gcpm->taper_step = -1;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-fv-margin",
+				   &gcpm->taper_step_fv_margin);
+	if (ret < 0)
+		gcpm->taper_step_fv_margin = GCPM_TAPER_STEP_FV_MARGIN;
+	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-cc-step",
+				   &gcpm->taper_step_cc_step);
+	if (ret < 0)
+		gcpm->taper_step_cc_step = GCPM_TAPER_STEP_CC_STEP;
 	ret = of_property_read_u32(pdev->dev.of_node, "google,taper_step-interval",
 				   &gcpm->taper_step_interval);
 	if (ret < 0)
@@ -2158,7 +2350,7 @@ static int google_cpm_probe(struct platform_device *pdev)
 		gcpm->taper_step_current = GCPM_TAPER_STEP_CURRENT;
 
 	dev_err(gcpm->device, "ts_m=%d ts_ccs=%d ts_i=%d ts_cnt=%d ts_g=%d ts_v=%d ts_c=%d\n",
-		GCPM_TAPER_STEP_FV_MARGIN, GCPM_TAPER_STEP_CC_STEP,
+		gcpm->taper_step_fv_margin, gcpm->taper_step_cc_step,
 		gcpm->taper_step_interval, gcpm->taper_step_count,
 		gcpm->taper_step_grace, gcpm->taper_step_voltage,
 		gcpm->taper_step_current);
