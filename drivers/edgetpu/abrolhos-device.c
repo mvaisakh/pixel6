@@ -172,29 +172,29 @@ void edgetpu_chip_handle_reverse_kci(struct edgetpu_dev *etdev,
 
 static int abrolhos_check_ext_mailbox_args(const char *func,
 					   struct edgetpu_dev *etdev,
-					   struct edgetpu_ext_mailbox *ext_mbox)
+					   struct edgetpu_ext_mailbox_ioctl *args)
 {
-	if (ext_mbox->type != EDGETPU_EXT_MAILBOX_TYPE_TZ) {
+	if (args->type != EDGETPU_EXT_MAILBOX_TYPE_TZ) {
 		etdev_err(etdev, "%s: Invalid type %d != %d\n", func,
-			  ext_mbox->type, EDGETPU_EXT_MAILBOX_TYPE_TZ);
+			  args->type, EDGETPU_EXT_MAILBOX_TYPE_TZ);
 		return -EINVAL;
 	}
-	if (ext_mbox->count != 1) {
+	if (args->count != 1) {
 		etdev_err(etdev, "%s: Invalid mailbox count: %d != 1\n", func,
-			  ext_mbox->count);
+			  args->count);
 		return -EINVAL;
 	}
 	return 0;
 }
 
 int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
-				     struct edgetpu_ext_mailbox *ext_mbox)
+				     struct edgetpu_ext_mailbox_ioctl *args)
 {
 	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
 	int ret;
 
 	ret = abrolhos_check_ext_mailbox_args(__func__, client->etdev,
-					      ext_mbox);
+					      args);
 	if (ret)
 		return ret;
 
@@ -213,13 +213,13 @@ int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
 }
 
 int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
-				     struct edgetpu_ext_mailbox *ext_mbox)
+				     struct edgetpu_ext_mailbox_ioctl *args)
 {
 	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
 	int ret = 0;
 
 	ret = abrolhos_check_ext_mailbox_args(__func__, client->etdev,
-					      ext_mbox);
+					      args);
 	if (ret)
 		return ret;
 

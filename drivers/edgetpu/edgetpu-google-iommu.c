@@ -71,6 +71,9 @@ get_domain_by_context_id(struct edgetpu_dev *etdev,
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	uint pasid;
 
+	/* always return the default domain when AUX is not supported */
+	if (!etiommu->aux_enabled)
+		return iommu_get_domain_for_dev(dev);
 	if (ctx_id == EDGETPU_CONTEXT_INVALID)
 		return NULL;
 	if (ctx_id & EDGETPU_CONTEXT_DOMAIN_TOKEN)
@@ -627,19 +630,22 @@ static struct edgetpu_iommu_domain invalid_etdomain = {
 
 struct edgetpu_iommu_domain *edgetpu_mmu_alloc_domain(struct edgetpu_dev *etdev)
 {
-	struct edgetpu_iommu_domain *etdomain =
-		kzalloc(sizeof(*etdomain), GFP_KERNEL);
+	struct edgetpu_iommu_domain *etdomain;
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
 	struct iommu_domain *domain;
 	int token;
 
-	if (!etdomain)
-		return NULL;
 	if (!etiommu->aux_enabled)
 		return &invalid_etdomain;
 	domain = iommu_domain_alloc(etdev->dev->bus);
 	if (!domain) {
 		etdev_warn(etdev, "iommu domain alloc failed");
+		return NULL;
+	}
+
+	etdomain = kzalloc(sizeof(*etdomain), GFP_KERNEL);
+	if (!etdomain) {
+		iommu_domain_free(domain);
 		return NULL;
 	}
 
@@ -649,9 +655,11 @@ struct edgetpu_iommu_domain *edgetpu_mmu_alloc_domain(struct edgetpu_dev *etdev)
 	mutex_unlock(&etiommu->pool_lock);
 	if (token < 0) {
 		etdev_warn(etdev, "alloc iommu domain token failed: %d", token);
+		kfree(etdomain);
 		iommu_domain_free(domain);
 		return NULL;
 	}
+
 	edgetpu_init_etdomain(etdomain, domain, token);
 	return etdomain;
 }

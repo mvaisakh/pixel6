@@ -107,16 +107,21 @@ static int edgetpu_fs_release(struct inode *inode, struct file *file)
 	wakelock_count = edgetpu_wakelock_lock(client->wakelock);
 	mutex_lock(&client->group_lock);
 	/*
-	 * @wakelock = 0 means the device might be powered off. And for group with a non-detachable
-	 * mailbox, its mailbox is removed when the group is released, in such case we need to
-	 * ensure the device is powered to prevent kernel panic on programming VII mailbox CSRs.
+	 * @wakelock_count = 0 means the device might be powered off. And for group with a
+	 * non-detachable mailbox, its mailbox is removed when the group is released, in such case
+	 * we need to ensure the device is powered to prevent kernel panic on programming VII
+	 * mailbox CSRs.
 	 *
 	 * For mailbox-detachable groups the mailbox had been removed when the wakelock was
 	 * released, edgetpu_device_group_release() doesn't need the device be powered in this case.
 	 */
 	if (!wakelock_count && client->group && !client->group->mailbox_detachable) {
-		wakelock_count = 1;
-		edgetpu_pm_get(etdev->pm);
+		/* assumes @group->etdev == @client->etdev, i.e. @client is the leader of @group */
+		if (!edgetpu_pm_get(etdev->pm))
+			wakelock_count = 1;
+		else
+			/* failed to power on - prevent group releasing from accessing the device */
+			client->group->dev_inaccessible = true;
 	}
 	mutex_unlock(&client->group_lock);
 	edgetpu_wakelock_unlock(client->wakelock);
@@ -626,9 +631,9 @@ edgetpu_ioctl_dram_usage(struct edgetpu_dev *etdev,
 
 static int
 edgetpu_ioctl_acquire_ext_mailbox(struct edgetpu_client *client,
-				  struct edgetpu_ext_mailbox __user *argp)
+				  struct edgetpu_ext_mailbox_ioctl __user *argp)
 {
-	struct edgetpu_ext_mailbox ext_mailbox;
+	struct edgetpu_ext_mailbox_ioctl ext_mailbox;
 
 	if (copy_from_user(&ext_mailbox, argp, sizeof(ext_mailbox)))
 		return -EFAULT;
@@ -638,14 +643,29 @@ edgetpu_ioctl_acquire_ext_mailbox(struct edgetpu_client *client,
 
 static int
 edgetpu_ioctl_release_ext_mailbox(struct edgetpu_client *client,
-				  struct edgetpu_ext_mailbox __user *argp)
+				  struct edgetpu_ext_mailbox_ioctl __user *argp)
 {
-	struct edgetpu_ext_mailbox ext_mailbox;
+	struct edgetpu_ext_mailbox_ioctl ext_mailbox;
 
 	if (copy_from_user(&ext_mailbox, argp, sizeof(ext_mailbox)))
 		return -EFAULT;
 
 	return edgetpu_chip_release_ext_mailbox(client, &ext_mailbox);
+}
+
+static int edgetpu_ioctl_get_fatal_errors(struct edgetpu_client *client,
+					  __u32 __user *argp)
+{
+	u32 fatal_errors = 0;
+	int ret = 0;
+
+	mutex_lock(&client->group_lock);
+	if (client->group)
+		fatal_errors = edgetpu_group_get_fatal_errors(client->group);
+	mutex_unlock(&client->group_lock);
+	if (copy_to_user(argp, &fatal_errors, sizeof(fatal_errors)))
+		ret = -EFAULT;
+	return ret;
 }
 
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
@@ -735,6 +755,9 @@ long edgetpu_ioctl(struct file *file, uint cmd, ulong arg)
 		break;
 	case EDGETPU_RELEASE_EXT_MAILBOX:
 		ret = edgetpu_ioctl_release_ext_mailbox(client, argp);
+		break;
+	case EDGETPU_GET_FATAL_ERRORS:
+		ret = edgetpu_ioctl_get_fatal_errors(client, argp);
 		break;
 
 	default:

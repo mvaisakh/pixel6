@@ -167,10 +167,16 @@ struct edgetpu_dev {
 	struct dentry *d_entry;    /* debugfs dir for this device */
 	struct mutex state_lock;   /* protects state of this device */
 	enum edgetpu_dev_state state;
-	struct mutex groups_lock;  /* protects groups, n_groups, and lockout */
+	struct mutex groups_lock;
+	/* fields protected by @groups_lock */
+
 	struct list_head groups;
 	uint n_groups;		   /* number of entries in @groups */
 	bool group_join_lockout;   /* disable group join while reinit */
+	u32 vcid_pool;		   /* bitmask of VCID to be allocated */
+
+	/* end of fields protected by @groups_lock */
+
 	void *mmu_cookie;	   /* mmu driver private data */
 	void *dram_cookie;	   /* on-device DRAM private data */
 	struct edgetpu_mailbox_manager *mailbox_manager;
@@ -416,7 +422,7 @@ int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev);
 
 /*
  * "External mailboxes" below refers to mailboxes that are not handled
- * directly by the DarwiNN runtime, such as secure or device-to-device.
+ * directly by the runtime, such as secure or device-to-device.
  *
  * Chip specific code will typically keep track of state and inform the firmware
  * that a mailbox has become active/inactive.
@@ -424,10 +430,10 @@ int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev);
 
 /* Chip-specific code to acquire external mailboxes */
 int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
-				     struct edgetpu_ext_mailbox *ext_mbox);
+				     struct edgetpu_ext_mailbox_ioctl *args);
 
 /* Chip-specific code to release external mailboxes */
 int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
-				     struct edgetpu_ext_mailbox *ext_mbox);
+				     struct edgetpu_ext_mailbox_ioctl *args);
 
 #endif /* __EDGETPU_INTERNAL_H__ */

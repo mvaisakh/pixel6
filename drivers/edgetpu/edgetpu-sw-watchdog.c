@@ -5,6 +5,7 @@
  * Copyright (C) 2020 Google, Inc.
  */
 
+#include <asm/barrier.h>
 #include <linux/atomic.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -124,21 +125,29 @@ int edgetpu_sw_wdt_create(struct edgetpu_dev *etdev, unsigned long active_ms,
 
 int edgetpu_sw_wdt_start(struct edgetpu_dev *etdev)
 {
-	struct edgetpu_sw_wdt *etdev_sw_wdt = etdev->etdev_sw_wdt;
+	struct edgetpu_sw_wdt *wdt;
 
-	if (!etdev_sw_wdt)
+	/* to match edgetpu_sw_wdt_destroy() */
+	smp_mb();
+	wdt = etdev->etdev_sw_wdt;
+	if (!wdt)
 		return -EINVAL;
-	if (!etdev_sw_wdt->et_action_work.edgetpu_sw_wdt_handler)
+	if (!wdt->et_action_work.edgetpu_sw_wdt_handler)
 		etdev_err(etdev, "sw wdt handler not set\n");
-	sw_wdt_start(etdev_sw_wdt);
+	sw_wdt_start(wdt);
 	return 0;
 }
 
 void edgetpu_sw_wdt_stop(struct edgetpu_dev *etdev)
 {
-	if (!etdev->etdev_sw_wdt)
+	struct edgetpu_sw_wdt *wdt;
+
+	/* to match edgetpu_sw_wdt_destroy() */
+	smp_mb();
+	wdt = etdev->etdev_sw_wdt;
+	if (!wdt)
 		return;
-	sw_wdt_stop(etdev->etdev_sw_wdt);
+	sw_wdt_stop(wdt);
 }
 
 void edgetpu_sw_wdt_destroy(struct edgetpu_dev *etdev)
@@ -149,9 +158,14 @@ void edgetpu_sw_wdt_destroy(struct edgetpu_dev *etdev)
 	if (!wdt)
 		return;
 	etdev->etdev_sw_wdt = NULL;
+	/*
+	 * To ensure that etdev->etdev_sw_wdt is NULL so wdt_start() calls from other processes
+	 * won't start the watchdog again.
+	 */
+	smp_mb();
+	sw_wdt_stop(wdt);
 	/* cancel and sync work due to watchdog bite to prevent UAF */
 	cancel_work_sync(&wdt->et_action_work.work);
-	sw_wdt_stop(wdt);
 	counter = atomic_read(&wdt->active_counter);
 	if (counter)
 		etdev_warn(etdev, "Unbalanced WDT active counter: %d", counter);

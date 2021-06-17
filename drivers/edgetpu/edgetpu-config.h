@@ -8,27 +8,12 @@
 #ifndef __EDGETPU_CONFIG_H__
 #define __EDGETPU_CONFIG_H__
 
-#ifdef CONFIG_HERMOSA
-
-#include "hermosa/config.h"
-
-#else /* !CONFIG_HERMOSA */
-
-#ifdef CONFIG_JANEIRO
-
-#include "janeiro/config.h"
-
-#else
-
 #ifndef CONFIG_ABROLHOS
 #define CONFIG_ABROLHOS
 #warning "Building default chipset abrolhos"
 #endif
 
 #include "abrolhos/config.h"
-
-#endif /* CONFIG_JANEIRO */
-#endif /* CONFIG_HERMOSA */
 
 #define EDGETPU_DEFAULT_FIRMWARE_NAME "google/edgetpu-" DRIVER_NAME ".fw"
 #define EDGETPU_TEST_FIRMWARE_NAME "google/edgetpu-" DRIVER_NAME "-test.fw"

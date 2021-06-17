@@ -204,6 +204,29 @@ struct edgetpu_kci_device_group_detail {
 	u8 reserved[6]; /* padding */
 };
 
+struct edgetpu_kci_open_device_detail {
+	/* The ID of mailbox to be opened. */
+	u16 mailbox_id;
+	/*
+	 * Virtual context ID @mailbox_id is associated to.
+	 * For device groups with @mailbox_detachable attribute the mailbox attached to the group
+	 * can be different after wakelock re-acquired. Firmware uses this VCID to identify the
+	 * device group.
+	 */
+	u16 vcid;
+	/*
+	 * Extra flags for the attributes of this request.
+	 * Set RESERVED bits to 0 to ensure backwards compatibility.
+	 *
+	 * Bitfields:
+	 *   [0:0]   - first_open: Specifies if this is the first time we are calling mailbox open
+	 *             KCI for this VCID after it has been allocated to a device group. This allows
+	 *             firmware to clean up/reset the memory allocator for that partition.
+	 *   [31:1]  - RESERVED
+	 */
+	u32 flags;
+};
+
 /*
  * Initializes a KCI object.
  *
@@ -328,8 +351,7 @@ int edgetpu_kci_map_trace_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
  *
  * Returns the code of response, or a negative errno on error.
  */
-int edgetpu_kci_join_group(struct edgetpu_kci *kci, struct edgetpu_dev *etdev,
-			   u8 n_dies, u8 vid);
+int edgetpu_kci_join_group(struct edgetpu_kci *kci, u8 n_dies, u8 vid);
 /* Informs the TPU to leave the group it currently belongs to. */
 int edgetpu_kci_leave_group(struct edgetpu_kci *kci);
 
@@ -344,20 +366,20 @@ int edgetpu_kci_get_debug_dump(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 			       size_t size);
 
 /*
- * Inform the firmware to prepare to serve the VII of @mailbox_ids.
+ * Inform the firmware to prepare to serve the VII of @mailbox_id.
  *
  * You usually shouldn't call this directly - consider using
  * edgetpu_mailbox_activate() instead.
  */
-int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_ids);
+int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_id, s16 vcid, bool first_open);
 
 /*
- * Inform the firmware the VII with @mailbox_ids are closed.
+ * Inform the firmware the VII with @mailbox_id is closed.
  *
  * You usually shouldn't call this directly - consider using
  * edgetpu_mailbox_deactivate() instead.
  */
-int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids);
+int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_id);
 
 /* Cancel work queues or wait until they're done */
 void edgetpu_kci_cancel_work_queues(struct edgetpu_kci *kci);

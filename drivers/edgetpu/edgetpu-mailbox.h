@@ -302,26 +302,26 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev);
 int edgetpu_mailbox_p2p_batch(struct edgetpu_mailbox_manager *mgr, uint n,
 			      uint skip_i, struct edgetpu_mailbox **mailboxes);
 
-/* Notify firmware of external mailboxes becoming active */
-int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_ids);
+/* Notify firmware of an external mailbox becoming active */
+int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_id);
 
-/* Notify firmware of external mailboxes becoming inactive */
-int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_ids);
+/* Notify firmware of an external mailbox becoming inactive */
+int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_id);
 
 /*
- * Activates @mailbox_ids, OPEN_DEVICE KCI will be sent.
+ * Activates @mailbox_id, OPEN_DEVICE KCI will be sent.
  *
- * If @mailbox_ids are known to be activated, KCI is not sent and this function
+ * If @mailbox_id is known to be activated, KCI is not sent and this function
  * returns 0.
  *
  * Returns what edgetpu_kci_open_device() returned.
  * Caller ensures device is powered on.
  */
-int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_ids);
+int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_id, s16 vcid, bool first_open);
 /*
  * Similar to edgetpu_mailbox_activate() but sends CLOSE_DEVICE KCI instead.
  */
-int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_ids);
+int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id);
 /* Sets @eh->fw_state to 0. */
 void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh);
 

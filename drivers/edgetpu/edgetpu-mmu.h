@@ -199,9 +199,7 @@ void edgetpu_mmu_free(struct edgetpu_dev *etdev, tpu_addr_t tpu_addr,
  *
  * Description: Add a mapping from iova -> paddr to the MMU for the chip.
  * paddr can be considered a physical address from the TPU's viewpoint, but
- * may actually be another IOVA for another IOMMU downstream of the chip MMU
- * (as on Hermosa, where the SMMU translates TPU VAs to IOVAs sent to the IOMMU
- * downstream of the TPU).
+ * may actually be another IOVA for another IOMMU downstream of the chip MMU.
  *
  * Note: for chipsets with edgetpu_mmu_alloc() support, @iova passed to this
  * function must be either allocated from edgetpu_mmu_alloc() or reserved by
@@ -230,12 +228,12 @@ void edgetpu_mmu_remove_translation(struct edgetpu_dev *etdev,
  * @context_id: context ID for the mapping
  * @mmu_flags: the flag or'ed with EDGETPU_MMU_* macros
  *
- * Description: For chips with internal MMUs (e.g., Hermosa SMMU), add the
- * required internal MMU mapping for the TPU to access @downstream_addr, the
- * DMA or physical address of the buffer as returned by the Linux DMA API when
- * the DMA mapping was created.  This can be used with, for example, buffers
- * allocated using dma_alloc_coherent(), which are mapped appropriately for
- * any downstream IOMMU and must be mapped to the TPU internal MMU as well.
+ * Description: For chips with internal MMUs, add the required internal MMU
+ * mapping for the TPU to access @down_addr, the DMA or physical address of the
+ * buffer as returned by the Linux DMA API when the DMA mapping was created.
+ * This can be used with, for example, buffers allocated using
+ * dma_alloc_coherent(), which are mapped appropriately for any downstream IOMMU
+ * and must be mapped to the TPU internal MMU as well.
  *
  * For a chip that doesn't have an internal MMU but has the IOMMU domain AUX
  * feature, perform the necessary mapping to @context_id and return the
@@ -261,9 +259,8 @@ void edgetpu_mmu_tpu_unmap(struct edgetpu_dev *etdev,
  * @context_id: context ID for the mapping
  * @mmu_flags: the flag or'ed with EDGETPU_MMU_* macros
  *
- * Description: For chips with internal MMUs (e.g., Hermosa SMMU), add the
- * required internal MMU mapping for the TPU to access the DMA addresses of
- * @sgt.
+ * Description: For chips with internal MMUs, add the required internal MMU
+ * mapping for the TPU to access the DMA addresses of @sgt.
  *
  * For a chip that doesn't have an internal MMU but has the IOMMU domain AUX
  * feature, perform the necessary mapping to @context_id and return the

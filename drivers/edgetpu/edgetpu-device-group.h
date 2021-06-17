@@ -69,6 +69,24 @@ struct edgetpu_device_group {
 	 * creating this group.
 	 */
 	bool mailbox_detachable;
+	/*
+	 * Whether group->etdev is inaccessible.
+	 * Some group operations will access device CSRs. If the device is known to be
+	 * inaccessible (typically not powered on) then set this field to true to
+	 * prevent HW interactions.
+	 *
+	 * This field is always false for !EDGETPU_HAS_WAKELOCK chipsets.
+	 *
+	 * For EDGETPU_HAS_MCP chipsets this field should be replaced with a
+	 * boolean array with size @n_clients, but we don't have a chipset with
+	 * EDGETPU_HAS_MCP && EDGETPU_HAS_WAKELOCK yet.
+	 *
+	 * Is not protected by @lock because this is only written when releasing the
+	 * leader of this group.
+	 */
+	bool dev_inaccessible;
+	/* Virtual context ID to be sent to the firmware. */
+	u16 vcid;
 
 	/* protects everything in the following comment block */
 	struct mutex lock;
@@ -88,6 +106,7 @@ struct edgetpu_device_group {
 	 */
 	struct edgetpu_client **members;
 	enum edgetpu_device_group_status status;
+	bool activated; /* whether this group's VII has ever been activated */
 	struct edgetpu_vii vii;		/* VII mailbox */
 	/*
 	 * Context ID ranges from EDGETPU_CONTEXT_VII_BASE to
@@ -101,6 +120,9 @@ struct edgetpu_device_group {
 	struct edgetpu_iommu_domain *etdomain;
 	/* matrix of P2P mailboxes */
 	struct edgetpu_p2p_mailbox **p2p_mailbox_matrix;
+
+	/* Mask of errors set for this group. */
+	uint fatal_errors;
 
 	/* end of fields protected by @lock */
 
@@ -357,7 +379,10 @@ bool edgetpu_in_any_group(struct edgetpu_dev *etdev);
 bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
 
 /* Notify all device groups of @etdev about a failure on the die */
-void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev);
+void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev, uint error_mask);
+
+/* Return fatal error signaled bitmask for device group */
+uint edgetpu_group_get_fatal_errors(struct edgetpu_device_group *group);
 
 /*
  * Detach and release the mailbox resources of VII from @group.

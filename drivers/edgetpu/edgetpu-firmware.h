@@ -39,7 +39,7 @@ enum edgetpu_fw_flavor {
 	FW_FLAVOR_BL1 = 1,
 	/* systest app image */
 	FW_FLAVOR_SYSTEST = 2,
-	/* default production app image from DarwiNN team */
+	/* default production app image */
 	FW_FLAVOR_PROD_DEFAULT = 3,
 	/* custom image produced by other teams */
 	FW_FLAVOR_CUSTOM = 4,
@@ -140,7 +140,7 @@ struct edgetpu_firmware_handlers {
 				struct edgetpu_firmware_buffer *fw_buf);
 	/*
 	 * Platform-specific handling after firmware loaded, before running
-	 * the firmware, such as validating the firmware or resetting the R52
+	 * the firmware, such as validating the firmware or resetting the
 	 * processor.
 	 */
 	int (*prepare_run)(struct edgetpu_firmware *et_fw,

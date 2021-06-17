@@ -510,8 +510,7 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 static void
 abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
-			      struct edgetpu_dev *etdev,
-			      struct abrolhos_platform_dev *abpdev)
+			      struct edgetpu_dev *etdev)
 {
 	if (!edgetpu_pchannel_power_down(etdev, false))
 		return;
@@ -520,9 +519,10 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 	etdev_warn(etdev, "Requesting early GSA reset\n");
 
 	/*
-	 * p-channel failed, request GSA shutdown to make sure the R52 core is
+	 * p-channel failed, request GSA shutdown to make sure the CPU is
 	 * reset.
-	 * The GSA->APM request will clear any pending DVFS status from R52.
+	 * The GSA->APM request will clear any pending DVFS status from the
+	 * CPU.
 	 */
 	gsa_send_tpu_cmd(etpdev->gsa_dev, GSA_TPU_SHUTDOWN);
 }
@@ -582,7 +582,7 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	if (etdev->kci && edgetpu_firmware_status_locked(etdev) == FW_VALID) {
 		/* Update usage stats before we power off fw. */
 		edgetpu_kci_update_usage_locked(etdev);
-		abrolhos_pm_shutdown_firmware(abpdev, etdev, abpdev);
+		abrolhos_pm_shutdown_firmware(abpdev, etdev);
 		edgetpu_kci_cancel_work_queues(etdev->kci);
 	}
 

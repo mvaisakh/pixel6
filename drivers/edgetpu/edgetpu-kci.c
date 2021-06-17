@@ -6,6 +6,7 @@
  * Copyright (C) 2019 Google, Inc.
  */
 
+#include <linux/bits.h>
 #include <linux/circ_buf.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h> /* dmam_alloc_coherent */
@@ -690,6 +691,41 @@ static int edgetpu_kci_send_cmd_return_resp(
 	return resp->code;
 }
 
+static int edgetpu_kci_send_cmd_with_data(struct edgetpu_kci *kci,
+					  struct edgetpu_command_element *cmd, const void *data,
+					  size_t size)
+{
+	struct edgetpu_dev *etdev = kci->mailbox->etdev;
+	dma_addr_t dma_addr;
+	tpu_addr_t tpu_addr;
+	int ret;
+	void *ptr = dma_alloc_coherent(etdev->dev, size, &dma_addr, GFP_KERNEL);
+	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
+
+	if (!ptr)
+		return -ENOMEM;
+	memcpy(ptr, data, size);
+
+	tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size, DMA_TO_DEVICE, EDGETPU_CONTEXT_KCI,
+				       flags);
+	if (!tpu_addr) {
+		etdev_err(etdev, "%s: failed to map to TPU", __func__);
+		dma_free_coherent(etdev->dev, size, ptr, dma_addr);
+		return -ENOSPC;
+	}
+	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__, ptr, tpu_addr,
+		  &dma_addr);
+
+	cmd->dma.address = tpu_addr;
+	cmd->dma.size = size;
+	ret = edgetpu_kci_send_cmd(kci, cmd);
+	edgetpu_mmu_tpu_unmap(etdev, tpu_addr, size, EDGETPU_CONTEXT_KCI);
+	dma_free_coherent(etdev->dev, size, ptr, dma_addr);
+	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__, ptr, tpu_addr,
+		  &dma_addr);
+	return ret;
+}
+
 int edgetpu_kci_send_cmd(struct edgetpu_kci *kci,
 			 struct edgetpu_command_element *cmd)
 {
@@ -741,51 +777,19 @@ int edgetpu_kci_map_trace_buffer(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
-int edgetpu_kci_join_group(struct edgetpu_kci *kci, struct edgetpu_dev *etdev,
-			   u8 n_dies, u8 vid)
+int edgetpu_kci_join_group(struct edgetpu_kci *kci, u8 n_dies, u8 vid)
 {
-	struct edgetpu_kci_device_group_detail *detail;
-	const u32 size = sizeof(*detail);
-	dma_addr_t dma_addr;
-	tpu_addr_t tpu_addr;
 	struct edgetpu_command_element cmd = {
 		.code = KCI_CODE_JOIN_GROUP,
-		.dma = {
-			.size = size,
-		},
 	};
-	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
-	int ret;
+	const struct edgetpu_kci_device_group_detail detail = {
+		.n_dies = n_dies,
+		.vid = vid,
+	};
 
 	if (!kci)
 		return -ENODEV;
-	detail = dma_alloc_coherent(etdev->dev, sizeof(*detail), &dma_addr,
-				    GFP_KERNEL);
-	if (!detail)
-		return -ENOMEM;
-	detail->n_dies = n_dies;
-	detail->vid = vid;
-
-	tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size, DMA_TO_DEVICE,
-				       EDGETPU_CONTEXT_KCI, flags);
-	if (!tpu_addr) {
-		etdev_err(etdev, "%s: failed to map group detail to TPU",
-			  __func__);
-		dma_free_coherent(etdev->dev, size, detail, dma_addr);
-		return -EINVAL;
-	}
-
-	cmd.dma.address = tpu_addr;
-	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__,
-		  detail, tpu_addr, &dma_addr);
-
-	ret = edgetpu_kci_send_cmd(kci, &cmd);
-	edgetpu_mmu_tpu_unmap(etdev, tpu_addr, size, EDGETPU_CONTEXT_KCI);
-	dma_free_coherent(etdev->dev, size, detail, dma_addr);
-	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__,
-		  detail, tpu_addr, &dma_addr);
-
-	return ret;
+	return edgetpu_kci_send_cmd_with_data(kci, &cmd, &detail, sizeof(detail));
 }
 
 int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
@@ -989,26 +993,33 @@ int edgetpu_kci_get_debug_dump(struct edgetpu_kci *kci, tpu_addr_t tpu_addr,
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
-int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_ids)
+int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_id, s16 vcid, bool first_open)
 {
+	const struct edgetpu_kci_open_device_detail detail = {
+		.mailbox_id = mailbox_id,
+		.vcid = vcid,
+		.flags = first_open,
+	};
 	struct edgetpu_command_element cmd = {
 		.code = KCI_CODE_OPEN_DEVICE,
 		.dma = {
-			.flags = mailbox_ids,
+			.flags = BIT(mailbox_id),
 		},
 	};
 
 	if (!kci)
 		return -ENODEV;
-	return edgetpu_kci_send_cmd(kci, &cmd);
+	if (vcid < 0)
+		return edgetpu_kci_send_cmd(kci, &cmd);
+	return edgetpu_kci_send_cmd_with_data(kci, &cmd, &detail, sizeof(detail));
 }
 
-int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_ids)
+int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_id)
 {
 	struct edgetpu_command_element cmd = {
 		.code = KCI_CODE_CLOSE_DEVICE,
 		.dma = {
-			.flags = mailbox_ids,
+			.flags = BIT(mailbox_id),
 		},
 	};
 

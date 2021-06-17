@@ -44,7 +44,7 @@ struct edgetpu_debug_stats {
 struct edgetpu_dump_segment {
 	u64 type;	/* type of the dump */
 	u64 size;	/* size of the dump data */
-	u64 src_addr; /* source of the dump on the R52 address map */
+	u64 src_addr; /* source of the dump on the CPU address map */
 };
 
 struct edgetpu_debug_dump {
@@ -89,4 +89,4 @@ int edgetpu_get_debug_dump(struct edgetpu_dev *etdev,
  */
 void edgetpu_debug_dump_resp_handler(struct edgetpu_dev *etdev);
 
-#endif /* EDEGETPU_DEBUG_DUMP_H_ */
+#endif /* EDGETPU_DEBUG_DUMP_H_ */

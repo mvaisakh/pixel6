@@ -154,6 +154,9 @@ struct edgetpu_event_register {
  * released.
  */
 #define EDGETPU_PRIORITY_DETACHABLE (1u << 3)
+/* For @partition_type. */
+#define EDGETPU_PARTITION_NORMAL 0
+#define EDGETPU_PARTITION_EXTRA 1
 struct edgetpu_mailbox_attr {
 	/*
 	 * There are limitations on these size fields, see the error cases in
@@ -166,6 +169,8 @@ struct edgetpu_mailbox_attr {
 	__u32 sizeof_resp; /* size of response element in bytes */
 	__u32 priority          : 4; /* mailbox service priority */
 	__u32 cmdq_tail_doorbell: 1; /* auto doorbell on cmd queue tail move */
+	/* Type of memory partitions to be used for this group, exact meaning is chip-dependent. */
+	__u32 partition_type    : 1;
 };
 
 /*
@@ -517,14 +522,14 @@ struct edgetpu_device_dram_usage {
 	_IOR(EDGETPU_IOCTL_BASE, 29, struct edgetpu_device_dram_usage)
 
 /*
- * struct edgetpu_ext_mailbox
+ * struct edgetpu_ext_mailbox_ioctl
  * @client_id:		Client identifier (may not be needed depending on type)
  * @attrs:		Array of mailbox attributes (pointer to
  *			edgetpu_mailbox_attr, may be NULL depending on type)
  * @type:		One of the EDGETPU_EXT_MAILBOX_xxx values
  * @count:		Number of mailboxes to acquire
  */
-struct edgetpu_ext_mailbox {
+struct edgetpu_ext_mailbox_ioctl {
 	__u64 client_id;
 	__u64 attrs;
 	__u32 type;
@@ -536,13 +541,53 @@ struct edgetpu_ext_mailbox {
  * runtime. This can be a secure mailbox or a device-to-device mailbox.
  */
 #define EDGETPU_ACQUIRE_EXT_MAILBOX \
-	_IOW(EDGETPU_IOCTL_BASE, 30, struct edgetpu_ext_mailbox)
+	_IOW(EDGETPU_IOCTL_BASE, 30, struct edgetpu_ext_mailbox_ioctl)
 
 /*
  * Release a chip-specific mailbox that is not directly managed by the TPU
  * runtime. This can be a secure mailbox or a device-to-device mailbox.
  */
 #define EDGETPU_RELEASE_EXT_MAILBOX \
-	_IOW(EDGETPU_IOCTL_BASE, 31, struct edgetpu_ext_mailbox)
+	_IOW(EDGETPU_IOCTL_BASE, 31, struct edgetpu_ext_mailbox_ioctl)
+
+/* Fatal error event bitmasks... */
+/* Firmware crash in non-restartable thread */
+#define EDGETPU_ERROR_FW_CRASH		0x1
+/* Host or device watchdog timeout */
+#define EDGETPU_ERROR_WATCHDOG_TIMEOUT	0x2
+/* Thermal shutdown */
+#define EDGETPU_ERROR_THERMAL_STOP	0x4
+/* TPU hardware inaccessible: link fail, memory protection unit blocking... */
+#define EDGETPU_ERROR_HW_NO_ACCESS	0x8
+/* Various hardware failures */
+#define EDGETPU_ERROR_HW_FAIL		0x10
+
+/*
+ * Return fatal errors raised for the client's device group, as a bitmask of
+ * the above fatal error event codes, or zero if no errors encountered or
+ * client is not part of a device group.
+ */
+#define EDGETPU_GET_FATAL_ERRORS \
+	_IOR(EDGETPU_IOCTL_BASE, 32, __u32)
+
+/* Fatal error event bitmasks... */
+/* Firmware crash in non-restartable thread */
+#define EDGETPU_ERROR_FW_CRASH		0x1
+/* Host or device watchdog timeout */
+#define EDGETPU_ERROR_WATCHDOG_TIMEOUT	0x2
+/* Thermal shutdown */
+#define EDGETPU_ERROR_THERMAL_STOP	0x4
+/* TPU hardware inaccessible: link fail, memory protection unit blocking... */
+#define EDGETPU_ERROR_HW_NO_ACCESS	0x8
+/* Various hardware failures */
+#define EDGETPU_ERROR_HW_FAIL		0x10
+
+/*
+ * Return fatal errors raised for the client's device group, as a bitmask of
+ * the above fatal error event codes, or zero if no errors encountered or
+ * client is not part of a device group.
+ */
+#define EDGETPU_GET_FATAL_ERRORS \
+	_IOR(EDGETPU_IOCTL_BASE, 32, __u32)
 
 #endif /* __EDGETPU_H__ */

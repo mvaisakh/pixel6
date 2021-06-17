@@ -36,9 +36,9 @@ struct tpu_usage {
  * Must be kept in sync with firmware struct Component.
  */
 enum edgetpu_usage_component {
-	/* The device as a whole (TPU, R52, DMA330, etc.) */
+	/* The device as a whole */
 	EDGETPU_USAGE_COMPONENT_DEVICE = 0,
-	/* Just the TPU core (scalar core and tiles) */
+	/* Just the TPU core */
 	EDGETPU_USAGE_COMPONENT_TPU = 1,
 	EDGETPU_USAGE_COMPONENT_COUNT = 2, /* number of components above */
 };
@@ -112,20 +112,9 @@ struct __packed edgetpu_usage_max_watermark {
 /* An enum to identify the tracked firmware threads. */
 /* Must be kept in sync with firmware enum class UsageTrackerThreadId. */
 enum edgetpu_usage_threadid {
-	EDGETPU_FW_THREAD_MAIN = 0,
-	EDGETPU_FW_THREAD_KCI_HANDLER = 1,
-	EDGETPU_FW_THREAD_POWER_ADMIN = 2,
-	EDGETPU_FW_THREAD_VII_SCHEDULER = 3,
-	EDGETPU_FW_THREAD_VII_HANDLER = 4,
-	EDGETPU_FW_THREAD_MCP_GRAPH_DRIVER = 5,
-	EDGETPU_FW_THREAD_SCP_GRAPH_DRIVER = 6,
-	EDGETPU_FW_THREAD_TPU_DRIVER = 7,
-	EDGETPU_FW_THREAD_RESTART_HANDLER = 8,
-	EDGETPU_FW_THREAD_POLL_SERVICE = 9,
-	EDGETPU_FW_THREAD_DMA_DRIVER = 10,
-	EDGETPU_FW_THREAD_GRAPH_DMA_DRIVER = 11,
+	/* Individual thread IDs are not tracked. */
 
-	/* Number of task identifiers above. */
+	/* Number of task identifiers. */
 	EDGETPU_FW_THREAD_COUNT = 12,
 };
 

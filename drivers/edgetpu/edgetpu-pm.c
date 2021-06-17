@@ -242,7 +242,7 @@ static int pchannel_state_change_request(struct edgetpu_dev *etdev, int state)
 	if (state == STATE_RUN)
 		return 0;
 
-	/* Phase 3: R52 acknowledgment */
+	/* Phase 3: CPU acknowledgment */
 	ret = etdev_poll_power_state(etdev, val,
 				     (val & PACCEPT) || (val & PDENY));
 	if (val & PDENY) {
