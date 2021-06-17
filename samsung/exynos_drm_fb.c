@@ -35,6 +35,7 @@
 #include "exynos_drm_format.h"
 #include "exynos_drm_gem.h"
 #include "exynos_drm_hibernation.h"
+#include "exynos_drm_recovery.h"
 
 extern const struct dpp_restriction dpp_drv_data;
 
@@ -579,6 +580,9 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 				decon_dump_all(decon);
 
 			decon_force_vblank_event(decon);
+
+			if (!recovering)
+				decon_trigger_recovery(decon);
 		}
 		DPU_ATRACE_END("wait_for_crtc_flip");
 
