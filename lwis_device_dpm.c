@@ -59,7 +59,7 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 	 */
 	if (target_dev->enabled == 0 && target_dev->type != DEVICE_TYPE_DPM) {
 		dev_warn(target_dev->dev, "%s disabled, no need to update qos\n", target_dev->name);
-		return ret;
+		return -EPERM;
 	}
 
 	switch (qos_setting->clock_family) {

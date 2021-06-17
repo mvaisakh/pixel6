@@ -178,7 +178,7 @@ static int lwis_ioreg_device_suspend(struct device *dev)
 
 	lwis_device_event_states_clear_locked(lwis_dev);
 	lwis_dev->enabled = 0;
-	dev_warn(lwis_dev->dev, "Device disabled when syetem suspend\n");
+	dev_warn(lwis_dev->dev, "Device disabled when system suspend\n");
 	mutex_unlock(&lwis_dev->client_lock);
 	return 0;
 }

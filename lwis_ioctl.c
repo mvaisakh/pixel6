@@ -1303,6 +1303,12 @@ static int ioctl_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_qos_set
 			current_setting.device_id);
 		return -ENODEV;
 	}
+
+	if (target_device->enabled == 0 && target_device->type != DEVICE_TYPE_DPM) {
+		dev_warn(target_device->dev, "%s disabled, can't get clk\n", target_device->name);
+		return -EPERM;
+	}
+
 	current_setting.frequency_hz = (int64_t)lwis_dpm_read_clock(target_device);
 	if (copy_to_user((void __user *)msg, &current_setting, sizeof(struct lwis_qos_setting))) {
 		dev_err(lwis_dev->dev, "failed to copy to user\n");
