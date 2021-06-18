@@ -173,8 +173,8 @@ int pca9468_send_pd_message(struct pca9468_charger *pca9468,
 		return -EINVAL;
 	}
 
-	/* request offline */
-	if (msg_type == PD_MSG_REQUEST_FIXED_PDO) {
+	/* turn off PPS/PROG, revert to PD */
+	if (msg_type == MSG_REQUEST_FIXED_PDO) {
 		ret = pps_prog_offline(&pca9468->pps_data, tcpm_psy);
 		pr_debug("%s: requesting offline ret=%d\n", __func__, ret);
 		/* TODO: reset state? */
@@ -325,6 +325,45 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 	if (!wlc_psy) {
 		ret = -ENODEV;
 		goto out;
+	}
+
+	/* turn off PPS/PROG, revert to PD */
+	if (msg_type == MSG_REQUEST_FIXED_PDO) {
+		union power_supply_propval online;
+		int ret;
+
+		ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE, &online);
+		if (ret == 0 && online.intval == PPS_PSY_PROG_ONLINE) {
+			unsigned int val;
+
+			/*
+			 * Make sure the pca is in stby mode before setting
+			 * online back to PPS_PSY_FIXED_ONLINE.
+			 */
+			ret = regmap_read(pca9468->regmap, PCA9468_REG_START_CTRL, &val);
+			if (ret < 0 || !(val & PCA9468_STANDBY_FORCED)) {
+				dev_err(pca9468->dev,
+					"Device not in stby val=%x (%d)\n",
+					val, ret);
+
+				return -EINVAL;
+			}
+
+			pro_val.intval = PPS_PSY_FIXED_ONLINE;
+			ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE,
+							&pro_val);
+			pr_debug("%s: online=%d->%d ret=%d\n", __func__,
+				 online.intval, pro_val.intval, ret);
+		} else if (ret < 0) {
+			pr_err("%s: online=%d ret=%d\n", __func__,
+			       online.intval, ret);
+		}
+
+		/* TODO: reset state? */
+
+		/* done if don't have alternate voltage */
+		if (!pca9468->ta_vol)
+			return ret;
 	}
 
 	pro_val.intval = pca9468->ta_vol;

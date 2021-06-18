@@ -376,6 +376,9 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 {
 	int ret, val;
 
+	pr_debug("%s: enable=%d\n", __func__,  enable);
+
+
 	if (enable && pca9468_get_charging_enabled(pca9468) == enable) {
 		pr_debug("%s: no op, already enabled\n", __func__);
 		return 0;
@@ -419,7 +422,7 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 					 PCA9468_BIT_NTC_PROTECTION_EN, 0);
 	}
 
-	/* Enable PCA9468 */
+	/* Enable or Disable PCA9468 */
 	val = enable ? PCA9468_STANDBY_DONOT : PCA9468_STANDBY_FORCED;
 	ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
 				 PCA9468_BIT_STANDBY_EN, val);
@@ -915,15 +918,14 @@ static int pca9468_recover_ta(struct pca9468_charger *pca9468)
 	int ret;
 
 	if (pca9468->ta_type == TA_TYPE_WIRELESS) {
-		/* TODO: recover TA to value before handoff, or use DT */
-		pca9468->ta_vol = 18000000;
-		ret = pca9468_send_rx_voltage(pca9468, WCRX_REQUEST_VOLTAGE);
+		pca9468->ta_vol = 0; /* set to a value to change rx vol */
+		ret = pca9468_send_rx_voltage(pca9468, MSG_REQUEST_FIXED_PDO);
 	} else {
 		/* TODO: recover TA to value before handoff, or use DT */
 		pca9468->ta_vol = 5000000;
 		pca9468->ta_cur = 3000000;
 		pca9468->ta_objpos = 1; /* PDO1 - fixed 5V */
-		ret = pca9468_send_pd_message(pca9468, PD_MSG_REQUEST_FIXED_PDO);
+		ret = pca9468_send_pd_message(pca9468, MSG_REQUEST_FIXED_PDO);
 	}
 
 	/* will not be able to recover if TA is offline */
@@ -937,6 +939,9 @@ static int pca9468_recover_ta(struct pca9468_charger *pca9468)
 static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 {
 	int ret = 0;
+
+	pr_debug("%s: pca9468->charging_state=%d ret=%d\n", __func__,
+		 pca9468->charging_state, ret);
 
 	mutex_lock(&pca9468->lock);
 
