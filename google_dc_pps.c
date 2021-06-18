@@ -237,7 +237,7 @@ int pps_get_src_cap(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 }
 // EXPORT_SYMBOL_GPL(pps_get_src_cap);
 
-bool pps_check_online(struct pd_pps_data *pps_data)
+bool pps_check_prog_online(struct pd_pps_data *pps_data)
 {
 	if (!pps_data || !pps_data->pps_psy)
 		return false;
@@ -258,7 +258,6 @@ bool pps_prog_check_online(struct pd_pps_data *pps_data,
 	if (!pps_data || !tcpm_psy)
 		return -ENODEV;
 
-	/* TODO: use pps_check_online() instead */
 	pd_online = GPSY_GET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE);
 	if (pd_online == 0) {
 		pps_init_state(pps_data);

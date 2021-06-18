@@ -1008,7 +1008,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		/* the dc driver needs to keep the source online */
 		pps_data = gcpm_pps_data(gcpm);
 		if (pps_data)
-			prog_online = pps_check_online(pps_data);
+			prog_online = pps_check_prog_online(pps_data);
 		if (!prog_online) {
 			pr_err("PPS_Work: PPS offline, elap=%lld dc_index:%d->0\n",
 			       elap, gcpm->dc_index);
