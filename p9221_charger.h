@@ -437,6 +437,15 @@
 
 #define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
 
+/* Features */
+typedef enum {
+    WLCF_DISABLE_ALL_FEATURE     = 0x00,
+    WLCF_DREAM_ALIGN             = 0x01,
+    WLCF_DREAM_DEFEND            = 0x02,
+    WLCF_FAST_CHARGE             = 0x04,
+    WLCF_CHARGE_15W              = 0x08,
+} wlc_features_t;
+
 /* for DD */
 #define TXID_TYPE_MASK			0xFF000000 /* bit[24-31] */
 #define TXID_TYPE_SHIFT			24
@@ -488,9 +497,13 @@ struct p9221_charger_feature_entry {
 };
 
 struct p9221_charger_feature {
+	struct mutex	feat_lock;
+
 	struct p9221_charger_feature_entry entries[P9XXX_CHARGER_FEATURE_CACHE_SIZE];
 	int num_entries;
 	u32 age;
+
+	wlc_features_t session_features;
 };
 
 struct p9221_charger_platform_data {
@@ -630,6 +643,7 @@ struct p9221_charger_data {
 	bool				resume_complete;
 	bool				icl_ramp;
 	u32				icl_ramp_ua;
+	u32				icl_ramp_alt_ua;
 	bool				fake_force_epp;
 	bool				force_bpp;
 	u32				dc_icl_epp_neg;

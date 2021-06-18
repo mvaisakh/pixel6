@@ -461,7 +461,6 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 			"Could not reset OCP DC_ICL voter %d\n", ret);
 
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
-	vote(charger->dc_icl_votable, DCIN_AICL_VOTER, false, 0);
 }
 
 /* TODO: should we also change the state of the load switch etc? */
@@ -475,6 +474,78 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 	charger->wlc_dc_enabled = false;
 	if (dc_sw_gpio >= 0)
 		gpio_set_value_cansleep(dc_sw_gpio, 0);
+	return 0;
+}
+
+#define CHARGE_15W_VOUT_UV	12000000
+#define CHARGE_15W_ILIM_UA	1270000
+
+static int feature_set_dc_icl(struct p9221_charger_data *charger, u32 ilim_ua)
+{
+	/*
+	 * TODO: use p9221_icl_ramp_start(charger) for ilim_ua.
+	 * Need to make sure that charger->pdata->icl_ramp_delay_ms is set.
+	 */
+	if (ilim_ua > 0) {
+		charger->icl_ramp_alt_ua = ilim_ua;
+	} else {
+		charger->icl_ramp_alt_ua = 0;
+	}
+
+	p9221_icl_ramp_reset(charger);
+	dev_info(&charger->client->dev, "ICL ramp set alarm %dms, %dua, ramp=%d\n",
+		 charger->pdata->icl_ramp_delay_ms, charger->icl_ramp_alt_ua,
+		 charger->icl_ramp);
+
+	alarm_start_relative(&charger->icl_ramp_alarm,
+			     ms_to_ktime(charger->pdata->icl_ramp_delay_ms));
+
+	return 0;
+}
+
+/* call with mutex_lock(&charger->feat_lock); */
+static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
+{
+	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	int ret = 0;
+
+	if (charger->pdata->chip_id != P9412_CHIP_ID)
+		return -EINVAL;
+
+	/* wc_vol =12V & wc_cur = 1.27A */
+	if (enable && !(chg_fts->session_features & WLCF_CHARGE_15W)) {
+		const u32 vout_mv = P9221_UV_TO_MV(CHARGE_15W_VOUT_UV);
+
+		ret = charger->chip_set_vout_max(charger, vout_mv);
+		if (ret == 0)
+			ret = feature_set_dc_icl(charger, CHARGE_15W_ILIM_UA);
+
+		chg_fts->session_features |= WLCF_CHARGE_15W;
+	} else if (!enable && (chg_fts->session_features & WLCF_CHARGE_15W)) {
+		chg_fts->session_features &= ~WLCF_CHARGE_15W;
+	}
+
+	return ret;
+}
+
+/* handle the session properties here */
+static int feature_update_session(struct p9221_charger_data *charger,
+				  uint64_t ft)
+{
+	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	int ret = 0;
+
+	mutex_lock(&chg_fts->feat_lock);
+
+	if (ft & WLCF_CHARGE_15W) {
+		ret = feature_15w_enable(charger, true);
+	} else if (chg_fts->session_features & WLCF_CHARGE_15W) {
+		/* not supporting disable while enabled */
+		if (!charger->online)
+			feature_15w_enable(charger, false);
+	}
+
+	mutex_unlock(&chg_fts->feat_lock);
 	return 0;
 }
 
@@ -526,6 +597,8 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 
 	p9221_icl_ramp_reset(charger);
 	del_timer(&charger->vrect_timer);
+
+	feature_update_session(charger, 0);
 
 	p9221_vote_defaults(charger);
 	if (charger->enabled)
@@ -1743,6 +1816,7 @@ static int p9221_set_dc_icl(struct p9221_charger_data *charger)
 	if (charger->icl_ramp)
 		icl = charger->icl_ramp_ua;
 
+	/* forced limit */
 	if (charger->dc_icl_bpp)
 		icl = charger->dc_icl_bpp;
 
@@ -1752,8 +1826,11 @@ static int p9221_set_dc_icl(struct p9221_charger_data *charger)
 	if (p9221_is_epp(charger) && charger->dc_icl_epp)
 		icl = charger->dc_icl_epp;
 
-	dev_info(&charger->client->dev, "Setting ICL %duA ramp=%d\n", icl,
-		 charger->icl_ramp);
+ 	if (charger->icl_ramp && charger->icl_ramp_alt_ua)
+		icl = charger->icl_ramp_alt_ua;
+
+	dev_info(&charger->client->dev, "Setting ICL %duA ramp=%d, alt_ramp=%d\n",
+		icl, charger->icl_ramp, charger->icl_ramp_alt_ua);
 
 	if (charger->icl_ramp)
 		vote(charger->dc_icl_votable, DCIN_AICL_VOTER, true, icl);
@@ -2940,13 +3017,15 @@ static ssize_t ptmc_id_show(struct device *dev,
 
 static DEVICE_ATTR_RO(ptmc_id);
 
-static void feature_update(struct p9221_charger_feature *chg_fts,
-			   uint64_t id, uint64_t ft)
+static void feature_update_cache(struct p9221_charger_feature *chg_fts,
+				 uint64_t id, uint64_t ft)
 {
-	struct p9221_charger_feature_entry *oldest_entry;
 	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
-	int idx;
+	struct p9221_charger_feature_entry *oldest_entry;
 	u32 oldest;
+	int idx;
+
+	mutex_lock(&chg_fts->feat_lock);
 
 	chg_fts->age++;
 
@@ -2978,6 +3057,8 @@ store:
 	entry->last_use = chg_fts->age;
 	if (entry->features == 0)
 		entry->last_use = 0;
+
+	mutex_unlock(&chg_fts->feat_lock);
 }
 
 static ssize_t features_store(struct device *dev,
@@ -2993,8 +3074,13 @@ static ssize_t features_store(struct device *dev,
 	if (ret != 2)
 		return -EINVAL;
 
-	feature_update(&charger->chg_features, id, ft);
-
+	if (id) {
+		feature_update_cache(&charger->chg_features, id, ft);
+	} else {
+		ret = feature_update_session(charger, ft);
+		if (ret < 0)
+			count = ret;
+	}
 	return count;
 }
 
@@ -4831,6 +4917,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	mutex_init(&charger->io_lock);
 	mutex_init(&charger->cmd_lock);
 	mutex_init(&charger->stats_lock);
+	mutex_init(&charger->chg_features.feat_lock);
 	timer_setup(&charger->vrect_timer, p9221_vrect_timer_handler, 0);
 	timer_setup(&charger->align_timer, p9221_align_timer_handler, 0);
 	INIT_DELAYED_WORK(&charger->dcin_work, p9221_dcin_work);
@@ -5123,6 +5210,7 @@ static int p9221_charger_remove(struct i2c_client *client)
 	power_supply_unreg_notifier(&charger->nb);
 	mutex_destroy(&charger->io_lock);
 	mutex_destroy(&charger->stats_lock);
+	mutex_destroy(&charger->chg_features.feat_lock);
 	if (charger->log)
 		logbuffer_unregister(charger->log);
 	if (charger->rtx_log)
