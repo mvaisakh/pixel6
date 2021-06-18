@@ -10564,7 +10564,7 @@ static int cs40l2x_brownout_config(struct cs40l2x_private *cs40l2x,
 		return ret;
 	}
 
-	ret = cs40l2x_wseq_add_reg(cs40l2x, CS40L2X_PWR_CTRL3, val);
+	ret = cs40l2x_wseq_replace(cs40l2x, CS40L2X_PWR_CTRL3, val);
 	if (ret) {
 		dev_err(dev, "Failed to sequence VPBR/VBBR enable controls\n");
 		return ret;
@@ -10643,7 +10643,7 @@ static int cs40l2x_brownout_config(struct cs40l2x_private *cs40l2x,
 		return ret;
 	}
 
-	ret = cs40l2x_wseq_replace(cs40l2x, br_reg, val);
+	ret = cs40l2x_wseq_add_reg(cs40l2x, br_reg, val);
 	if (ret) {
 		dev_err(dev, "Failed to sequence VPBR/VBBR configuration\n");
 		return ret;
