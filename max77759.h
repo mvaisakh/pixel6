@@ -102,6 +102,7 @@ struct max77759_foreach_cb_data {
 
 	int chgr_on;	/* CC_MAX != 0 */
 	bool stby_on;	/* on disconnect, mode=0 */
+	bool charge_done;
 
 	int chgin_off;	/* input_suspend, mode=0 */
 	int wlcin_off;	/* input_suspend, mode=0 */

@@ -75,6 +75,7 @@ struct max77759_chgr_data {
 	struct gvotable_election *dc_icl_votable;
 	struct gvotable_election *dc_suspend_votable;
 
+	bool charge_done;
 	bool chgin_input_suspend;
 	bool wcin_input_suspend;
 
@@ -1335,8 +1336,14 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 #define cb_data_is_inflow_off(cb_data) \
 	((cb_data)->chgin_off && (cb_data)->wlcin_off)
 
-#define cb_data_is_chgr_on(cb_data) \
-	(cb_data->stby_on ? 0 : (cb_data->chgr_on >= 2))
+/*
+ * It could use cb_data->charge_done to turn off charging.
+ * TODO: change chgr_on=>2 to (cc_max && chgr_ena)
+ */
+static bool cb_data_is_chgr_on(struct max77759_foreach_cb_data *cb_data)
+{
+	return cb_data->stby_on ? 0 : (cb_data->chgr_on >= 2);
+}
 
 /*
  * Case	USB_chg USB_otg	WLC_chg	WLC_TX	PMIC_Charger	Ext_B	LSxx	Name
@@ -1355,7 +1362,7 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int chgr_on = cb_data_is_chgr_on(cb_data);
-	int dc_on = 0;
+	bool dc_on = cb_data->dc_on; /* && !cb_data->charge_done */
 	int usecase;
 	u8 mode;
 
@@ -1378,7 +1385,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 		}
 
 		/* b/188730136  OTG cases with DC on */
-		if (cb_data->dc_on)
+		if (dc_on)
 			pr_err("%s: TODO enable pps+OTG\n", __func__);
 	} else if (cb_data->wlc_tx) {
 		/* 7-2: WLC_TX -> WLC_TX + OTG */
@@ -1390,7 +1397,7 @@ static int max77759_get_otg_usecase(struct max77759_foreach_cb_data *cb_data)
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 		else
 			mode = MAX77759_CHGR_MODE_BUCK_ON;
-	} else if (cb_data->dc_on) {
+	} else if (dc_on) {
 		return -EINVAL;
 	} else {
 		return -EINVAL;
@@ -1409,8 +1416,8 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 {
 	const int buck_on = cb_data->chgin_off ? 0 : cb_data->buck_on;
 	const int chgr_on = cb_data_is_chgr_on(cb_data);
+	bool dc_on = cb_data->dc_on; /* && !cb_data->charge_done */
 	int wlc_tx = cb_data->wlc_tx;
-	int dc_on = 0;
 	int usecase;
 	u8 mode;
 
@@ -1421,7 +1428,7 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			return -EINVAL;
 		}
 
-		if (cb_data->dc_on) {
+		if (dc_on) {
 			pr_warn("%s: no wlc_tx with dc_on for now\n", __func__);
 			/* TODO: GSU_MODE_USB_DC_WLC_TX */
 			wlc_tx = 0;
@@ -1446,11 +1453,11 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		if (!buck_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_TX;
-		} else if (cb_data->dc_on) {
+		} else if (dc_on) {
+			/* TODO: turn off DC and run off MW */
 			pr_err("WLC_TX+DC is not supported yet\n");
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
-			dc_on = 1;
 		} else if (chgr_on) {
 			mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
 			usecase = GSU_MODE_USB_CHG_WLC_TX;
@@ -1470,10 +1477,10 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 			usecase = GSU_MODE_WLC_RX;
 		}
 
-		if (cb_data->dc_on) {
+		/* wired input should be disabled here */
+		if (dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_WLC_DC;
-			dc_on = 1;
 		}
 
 	} else {
@@ -1493,10 +1500,9 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		 * NOTE: mode=0 if standby, mode=5 if charging, mode=0xa on otg
 		 * TODO: handle rTx + DC and some more.
 		 */
-		if (cb_data->dc_on) {
+		if (dc_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_USB_DC;
-			dc_on = 1;
 		} else if (cb_data->stby_on && !chgr_on) {
 			mode = MAX77759_CHGR_MODE_ALL_OFF;
 			usecase = GSU_MODE_STANDBY;
@@ -1828,6 +1834,9 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		goto unlock_done;
 	}
 
+	/* Need to switch to MW (turn off dc_on) and enforce no charging  */
+	cb_data.charge_done = data->charge_done;
+
 	/* this is the last vote of the election */
 	cb_data.reg = reg;	/* current */
 	cb_data.el = el;	/* election */
@@ -1846,11 +1855,11 @@ static void max77759_mode_callback(struct gvotable_election *el,
 		goto unlock_done;
 	}
 
-	dev_info(data->dev, "%s:%s raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
+	dev_info(data->dev, "%s:%s full=%d raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
 		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d"
 		" chgin_off=%d wlcin_off=%d frs_on=%d\n",
 		__func__, trigger ? trigger : "<>",
-		cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
+		data->charge_done, cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
 		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx,
 		cb_data.chgin_off, cb_data.wlcin_off, cb_data.frs_on);
@@ -1950,10 +1959,44 @@ static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
 	return ret;
 }
 
+/* reset charge_done if needed on cc_max!=0 and on charge_disable(false) */
+static int max77759_enable_sw_recharge(struct max77759_chgr_data *data,
+				       bool force)
+{
+	struct max77759_usecase_data *uc_data = &data->uc_data;
+	const bool charge_done = data->charge_done;
+	bool needs_restart = force || data->charge_done;
+	uint8_t reg;
+	int ret;
+
+	if (!needs_restart) {
+		ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &reg);
+		needs_restart = (ret < 0) ||
+				_chg_details_01_chg_dtls_get(reg) == CHGR_DTLS_DONE_MODE;
+		if (!needs_restart)
+			return 0;
+	}
+
+	/* This: will not trigger the usecase state machine */
+	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
+	if (ret == 0)
+		ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_ALL_OFF);
+	if (ret == 0)
+		ret = max77759_chg_mode_write(uc_data->client, reg);
+
+	pr_debug("%s charge_done=%d->%d, reg=%x (%d)\n", __func__,
+		 charge_done, data->charge_done, reg, ret);
+
+	data->charge_done = false;
+	return ret;
+}
+
 /* called from gcpm and for CC_MAX == 0 */
 static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
+	/* ->charge_done is reset in max77759_enable_sw_recharge() */
+
 	return gvotable_cast_vote(data->mode_votable, reason,
 				  (void*)GBMS_CHGR_MODE_CHGR_BUCK_ON,
 				  enabled);
@@ -1963,6 +2006,16 @@ static int max77759_set_charge_enabled(struct max77759_chgr_data *data,
 static int max77759_set_charge_disable(struct max77759_chgr_data *data,
 				       int enabled, const char *reason)
 {
+	/* make sure charging is restarted on enable */
+	if (enabled) {
+		int ret;
+
+		ret = max77759_enable_sw_recharge(data, false);
+		if (ret < 0)
+			dev_err(data->dev, "%s cannot re-enable charging (%d)\n",
+				__func__, ret);
+	}
+
 	return gvotable_cast_vote(data->mode_votable, reason,
 				  (void*)GBMS_CHGR_MODE_STBY_ON,
 				  enabled);
@@ -2036,29 +2089,6 @@ static int max77759_get_regulation_voltage_uv(struct max77759_chgr_data *data,
 	return 0;
 }
 
-static int max77759_enable_sw_recharge(struct max77759_chgr_data *data)
-{
-	struct max77759_usecase_data *uc_data = &data->uc_data;
-	int ret;
-	uint8_t reg;
-
-	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &reg);
-	if (ret < 0 || _chg_details_01_chg_dtls_get(reg) != CHGR_DTLS_DONE_MODE)
-		return ret;
-
-	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_00, &reg);
-	if (ret < 0)
-		return ret;
-
-	ret = max77759_chg_mode_write(uc_data->client, MAX77759_CHGR_MODE_ALL_OFF);
-	if (ret == 0)
-		ret = max77759_chg_mode_write(uc_data->client, reg);
-
-	pr_debug("%s MAX77759_CHG_CNFG_00:0x%X (%d)\n", __func__, reg, ret);
-
-	return ret;
-}
-
 /* set charging current to 0 to disable charging (MODE=0) */
 static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 					       int current_ua)
@@ -2080,8 +2110,12 @@ static int max77759_set_charger_current_max_ua(struct max77759_chgr_data *data,
 	else
 		value = 0x3 + (current_ua - 200000) / 66670;
 
+	/*
+	 * cc_max > 0 might need to restart charging: the usecase state machine
+	 * will be triggered in max77759_set_charge_enabled()
+	 */
 	if (current_ua) {
-		ret = max77759_enable_sw_recharge(data);
+		ret = max77759_enable_sw_recharge(data, false);
 		if (ret < 0)
 			dev_err(data->dev, "cannot re-enable charging (%d)\n", ret);
 	}
@@ -2628,6 +2662,11 @@ static int max77759_get_status(struct max77759_chgr_data *data)
 	if (!max77759_is_online(data))
 		return POWER_SUPPLY_STATUS_DISCHARGING;
 
+	/*
+	 * EOC can be made sticky returning POWER_SUPPLY_STATUS_FULL on
+	 * ->charge_done. Also need a check on max77759_is_full() or
+	 * google_charger will fail to restart charging.
+	 */
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_DETAILS_01, &val);
 	if (ret < 0)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
@@ -2642,8 +2681,7 @@ static int max77759_get_status(struct max77759_chgr_data *data)
 			/* same as POWER_SUPPLY_PROP_CHARGE_DONE */
 			if (max77759_is_full(data))
 				return POWER_SUPPLY_STATUS_FULL;
-			else
-				return POWER_SUPPLY_STATUS_NOT_CHARGING;
+			return POWER_SUPPLY_STATUS_NOT_CHARGING;
 		case CHGR_DTLS_TIMER_FAULT_MODE:
 		case CHGR_DTLS_DETBAT_HIGH_SUSPEND_MODE:
 		case CHGR_DTLS_OFF_MODE:
@@ -2684,7 +2722,6 @@ static int max77759_get_chg_chgr_state(struct max77759_chgr_data *data,
 	/* present if in field, valid when FET is closed */
 	dc_present = (rc == 0) && _chg_int_ok_wcin_ok_get(int_ok);
 	dc_valid = dc_present && _chg_details_02_wcin_sts_get(dtls);
-
 
 	rc = max77759_read_vbatt(data, &vbatt);
 	if (rc == 0)
@@ -2815,6 +2852,7 @@ static int max77759_psy_set_property(struct power_supply *psy,
 		ret = max77759_chgin_set_ilim_max_ua(data, pval->intval);
 		pr_debug("%s: icl=%d (%d)\n", __func__, pval->intval, ret);
 		break;
+	/* Charge current is set to 0 to EOC */
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 		ret = max77759_set_charger_current_max_ua(data, pval->intval);
 		pr_debug("%s: charge_current=%d (%d)\n",
@@ -3246,6 +3284,20 @@ static int input_mask_clear_set(void *d, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(input_mask_clear_fops, NULL, input_mask_clear_set, "%llu\n");
 
+static int charger_restart_set(void *d, u64 val)
+{
+	struct max77759_chgr_data *data = d;
+	int ret;
+
+	ret = max77759_enable_sw_recharge(data, !!val);
+	dev_info(data->dev, "triggered recharge(force=%d) %d\n", !!val, ret);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(charger_restart_fops, NULL, charger_restart_set, "%llu\n");
+
+
 static int max77759_chg_debug_reg_read(void *d, u64 *val)
 {
 	struct max77759_chgr_data *data = d;
@@ -3306,6 +3358,8 @@ static int dbg_init_fs(struct max77759_chgr_data *data)
 
 	debugfs_create_file("input_mask_clear", 0600, data->de, data,
 			    &input_mask_clear_fops);
+	debugfs_create_file("chg_restart", 0600, data->de, data,
+			    &charger_restart_fops);
 
 	debugfs_create_u32("address", 0600, data->de, &data->debug_reg_address);
 	debugfs_create_file("data", 0600, data->de, data, &debug_reg_rw_fops);
@@ -3326,19 +3380,6 @@ static const struct regmap_config max77759_chg_regmap_cfg = {
 	.readable_reg = max77759_chg_is_reg,
 	.volatile_reg = max77759_chg_is_reg,
 
-};
-
-static u8 max77759_int_mask[MAX77759_CHG_INT_COUNT] = {
-	~(MAX77759_CHG_INT_MASK_CHGIN_M |
-	  MAX77759_CHG_INT_MASK_WCIN_M |
-	  MAX77759_CHG_INT_MASK_CHG_M |
-	  MAX77759_CHG_INT_MASK_BAT_M),
-	(u8)~(MAX77759_CHG_INT2_MASK_INSEL_M |
-	  MAX77759_CHG_INT2_MASK_SYS_UVLO1_M |
-	  MAX77759_CHG_INT2_MASK_SYS_UVLO2_M |
-	  MAX77759_CHG_INT2_MASK_CHG_STA_CV_M |
-	  MAX77759_CHG_INT2_MASK_CHG_STA_TO_M |
-	  MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M),
 };
 
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
@@ -3422,11 +3463,49 @@ static int uvilo_read_stats(struct ocpsmpl_stats *dst, struct max77759_chgr_data
 }
 #endif
 
+/*
+ * int[0]
+ *  CHG_INT_AICL_I	(0x1 << 7)
+ *  CHG_INT_CHGIN_I	(0x1 << 6)
+ *  CHG_INT_WCIN_I	(0x1 << 5)
+ *  CHG_INT_CHG_I	(0x1 << 4)
+ *  CHG_INT_BAT_I	(0x1 << 3)
+ *  CHG_INT_INLIM_I	(0x1 << 2)
+ *  CHG_INT_THM2_I	(0x1 << 1)
+ *  CHG_INT_BYP_I	(0x1 << 0)
+ *
+ * int[1]
+ *  CHG_INT2_INSEL_I		(0x1 << 7)
+ *  CHG_INT2_SYS_UVLO1_I	(0x1 << 6)
+ *  CHG_INT2_SYS_UVLO2_I	(0x1 << 5)
+ *  CHG_INT2_BAT_OILO_I		(0x1 << 4)
+ *  CHG_INT2_CHG_STA_CC_I	(0x1 << 3)
+ *  CHG_INT2_CHG_STA_CV_I	(0x1 << 2)
+ *  CHG_INT2_CHG_STA_TO_I	(0x1 << 1)
+ *  CHG_INT2_CHG_STA_DONE_I	(0x1 << 0)
+ *
+ * these 3 cause un-necessary chatter at EOC due to the interaction between
+ * the CV and the IIN loop:
+ *   MAX77759_CHG_INT2_MASK_CHG_STA_CC_M |
+ *   MAX77759_CHG_INT2_MASK_CHG_STA_CV_M |
+ *   MAX77759_CHG_INT_MASK_CHG_M
+ */
+static u8 max77759_int_mask[MAX77759_CHG_INT_COUNT] = {
+	~(MAX77759_CHG_INT_MASK_CHGIN_M |
+	  MAX77759_CHG_INT_MASK_WCIN_M |
+	  MAX77759_CHG_INT_MASK_BAT_M),
+	(u8)~(MAX77759_CHG_INT2_MASK_INSEL_M |
+	  MAX77759_CHG_INT2_MASK_SYS_UVLO1_M |
+	  MAX77759_CHG_INT2_MASK_SYS_UVLO2_M |
+	  MAX77759_CHG_INT2_MASK_CHG_STA_TO_M |
+	  MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M),
+};
+
 static irqreturn_t max77759_chgr_irq(int irq, void *client)
 {
 	struct max77759_chgr_data *data = client;
 	u8 chg_int[MAX77759_CHG_INT_COUNT];
-	bool broadcast = false;
+	bool broadcast;
 	int ret;
 
 	ret = max77759_readn(data->regmap, MAX77759_CHG_INT, chg_int,
@@ -3444,6 +3523,9 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		return IRQ_NONE;
 
 	pr_debug("INT : %02x %02x\n", chg_int[0], chg_int[1]);
+
+	/* always broadcast battery events */
+	broadcast = chg_int[0] & MAX77759_CHG_INT_MASK_BAT_M;
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_INSEL_M) {
 
@@ -3489,48 +3571,58 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_TO_M) {
 		pr_debug("%s: TOP_OFF\n", __func__);
 
-		if (!max77759_is_full(data))
-			return POWER_SUPPLY_STATUS_FULL;
-		atomic_inc(&data->early_topoff_cnt);
-		/*
-		 * TODO: rewrite  to FV_UV when if entering TOP off far
-		 * from terminal voltage
-		 */
+		if (!max77759_is_full(data)) {
+			/*
+			 * on small adapter  might enter top-off far from the
+			 * last charge tier due to system load.
+			 * TODO: check inlim (maybe) and rewrite fv_uv
+			 */
+			atomic_inc(&data->early_topoff_cnt);
+		}
+
 	}
+
+	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_CC_M)
+		pr_debug("%s: CC_MODE\n", __func__);
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_CV_M)
 		pr_debug("%s: CV_MODE\n", __func__);
 
 	if (chg_int[1] & MAX77759_CHG_INT2_MASK_CHG_STA_DONE_M) {
-		pr_debug("%s: CHARGE DONE\n", __func__);
+		const bool charge_done = data->charge_done;
 
-		if (data->psy)
-			power_supply_changed(data->psy);
+		/* reset on disconnect or toggles of enable/disable */
+		if (max77759_is_full(data))
+			data->charge_done = true;
+		broadcast = true;
+
+		pr_debug("%s: CHARGE DONE charge_done=%d->%d\n", __func__,
+			 charge_done, data->charge_done);
 	}
 
 	/* wired input is changed */
 	if (chg_int[0] & MAX77759_CHG_INT_MASK_CHGIN_M) {
-		pr_debug("%s: CHGIN\n", __func__);
+		pr_debug("%s: CHGIN charge_done=%d\n", __func__, data->charge_done);
+
+		data->charge_done = false;
+		broadcast = true;
 
 		if (data->chgin_psy)
 			power_supply_changed(data->chgin_psy);
-
-		power_supply_changed(data->psy);
 	}
 
 	/* wireless input is changed */
 	if (chg_int[0] & MAX77759_CHG_INT_MASK_WCIN_M) {
-		pr_debug("%s: WCIN\n", __func__);
+		pr_debug("%s: WCIN charge_done=%d\n", __func__, data->charge_done);
+
+		data->charge_done = false;
+		broadcast = true;
 
 		if (data->wcin_psy)
 			power_supply_changed(data->wcin_psy);
-
-		power_supply_changed(data->psy);
 	}
 
-	/* someting else is changed */
-	broadcast = (chg_int[0] & MAX77759_CHG_INT_MASK_CHG_M) |
-		    (chg_int[0] & MAX77759_CHG_INT_MASK_BAT_M);
+	/* someting is changed */
 	if (data->psy && broadcast)
 		power_supply_changed(data->psy);
 
