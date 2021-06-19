@@ -4771,9 +4771,15 @@ static void google_battery_work(struct work_struct *work)
 
 	present = GPSY_GET_PROP(fg_psy, POWER_SUPPLY_PROP_PRESENT);
 	if (present && !batt_drv->batt_present) {
+		pr_debug("%s: change of battery state %d->%d\n",
+			 __func__, batt_drv->batt_present, present);
+
 		batt_drv->batt_present = true;
 		notify_psy_changed = true;
 	} else if (!present && batt_drv->batt_present) {
+		pr_debug("%s: change of battery state %d->%d\n",
+			 __func__, batt_drv->batt_present, present);
+
 		batt_drv->batt_present = false;
 
 		/* add debounce? */
@@ -4788,8 +4794,11 @@ static void google_battery_work(struct work_struct *work)
 		goto reschedule;
 	}
 
-	if (fg_status != batt_drv->fg_status)
+	if (fg_status != batt_drv->fg_status) {
+		pr_debug("%s: change of fg_status %d->%d\n",
+			 __func__, batt_drv->fg_status, fg_status);
 		notify_psy_changed = true;
+	}
 	batt_drv->fg_status = fg_status;
 
 	/* batt_lock protect SSOC code etc. */
@@ -4810,6 +4819,9 @@ static void google_battery_work(struct work_struct *work)
 
 		ssoc = ssoc_get_capacity(ssoc_state);
 		if (prev_ssoc != ssoc) {
+			pr_debug("%s: change of ssoc %d->%d\n", __func__,
+				 prev_ssoc, ssoc);
+
 			if (ssoc > prev_ssoc)
 				bat_log_ttf_estimate("SSOC", ssoc, batt_drv);
 			notify_psy_changed = true;
@@ -4822,15 +4834,20 @@ static void google_battery_work(struct work_struct *work)
 		level = gbatt_get_capacity_level(&batt_drv->ssoc_state,
 						 fg_status);
 		if (level != batt_drv->capacity_level) {
+			pr_debug("%s: change of capacity level %d->%d\n",
+				 __func__, batt_drv->capacity_level,
+				 level);
+
 			batt_drv->capacity_level = level;
 			notify_psy_changed = true;
 		}
 
 		if (batt_drv->dead_battery) {
-			batt_drv->dead_battery =
-					gbatt_check_dead_battery(batt_drv);
-			if (!batt_drv->dead_battery)
+			batt_drv->dead_battery = gbatt_check_dead_battery(batt_drv);
+			if (!batt_drv->dead_battery) {
+				pr_debug("%s: dead_battery 1->0\n", __func__);
 				notify_psy_changed = true;
+			}
 		}
 
 		/* fuel gauge triggered recharge logic. */
@@ -4847,8 +4864,11 @@ static void google_battery_work(struct work_struct *work)
 		const int limit = batt_drv->batt_update_high_temp_threshold;
 
 		batt_drv->batt_temp = batt_temp;
-		if (batt_drv->batt_temp > limit)
+		if (batt_drv->batt_temp > limit) {
+			pr_debug("%s: temperature over limit %d > %d\n",
+				 __func__, batt_temp, limit);
 			notify_psy_changed = true;
+		}
 	}
 
 	mutex_unlock(&batt_drv->batt_lock);
@@ -4909,7 +4929,6 @@ reschedule:
 
 	if (notify_psy_changed)
 		power_supply_changed(batt_drv->psy);
-
 
 	/* collect lifetime and write to storage */
 	if (batt_drv->blf_state == BATT_LFCOLLECT_ENABLED) {
