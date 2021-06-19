@@ -75,7 +75,7 @@ static void p9221_icl_ramp_reset(struct p9221_charger_data *charger);
 static void p9221_icl_ramp_start(struct p9221_charger_data *charger);
 static void p9221_charge_stats_init(struct p9221_charge_stats *chg_data);
 static void p9221_dump_charge_stats(struct p9221_charger_data *charger);
-static bool p9221_has_dd(struct p9221_charger_data *charger);
+static bool p9221_check_feature(struct p9221_charger_data *charger, u64 ft);
 static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger);
 static int p9221_set_bpp_vout(struct p9221_charger_data *charger);
 
@@ -578,7 +578,11 @@ static int feature_set_dc_icl(struct p9221_charger_data *charger, u32 ilim_ua)
 static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	const u64 session_features = chg_fts->session_features;
 	int ret = 0;
+
+	pr_debug("%s: enable=%d chip_id=%x\n", __func__, enable,
+		 charger->pdata->chip_id);
 
 	if (charger->pdata->chip_id != P9412_CHIP_ID)
 		return -EINVAL;
@@ -604,17 +608,22 @@ static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 		chg_fts->session_features &= ~WLCF_CHARGE_15W;
 	}
 
+	pr_debug("%s: sessione_features:%llx->%llx ret=%d\n", __func__,
+		 session_features, chg_fts->session_features, ret);
+
 	return ret;
 }
 
 /* handle the session properties here */
 static int feature_update_session(struct p9221_charger_data *charger,
-				  uint64_t ft)
+				  u64 ft)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
 	int ret = 0;
 
 	mutex_lock(&chg_fts->feat_lock);
+
+	pr_debug("%s: ft=%llx", __func__, ft);
 
 	if (ft & WLCF_CHARGE_15W) {
 		ret = feature_15w_enable(charger, true);
@@ -841,8 +850,12 @@ static void p9221_power_mitigation_work(struct work_struct *work)
 		return;
 	}
 
-	/* right now p9221_has_dd() implies charger->mfg==WLC_MFG_GOOGLE */
-	if (charger->mfg != WLC_MFG_GOOGLE || !p9221_has_dd(charger)) {
+	/*
+	 * Align supported only for mfg=0x72.
+	 * NOTE: need to have this check for compat mode.
+	 */
+	if (charger->mfg != WLC_MFG_GOOGLE ||
+	    !p9221_check_feature(charger, WLCF_DREAM_DEFEND)) {
 		const char *txid = p9221_get_tx_id_str(charger);
 
 		dev_info(&charger->client->dev,
@@ -1003,7 +1016,7 @@ static void p9221_align_work(struct work_struct *work)
 		return;
 
 	/*
-	 *  NOTE: mfg may be zero due to race condition during bringup. If the
+	 *  NOTE: mfg may be zero due to race condition during boot. If the
 	 *  mfg check continues to fail then mfg is not correct and we do not
 	 *  reschedule align_work. Always reschedule if alignment_capable is 1.
 	 *  Check 10 times if alignment_capble is still 0.
@@ -1039,7 +1052,8 @@ static void p9221_align_work(struct work_struct *work)
 		charger->alignment_capable = ALIGN_MFG_PASSED;
 	}
 
-	if (!p9221_has_dd(charger))
+	/* move to ALIGN_MFG_CHECKING or cache the value */
+	if (!p9221_check_feature(charger, WLCF_DREAM_ALIGN))
 		return;
 
 	if (charger->pdata->alignment_scalar == 0)
@@ -1111,20 +1125,184 @@ static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger)
 	return charger->tx_id_str;
 }
 
-/* txid is available sometime after connect */
-static bool p9221_has_dd(struct p9221_charger_data *charger)
+/* call holding mutex_lock(&chg_fts->feat_lock); */
+static int feature_cache_lookup_by_id(struct p9221_charger_feature *chg_fts, u64 id)
 {
-	u8 val;
-	bool ret = false;
+	/* FIXME: lookup */
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	int idx;
 
-	if (p9221_get_tx_id_str(charger) != NULL) {
-		val = (charger->tx_id & TXID_TYPE_MASK) >> TXID_TYPE_SHIFT;
-		if (val == TXID_DD_TYPE)
-			ret = true;
+	for (idx = 0; idx < chg_fts->num_entries; idx++) {
+		if (entry->quickid == id)
+			break;
+
+		entry++;
 	}
 
-	return ret;
+	if (chg_fts->num_entries > 0 && idx < chg_fts->num_entries)
+		return idx;
+	else
+		return -1;
 }
+
+static void feature_update_cache(struct p9221_charger_feature *chg_fts,
+				 u64 id, u64 ft)
+{
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	struct p9221_charger_feature_entry *oldest_entry;
+	u32 oldest;
+	int idx;
+
+	chg_fts->age++;
+
+	oldest = 0;
+	oldest_entry = entry;
+
+	/* TODO: reimplemente in terms of feature_cache_lookup_by_id() */
+	for (idx = 0; idx < chg_fts->num_entries; idx++) {
+		u32 age = chg_fts->age - entry->last_use;
+
+		if (entry->quickid == id)
+			goto store;
+
+		if (age > oldest) {
+			oldest_entry = entry;
+			oldest = age;
+		}
+		entry++;
+	}
+
+	/* Not found, space still left, entry points to free spot. */
+	if (idx < P9XXX_CHARGER_FEATURE_CACHE_SIZE)
+		chg_fts->num_entries++;
+	else
+		entry = oldest_entry;
+
+store:
+	pr_debug("%s: tx_id=%llx, ft=%llx\n", __func__, id, ft);
+
+	entry->quickid = id;
+	entry->features = ft;
+	entry->last_use = chg_fts->age;
+	if (entry->features == 0)
+		entry->last_use = 0;
+}
+
+/* call holding mutex_lock(&chg_fts->feat_lock); */
+static bool feature_cache_update_entry(struct p9221_charger_feature *chg_fts,
+				       u64 id, u64 mask, u64 ft)
+{
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	bool updated = false;
+	int index;
+
+	mutex_lock(&chg_fts->feat_lock);
+
+	index = feature_cache_lookup_by_id(chg_fts, id);
+	if (index < 0) {
+		/* add the new tx_id with ft to the feature cache */
+		feature_update_cache(chg_fts, id, ft);
+		updated = true;
+		goto done_unlock;
+	}
+
+	pr_debug("%s: tx_id=%llx, mask=%llx ft=%llx\n", __func__, id, mask, ft);
+
+	/* FIXME: update the features using mask and ft */
+	entry = &chg_fts->entries[index];
+	if ((entry->features & mask) != ft) {
+		entry->features |= (mask & ft);
+		updated = true;
+	}
+
+	/* return true when features for id were actually updated  */
+done_unlock:
+	mutex_unlock(&chg_fts->feat_lock);
+	return updated;
+}
+
+/* call holding mutex_lock(&chg_fts->feat_lock); */
+static bool feature_cache_lookup_entry(struct p9221_charger_feature *chg_fts,
+				       u64 id, u64 mask, u64 ft)
+{
+	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
+	int index;
+
+	pr_debug("%s: tx_id=%llx, mask=%llx ft=%llx\n", __func__, id, mask, ft);
+
+	/* FIXME: lookup id, true if found and feature&mask matches. */
+	index = feature_cache_lookup_by_id(chg_fts, id);
+	if (index >= 0) {
+		entry = &chg_fts->entries[index];
+		if ((entry->features & mask) == ft)
+			return true;
+	}
+
+	return false;
+}
+
+/* call holding mutex_lock(&chg_fts->feat_lock); */
+static bool feature_is_enabled(struct p9221_charger_feature *chg_fts,
+			       u64 id, u64 ft)
+{
+	bool enabled = false;
+
+	mutex_lock(&chg_fts->feat_lock);
+
+	if (id)
+		enabled = feature_cache_lookup_entry(chg_fts, id, ft, ft);
+	if (!enabled)
+		enabled = (chg_fts->session_features & ft) != 0;
+
+	pr_debug("%s: tx_id=%llx, ft=%llx enabled=%d\n", __func__,
+		 id, ft, enabled);
+
+	mutex_unlock(&chg_fts->feat_lock);
+
+	return enabled;
+}
+
+static bool p9221_check_feature(struct p9221_charger_data *charger, u64 ft)
+{
+	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	const bool feat_compat_mode = charger->pdata->feat_compat_mode;
+	bool supported = false;
+	u32 tx_id = 0;
+	u8 val;
+
+	/*  txid is available sometime after placing the device on the charger */
+	if (p9221_get_tx_id_str(charger) != NULL)
+		tx_id = charger->tx_id;
+
+	/* tx_ix = 0 will check only the session features */
+	supported = feature_is_enabled(chg_fts, tx_id, ft);
+	if (supported)
+		return true;
+
+	if (!supported && !feat_compat_mode) {
+		pr_debug("%s: tx_id=%x, ft=%llx compat=%d not supported\n",
+			 __func__, tx_id, ft, feat_compat_mode);
+		return false;
+	}
+
+	/* compat mode until the features API is usedm check txid */
+	val = (tx_id & TXID_TYPE_MASK) >> TXID_TYPE_SHIFT;
+	if (val == TXID_DD_TYPE)
+		supported = true;
+
+	/* NOTE: some features need to be tied to mfgid */
+	if (supported && charger->pdata->feat_compat_mode) {
+		bool updated;
+
+		updated = feature_cache_update_entry(chg_fts, tx_id, ft, ft);
+		if (updated)
+			pr_debug("%s: tx_id=%x, ft=%llx supported=%d\n", __func__,
+				  tx_id, ft, supported);
+	}
+
+	return supported;
+}
+
 
 static int p9382_get_ptmc_id_str(char *buffer, int len,
 				 struct p9221_charger_data *charger)
@@ -3128,65 +3306,29 @@ static ssize_t ptmc_id_show(struct device *dev,
 
 static DEVICE_ATTR_RO(ptmc_id);
 
-static void feature_update_cache(struct p9221_charger_feature *chg_fts,
-				 uint64_t id, uint64_t ft)
-{
-	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
-	struct p9221_charger_feature_entry *oldest_entry;
-	u32 oldest;
-	int idx;
-
-	mutex_lock(&chg_fts->feat_lock);
-
-	chg_fts->age++;
-
-	oldest = 0;
-	oldest_entry = entry;
-
-	for (idx = 0; idx < chg_fts->num_entries; idx++) {
-		u32 age = chg_fts->age - entry->last_use;
-
-		if (entry->quickid == id)
-			goto store;
-
-		if (age > oldest) {
-			oldest_entry = entry;
-			oldest = age;
-		}
-		entry++;
-	}
-
-	/* Not found, space still left, entry points to free spot. */
-	if (idx < P9XXX_CHARGER_FEATURE_CACHE_SIZE)
-		chg_fts->num_entries++;
-	else
-		entry = oldest_entry;
-
-store:
-	entry->quickid = id;
-	entry->features = ft;
-	entry->last_use = chg_fts->age;
-	if (entry->features == 0)
-		entry->last_use = 0;
-
-	mutex_unlock(&chg_fts->feat_lock);
-}
-
 static ssize_t features_store(struct device *dev,
                               struct device_attribute *attr,
                               const char *buf, size_t count)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct p9221_charger_data *charger = i2c_get_clientdata(client);
-	uint64_t id, ft;
+	u64 id, ft;
 	int ret;
 
 	ret = sscanf(buf, "%llx:%llx", &id, &ft);
 	if (ret != 2)
 		return -EINVAL;
 
+	pr_debug("%s: tx_id=%llx, ft=%llx", __func__, id, ft);
+
 	if (id) {
 		feature_update_cache(&charger->chg_features, id, ft);
+		/*
+		 * disable prefill of feature cache on first use of the API,
+		 * TODO: possibly clear the cache as well. Protect this with
+		 * a lock.
+		 */
+		charger->pdata->feat_compat_mode = false;
 	} else {
 		ret = feature_update_session(charger, ft);
 		if (ret < 0)
@@ -4791,7 +4933,6 @@ static int p9221_parse_dt(struct device *dev,
 			pdata->epp_vout_mv = data;
 	}
 
-
 	ret = of_property_read_u32(node, "google,needs_dcin_reset", &data);
 	if (ret < 0) {
 		pdata->needs_dcin_reset = -1;
@@ -4904,6 +5045,10 @@ static int p9221_parse_dt(struct device *dev,
 		pdata->power_mitigate_threshold = 0;
 	else
 		pdata->power_mitigate_threshold = data;
+
+	ret = of_property_read_bool(node, "google,feat-no-compat");
+	if (!ret)
+		pdata->feat_compat_mode = true; /* default is compat*/
 
 	return 0;
 }
@@ -5029,11 +5174,13 @@ static int p9221_charger_probe(struct i2c_client *client,
 			dev_err(&client->dev, "Failed to allocate pdata\n");
 			return -ENOMEM;
 		}
+
 		ret = p9221_parse_dt(&client->dev, pdata);
 		if (ret) {
 			dev_err(&client->dev, "Failed to parse dt\n");
 			return ret;
 		}
+
 	}
 
 	charger = devm_kzalloc(&client->dev, sizeof(*charger), GFP_KERNEL);

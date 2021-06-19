@@ -504,7 +504,7 @@ struct p9221_charger_feature {
 	int num_entries;
 	u32 age;
 
-	wlc_features_t session_features;
+	u64 session_features;
 };
 
 struct p9221_charger_platform_data {
@@ -545,6 +545,7 @@ struct p9221_charger_platform_data {
 	u32				alignment_scalar_high_current;
 	u32				alignment_offset_low_current;
 	u32				alignment_offset_high_current;
+	bool				feat_compat_mode;
 };
 
 struct p9221_charger_ints_bit {
