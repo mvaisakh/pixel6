@@ -208,6 +208,7 @@ struct chg_drv {
 	struct votable	*dc_icl_votable;
 	struct votable	*dc_fcc_votable;
 	struct votable	*fan_level_votable;
+	struct votable	*dead_battery_votable;
 
 	bool init_done;
 	bool batt_present;
@@ -972,22 +973,29 @@ static int chg_work_roundtrip(struct chg_drv *chg_drv,
 /* true if still in dead battery */
 #define DEAD_BATTERY_DEADLINE_SEC	(45 * 60)
 
-static bool chg_update_dead_battery(const struct chg_drv *chg_drv)
+static bool chg_update_dead_battery(struct chg_drv *chg_drv)
 {
 	int dead = 0;
 	const ktime_t uptime = get_boot_sec();
 
+	/* will clear after deadline no matter what */
 	if (uptime < DEAD_BATTERY_DEADLINE_SEC)
 		dead = GPSY_GET_PROP(chg_drv->bat_psy, GBMS_PROP_DEAD_BATTERY);
 
-	/* TODO: upstream dead battery or make it into a votable */
-	if (dead == 0 && chg_drv->usb_psy) {
-		dead = GPSY_SET_PROP(chg_drv->usb_psy, GBMS_PROP_DEAD_BATTERY, 0);
-		if (dead == 0)
-			pr_info("dead battery cleared uptime=%lld\n", uptime);
+	/* TODO: will stop looking for the votable after DEAD_BATTERY_DEADLINE_SEC */
+	if (dead)
+		return true;
+
+	if (!chg_drv->dead_battery_votable)
+		chg_drv->dead_battery_votable = find_votable(VOTABLE_DEAD_BATTERY);
+	if (chg_drv->dead_battery_votable) {
+		vote(chg_drv->dead_battery_votable, "MSC_BATT", true, 0);
+		pr_info("dead battery cleared uptime=%lld\n", uptime);
+	} else {
+		pr_warn("dead battery cleared but no votable, uptime=%lld\n", uptime);
 	}
 
-	return (dead != 0);
+	return false;
 }
 
 

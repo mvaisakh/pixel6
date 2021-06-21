@@ -377,6 +377,7 @@ const char *gbms_chg_ev_adapter_s(int adapter);
 #define VOTABLE_MSC_FCC		"MSC_FCC"
 #define VOTABLE_MSC_FV		"MSC_FV"
 #define VOTABLE_FAN_LEVEL	"FAN_LEVEL"
+#define VOTABLE_DEAD_BATTERY	"DEAD_BATTERY"
 
 #define FAN_LVL_UNKNOWN		-1
 #define FAN_LVL_NOT_CARE	0
