@@ -1114,13 +1114,16 @@ static int exynos_panel_connector_set_property(
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
 
 	if (property == p->brightness_level) {
+		exynos_state->pending_update_flags |= HBM_FLAG_BL_UPDATE;
 		exynos_state->brightness_level = val;
 		dev_dbg(ctx->dev, "%s: brt(%u)\n", __func__, exynos_state->brightness_level);
 	} else if (property == p->global_hbm_on) {
+		exynos_state->pending_update_flags |= HBM_FLAG_GHBM_UPDATE;
 		exynos_state->global_hbm_on = val;
 		dev_dbg(ctx->dev, "%s: global_hbm_on(%s)\n", __func__,
 			 exynos_state->global_hbm_on ? "true" : "false");
 	} else if (property == p->local_hbm_on) {
+		exynos_state->pending_update_flags |= HBM_FLAG_LHBM_UPDATE;
 		exynos_state->local_hbm_on = val;
 		dev_dbg(ctx->dev, "%s: local_hbm_on(%s)\n", __func__,
 			 exynos_state->local_hbm_on ? "true" : "false");
@@ -1152,12 +1155,20 @@ static void exynos_panel_connector_atomic_commit(
 	if (!exynos_panel_func)
 		return;
 
-	if (exynos_panel_func->set_hbm_mode &&
-		(ctx->hbm_mode != exynos_new_state->global_hbm_on))
+	if ((exynos_new_state->pending_update_flags & HBM_FLAG_GHBM_UPDATE) &&
+		exynos_panel_func->set_hbm_mode &&
+		(ctx->hbm_mode != exynos_new_state->global_hbm_on)) {
 		update_flags |= HBM_FLAG_GHBM_UPDATE;
+		dev_dbg(ctx->dev, "%s: update ghbm=%d", __func__,
+				exynos_new_state->global_hbm_on);
+	}
 
-	if (exynos_old_state->brightness_level != exynos_new_state->brightness_level)
+	if ((exynos_new_state->pending_update_flags & HBM_FLAG_BL_UPDATE) &&
+		(ctx->bl->props.brightness != exynos_new_state->brightness_level)) {
 		update_flags |= HBM_FLAG_BL_UPDATE;
+		dev_dbg(ctx->dev, "%s: update bl=%d", __func__,
+				exynos_new_state->brightness_level);
+	}
 
 	if (exynos_panel_func->set_local_hbm_mode &&
 		(exynos_old_state->local_hbm_on != exynos_new_state->local_hbm_on))

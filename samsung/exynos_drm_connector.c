@@ -76,6 +76,9 @@ exynos_drm_connector_duplicate_state(struct drm_connector *connector)
 
 	__drm_atomic_helper_connector_duplicate_state(connector, &copy->base);
 
+	/* clear pending update */
+	copy->pending_update_flags = 0;
+
 	return &copy->base;
 }
 

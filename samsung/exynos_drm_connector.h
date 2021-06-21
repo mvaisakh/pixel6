@@ -110,6 +110,9 @@ struct exynos_drm_connector_state {
 	/* @dimming_on: dimming on indicator */
 	bool dimming_on;
 
+	/* @pending_update_flags: flags for pending update */
+	unsigned int pending_update_flags;
+
 	/*
 	 * @te_from: Specify ddi interface where TE signals are received by decon.
 	 *	     This is required for dsi command mode hw trigger.
