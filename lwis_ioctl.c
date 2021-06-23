@@ -570,6 +570,12 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	if (!lwis_client->is_enabled) {
 		return ret;
 	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
 	/* Flush all periodic io to complete */
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
@@ -586,7 +592,6 @@ static int ioctl_device_disable(struct lwis_client *lwis_client)
 	lwis_transaction_client_cleanup(lwis_client);
 
 	mutex_lock(&lwis_dev->client_lock);
-	lwis_client_event_states_clear(lwis_client);
 	if (lwis_dev->enabled > 1) {
 		lwis_dev->enabled--;
 		lwis_client->is_enabled = false;
@@ -658,6 +663,12 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 		goto soft_reset_exit;
 	}
 
+	/* Clear event states, event queue and transactions for this client */
+	mutex_lock(&lwis_dev->client_lock);
+	lwis_client_event_states_clear(lwis_client);
+	lwis_client_event_queue_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
 	/* Flush all periodic io to complete */
 	ret = lwis_periodic_io_client_flush(lwis_client);
 	if (ret) {
@@ -673,12 +684,6 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 	/* Perform reset routine defined by the io_entries */
 	ret = synchronous_process_io_entries(lwis_dev, k_msg.num_io_entries, k_entries,
 					     k_msg.io_entries);
-
-	/* Clear event states, event queue and transactions for this client */
-	mutex_lock(&lwis_dev->client_lock);
-	lwis_client_event_states_clear(lwis_client);
-	lwis_client_event_queue_clear(lwis_client);
-	mutex_unlock(&lwis_dev->client_lock);
 
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	lwis_device_event_states_clear_locked(lwis_dev);

@@ -149,6 +149,10 @@ static int lwis_ioreg_device_suspend(struct device *dev)
 		if (!lwis_client->is_enabled) {
 			continue;
 		}
+
+		/* Clear event states for this client */
+		lwis_client_event_states_clear(lwis_client);
+
 		/* Flush all periodic io to complete */
 		ret = lwis_periodic_io_client_flush(lwis_client);
 		if (ret) {
@@ -164,8 +168,6 @@ static int lwis_ioreg_device_suspend(struct device *dev)
 
 		/* Run cleanup transactions. */
 		lwis_transaction_client_cleanup(lwis_client);
-
-		lwis_client_event_states_clear(lwis_client);
 
 		lwis_client->is_enabled = false;
 	}
