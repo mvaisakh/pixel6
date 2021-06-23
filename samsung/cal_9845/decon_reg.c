@@ -1470,7 +1470,7 @@ void decon_reg_set_win_enable(u32 id, u32 win_idx, u32 en)
  * argb_color : 32-bit
  * A[31:24] - R[23:16] - G[15:8] - B[7:0]
  */
-static void decon_reg_set_win_mapcolor(u32 id, u32 win_idx, u32 argb_color)
+static void decon_reg_set_win_mapcolor(u32 id, u32 win_idx, u32 argb_color, u32 in_bpc)
 {
 	u32 val, mask;
 	u32 mc_alpha = 0, mc_red = 0;
@@ -1481,14 +1481,13 @@ static void decon_reg_set_win_mapcolor(u32 id, u32 win_idx, u32 argb_color)
 	mc_green = (argb_color >> 8) & 0xFF;
 	mc_blue = (argb_color >> 0) & 0xFF;
 
-	val = decon_read(id, GLOBAL_CON) & GLOBAL_CON_TEN_BPC_MODE_F;
-	if (val) {
+	if (in_bpc == 10) {
 		mc_red = (mc_red << 2) | ((mc_red >> 6) & 0x3);
 		mc_green = (mc_green << 2) | ((mc_green >> 6) & 0x3);
 		mc_blue = (mc_blue << 2) | ((mc_blue >> 6) & 0x3);
 	}
 	cal_log_debug(id, "TEN_BPC=%d : A=%02Xh, R=%03Xh, G=%03Xh, B=%03Xh\n",
-			val ? 1 : 0, mc_alpha, mc_red, mc_green, mc_blue);
+			in_bpc ? 1 : 0, mc_alpha, mc_red, mc_green, mc_blue);
 
 
 	val = WIN_MAPCOLOR_A_F(mc_alpha) | WIN_MAPCOLOR_R_F(mc_red);
@@ -1509,7 +1508,7 @@ static void decon_reg_set_win_plane_alpha(u32 id, u32 win_idx, u32 a0, u32 a1)
 	win_write_mask(id, WIN_FUNC_CON_0(win_idx), val, mask);
 }
 
-static void decon_reg_set_winmap(u32 id, u32 win_idx, u32 color, u32 en)
+static void decon_reg_set_winmap(u32 id, u32 win_idx, u32 color, u32 in_bpc, u32 en)
 {
 	u32 val, mask;
 
@@ -1521,7 +1520,7 @@ static void decon_reg_set_winmap(u32 id, u32 win_idx, u32 color, u32 en)
 			wincon_read(id, DECON_CON_WIN(win_idx)));
 
 	/* Color Set */
-	decon_reg_set_win_mapcolor(id, win_idx, color);
+	decon_reg_set_win_mapcolor(id, win_idx, color, in_bpc);
 }
 
 /* ALPHA_MULT selection used in (a',b',c',d') coefficient */
@@ -1889,7 +1888,7 @@ void decon_reg_set_window_control(u32 id, int win_idx,
 	win_write(id, WIN_START_POSITION(win_idx), regs->start_pos);
 	win_write(id, WIN_END_POSITION(win_idx), regs->end_pos);
 	win_write(id, WIN_START_TIME_CON(win_idx), regs->start_time);
-	decon_reg_set_winmap(id, win_idx, regs->colormap, winmap_en);
+	decon_reg_set_winmap(id, win_idx, regs->colormap, regs->in_bpc, winmap_en);
 
 	decon_reg_config_win_channel(id, win_idx, regs->ch);
 	decon_reg_set_win_enable(id, win_idx, 1);

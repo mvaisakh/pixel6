@@ -488,6 +488,8 @@ static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
 	struct exynos_drm_plane_state *exynos_plane_state =
 		to_exynos_plane_state(plane_state);
 	const struct drm_crtc_state *crtc_state = exynos_crtc->base.state;
+	const struct exynos_drm_crtc_state *exynos_crtc_state =
+					to_exynos_crtc_state(crtc_state);
 	struct dpp_device *dpp = plane_to_dpp(exynos_plane);
 	struct decon_device *decon = exynos_crtc->ctx;
 	struct decon_window_regs win_info;
@@ -533,6 +535,7 @@ static void decon_update_plane(struct exynos_drm_crtc *exynos_crtc,
 			DRM_BLEND_ALPHA_OPAQUE);
 	win_info.plane_alpha = hw_alpha;
 	win_info.blend = plane_state->pixel_blend_mode;
+	win_info.in_bpc = exynos_crtc_state->in_bpc;
 
 	if (zpos == 0 && hw_alpha == EXYNOS_PLANE_ALPHA_MAX)
 		win_info.blend = DRM_MODE_BLEND_PIXEL_NONE;

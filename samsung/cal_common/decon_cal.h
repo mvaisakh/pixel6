@@ -244,6 +244,7 @@ struct decon_window_regs {
 	int ch;
 	int plane_alpha;
 	u32 blend;
+	u32 in_bpc;
 };
 
 struct decon_dsc {
