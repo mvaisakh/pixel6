@@ -864,13 +864,13 @@ static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 		encoder = conn_state->best_encoder;
 		funcs = encoder->helper_private;
 
+		bridge = drm_bridge_chain_get_first_bridge(encoder);
+		drm_bridge_chain_mode_set(bridge, mode, adjusted_mode);
+
 		if (funcs && funcs->atomic_mode_set)
 			funcs->atomic_mode_set(encoder, crtc_state, conn_state);
 		else if (funcs && funcs->mode_set)
 			funcs->mode_set(encoder, mode, adjusted_mode);
-
-		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_bridge_chain_mode_set(bridge, mode, adjusted_mode);
 	}
 }
 
