@@ -461,6 +461,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 			"Could not reset OCP DC_ICL voter %d\n", ret);
 
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
+	vote(charger->dc_icl_votable, DCIN_AICL_VOTER, false, 0);
 }
 
 /* TODO: should we also change the state of the load switch etc? */
