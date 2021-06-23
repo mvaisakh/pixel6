@@ -332,7 +332,7 @@ struct batt_drv {
 	int fan_level;
 };
 
-static int gbatt_get_temp(struct batt_drv *batt_drv, int *temp);
+static int gbatt_get_temp(const struct batt_drv *batt_drv, int *temp);
 
 static int batt_chg_tier_stats_cstr(char *buff, int size,
 				    const struct gbms_ce_tier_stats *tier_stat,
@@ -749,32 +749,69 @@ static void ssoc_change_curve(struct batt_ssoc_state *ssoc_state, qnum_t delta,
 				 ssoc_get_capacity_raw(ssoc_state), type);
 }
 
-static int fan_calculate_level(struct batt_drv *batt_drv)
-{
-	const struct gbms_chg_profile *profile = &batt_drv->chg_profile;
-	int charging_rate = 0, temp, ret;
-	const int temp_max = profile->temp_limits[profile->temp_nb_limits - 1];
+/* Fan levels limits from battery temperature */
+#define FAN_BT_LIMIT_NOT_CARE	320
+#define FAN_BT_LIMIT_LOW	420
+#define FAN_BT_LIMIT_MED	460
+#define FAN_BT_LIMIT_HIGH	480
+/* Fan levels limits from charge rate */
+#define FAN_CHG_LIMIT_LOW	50
+#define FAN_CHG_LIMIT_MED	70
 
-	if (batt_drv->temp_idx < 2)
-		return FAN_LVL_NOT_CARE;
-	if (batt_drv->temp_idx == 3)
-		return FAN_LVL_MED;
+static int fan_bt_calculate_level(const struct batt_drv *batt_drv)
+{
+	int level, temp, ret;
 
 	ret = gbatt_get_temp(batt_drv, &temp);
-	if (ret == 0 && temp > temp_max)
-		return FAN_LVL_ALARM;
+	if (ret < 0) {
 
-	if (batt_drv->battery_capacity == 0)
-		return FAN_LVL_UNKNOWN;
+		if (batt_drv->temp_idx < 2)
+			level = FAN_LVL_NOT_CARE;
+		else if (batt_drv->temp_idx == 3)
+			level = FAN_LVL_MED;
+		else
+			level = FAN_LVL_HIGH;
+
+		pr_warn("FAN_LEVEL: level=%d from temp_idx=%d (%d)\n",
+			level, batt_drv->temp_idx, ret);
+		return level;
+	}
+
+	if (temp <= FAN_BT_LIMIT_NOT_CARE)
+		level = FAN_LVL_NOT_CARE;
+	else if (temp <= FAN_BT_LIMIT_LOW)
+		level = FAN_LVL_LOW;
+	else if (temp <= FAN_BT_LIMIT_MED)
+		level = FAN_LVL_LOW;
+	else if (temp <= FAN_BT_LIMIT_HIGH)
+		level = FAN_LVL_HIGH;
+	else
+		level = FAN_LVL_ALARM;
+
+	return level;
+}
+
+static int fan_calculate_level(const struct batt_drv *batt_drv)
+{
+	int charging_rate, fan_level, chg_fan_level;
+
+	fan_level = fan_bt_calculate_level(batt_drv);
+	if (batt_drv->cc_max == 0 || batt_drv->battery_capacity == 0)
+		return fan_level;
 
 	charging_rate = batt_drv->cc_max / batt_drv->battery_capacity / 10;
+	if (charging_rate <= FAN_CHG_LIMIT_LOW)
+		chg_fan_level = FAN_LVL_LOW;
+	else if (charging_rate <= FAN_CHG_LIMIT_MED)
+		chg_fan_level = FAN_LVL_MED;
+	else
+		chg_fan_level = FAN_LVL_HIGH;
 
-	if (charging_rate <= 50)
-		return FAN_LVL_LOW;
-	if (charging_rate <= 70)
-		return FAN_LVL_MED;
+	/* Charge rate can increase the level */
+	if (chg_fan_level > fan_level)
+		fan_level = chg_fan_level;
 
-	return FAN_LVL_HIGH;
+	return fan_level;
 }
 
 static void fan_level_reset(const struct batt_drv *batt_drv)
@@ -2884,15 +2921,19 @@ msc_logic_done:
 	if (batt_drv->jeita_stop_charging)
 		batt_drv->cc_max = 0;
 
+	/* Fan level can be updated only during power transfer */
 	if (batt_drv->fan_level_votable) {
 		int level = fan_calculate_level(batt_drv);
+
 		vote(batt_drv->fan_level_votable, "MSC_BATT", true, level);
+		pr_debug("MSC_FAN_LVL: level=%d\n", level);
 	}
 
-	pr_info("%s msc_state=%d cv_cnt=%d ov_cnt=%d temp_idx:%d, vbatt_idx:%d  fv_uv=%d cc_max=%d update_interval=%d\n",
+	pr_info("%s msc_state=%d cv_cnt=%d ov_cnt=%d rl_sts=%d temp_idx:%d, vbatt_idx:%d  fv_uv=%d cc_max=%d update_interval=%d\n",
 		(disable_votes) ? "MSC_DOUT" : "MSC_VOTE",
 		batt_drv->msc_state,
 		batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt,
+		batt_drv->ssoc_state.rl_status,
 		batt_drv->temp_idx, batt_drv->vbatt_idx,
 		batt_drv->fv_uv, batt_drv->cc_max,
 		batt_drv->msc_update_interval);
@@ -4576,7 +4617,7 @@ static int gbatt_get_capacity_level(struct batt_ssoc_state *ssoc_state,
 	return capacity_level;
 }
 
-static int gbatt_get_temp(struct batt_drv *batt_drv, int *temp)
+static int gbatt_get_temp(const struct batt_drv *batt_drv, int *temp)
 {
 	int err = 0;
 	union power_supply_propval val;
