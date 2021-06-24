@@ -3330,13 +3330,14 @@ static ssize_t aicl_icl_ua_store(struct device *dev,
 static DEVICE_ATTR_RW(aicl_icl_ua);
 
 static ssize_t ptmc_id_show(struct device *dev,
-				   struct device_attribute *attr,
-				   char *buf)
+			    struct device_attribute *attr,
+			    char *buf)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct p9221_charger_data *charger = i2c_get_clientdata(client);
 
-	return p9382_get_ptmc_id_str(buf, PAGE_SIZE, charger);
+	p9382_get_ptmc_id_str(charger->ptmc_id_str, PAGE_SIZE, charger);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", charger->ptmc_id_str);
 }
 
 static DEVICE_ATTR_RO(ptmc_id);
