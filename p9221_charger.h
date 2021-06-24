@@ -505,6 +505,7 @@ struct p9221_charger_feature {
 	u32 age;
 
 	u64 session_features;
+	bool session_valid;
 };
 
 struct p9221_charger_platform_data {

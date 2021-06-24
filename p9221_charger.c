@@ -615,8 +615,7 @@ static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 }
 
 /* handle the session properties here */
-static int feature_update_session(struct p9221_charger_data *charger,
-				  u64 ft)
+static int feature_update_session(struct p9221_charger_data *charger, u64 ft)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
 	int ret = 0;
@@ -628,9 +627,24 @@ static int feature_update_session(struct p9221_charger_data *charger,
 	if (ft & WLCF_CHARGE_15W) {
 		ret = feature_15w_enable(charger, true);
 	} else if (chg_fts->session_features & WLCF_CHARGE_15W) {
-		/* not supporting disable while enabled */
-		if (!charger->online)
+		/* not support disable 15W while online (maybe todo) */
+		if (charger->online)
+			dev_warn(&charger->client->dev, "Cannot disable 15W while online\n");
+		else
 			feature_15w_enable(charger, false);
+
+	}
+
+	if (ft & WLCF_FAST_CHARGE) {
+		chg_fts->session_features |= WLCF_FAST_CHARGE;
+	} else if (chg_fts->session_features & WLCF_FAST_CHARGE) {
+		/* TODO: support disable while online */
+		if (charger->online) {
+			dev_warn(&charger->client->dev, "Cannot disable FAST_CHARGE while online\n");
+		} else {
+			chg_fts->session_features &= ~WLCF_FAST_CHARGE;
+			charger->icl_ramp_alt_ua = 0;
+		}
 	}
 
 	mutex_unlock(&chg_fts->feat_lock);
@@ -686,8 +700,8 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	p9221_icl_ramp_reset(charger);
 	del_timer(&charger->vrect_timer);
 
-	feature_update_session(charger, 0);
-	charger->icl_ramp_alt_ua = 0;
+	/* clear all session features */
+	feature_update_session(charger, WLCF_DISABLE_ALL_FEATURE);
 
 	p9221_vote_defaults(charger);
 	if (charger->enabled)
@@ -1145,6 +1159,7 @@ static int feature_cache_lookup_by_id(struct p9221_charger_feature *chg_fts, u64
 		return -1;
 }
 
+/* call holding mutex_lock(&chg_fts->feat_lock); */
 static void feature_update_cache(struct p9221_charger_feature *chg_fts,
 				 u64 id, u64 ft)
 {
@@ -1188,7 +1203,6 @@ store:
 		entry->last_use = 0;
 }
 
-/* call holding mutex_lock(&chg_fts->feat_lock); */
 static bool feature_cache_update_entry(struct p9221_charger_feature *chg_fts,
 				       u64 id, u64 mask, u64 ft)
 {
@@ -1208,7 +1222,7 @@ static bool feature_cache_update_entry(struct p9221_charger_feature *chg_fts,
 
 	pr_debug("%s: tx_id=%llx, mask=%llx ft=%llx\n", __func__, id, mask, ft);
 
-	/* FIXME: update the features using mask and ft */
+	/* update the features using mask and ft */
 	entry = &chg_fts->entries[index];
 	if ((entry->features & mask) != ft) {
 		entry->features |= (mask & ft);
@@ -1230,7 +1244,7 @@ static bool feature_cache_lookup_entry(struct p9221_charger_feature *chg_fts,
 
 	pr_debug("%s: tx_id=%llx, mask=%llx ft=%llx\n", __func__, id, mask, ft);
 
-	/* FIXME: lookup id, true if found and feature&mask matches. */
+	/* lookup id, true if found and feature&mask matches. */
 	index = feature_cache_lookup_by_id(chg_fts, id);
 	if (index >= 0) {
 		entry = &chg_fts->entries[index];
@@ -1768,6 +1782,23 @@ unlock_done:
 	mutex_unlock(&charger->stats_lock);
 }
 
+static bool feature_check_fast_charge(struct p9221_charger_data *charger)
+{
+	struct p9221_charger_feature *chg_fts = &charger->chg_features;
+	bool enabled;
+
+	/* ignore the feature in compatibility until the first vote */
+	if (charger->pdata->feat_compat_mode) {
+		pr_debug("%s: COMPAT FAST_CHARGE ENABLED\n", __func__);
+		return true;
+	}
+
+	enabled = feature_is_enabled(chg_fts, 0, WLCF_FAST_CHARGE);
+	pr_debug("%s: feature enabled=%d\n", __func__, enabled);
+
+	return enabled;
+}
+
 /* < 0 error, 0 = no changes, > 1 changed */
 static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
@@ -1780,6 +1811,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	/* online = 2 enable LL, return < 0 if NOT on LL */
 	if (online == PPS_PSY_PROG_ONLINE) {
 		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+		bool enable;
 
 		pr_info("%s: online=%d, enabled=%d wlc_dc_enabled=%d prop_mode_en=%d\n",
 			__func__, online, enabled, wlc_dc_enabled,
@@ -1796,19 +1828,22 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 
 		/* Ping? */
 		if (wlc_dc_enabled) {
-			/*
-			 * TODO: disable fast charge if enabled:
-			 *
-			 *   ret = feature_check_fast_charge(charger);
-			 *   if (ret < 0)
-			 *       pr_debug("%s: FAST_CHARGE disabled\n", __func__);
-			 */
+			/* TODO: disable fast charge if enabled */
+			enable = feature_check_fast_charge(charger);
+			if (enable == 0)
+				pr_debug("%s: FAST_CHARGE disabled\n", __func__);
+
 			return 0;
 		}
 
 		/* not there, must return not supp */
 		if (!charger->pdata->has_wlc_dc || !p9221_is_online(charger))
 			return -EOPNOTSUPP;
+
+		/* will return -EAGAIN until the feature is supported */
+		enable = feature_check_fast_charge(charger);
+		if (enable == 0)
+			return -EAGAIN;
 
 		/*
 		 * run ->chip_prop_mode_en() if proprietary mode or cap divider
@@ -3325,9 +3360,9 @@ static ssize_t features_store(struct device *dev,
 		feature_update_cache(&charger->chg_features, id, ft);
 		/*
 		 * disable prefill of feature cache on first use of the API,
-		 * TODO: possibly clear the cache as well. Protect this with
-		 * a lock.
-		 */
+		 * TODO: possibly clear the cache as well.
+		 * NOTE: Protect this with a lock.
+		*/
 		charger->pdata->feat_compat_mode = false;
 	} else {
 		ret = feature_update_session(charger, ft);
@@ -3347,6 +3382,9 @@ static ssize_t features_show(struct device *dev,
 	struct p9221_charger_feature_entry *entry = &chg_fts->entries[0];
 	int idx;
 	ssize_t len = 0;
+
+	len += scnprintf(buf + len, PAGE_SIZE - len, "0:%llx\n",
+			 chg_fts->session_features);
 
 	for (idx = 0; idx < chg_fts->num_entries; idx++, entry++) {
 		if (entry->quickid == 0 || entry->features == 0)
