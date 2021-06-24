@@ -1232,29 +1232,33 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	if (!chgr->prop_mode_en)
 		goto err_exit;
 
+	/*
+	 * Step 4: Read TX potential power register (0xC4)
+	 * [TX max power capability] in 0.5W units
+	 */
+	ret = chgr->reg_read_8(chgr, P9412_PROP_TX_POTEN_PWR_REG, &txpwr);
+	txpwr = txpwr / 2;
+	if ((ret == 0) && (txpwr >= HPP_MODE_PWR_REQUIRE)) {
+		dev_info(&chgr->client->dev,
+			 "PROP_MODE: Tx potential power=%dW\n", txpwr);
+	} else {
+		chgr->prop_mode_en = false;
+		goto err_exit;
+	}
+
 enable_capdiv:
 	/*
-	 * Step 4: enable Cap Divider configuration:
+	 * Step 5: enable Cap Divider configuration:
 	 * write 0x02 to 0x101 then write 0x40 to 0x4E
 	 */
 	ret = p9412_capdiv_en(chgr, CDMODE_CAP_DIV_MODE);
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to enable Cap Div mode\n");
+		chgr->prop_mode_en = false;
 		goto err_exit;
 	} else
 		chgr->prop_mode_en = true;
-
-	/*
-	 * Step 5: Read TX potential power register (0xC4)
-	 * [TX max power capability] in 0.5W units
-	 */
-	ret = chgr->reg_read_8(chgr, P9412_PROP_TX_POTEN_PWR_REG, &txpwr);
-	if (ret == 0)
-		dev_info(&chgr->client->dev,
-			 "PROP_MODE: Tx potential power=%02x\n", txpwr);
-	else
-		goto err_exit;
 
 	/*
 	 * Step 6: Request xx W Neg power by writing 0xC5,
@@ -1264,6 +1268,7 @@ enable_capdiv:
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to write pwr req register\n");
+		chgr->prop_mode_en = false;
 		goto err_exit;
 	} else {
 		dev_info(&chgr->client->dev, "request power=%dW\n", req_pwr);
@@ -1273,6 +1278,7 @@ enable_capdiv:
 	if (ret) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: fail to send PROP_REQ_PWR_CMD\n");
+		chgr->prop_mode_en = false;
 		goto err_exit;
 	}
 
@@ -1289,9 +1295,9 @@ err_exit:
 	ret |= chgr->reg_read_8(chgr, P9412_PROP_REQ_PWR_REG, &prop_req_pwr);
 
 	pr_debug("%s PROP_MODE: en=%d,sys_mode=%02x,mode_sts=%02x,err_sts=%02x,"
-		 "cdmode=%02x,pwr_stp=%02x,req_pwr=%02x,prop_cur_pwr=%02x",
+		 "cdmode=%02x,pwr_stp=%02x,req_pwr=%02x,prop_cur_pwr=%02x,txpwr=%dW",
 		 __func__, chgr->prop_mode_en, val8, mode_sts, err_sts,
-		 cdmode, pwr_stp, prop_req_pwr, prop_cur_pwr);
+		 cdmode, pwr_stp, prop_req_pwr, prop_cur_pwr, txpwr);
 
 	if (!ret) {
 		dev_info(&chgr->client->dev,

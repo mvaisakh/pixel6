@@ -436,6 +436,7 @@
 #define P9412_ADT_TYPE_AUTH			0x02
 
 #define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
+#define HPP_MODE_PWR_REQUIRE			23
 
 /* Features */
 typedef enum {

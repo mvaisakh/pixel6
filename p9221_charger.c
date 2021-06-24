@@ -1606,7 +1606,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		 * (i.e. with p9412_prop_mode_enable())
 		 */
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
-			charger->chip_prop_mode_en(charger, PROP_MODE_PWR_DEFAULT);
+			charger->chip_prop_mode_en(charger, HPP_MODE_PWR_REQUIRE);
 
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
 			return -EOPNOTSUPP;
