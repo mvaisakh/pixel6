@@ -524,8 +524,10 @@ struct p9221_charger_platform_data {
 	int				epp_vout_mv;
 	u8				fod[P9221R5_NUM_FOD];
 	u8				fod_epp[P9221R5_NUM_FOD];
+	u8				fod_hpp[P9221R5_NUM_FOD];
 	int				fod_num;
 	int				fod_epp_num;
+	int				fod_hpp_num;
 	int 				q_value;
 	int				epp_rp_value;
 	int				needs_dcin_reset;

@@ -62,6 +62,12 @@ enum wlc_align_codes {
 	WLC_ALIGN_ERROR,
 };
 
+enum wlc_chg_mode {
+	WLC_BPP = 0,
+	WLC_EPP,
+	WLC_HPP,
+};
+
 #define P9221_CRC8_POLYNOMIAL		0x07	/* (x^8) + x^2 + x + 1 */
 DECLARE_CRC8_TABLE(p9221_crc8_table);
 
@@ -269,16 +275,20 @@ bool p9xxx_is_capdiv_en(struct p9221_charger_data *charger)
 
 static void p9221_write_fod(struct p9221_charger_data *charger)
 {
-	bool epp = false;
+	int mode = WLC_BPP;
 	u8 *fod = NULL;
 	int fod_count = charger->pdata->fod_num;
 	int ret;
 	int retries = 3;
+	static char *wlc_mode[] = { "BPP", "EPP", "HPP" };
+
 
 	if (charger->no_fod)
 		goto no_fod;
 
-	if (!charger->pdata->fod_num && !charger->pdata->fod_epp_num)
+	if (!charger->pdata->fod_num &&
+            !charger->pdata->fod_epp_num &&
+            !charger->pdata->fod_hpp_num)
 		goto no_fod;
 
 	/* Default to BPP FOD */
@@ -288,7 +298,13 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 	if (p9221_is_epp(charger) && charger->pdata->fod_epp_num) {
 		fod = charger->pdata->fod_epp;
 		fod_count = charger->pdata->fod_epp_num;
-		epp = true;
+		mode = WLC_EPP;
+	}
+
+	if (p9xxx_is_capdiv_en(charger) && charger->pdata->fod_hpp_num) {
+		fod = charger->pdata->fod_hpp;
+		fod_count = charger->pdata->fod_hpp_num;
+		mode = WLC_HPP;
 	}
 
 	if (!fod)
@@ -300,7 +316,7 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 
 		dev_info(&charger->client->dev,
 			 "Writing %s FOD (n=%d reg=%02x try=%d)\n",
-			 epp ? "EPP" : "BPP", fod_count,
+			 wlc_mode[mode], fod_count,
 			 charger->reg_set_fod_addr, retries);
 
 		ret = p9xxx_chip_set_fod_reg(charger, fod, fod_count);
@@ -330,8 +346,9 @@ static void p9221_write_fod(struct p9221_charger_data *charger)
 	}
 
 no_fod:
-	dev_warn(&charger->client->dev, "FOD not set! bpp:%d epp:%d r:%d\n",
-		 charger->pdata->fod_num, charger->pdata->fod_epp_num, retries);
+	dev_warn(&charger->client->dev, "FOD not set! bpp:%d epp:%d hpp:%d r:%d\n",
+		 charger->pdata->fod_num, charger->pdata->fod_epp_num,
+		 charger->pdata->fod_hpp_num, retries);
 }
 
 static int p9221_send_data(struct p9221_charger_data *charger)
@@ -523,6 +540,7 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 			dev_info(&charger->client->dev,
 				 "p9221_reset_wlc_dc: cdmode_reg=%02x\n", cdmode);
 			charger->prop_mode_en = false;
+			p9221_write_fod(charger);
 		}
 	}
 
@@ -1593,6 +1611,8 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
 			return -EOPNOTSUPP;
 
+		p9221_write_fod(charger);
+
 		charger->wlc_dc_enabled = true;
 		if (dc_sw_gpio >= 0)
 			gpio_set_value_cansleep(dc_sw_gpio, 1);
@@ -2522,6 +2542,13 @@ static ssize_t p9221_show_status(struct device *dev,
 			   charger->pdata->fod_epp_num);
 	count += p9221_hex_str(charger->pdata->fod_epp,
 			       charger->pdata->fod_epp_num,
+			       buf + count, PAGE_SIZE - count, false);
+
+	count += scnprintf(buf + count, PAGE_SIZE - count,
+			   "\ndt fod-hpp  : (n=%d) ",
+			   charger->pdata->fod_hpp_num);
+	count += p9221_hex_str(charger->pdata->fod_hpp,
+			       charger->pdata->fod_hpp_num,
 			       buf + count, PAGE_SIZE - count, false);
 
 	count += scnprintf(buf + count, PAGE_SIZE - count,
@@ -4680,6 +4707,31 @@ static int p9221_parse_dt(struct device *dev,
 				      pdata->fod_epp_num * 3 + 1, false);
 			dev_info(dev, "dt fod_epp: %s (%d)\n", buf,
 				 pdata->fod_epp_num);
+		}
+	}
+
+	pdata->fod_hpp_num =
+	    of_property_count_elems_of_size(node, "fod_hpp", sizeof(u8));
+	if (pdata->fod_hpp_num <= 0) {
+		dev_err(dev, "No dt fod hpp provided (%d)\n",
+			pdata->fod_hpp_num);
+		pdata->fod_hpp_num = 0;
+	} else {
+		if (pdata->fod_hpp_num > P9221R5_NUM_FOD) {
+			dev_err(dev,
+			    "Incorrect num of HPP FOD %d, using first %d\n",
+			    pdata->fod_hpp_num, P9221R5_NUM_FOD);
+			pdata->fod_hpp_num = P9221R5_NUM_FOD;
+		}
+		ret = of_property_read_u8_array(node, "fod_hpp", pdata->fod_hpp,
+						pdata->fod_hpp_num);
+		if (ret == 0) {
+			char buf[P9221R5_NUM_FOD * 3 + 1];
+
+			p9221_hex_str(pdata->fod_hpp, pdata->fod_hpp_num, buf,
+				      pdata->fod_hpp_num * 3 + 1, false);
+			dev_info(dev, "dt fod_hpp: %s (%d)\n", buf,
+				 pdata->fod_hpp_num);
 		}
 	}
 
