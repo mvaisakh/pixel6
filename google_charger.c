@@ -1685,12 +1685,13 @@ static void chg_work(struct work_struct *work)
 
 		goto exit_chg_work;
 	} else if (chg_drv->stop_charging != 0 && present) {
+		const bool restore_fcc = chg_drv->therm_wlc_override_fcc;
 
 		/* Stop BD work after disconnect */
 		chg_stop_bd_work(chg_drv);
 
 		/* will re-enable charging after setting FCC,CC_MAX */
-		if (chg_drv->therm_wlc_override_fcc)
+		if (restore_fcc)
 			(void)chg_therm_update_fcc(chg_drv);
 	}
 
@@ -3195,10 +3196,8 @@ static void chg_init_votables(struct chg_drv *chg_drv)
 
 }
 
-static int fan_get_level(struct chg_drv *chg_drv)
+static int fan_get_level(struct chg_thermal_device *tdev)
 {
-	struct chg_thermal_device *tdev =
-			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN];
 	int level = FAN_LVL_UNKNOWN;
 
 	if (tdev->current_level == 0)
@@ -3209,6 +3208,31 @@ static int fan_get_level(struct chg_drv *chg_drv)
 		level = FAN_LVL_MED;
 
 	return level;
+}
+
+#define FAN_VOTER_DC_IN		"THERMAL_DC_IN"
+#define FAN_VOTER_WLC_FCC	"THERMAL_WLC_FCC"
+
+/*
+ * We might have differnt fan hints for the DCIN and for FCC_IN.
+ * Check the online state of WLC to figure out which one to apply.
+ */
+static int fan_vote_level(struct chg_drv *chg_drv, const char *reason, int hint)
+{
+	int ret;
+
+	if (!chg_drv->fan_level_votable) {
+		chg_drv->fan_level_votable = find_votable("FAN_LEVEL");
+		if (!chg_drv->fan_level_votable)
+			return 0;
+	}
+
+	ret = vote(chg_drv->fan_level_votable, reason, hint != -1, hint);
+
+	pr_debug("MSC_THERM_FAN reason=%s, level=%d ret=%d\n",
+		 reason, hint, ret);
+
+	return ret;
 }
 
 static int chg_get_max_charge_cntl_limit(struct thermal_cooling_device *tcd,
@@ -3230,74 +3254,201 @@ static int chg_get_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
 }
 
 /*
- * Wireless and wired limits are linked when therm_wlc_override_fcc is true.
- * This means that charging from WLC (wlc_psy is ONLINE) will disable the
- * the thermal vote on MSC_FCC (b/128350180)
+ * SW need to override fcc on WLC when therm_wlc_override_fcc is true or when
+ * WLC is in PROG mode with a wlc-fcc-thermal-mitigation table. No override
+ * when we are offline.
+ */
+static bool chg_therm_override_fcc(struct chg_drv *chg_drv)
+{
+	struct chg_thermal_device *ctdev_dcin =
+			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_DC_IN];
+	struct chg_thermal_device *ctdev_wlcfcc =
+			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_WLC_FCC];
+	bool override = chg_drv->therm_wlc_override_fcc;
+	int wlc_online;
+
+	if (!chg_drv->wlc_psy)
+		return false;
+
+	wlc_online = GPSY_GET_PROP(chg_drv->wlc_psy, POWER_SUPPLY_PROP_ONLINE);
+	if (wlc_online == PPS_PSY_PROG_ONLINE)
+		override = ctdev_wlcfcc->current_level != 0;
+	else if (wlc_online && override)
+		override = ctdev_dcin->current_level != 0;
+	else
+		override = 0;
+
+	pr_debug("%s: MSC_THERM_FCC wlc_online=%d override=%d, wlcfcc_lvl=%d, dcin_lvl=%d\n",
+		__func__,  wlc_online, override, ctdev_wlcfcc->current_level,
+		ctdev_dcin->current_level);
+
+	return override;
+}
+
+/*
+ * Wireless and wired limits are linked when therm_wlc_override_fcc is true
+ * and when using WLC_DC. This code disables the the thermal vote on MSC_FCC
+ * (b/128350180) when charging from WLC and the override flag is set or
+ * when WLC is in PROG_ONLINE and a wlc-fcc-thermal-mitigation table is
+ * defined.
+ * @return true if applied, false if overriden, negative if error
  */
 static int chg_therm_update_fcc(struct chg_drv *chg_drv)
 {
 	struct chg_thermal_device *tdev =
 			&chg_drv->thermal_devices[CHG_TERMAL_DEVICE_FCC];
-	int ret, wlc_online = 0, fcc = -1;
+	bool override_fcc = false;
+	int ret, fcc = -1;
 
-	if (chg_drv->wlc_psy && chg_drv->therm_wlc_override_fcc)
-		wlc_online = GPSY_GET_PROP(chg_drv->wlc_psy,
-					POWER_SUPPLY_PROP_ONLINE);
-
-	/* WLC not online and FCC has a thermal level, restore it */
-	if (wlc_online <= 0 && tdev->current_level > 0)
+	/* restore the thermal vote FCC level (if enabled) */
+	override_fcc = chg_therm_override_fcc(chg_drv);
+	if (!override_fcc && tdev->current_level > 0)
 		fcc = tdev->thermal_mitigation[tdev->current_level];
 
+	/* !override_fcc will restore the fcc thermal limit when set */
+	ret = vote(chg_drv->msc_fcc_votable, THERMAL_DAEMON_VOTER,
+		   fcc != -1, fcc);
+	if (ret < 0)
+		pr_err("%s: MSC_THERM_FCC vote fcc=%d failed ret=%d\n",
+		       __func__, fcc, ret);
 
-	ret = vote(chg_drv->msc_fcc_votable,
-			THERMAL_DAEMON_VOTER,
-			(fcc != -1),
-			fcc);
-	return ret;
+	pr_debug("%s: MSC_THERM_FCC wlc %sfcc=%d fcc_level=%d ret=%d\n",
+		 __func__, override_fcc ? "OVERRIDE " : "", fcc,
+		 tdev->current_level, ret);
+
+	return ret < 0 ? ret : !override_fcc;
 }
 
 static int chg_set_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 					 unsigned long lvl)
 {
-	int ret = 0;
-	struct chg_thermal_device *tdev =
-		(struct chg_thermal_device *)tcd->devdata;
+	struct chg_thermal_device *tdev = (struct chg_thermal_device *)tcd->devdata;
+	const bool changed = tdev->current_level != lvl;
 	struct chg_drv *chg_drv = tdev->chg_drv;
-	const bool changed = (tdev->current_level != lvl);
+	int fcc = 0, ret;
 
 	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
 		return -EINVAL;
 
 	tdev->current_level = lvl;
+	if (tdev->current_level < tdev->thermal_levels)
+		fcc = tdev->thermal_mitigation[tdev->current_level];
 
-	if (tdev->current_level == tdev->thermal_levels) {
-		pr_info("MSC_THERM_FCC lvl=%ld charge disable\n", lvl);
-		return vote(chg_drv->msc_chg_disable_votable,
-					THERMAL_DAEMON_VOTER, true, 0);
+	/* NOTE: ret <=0 not changed, ret > 0 changed */
+	ret = chg_therm_update_fcc(chg_drv);
+	if (changed && ret > 0) {
+		const bool chg_disable = fcc == 0;
+
+		pr_info("MSC_THERM_FCC lvl=%d ret=%d fcc=%d disable=%d\n",
+			 tdev->current_level, ret, fcc, chg_disable);
+
+		ret = vote(chg_drv->msc_chg_disable_votable, THERMAL_DAEMON_VOTER,
+			   chg_disable, 0);
+
+		/* apply immediately */
+		reschedule_chg_work(chg_drv);
 	}
 
-	vote(chg_drv->msc_chg_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
-
-	ret = chg_therm_update_fcc(chg_drv);
-	if (ret < 0 || changed)
-		pr_info("MSC_THERM_FCC lvl=%d (%d)\n",
-				tdev->current_level,
-				ret);
-
-	/* force to apply immediately */
-	reschedule_chg_work(chg_drv);
 	return ret;
 }
 
+
+/*
+ * set WLC to PPS_PSY_FIXED_ONLINE from OFFLINE IF the DC_ICL limit is nonzero.
+ * TODO: implement with a votable of type ANY called wlc_offline and negative
+ * logic.
+ *
+ * returns the wlc online state or error
+ */
+static int chg_therm_set_wlc_online(struct chg_drv *chg_drv)
+{
+	struct power_supply *wlc_psy = chg_drv->wlc_psy;
+	union power_supply_propval pval;
+	int ret;
+
+	if (!wlc_psy)
+		return PPS_PSY_OFFLINE;
+
+	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
+	if (ret < 0 || pval.intval == PPS_PSY_OFFLINE) {
+		int dc_icl;
+
+		/* OFFLINE goes to online if dc_icl allows */
+		dc_icl = get_effective_result_locked(chg_drv->dc_icl_votable);
+		if (dc_icl > 0)
+			pval.intval = PPS_PSY_FIXED_ONLINE;
+
+		/* will reset offline just in case */
+		ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE,
+						&pval);
+
+		pr_debug("%s: pval.intval=%d, dc_icl=%d ret=%d\n", __func__,
+			 pval.intval, dc_icl, ret);
+
+		if (ret < 0)
+			return ret;
+	}
+
+	return pval.intval;
+}
+
+/*
+ * ->wlc_psy go offline only when the online state matches from_state, thhis
+ * extends b/119501863 to the WLC_FCC case.
+ * Disabling from WLC_FCC due to thermal reason can follow 2 paths:
+ * 1) turn off DC charging and switch to DC_ICL if charging is enabled
+ * 2) transition from DC_ICL to disabled UNLESS
+ *
+ * TODO: implement with a votable of type ANY called wlc_offline and negative
+ * logic.
+ *
+ * returns the wlc online state or error
+ */
+static int chg_therm_set_wlc_offline(struct chg_drv *chg_drv, int from_state)
+{
+	struct power_supply *wlc_psy = chg_drv->wlc_psy;
+	union power_supply_propval pval;
+	int ret;
+
+	if (!wlc_psy)
+		return PPS_PSY_OFFLINE;
+
+	ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
+	if (ret < 0 || pval.intval == from_state) {
+		int dc_icl = -1;
+
+		/*
+		 * PROG needs to go to PPS_PSY_FIXED_ONLINE to restart charging
+		 * when coming out of DC.
+		 */
+		pval.intval = PPS_PSY_OFFLINE;
+		if (from_state == PPS_PSY_PROG_ONLINE) {
+			dc_icl = get_effective_result_locked(chg_drv->dc_icl_votable);
+			if (dc_icl > 0)
+				pval.intval = PPS_PSY_FIXED_ONLINE;
+		}
+
+		ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_ONLINE,
+						&pval);
+		pr_debug("%s: pval.intval=%d, dc_icl=%d ret=%d \n", __func__,
+			 pval.intval, dc_icl, ret);
+		if (ret < 0)
+			return ret;
+	}
+
+	return pval.intval;
+}
+
+/* BPP/HPP/GPP case */
 static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 					   unsigned long lvl)
 {
 	struct chg_thermal_device *tdev =
 			(struct chg_thermal_device *)tcd->devdata;
-	const bool changed = (tdev->current_level != lvl);
+	const bool changed = tdev->current_level != lvl;
 	struct chg_drv *chg_drv = tdev->chg_drv;
-	union power_supply_propval pval;
-	int dc_icl = -1, rdc = 0, ret = 0;
+	int fan_hint = -1, dc_icl = -1;
+	int wlc_state, ret = 0;
 
 	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
 		return -EINVAL;
@@ -3305,78 +3456,67 @@ static int chg_set_dc_in_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	if (!chg_drv->dc_icl_votable)
 		chg_drv->dc_icl_votable = find_votable("DC_ICL");
 
+	/* dc_icl == -1 on level 0 */
 	tdev->current_level = lvl;
-
-	if (!chg_drv->fan_level_votable)
-		chg_drv->fan_level_votable = find_votable("FAN_LEVEL");
-	if (chg_drv->fan_level_votable) {
-		const int fan_hint = fan_get_level(chg_drv);
-		vote(chg_drv->fan_level_votable, THERMAL_DAEMON_VOTER, true, fan_hint);
-	}
-
-	if (tdev->current_level == tdev->thermal_levels) {
-		if (chg_drv->dc_icl_votable)
-			vote(chg_drv->dc_icl_votable,
-				THERMAL_DAEMON_VOTER, true, 0);
-
-		/* WLC set the wireless charger offline b/119501863 */
-		if (chg_drv->wlc_psy) {
-			pval.intval = 0;
-			power_supply_set_property(chg_drv->wlc_psy,
-				POWER_SUPPLY_PROP_ONLINE, &pval);
-		}
-
-		pr_info("MSC_THERM_DC lvl=%ld dc disable\n", lvl);
-
-		return 0;
-	}
-
-	if (chg_drv->wlc_psy) {
-		ret = power_supply_get_property(chg_drv->wlc_psy,
-					        POWER_SUPPLY_PROP_ONLINE,
-                                                &pval);
-		if (ret < 0 || pval.intval == 0)
-			pval.intval = 1;
-
-		if (pval.intval > 0)
-			power_supply_set_property(chg_drv->wlc_psy,
-						  POWER_SUPPLY_PROP_ONLINE,
-						  &pval);
-
-		if (ret < 0 || pval.intval < 0)
-			pr_err("MSC_THERM_DC cannot set to ONLINE=%d (%d)\n",
-			       pval.intval, ret);
-	}
-
-	if (!chg_drv->dc_icl_votable)
-		return 0;
-
-	if (tdev->current_level != 0)
+	if (tdev->current_level == tdev->thermal_levels)
+		dc_icl = 0;
+	else if (tdev->current_level != 0)
 		dc_icl = tdev->thermal_mitigation[tdev->current_level];
 
-	rdc = vote(chg_drv->dc_icl_votable, THERMAL_DAEMON_VOTER,
-		   (dc_icl != -1), dc_icl);
+	/* b/119501863 set the wireless charger offline if in FIXED mode */
+	if (dc_icl == 0) {
+		wlc_state = chg_therm_set_wlc_offline(chg_drv, PPS_PSY_FIXED_ONLINE);
+		if (wlc_state < 0)
+			pr_err("MSC_THERM_DC cannot offline ret=%d\n", wlc_state);
 
-	if (rdc < 0 || changed)
-		pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d (%d)\n",
-			lvl, dc_icl, rdc);
+		pr_info("MSC_THERM_DC lvl=%ld, dc disable wlc_state=%d\n",
+			lvl, wlc_state);
+	}
 
-	/* make sure that fcc is reset to max when charging from WLC*/
+	/* set the IF-PMIC before re-enable wlc */
+	if (chg_drv->dc_icl_votable) {
+		ret = vote(chg_drv->dc_icl_votable, THERMAL_DAEMON_VOTER,
+			   dc_icl >= 0, dc_icl);
+		if (ret < 0 || changed)
+			pr_info("MSC_THERM_DC lvl=%ld dc_icl=%d (%d)\n",
+				lvl, dc_icl, ret);
+	}
+
+	/* set the wireless to PPS_PSY_FIXED_ONLINE if needed */
+	if (dc_icl != 0) {
+		wlc_state = chg_therm_set_wlc_online(chg_drv);
+		if (wlc_state < 0)
+			pr_err("MSC_THERM_DC cannot online ret=%d\n", wlc_state);
+	}
+
+	/* online/offline or vote might change the selection */
 	if (ret == 0)
-		(void)chg_therm_update_fcc(chg_drv);
+		chg_therm_update_fcc(chg_drv);
 
+	/* TODO: use a cooling-device dependent logic for fan level */
+	if (wlc_state == PPS_PSY_FIXED_ONLINE)
+		fan_hint = fan_get_level(tdev);
+
+	ret = fan_vote_level(chg_drv, FAN_VOTER_DC_IN, fan_hint);
+	if (ret < 0)
+		pr_err("MSC_THERM_DC %s cannot vote on fan_level %d\n",
+		       FAN_VOTER_DC_IN, ret);
+
+	/* force to apply immediately */
+	reschedule_chg_work(chg_drv);
 	return 0;
 }
 
+/* DC case */
 static int chg_set_wlc_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 					     unsigned long lvl)
 {
 	struct chg_thermal_device *tdev =
 			(struct chg_thermal_device *)tcd->devdata;
-	const bool changed = (tdev->current_level != lvl);
+	const bool changed = tdev->current_level != lvl;
 	struct chg_drv *chg_drv = tdev->chg_drv;
-	union power_supply_propval pval;
-	int dc_fcc = -1, rfcc = 0, ret = 0;
+	int fan_hint = -1, dc_fcc = -1;
+	int wlc_state, ret = 0;
 
 	if (lvl < 0 || tdev->thermal_levels <= 0 || lvl > tdev->thermal_levels)
 		return -EINVAL;
@@ -3389,59 +3529,57 @@ static int chg_set_wlc_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 			chg_drv->dc_fcc_votable = chg_drv->msc_fcc_votable;
 	}
 
+	/* dc_fcc == -1 on level 0 */
 	tdev->current_level = lvl;
-
-	if (tdev->current_level == tdev->thermal_levels) {
-		if (chg_drv->dc_fcc_votable)
-			vote(chg_drv->dc_fcc_votable,
-				THERMAL_DAEMON_DC_VOTER, true, 0);
-
-		/* WLC set the wireless charger offline b/119501863 */
-		if (chg_drv->wlc_psy) {
-			pval.intval = 0;
-			power_supply_set_property(chg_drv->wlc_psy,
-				POWER_SUPPLY_PROP_ONLINE, &pval);
-		}
-
-		pr_info("MSC_THERM_DC_FCC lvl=%ld dc disable\n", lvl);
-
-		return 0;
-	}
-
-	if (chg_drv->wlc_psy) {
-		ret = power_supply_get_property(chg_drv->wlc_psy,
-					        POWER_SUPPLY_PROP_ONLINE,
-                                                &pval);
-		if (ret < 0 || pval.intval == 0)
-			pval.intval = 1;
-
-		if (pval.intval > 0)
-			power_supply_set_property(chg_drv->wlc_psy,
-						  POWER_SUPPLY_PROP_ONLINE,
-						  &pval);
-
-		if (ret < 0 || pval.intval < 0)
-			pr_err("MSC_THERM_DC_FCC cannot set to ONLINE=%d (%d)\n",
-			       pval.intval, ret);
-	}
-
-	if (!chg_drv->dc_fcc_votable)
-		return 0;
-
-	if (tdev->current_level != 0)
+	if (tdev->current_level == tdev->thermal_levels)
+		dc_fcc = 0;
+	else if (tdev->current_level != 0)
 		dc_fcc = tdev->thermal_mitigation[tdev->current_level];
 
-	rfcc = vote(chg_drv->dc_fcc_votable, THERMAL_DAEMON_DC_VOTER,
-		   (dc_fcc != -1), dc_fcc);
+	/*
+	 * Vote before setting the source offline to re-run the selection logic
+	 * before taking the WLC to FIXED_ONLINE.
+	 */
+	if (chg_drv->dc_fcc_votable) {
+		ret = vote(chg_drv->dc_fcc_votable, THERMAL_DAEMON_DC_VOTER,
+			dc_fcc >= 0, dc_fcc);
+		if (ret < 0 || changed)
+			pr_info("MSC_THERM_DC_FCC lvl=%ld dc_fcc=%d (%d)\n",
+				lvl, dc_fcc, ret);
+	}
 
-	if (rfcc < 0 || changed)
-		pr_info("MSC_THERM_DC_FCC lvl=%ld dc_fcc=%d (%d)\n",
-			lvl, dc_fcc, rfcc);
+	/*
+	 * dc_fcc==0 set WLC to PPS_PSY_FIXED_ONLINE if in PROG mode; dc_fcc!=0
+	 * reset WLC to PPS_PSY_FIXED_ONLINE if in OFFLINE unless DC_ICL==0.
+	 */
+	if (dc_fcc == 0) {
+		wlc_state = chg_therm_set_wlc_offline(chg_drv, PPS_PSY_PROG_ONLINE);
+		if (wlc_state < 0)
+			pr_err("MSC_THERM_DC_FCC cannot offline ret=%d\n", wlc_state);
 
-	/* make sure that fcc is reset to max when charging from WLC*/
+		pr_info("MSC_THERM_DC lvl=%ld, dc disable wlc_state=%d\n",
+			lvl, wlc_state);
+	} else {
+		wlc_state = chg_therm_set_wlc_online(chg_drv);
+		if (wlc_state < 0)
+			pr_err("MSC_THERM_DC_FCC cannot online ret=%d\n", wlc_state);
+	}
+
+	/* setting "offline" or online or vote might change the selection */
 	if (ret == 0)
-		(void)chg_therm_update_fcc(chg_drv);
+		chg_therm_update_fcc(chg_drv);
 
+	/* TODO: use a cooling-device dependent logic for fan level */
+	if (wlc_state == PPS_PSY_PROG_ONLINE)
+		fan_hint = fan_get_level(tdev);
+
+	ret = fan_vote_level(chg_drv, FAN_VOTER_WLC_FCC, fan_hint);
+	if (ret < 0)
+		pr_err("MSC_THERM_DC %s cannot vote on fan_level %d\n",
+		       FAN_VOTER_WLC_FCC, ret);
+
+	/* force to apply immediately */
+	reschedule_chg_work(chg_drv);
 	return 0;
 }
 
