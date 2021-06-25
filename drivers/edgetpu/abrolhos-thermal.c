@@ -77,17 +77,15 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 			dev_err(dev, "error setting tpu policy: %d\n", ret);
 			goto out;
 		}
+		if (state_original == 0)
+			cooling->thermal_suspended = true;
+		else if (cooling->cooling_state == 0)
+			cooling->thermal_suspended = false;
 		cooling->cooling_state = state_original;
 		ret = edgetpu_kci_notify_throttling(etdev, pwr_state);
-		if (ret) {
-			/*
-			 * TODO(b/185596886) : After FW adds a handler for this KCI, return the
-			 * correct value of ret and change the debug message to an error message.
-			 */
-			etdev_dbg(etdev, "Failed to notify FW about state %lu, error:%d",
+		if (ret)
+			etdev_err(etdev, "Failed to notify FW about power state %lu, error:%d",
 				  pwr_state, ret);
-			ret = 0;
-		}
 	} else {
 		ret = -EALREADY;
 	}

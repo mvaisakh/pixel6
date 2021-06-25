@@ -120,6 +120,11 @@ struct edgetpu_device_group {
 	struct edgetpu_iommu_domain *etdomain;
 	/* matrix of P2P mailboxes */
 	struct edgetpu_p2p_mailbox **p2p_mailbox_matrix;
+	/*
+	 * External mailboxes associated with this group, only valid if
+	 * external mailbox allocated and enabled.
+	 */
+	struct edgetpu_external_mailbox *ext_mailbox;
 
 	/* Mask of errors set for this group. */
 	uint fatal_errors;
@@ -378,6 +383,9 @@ bool edgetpu_in_any_group(struct edgetpu_dev *etdev);
  */
 bool edgetpu_set_group_join_lockout(struct edgetpu_dev *etdev, bool lockout);
 
+/* Notify @group about a fatal error for that group. */
+void edgetpu_group_fatal_error_notify(struct edgetpu_device_group *group,
+				      uint error_mask);
 /* Notify all device groups of @etdev about a failure on the die */
 void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev, uint error_mask);
 

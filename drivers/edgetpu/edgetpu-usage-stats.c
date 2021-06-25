@@ -13,7 +13,6 @@
 #include "edgetpu-usage-stats.h"
 
 #if IS_ENABLED(CONFIG_ABROLHOS)
-//TODO(b/179343138): Implement for Janeiro
 #include "abrolhos-pm.h"
 
 static enum tpu_pwr_state tpu_states_arr[] = {

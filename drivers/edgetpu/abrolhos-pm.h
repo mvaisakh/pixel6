@@ -11,7 +11,7 @@
 #include "edgetpu-internal.h"
 
 /* Can't build out of tree with acpm_dvfs unless kernel supports ACPM */
-#if IS_ENABLED(CONFIG_ACPM_DVFS)
+#if IS_ENABLED(CONFIG_ACPM_DVFS) || IS_ENABLED(CONFIG_EDGETPU_TEST)
 
 #include <linux/acpm_dvfs.h>
 
@@ -37,7 +37,7 @@ static inline int exynos_acpm_set_policy(unsigned int id, unsigned long policy)
 {
 	return 0;
 }
-#endif /* IS_ENABLED(CONFIG_ACPM_DVFS) */
+#endif /* IS_ENABLED(CONFIG_ACPM_DVFS) || IS_ENABLED(CONFIG_EDGETPU_TEST) */
 
 /*
  * TPU Power States:

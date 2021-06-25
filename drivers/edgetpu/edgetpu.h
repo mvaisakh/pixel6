@@ -278,7 +278,7 @@ struct edgetpu_sync_ioctl {
 	_IOW(EDGETPU_IOCTL_BASE, 16, struct edgetpu_sync_ioctl)
 
 struct edgetpu_map_dmabuf_ioctl {
-	/* Deprecated; pass 0 to keep compatibility. */
+	/* Ignored. */
 	__u64 offset;
 	/* Ignored; the entire dma-buf is mapped. */
 	__u64 size;
@@ -561,6 +561,8 @@ struct edgetpu_ext_mailbox_ioctl {
 #define EDGETPU_ERROR_HW_NO_ACCESS	0x8
 /* Various hardware failures */
 #define EDGETPU_ERROR_HW_FAIL		0x10
+/* Firmware-reported timeout on runtime processing of workload */
+#define EDGETPU_ERROR_RUNTIME_TIMEOUT	0x20
 
 /*
  * Return fatal errors raised for the client's device group, as a bitmask of

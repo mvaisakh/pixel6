@@ -31,6 +31,9 @@
 /* Size of CSRs start from cmd_queue_csr_base can be mmap-ed to userspace. */
 #define USERSPACE_CSR_SIZE 0x1000ul
 
+/* Mailbox ID to indicate external mailboxes */
+#define EDGETPU_MAILBOX_ID_USE_ASSOC -1
+
 struct edgetpu_device_group;
 
 struct edgetpu_mailbox {
@@ -78,6 +81,34 @@ struct edgetpu_vii {
 	edgetpu_queue_mem resp_queue_mem;
 };
 
+/* Structure to hold info about mailbox and its queues. */
+struct edgetpu_mailbox_descriptor {
+	struct edgetpu_mailbox *mailbox;
+	edgetpu_queue_mem cmd_queue_mem;
+	edgetpu_queue_mem resp_queue_mem;
+};
+
+/* Structure to hold multiple external mailboxes allocated for a device group. */
+struct edgetpu_external_mailbox {
+	/* Number of external mailboxes allocated for a device group. */
+	int count;
+	/* Leader of device group. */
+	struct edgetpu_dev *etdev;
+	/* Array of external mailboxes info with length @count. */
+	struct edgetpu_mailbox_descriptor *descriptors;
+	/* Mailbox attribute for allocated external mailboxes. */
+	struct edgetpu_mailbox_attr attr;
+};
+
+/* Structure used for requesting to allocate external mailboxes. */
+struct edgetpu_external_mailbox_req {
+	uint start; /* starting index of external mailbox in mailbox_manager */
+	uint end; /* end index of external mailbox in mailbox_manager */
+	/* number of mailboxes to be allocated, should be less or equal to (end - start + 1) */
+	uint count;
+	struct edgetpu_mailbox_attr attr; /* mailbox attribute for allocation */
+};
+
 /*
  * Structure for recording the driver state vs FW state.
  *
@@ -107,6 +138,8 @@ struct edgetpu_mailbox_manager {
 	u8 vii_index_from, vii_index_to;
 	/* indices reserved for P2P, the range is [from, to) */
 	u8 p2p_index_from, p2p_index_to;
+	/* indices reserved for external mailboxes */
+	u8 ext_index_from, ext_index_to;
 	rwlock_t mailboxes_lock;	/* protects mailboxes */
 	struct edgetpu_mailbox **mailboxes;
 	/* converts index (0 ~ num_mailbox - 1) of mailbox to CSR offset */
@@ -121,6 +154,7 @@ struct edgetpu_mailbox_manager_desc {
 	u8 num_mailbox;
 	u8 num_vii_mailbox;
 	u8 num_p2p_mailbox;
+	u8 num_ext_mailbox;
 	get_csr_base_t get_context_csr_base;
 	get_csr_base_t get_cmd_queue_csr_base;
 	get_csr_base_t get_resp_queue_csr_base;
@@ -302,11 +336,18 @@ void edgetpu_mailbox_restore_active_vii_queues(struct edgetpu_dev *etdev);
 int edgetpu_mailbox_p2p_batch(struct edgetpu_mailbox_manager *mgr, uint n,
 			      uint skip_i, struct edgetpu_mailbox **mailboxes);
 
-/* Notify firmware of an external mailbox becoming active */
-int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, u32 mailbox_id);
+/*
+ * If @mailbox_id is EDGETPU_MAILBOX_ID_USE_ASSOC, use @ext_mailbox_req to
+ * allocate external mailboxes and activate the allocated mailboxes.
+ * Otherwise, activate the external mailbox with id @mailbox_id.
+ */
+int edgetpu_mailbox_enable_ext(struct edgetpu_client *client, int mailbox_id,
+			       struct edgetpu_external_mailbox_req *ext_mailbox_req);
 
-/* Notify firmware of an external mailbox becoming inactive */
-int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, u32 mailbox_id);
+/*
+ * Notify firmware of an external mailboxes becoming inactive.
+ */
+int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, int mailbox_id);
 
 /*
  * Activates @mailbox_id, OPEN_DEVICE KCI will be sent.
@@ -324,6 +365,12 @@ int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_id, s16 vcid
 int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id);
 /* Sets @eh->fw_state to 0. */
 void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh);
+/*
+ * Disables and frees any external mailboxes allocated for @group.
+ *
+ * Caller must hold @group->lock.
+ */
+void edgetpu_mailbox_external_disable_free_locked(struct edgetpu_device_group *group);
 
 /* Utilities of circular queue operations */
 

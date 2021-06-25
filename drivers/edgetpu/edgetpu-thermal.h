@@ -25,6 +25,7 @@ struct edgetpu_thermal {
 	unsigned long cooling_state;
 	unsigned int tpu_num_states;
 	struct edgetpu_dev *etdev;
+	bool thermal_suspended; /* TPU thermal suspended state */
 };
 
 struct edgetpu_state_pwr {
@@ -39,5 +40,38 @@ struct edgetpu_state_pwr {
  */
 struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev,
 						struct edgetpu_dev *etdev);
+
+/*
+ * Holds thermal->lock.
+ *
+ * Does nothing if the thermal management is not supported.
+ */
+static inline void edgetpu_thermal_lock(struct edgetpu_thermal *thermal)
+{
+	if (!IS_ERR_OR_NULL(thermal))
+		mutex_lock(&thermal->lock);
+}
+
+/*
+ * Checks whether device is thermal suspended.
+ * Returns false if the thermal management is not supported.
+ */
+static inline bool edgetpu_thermal_is_suspended(struct edgetpu_thermal *thermal)
+{
+	if (!IS_ERR_OR_NULL(thermal))
+		return thermal->thermal_suspended;
+	return false;
+}
+
+/*
+ * Releases thermal->lock.
+ *
+ * Does nothing if the thermal management is not supported.
+ */
+static inline void edgetpu_thermal_unlock(struct edgetpu_thermal *thermal)
+{
+	if (!IS_ERR_OR_NULL(thermal))
+		mutex_unlock(&thermal->lock);
+}
 
 #endif /* __EDGETPU_THERMAL_H__ */

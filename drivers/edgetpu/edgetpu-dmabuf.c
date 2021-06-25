@@ -36,10 +36,8 @@ struct dmabuf_map_entry {
 	/* SG table returned by dma_buf_map_attachment() */
 	struct sg_table *sgt;
 	/*
-	 * The SG table that shrunk from @sgt with region [offset, offset+size],
-	 * where @offset and @size are the arguments in edgetpu_dmabuf_map.
-	 * If @offset for mapping is zero and @size equals the total length of
-	 * @sgt, this table is a duplicate of @sgt.
+	 * The SG table that shrunk and condensed from @sgt with region [0, size), where @size is
+	 * the size field in edgetpu_dmabuf_map which owns this entry.
 	 */
 	struct sg_table shrunk_sgt;
 };
@@ -50,7 +48,6 @@ struct dmabuf_map_entry {
  */
 struct edgetpu_dmabuf_map {
 	struct edgetpu_mapping map;
-	u64 offset;
 	u64 size; /* size of this mapping in bytes */
 	u32 mmu_flags;
 	/*
@@ -285,7 +282,6 @@ static void dmabuf_map_callback_release(struct edgetpu_mapping *map)
 	uint i;
 
 	if (tpu_addr) {
-		tpu_addr -= dmap->offset;
 		if (IS_MIRRORED(map->flags)) {
 			group_unmap_dmabuf(group, dmap, tpu_addr);
 		} else {
@@ -636,7 +632,6 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	int ret = -EINVAL;
 	struct dma_buf *dmabuf;
 	edgetpu_map_flag_t flags = arg->flags;
-	const u64 offset = arg->offset;
 	u64 size;
 	const enum dma_data_direction dir =
 		edgetpu_host_dma_dir(flags & EDGETPU_MAP_DIR_MASK);
@@ -645,29 +640,15 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 	tpu_addr_t tpu_addr;
 	uint i;
 
-	/* invalid DMA direction or offset is not page-aligned */
-	if (!valid_dma_direction(dir) || offset_in_page(offset)) {
-		etdev_dbg(group->etdev,
-			  "%s: valid=%d offset_in_page=%lu offset=0x%llx\n",
-			  __func__, valid_dma_direction(dir),
-			  offset_in_page(offset), offset);
+	if (!valid_dma_direction(dir)) {
+		etdev_dbg(group->etdev, "%s: invalid direction %d\n", __func__, dir);
 		return -EINVAL;
 	}
-	/* TODO(b/189278468): entirely ignore @offset */
-	if (offset != 0)
-		etdev_warn_ratelimited(group->etdev,
-				       "Non-zero offset for dmabuf mapping is deprecated");
 	dmabuf = dma_buf_get(arg->dmabuf_fd);
 	if (IS_ERR(dmabuf)) {
 		etdev_dbg(group->etdev, "%s: dma_buf_get returns %ld\n",
 			  __func__, PTR_ERR(dmabuf));
 		return PTR_ERR(dmabuf);
-	}
-	if (offset >= dmabuf->size) {
-		etdev_dbg(group->etdev,
-			  "%s: offset=0x%llx > dmabuf size=%zx\n",
-			  __func__, offset, dmabuf->size);
-		goto err_put;
 	}
 
 	mutex_lock(&group->lock);
@@ -687,7 +668,6 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 
 	get_dma_buf(dmabuf);
 	dmap->dmabufs[0] = dmabuf;
-	dmap->offset = offset;
 	dmap->size = size = dmabuf->size;
 	if (IS_MIRRORED(flags)) {
 		for (i = 0; i < group->n_clients; i++) {
@@ -734,7 +714,7 @@ int edgetpu_map_dmabuf(struct edgetpu_device_group *group,
 		}
 		dmap->map.die_index = arg->die_index;
 	}
-	dmap->map.device_address = tpu_addr + offset;
+	dmap->map.device_address = tpu_addr;
 	ret = edgetpu_mapping_add(&group->dmabuf_mappings, &dmap->map);
 	if (ret) {
 		etdev_dbg(group->etdev, "%s: edgetpu_mapping_add returns %d\n",
@@ -751,7 +731,6 @@ err_release_map:
 	dmabuf_map_callback_release(&dmap->map);
 err_unlock_group:
 	mutex_unlock(&group->lock);
-err_put:
 	dma_buf_put(dmabuf);
 
 	return ret;

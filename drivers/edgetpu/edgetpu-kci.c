@@ -9,7 +9,6 @@
 #include <linux/bits.h>
 #include <linux/circ_buf.h>
 #include <linux/device.h>
-#include <linux/dma-mapping.h> /* dmam_alloc_coherent */
 #include <linux/errno.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -93,6 +92,9 @@ edgetpu_reverse_kci_consume_response(struct edgetpu_dev *etdev,
 	case RKCI_FIRMWARE_CRASH:
 		edgetpu_handle_firmware_crash(
 		      etdev, (enum edgetpu_fw_crash_type)resp->retval);
+		break;
+	case RKCI_JOB_LOCKUP:
+		edgetpu_handle_job_lockup(etdev, resp->retval);
 		break;
 	default:
 		etdev_warn(etdev, "%s: Unrecognized KCI request: 0x%x\n",
@@ -696,33 +698,23 @@ static int edgetpu_kci_send_cmd_with_data(struct edgetpu_kci *kci,
 					  size_t size)
 {
 	struct edgetpu_dev *etdev = kci->mailbox->etdev;
-	dma_addr_t dma_addr;
-	tpu_addr_t tpu_addr;
+	struct edgetpu_coherent_mem mem;
 	int ret;
-	void *ptr = dma_alloc_coherent(etdev->dev, size, &dma_addr, GFP_KERNEL);
-	const u32 flags = EDGETPU_MMU_DIE | EDGETPU_MMU_32 | EDGETPU_MMU_HOST;
 
-	if (!ptr)
-		return -ENOMEM;
-	memcpy(ptr, data, size);
+	ret = edgetpu_iremap_alloc(etdev, size, &mem, EDGETPU_CONTEXT_KCI);
+	if (ret)
+		return ret;
+	memcpy(mem.vaddr, data, size);
 
-	tpu_addr = edgetpu_mmu_tpu_map(etdev, dma_addr, size, DMA_TO_DEVICE, EDGETPU_CONTEXT_KCI,
-				       flags);
-	if (!tpu_addr) {
-		etdev_err(etdev, "%s: failed to map to TPU", __func__);
-		dma_free_coherent(etdev->dev, size, ptr, dma_addr);
-		return -ENOSPC;
-	}
-	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__, ptr, tpu_addr,
-		  &dma_addr);
+	etdev_dbg(etdev, "%s: map kva=%pK iova=0x%llx dma=%pad", __func__, mem.vaddr, mem.tpu_addr,
+		  &mem.dma_addr);
 
-	cmd->dma.address = tpu_addr;
+	cmd->dma.address = mem.tpu_addr;
 	cmd->dma.size = size;
 	ret = edgetpu_kci_send_cmd(kci, cmd);
-	edgetpu_mmu_tpu_unmap(etdev, tpu_addr, size, EDGETPU_CONTEXT_KCI);
-	dma_free_coherent(etdev->dev, size, ptr, dma_addr);
-	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__, ptr, tpu_addr,
-		  &dma_addr);
+	edgetpu_iremap_free(etdev, &mem, EDGETPU_CONTEXT_KCI);
+	etdev_dbg(etdev, "%s: unmap kva=%pK iova=0x%llx dma=%pad", __func__, mem.vaddr,
+		  mem.tpu_addr, &mem.dma_addr);
 	return ret;
 }
 

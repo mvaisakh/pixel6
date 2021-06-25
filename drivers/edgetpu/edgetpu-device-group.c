@@ -475,6 +475,7 @@ static void edgetpu_device_group_release(struct edgetpu_device_group *group)
 #ifdef EDGETPU_HAS_P2P_MAILBOX
 		edgetpu_p2p_mailbox_release(group);
 #endif
+		edgetpu_mailbox_external_disable_free_locked(group);
 		edgetpu_mailbox_remove_vii(&group->vii);
 		group_release_members(group);
 	}
@@ -1676,6 +1677,27 @@ out:
 }
 
 /*
+ * Set @group status as errored, set the error mask, and notify the runtime of
+ * the fatal error event on the group.
+ */
+void edgetpu_group_fatal_error_notify(struct edgetpu_device_group *group,
+				      uint error_mask)
+{
+	etdev_dbg(group->etdev, "notify group %u error 0x%x",
+		  group->workload_id, error_mask);
+	mutex_lock(&group->lock);
+	/*
+	 * Only finalized groups may have handshake with the FW, mark
+	 * them as errored.
+	 */
+	if (edgetpu_device_group_is_finalized(group))
+		group->status = EDGETPU_DEVICE_GROUP_ERRORED;
+	group->fatal_errors |= error_mask;
+	mutex_unlock(&group->lock);
+	edgetpu_group_notify(group, EDGETPU_EVENT_FATAL_ERROR);
+}
+
+/*
  * For each group active on @etdev: set the group status as errored, set the
  * error mask, and notify the runtime of the fatal error event.
  */
@@ -1708,19 +1730,8 @@ void edgetpu_fatal_error_notify(struct edgetpu_dev *etdev, uint error_mask)
 	}
 	mutex_unlock(&etdev->groups_lock);
 	for (i = 0; i < num_groups; i++) {
-		group = groups[i];
-		mutex_lock(&group->lock);
-		/*
-		 * Only finalized groups may have handshake with the FW, mark
-		 * them as errored.
-		 */
-
-		if (edgetpu_device_group_is_finalized(group))
-			group->status = EDGETPU_DEVICE_GROUP_ERRORED;
-		group->fatal_errors |= error_mask;
-		mutex_unlock(&group->lock);
-		edgetpu_group_notify(group, EDGETPU_EVENT_FATAL_ERROR);
-		edgetpu_device_group_put(group);
+		edgetpu_group_fatal_error_notify(groups[i], error_mask);
+		edgetpu_device_group_put(groups[i]);
 	}
 	kfree(groups);
 }
@@ -1784,4 +1795,42 @@ int edgetpu_group_attach_and_open_mailbox(struct edgetpu_device_group *group)
 	}
 	mutex_unlock(&group->lock);
 	return ret;
+}
+
+/*
+ * Return the group with id @vcid for device @etdev, with a reference held
+ * on the group (must call edgetpu_device_group_put when done), or NULL if
+ * no group with that VCID is found.
+ */
+static struct edgetpu_device_group *get_group_by_vcid(
+	struct edgetpu_dev *etdev, u16 vcid)
+{
+	struct edgetpu_device_group *group = NULL;
+	struct edgetpu_device_group *tgroup;
+	struct edgetpu_list_group *g;
+
+	mutex_lock(&etdev->groups_lock);
+	etdev_for_each_group(etdev, g, tgroup) {
+		if (tgroup->vcid == vcid) {
+			group = edgetpu_device_group_get(tgroup);
+			break;
+		}
+	}
+	mutex_unlock(&etdev->groups_lock);
+	return group;
+}
+
+void edgetpu_handle_job_lockup(struct edgetpu_dev *etdev, u16 vcid)
+{
+	struct edgetpu_device_group *group;
+
+	etdev_err(etdev, "firmware-detected job lockup on VCID %u",
+		  vcid);
+	group = get_group_by_vcid(etdev, vcid);
+	if (!group) {
+		etdev_warn(etdev, "VCID %u group not found", vcid);
+		return;
+	}
+	edgetpu_group_fatal_error_notify(group, EDGETPU_ERROR_RUNTIME_TIMEOUT);
+	edgetpu_device_group_put(group);
 }

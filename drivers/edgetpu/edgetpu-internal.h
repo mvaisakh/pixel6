@@ -339,6 +339,9 @@ static inline bool edgetpu_is_external_wrapper_class_file(struct file *file)
 void edgetpu_handle_firmware_crash(struct edgetpu_dev *etdev,
 				   enum edgetpu_fw_crash_type crash_type);
 
+/* Handle notification of job lockup from firmware */
+void edgetpu_handle_job_lockup(struct edgetpu_dev *etdev, u16 vcid);
+
 /* Bus (Platform/PCI) <-> Core API */
 
 int __init edgetpu_init(void);

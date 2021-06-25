@@ -51,7 +51,7 @@ int edgetpu_mapping_add(struct edgetpu_mapping_root *mappings,
 	struct rb_node *parent = NULL;
 	int ret = -EBUSY;
 
-	if (WARN_ON(!map->release))
+	if (!map->release)
 		return -EINVAL;
 	edgetpu_mapping_lock(mappings);
 	new = &mappings->rb.rb_node;

@@ -22,7 +22,6 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-pm.h"
-#include "edgetpu-telemetry.h"
 
 #include "edgetpu-pm.c"
 
@@ -444,12 +443,6 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 
 	if (ret)
 		return ret;
-
-	/* Clear out log / trace buffers */
-	memset(abpdev->log_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
-#if IS_ENABLED(CONFIG_EDGETPU_TELEMETRY_TRACE)
-	memset(abpdev->trace_mem.vaddr, 0, EDGETPU_TELEMETRY_BUFFER_SIZE);
-#endif
 
 	edgetpu_chip_init(etdev);
 

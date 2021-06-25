@@ -323,6 +323,7 @@ static struct edgetpu_mailbox_manager_desc mailbox_manager_desc = {
 	.num_mailbox = EDGETPU_NUM_MAILBOXES,
 	.num_vii_mailbox = EDGETPU_NUM_VII_MAILBOXES,
 	.num_p2p_mailbox = EDGETPU_NUM_P2P_MAILBOXES,
+	.num_ext_mailbox = EDGETPU_NUM_EXT_MAILBOXES,
 	.get_context_csr_base = edgetpu_mailbox_get_context_csr_base,
 	.get_cmd_queue_csr_base = edgetpu_mailbox_get_cmd_queue_csr_base,
 	.get_resp_queue_csr_base = edgetpu_mailbox_get_resp_queue_csr_base,

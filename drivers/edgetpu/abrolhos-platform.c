@@ -32,9 +32,12 @@
 #include "mobile-firmware.h"
 
 static const struct of_device_id edgetpu_of_match[] = {
+	/* TODO(b/190677977): remove  */
 	{ .compatible = "google,darwinn", },
+	{ .compatible = "google,edgetpu-gs101", },
 	{ /* end of list */ },
 };
+
 MODULE_DEVICE_TABLE(of, edgetpu_of_match);
 
 static void sscd_release(struct device *dev)
