@@ -406,12 +406,36 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	return 0;
 }
 
+static void print_buffer(struct lwis_client *client, const char *buf, int size) {
+	char output_string[80], temp_string[8];
+	int i;
+
+	output_string[0] = '\0';
+	for (i = 0; i < size; i++) {
+		if (i % 16 == 0 && i != 0) {
+			dev_info(client->lwis_dev->dev, "%s\n", output_string);
+			output_string[0] = '\0';
+		}
+		sprintf(temp_string, "%02X ", buf[i]);
+		if (i % 4 == 3) {
+			strcat(temp_string, " ");
+		}
+		strcat(output_string, temp_string);
+	}
+	dev_info(client->lwis_dev->dev, "%s\n", output_string);
+}
+
 int lwis_transaction_client_cleanup(struct lwis_client *client)
 {
 	unsigned long flags;
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
 	struct lwis_transaction_event_list *it_evt_list;
+	struct list_head pending_events;
+	bool in_irq = false;
+	struct lwis_event_entry *event;
+
+	INIT_LIST_HEAD(&pending_events);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* Perform client defined clean-up routine. */
@@ -430,9 +454,7 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 			cancel_transaction(transaction, -ECANCELED, NULL);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
-			process_transaction(client, transaction,
-					    /*pending_events=*/NULL,
-					    /*in_irq=*/false);
+			process_transaction(client, transaction, &pending_events, in_irq);
 			spin_lock_irqsave(&client->transaction_lock, flags);
 		}
 	}
@@ -440,6 +462,43 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	kfree(it_evt_list);
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+
+	while (!list_empty(&pending_events)) {
+		struct lwis_transaction_response_header *resp;
+		struct lwis_io_result *result;
+		char *results_buf;
+		int i;
+
+		event = list_first_entry(&pending_events, struct lwis_event_entry, node);
+		/*
+		   If there is no read result, the payload size will less than
+		   sizeof(struct lwis_transaction_response_header).
+		   We can skip it.
+		*/
+		if (event->event_info.payload_size <=
+			sizeof(struct lwis_transaction_response_header)) {
+			list_del(&event->node);
+			kfree(event);
+			continue;
+		}
+		resp = (struct lwis_transaction_response_header *)
+			event->event_info.payload_buffer;
+		dev_info(client->lwis_dev->dev, "event_id = %llx, num_entries = %ld\n",
+			event->event_info.event_id, resp->num_entries);
+		results_buf = (char *)event->event_info.payload_buffer +
+			sizeof(struct lwis_transaction_response_header);
+		for (i = 0; i < resp->num_entries; i++) {
+			dev_info(client->lwis_dev->dev, "entry-%d\n", i);
+			result = (struct lwis_io_result *)results_buf;
+			print_buffer(client, result->values, result->num_value_bytes);
+			results_buf += sizeof(struct lwis_io_result) +
+				result->num_value_bytes;
+		}
+
+		list_del(&event->node);
+		kfree(event);
+	}
+
 	return 0;
 }
 
