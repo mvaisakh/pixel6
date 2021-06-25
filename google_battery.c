@@ -2785,6 +2785,7 @@ static void ssoc_change_state(struct batt_ssoc_state *ssoc_state, bool ben)
 static int batt_chg_logic(struct batt_drv *batt_drv)
 {
 	int err = 0;
+	bool jeita_stop;
 	bool changed = false;
 	const bool disable_votes = batt_drv->disable_votes;
 	union gbms_charger_state *chg_state = &batt_drv->chg_state;
@@ -2921,7 +2922,8 @@ msc_logic_done:
 		batt_drv->cc_max = 0;
 	}
 
-	if (batt_drv->jeita_stop_charging)
+	jeita_stop = batt_drv->jeita_stop_charging == 1;
+	if (jeita_stop)
 		batt_drv->cc_max = 0;
 
 	/* Fan level can be updated only during power transfer */
@@ -2983,7 +2985,7 @@ msc_logic_done:
 
 		/* jeita_stop_charging != 0 => ->fv_uv = -1 && cc_max == -1 */
 		vote(batt_drv->fcc_votable, SW_JEITA_VOTER,
-			!disable_votes && (batt_drv->jeita_stop_charging != 0),
+			!disable_votes && jeita_stop,
 			0);
 
 		/* health based charging */
