@@ -1583,6 +1583,9 @@ unlock_done:
 /* < 0 error, 0 = no changes, > 1 changed */
 static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
+	const bool wlc_dc_enabled = charger->wlc_dc_enabled;
+	const bool enabled = charger->enabled;
+
 	if (online < 0 || online > PPS_PSY_PROG_ONLINE)
 		return -EINVAL;
 
@@ -1590,12 +1593,31 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	if (online == PPS_PSY_PROG_ONLINE) {
 		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
 
-		pr_info("%s: online=%d, wlc_dc_enabled=%d prop_mode_en=%d\n",
-			__func__, online, charger->wlc_dc_enabled,
+		pr_info("%s: online=%d, enabled=%d wlc_dc_enabled=%d prop_mode_en=%d\n",
+			__func__, online, enabled, wlc_dc_enabled,
 			charger->prop_mode_en);
+
+		if (!enabled) {
+			dev_warn(&charger->client->dev,
+				 "Cannot send PROG with enable=%d, wlc_dc_enabled=%d\n",
+				 enabled, wlc_dc_enabled);
+			if (wlc_dc_enabled)
+				p9221_reset_wlc_dc(charger);
+			return -EINVAL;
+		}
+
 		/* Ping? */
-		if (charger->wlc_dc_enabled)
+		if (wlc_dc_enabled) {
+			/*
+			 * TODO: disable fast charge if enabled:
+			 *
+			 *   ret = feature_check_fast_charge(charger);
+			 *   if (ret < 0)
+			 *       pr_debug("%s: FAST_CHARGE disabled\n", __func__);
+			 */
 			return 0;
+		}
+
 		/* not there, must return not supp */
 		if (!charger->pdata->has_wlc_dc || !p9221_is_online(charger))
 			return -EOPNOTSUPP;
@@ -1618,11 +1640,9 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			gpio_set_value_cansleep(dc_sw_gpio, 1);
 
 		return 1;
-	} else if (online != PPS_PSY_PROG_ONLINE && charger->wlc_dc_enabled) {
+	} else if (wlc_dc_enabled) {
 		/* TODO: thermals might come in and disable with 0 */
 		p9221_reset_wlc_dc(charger);
-	} else if (charger->enabled == !!online) {
-		return 0;
 	}
 
 	/*
@@ -1633,7 +1653,8 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	 * appropriately when we change the state of this line.
 	 */
 	charger->enabled = !!online;
-	dev_warn(&charger->client->dev, "Set enable %d\n", charger->enabled);
+	dev_warn(&charger->client->dev, "Set enable %d, wlc_dc_enabled:%d->%d\n",
+		charger->enabled, wlc_dc_enabled, charger->wlc_dc_enabled);
 	if (charger->pdata->qien_gpio >= 0)
 		vote(charger->wlc_disable_votable, P9221_WLC_VOTER, !charger->enabled, 0);
 
@@ -4939,7 +4960,8 @@ int p9221_wlc_disable(struct p9221_charger_data *charger, int disable, u8 reason
 	if (charger->pdata->qien_gpio >= 0)
 		gpio_set_value_cansleep(charger->pdata->qien_gpio, disable);
 
-	pr_debug("%s: disable=%d, reason=%d ret=%d\n", __func__, disable, reason, ret);
+	pr_debug("%s: disable=%d, ept_reason=%d ret=%d\n", __func__,
+		 disable, reason, ret);
 	return ret;
 }
 
