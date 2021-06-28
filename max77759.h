@@ -141,6 +141,7 @@ struct max77759_usecase_data {
 	int vin_is_valid;	/* MAX20339 STATUS1.vinvalid */
 	int lsw1_is_open;	/* MAX20339 STATUS2.lsw1open */
 	int lsw1_is_closed;	/* MAX20339 STATUS2.lsw1closed */
+	int ls1_en;		/* MAX20339 close LSW1 directly */
 
 	int wlc_en;		/* wlcrx/chgin coex */
 	int ext_bst_mode;	/* wlcrx+otg: b/175706836, TPS61372 P1.1+ */

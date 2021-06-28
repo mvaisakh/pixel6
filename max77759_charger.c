@@ -916,10 +916,38 @@ static int max77759_force_standby(struct max77759_chgr_data *data)
 	return 0;
 }
 
+/* b/188488966 */
+static int gs101_frs_to_otg(struct max77759_usecase_data *uc_data)
+{
+	int closed, ret;
+
+	ret = max77759_ext_mode(uc_data, EXT_MODE_OTG_5_0V);
+	if (ret < 0)
+		goto exit_done;
+
+	mdelay(100);
+
+	if (uc_data->ls1_en > 0)
+		gpio_set_value_cansleep(uc_data->ls1_en, 1);
+
+	mdelay(100);
+
+	if (uc_data->lsw1_is_closed >= 0)
+		closed = gpio_get_value_cansleep(uc_data->lsw1_is_closed);
+
+exit_done:
+	pr_debug("%s: ls1_en=%d lsw1_is_closed=%d closed=%d ret=%d\n",
+		 __func__, uc_data->ls1_en, uc_data->lsw1_is_closed,
+		 closed, ret);
+	return ret;
+}
+
 /* From OTG <-> OTG_FRS */
 static int gs101_otg_mode(struct max77759_usecase_data *uc_data, int to)
 {
 	int ret = -EINVAL;
+
+	pr_debug("%s: to=%d\n", __func__, to);
 
 	if (to == GSU_MODE_USB_OTG) {
 
@@ -1240,7 +1268,7 @@ static int max77759_to_otg_usecase(struct max77759_usecase_data *uc_data, int us
 		if (use_case == GSU_MODE_USB_OTG) {
 			ret = gs101_wlc_tx_enable(uc_data, false);
 			if (ret == 0)
-				ret = gs101_otg_mode(uc_data, GSU_MODE_USB_OTG);
+				ret = gs101_frs_to_otg(uc_data);
 		}
 	break;
 	case GSU_MODE_USB_OTG_WLC_RX:
@@ -1312,7 +1340,6 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 				ret = gs101_cpout_mode(uc_data, GS101_WLCRX_CPOUT_DFLT);
 			if (ret == 0)
 				ret = gs101_otg_mode(uc_data, GSU_MODE_USB_OTG);
-
 		}
 		break;
 	case GSU_MODE_USB_CHG:
@@ -1557,6 +1584,7 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 		uc_data->bst_sel = -EPROBE_DEFER;
 		uc_data->ext_bst_ctl = -EPROBE_DEFER;
 
+		uc_data->ls1_en = -EPROBE_DEFER;
 		uc_data->ls2_en = -EPROBE_DEFER;
 		uc_data->sw_en = -EPROBE_DEFER;
 
@@ -1628,6 +1656,8 @@ static bool max77759_setup_usecases(struct max77759_usecase_data *uc_data,
 	if (uc_data->cpout21_en == -EPROBE_DEFER)
 		uc_data->cpout21_en = of_get_named_gpio(node, "max77759,cpout_21-en", 0);
 
+	if (uc_data->ls1_en == -EPROBE_DEFER)
+		uc_data->ls1_en = of_get_named_gpio(node, "max77759,ls1-en", 0);
 	if (uc_data->ls2_en == -EPROBE_DEFER)
 		uc_data->ls2_en = of_get_named_gpio(node, "max77759,ls2-en", 0);
 	/* OTG+RTXL: IN-OUT switch of AO37 (forced always) */
