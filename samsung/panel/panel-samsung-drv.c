@@ -2575,8 +2575,11 @@ static void hbm_work(struct work_struct *work)
 		DPU_ATRACE_END("set_hbm");
 	}
 
-	if (ctx->hbm.update_flags & HBM_FLAG_BL_UPDATE)
+	if (ctx->hbm.update_flags & HBM_FLAG_BL_UPDATE) {
+		DPU_ATRACE_BEGIN("set_bl");
 		backlight_update_status(ctx->bl);
+		DPU_ATRACE_END("set_bl");
+	}
 
 	ctx->hbm.update_flags = 0;
 	mutex_unlock(&ctx->hbm.hbm_work_lock);

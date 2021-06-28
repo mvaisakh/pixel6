@@ -409,9 +409,6 @@ static void s6e3fc3_set_dimming_on(struct exynos_panel *exynos_panel,
 static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 				 bool local_hbm_en)
 {
-	struct drm_mode_config *config;
-	struct drm_crtc *crtc = NULL;
-
 	if (exynos_panel->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
@@ -420,14 +417,19 @@ static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 	s6e3fc3_update_wrctrld(exynos_panel);
 	mutex_unlock(&exynos_panel->mode_lock);
 
-	config = &exynos_panel->exynos_connector.base.dev->mode_config;
-	drm_modeset_lock(&config->connection_mutex, NULL);
-	if (exynos_panel->exynos_connector.base.state)
-		crtc = exynos_panel->exynos_connector.base.state->crtc;
-	drm_modeset_unlock(&config->connection_mutex);
-	if (crtc) {
-		drm_crtc_wait_one_vblank(crtc);
-		drm_crtc_wait_one_vblank(crtc);
+	if (!(exynos_panel->hbm.update_flags & HBM_FLAG_LHBM_UPDATE)) {
+		struct drm_mode_config *config;
+		struct drm_crtc *crtc = NULL;
+
+		config = &exynos_panel->exynos_connector.base.dev->mode_config;
+		drm_modeset_lock(&config->connection_mutex, NULL);
+		if (exynos_panel->exynos_connector.base.state)
+			crtc = exynos_panel->exynos_connector.base.state->crtc;
+		drm_modeset_unlock(&config->connection_mutex);
+		if (crtc) {
+			drm_crtc_wait_one_vblank(crtc);
+			drm_crtc_wait_one_vblank(crtc);
+		}
 	}
 }
 
