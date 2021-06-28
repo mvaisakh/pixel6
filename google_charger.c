@@ -1145,6 +1145,41 @@ static void bd_init(struct bd_data *bd_state, struct device *dev)
 		bd_state->bd_resume_temp, bd_state->bd_resume_time);
 }
 
+static void bd_fan_vote(struct chg_drv *chg_drv, bool enable, int level)
+{
+	if (!chg_drv->fan_level_votable)
+		chg_drv->fan_level_votable = find_votable("FAN_LEVEL");
+	if (chg_drv->fan_level_votable)
+		vote(chg_drv->fan_level_votable, "MSC_BD", enable, level);
+}
+
+#define FAN_BD_LIMIT_ALARM	75
+#define FAN_BD_LIMIT_HIGH	50
+#define FAN_BD_LIMIT_MED	25
+static int bd_fan_calculate_level(struct bd_data *bd_state)
+{
+	const u32 t = bd_state->bd_trigger_time;
+	const ktime_t bd_fan_alarm = t * FAN_BD_LIMIT_ALARM / 100;
+	const ktime_t bd_fan_high = t * FAN_BD_LIMIT_HIGH / 100;
+	const ktime_t bd_fan_med = t * FAN_BD_LIMIT_MED / 100;
+	const long long temp_avg = bd_state->temp_sum / bd_state->time_sum;
+	int bd_fan_level = FAN_LVL_NOT_CARE;
+
+	if (temp_avg < bd_state->bd_trigger_temp)
+		bd_fan_level = FAN_LVL_NOT_CARE;
+	else if (bd_state->time_sum >= bd_fan_alarm)
+		bd_fan_level = FAN_LVL_ALARM;
+	else if (bd_state->time_sum >= bd_fan_high)
+		bd_fan_level = FAN_LVL_HIGH;
+	else if (bd_state->time_sum >= bd_fan_med)
+		bd_fan_level = FAN_LVL_MED;
+
+	pr_debug("bd_fan_level:%d, time_sum:%lld, temp_avg:%lld\n",
+		 bd_fan_level, bd_state->time_sum, temp_avg);
+
+	return bd_fan_level;
+}
+
 /* bd_state->triggered = 1 when charging needs to be disabled */
 static int bd_update_stats(struct bd_data *bd_state,
 			   struct power_supply *bat_psy)
@@ -1371,7 +1406,7 @@ static void bd_work(struct work_struct *work)
 		interval_ms = 1000;
 		goto bd_rerun;
 	}
-	vote(chg_drv->fan_level_votable, "MSC_BD", bd_state->triggered, FAN_LVL_HIGH);
+	bd_fan_vote(chg_drv, bd_state->triggered, FAN_LVL_HIGH);
 
 	/* reset on time since disconnect & optional temperature reading */
 	if (bd_state->bd_resume_time && delta_time > bd_state->bd_resume_time) {
@@ -1470,6 +1505,7 @@ static int chg_run_defender(struct chg_drv *chg_drv)
 	int soc, disable_charging = 0, disable_pwrsrc = 0;
 	struct power_supply *bat_psy = chg_drv->bat_psy;
 	struct bd_data *bd_state = &chg_drv->bd_state;
+	int bd_fan_level = FAN_LVL_UNKNOWN;
 	int rc, ret;
 
 	/*
@@ -1525,6 +1561,8 @@ static int chg_run_defender(struct chg_drv *chg_drv)
 		if (rc < 0)
 			pr_debug("MSC_DB BD update stats: %d\n", rc);
 
+		bd_fan_level = bd_fan_calculate_level(bd_state);
+
 		/* thaw SOC, clear overheat */
 		if (!bd_state->triggered && was_triggered) {
 			rc = bd_batt_set_state(chg_drv, false, -1);
@@ -1566,6 +1604,8 @@ static int chg_run_defender(struct chg_drv *chg_drv)
 
 		/* DWELL-DEFEND handles OVERHEAT status */
 	}
+
+	bd_fan_vote(chg_drv, bd_fan_level != FAN_LVL_UNKNOWN, bd_fan_level);
 
 	/* state in chg_drv->disable_charging, chg_drv->disable_pwrsrc */
 	chg_update_charging_state(chg_drv, disable_charging, disable_pwrsrc);
@@ -1676,8 +1716,10 @@ static void chg_work(struct work_struct *work)
 			vote(chg_drv->msc_chg_disable_votable,
 			     MSC_CHG_VOTER, true, 0);
 
-			if (!chg_drv->bd_state.triggered)
+			if (!chg_drv->bd_state.triggered) {
 				bd_reset(&chg_drv->bd_state);
+				bd_fan_vote(chg_drv, false, FAN_LVL_NOT_CARE);
+			}
 
 			rc = chg_reset_state(chg_drv);
 			if (rc == -EAGAIN)
