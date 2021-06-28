@@ -471,30 +471,40 @@ static int max77759_find_fg(struct max77729_pmic_data *data)
 #define NTC_CURVE_2_BASE	730
 #define NTC_CURVE_2_SHIFT	3
 
+/*
+ * WARNING: The FG will behave erratically when the recovery path fails.
+ */
 static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 			     unsigned int *value)
 {
-	unsigned int ain0, config;
+	unsigned int ain0, config, check_config = 0;
+	u8 pmic_ctrl, check_pmic = 0;
 	int tmp, ret;
-	u8 pmic_ctrl;
 
 	if (!data->fg_i2c_client)
 		return -EINVAL;
 
-	/* set TEX=1 in Config 0x1D */
+	/* TODO: prevent the FG from loading the FG model */
+
+	/* set TEX=1 in Config 0x1D, make sure that TEN is enabled */
 	ret = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_CONFIG, &config);
 	if (ret == 0) {
-		const u16 val = _fg_config_tex_set(config, 1);
+		const u16 val = config | MAX77759_FG_CONFIG_TEN | MAX77759_FG_CONFIG_TEX;
+
+		/* TEN should be enabled for this to work */
+		WARN_ON(!(config & MAX77759_FG_CONFIG_TEN));
 
 		ret = max_m5_reg_write(data->fg_i2c_client, MAX77759_FG_CONFIG,
 				       val);
+
+		pr_info("%s: config:%x->%x (%d)\n", __func__, config, val, ret);
 	}
 	if (ret == -ENODEV) {
+		pr_err("%s: no support for max_m5 FG (%d)\n", __func__, ret);
 		*value = 25;
 		return 0;
 	} else if (ret < 0) {
-		pr_err("%s: cannot change FG config (%d)\n",
-			__func__, ret);
+		pr_err("%s: cannot change FG Config (%d)\n", __func__, ret);
 		return -EIO;
 	}
 
@@ -504,6 +514,8 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 		const u8 val = _pmic_control_fg_thmio_mux_set(pmic_ctrl, mux);
 
 		ret = max77729_pmic_wr8(data, MAX77759_PMIC_CONTROL_FG, val);
+
+		pr_info("%s: pmic_ctrl:%x->%x (%d)\n", __func__, pmic_ctrl, val, ret);
 	}
 
 	if (ret < 0) {
@@ -511,13 +523,14 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 		goto restore_fg;
 	}
 
-	/* this is not good */
+	/* msleep is uninterruptible */
 	msleep(1500);
 
 	ret = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_AIN0, &ain0);
 	pr_debug("%s: AIN0=%d (%d)\n", __func__, ain0, ret);
-
-	if ((mux == THMIO_MUX_USB_TEMP) || (mux == THMIO_MUX_BATT_PACK)) {
+	if (ret < 0) {
+		pr_err("%s: cannot read AIN0 (%d)\n", __func__, ret);
+	} else if (mux == THMIO_MUX_USB_TEMP || mux == THMIO_MUX_BATT_PACK) {
 		/* convert form 1.8V to 2.4V and get higher 10 bits */
 		const unsigned int conv_adc = ((ain0 * 1800) / 2400) >> 6;
 
@@ -536,10 +549,34 @@ static int max77759_read_thm(struct max77729_pmic_data *data, int mux,
 	tmp = max77729_pmic_wr8(data, MAX77759_PMIC_CONTROL_FG, pmic_ctrl);
 	WARN_ON(tmp != 0);
 
+	/* And reset the pmic if cannot restore (b/191319560) */
+	tmp = max77729_pmic_rd8(data, MAX77759_PMIC_CONTROL_FG, &check_pmic);
+	if (tmp != 0 || pmic_ctrl != check_pmic) {
+		dev_err(data->dev, "Cannot restore TMUX ret=%d\n", tmp);
+		BUG_ON(tmp != 0 || pmic_ctrl != check_pmic);
+	}
+
 restore_fg:
-	/* set TEX=0 in Config 0x1D */
+
+	/* Clear TEX=0 in Config, restore 0x1D (b/191319560) */
+	config &= ~MAX77759_FG_CONFIG_TEX;
 	tmp = max_m5_reg_write(data->fg_i2c_client, MAX77759_FG_CONFIG, config);
 	WARN_ON(tmp != 0);
+
+	/* And reset the FG if this fails (b/191319560) */
+	tmp = max_m5_reg_read(data->fg_i2c_client, MAX77759_FG_CONFIG, &check_config);
+	if (tmp != 0 || config != check_config) {
+		tmp = max17x0x_sw_reset(data->fg_i2c_client);
+		dev_err(data->dev, "Cannot restore FG Config, FG reset ret=%d\n", tmp);
+		BUG_ON(tmp != 0);
+	} else if (!(check_config & MAX77759_FG_CONFIG_TEN)) {
+		dev_warn(data->dev, "TEN bit is not set in Config=%x\n", check_config);
+	}
+
+	/* TODO: allow the FG to load the FG model */
+
+	pr_info("%s: check_pmic=%x check_config=%x (%d)\n", __func__,
+		check_pmic, check_config, ret);
 
 	return ret;
 }
@@ -577,45 +614,30 @@ int max77759_read_usb_temp(struct i2c_client *client, int *temp)
 	ret = max77759_find_fg(data);
 	if (ret == 0)
 		ret = max77759_read_thm(data, THMIO_MUX_USB_TEMP, &val);
-	mutex_unlock(&data->io_lock);
-
-	if (ret == 0) {
-		/* TODO: b/160737498 convert voltage to temperature */
+	if (ret == 0)
 		*temp = val;
-	}
+	mutex_unlock(&data->io_lock);
 
 	return ret;
 }
 EXPORT_SYMBOL_GPL(max77759_read_usb_temp);
 
-static int read_batt_id(struct max77729_pmic_data *data, unsigned int *id)
-{
-	if  (data->batt_id == -1) {
-		unsigned int val;
-		int ret;
-
-		mutex_lock(&data->io_lock);
-		ret = max77759_find_fg(data);
-		if (ret == 0)
-			ret = max77759_read_thm(data, THMIO_MUX_BATT_ID, &val);
-		mutex_unlock(&data->io_lock);
-
-		if (ret < 0)
-			return ret;
-
-		data->batt_id = val;
-	}
-
-	*id = data->batt_id;
-	return 0;
-}
-
 /* THMIO_MUX=2 in CONTROL_FG (0x51) */
 int max77759_read_batt_id(struct i2c_client *client, unsigned int *id)
 {
 	struct max77729_pmic_data *data = i2c_get_clientdata(client);
+	unsigned int val;
+	int ret;
 
-	return read_batt_id(data, id);
+	mutex_lock(&data->io_lock);
+	ret = max77759_find_fg(data);
+	if (ret == 0)
+		ret = max77759_read_thm(data, THMIO_MUX_BATT_ID, &val);
+	if (ret == 0)
+		*id = val;
+	mutex_unlock(&data->io_lock);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(max77759_read_batt_id);
 
@@ -643,34 +665,27 @@ static int max77729_pmic_read_id(struct i2c_client *i2c)
 	return -EIO;
 }
 
-static int debug_batt_id_get(void *d, u64 *val)
+/* cahe the value */
+static int debug_batt_thm_id_get(void *d, u64 *val)
 {
 	struct max77729_pmic_data *data = d;
-	unsigned int batt_id;
-	int ret;
+	int ret, value;
 
-	ret = read_batt_id(data, &batt_id);
+	ret = max77759_read_batt_id(data->pmic_i2c_client, &value);
 	if (ret == 0)
-		*val = batt_id;
-
+		*val = value;
 	return ret;
 }
-DEFINE_SIMPLE_ATTRIBUTE(debug_batt_id_fops, debug_batt_id_get, NULL, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_batt_thm_id_fops, debug_batt_thm_id_get, NULL, "%llu\n");
 
 static int debug_batt_thm_conn_get(void *d, u64 *val)
 {
 	struct max77729_pmic_data *data = d;
-	unsigned int batt_conn;
-	int ret;
+	int ret, value;
 
-	mutex_lock(&data->io_lock);
-	ret = max77759_find_fg(data);
-		if (ret == 0)
-			ret = max77759_read_thm(data, THMIO_MUX_BATT_PACK, &batt_conn);
-	mutex_unlock(&data->io_lock);
-
+	ret = max77759_read_batt_conn(data->pmic_i2c_client, &value);
 	if (ret == 0)
-		*val = batt_conn;
+		*val = value;
 
 	return ret;
 }
@@ -780,13 +795,11 @@ static int dbg_init_fs(struct max77729_pmic_data *data)
 	if (IS_ERR_OR_NULL(data->de))
 		return -EINVAL;
 
-	debugfs_create_atomic_t("sysuvlo_cnt", 0644, data->de,
-				&data->sysuvlo_cnt);
-	debugfs_create_atomic_t("sysovlo_cnt", 0644, data->de,
-				&data->sysovlo_cnt);
+	debugfs_create_atomic_t("sysuvlo_cnt", 0644, data->de, &data->sysuvlo_cnt);
+	debugfs_create_atomic_t("sysovlo_cnt", 0644, data->de, &data->sysovlo_cnt);
 
 	debugfs_create_file("batt_id", 0400, data->de, data,
-			    &debug_batt_id_fops);
+			    &debug_batt_thm_id_fops);
 	debugfs_create_file("batt_thm_conn", 0400, data->de, data,
 			    &debug_batt_thm_conn_fops);
 
@@ -1170,10 +1183,24 @@ static int max77729_pmic_probe(struct i2c_client *client,
 	if (pmic_id == MAX77759_PMIC_PMIC_ID_MW) {
 		const int poll_en = of_property_read_bool(dev->of_node,
 							  "goog,maxq-poll");
+		u8 pmic_ctrl;
+
+
 		data->maxq = maxq_init(dev, data->regmap, poll_en);
 		if (IS_ERR_OR_NULL(data->maxq)) {
 			dev_err(dev, "Maxq init failed!\n");
 			ret = PTR_ERR(data->maxq);
+		}
+
+		ret = max77729_pmic_rd8(data, MAX77759_PMIC_CONTROL_FG, &pmic_ctrl);
+		WARN_ON(ret != 0 ||((pmic_ctrl & MAX77759_PMIC_CONTROL_FG_THMIO_MUX_MASK)
+			!= THMIO_MUX_BATT_PACK));
+		if (ret == 0) {
+			const u8 val = _pmic_control_fg_thmio_mux_set(pmic_ctrl,
+								      THMIO_MUX_BATT_PACK);
+
+			ret = max77729_pmic_wr8(data, MAX77759_PMIC_CONTROL_FG, val);
+			WARN_ON(ret != 0);
 		}
 	}
 
