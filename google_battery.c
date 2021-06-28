@@ -760,6 +760,8 @@ static void ssoc_change_curve(struct batt_ssoc_state *ssoc_state, qnum_t delta,
 /* Fan levels limits from charge rate */
 #define FAN_CHG_LIMIT_LOW	50
 #define FAN_CHG_LIMIT_MED	70
+/* Fan levels limits from health charge */
+#define FAN_HEALTH_LIMIT_LVL	FAN_LVL_LOW
 
 static int fan_bt_calculate_level(const struct batt_drv *batt_drv)
 {
@@ -797,10 +799,18 @@ static int fan_bt_calculate_level(const struct batt_drv *batt_drv)
 static int fan_calculate_level(const struct batt_drv *batt_drv)
 {
 	int charging_rate, fan_level, chg_fan_level;
+	int health_fan_level = FAN_LVL_NOT_CARE;
 
 	fan_level = fan_bt_calculate_level(batt_drv);
 	if (batt_drv->cc_max == 0 || batt_drv->battery_capacity == 0)
 		return fan_level;
+
+	if (batt_drv->msc_state == MSC_HEALTH_PAUSE ||
+	    batt_drv->msc_state == MSC_HEALTH)
+		health_fan_level = FAN_HEALTH_LIMIT_LVL;
+
+	if (health_fan_level > fan_level)
+		fan_level = health_fan_level;
 
 	charging_rate = batt_drv->cc_max / batt_drv->battery_capacity / 10;
 	if (charging_rate <= FAN_CHG_LIMIT_LOW)
