@@ -2164,6 +2164,17 @@ static int max17x0x_fg_reset(struct max1720x_chip *chip)
 	return 0;
 }
 
+int max17x0x_sw_reset(struct i2c_client *client)
+{
+	struct max1720x_chip *chip = i2c_get_clientdata(client);
+
+	if (!chip)
+		return -ENODEV;
+
+	return max17x0x_fg_reset(chip);
+}
+EXPORT_SYMBOL_GPL(max17x0x_sw_reset);
+
 /*
  * A full reset restores the ICs to their power-up state the same as if power
  * had been cycled.
