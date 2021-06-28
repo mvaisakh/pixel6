@@ -61,11 +61,6 @@ static inline bool is_backlight_lp_state(const struct backlight_device *bl)
 	return (bl->props.state & BL_STATE_LP) != 0;
 }
 
-static void backlight_state_changed(struct backlight_device *bl)
-{
-	sysfs_notify(&bl->dev.kobj, NULL, "state");
-}
-
 int exynos_panel_configure_te2_edges(struct exynos_panel *ctx,
 				     u32 *timings, bool lp_mode)
 {
@@ -619,7 +614,7 @@ int exynos_panel_disable(struct drm_panel *panel)
 	ctx->hbm_mode = false;
 	ctx->dimming_on = false;
 	ctx->self_refresh_active = false;
-	ctx->panel_idle_active = false;
+	ctx->panel_idle_vrefresh = 0;
 
 	exynos_panel_func = ctx->desc->exynos_panel_func;
 	if (exynos_panel_func) {
@@ -1131,7 +1126,7 @@ static void exynos_panel_connector_print_state(struct drm_printer *p,
 
 	drm_printf(p, "\tenabled: %d\n", ctx->enabled);
 	drm_printf(p, "\tidle: %s (%s)\n",
-		   ctx->panel_idle_active ? "active" : "inactive",
+		   ctx->panel_idle_vrefresh ? "active" : "inactive",
 		   ctx->panel_idle_enabled ? "enabled" : "disabled");
 	if (ctx->current_mode) {
 		const struct drm_display_mode *m = &ctx->current_mode->mode;
@@ -2173,7 +2168,7 @@ static ssize_t state_show(struct device *dev,
 
 			ret_cnt = scnprintf(buf + str_len, PAGE_SIZE - str_len, ": %dx%d@%d\n",
 				      pmode->mode.hdisplay, pmode->mode.vdisplay,
-				      drm_mode_vrefresh(&pmode->mode));
+				      exynos_get_actual_vrefresh(ctx));
 			if (ret_cnt > 0)
 				rc = str_len + ret_cnt;
 		}

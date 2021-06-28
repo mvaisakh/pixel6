@@ -94,25 +94,24 @@ struct s6e3hc3_mode_data {
 	const struct exynos_dsi_cmd_set *common_mode_cmd_set;
 
 	/**
-	 * @supports_idle_mode:
-	 *
-	 * Boolean specifying whether idle mode is supported in this mode. If true, command to go
-	 * into lower power mode will be sent while panel is in self refresh mode. If set to true,
-	 * wakeup command should be specified to go back to normal operating mode.
-	 */
-	bool supports_idle_mode;
-
-	/**
 	 * @wakeup_mode_cmd_set:
 	 *
 	 * When driver is allowed to change modes while idle, this function will be called when
 	 * display is coming out of self refresh (i.e. waking up after idle) to go back to expected
 	 * operating mode/refresh rate.
 	 *
-	 * This function is expected be defined if supports_idle_mode is true in order to revert
+	 * This function is expected be defined if idle_vrefresh is defined in order to revert
 	 * optimizations done while entering idle.
 	 */
 	const struct exynos_dsi_cmd_set *wakeup_mode_cmd_set;
+
+	/**
+	 * @idle_vrefresh:
+	 *
+	 * This const specifies what refresh rate is after entering idle mode. If this is zero,
+	 * it means idle (managed by software) is not supported in this mode.
+	 */
+	const unsigned int idle_vrefresh;
 };
 
 static const unsigned char PPS_SETTING[] = {
@@ -314,7 +313,7 @@ static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_60_wakeup);
 static const struct s6e3hc3_mode_data s6e3hc3_mode_60 = {
 	.common_mode_cmd_set = &s6e3hc3_mode_60_common_cmd_set,
 	.wakeup_mode_cmd_set = &s6e3hc3_mode_60_wakeup_cmd_set,
-	.supports_idle_mode = true,
+	.idle_vrefresh = 10,
 };
 
 static u8 s6e3hc3_get_te2_option(struct exynos_panel *ctx)
@@ -370,8 +369,9 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 	}
 
 	dev_dbg(ctx->dev,
-		"TE2 updated: option %s, width 0xb9 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		"TE2 updated: option %s, idle %s, width 0xb9 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
 		(option == S6E3HC3_TE2_CHANGEABLE) ? "changeable" : "fixed",
+		ctx->panel_idle_vrefresh ? "active" : "inactive",
 		width[1], width[2], width[3], width[4], width[5], width[6]);
 
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0xF0, 0x5A, 0x5A);
@@ -468,7 +468,7 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	if (unlikely(!mdata))
 		return false;
 
-	if (!mdata->supports_idle_mode) {
+	if (!mdata->idle_vrefresh) {
 		/*
 		 * if idle mode is not supported for this mode, then we need to detect case where
 		 * idle is being disabled and we have early exit enabled. Make a frequency update
@@ -486,11 +486,12 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	idle_active = enable && is_auto_mode_preferred(ctx);
 
 	/* if there's no change in idle state then skip cmds */
-	if (ctx->panel_idle_active == idle_active)
+	if ((ctx->panel_idle_vrefresh > 0) == idle_active)
 		return false;
 
 	DPU_ATRACE_BEGIN(__func__);
-	ctx->panel_idle_active = idle_active;
+	ctx->panel_idle_vrefresh = idle_active ? mdata->idle_vrefresh : 0;
+
 	dev_dbg(ctx->dev, "change panel idle active: %d for mode: %s\n", idle_active,
 		pmode->mode.name);
 
@@ -508,6 +509,8 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 		exynos_panel_send_cmd_set(ctx, mdata->wakeup_mode_cmd_set);
 	}
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+
+	backlight_state_changed(ctx->bl);
 
 	DPU_ATRACE_END(__func__);
 

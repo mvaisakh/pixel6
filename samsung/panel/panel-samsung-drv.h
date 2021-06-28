@@ -409,10 +409,14 @@ struct exynos_panel {
 
 	/* indicates whether panel idle feature is enabled */
 	bool panel_idle_enabled;
-	/* indicates if panel is currently in idle mode */
-	bool panel_idle_active;
 	/* indicates self refresh is active */
 	bool self_refresh_active;
+	/**
+	 * refresh rate in panel idle mode
+	 * 0 means not in idle mode or not specified
+	 * greater than 0 means panel idle is active
+	 */
+	unsigned int panel_idle_vrefresh;
 
 	bool hbm_mode;
 	bool dimming_on;
@@ -484,6 +488,14 @@ static inline int exynos_dcs_set_brightness(struct exynos_panel *ctx, u16 br)
 	return mipi_dsi_dcs_set_display_brightness(dsi, br);
 }
 
+static inline int exynos_get_actual_vrefresh(struct exynos_panel *ctx)
+{
+	if (ctx->panel_idle_vrefresh)
+		return ctx->panel_idle_vrefresh;
+
+	return drm_mode_vrefresh(&ctx->current_mode->mode);
+}
+
 static inline void exynos_bin2hex(const void *buf, size_t len,
 				 char *linebuf, size_t linebuflen)
 {
@@ -493,6 +505,11 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 
 	end = bin2hex(linebuf, buf, count);
 	*end = '\0';
+}
+
+static inline void backlight_state_changed(struct backlight_device *bl)
+{
+	sysfs_notify(&bl->dev.kobj, NULL, "state");
 }
 
 #define EXYNOS_DSI_CMD_REV(cmd, delay, rev) { sizeof(cmd), cmd, delay, (u32)rev }
