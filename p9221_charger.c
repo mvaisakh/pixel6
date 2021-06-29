@@ -493,6 +493,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 			"Could not reset OCP DC_ICL voter %d\n", ret);
 
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
+	vote(charger->dc_icl_votable, DCIN_AICL_VOTER, false, 0);
 }
 
 #define EPP_MODE_REQ_PWR		15
@@ -589,9 +590,17 @@ static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 		ret = charger->chip_set_vout_max(charger, vout_mv);
 		if (ret == 0)
 			ret = feature_set_dc_icl(charger, CHARGE_15W_ILIM_UA);
+		if (ret == 0)
+			ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true,
+				   CHARGE_15W_ILIM_UA);
 
 		chg_fts->session_features |= WLCF_CHARGE_15W;
 	} else if (!enable && (chg_fts->session_features & WLCF_CHARGE_15W)) {
+		int ocp_icl;
+
+		ocp_icl = (charger->dc_icl_epp > 0) ?
+			   charger->dc_icl_epp : P9221_DC_ICL_EPP_UA;
+		ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true, ocp_icl);
 		chg_fts->session_features &= ~WLCF_CHARGE_15W;
 	}
 
@@ -669,6 +678,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 	del_timer(&charger->vrect_timer);
 
 	feature_update_session(charger, 0);
+	charger->icl_ramp_alt_ua = 0;
 
 	p9221_vote_defaults(charger);
 	if (charger->enabled)
