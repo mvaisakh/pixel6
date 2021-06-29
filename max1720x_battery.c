@@ -3750,6 +3750,18 @@ static int max17201_init_fix_capacity(struct max1720x_chip *chip)
 	return 0;
 }
 
+static int max1720x_check_config(struct max1720x_chip *chip)
+{
+	u16 data;
+	int ret;
+
+	ret = REGMAP_READ(&chip->regmap, MAX1720X_CONFIG, &data);
+	if (ret == 0 && (data & MAX1720X_CONFIG_TEN) == 0)
+		return -EINVAL;
+
+	return 0;
+}
+
 /* handle recovery of FG state */
 static int max1720x_init_max_m5(struct max1720x_chip *chip)
 {
@@ -3786,6 +3798,17 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 			ret = max_m5_model_read_state(chip->model_data);
 
 		dev_err(chip->dev, "FG State Corrupt, Reset (%d), Will reload\n",
+			ret);
+		return 0;
+	}
+
+	ret = max1720x_check_config(chip);
+	if (ret < 0) {
+		ret = max1720x_full_reset(chip);
+		if (ret == 0)
+			ret = max_m5_model_read_state(chip->model_data);
+
+		dev_err(chip->dev, "Invalid config data, Reset (%d), Will reload\n",
 			ret);
 		return 0;
 	}
