@@ -248,6 +248,10 @@ static int lwis_i2c_device_suspend(struct device *dev)
 		return -EBUSY;
 	}
 
+	/* Send an error event to userspace to handle the system suspend */
+	lwis_device_error_event_emit(lwis_dev, LWIS_ERROR_EVENT_ID_SYSTEM_SUSPEND,
+				     /*payload=*/NULL, /*payload_size=*/0);
+
 	list_for_each_entry_safe (lwis_client, n, &lwis_dev->clients, node) {
 		if (!lwis_client->is_enabled) {
 			continue;
