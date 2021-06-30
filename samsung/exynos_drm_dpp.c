@@ -998,6 +998,8 @@ static irqreturn_t dma_irq_handler(int irq, void *priv)
 	struct dpp_device *dpp = priv;
 	u32 irqs;
 	const char *str_comp;
+	bool dump = false;
+	static unsigned long last_dumptime;
 
 	spin_lock(&dpp->dma_slock);
 	if (dpp->state == DPP_STATE_OFF)
@@ -1021,6 +1023,39 @@ static irqreturn_t dma_irq_handler(int irq, void *priv)
 	if (irqs & IDMA_STATUS_FRAMEDONE_IRQ) {
 		DPU_EVENT_LOG(DPU_EVT_DPP_FRAMEDONE, dpp->decon_id,
 				dpp);
+	}
+
+	if (irqs & IDMA_AFBC_CONFLICT_IRQ) {
+		DPU_EVENT_LOG(DPU_EVT_IDMA_AFBC_CONFLICT, dpp->decon_id, dpp);
+		dump = true;
+	}
+
+	if (irqs & IDMA_FBC_ERR_IRQ) {
+		DPU_EVENT_LOG(DPU_EVT_IDMA_FBC_ERROR, dpp->decon_id, dpp);
+		dump = true;
+	}
+
+	if (irqs & IDMA_READ_SLAVE_ERROR) {
+		DPU_EVENT_LOG(DPU_EVT_IDMA_READ_SLAVE_ERROR, dpp->decon_id, dpp);
+		dump = true;
+	}
+
+	if (irqs & IDMA_STATUS_DEADLOCK_IRQ) {
+		DPU_EVENT_LOG(DPU_EVT_IDMA_DEADLOCK, dpp->decon_id, dpp);
+		dump = true;
+	}
+
+	if (irqs & IDMA_CONFIG_ERR_IRQ) {
+		DPU_EVENT_LOG(DPU_EVT_IDMA_CFG_ERROR, dpp->decon_id, dpp);
+		dump = true;
+	}
+
+	if (dump && time_after(jiffies, last_dumptime + msecs_to_jiffies(5000))) {
+		const struct decon_device *decon = get_decon_drvdata(dpp->decon_id);
+		if (decon) {
+			decon_dump_event_condition(decon, DPU_EVT_CONDITION_IDMA_ERROR);
+			last_dumptime = jiffies;
+		}
 	}
 
 irq_end:

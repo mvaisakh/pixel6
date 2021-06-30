@@ -195,6 +195,12 @@ enum dpu_event_type {
 	DPU_EVT_DPP_FRAMEDONE,
 	DPU_EVT_DMA_RECOVERY,
 
+	DPU_EVT_IDMA_AFBC_CONFLICT,
+	DPU_EVT_IDMA_FBC_ERROR,
+	DPU_EVT_IDMA_READ_SLAVE_ERROR,
+	DPU_EVT_IDMA_DEADLOCK,
+	DPU_EVT_IDMA_CFG_ERROR,
+
 	DPU_EVT_ATOMIC_COMMIT,
 	DPU_EVT_TE_INTERRUPT,
 
@@ -249,6 +255,7 @@ enum dpu_event_condition {
 	DPU_EVT_CONDITION_UNDERRUN,
 	DPU_EVT_CONDITION_FAIL_UPDATE_BW,
 	DPU_EVT_CONDITION_FIFO_TIMEOUT,
+	DPU_EVT_CONDITION_IDMA_ERROR,
 };
 
 #define DPU_CALLSTACK_MAX 10
@@ -261,6 +268,7 @@ struct dpu_log_dsim_cmd {
 
 struct dpu_log_dpp {
 	u32 id;
+	u32 win_id;
 	u64 comp_src;
 	u32 recovery_cnt;
 };
@@ -375,6 +383,8 @@ struct decon_debug {
 	u32 crc_cnt;
 	/* count of ecc interrupt */
 	u32 ecc_cnt;
+	/* count of idma error interrupt */
+	u32 idma_err_cnt;
 	/* array index of log buffer in event log */
 	atomic_t event_log_idx;
 	/* lock for saving log to event log buffer */
