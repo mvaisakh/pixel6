@@ -12,6 +12,7 @@
 
 #include "lwis_periodic_io.h"
 
+#include <linux/completion.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
@@ -179,8 +180,16 @@ static int process_io_entries(struct lwis_client *client,
 	}
 
 	mutex_lock(&lwis_dev->reg_rw_lock);
-
+	reinit_completion(&periodic_io->io_done);
 	for (i = 0; i < info->num_io_entries; ++i) {
+		/* Abort if periodic io is deactivated during processing.
+		 * Abort can only apply to <= 1 write entries to prevent partial writes,
+		 * or we just started the process. */
+		if (!periodic_io->active &&
+			(i == 0 || !periodic_io->contains_multiple_writes)) {
+			resp->error_code = -ECANCELED;
+			goto event_push;
+		}
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
@@ -243,6 +252,7 @@ static int process_io_entries(struct lwis_client *client,
 	resp->batch_size = periodic_io->batch_count;
 
 event_push:
+	complete(&periodic_io->io_done);
 	mutex_unlock(&lwis_dev->reg_rw_lock);
 	/* Use read memory barrier at the beginning of I/O entries if the access protocol
 	 * allows it */
@@ -263,7 +273,7 @@ event_push:
 	/* Only push when the periodic io is executed for batch_size times or
 	 * there is an error */
 	if (!pending_events) {
-		if (resp->error_code) {
+		if (resp->error_code && resp->error_code != -ECANCELED) {
 			pr_err("process_io_entries fails with error code %d, periodic io %lld, io_entries[%d], entry_type %d",
 			       resp->error_code, info->id, i, entry->type);
 		}
@@ -451,8 +461,25 @@ int lwis_periodic_io_init(struct lwis_client *client)
 
 int lwis_periodic_io_submit(struct lwis_client *client, struct lwis_periodic_io *periodic_io)
 {
-	int ret;
+	int ret, i;
+	bool has_one_write = false;
 	unsigned long flags;
+	struct lwis_periodic_io_info *info = &periodic_io->info;
+	struct lwis_io_entry *entry;
+
+	periodic_io->contains_multiple_writes = false;
+	for (i = 0; i < info->num_io_entries; ++i) {
+		entry = &info->io_entries[i];
+		if (entry->type == LWIS_IO_ENTRY_WRITE ||
+		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
+		    entry->type == LWIS_IO_ENTRY_MODIFY) {
+			if (has_one_write) {
+				periodic_io->contains_multiple_writes = true;
+				break;
+			}
+			has_one_write = true;
+		}
+	}
 
 	ret = prepare_emit_events(client, periodic_io);
 	if (ret)
@@ -462,6 +489,9 @@ int lwis_periodic_io_submit(struct lwis_client *client, struct lwis_periodic_io 
 	if (ret)
 		return ret;
 
+	/* Initialize but mark io as complete as it is not run yet  */
+	init_completion(&periodic_io->io_done);
+	complete(&periodic_io->io_done);
 	periodic_io->active = true;
 	spin_lock_irqsave(&client->periodic_io_lock, flags);
 	ret = queue_periodic_io_locked(client, periodic_io);
@@ -536,32 +566,37 @@ int lwis_periodic_io_client_cleanup(struct lwis_client *client)
 }
 
 /* Calling this function requires holding the client's periodic_io_lock */
-static int mark_periodic_io_resp_error_locked(struct lwis_client *client, int64_t id)
+static int mark_periodic_io_resp_error_locked(struct lwis_periodic_io *periodic_io)
 {
+	periodic_io->resp->error_code = -ECANCELED;
+	periodic_io->active = false;
+	return 0;
+}
+
+/* Calling this function requires holding the client's periodic_io_lock */
+static struct lwis_periodic_io * periodic_io_find_locked(struct lwis_client *client, int64_t id) {
 	int i;
 	struct hlist_node *tmp;
 	struct list_head *it_period, *it_period_tmp;
 	struct lwis_periodic_io_list *it_list;
 	struct lwis_periodic_io *periodic_io;
-
 	hash_for_each_safe (client->timer_list, i, tmp, it_list, node) {
 		list_for_each_safe (it_period, it_period_tmp, &it_list->list) {
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 			if (periodic_io->info.id == id) {
-				periodic_io->resp->error_code = -ECANCELED;
-				periodic_io->active = false;
-				return 0;
+				return periodic_io;
 			}
 		}
 	}
-	return -ENOENT;
+	return NULL;
 }
 
 int lwis_periodic_io_cancel(struct lwis_client *client, int64_t id)
 {
 	int ret;
 	unsigned long flags;
+	struct lwis_periodic_io *periodic_io;
 
 	/* Always search for the id in the list. The id may be valid(still an
 	 * erroreous usage from user space), but not queued into the list yet.
@@ -569,8 +604,16 @@ int lwis_periodic_io_cancel(struct lwis_client *client, int64_t id)
 	 * procedure to handle the cancellation to avoid racing.
 	 */
 	spin_lock_irqsave(&client->periodic_io_lock, flags);
-	ret = mark_periodic_io_resp_error_locked(client, id);
+	periodic_io = periodic_io_find_locked(client, id);
+	if (periodic_io != NULL) {
+		ret = mark_periodic_io_resp_error_locked(periodic_io);
+	} else {
+		ret = -ENOENT;
+	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
-
+	if (!ret) {
+		/* If there is any ongoing io, wait until it's finished */
+		wait_for_completion(&periodic_io->io_done);
+	}
 	return ret;
 }
