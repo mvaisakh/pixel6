@@ -65,7 +65,7 @@ struct audio_sz_type {
 	int32_t speaker_temp[SPEAKER_MAX_COUNT];
 	int32_t speaker_excursion[SPEAKER_MAX_COUNT];
 	int32_t speaker_heartbeat[SPEAKER_MAX_COUNT];
-	int32_t hwinfo_part_number[AUDIOMETRIC_CH_LENGTH];
+	char hwinfo_part_number[AUDIOMETRIC_CH_LENGTH];
 	struct wdsp_stat_priv_type wdsp_stat_priv;
 	uint32_t mic_broken_degrade;
 };
@@ -296,7 +296,17 @@ static ssize_t codec_crashed_counter_show(struct device *dev,
 static ssize_t hwinfo_part_number_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return 0;
+	struct audiometrics_priv_type *priv = dev_get_drvdata(dev);
+	int counts = 0;
+
+	if (IS_ERR_OR_NULL(priv))
+		return -EINVAL;
+
+	mutex_lock(&priv->lock);
+	counts = scnprintf(buf, PAGE_SIZE, "%s", priv->sz.hwinfo_part_number);
+	mutex_unlock(&priv->lock);
+
+	return counts;
 }
 
 static ssize_t wdsp_stat_show(struct device *dev,
@@ -536,6 +546,14 @@ static const struct file_operations amcs_fops = {
 	.owner = THIS_MODULE,
 };
 
+static void init_hwinfo_revision(struct audiometrics_priv_type *priv)
+{
+	mutex_lock(&priv->lock);
+	/* ToDo: If there are revision differences, we should invoke aoc api to append this. */
+	scnprintf(priv->sz.hwinfo_part_number, AUDIOMETRIC_CH_LENGTH, "%s", "AOC");
+	mutex_unlock(&priv->lock);
+}
+
 static int amcs_init_cdev(struct audiometrics_priv_type *priv)
 {
 	int ret;
@@ -629,6 +647,8 @@ static int audiometrics_platform_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to initialize fs attrs: %d\n", err);
 		goto audiometrics_fs_attr_group_err;
 	}
+
+	init_hwinfo_revision(priv);
 
 	dev_dbg(&pdev->dev, "%s registered\n", __func__);
 	return 0;
