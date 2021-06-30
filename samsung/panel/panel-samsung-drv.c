@@ -1463,6 +1463,10 @@ static int exynos_drm_connector_check_state(struct exynos_panel *ctx,
 	return 0;
 }
 
+/*
+ * this atomic check is called before adjusted mode is populated, this can be used to check only
+ * connector state (without adjusted mode), or to decide if modeset may be required
+ */
 static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 					     struct drm_atomic_state *state)
 {
@@ -1470,8 +1474,7 @@ static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 	struct drm_connector_state *connector_state =
 		drm_atomic_get_new_connector_state(state, connector);
 	struct exynos_panel *ctx = exynos_connector_to_panel(exynos_connector);
-	struct drm_crtc_state *crtc_state, *old_crtc_state;
-	int ret;
+	struct drm_crtc_state *crtc_state;
 
 	/* nothing to do if disabled or if mode is unchanged */
 	if (!connector_state->crtc)
@@ -1482,19 +1485,7 @@ static int exynos_drm_connector_atomic_check(struct drm_connector *connector,
 	if (ctx->touch_dev)
 		exynos_drm_connector_attach_touch(ctx, connector_state, crtc_state);
 
-	ret = exynos_drm_connector_check_state(ctx, connector_state);
-	if (ret)
-		return ret;
-
-	if (!drm_atomic_crtc_needs_modeset(crtc_state))
-		return 0;
-
-	old_crtc_state = drm_atomic_get_old_crtc_state(state,
-						       connector_state->crtc);
-	if (!old_crtc_state->enable && ctx->enabled)
-		old_crtc_state->self_refresh_active = true;
-
-	return exynos_drm_connector_check_mode(ctx, connector_state, &crtc_state->mode);
+	return exynos_drm_connector_check_state(ctx, connector_state);
 }
 
 static const struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
@@ -2543,6 +2534,40 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 		backlight_update_status(ctx->bl);
 }
 
+/*
+ * this atomic check is called after adjusted mode is populated, so it's safe to modify
+ * adjusted_mode if needed at this point
+ */
+static int exynos_panel_bridge_atomic_check(struct drm_bridge *bridge,
+					    struct drm_bridge_state *bridge_state,
+					    struct drm_crtc_state *new_crtc_state,
+					    struct drm_connector_state *conn_state)
+{
+	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
+	struct drm_atomic_state *state = new_crtc_state->state;
+	struct drm_crtc_state *old_crtc_state;
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	int ret;
+
+	if (unlikely(!new_crtc_state))
+		return 0;
+
+	if (funcs && funcs->atomic_check) {
+		ret = funcs->atomic_check(ctx, state);
+		if (ret)
+			return ret;
+	}
+
+	if (!drm_atomic_crtc_needs_modeset(new_crtc_state))
+		return 0;
+
+	old_crtc_state = drm_atomic_get_old_crtc_state(state, new_crtc_state->crtc);
+	if (!old_crtc_state->enable && ctx->enabled)
+		old_crtc_state->self_refresh_active = true;
+
+	return exynos_drm_connector_check_mode(ctx, conn_state, &new_crtc_state->mode);
+}
+
 static void exynos_panel_bridge_pre_enable(struct drm_bridge *bridge,
 					   struct drm_bridge_state *old_bridge_state)
 {
@@ -2906,6 +2931,7 @@ static void exynos_panel_te2_init(struct exynos_panel *ctx)
 static const struct drm_bridge_funcs exynos_panel_bridge_funcs = {
 	.attach = exynos_panel_bridge_attach,
 	.detach = exynos_panel_bridge_detach,
+	.atomic_check = exynos_panel_bridge_atomic_check,
 	.atomic_pre_enable = exynos_panel_bridge_pre_enable,
 	.atomic_enable = exynos_panel_bridge_enable,
 	.atomic_disable = exynos_panel_bridge_disable,

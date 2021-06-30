@@ -326,6 +326,10 @@ int exynos_atomic_check(struct drm_device *dev,
 
 	exynos_check_updated_planes(dev, state);
 
+	ret = exynos_add_relevant_connectors(state);
+	if (ret)
+		return ret;
+
 	ret = drm_atomic_helper_check_modeset(dev, state);
 	if (ret)
 		return ret;
@@ -346,7 +350,7 @@ int exynos_atomic_check(struct drm_device *dev,
 
 	drm_self_refresh_helper_alter_state(state);
 
-	return exynos_add_relevant_connectors(state);
+	return 0;
 }
 
 static struct drm_private_state *exynos_atomic_duplicate_priv_state(struct drm_private_obj *obj)

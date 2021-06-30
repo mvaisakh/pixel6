@@ -268,6 +268,16 @@ struct exynos_panel_funcs {
 	void (*update_te2)(struct exynos_panel *exynos_panel);
 
 	/**
+	 * @atomic_check
+	 *
+	 * This optional callback happens in atomic check phase, it gives a chance to panel driver
+	 * to check and/or adjust atomic state ahead of atomic commit.
+	 *
+	 * Should return 0 on success (no problems with atomic commit) otherwise negative errno
+	 */
+	int (*atomic_check)(struct exynos_panel *exynos_panel, struct drm_atomic_state *state);
+
+	/**
 	 * @commit_done
 	 *
 	 * Called after atomic commit flush has completed but transfer may not have started yet
