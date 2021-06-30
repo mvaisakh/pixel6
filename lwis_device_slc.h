@@ -13,7 +13,7 @@
 #include "lwis_device.h"
 #include <soc/google/pt.h>
 
-#define NUM_PT 11
+#define NUM_PT 9
 
 struct slc_partition {
 	int id;
