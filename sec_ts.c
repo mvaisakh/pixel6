@@ -2830,6 +2830,7 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	if (!ts->offload.offload_running) {
 #endif
 	mutex_lock(&ts->eventlock);
+	input_set_timestamp(ts->input_dev, ts->timestamp);
 	input_sync(ts->input_dev);
 	mutex_unlock(&ts->eventlock);
 
@@ -2919,9 +2920,6 @@ static irqreturn_t sec_ts_isr(int irq, void *handle)
 	struct sec_ts_data *ts = (struct sec_ts_data *)handle;
 
 	ts->timestamp = ktime_get();
-#if !IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-	/* input_set_timestamp(ts->input_dev, ts->timestamp); */
-#endif
 
 	return IRQ_WAKE_THREAD;
 }
