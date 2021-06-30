@@ -4342,6 +4342,7 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 	if (info->touch_id == 0)
 		input_report_key(info->input_dev, BTN_TOUCH, 0);
 
+	input_set_timestamp(info->input_dev, info->timestamp);
 	input_sync(info->input_dev);
 	mutex_unlock(&info->input_report_mutex);
 
@@ -4971,9 +4972,6 @@ static irqreturn_t fts_isr(int irq, void *handle)
 	struct fts_ts_info *info = handle;
 
 	info->timestamp = ktime_get();
-#if !IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-	input_set_timestamp(info->input_dev, info->timestamp);
-#endif
 
 	return IRQ_WAKE_THREAD;
 }
