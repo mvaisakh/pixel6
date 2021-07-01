@@ -4263,6 +4263,7 @@ static int sec_ts_probe(struct spi_device *client)
 	if (ts->is_fw_corrupted == false) {
 		switch (sec_ts_fw_init(ts)) {
 		case SEC_TS_ERR_INIT:
+			ret = -EPROBE_DEFER;
 			goto err_init;
 		case SEC_TS_ERR_ALLOC_FRAME:
 			goto err_allocate_frame;
