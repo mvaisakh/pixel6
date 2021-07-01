@@ -3773,6 +3773,34 @@ static int max1720x_check_config(struct max1720x_chip *chip)
 	return 0;
 }
 
+static int max1720x_log_event(struct max1720x_chip *chip, gbms_tag_t tag)
+{
+	u8 event_count;
+	int ret = 0;
+
+	ret = gbms_storage_read(tag, &event_count, sizeof(event_count));
+	if (ret < 0)
+		return ret;
+
+	/* max count */
+	if (event_count == 0xFE)
+		return 0;
+
+	/* initial value */
+	if (event_count == 0xFF)
+		event_count = 1;
+	else
+		event_count++;
+
+	ret = gbms_storage_write(tag, &event_count, sizeof(event_count));
+	if (ret < 0)
+		return ret;
+
+	dev_info(chip->dev, "tag:0x%X, event_count:%d\n", tag, event_count);
+
+	return 0;
+}
+
 /* handle recovery of FG state */
 static int max1720x_init_max_m5(struct max1720x_chip *chip)
 {
@@ -3788,6 +3816,7 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 				dev_warn(chip->dev, "GMSR: RC2 model data erased\n");
 		}
 
+		/* this is expected */
 		ret = max1720x_full_reset(chip);
 
 		dev_warn(chip->dev, "FG Version Changed, Reset (%d), Will Reload\n",
@@ -3802,14 +3831,22 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 		return -EPROBE_DEFER;
 	}
 
+	/* this is a real failure and must be logged */
 	ret = max_m5_model_check_state(chip->model_data);
 	if (ret < 0) {
-		ret = max1720x_full_reset(chip);
-		if (ret == 0)
-			ret = max_m5_model_read_state(chip->model_data);
+		int rret, sret = -1;
 
-		dev_err(chip->dev, "FG State Corrupt, Reset (%d), Will reload\n",
-			ret);
+		rret = max1720x_full_reset(chip);
+		if (rret == 0)
+			sret = max_m5_model_read_state(chip->model_data);
+
+		dev_err(chip->dev, "FG State Corrupt (%d), Reset (%d), State (%d) Will reload\n",
+			ret, rret, sret);
+
+		ret = max1720x_log_event(chip, GBMS_TAG_SELC);
+		if (ret < 0)
+			dev_err(chip->dev, "Cannot log the event (%d)\n", ret);
+
 		return 0;
 	}
 
@@ -3821,6 +3858,11 @@ static int max1720x_init_max_m5(struct max1720x_chip *chip)
 
 		dev_err(chip->dev, "Invalid config data, Reset (%d), Will reload\n",
 			ret);
+
+		ret = max1720x_log_event(chip, GBMS_TAG_CELC);
+		if (ret < 0)
+			dev_err(chip->dev, "Cannot log the event (%d)\n", ret);
+
 		return 0;
 	}
 
