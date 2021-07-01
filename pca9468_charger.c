@@ -44,7 +44,7 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 #define PCA9468_CVMODE_CHECK2_T	1000	/* 1000ms */
 
 /* Battery Threshold */
-#define PCA9468_DC_VBAT_MIN		3500000 /* uV */
+#define PCA9468_DC_VBAT_MIN		3400000 /* uV */
 /* Input Current Limit default value */
 #define PCA9468_IIN_CFG_DFT		2500000 /* uA*/
 /* Charging Float Voltage default value */
@@ -3148,7 +3148,8 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 		goto error;
 	}
 
-	if (pca9468->cc_max < 0 || pca9468->fv_uv < 0 || vbat < PCA9468_DC_VBAT_MIN) {
+	/* wait for CPM to send in the params */
+	if (pca9468->cc_max < 0 || pca9468->fv_uv < 0) {
 		pr_debug("%s: not yet fv_uv=%d, cc_max=%d vbat=%d\n", __func__,
 			pca9468->fv_uv, pca9468->cc_max, vbat);
 
@@ -3157,6 +3158,10 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 		pca9468->timer_period = PCA9468_VBATMIN_CHECK_T;
 		pca9468->retry_cnt += 1;
 	} else {
+		pr_debug("%s: starts at fv_uv=%d, cc_max=%d vbat=%d (min=%d)\n",
+			 __func__, pca9468->fv_uv, pca9468->cc_max, vbat,
+			 PCA9468_DC_VBAT_MIN);
+
 		pca9468->timer_id = TIMER_PRESET_DC;
 		pca9468->timer_period = 0;
 		pca9468->retry_cnt = 0; /* start charging */
@@ -3164,8 +3169,9 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 
 	/* timeout for VBATMIN or charging parameters */
 	if (pca9468->retry_cnt > PCA9468_MAX_RETRY_CNT) {
-		pr_debug("%s: not yet fv_uv=%d, cc_max=%d vbat=%d\n", __func__,
-			pca9468->fv_uv, pca9468->cc_max, vbat);
+		pr_debug("%s: TIMEOUT fv_uv=%d, cc_max=%d vbat=%d limit=%d\n",
+			 __func__, pca9468->fv_uv, pca9468->cc_max, vbat,
+			 PCA9468_DC_VBAT_MIN);
 		ret = -ETIMEDOUT;
 	} else {
 		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
