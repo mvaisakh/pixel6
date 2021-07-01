@@ -330,19 +330,21 @@ static int pps_prog_online(struct pd_pps_data *pps,
 /* Disable PPS prog mode, will end up in PPS_NOTSUP */
 int pps_prog_offline(struct pd_pps_data *pps, struct power_supply *tcpm_psy)
 {
+	union power_supply_propval pval;
 	int ret;
 
 	if (!pps || !tcpm_psy)
 		return -ENODEV;
 
-	/* pd_online = PPS_PSY_OFFLINE, stage = PPS_NONE; */
-	ret = GPSY_SET_PROP(tcpm_psy, POWER_SUPPLY_PROP_ONLINE,
-			    PPS_PSY_FIXED_ONLINE);
-	if (ret == -EOPNOTSUPP)
-		ret = 0;
-	if (ret == 0)
-		pps_init_state(pps);
+	ret = power_supply_get_property(tcpm_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
+	if (ret < 0 || pval.intval != PPS_PSY_PROG_ONLINE)
+		goto exit_done;
 
+	pval.intval = PPS_PSY_FIXED_ONLINE;
+	ret = power_supply_set_property(tcpm_psy, POWER_SUPPLY_PROP_ONLINE, &pval);
+
+exit_done:
+	pps_init_state(pps);
 	return ret;
 }
 // EXPORT_SYMBOL_GPL(pps_prog_offline);
