@@ -3595,18 +3595,6 @@ static int cs35l41_restore(struct cs35l41_private *cs35l41)
 
 	cs35l41_set_pdata(cs35l41);
 
-	/* Restore cached values set by ALSA during or before amp reset */
-	regmap_update_bits(cs35l41->regmap,
-			CS35L41_SP_FRAME_RX_SLOT,
-			CS35L41_ASP_RX1_SLOT_MASK,
-			((cs35l41->pdata.right_channel) ? 1 : 0)
-			<< CS35L41_ASP_RX1_SLOT_SHIFT);
-	regmap_update_bits(cs35l41->regmap,
-			CS35L41_SP_FRAME_RX_SLOT,
-			CS35L41_ASP_RX2_SLOT_MASK,
-			((cs35l41->pdata.right_channel) ? 0 : 1)
-			<< CS35L41_ASP_RX2_SLOT_SHIFT);
-
 	if (cs35l41->reset_cache.extclk_cfg) {
 	/* These values are already cached in cs35l41_private struct */
 		if (cs35l41->clksrc == CS35L41_PLLSRC_SCLK)
