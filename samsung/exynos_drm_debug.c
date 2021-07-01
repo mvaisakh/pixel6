@@ -19,6 +19,7 @@
 #include <video/mipi_display.h>
 #include <drm/drm_print.h>
 #include <drm/drm_managed.h>
+#include <drm/drm_fourcc.h>
 
 #include <cal_config.h>
 #include <dt-bindings/soc/google/gs101-devfreq.h>
@@ -84,6 +85,8 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	struct dpp_device *dpp = NULL;
 	struct dpu_log *log;
 	struct drm_crtc_state *crtc_state;
+	struct drm_plane_state *plane_state;
+	const struct drm_format_info *fb_format;
 	struct exynos_partial *partial;
 	struct drm_rect *partial_region;
 	unsigned long flags;
@@ -184,6 +187,18 @@ void DPU_EVENT_LOG(enum dpu_event_type type, int index, void *priv)
 	case DPU_EVT_EXIT_HIBERNATION_IN:
 	case DPU_EVT_EXIT_HIBERNATION_OUT:
 		log->data.pd.rpm_active = pm_runtime_active(decon->dev);
+		break;
+	case DPU_EVT_PLANE_PREPARE_FB:
+	case DPU_EVT_PLANE_CLEANUP_FB:
+		plane_state = (struct drm_plane_state *)priv;
+		fb_format = plane_state->fb->format;
+		log->data.plane_info.dma_addr =
+				exynos_drm_fb_dma_addr(plane_state->fb, 0);
+		log->data.plane_info.width = plane_state->fb->width;
+		log->data.plane_info.height = plane_state->fb->height;
+		log->data.plane_info.zpos = plane_state->zpos;
+		log->data.plane_info.format = fb_format->format;
+		log->data.plane_info.index = plane_state->plane->index;
 		break;
 	case DPU_EVT_PLANE_UPDATE:
 	case DPU_EVT_PLANE_DISABLE:
@@ -451,7 +466,8 @@ static const char *get_event_name(enum dpu_event_type type)
 		"ATOMIC_FLUSH",			"WB_ENABLE",
 		"WB_DISABLE",			"WB_ATOMIC_COMMIT",
 		"WB_FRAMEDONE",			"WB_ENTER_HIBERNATION",
-		"WB_EXIT_HIBERNATION",		"PLANE_UPDATE",
+		"WB_EXIT_HIBERNATION",		"PREPARE_FB",
+		"CLEANUP_FB",			"PLANE_UPDATE",
 		"PLANE_DISABLE",		"REQ_CRTC_INFO_OLD",
 		"REQ_CRTC_INFO_NEW",		"FRAMESTART_TIMEOUT",
 		"BTS_RELEASE_BW",		"BTS_CALC_BW",
@@ -493,6 +509,8 @@ static bool is_skip_dpu_event_dump(enum dpu_event_type type, enum dpu_event_cond
 		case DPU_EVT_EXIT_HIBERNATION_OUT:
 		case DPU_EVT_ATOMIC_BEGIN:
 		case DPU_EVT_ATOMIC_FLUSH:
+		case DPU_EVT_PLANE_PREPARE_FB:
+		case DPU_EVT_PLANE_CLEANUP_FB:
 		case DPU_EVT_PLANE_UPDATE:
 		case DPU_EVT_PLANE_DISABLE:
 		case DPU_EVT_BTS_RELEASE_BW:
@@ -581,6 +599,7 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 	struct timespec64 ts;
 	const char *str_comp;
 	char buf[LOG_BUF_SIZE];
+	const struct dpu_fmt *fmt;
 	int len;
 
 	if (IS_ERR_OR_NULL(decon->d.event_log))
@@ -663,6 +682,18 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 			scnprintf(buf + len, sizeof(buf) - len,
 					"\tDPU POWER %s",
 					log->data.pd.rpm_active ? "ON" : "OFF");
+			break;
+		case DPU_EVT_PLANE_PREPARE_FB:
+		case DPU_EVT_PLANE_CLEANUP_FB:
+			fmt = dpu_find_fmt_info(log->data.plane_info.format);
+			scnprintf(buf + len, sizeof(buf) - len,
+					"\tWIN%u: 0x%llx, %ux%u, CH%u, %s",
+					log->data.plane_info.zpos,
+					log->data.plane_info.dma_addr,
+					log->data.plane_info.width,
+					log->data.plane_info.height,
+					log->data.plane_info.index,
+					fmt->name);
 			break;
 		case DPU_EVT_PLANE_UPDATE:
 		case DPU_EVT_PLANE_DISABLE:

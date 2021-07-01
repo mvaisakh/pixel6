@@ -394,7 +394,37 @@ static void exynos_plane_atomic_disable(struct drm_plane *plane,
 	exynos_plane_disable(plane, old_state->crtc);
 }
 
+static int exynos_plane_prepare_fb(struct drm_plane *plane,
+				   struct drm_plane_state *new_state)
+{
+	struct decon_device *decon;
+
+	if (!new_state || !new_state->crtc) {
+		/* Do nothing because we only record event log on decon level */
+		return 0;
+	}
+
+	decon = crtc_to_decon(new_state->crtc);
+	DPU_EVENT_LOG(DPU_EVT_PLANE_PREPARE_FB, decon->id, new_state);
+
+	return 0;
+}
+
+static void exynos_plane_cleanup_fb(struct drm_plane *plane,
+				   struct drm_plane_state *old_state)
+{
+	struct decon_device *decon;
+
+	if (!old_state || !old_state->crtc)
+		return;
+
+	decon = crtc_to_decon(old_state->crtc);
+	DPU_EVENT_LOG(DPU_EVT_PLANE_CLEANUP_FB, decon->id, old_state);
+}
+
 static const struct drm_plane_helper_funcs plane_helper_funcs = {
+	.prepare_fb = exynos_plane_prepare_fb,
+	.cleanup_fb = exynos_plane_cleanup_fb,
 	.atomic_check = exynos_plane_atomic_check,
 	.atomic_update = exynos_plane_atomic_update,
 	.atomic_disable = exynos_plane_atomic_disable,

@@ -221,6 +221,8 @@ enum dpu_event_type {
 	DPU_EVT_WB_ENTER_HIBERNATION,
 	DPU_EVT_WB_EXIT_HIBERNATION,
 
+	DPU_EVT_PLANE_PREPARE_FB,
+	DPU_EVT_PLANE_CLEANUP_FB,
 	DPU_EVT_PLANE_UPDATE,
 	DPU_EVT_PLANE_DISABLE,
 
@@ -347,6 +349,15 @@ struct dpu_log_partial {
 	bool reconfigure;
 };
 
+struct dpu_log_plane_info {
+	dma_addr_t dma_addr;
+	u32 index;
+	u32 width;
+	u32 height;
+	u32 zpos;
+	u32 format;
+};
+
 struct dpu_log {
 	ktime_t time;
 	enum dpu_event_type type;
@@ -364,6 +375,7 @@ struct dpu_log {
 		struct dpu_log_bts_cal bts_cal;
 		struct dpu_log_bts_event bts_event;
 		struct dpu_log_partial partial;
+		struct dpu_log_plane_info plane_info;
 		unsigned int value;
 	} data;
 };
