@@ -172,10 +172,12 @@ EXPORT_SYMBOL(exynos_panel_get_current_mode_te2);
 
 static void exynos_panel_update_te2(struct exynos_panel *ctx)
 {
-	if (!ctx->initialized || !ctx->desc->exynos_panel_func->update_te2)
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+	if (!ctx->initialized || !funcs || !funcs->update_te2)
 		return;
 
-	ctx->desc->exynos_panel_func->update_te2(ctx);
+	funcs->update_te2(ctx);
 }
 
 static int exynos_panel_parse_gpios(struct exynos_panel *ctx)
