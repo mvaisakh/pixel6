@@ -492,10 +492,12 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	if (ret) {
 		abrolhos_power_down(etpm);
 	} else {
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 		if (!abpdev->bcl_dev)
-			abpdev->bcl_dev = gs101_retrieve_bcl_handle();
+			abpdev->bcl_dev = google_retrieve_bcl_handle();
 		if (abpdev->bcl_dev)
-			gs101_init_tpu_ratio(abpdev->bcl_dev);
+			google_init_tpu_ratio(abpdev->bcl_dev);
+#endif
 	}
 
 	return ret;

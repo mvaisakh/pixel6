@@ -52,7 +52,9 @@ struct abrolhos_platform_dev {
 	struct edgetpu_coherent_mem log_mem;
 	struct edgetpu_coherent_mem trace_mem;
 	struct abrolhos_sscd_info sscd_info;
-	struct gs101_bcl_dev *bcl_dev;
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+	struct bcl_device *bcl_dev;
+#endif
 	/* Protects TZ Mailbox client pointer */
 	struct mutex tz_mailbox_lock;
 	/* TZ mailbox client */
