@@ -4019,6 +4019,14 @@ static int sec_ts_probe(struct spi_device *client)
 		return -EIO;
 	}
 #else
+	if (client->controller->rt == false) {
+		client->rt = true;
+		ret = spi_setup(client);
+		if (ret < 0) {
+			input_err(true, &client->dev, "%s: setup SPI rt failed(%d)\n",
+				  __func__, ret);
+		}
+	}
 	input_info(true, &client->dev, "%s: SPI interface(%d Hz)\n",
 		   __func__, client->max_speed_hz);
 #endif
