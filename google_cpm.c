@@ -1438,9 +1438,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 			 * need to re-check the TA selection on disable.
 			 */
 			ta_check = false;
-		} else if (gcpm->dc_state != DC_IDLE) {
-			/* always restart with default */
-			gcpm->dc_state = DC_IDLE;
+		} else if (gcpm->dc_state <= DC_IDLE) {
 			gcpm_pps_online(gcpm);
 		}
 
