@@ -96,6 +96,7 @@ enum gcpm_dc_state_t {
 #define PPS_PROG_RETRY_MS	2000
 #define PPS_ACTIVE_RETRY_MS	1500
 #define PPS_ACTIVE_TIMEOUT_S	25
+#define PPS_READY_TIMEOUT_S	(PPS_ACTIVE_TIMEOUT_S + 10)
 
 #define PPS_ERROR_RETRY_MS	1000
 
@@ -698,6 +699,49 @@ static struct pd_pps_data *gcpm_pps_data(struct gcpm_drv *gcpm)
 }
 
 /*
+ * Wait for a source to become ready for the handoff
+ */
+static int gcpm_pps_wait_for_ready(struct gcpm_drv *gcpm)
+{
+	struct pd_pps_data *pps_data = gcpm_pps_data(gcpm);
+	int pps_ui, vout = -1, iout = -1;
+	bool pwr_ok = false;
+
+	if (!pps_data)
+		return -ENODEV;
+
+	/* determine the limit/levels if needed */
+	if (gcpm->pps_index == PPS_INDEX_WLC) {
+		struct power_supply *chg_psy = gcpm_chg_get_active(gcpm);
+		int vbatt = -1;
+
+		if (chg_psy)
+			vbatt = GPSY_GET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
+		if (vbatt > 0)
+			vout = vbatt * 4;
+	} else {
+		pwr_ok = true;
+	}
+
+	/* always need to ping */
+	pps_ui = pps_update_adapter(pps_data, vout, iout, pps_data->pps_psy);
+	if (pps_ui < 0) {
+		pr_err("PPS_Work: pps update, dc_state=%d (%d)\n",
+			gcpm->dc_state, pps_ui);
+		return pps_ui;
+	}
+
+	/* wait until adapter is at or over request */
+	pwr_ok |= (vout <=0 || pps_data->out_uv >= vout) &&
+		  (iout <=0 || pps_data->op_ua >= iout );
+
+	pr_info("PPS_Work: pwr_ok=%d pps_ui=%d vout=%d out_uv=%d iout=%d op_ua=%d\n",
+		pwr_ok, pps_ui, vout, pps_data->out_uv, iout, pps_data->op_ua);
+
+	return pwr_ok ? pps_ui : -EAGAIN;
+}
+
+/*
  * Pick the first PPS source that transition to PPS_ACTIVE:
  *
  * ->stage ==
@@ -1263,14 +1307,18 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	}
 
 	if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
-		struct power_supply *pps_psy = pps_data->pps_psy;
 		int index;
 
-		/* steady: DC is about to be enabled */
-		pps_ui = pps_update_adapter(pps_data, -1, -1, pps_psy);
+		pps_ui = gcpm_pps_wait_for_ready(gcpm);
 		if (pps_ui < 0) {
-			pr_err("PPS_Work: pps update, elap=%lld dc_state=%d (%d)\n",
-			       elap, gcpm->dc_state, pps_ui);
+			pr_info("PPS_Work: wait for source elap=%lld, dc_state=%d (%d)\n",
+				elap, gcpm->dc_state, pps_ui);
+			if (pps_ui != -EAGAIN)
+				gcpm->dc_index = GCPM_DEFAULT_CHARGER;
+			if (elap > PPS_READY_TIMEOUT_S)
+				gcpm->dc_index = GCPM_DEFAULT_CHARGER;
+
+			/* error retry */
 			pps_ui = PPS_ERROR_RETRY_MS;
 			goto pps_dc_reschedule;
 		}
@@ -1283,8 +1331,9 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		index = gcpm_chg_select(gcpm);
 		if (!gcpm_is_dc(gcpm, index)) {
 			pr_info("PPS_Work: selection changed index=%d\n", index);
+
+			gcpm->dc_index = GCPM_DEFAULT_CHARGER;
 			pps_ui = PPS_ERROR_RETRY_MS;
-			gcpm->dc_index = 0;
 			goto pps_dc_reschedule;
 		}
 
