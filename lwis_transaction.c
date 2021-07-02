@@ -615,8 +615,13 @@ static int queue_transaction_locked(struct lwis_client *client,
 
 	if (info->trigger_event_id == LWIS_EVENT_ID_NONE) {
 		/* Immediate trigger. */
-		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
-		queue_work(client->transaction_wq, &client->transaction_work);
+		if (info->run_at_real_time) {
+			list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue_tasklet);
+			tasklet_schedule(&client->transaction_tasklet);
+		} else {
+			list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
+			queue_work(client->transaction_wq, &client->transaction_work);
+		}
 	} else {
 		/* Trigger by event. */
 		event_list = event_list_find_or_create(client, info->trigger_event_id);
