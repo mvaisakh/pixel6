@@ -110,7 +110,7 @@ struct max77759_chgr_data {
 	unsigned int triggered_irq[IFPMIC_SENSOR_MAX];
 	struct mutex triggered_irq_lock[IFPMIC_SENSOR_MAX];
 	struct delayed_work triggered_irq_work[IFPMIC_SENSOR_MAX];
-	struct gs101_bcl_dev *bcl_dev;
+	struct bcl_device *bcl_dev;
 #endif
 
 	int chg_term_voltage;
@@ -3929,7 +3929,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 		pr_err("Couldn't register dc power supply (%d)\n", ret);
 
 #if IS_ENABLED(CONFIG_GOOGLE_BCL)
-	data->bcl_dev = gs101_retrieve_bcl_handle();
+	data->bcl_dev = google_retrieve_bcl_handle();
 #endif
 
 	dev_info(dev, "registered as %s\n", max77759_psy_desc.name);
