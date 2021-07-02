@@ -494,6 +494,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 
 	vote(charger->dc_icl_votable, P9382A_RTX_VOTER, false, 0);
 	vote(charger->dc_icl_votable, DCIN_AICL_VOTER, false, 0);
+	vote(charger->dc_icl_votable, HPP_DC_ICL_VOTER, false, 0);
 }
 
 #define EPP_MODE_REQ_PWR		15
@@ -1799,11 +1800,22 @@ static bool feature_check_fast_charge(struct p9221_charger_data *charger)
 	return enabled;
 }
 
+static int p9221_set_hpp_dc_icl(struct p9221_charger_data *charger, bool enable)
+{
+	int ret = 0;
+
+	if (charger->dc_icl_votable)
+		ret = vote(charger->dc_icl_votable, HPP_DC_ICL_VOTER, enable,
+			   enable ? P9221_DC_ICL_HPP_UA : 0);
+	return ret;
+}
+
 /* < 0 error, 0 = no changes, > 1 changed */
 static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
 	const bool wlc_dc_enabled = charger->wlc_dc_enabled;
 	const bool enabled = charger->enabled;
+	int ret;
 
 	if (online < 0 || online > PPS_PSY_PROG_ONLINE)
 		return -EINVAL;
@@ -1811,7 +1823,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	/* online = 2 enable LL, return < 0 if NOT on LL */
 	if (online == PPS_PSY_PROG_ONLINE) {
 		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
-		bool enable;
+		bool feat_enable;
 
 		pr_info("%s: online=%d, enabled=%d wlc_dc_enabled=%d prop_mode_en=%d\n",
 			__func__, online, enabled, wlc_dc_enabled,
@@ -1829,8 +1841,8 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		/* Ping? */
 		if (wlc_dc_enabled) {
 			/* TODO: disable fast charge if enabled */
-			enable = feature_check_fast_charge(charger);
-			if (enable == 0)
+			feat_enable = feature_check_fast_charge(charger);
+			if (feat_enable == 0)
 				pr_debug("%s: FAST_CHARGE disabled\n", __func__);
 
 			return 0;
@@ -1841,20 +1853,29 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			return -EOPNOTSUPP;
 
 		/* will return -EAGAIN until the feature is supported */
-		enable = feature_check_fast_charge(charger);
-		if (enable == 0)
+		feat_enable = feature_check_fast_charge(charger);
+		if (feat_enable == 0)
 			return -EAGAIN;
+
+		ret = p9221_set_hpp_dc_icl(charger, true);
+		if (ret < 0)
+			dev_warn(&charger->client->dev, "Cannot enable HPP_ICL (%d)\n", ret);
+		mdelay(10);
 
 		/*
 		 * run ->chip_prop_mode_en() if proprietary mode or cap divider
-		 * mode isn't enabled
-		 * (i.e. with p9412_prop_mode_enable())
+		 * mode isn't enabled (i.e. with p9412_prop_mode_enable())
 		 */
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
 			charger->chip_prop_mode_en(charger, HPP_MODE_PWR_REQUIRE);
 
-		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
+		/* FIXME: shouldn't we disable the cap divider here? */
+		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger))) {
+			ret = p9221_set_hpp_dc_icl(charger, true);
+			if (ret < 0)
+				dev_warn(&charger->client->dev, "Cannot disable HPP_ICL (%d)\n", ret);
 			return -EOPNOTSUPP;
+		}
 
 		p9221_write_fod(charger);
 
@@ -1876,8 +1897,14 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	 * appropriately when we change the state of this line.
 	 */
 	charger->enabled = !!online;
+
+	ret = p9221_set_hpp_dc_icl(charger, false);
+	if (ret < 0)
+		dev_warn(&charger->client->dev, "Cannot disable HPP_ICL (%d)\n", ret);
+
 	dev_warn(&charger->client->dev, "Set enable %d, wlc_dc_enabled:%d->%d\n",
 		charger->enabled, wlc_dc_enabled, charger->wlc_dc_enabled);
+
 	if (charger->pdata->qien_gpio >= 0)
 		vote(charger->wlc_disable_votable, P9221_WLC_VOTER, !charger->enabled, 0);
 
