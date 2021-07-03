@@ -11,7 +11,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include "cs40l26.h"
+#include <linux/mfd/cs40l26.h>
 
 static ssize_t cs40l26_dsp_state_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -200,12 +200,12 @@ static ssize_t cs40l26_trigger_calibration_store(struct device *dev,
 	u32 mailbox_command, calibration_request_payload;
 	int ret;
 
-	dev_dbg(cs40l26->dev, "cs40l26_trigger_calibration_store: %s", buf);
+	dev_dbg(cs40l26->dev, "%s: %s", __func__, buf);
 
 	ret = kstrtou32(buf, 16, &calibration_request_payload);
 	if (ret ||
 		calibration_request_payload < 1 ||
-		calibration_request_payload > 3)
+		calibration_request_payload > 2)
 		return -EINVAL;
 
 	mailbox_command = ((CS40L26_DSP_MBOX_CMD_INDEX_CALIBRATION_CONTROL <<
@@ -224,13 +224,14 @@ static ssize_t cs40l26_trigger_calibration_store(struct device *dev,
 	if (ret) {
 		dev_err(cs40l26->dev, "Failed to request calibration\n");
 		cs40l26->cal_requested = 0;
-		mutex_unlock(&cs40l26->lock);
-		return ret;
 	} else {
 		cs40l26->cal_requested = calibration_request_payload;
-		mutex_unlock(&cs40l26->lock);
-		return count;
+		ret = count;
 	}
+
+	mutex_unlock(&cs40l26->lock);
+
+	return ret;
 }
 
 static ssize_t cs40l26_f0_measured_show(struct device *dev,
@@ -364,7 +365,7 @@ static ssize_t cs40l26_redc_est_store(struct device *dev,
 	int ret;
 	u32 reg, redc_est;
 
-	dev_dbg(cs40l26->dev, "cs40l26_redc_est_store: %s", buf);
+	dev_dbg(cs40l26->dev, "%s: %s", __func__, buf);
 
 	ret = kstrtou32(buf, 16, &redc_est);
 	if (ret)
@@ -432,7 +433,7 @@ static ssize_t cs40l26_f0_stored_store(struct device *dev,
 	int ret;
 	u32 reg, f0_stored;
 
-	dev_dbg(cs40l26->dev, "cs40l26_f0_stored_store: %s", buf);
+	dev_dbg(cs40l26->dev, "%s: %s", __func__, buf);
 
 	ret = kstrtou32(buf, 16, &f0_stored);
 
@@ -503,7 +504,7 @@ static ssize_t cs40l26_q_stored_store(struct device *dev,
 	int ret;
 	u32 reg, q_stored;
 
-	dev_dbg(cs40l26->dev, "cs40l26_q_stored_store: %s", buf);
+	dev_dbg(cs40l26->dev, "%s: %s", __func__, buf);
 
 	ret = kstrtou32(buf, 16, &q_stored);
 
@@ -572,7 +573,7 @@ static ssize_t cs40l26_redc_stored_store(struct device *dev,
 	int ret;
 	u32 reg, redc_stored;
 
-	dev_dbg(cs40l26->dev, "cs40l26_redc_stored_store: %s", buf);
+	dev_dbg(cs40l26->dev, "%s: %s", __func__, buf);
 
 	ret = kstrtou32(buf, 16, &redc_stored);
 	if (ret)
@@ -683,7 +684,6 @@ err_mutex:
 static ssize_t cs40l26_logging_en_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	/*
 	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
 	u32 reg, enable;
 	int ret;
@@ -699,26 +699,24 @@ static ssize_t cs40l26_logging_en_show(struct device *dev,
 	ret = regmap_read(cs40l26->regmap, reg, &enable);
 	if (ret)
 		dev_err(cs40l26->dev, "Failed to read logging enable\n");
+	else
+		ret = snprintf(buf, PAGE_SIZE, "%d\n", enable);
 
 err_mutex:
 	mutex_unlock(&cs40l26->lock);
 	pm_runtime_mark_last_busy(cs40l26->dev);
 	pm_runtime_put_autosuspend(cs40l26->dev);
 
-	if (ret)
-		return ret;
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n", enable);
-	*/
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+	return ret;
 }
 
 static ssize_t cs40l26_logging_en_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	//struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 enable;//, reg;
+	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
+	u32 src_val = CS40L26_LOGGER_SRC_SIZE_MASK;
+	u32 src_mask = src_val | CS40L26_LOGGER_SRC_ID_MASK;
+	u32 enable, reg;
 	int ret;
 
 	ret = kstrtou32(buf, 10, &enable);
@@ -728,235 +726,56 @@ static ssize_t cs40l26_logging_en_store(struct device *dev,
 	if (enable != 0 && enable != 1)
 		return -EINVAL;
 
-	/*
 	pm_runtime_get_sync(cs40l26->dev);
 	mutex_lock(&cs40l26->lock);
 
 	ret = cl_dsp_get_reg(cs40l26->dsp, "ENABLE", CL_DSP_XM_UNPACKED_TYPE,
 			CS40L26_LOGGER_ALGO_ID, &reg);
 	if (ret)
-		goto err_mutex;
+		goto exit_mutex;
 
 	ret = regmap_write(cs40l26->regmap, reg, enable);
-	if (ret)
+	if (ret) {
 		dev_err(cs40l26->dev, "Failed to %s logging\n",
 				enable ? "enable" : "disable");
+		goto exit_mutex;
+	}
 
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-	*/
+	if (!enable)
+		goto exit_mutex;
 
-	return count;
-}
+	ret = cl_dsp_get_reg(cs40l26->dsp, "COUNT", CL_DSP_XM_UNPACKED_TYPE,
+			CS40L26_LOGGER_ALGO_ID, &reg);
+	if (ret)
+		goto exit_mutex;
 
-static ssize_t cs40l26_logging_src_bemf_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	/*
-	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 reg, bemf_enable;
-	int ret;
-
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
+	ret = regmap_write(cs40l26->regmap, reg, 2);
+	if (ret) {
+		dev_err(cs40l26->dev, "Failed to set up logging sources\n");
+		goto exit_mutex;
+	}
 
 	ret = cl_dsp_get_reg(cs40l26->dsp, "SOURCE", CL_DSP_XM_UNPACKED_TYPE,
 			CS40L26_LOGGER_ALGO_ID, &reg);
 	if (ret)
-		goto err_mutex;
+		goto exit_mutex;
 
-	ret = regmap_read(cs40l26->regmap, reg, &bemf_enable);
+	ret = regmap_update_bits(cs40l26->regmap, reg, src_mask, src_val |
+			(1 << CS40L26_LOGGER_SRC_ID_SHIFT));
+	if (ret) {
+		dev_err(cs40l26->dev, "Failed to set BEMF Logger Source ID\n");
+		goto exit_mutex;
+	}
+
+	ret = regmap_update_bits(cs40l26->regmap, reg + 4, src_mask, src_val |
+			(2 << CS40L26_LOGGER_SRC_ID_SHIFT));
 	if (ret)
-		dev_err(cs40l26->dev, "Failed to read BEMF logging status\n");
+		dev_err(cs40l26->dev, "Failed to set VBST Logger Source ID\n");
 
-err_mutex:
+exit_mutex:
 	mutex_unlock(&cs40l26->lock);
 	pm_runtime_mark_last_busy(cs40l26->dev);
 	pm_runtime_put_autosuspend(cs40l26->dev);
-
-	if (ret)
-		return ret;
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n", bemf_enable);
-	*/
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
-}
-
-static ssize_t cs40l26_logging_src_bemf_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	//struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 bemf_enable; //, reg;
-	int ret;
-
-	ret = kstrtou32(buf, 10, &bemf_enable);
-	if (ret)
-		return ret;
-
-	if (bemf_enable != 0 && bemf_enable != 1)
-		return -EINVAL;
-
-	/*
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
-
-	ret = cl_dsp_get_reg(cs40l26->dsp, "SOURCE", CL_DSP_XM_UNPACKED_TYPE,
-			CS40L26_LOGGER_ALGO_ID, &reg);
-	if (ret)
-		goto err_mutex;
-
-	ret = regmap_write(cs40l26->regmap, reg, bemf_enable);
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to set BEMF logging\n");
-
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-	*/
-
-	return count;
-}
-
-static ssize_t cs40l26_logging_strm_bemf_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	/*
-	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 reg, bemf_enable;
-	int ret;
-
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
-
-	ret = cl_dsp_get_reg(cs40l26->dsp, "STREAM", CL_DSP_XM_UNPACKED_TYPE,
-			CS40L26_LOGGER_ALGO_ID, &reg);
-	if (ret)
-		goto err_mutex;
-
-	ret = regmap_read(cs40l26->regmap, reg, &bemf_enable);
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to read BEMF logging status\n");
-
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-
-	if (ret)
-		return ret;
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n", bemf_enable);
-	*/
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
-}
-
-static ssize_t cs40l26_logging_strm_bemf_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	//struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 bemf_enable;//, reg;
-	int ret;
-
-	ret = kstrtou32(buf, 10, &bemf_enable);
-	if (ret)
-		return ret;
-
-	if (bemf_enable != 0 && bemf_enable != 1)
-		return -EINVAL;
-
-	/*
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
-
-	ret = cl_dsp_get_reg(cs40l26->dsp, "STREAM", CL_DSP_XM_UNPACKED_TYPE,
-			CS40L26_LOGGER_ALGO_ID, &reg);
-	if (ret)
-		goto err_mutex;
-
-	ret = regmap_write(cs40l26->regmap, reg, bemf_enable);
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to set BEMF logging\n");
-
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-	*/
-
-	return count;
-}
-
-static ssize_t cs40l26_logging_src_bst_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	/*
-	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 reg, bst_enable;
-	int ret;
-
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
-
-	ret = cl_dsp_get_reg(cs40l26->dsp, "SOURCE", CL_DSP_XM_UNPACKED_TYPE,
-			CS40L26_LOGGER_ALGO_ID, &reg);
-	if (ret)
-		goto err_mutex;
-
-	ret = regmap_read(cs40l26->regmap, reg + 4, &bst_enable);
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to read BST logging status\n");
-
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-
-	if (ret)
-		return ret;
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n", bst_enable);
-	*/
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
-}
-
-static ssize_t cs40l26_logging_src_bst_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	//struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 bst_enable;//, reg;
-	int ret;
-
-	ret = kstrtou32(buf, 10, &bst_enable);
-	if (ret)
-		return ret;
-
-	if (bst_enable != 0 && bst_enable != 1)
-		return -EINVAL;
-
-	/*
-	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
-
-	ret = cl_dsp_get_reg(cs40l26->dsp, "SOURCE", CL_DSP_XM_UNPACKED_TYPE,
-			CS40L26_LOGGER_ALGO_ID, &reg);
-	if (ret)
-		goto err_mutex;
-
-	ret = regmap_write(cs40l26->regmap, reg + 4, bst_enable);
-	if (ret)
-		dev_err(cs40l26->dev, "Failed to set BST logging\n");
-
-err_mutex:
-	mutex_unlock(&cs40l26->lock);
-	pm_runtime_mark_last_busy(cs40l26->dev);
-	pm_runtime_put_autosuspend(cs40l26->dev);
-	*/
 
 	return count;
 }
@@ -964,7 +783,7 @@ err_mutex:
 static ssize_t cs40l26_logging_max_reset_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
-	//struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
+	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
 	u32 rst;
 	int ret;
 
@@ -975,17 +794,13 @@ static ssize_t cs40l26_logging_max_reset_store(struct device *dev,
 	if (rst != 1)
 		return -EINVAL;
 
-	/*
 	pm_runtime_get_sync(cs40l26->dev);
-	mutex_lock(&cs40l26->lock);
 
 	cs40l26_ack_write(cs40l26, CS40L26_DSP_VIRTUAL1_MBOX_1,
 		CS40L26_DSP_MBOX_CMD_LOGGER_MAX_RESET, CS40L26_DSP_MBOX_RESET);
 
-	mutex_unlock(&cs40l26->lock);
 	pm_runtime_mark_last_busy(cs40l26->dev);
 	pm_runtime_put_autosuspend(cs40l26->dev);
-	*/
 
 	return count;
 }
@@ -993,7 +808,7 @@ static ssize_t cs40l26_logging_max_reset_store(struct device *dev,
 static ssize_t cs40l26_max_bemf_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	/*
+
 	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
 	u32 reg, max_bemf;
 	int ret;
@@ -1010,7 +825,6 @@ static ssize_t cs40l26_max_bemf_show(struct device *dev,
 	if (ret)
 		dev_err(cs40l26->dev, "Failed to get max. back EMF\n");
 
-	// TODO: Math to convert from Q1.23
 err_mutex:
 	mutex_unlock(&cs40l26->lock);
 	pm_runtime_mark_last_busy(cs40l26->dev);
@@ -1018,72 +832,47 @@ err_mutex:
 
 	if (ret)
 		return ret;
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n", max_bemf);
-	*/
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+	return snprintf(buf, PAGE_SIZE, "0x%06X\n", max_bemf);
 }
 
-static ssize_t cs40l26_logging_strm_show(struct device *dev,
+static ssize_t cs40l26_max_vbst_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+
 	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
+	u32 reg, max_vbst;
 	int ret;
 
+	pm_runtime_get_sync(cs40l26->dev);
 	mutex_lock(&cs40l26->lock);
 
-	ret = snprintf(buf, PAGE_SIZE, "%d\n", cs40l26->log_stream ? 1 : 0);
+	ret = cl_dsp_get_reg(cs40l26->dsp, "DATA", CL_DSP_XM_UNPACKED_TYPE,
+			CS40L26_LOGGER_ALGO_ID, &reg);
+	if (ret)
+		goto err_mutex;
 
+	ret = regmap_read(cs40l26->regmap, reg + 16, &max_vbst);
+	if (ret)
+		dev_err(cs40l26->dev, "Failed to get max. back EMF\n");
+
+err_mutex:
 	mutex_unlock(&cs40l26->lock);
+	pm_runtime_mark_last_busy(cs40l26->dev);
+	pm_runtime_put_autosuspend(cs40l26->dev);
 
-	return ret;
-}
-
-static ssize_t cs40l26_logging_strm_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
-	u32 enable;
-	int ret;
-
-	ret = kstrtou32(buf, 10, &enable);
 	if (ret)
 		return ret;
 
-	mutex_lock(&cs40l26->lock);
-
-	if (enable == 0) {
-		cs40l26->log_stream = false;
-	} else if (enable == 1) {
-		cs40l26->log_stream = true;
-	} else {
-		dev_err(cs40l26->dev, "Invalid logging stream value\n");
-		ret = EINVAL;
-	}
-
-	mutex_unlock(&cs40l26->lock);
-
-	if (ret)
-		return ret;
-	else
-		return count;
+	return snprintf(buf, PAGE_SIZE, "0x%06X\n", max_vbst);
 }
 
-static DEVICE_ATTR(logging_strm,
-		0660, cs40l26_logging_strm_show, cs40l26_logging_strm_store);
+static DEVICE_ATTR(max_vbst, 0440, cs40l26_max_vbst_show, NULL);
 static DEVICE_ATTR(max_bemf, 0440, cs40l26_max_bemf_show, NULL);
 static DEVICE_ATTR(logging_max_reset,
 		0220, NULL, cs40l26_logging_max_reset_store);
-static DEVICE_ATTR(logging_strm_bemf, 0660, cs40l26_logging_strm_bemf_show,
-		cs40l26_logging_strm_bemf_store);
-static DEVICE_ATTR(logging_src_bst, 0660,
-		cs40l26_logging_src_bst_show, cs40l26_logging_src_bst_store);
-static DEVICE_ATTR(logging_src_bemf, 0660,
-		cs40l26_logging_src_bemf_show, cs40l26_logging_src_bemf_store);
 static DEVICE_ATTR(logging_en,
 		0660, cs40l26_logging_en_show, cs40l26_logging_en_store);
-
 static DEVICE_ATTR(trigger_calibration,
 		0220, NULL, cs40l26_trigger_calibration_store);
 static DEVICE_ATTR(f0_measured,
@@ -1106,12 +895,9 @@ static DEVICE_ATTR(redc_cal_time_ms,
 		0440, cs40l26_redc_cal_time_ms_show, NULL);
 
 static struct attribute *cs40l26_dev_attrs_cal[] = {
-	&dev_attr_logging_strm.attr,
+	&dev_attr_max_vbst.attr,
 	&dev_attr_max_bemf.attr,
 	&dev_attr_logging_max_reset.attr,
-	&dev_attr_logging_src_bst.attr,
-	&dev_attr_logging_src_bemf.attr,
-	&dev_attr_logging_strm_bemf.attr,
 	&dev_attr_logging_en.attr,
 	&dev_attr_trigger_calibration.attr,
 	&dev_attr_f0_measured.attr,

@@ -11,7 +11,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include "cs40l26.h"
+#include <linux/mfd/cs40l26.h>
 
 static int cs40l26_dsp_read(struct cs40l26_private *cs40l26, u32 reg, u32 *val)
 {
@@ -537,7 +537,7 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 	while (!cs40l26_mbox_buffer_read(cs40l26, &val)) {
 		if ((val & CS40L26_DSP_MBOX_CMD_INDEX_MASK)
 				== CS40L26_DSP_MBOX_PANIC) {
-			dev_err(dev, "DSP PANIC! Error condition: 0x%06X\n",
+			dev_alert(dev, "DSP PANIC! Error condition: 0x%06X\n",
 			(u32) (val & CS40L26_DSP_MBOX_CMD_PAYLOAD_MASK));
 			return -ENOTRECOVERABLE;
 		}
@@ -565,8 +565,7 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 				/* for pm_runtime_get see trigger_calibration */
 				pm_runtime_mark_last_busy(cs40l26->dev);
 				pm_runtime_put_autosuspend(cs40l26->dev);
-			}
-			else {
+			} else {
 				dev_err(dev, "Unexpected mbox msg: %d", val);
 				return -EINVAL;
 			}
@@ -584,8 +583,7 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 				/* for pm_runtime_get see trigger_calibration */
 				pm_runtime_mark_last_busy(cs40l26->dev);
 				pm_runtime_put_autosuspend(cs40l26->dev);
-			}
-			else {
+			} else {
 				dev_err(dev, "Unexpected mbox msg: %d", val);
 				return -EINVAL;
 			}
@@ -913,18 +911,18 @@ static int cs40l26_handle_irq1(struct cs40l26_private *cs40l26,
 			"BST voltage returned below warning threshold\n");
 		break;
 	case CS40L26_IRQ1_BST_OVP_ERR:
-		dev_err(dev, "BST overvolt. error, CS40L26 shutting down\n");
+		dev_alert(dev, "BST overvolt. error, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_OVP_ERR_RLS;
 		bst_err = true;
 		break;
 	case CS40L26_IRQ1_BST_DCM_UVP_ERR:
-		dev_err(dev,
+		dev_alert(dev,
 			"BST undervolt. error, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_UVP_ERR_RLS;
 		bst_err = true;
 		break;
 	case CS40L26_IRQ1_BST_SHORT_ERR:
-		dev_err(dev, "LBST short detected, CS40L26 shutting down\n");
+		dev_alert(dev, "LBST short detected, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_SHORT_ERR_RLS;
 		bst_err = true;
 		break;
@@ -939,12 +937,12 @@ static int cs40l26_handle_irq1(struct cs40l26_private *cs40l26,
 		dev_warn(dev, "Die temperature returned below threshold\n");
 		break;
 	case CS40L26_IRQ1_TEMP_ERR:
-		dev_err(dev,
+		dev_alert(dev,
 			"Die overtemperature error, CS40L26 shutting down\n");
 		err_rls = CS40L26_TEMP_ERR_RLS;
 		break;
 	case CS40L26_IRQ1_AMP_ERR:
-		dev_err(dev, "AMP short detected, CS40L26 shutting down\n");
+		dev_alert(dev, "AMP short detected, CS40L26 shutting down\n");
 		err_rls = CS40L26_AMP_SHORT_ERR_RLS;
 		break;
 	case CS40L26_IRQ1_DC_WATCHDOG_RISE:
@@ -1037,7 +1035,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		dev_warn(dev, "Amplifier exited noise-gated state\n");
 		break;
 	case CS40L26_IRQ2_VPBR_FLAG:
-		dev_err(dev,
+		dev_alert(dev,
 			"VP voltage has dropped below brownout threshold\n");
 		ret = regmap_read(cs40l26->regmap, CS40L26_VPBR_STATUS, &val);
 		if (ret) {
@@ -1046,7 +1044,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		}
 
 		vpbr_status = (val & CS40L26_VXBR_STATUS_MASK);
-		dev_err(dev, "VPBR Attenuation applied = %u x 10^-4 dB\n",
+		dev_alert(dev, "VPBR Attenuation applied = %u x 10^-4 dB\n",
 				vpbr_status * CS40L26_VXBR_STATUS_DIV_STEP);
 		break;
 	case CS40L26_IRQ2_VPBR_ATT_CLR:
@@ -1054,7 +1052,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 			"Cleared attenuation applied by VP brownout event\n");
 		break;
 	case CS40L26_IRQ2_VBBR_FLAG:
-		dev_err(dev,
+		dev_alert(dev,
 			"VBST voltage has dropped below brownout threshold\n");
 		ret = regmap_read(cs40l26->regmap, CS40L26_VBBR_STATUS, &val);
 		if (ret) {
@@ -1063,7 +1061,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		}
 
 		vbbr_status = (val & CS40L26_VXBR_STATUS_MASK);
-		dev_err(dev, "VBBR Attenuation applied = %u x 10^-4 dB\n",
+		dev_alert(dev, "VBBR Attenuation applied = %u x 10^-4 dB\n",
 				vbbr_status * CS40L26_VXBR_STATUS_DIV_STEP);
 		break;
 	case CS40L26_IRQ2_VBBR_ATT_CLR:
@@ -1694,16 +1692,13 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 	struct device *dev = cs40l26->dev;
 	int ret = 0;
 	unsigned int reg, freq;
-	u32 index = 0, vibe_id, buzz_id;
+	u32 index = 0, buzz_id;
 	u16 duration;
 
-	if (cs40l26->fw_mode == CS40L26_FW_MODE_RAM) {
+	if (cs40l26->fw_mode == CS40L26_FW_MODE_RAM)
 		buzz_id = CS40L26_BUZZGEN_ALGO_ID;
-		vibe_id = CS40L26_VIBEGEN_ALGO_ID;
-	} else {
+	else
 		buzz_id = CS40L26_BUZZGEN_ROM_ALGO_ID;
-		vibe_id = CS40L26_VIBEGEN_ROM_ALGO_ID;
-	}
 
 	if (cs40l26->effect->u.periodic.waveform == FF_CUSTOM)
 		index = cs40l26->trigger_indices[cs40l26->effect->id];
@@ -1717,22 +1712,10 @@ static void cs40l26_vibe_start_worker(struct work_struct *work)
 	pm_runtime_get_sync(dev);
 	mutex_lock(&cs40l26->lock);
 
-	if (duration == 0) { /* Handle special case with TIMEOUT_MS */
-		ret = cl_dsp_get_reg(cs40l26->dsp, "TIMEOUT_MS",
-				CL_DSP_XM_UNPACKED_TYPE, vibe_id, &reg);
-		if (ret)
-			goto err_mutex;
-
-		ret = regmap_write(cs40l26->regmap, reg, 0);
-		if (ret) {
-			dev_err(dev, "Failed to set haptic duration\n");
-			goto err_mutex;
-		}
-	} else {
+	if (duration > 0) /* Effect duration is known */
 		hrtimer_start(&cs40l26->vibe_timer,
 			ktime_set(CS40L26_MS_TO_SECS(duration),
 			CS40L26_MS_TO_NS(duration % 1000)), HRTIMER_MODE_REL);
-	}
 
 	cs40l26_vibe_state_set(cs40l26, CS40L26_VIBE_STATE_HAPTIC);
 
@@ -2079,7 +2062,7 @@ static int cs40l26_owt_upload(struct cs40l26_private *cs40l26, s16 *data,
 
 	pm_runtime_get_sync(dev);
 
-	ret = cl_dsp_get_reg(dsp, "OWT_BASE_XM", CL_DSP_XM_UNPACKED_TYPE,
+	ret = cl_dsp_get_reg(dsp, "OWT_NEXT_XM", CL_DSP_XM_UNPACKED_TYPE,
 			CS40L26_VIBEGEN_ALGO_ID, &reg);
 	if (ret)
 		goto err_pm;
@@ -2112,7 +2095,7 @@ static int cs40l26_owt_upload(struct cs40l26_private *cs40l26, s16 *data,
 	if (ret)
 		goto err_pm;
 
-	write_reg = wt_base + (wt_offset * CL_DSP_BYTES_PER_WORD);
+	write_reg = wt_base + (wt_offset * 4);
 
 	ret = cl_dsp_raw_write(cs40l26->dsp, write_reg, full_data,
 			full_data_size, CL_DSP_MAX_WLEN);
@@ -2120,6 +2103,11 @@ static int cs40l26_owt_upload(struct cs40l26_private *cs40l26, s16 *data,
 		dev_err(dev, "Failed to sync OWT\n");
 		goto err_pm;
 	}
+
+	ret = cs40l26_ack_write(cs40l26, CS40L26_DSP_VIRTUAL1_MBOX_1,
+			CS40L26_DSP_MBOX_CMD_OWT_PUSH, CS40L26_DSP_MBOX_RESET);
+	if (ret)
+		goto err_pm;
 
 	dev_dbg(dev, "Successfully wrote waveform (%u bytes) to 0x%08X\n",
 			full_data_size, write_reg);
@@ -2175,6 +2163,13 @@ static int cs40l26_upload_effect(struct input_dev *dev,
 		}
 
 		if (effect->u.periodic.custom_len > CS40L26_CUSTOM_DATA_SIZE) {
+			ret = cs40l26_ack_write(cs40l26,
+					CS40L26_DSP_VIRTUAL1_MBOX_1,
+					CS40L26_DSP_MBOX_CMD_OWT_RESET,
+					CS40L26_DSP_MBOX_RESET);
+			if (ret)
+				goto out_free;
+
 			ret = cs40l26_owt_upload(cs40l26, raw_custom_data,
 					effect->u.periodic.custom_len);
 			if (ret)
@@ -2300,7 +2295,7 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 
 	ret = sysfs_create_group(&cs40l26->input->dev.kobj,
 			&cs40l26_dev_attr_cal_group);
-	if (ret){
+	if (ret) {
 		dev_err(dev, "Failed to create cal sysfs group: %d\n", ret);
 		return ret;
 	}
@@ -2825,19 +2820,15 @@ static int cs40l26_bst_dcm_config(struct cs40l26_private *cs40l26)
 
 	if (cs40l26->pdata.bst_dcm_en != CS40L26_BST_DCM_EN_DEFAULT) {
 		ret = regmap_read(cs40l26->regmap, CS40L26_BST_DCM_CTL, &val);
-		if (ret) {
-			dev_err(cs40l26->dev, "Failed to read BST_DCM_CTL\n");
+		if (ret)
 			return ret;
-		}
 
 		val &= ~CS40L26_BST_DCM_EN_MASK;
 		val |= cs40l26->pdata.bst_dcm_en << CS40L26_BST_DCM_EN_SHIFT;
 
 		ret = regmap_write(cs40l26->regmap, CS40L26_BST_DCM_CTL, val);
-		if (ret) {
-			dev_err(cs40l26->dev, "Failed to write BST_DCM_CTL\n");
+		if (ret)
 			return ret;
-		}
 
 		switch (cs40l26->revid) {
 		case CS40L26_REVID_A0:
@@ -2948,6 +2939,17 @@ static int cs40l26_dsp_config(struct cs40l26_private *cs40l26)
 		goto err_out;
 
 	pm_runtime_get_sync(dev);
+
+	ret = cl_dsp_get_reg(cs40l26->dsp, "TIMEOUT_MS",
+			CL_DSP_XM_UNPACKED_TYPE, CS40L26_VIBEGEN_ALGO_ID, &reg);
+	if (ret)
+		goto pm_err;
+
+	ret = regmap_write(regmap, reg, 0);
+	if (ret) {
+		dev_err(dev, "Failed to set TIMEOUT_MS\n");
+		goto pm_err;
+	}
 
 	ret = cs40l26_asp_config(cs40l26);
 	if (ret)
