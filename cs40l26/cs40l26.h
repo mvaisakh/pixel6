@@ -41,7 +41,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 
-#include <linux/firmware/cirrus/cl_dsp.h>
+#include "cl_dsp.h"
 
 #define CS40L26_FIRSTREG				0x0
 #define CS40L26_LASTREG					0x3C7DFE8
@@ -815,7 +815,7 @@
 #define CS40L26_CONTROL_PORT_READY_DELAY	3000
 
 /* haptic triggering */
-#define CS40L26_TIMEOUT_MS_MAX			0x02AAAA /* ~ 174s */
+#define CS40L26_TIMEOUT_MS_MAX			0xFFFF /* ~ 65s */
 
 #define CS40L26_TRIGGER_EFFECT			1
 

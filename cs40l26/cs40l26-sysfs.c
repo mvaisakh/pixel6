@@ -11,7 +11,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include <linux/mfd/cs40l26.h>
+#include "cs40l26.h"
 
 static ssize_t cs40l26_dsp_state_show(struct device *dev,
 		struct device_attribute *attr, char *buf)

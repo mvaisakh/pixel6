@@ -11,7 +11,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include <linux/mfd/cs40l26.h>
+#include "cs40l26.h"
 
 const struct of_device_id cs40l26_of_match[CS40L26_NUM_DEVS + 1] = {
 	{ .compatible = "cirrus,cs40l26a" },

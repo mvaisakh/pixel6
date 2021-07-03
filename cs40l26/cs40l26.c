@@ -11,7 +11,7 @@
 // it under the terms of the GNU General Public License version 2 as
 // published by the Free Software Foundation.
 
-#include <linux/mfd/cs40l26.h>
+#include "cs40l26.h"
 
 static int cs40l26_dsp_read(struct cs40l26_private *cs40l26, u32 reg, u32 *val)
 {
@@ -537,7 +537,7 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 	while (!cs40l26_mbox_buffer_read(cs40l26, &val)) {
 		if ((val & CS40L26_DSP_MBOX_CMD_INDEX_MASK)
 				== CS40L26_DSP_MBOX_PANIC) {
-			dev_alert(dev, "DSP PANIC! Error condition: 0x%06X\n",
+			dev_err(dev, "DSP PANIC! Error condition: 0x%06X\n",
 			(u32) (val & CS40L26_DSP_MBOX_CMD_PAYLOAD_MASK));
 			return -ENOTRECOVERABLE;
 		}
@@ -911,18 +911,18 @@ static int cs40l26_handle_irq1(struct cs40l26_private *cs40l26,
 			"BST voltage returned below warning threshold\n");
 		break;
 	case CS40L26_IRQ1_BST_OVP_ERR:
-		dev_alert(dev, "BST overvolt. error, CS40L26 shutting down\n");
+		dev_err(dev, "BST overvolt. error, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_OVP_ERR_RLS;
 		bst_err = true;
 		break;
 	case CS40L26_IRQ1_BST_DCM_UVP_ERR:
-		dev_alert(dev,
+		dev_err(dev,
 			"BST undervolt. error, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_UVP_ERR_RLS;
 		bst_err = true;
 		break;
 	case CS40L26_IRQ1_BST_SHORT_ERR:
-		dev_alert(dev, "LBST short detected, CS40L26 shutting down\n");
+		dev_err(dev, "LBST short detected, CS40L26 shutting down\n");
 		err_rls = CS40L26_BST_SHORT_ERR_RLS;
 		bst_err = true;
 		break;
@@ -937,12 +937,12 @@ static int cs40l26_handle_irq1(struct cs40l26_private *cs40l26,
 		dev_warn(dev, "Die temperature returned below threshold\n");
 		break;
 	case CS40L26_IRQ1_TEMP_ERR:
-		dev_alert(dev,
+		dev_err(dev,
 			"Die overtemperature error, CS40L26 shutting down\n");
 		err_rls = CS40L26_TEMP_ERR_RLS;
 		break;
 	case CS40L26_IRQ1_AMP_ERR:
-		dev_alert(dev, "AMP short detected, CS40L26 shutting down\n");
+		dev_err(dev, "AMP short detected, CS40L26 shutting down\n");
 		err_rls = CS40L26_AMP_SHORT_ERR_RLS;
 		break;
 	case CS40L26_IRQ1_DC_WATCHDOG_RISE:
@@ -1035,7 +1035,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		dev_warn(dev, "Amplifier exited noise-gated state\n");
 		break;
 	case CS40L26_IRQ2_VPBR_FLAG:
-		dev_alert(dev,
+		dev_err(dev,
 			"VP voltage has dropped below brownout threshold\n");
 		ret = regmap_read(cs40l26->regmap, CS40L26_VPBR_STATUS, &val);
 		if (ret) {
@@ -1044,7 +1044,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		}
 
 		vpbr_status = (val & CS40L26_VXBR_STATUS_MASK);
-		dev_alert(dev, "VPBR Attenuation applied = %u x 10^-4 dB\n",
+		dev_err(dev, "VPBR Attenuation applied = %u x 10^-4 dB\n",
 				vpbr_status * CS40L26_VXBR_STATUS_DIV_STEP);
 		break;
 	case CS40L26_IRQ2_VPBR_ATT_CLR:
@@ -1052,7 +1052,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 			"Cleared attenuation applied by VP brownout event\n");
 		break;
 	case CS40L26_IRQ2_VBBR_FLAG:
-		dev_alert(dev,
+		dev_err(dev,
 			"VBST voltage has dropped below brownout threshold\n");
 		ret = regmap_read(cs40l26->regmap, CS40L26_VBBR_STATUS, &val);
 		if (ret) {
@@ -1061,7 +1061,7 @@ static int cs40l26_handle_irq2(struct cs40l26_private *cs40l26,
 		}
 
 		vbbr_status = (val & CS40L26_VXBR_STATUS_MASK);
-		dev_alert(dev, "VBBR Attenuation applied = %u x 10^-4 dB\n",
+		dev_err(dev, "VBBR Attenuation applied = %u x 10^-4 dB\n",
 				vbbr_status * CS40L26_VXBR_STATUS_DIV_STEP);
 		break;
 	case CS40L26_IRQ2_VBBR_ATT_CLR:
@@ -2820,15 +2820,19 @@ static int cs40l26_bst_dcm_config(struct cs40l26_private *cs40l26)
 
 	if (cs40l26->pdata.bst_dcm_en != CS40L26_BST_DCM_EN_DEFAULT) {
 		ret = regmap_read(cs40l26->regmap, CS40L26_BST_DCM_CTL, &val);
-		if (ret)
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to read BST_DCM_CTL\n");
 			return ret;
+		}
 
 		val &= ~CS40L26_BST_DCM_EN_MASK;
 		val |= cs40l26->pdata.bst_dcm_en << CS40L26_BST_DCM_EN_SHIFT;
 
 		ret = regmap_write(cs40l26->regmap, CS40L26_BST_DCM_CTL, val);
-		if (ret)
+		if (ret) {
+			dev_err(cs40l26->dev, "Failed to write BST_DCM_CTL\n");
 			return ret;
+		}
 
 		switch (cs40l26->revid) {
 		case CS40L26_REVID_A0:
