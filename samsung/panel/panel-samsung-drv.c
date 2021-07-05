@@ -2349,11 +2349,9 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 	struct exynos_panel *ctx = bridge_to_exynos_panel(bridge);
 	struct drm_atomic_state *state = old_bridge_state->base.state;
 	const struct drm_crtc_state *old_crtc_state = exynos_panel_get_old_crtc_state(ctx, state);
-	const struct exynos_panel_mode *pmode = ctx->current_mode;
 	bool need_update_backlight = false;
 
 	mutex_lock(&ctx->mode_lock);
-	pmode = ctx->current_mode;
 	/* avoid turning on panel again if already enabled (ex. while booting or self refresh) */
 	if (!ctx->enabled || exynos_panel_init(ctx)) {
 		drm_panel_enable(&ctx->panel);
@@ -2368,8 +2366,10 @@ static void exynos_panel_bridge_enable(struct drm_bridge *bridge,
 		if (ctx->panel_idle_active && funcs && funcs->set_self_refresh)
 			funcs->set_self_refresh(ctx, false);
 	} else {
-		exynos_panel_set_backlight_state(ctx, pmode->exynos_mode.is_lp_mode ?
-						PANEL_STATE_LP : PANEL_STATE_ON);
+		const bool is_lp_mode = ctx->current_mode &&
+					ctx->current_mode->exynos_mode.is_lp_mode;
+
+		exynos_panel_set_backlight_state(ctx, is_lp_mode ? PANEL_STATE_LP : PANEL_STATE_ON);
 
 		exynos_panel_update_te2(ctx);
 	}
