@@ -320,7 +320,10 @@ static void exynos_panel_get_panel_rev(struct exynos_panel *ctx)
 		ctx->panel_rev = PANEL_REV_EVT1_1;
 		break;
 	case 0xC:
-		ctx->panel_rev = PANEL_REV_DVT;
+		ctx->panel_rev = PANEL_REV_DVT1;
+		break;
+	case 0xD:
+		ctx->panel_rev = PANEL_REV_DVT1_1;
 		break;
 	case 0x10:
 		ctx->panel_rev = PANEL_REV_PVT;
