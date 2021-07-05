@@ -6148,7 +6148,7 @@ static int fts_probe(struct spi_device *client)
 #ifdef I2C_INTERFACE
 	dev_info(&client->dev, "I2C interface...\n");
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		dev_err(info->dev, "Unsupported I2C functionality\n");
+		dev_err(&client->dev, "Unsupported I2C functionality\n");
 		error = -EIO;
 		goto ProbeErrorExit_0;
 	}
@@ -6156,20 +6156,18 @@ static int fts_probe(struct spi_device *client)
 	dev_info(&client->dev, "i2c address: %x\n", client->addr);
 	bus_type = BUS_I2C;
 #else
-	dev_info(&client->dev, "SPI interface...\n");
-
-	client->bits_per_word = 8;
-	if (spi_setup(client) < 0) {
-		dev_err(&client->dev, "Unsupported SPI functionality\n");
-		error = -EIO;
-		goto ProbeErrorExit_0;
+	if (client->controller->rt == false) {
+		client->rt = true;
+		retval = spi_setup(client);
+		if (retval < 0) {
+			dev_err(&client->dev, "%s: setup SPI rt failed(%d)\n",
+				__func__, retval);
+		}
 	}
+	dev_info(&client->dev, "SPI interface...\n");
 	bus_type = BUS_SPI;
 #endif
-
-
 	dev_info(&client->dev, "SET Device driver INFO:\n");
-
 
 	info = kzalloc(sizeof(struct fts_ts_info), GFP_KERNEL);
 	if (!info) {
