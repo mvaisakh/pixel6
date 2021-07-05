@@ -627,7 +627,6 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 			index = GCPM_DEFAULT_CHARGER;
 
 		/* demand decides DC unless under vmin */
-
 		pr_debug("%s: index=%d->%d vbatt=%d: low=%d min=%d high=%d max=%d\n",
 			 __func__, gcpm->dc_index, index, vbatt, vbatt_low, vbatt_min,
 			 vbatt_high, vbatt_max);
@@ -884,24 +883,26 @@ static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
 		ret = GPSY_GET_INT_PROP(dc_psy, POWER_SUPPLY_PROP_CURRENT_NOW,
 					&ibatt);
 		if (ret < 0)
-			pr_err("%s: cannot current (%d)", __func__, ret);
+			pr_err("%s: cannot read current (%d)", __func__, ret);
 		else if (ibatt > gcpm->taper_step_current)
 			return false;
 	}
 
-	/* delta < 0 during the grace period */
+	/* delta < 0 during the grace period, which will increase cc_max */
 	fv_uv -= gcpm->taper_step_fv_margin;
-	cc_max -= delta * gcpm->taper_step_cc_step;
-	if (cc_max < gcpm->cc_max / 2)
-		cc_max = gcpm->cc_max / 2;
+	if (gcpm->taper_step_cc_step) {
+		cc_max -= delta * gcpm->taper_step_cc_step;
+		if (cc_max < gcpm->cc_max / 2)
+			cc_max = gcpm->cc_max / 2;
+	}
 
-	/* increase of cc_max during the grace period will be ignored */
+	/* increase of cc_max due to delta < 0 are ignored */
 	if (cc_max < gcpm->cc_max) {
 		int ret;
 
 		/* failure to preset stop taper and revert to main */
 		ret = gcpm_chg_preset(dc_psy, fv_uv, cc_max);
-		pr_debug("CHG_CHK: taper_step=%d fv_uv=%d->%d, cc_max=%d->%d\n",
+		pr_info("CHG_CHK: taper_step=%d fv_uv=%d->%d, cc_max=%d->%d\n",
 			 taper_step, gcpm->fv_uv, fv_uv, gcpm->cc_max, cc_max);
 		if (ret < 0) {
 			pr_err("CHG_CHK: taper_step=%d failed, revert (%d)\n",
@@ -984,8 +985,9 @@ static void gcpm_chg_select_work(struct work_struct *work)
 			pr_info("CHG_CHK: dc_ena=%d dc_done=%d stop PPS_Work for dc_index=%d\n",
 				dc_ena, dc_done, gcpm->dc_index);
 
+			/* dc_done prevents DC to restart for the session */
 			gcpm->dc_index = dc_done ? -1 : GCPM_DEFAULT_CHARGER;
-			gcpm->taper_step = 0;
+			gcpm_taper_ctl(gcpm, 0);
 			schedule_pps_interval = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
@@ -1048,6 +1050,8 @@ static int gcpm_online_default(struct gcpm_drv *gcpm)
  * Can come here during DC_ENABLE_PASSTHROUGH, with PPS enabled and
  * after a failure to start DC or on a failure to disable the default
  * charger.
+ *
+ * NOTE: the caller needs to reset gcpm->dc_index
  */
 static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 {
@@ -1059,6 +1063,9 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 	ret = gcpm_dc_fcc_update(gcpm, -1);
 	if (ret < 0)
 		pr_err("PPS_Work: cannot update DC_FCC limit (%d)\n", ret);
+
+	/* Clear taper count if not complete */
+	gcpm_taper_ctl(gcpm, 0);
 
 	/*
 	 * in dc_state=DC_ENABLE_PASSTHROUGH it might  be able to take
@@ -1086,14 +1093,14 @@ static int gcpm_pps_wlc_dc_restart_default(struct gcpm_drv *gcpm)
 	}
 
 	/*
-	 * In any state over DC_IDLE pps might be enabled. The adapter will
-	 * eventually revert to fixed once ping stops and state is
-	 * re-initialized on restart yet, it's better to keep things neat
-	 * and tidy.
+	 * Calling pps_offline is not really needed becasuse the adapter will
+	 * revert to fixed once ping stops (pps state is re-initialized on
+	 * DC start). I clear it to keep things neat and tidy.
+	 *
 	 * NOTE: Make sure that pps_prog_offline only changes from PROG to
 	 * FIXED and not from OFFLINE to FIXED. Setting WLC from OFFLINE
 	 * to FIXED (online) at the wrong time might interfere with
-	 * the usecases that need to disable WLC explicitly.
+	 * the usecases that need to disable charging explicitly.
 	 */
 	pps_done = gcpm_pps_offline(gcpm);
 	if (pps_done < 0)
@@ -1187,7 +1194,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 			goto pps_dc_reschedule;
 		}
 
-		/* re-enable DC if just switching to the default charger */
+		/* Re-enable DC if just switching to the default charger */
 		if (gcpm->dc_index == GCPM_DEFAULT_CHARGER)
 			gcpm->dc_state = DC_IDLE;
 
@@ -1466,17 +1473,35 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 			__func__, pval->intval, gcpm->dc_index, gcpm->dc_state);
 		ta_check = true;
 		if (pval->intval) {
-			/* default is disabled when DC is running */
+			/*
+			 * more or less the same as gcpm_pps_wlc_dc_work() when
+			 * dc_index <= 0. But the default charger must not be
+			 * restarted in this case though.
+			 * TODO: factor the code with gcpm_pps_wlc_dc_work().
+			 */
+
+			/* No op if the current source is not DC, ->dc_state
+			 * will be DC_DISABLED if this actually disabled.
+			 */
 			ret = gcpm_dc_stop(gcpm,  gcpm->chg_psy_active);
 			if (ret == -EAGAIN) {
 				mutex_unlock(&gcpm->chg_psy_lock);
 				return -EAGAIN;
 			}
+
 			ret = gcpm_pps_offline(gcpm);
 			if (ret < 0)
 				pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
 					__func__, gcpm->dc_state, ret);
-			/* no-op if dc was NOT running */
+
+			/* disable DC, and clear taper */
+			gcpm->dc_index = GCPM_DEFAULT_CHARGER;
+			gcpm_taper_ctl(gcpm, 0);
+
+			/*
+			 * no-op if dc was NOT running, set online the charger
+			 * but do not start it otherwise.
+			 */
 			ret = gcpm_chg_start(gcpm, GCPM_DEFAULT_CHARGER);
 			if (ret < 0)
 				pr_err("%s: cannot start default (%d)\n",
