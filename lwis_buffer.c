@@ -117,17 +117,20 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buf
 
 	buffer->dma_buf = dma_buf_get(buffer->info.fd);
 	if (IS_ERR_OR_NULL(buffer->dma_buf)) {
-		pr_err("Could not get dma buffer for fd: %d", buffer->info.fd);
-		return -EINVAL;
+		dev_err(lwis_client->lwis_dev->dev,
+			"Could not get dma buffer for fd: %d (errno: %ld)", buffer->info.fd,
+			PTR_ERR(buffer->dma_buf));
+		return PTR_ERR(buffer->dma_buf);
 	}
 
 	buffer->dma_buf_attachment =
 		dma_buf_attach(buffer->dma_buf, &lwis_client->lwis_dev->plat_dev->dev);
-
 	if (IS_ERR_OR_NULL(buffer->dma_buf_attachment)) {
-		pr_err("Could not attach dma buffer for fd: %d", buffer->info.fd);
+		dev_err(lwis_client->lwis_dev->dev,
+			"Could not attach dma buffer for fd: %d (errno: %ld)", buffer->info.fd,
+			PTR_ERR(buffer->dma_buf_attachment));
 		dma_buf_put(buffer->dma_buf);
-		return -EINVAL;
+		return PTR_ERR(buffer->dma_buf_attachment);
 	}
 
 	if (buffer->info.dma_read && buffer->info.dma_write) {
@@ -143,16 +146,18 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buf
 	buffer->sg_table =
 		dma_buf_map_attachment(buffer->dma_buf_attachment, buffer->dma_direction);
 	if (IS_ERR_OR_NULL(buffer->sg_table)) {
-		pr_err("Could not map dma attachment for fd: %d", buffer->info.fd);
+		dev_err(lwis_client->lwis_dev->dev,
+			"Could not map dma attachment for fd: %d (errno: %ld)", buffer->info.fd,
+			PTR_ERR(buffer->sg_table));
 		dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
 		dma_buf_put(buffer->dma_buf);
-		return -EINVAL;
+		return PTR_ERR(buffer->sg_table);
 	}
 
-	buffer->info.dma_vaddr =
-		lwis_platform_dma_buffer_map(lwis_client->lwis_dev, buffer, 0, 0, 0);
+	buffer->info.dma_vaddr = sg_dma_address(buffer->sg_table->sgl);
 	if (IS_ERR_OR_NULL((void *)buffer->info.dma_vaddr)) {
-		pr_err("Could not map dma vaddr for fd: %d", buffer->info.fd);
+		dev_err(lwis_client->lwis_dev->dev, "Could not map dma vaddr for fd: %d",
+			buffer->info.fd);
 		dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
 					 buffer->dma_direction);
 		dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
@@ -163,9 +168,8 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buf
 	old_buffer = lwis_client_enrolled_buffer_find(lwis_client, buffer->info.dma_vaddr);
 
 	if (old_buffer) {
-		pr_err("Duplicate vaddr %pad for fd %d", &buffer->info.dma_vaddr, buffer->info.fd);
-		lwis_platform_dma_buffer_unmap(lwis_client->lwis_dev, buffer->dma_buf_attachment,
-					       buffer->info.dma_vaddr);
+		dev_err(lwis_client->lwis_dev->dev, "Duplicate vaddr %pad for fd %d",
+			&buffer->info.dma_vaddr, buffer->info.fd);
 		dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
 					 buffer->dma_direction);
 		dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
