@@ -341,6 +341,11 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		ret = lwis_ioreg_read(ioreg_dev, entry->rw.bid, entry->rw.offset, &entry->rw.val,
 				      access_size);
+		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"ioreg read failed at: Bid: %d, Offset: 0x%llx\n", entry->rw.bid,
+				entry->rw.offset);
+		}
 	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
 		index = entry->rw_batch.bid;
 		block = get_block_by_idx(ioreg_dev, index);
@@ -352,6 +357,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 				      entry->rw_batch.size_in_bytes,
 				      ioreg_dev->base_dev.native_addr_bitwidth / 8);
 		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"ioreg validate_offset failed at: Offset: 0x%llx\n",
+				entry->rw_batch.offset);
 			return ret;
 		}
 
@@ -366,6 +374,11 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE) {
 		ret = lwis_ioreg_write(ioreg_dev, entry->rw.bid, entry->rw.offset, entry->rw.val,
 				       access_size);
+		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"ioreg write failed at: Bid: %d, Offset: 0x%llx\n", entry->rw.bid,
+				entry->rw.offset);
+		}
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
 		index = entry->rw_batch.bid;
 		block = get_block_by_idx(ioreg_dev, index);
@@ -377,6 +390,9 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 				      entry->rw_batch.size_in_bytes,
 				      ioreg_dev->base_dev.native_addr_bitwidth / 8);
 		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"ioreg validate_offset failed at: Offset: 0x%llx\n",
+				entry->rw_batch.offset);
 			return ret;
 		}
 		ret = ioreg_write_batch_internal(block->base, entry->rw_batch.offset,
@@ -392,18 +408,26 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 		ret = lwis_ioreg_read(ioreg_dev, entry->mod.bid, entry->mod.offset, &reg_value,
 				      access_size);
 		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"ioreg modify read failed at: Bid: %d, Offset: 0x%llx\n",
+				entry->mod.bid, entry->mod.offset);
 			return ret;
 		}
 		reg_value &= ~entry->mod.val_mask;
 		reg_value |= entry->mod.val_mask & entry->mod.val;
 		ret = lwis_ioreg_write(ioreg_dev, entry->mod.bid, entry->mod.offset, reg_value,
 				       access_size);
+		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev, "ioreg modify write failed at:");
+			dev_err(ioreg_dev->base_dev.dev, "Bid: %d, Offset: 0x%llx, Value: 0x%llx",
+				entry->mod.bid, entry->mod.offset, reg_value);
+		}
 	} else {
 		dev_err(ioreg_dev->base_dev.dev, "Invalid IO entry type: %d\n", entry->type);
 		return -EINVAL;
 	}
 
-	return 0;
+	return ret;
 }
 
 int lwis_ioreg_read(struct lwis_ioreg_device *ioreg_dev, int index, uint64_t offset,
