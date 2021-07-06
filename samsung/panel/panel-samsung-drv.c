@@ -1815,6 +1815,8 @@ static ssize_t hbm_mode_store(struct device *dev,
 	}
 
 	funcs->set_hbm_mode(ctx, hbm_en);
+
+	backlight_state_changed(bd);
 unlock:
 	mutex_unlock(&ctx->mode_lock);
 
@@ -2583,6 +2585,7 @@ static void hbm_work(struct work_struct *work)
 		DPU_ATRACE_BEGIN("set_hbm");
 		mutex_lock(&ctx->mode_lock);
 		exynos_panel_func->set_hbm_mode(ctx, ctx->hbm.request_global_hbm_mode);
+		backlight_state_changed(ctx->bl);
 		mutex_unlock(&ctx->mode_lock);
 		DPU_ATRACE_END("set_hbm");
 	}
