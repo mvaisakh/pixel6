@@ -256,4 +256,8 @@ int pca9468_is_present(struct pca9468_charger *pca9468);
 int pca9468_get_status(struct pca9468_charger *pca9468);
 int pca9468_get_charge_type(struct pca9468_charger *pca9468);
 
+extern int debug_printk_prlog;
+extern int debug_no_logbuffer;
+void logbuffer_prlog(struct pca9468_charger *pca9468, int level, const char *f, ...);
+
 #endif

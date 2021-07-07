@@ -8,14 +8,38 @@
 
 
 #include <linux/err.h>
-#include <linux/version.h>
 #include <linux/init.h>
+#include <linux/version.h>
 #include <linux/delay.h>
+#include <linux/dev_printk.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
 
 #include "pca9468_regs.h"
 #include "pca9468_charger.h"
+
+
+/* Logging ----------------------------------------------------------------- */
+
+int debug_printk_prlog = LOGLEVEL_INFO;
+int debug_no_logbuffer = 0;
+
+#define LOGBUFFER_TMPSIZE 256
+
+/* will add a \n (if not there) */
+void logbuffer_prlog(struct pca9468_charger *pca9468, int level, const char *f, ...)
+{
+	va_list args;
+
+	va_start(args, f);
+
+	if (!debug_no_logbuffer)
+		logbuffer_vlog(pca9468->log, f, args);
+	if (level <= debug_printk_prlog)
+		vprintk(f, args);
+
+	va_end(args);
+}
 
 /* DC PPS integration ------------------------------------------------------ */
 
@@ -369,7 +393,6 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 	pro_val.intval = pca9468->ta_vol;
 	ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					&pro_val);
-	pr_debug("%s: rx_vol=%d ret=%d\n", __func__, pca9468->ta_vol, ret);
 	if (ret < 0)
 		dev_err(pca9468->dev, "Cannot set RX voltage to %d (%d)\n",
 			pro_val.intval, ret);
@@ -380,8 +403,8 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 		ret = -EINVAL;
 	}
 
-	logbuffer_log(pca9468->log, "%s online=%d ta_vol=%d (%d)", __func__,
-		      pca9468->mains_online, pca9468->ta_vol, ret);
+	logbuffer_prlog(pca9468, LOGLEVEL_DEBUG, "WLCDC: online=%d ta_vol=%d (%d)",
+			pca9468->mains_online, pca9468->ta_vol, ret);
 
 out:
 	return ret;
@@ -435,11 +458,8 @@ int pca9468_get_rx_max_power(struct pca9468_charger *pca9468)
 	pca9468->ta_max_pwr = (pca9468->ta_max_vol / 1000) *
 			      (pca9468->ta_max_cur / 1000);
 
-	logbuffer_log(pca9468->log, "%s max_cur=%d max_pwr=%ld\n", __func__,
-		      pca9468->ta_max_cur, pca9468->ta_max_pwr);
-	dev_info(pca9468->dev, "%s max_cur=%d max_pwr=%ld\n",
-		 __func__, pca9468->ta_max_cur, pca9468->ta_max_pwr);
-
+	logbuffer_prlog(pca9468, LOGLEVEL_INFO, "WLCDC: max_cur=%d max_pwr=%ld",
+			pca9468->ta_max_cur, pca9468->ta_max_pwr);
 	return 0;
 }
 
