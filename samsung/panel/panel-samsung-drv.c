@@ -1217,6 +1217,7 @@ static void exynos_panel_connector_atomic_commit(
 		mutex_unlock(&ctx->hbm.hbm_work_lock);
 	}
 
+	mutex_lock(&ctx->mode_lock);
 	if (exynos_old_state->dimming_on != exynos_new_state->dimming_on) {
 		if (exynos_panel_func->set_dimming_on)
 			exynos_panel_func->set_dimming_on(ctx, exynos_new_state->dimming_on);
@@ -1224,6 +1225,8 @@ static void exynos_panel_connector_atomic_commit(
 
 	if (exynos_panel_func->commit_done)
 		exynos_panel_func->commit_done(ctx);
+
+	mutex_unlock(&ctx->mode_lock);
 
 	ctx->last_commit_ts = ktime_get();
 }
