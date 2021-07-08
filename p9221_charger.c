@@ -207,6 +207,16 @@ static int p9221_reg_write_8(struct p9221_charger_data *charger, u16 reg,
 	return p9221_reg_write_n(charger, reg, &val, 1);
 }
 
+static bool p9221_is_hpp(struct p9221_charger_data *charger)
+{
+	int ret;
+	uint8_t reg = 0;
+
+	ret = charger->chip_get_sys_mode(charger, &reg);
+
+	return ((ret == 0) && (reg == P9XXX_SYS_OP_MODE_PROPRIETARY));
+}
+
 bool p9221_is_epp(struct p9221_charger_data *charger)
 {
 	int ret;
@@ -834,13 +844,17 @@ static void force_set_fod(struct p9221_charger_data *charger)
 	u8 fod[P9221R5_NUM_FOD] = { 0 };
 	int ret;
 
-	dev_info(&charger->client->dev, "power_mitigate: write 0 to fod\n");
-
-	ret = p9xxx_chip_set_fod_reg(charger, fod, P9221R5_NUM_FOD);
-
+	if (p9221_is_hpp(charger)) {
+		dev_info(&charger->client->dev,
+			"power_mitigate: send EOP for revert to BPP\n");
+		ret = charger->chip_send_eop(charger, P9221_EOP_REVERT_TO_BPP);
+	} else {
+		dev_info(&charger->client->dev, "power_mitigate: write 0 to fod\n");
+		ret = p9xxx_chip_set_fod_reg(charger, fod, P9221R5_NUM_FOD);
+	}
 	if (ret)
 		dev_err(&charger->client->dev,
-			"power_mitigate: fail to write FOD registers\n");
+			"power_mitigate: failed, ret=%d\n", ret);
 }
 
 static void p9221_power_mitigation_work(struct work_struct *work)

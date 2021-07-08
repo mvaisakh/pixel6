@@ -194,6 +194,7 @@
 #define P9221_EOP_NO_RESPONSE			0x08
 #define P9221_EOP_NEGOTIATION_FAIL		0x0A
 #define P9221_EOP_RESTART_POWER			0x0B
+#define P9221_EOP_REVERT_TO_BPP			0xF3
 
 /*
  * Command flags
