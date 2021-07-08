@@ -219,6 +219,29 @@ struct gcpm_drv  {
 	((index) >= GCPM_INDEX_DC_ENABLE)
 
 
+/* Logging ----------------------------------------------------------------- */
+
+int debug_printk_prlog = LOGLEVEL_INFO;
+
+/*
+ * A \n in a logbuffer string has a special meaning and is usually not included
+ * in the debug messages for it. The \n is necessary for printk.
+ */
+static void logbuffer_prlog(struct gcpm_drv *gcpm, int level, const char *f, ...)
+{
+	va_list args;
+
+	va_start(args, f);
+
+	logbuffer_vlog(gcpm->log, f, args);
+	if (level <= debug_printk_prlog)
+		vprintk(f, args);
+
+	va_end(args);
+}
+
+/* ------------------------------------------------------------------------- */
+
 static int gcpm_dc_fcc_update(struct gcpm_drv *gcpm, int limit);
 
 static struct power_supply *gcpm_chg_get_charger(const struct gcpm_drv *gcpm, int index)
@@ -529,6 +552,7 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 	int batt_demand, index = GCPM_DEFAULT_CHARGER;
 	int cc_min = gcpm->dc_limit_cc_min;
 	int cc_max = gcpm->cc_max;
+	int vbatt = -1;
 
 	if (!gcpm->dc_init_complete)
 		return GCPM_DEFAULT_CHARGER;
@@ -603,7 +627,6 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 	if (chg_psy && (vbatt_max || vbatt_min)) {
 		const int vbatt_high = gcpm->dc_limit_vbatt_high;
 		const int vbatt_low = gcpm->dc_limit_vbatt_low;
-		int vbatt;
 
 		/* NOTE: check the current charger, should check battery? */
 		vbatt = GPSY_GET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
@@ -650,6 +673,13 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 	}
 
 	/* TODO: more qualifiers here */
+
+	if (index != gcpm->dc_index)
+		logbuffer_log(gcpm->log,
+			      "%s: index:%d->%d vbatt=%d demand=%d,limit=%d cc_max=%d,cc_min=%d, hold=%d",
+			      __func__, gcpm->dc_index, index, vbatt,
+			      batt_demand, gcpm->dc_limit_demand,
+			      cc_max, cc_min, gcpm->dc_fcc_hold);
 
 	return index;
 }
@@ -914,6 +944,10 @@ static bool gcpm_taper_step(const struct gcpm_drv *gcpm, int taper_step)
 		pr_debug("CHG_CHK: grace taper_step=%d fv_uv=%d, cc_max=%d\n",
 			 taper_step, gcpm->fv_uv, gcpm->cc_max);
 	}
+
+	logbuffer_log(gcpm->log, "taper_step=%d delta=%d fv_uv=%d->%d, cc_max=%d->%d",
+		      taper_step, delta, gcpm->fv_uv, fv_uv, gcpm->cc_max, cc_max);
+
 
 	/* not done */
 	return false;
@@ -1198,8 +1232,10 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		if (gcpm->dc_index == GCPM_DEFAULT_CHARGER)
 			gcpm->dc_state = DC_IDLE;
 
-		pr_info("PPS_Work: done elap=%lld dc_state=%d %d->%d\n", elap,
-			gcpm->dc_state, active_index, gcpm->chg_psy_active);
+		logbuffer_prlog(gcpm, LOGLEVEL_INFO,
+			       "PPS_Work: done elap=%lld dc_state=%d %d->%d\n",
+			       elap, gcpm->dc_state, active_index,
+			       gcpm->chg_psy_active);
 
 		/* TODO: send a ps event? */
 		goto pps_dc_done;
