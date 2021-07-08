@@ -292,22 +292,17 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
 	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
-	struct drm_crtc_state *new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
-
-	if (new_crtc_state->connectors_changed) {
-		const struct decon_device *decon = dsim_get_decon(dsim);
-
-		WARN_ON(dsim->dev_link);
-
-		if (decon) {
-			dsim->dev_link = device_link_add(dsim->dev, decon->dev,
-							 DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
-		}
-	}
 
 	dsim_debug(dsim, "current state: %d\n", dsim->state);
 
 	if (dsim->state == DSIM_STATE_SUSPEND) {
+		if (!dsim->dev_link) {
+			const struct decon_device *decon = to_exynos_crtc(crtc)->ctx;
+
+			dsim->dev_link = device_link_add(dsim->dev, decon->dev,
+							 DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
+		}
+
 		_dsim_enable(dsim);
 		dsim_set_te_pinctrl(dsim, 1);
 	} else if (dsim->state == DSIM_STATE_BYPASS) {
@@ -367,17 +362,15 @@ static void _dsim_disable(struct dsim_device *dsim)
 		return;
 	}
 
+	/* Wait for current read & write CMDs. */
+	mutex_lock(&dsim->cmd_lock);
 	/* TODO: 0x1F will be changed */
 	dsim_reg_stop(dsim->id, 0x1F);
 	disable_irq(dsim->irq);
 
-	/* Wait for current read & write CMDs. */
-	mutex_lock(&dsim->cmd_lock);
 	dsim->state = DSIM_STATE_SUSPEND;
-	mutex_unlock(&dsim->cmd_lock);
-
 	WARN_ON(dsim_reg_has_pend_cmd(dsim->id));
-
+	mutex_unlock(&dsim->cmd_lock);
 	mutex_unlock(&dsim->state_lock);
 
 	dsim_phy_power_off(dsim);
@@ -400,11 +393,6 @@ static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_
 	struct drm_crtc *crtc = drm_encoder_get_old_crtc(encoder, state);
 	bool self_refresh_active = false;
 	bool was_in_self_refresh = false;
-
-	if ((!crtc || crtc->state->connectors_changed) && dsim->dev_link) {
-		device_link_del(dsim->dev_link);
-		dsim->dev_link = NULL;
-	}
 
 	if (crtc) {
 		const struct drm_crtc_state *old_crtc_state =
@@ -449,6 +437,11 @@ static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_
 		_dsim_disable(dsim);
 
 		dsim_set_te_pinctrl(dsim, 0);
+
+		if ((!crtc || crtc->state->connectors_changed) && dsim->dev_link) {
+			device_link_del(dsim->dev_link);
+			dsim->dev_link = NULL;
+		}
 	}
 
 	DPU_ATRACE_END(__func__);
