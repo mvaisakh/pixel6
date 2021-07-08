@@ -623,7 +623,11 @@ void cs40l26_vibe_state_set(struct cs40l26_private *cs40l26,
 	}
 
 	cs40l26->vibe_state = new_state;
-	sysfs_notify(&cs40l26->dev->kobj, NULL, "vibe_state");
+#if !IS_ENABLED(CONFIG_INPUT_CS40L26_ATTR_UNDER_BUS)
+	sysfs_notify(&cs40l26->input->dev.kobj, "default", "vibe_state");
+#else
+	sysfs_notify(&cs40l26->dev->kobj, "default", "vibe_state");
+#endif
 }
 EXPORT_SYMBOL(cs40l26_vibe_state_set);
 
@@ -2242,6 +2246,14 @@ out_free:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_INPUT_CS40L26_ATTR_UNDER_BUS)
+const struct attribute_group *cs40l26_dev_attr_groups[] = {
+	&cs40l26_dev_attr_group,
+	&cs40l26_dev_attr_cal_group,
+	NULL,
+};
+#endif
+
 static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 {
 	int ret;
@@ -2286,6 +2298,7 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 	hrtimer_init(&cs40l26->vibe_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	cs40l26->vibe_timer.function = cs40l26_vibe_timer;
 
+#if !IS_ENABLED(CONFIG_INPUT_CS40L26_ATTR_UNDER_BUS)
 	ret = sysfs_create_group(&cs40l26->input->dev.kobj,
 			&cs40l26_dev_attr_group);
 	if (ret) {
@@ -2299,6 +2312,13 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 		dev_err(dev, "Failed to create cal sysfs group: %d\n", ret);
 		return ret;
 	}
+#else
+	ret = sysfs_create_groups(&cs40l26->dev->kobj, cs40l26_dev_attr_groups);
+	if (ret) {
+		dev_err(dev, "Failed to create sysfs groups: %d\n", ret);
+		return ret;
+	}
+#endif
 
 	cs40l26->vibe_init_success = true;
 
@@ -3238,10 +3258,15 @@ int cs40l26_remove(struct cs40l26_private *cs40l26)
 		hrtimer_cancel(&cs40l26->vibe_timer);
 
 	if (cs40l26->vibe_init_success) {
+#if !IS_ENABLED(CONFIG_INPUT_CS40L26_ATTR_UNDER_BUS)
 		sysfs_remove_group(&cs40l26->input->dev.kobj,
 				&cs40l26_dev_attr_group);
 		sysfs_remove_group(&cs40l26->input->dev.kobj,
 				&cs40l26_dev_attr_cal_group);
+#else
+		sysfs_remove_groups(&cs40l26->dev->kobj,
+				cs40l26_dev_attr_groups);
+#endif
 	}
 
 	if (cs40l26->input)
