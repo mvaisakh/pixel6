@@ -1237,7 +1237,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
  * max iin for 2:1 mode given cc_max and iin_cfg.
  * TODO: maybe use pdata->iin_cfg if cc_max is zero or negative.
  */
-static int pca9468_get_iin_max(struct pca9468_charger *pca9468, int cc_max)
+static int pca9468_get_iin_max(const struct pca9468_charger *pca9468, int cc_max)
 {
 	const int cc_limit = pca9468->pdata->iin_max_offset + cc_max / 2;
 	int iin_max;
@@ -1397,12 +1397,8 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 		/* Send PD Message */
 		pca9468->timer_id = TIMER_PDMSG_SEND;
 		pca9468->timer_period = 0;
-	} else if ((iin < (pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset)) ||
-		   ibat < ibat_limit) {
 
-		if (ibat < ibat_limit)
-			pr_debug("%s: ibatt=%d limit=%d\n",
-				__func__, ibat, ibat_limit);
+	} else if (iin < pca9468->iin_cc - pca9468->pdata->iin_cc_comp_offset) {
 
 		/* TA current is lower than the target input current */
 		/* Compare TA max voltage */
@@ -1434,8 +1430,8 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 	} else {
 		/* IIN ADC is in valid range */
 		/* IIN_CC - 50mA < IIN ADC < IIN_CC + 50mA  */
-		pr_debug("%s: Comp. End(valid): ta_vol=%u\n", __func__,
-			 pca9468->ta_vol);
+		pr_debug("%s: Comp. End(valid): ta_vol=%u low_ibat=%d\n",
+			__func__, pca9468->ta_vol, ibat < ibat_limit);
 
 		/* Check the current charging state */
 		if (pca9468->charging_state == DC_STATE_CC_MODE) {
@@ -1538,7 +1534,7 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
  * Minimum between the confguration, cc_max (scaled with offset) and the
  * adapter capabilities.
  */
-static int pca9468_get_iin_limit(struct pca9468_charger *pca9468)
+static int pca9468_get_iin_limit(const struct pca9468_charger *pca9468)
 {
 	int iin_cc;
 
@@ -4219,6 +4215,21 @@ static int write_reg(void *data, u64 val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(register_debug_ops, read_reg, write_reg, "0x%02llx\n");
 
+static int debug_apply_offsets(void *data, u64 val)
+{
+	struct pca9468_charger *chip = data;
+	int ret;
+
+	ret = pca9468_set_new_cc_max(chip, chip->cc_max);
+	pr_info("Apply offsets iin_max_o=%d iin_cc_comp_o=%d ret=%d\n",
+		chip->pdata->iin_max_offset, chip->pdata->iin_cc_comp_offset,
+		ret);
+
+	return ret;
+}
+DEFINE_SIMPLE_ATTRIBUTE(apply_offsets_debug_ops, NULL, debug_apply_offsets, "0x%02llx\n");
+
+
 static int debug_adc_chan_get(void *data, u64 *val)
 {
 	struct pca9468_charger *pca9468 = data;
@@ -4294,6 +4305,8 @@ static int pca9468_create_fs_entries(struct pca9468_charger *chip)
 			   &chip->pdata->iin_max_offset);
 	debugfs_create_u32("iin_cc_comp_offset", 0644, chip->debug_root,
 			   &chip->pdata->iin_cc_comp_offset);
+	debugfs_create_file("apply_offsets", 0644, chip->debug_root, chip,
+			    &apply_offsets_debug_ops);
 
 	chip->debug_adc_channel = ADCCH_VOUT;
 	debugfs_create_file("adc_chan", 0644, chip->debug_root, chip,
