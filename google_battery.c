@@ -2180,7 +2180,7 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		}
 
 		pr_info("MSC_TYPE vt=%d margin=%d cv_cnt=%d vb=%d fv_uv=%d chg_type=%d\n",
-			vtier, type_margin, vbatt, batt_drv->checked_cv_cnt,
+			vtier, type_margin, batt_drv->checked_cv_cnt, vbatt,
 			*fv_uv, chg_type);
 
 	} else if (batt_drv->checked_ov_cnt) {
