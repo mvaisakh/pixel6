@@ -63,9 +63,9 @@
 
 /* behavior in taper */
 #define GCPM_TAPER_STEP_FV_MARGIN	0
-#define GCPM_TAPER_STEP_CC_STEP		10000
-#define GCPM_TAPER_STEP_COUNT		5
-#define GCPM_TAPER_STEP_GRACE		7
+#define GCPM_TAPER_STEP_CC_STEP		0
+#define GCPM_TAPER_STEP_COUNT		0
+#define GCPM_TAPER_STEP_GRACE		1
 #define GCPM_TAPER_STEP_VOLTAGE		0
 #define GCPM_TAPER_STEP_CURRENT		0
 /* enough time for the charger to settle to a new limit */
