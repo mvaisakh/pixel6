@@ -57,22 +57,46 @@ static struct lwis_event_subscribe_operations slc_subscribe_ops = {
 static int lwis_slc_enable(struct lwis_device *lwis_dev)
 {
 #ifdef CONFIG_OF
-	int num_pt = 0;
 	struct device_node *node = lwis_dev->plat_dev->dev.of_node;
 	int i = 0;
 	int ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
-	static size_t pt_size_kb[NUM_PT] = { 512, 1024, 1024, 1024, 1536, 1536, 1536, 2048, 2048 };
+	size_t pt_size_kb[MAX_NUM_PT] = { 512, 1024, 1024, 1024, 1536, 1536, 1536, 2048, 2048 };
 
 	if (!lwis_dev) {
 		pr_err("LWIS device cannot be NULL\n");
 		return -ENODEV;
 	}
 
-	num_pt = of_property_count_strings(node, "pt_id");
-	if (num_pt != NUM_PT) {
-		dev_err(lwis_dev->dev, "Unexpected number of partitions\n");
+	slc_dev->num_pt = of_property_count_strings(node, "pt_id");
+	if (slc_dev->num_pt > MAX_NUM_PT) {
+		dev_err(lwis_dev->dev,
+			"The number of partitions in slc device is %d, exceeds the max value %d",
+			slc_dev->num_pt, MAX_NUM_PT);
 		return -EINVAL;
+	}
+
+	for (i = 0; i < slc_dev->num_pt; ++i) {
+		const char* name;
+		of_property_read_string_index(node, "pt_id", i, &name);
+		if (strncmp(name, "CAMERA1WAY", 10) == 0) {
+			pt_size_kb[i] = 256;
+		} else if (strncmp(name, "CAMERA2WAY", 10) == 0) {
+			pt_size_kb[i] = 512;
+		} else if (strncmp(name, "CAMERA3WAY", 10) == 0) {
+			pt_size_kb[i] = 768;
+		} else if (strncmp(name, "CAMERA4WAY", 10) == 0) {
+			pt_size_kb[i] = 1024;
+		} else if (strncmp(name, "CAMERA6WAY", 10) == 0) {
+			pt_size_kb[i] = 1536;
+		} else if (strncmp(name, "CAMERA8WAY", 10) == 0) {
+			pt_size_kb[i] = 2048;
+		} else if (strncmp(name, "CAMERA12WAY", 11) == 0) {
+			pt_size_kb[i] = 3072;
+		} else {
+			dev_err(lwis_dev->dev, "Unknown slc pt name %s", name);
+			return -EINVAL;
+		}
 	}
 
 	/* Initialize SLC partitions and get a handle */
@@ -83,7 +107,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 		slc_dev->partition_handle = NULL;
 		return ret;
 	}
-	for (i = 0; i < NUM_PT; i++) {
+	for (i = 0; i < slc_dev->num_pt; i++) {
 		slc_dev->pt[i].id = i;
 		slc_dev->pt[i].size_kb = pt_size_kb[i];
 		slc_dev->pt[i].partition_id = PT_PTID_INVALID;
@@ -109,8 +133,7 @@ static int lwis_slc_disable(struct lwis_device *lwis_dev)
 		dev_err(slc_dev->base_dev.dev, "Partition handle is NULL\n");
 		return -ENODEV;
 	}
-
-	for (i = 0; i < NUM_PT; i++) {
+	for (i = 0; i < slc_dev->num_pt; i++) {
 		if (slc_dev->pt[i].partition_id != PT_PTID_INVALID) {
 			dev_info(slc_dev->base_dev.dev,
 				 "Closing partition id %d at device shutdown", slc_dev->pt[i].id);
@@ -141,8 +164,7 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer
 		dev_err(slc_dev->base_dev.dev, "Partition handle is NULL\n");
 		return -ENODEV;
 	}
-
-	for (i = 0; i < NUM_PT; i++) {
+	for (i = 0; i < slc_dev->num_pt; i++) {
 		if (slc_dev->pt[i].partition_id == PT_PTID_INVALID &&
 		    slc_dev->pt[i].size_kb >= SIZE_TO_KB(alloc_info->size)) {
 			slc_dev->pt[i].partition_id =
@@ -167,7 +189,7 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer
 		}
 	}
 	dev_err(lwis_dev->dev, "Failed to find valid partition, largest size supported is %zuKB\n",
-		slc_dev->pt[NUM_PT - 1].size_kb);
+		slc_dev->pt[slc_dev->num_pt - 1].size_kb);
 	return -EINVAL;
 }
 

@@ -13,7 +13,7 @@
 #include "lwis_device.h"
 #include <soc/google/pt.h>
 
-#define NUM_PT 9
+#define MAX_NUM_PT 9
 
 struct slc_partition {
 	int id;
@@ -29,7 +29,7 @@ struct slc_partition {
 struct lwis_slc_device {
 	struct lwis_device base_dev;
 	int num_pt;
-	struct slc_partition pt[NUM_PT];
+	struct slc_partition pt[MAX_NUM_PT];
 	struct pt_handle *partition_handle;
 };
 
