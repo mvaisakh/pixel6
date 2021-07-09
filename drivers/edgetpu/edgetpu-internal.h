@@ -35,7 +35,8 @@
 #include "edgetpu-thermal.h"
 #include "edgetpu-usage-stats.h"
 
-#define get_dev_for_logging(etdev) ((etdev)->etcdev ? (etdev)->etcdev : (etdev)->dev)
+#define get_dev_for_logging(etdev)                                                                 \
+	((etdev)->etiface->etcdev ? (etdev)->etiface->etcdev : (etdev)->dev)
 
 #define etdev_err(etdev, fmt, ...) dev_err(get_dev_for_logging(etdev), fmt, ##__VA_ARGS__)
 #define etdev_warn(etdev, fmt, ...)                                            \
@@ -97,6 +98,7 @@ struct edgetpu_device_group;
 struct edgetpu_p2p_csr_map;
 struct edgetpu_remote_dram_map;
 struct edgetpu_wakelock;
+struct edgetpu_dev_iface;
 
 #define EDGETPU_NUM_PERDIE_EVENTS	2
 #define perdie_event_id_to_num(event_id)				      \
@@ -121,6 +123,8 @@ struct edgetpu_client {
 	uint idx;
 	/* the device opened by this client */
 	struct edgetpu_dev *etdev;
+	/* the interface from which this client was opened */
+	struct edgetpu_dev_iface *etiface;
 	/* Peer CSR dma addrs for this client, if in a group with P2P */
 	dma_addr_t *p2p_csrs_dma_addrs;
 	/* Peer DRAM dma addrs for this client, if has on-device DRAM */
@@ -129,6 +133,15 @@ struct edgetpu_client {
 	struct edgetpu_wakelock *wakelock;
 	/* Bit field of registered per die events */
 	u64 perdie_events;
+};
+
+/* Configurable parameters for an edgetpu interface */
+struct edgetpu_iface_params {
+	/*
+	 * Interface-specific name.
+	 * May be NULL for the default interface (etdev->dev_name will be used)
+	 */
+	const char *name;
 };
 
 /* edgetpu_dev#clients list entry. */
@@ -171,9 +184,12 @@ enum edgetpu_dev_state {
 
 struct edgetpu_dev {
 	struct device *dev;	   /* platform/pci bus device */
-	struct device *etcdev;	   /* edgetpu class char device */
-	struct cdev cdev;	   /* cdev char device structure */
-	dev_t devno;		   /* char device dev_t */
+	uint num_ifaces;		   /* Number of device interfaces */
+	/*
+	 * Array of device interfaces
+	 * First element is the default interface
+	 */
+	struct edgetpu_dev_iface *etiface;
 	char dev_name[EDGETPU_DEVICE_NAME_MAX];
 	struct edgetpu_mapped_resource regs; /* ioremapped CSRs */
 	struct dentry *d_entry;    /* debugfs dir for this device */
@@ -219,6 +235,14 @@ struct edgetpu_dev {
 	/* debug dump handlers */
 	edgetpu_debug_dump_handlers *debug_dump_handlers;
 	struct work_struct debug_dump_work;
+};
+
+struct edgetpu_dev_iface {
+	struct cdev cdev; /* cdev char device structure */
+	struct device *etcdev; /* edgetpu class char device */
+	struct edgetpu_dev *etdev; /* Pointer to core device struct */
+	dev_t devno; /* char device dev_t */
+	const char *name; /* interface specific device name */
 };
 
 /* Firmware crash_type codes */
@@ -337,7 +361,7 @@ void edgetpu_free_coherent(struct edgetpu_dev *etdev,
 
 
 /* External drivers can hook up to edgetpu driver using these calls. */
-int edgetpu_open(struct edgetpu_dev *etdev, struct file *file);
+int edgetpu_open(struct edgetpu_dev_iface *etiface, struct file *file);
 long edgetpu_ioctl(struct file *file, uint cmd, ulong arg);
 
 #if IS_ENABLED(CONFIG_EDGETPU_EXTERNAL_WRAPPER_CLASS)
@@ -361,7 +385,9 @@ void edgetpu_handle_job_lockup(struct edgetpu_dev *etdev, u16 vcid);
 int __init edgetpu_init(void);
 void __exit edgetpu_exit(void);
 int edgetpu_device_add(struct edgetpu_dev *etdev,
-		       const struct edgetpu_mapped_resource *regs);
+		       const struct edgetpu_mapped_resource *regs,
+		       const struct edgetpu_iface_params *iface_params,
+		       uint num_ifaces);
 void edgetpu_device_remove(struct edgetpu_dev *etdev);
 int edgetpu_register_irq(struct edgetpu_dev *etdev, int irq);
 void edgetpu_unregister_irq(struct edgetpu_dev *etdev, int irq);
@@ -370,7 +396,9 @@ void edgetpu_unregister_irq(struct edgetpu_dev *etdev, int irq);
 
 int __init edgetpu_fs_init(void);
 void __exit edgetpu_fs_exit(void);
-int edgetpu_fs_add(struct edgetpu_dev *etdev);
+int edgetpu_fs_add(struct edgetpu_dev *etdev, const struct edgetpu_iface_params *etiparams,
+		   int num_ifaces);
+
 void edgetpu_fs_remove(struct edgetpu_dev *dev);
 /* Get the top-level debugfs directory for the device class */
 struct dentry *edgetpu_fs_debugfs_dir(void);
@@ -411,7 +439,8 @@ void edgetpu_chip_handle_reverse_kci(struct edgetpu_dev *etdev,
 /* Device -> Core API */
 
 /* Add current thread as new TPU client */
-struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev);
+struct edgetpu_client *
+edgetpu_client_add(struct edgetpu_dev_iface *etiface);
 
 /* Remove TPU client */
 void edgetpu_client_remove(struct edgetpu_client *client);

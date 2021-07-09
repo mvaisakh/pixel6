@@ -42,6 +42,19 @@ struct edgetpu_thermal *devm_tpu_thermal_create(struct device *dev,
 						struct edgetpu_dev *etdev);
 
 /*
+ * Marks the TPU is suspended and informs TPU device if it's powered.
+ *
+ * Returns 0 on success.
+ */
+int edgetpu_thermal_suspend(struct device *dev);
+/*
+ * Resumes the TPU from the suspend state and informs TPU CPU if it's powered.
+ *
+ * Returns 0 on success.
+ */
+int edgetpu_thermal_resume(struct device *dev);
+
+/*
  * Holds thermal->lock.
  *
  * Does nothing if the thermal management is not supported.

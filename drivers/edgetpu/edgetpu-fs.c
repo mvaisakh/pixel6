@@ -73,13 +73,13 @@ static bool is_edgetpu_file(struct file *file)
 	return file->f_op == &edgetpu_fops;
 }
 
-int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
+int edgetpu_open(struct edgetpu_dev_iface *etiface, struct file *file)
 {
 	struct edgetpu_client *client;
 
 	/* Set client pointer to NULL if error creating client. */
 	file->private_data = NULL;
-	client = edgetpu_client_add(etdev);
+	client = edgetpu_client_add(etiface);
 	if (IS_ERR(client))
 		return PTR_ERR(client);
 	file->private_data = client;
@@ -88,10 +88,10 @@ int edgetpu_open(struct edgetpu_dev *etdev, struct file *file)
 
 static int edgetpu_fs_open(struct inode *inode, struct file *file)
 {
-	struct edgetpu_dev *etdev =
-		container_of(inode->i_cdev, struct edgetpu_dev, cdev);
+	struct edgetpu_dev_iface *etiface =
+		container_of(inode->i_cdev, struct edgetpu_dev_iface, cdev);
 
-	return edgetpu_open(etdev, file);
+	return edgetpu_open(etiface, file);
 }
 
 static int edgetpu_fs_release(struct inode *inode, struct file *file)
@@ -800,6 +800,7 @@ static int edgetpu_fs_mmap(struct file *file, struct vm_area_struct *vma)
 	return edgetpu_mmap(client, vma);
 }
 
+#ifndef EDGETPU_FEATURE_MOBILE
 static struct edgetpu_dumpregs_range common_statusregs_ranges[] = {
 	{
 		.firstreg = EDGETPU_REG_AON_RESET,
@@ -939,6 +940,7 @@ static const struct file_operations statusregs_ops = {
 	.owner = THIS_MODULE,
 	.release = single_release,
 };
+#endif /* EDGETPU_FEATURE_MOBILE */
 
 static int mappings_show(struct seq_file *s, void *data)
 {
@@ -979,8 +981,10 @@ static void edgetpu_fs_setup_debugfs(struct edgetpu_dev *etdev)
 	}
 	debugfs_create_file("mappings", 0440, etdev->d_entry,
 			    etdev, &mappings_ops);
+#ifndef EDGETPU_FEATURE_MOBILE
 	debugfs_create_file("statusregs", 0440, etdev->d_entry, etdev,
 			    &statusregs_ops);
+#endif
 }
 
 static ssize_t firmware_crash_count_show(
@@ -1045,46 +1049,78 @@ const struct file_operations edgetpu_fops = {
 	.unlocked_ioctl = edgetpu_fs_ioctl,
 };
 
-/* Called from edgetpu core to add a new edgetpu device. */
-int edgetpu_fs_add(struct edgetpu_dev *etdev)
+static int edgeptu_fs_add_interface(struct edgetpu_dev *etdev, struct edgetpu_dev_iface *etiface,
+				    const struct edgetpu_iface_params *etiparams)
 {
+	char dev_name[EDGETPU_DEVICE_NAME_MAX];
 	int ret;
 
-	etdev->devno = MKDEV(MAJOR(edgetpu_basedev),
+	etiface->name = etiparams->name ? etiparams->name : etdev->dev_name;
+	snprintf(dev_name, EDGETPU_DEVICE_NAME_MAX, "%s",
+			 etiface->name);
+
+	dev_dbg(etdev->dev, "adding interface: %s", dev_name);
+
+	etiface->devno = MKDEV(MAJOR(edgetpu_basedev),
 			     atomic_add_return(1, &char_minor));
-	cdev_init(&etdev->cdev, &edgetpu_fops);
-	ret = cdev_add(&etdev->cdev, etdev->devno, 1);
+	cdev_init(&etiface->cdev, &edgetpu_fops);
+	ret = cdev_add(&etiface->cdev, etiface->devno, 1);
 	if (ret) {
-		dev_err(etdev->dev,
-			"%s: error %d adding cdev for dev %d:%d\n",
-			etdev->dev_name, ret,
-			MAJOR(etdev->devno), MINOR(etdev->devno));
+		dev_err(etdev->dev, "%s: error %d adding cdev for dev %d:%d\n",
+			etdev->dev_name, ret, MAJOR(etiface->devno),
+			MINOR(etiface->devno));
 		return ret;
 	}
 
-	etdev->etcdev = device_create(edgetpu_class, etdev->dev, etdev->devno,
-				      etdev, "%s", etdev->dev_name);
-	if (IS_ERR(etdev->etcdev)) {
-		ret = PTR_ERR(etdev->etcdev);
+	etiface->etcdev = device_create(edgetpu_class, etdev->dev, etiface->devno,
+				      etdev, "%s", dev_name);
+	if (IS_ERR(etiface->etcdev)) {
+		ret = PTR_ERR(etiface->etcdev);
 		dev_err(etdev->dev, "%s: failed to create char device: %d\n",
-			etdev->dev_name, ret);
-		cdev_del(&etdev->cdev);
+			dev_name, ret);
+		cdev_del(&etiface->cdev);
 		return ret;
+	}
+
+	return 0;
+}
+
+/* Called from edgetpu core to add new edgetpu device files. */
+int edgetpu_fs_add(struct edgetpu_dev *etdev, const struct edgetpu_iface_params *etiparams,
+		   int num_ifaces)
+{
+	int ret;
+	int i;
+
+	etdev->num_ifaces = 0;
+	dev_dbg(etdev->dev, "%s: adding %u interfaces\n", __func__, num_ifaces);
+
+	for (i = 0; i < num_ifaces; i++) {
+		etdev->etiface[i].etdev = etdev;
+		ret = edgeptu_fs_add_interface(etdev, &etdev->etiface[i], &etiparams[i]);
+		if (ret)
+			return ret;
+		etdev->num_ifaces++;
 	}
 
 	ret = device_add_group(etdev->dev, &edgetpu_attr_group);
+	edgetpu_fs_setup_debugfs(etdev);
 	if (ret)
 		etdev_warn(etdev, "edgetpu attr group create failed: %d", ret);
-	edgetpu_fs_setup_debugfs(etdev);
 	return 0;
 }
 
 void edgetpu_fs_remove(struct edgetpu_dev *etdev)
 {
+	int i;
 	device_remove_group(etdev->dev, &edgetpu_attr_group);
-	device_destroy(edgetpu_class, etdev->devno);
-	etdev->etcdev = NULL;
-	cdev_del(&etdev->cdev);
+	for (i = 0; i < etdev->num_ifaces; i++) {
+		struct edgetpu_dev_iface *etiface = &etdev->etiface[i];
+
+		device_destroy(edgetpu_class, etiface->devno);
+		etiface->etcdev = NULL;
+		cdev_del(&etiface->cdev);
+	}
 	debugfs_remove_recursive(etdev->d_entry);
 }
 

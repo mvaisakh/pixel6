@@ -54,6 +54,7 @@ static struct platform_device sscd_dev = {
 		.release       = sscd_release,
 	},
 };
+
 /*
  * Log and trace buffers at the beginning of the remapped region,
  * pool memory afterwards.
@@ -195,6 +196,12 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	struct resource *r;
 	struct edgetpu_mapped_resource regs;
 	int ret;
+	struct edgetpu_iface_params iface_params[] = {
+		/* Default interface  */
+		{ .name = NULL },
+		/* Common name for embedded SoC devices */
+		{ .name = "edgetpu-soc" },
+	};
 
 	abpdev = devm_kzalloc(dev, sizeof(*abpdev), GFP_KERNEL);
 	if (!abpdev)
@@ -260,7 +267,8 @@ static int edgetpu_platform_probe(struct platform_device *pdev)
 	abpdev->edgetpu_dev.mcp_id = -1;
 	abpdev->edgetpu_dev.mcp_die_index = 0;
 	abpdev->irq = platform_get_irq(pdev, 0);
-	ret = edgetpu_device_add(&abpdev->edgetpu_dev, &regs);
+	ret = edgetpu_device_add(&abpdev->edgetpu_dev, &regs, iface_params,
+				 ARRAY_SIZE(iface_params));
 
 	if (!ret && abpdev->irq >= 0)
 		ret = edgetpu_register_irq(&abpdev->edgetpu_dev, abpdev->irq);

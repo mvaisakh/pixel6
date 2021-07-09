@@ -1044,11 +1044,8 @@ int edgetpu_kci_notify_throttling(struct edgetpu_dev *etdev, u32 level)
 
 	if (!etdev->kci)
 		return -ENODEV;
-	if (!edgetpu_pm_get_if_powered(etdev->pm))
-		return -EAGAIN;
 
 	ret =  edgetpu_kci_send_cmd(etdev->kci, &cmd);
-	edgetpu_pm_put(etdev->pm);
 	return ret;
 }
 

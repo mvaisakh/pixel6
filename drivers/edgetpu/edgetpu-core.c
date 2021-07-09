@@ -345,11 +345,22 @@ int edgetpu_get_state_errno_locked(struct edgetpu_dev *etdev)
 }
 
 int edgetpu_device_add(struct edgetpu_dev *etdev,
-		       const struct edgetpu_mapped_resource *regs)
+		       const struct edgetpu_mapped_resource *regs,
+		       const struct edgetpu_iface_params *iface_params,
+		       uint num_ifaces)
 {
 	int ret;
 
 	etdev->regs = *regs;
+
+	etdev->etiface = devm_kzalloc(
+		etdev->dev, sizeof(*etdev->etiface) * num_ifaces, GFP_KERNEL);
+
+	if (!etdev->etiface) {
+		dev_err(etdev->dev,
+			"Failed to allocate memory for interfaces\n");
+		return -ENOMEM;
+	}
 
 	/* mcp_id and mcp_die_index fields set by caller */
 	if (etdev->mcp_id < 0) {
@@ -377,11 +388,10 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	mutex_init(&etdev->state_lock);
 	etdev->state = ETDEV_STATE_NOFW;
 
-	ret = edgetpu_fs_add(etdev);
+	ret = edgetpu_fs_add(etdev, iface_params, num_ifaces);
 	if (ret) {
-		dev_err(etdev->dev, "%s: edgetpu_fs_add returns %d\n",
-			etdev->dev_name, ret);
-		return ret;
+		dev_err(etdev->dev, "%s: edgetpu_fs_add returns %d\n", etdev->dev_name, ret);
+		goto remove_dev;
 	}
 
 	etdev->mailbox_manager =
@@ -456,10 +466,11 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 	edgetpu_fs_remove(etdev);
 }
 
-struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
+struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev_iface *etiface)
 {
 	struct edgetpu_client *client;
 	struct edgetpu_list_device_client *l = kmalloc(sizeof(*l), GFP_KERNEL);
+	struct edgetpu_dev *etdev = etiface->etdev;
 
 	if (!l)
 		return ERR_PTR(-ENOMEM);
@@ -478,6 +489,7 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	client->pid = current->pid;
 	client->tgid = current->tgid;
 	client->etdev = etdev;
+	client->etiface = etiface;
 	mutex_init(&client->group_lock);
 	/* equivalent to edgetpu_client_get() */
 	refcount_set(&client->count, 1);

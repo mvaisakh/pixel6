@@ -18,6 +18,8 @@
 /* Reserved VCID that uses the extra partition. */
 #define EDGETPU_VCID_EXTRA_PARTITION 0
 
+/* Is a "mobile" style device. */
+#define EDGETPU_FEATURE_MOBILE
 #define EDGETPU_HAS_WAKELOCK
 
 /*

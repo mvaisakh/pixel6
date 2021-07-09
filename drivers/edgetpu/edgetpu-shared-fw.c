@@ -178,7 +178,7 @@ edgetpu_shared_fw_load_locked(const char *name, struct edgetpu_dev *etdev)
 
 	pr_debug("%s: shared fw image %s not found, requesting\n",
 		 __func__, name);
-	ret = request_firmware(&fw, name, etdev ? etdev->etcdev : NULL);
+	ret = request_firmware(&fw, name, etdev ? etdev->etiface->etcdev : NULL);
 	if (ret)
 		goto out;
 
