@@ -170,7 +170,7 @@ static void exynos_panel_update_te2(struct exynos_panel *ctx)
 {
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 
-	if (!ctx->initialized || !funcs || !funcs->update_te2)
+	if (!ctx->initialized || !ctx->enabled || !funcs || !funcs->update_te2)
 		return;
 
 	funcs->update_te2(ctx);
@@ -2725,6 +2725,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 
 	dsi->mode_flags = pmode->exynos_mode.mode_flags;
 
+	DPU_ATRACE_BEGIN(__func__);
 	if (funcs) {
 		const bool was_lp_mode = current_mode &&
 					 current_mode->exynos_mode.is_lp_mode;
@@ -2743,7 +2744,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			funcs->set_nolp_mode(ctx, pmode);
 			state_changed = true;
 			need_update_backlight = true;
-		} else if (funcs->mode_set) {
+		} else if ((ctx->current_mode != pmode) && funcs->mode_set) {
 			if (exynos_connector_state->sync_rr_switch && ctx->enabled)
 				exynos_panel_check_modeset_timing(crtc, &current_mode->mode);
 			funcs->mode_set(ctx, pmode);
@@ -2758,13 +2759,13 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 								 PANEL_STATE_ON : PANEL_STATE_OFF);
 			else if (ctx->bl)
 				backlight_state_changed(ctx->bl);
+
+			if (!is_lp_mode)
+				exynos_panel_update_te2(ctx);
 		}
 	} else {
 		ctx->current_mode = pmode;
 	}
-
-	if (ctx->enabled && !pmode->exynos_mode.is_lp_mode)
-		exynos_panel_update_te2(ctx);
 
 	mutex_unlock(&ctx->mode_lock);
 
@@ -2772,6 +2773,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 		backlight_update_status(ctx->bl);
 
 	DPU_ATRACE_INT("panel_fps", drm_mode_vrefresh(mode));
+	DPU_ATRACE_END(__func__);
 }
 
 static void local_hbm_timeout_work(struct work_struct *work)
