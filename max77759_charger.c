@@ -976,10 +976,17 @@ static int gs101_otg_mode(struct max77759_usecase_data *uc_data, int to)
 		if (rc < 0)
 			pr_err("%s: cannot clear bypass rc:%d\n",  __func__, rc);
 
+		/* b/192986752 make sure that LSW1 is open before going to FRS */
+		rc = max77759_ls_mode(uc_data, 0);
+		if (rc < 0)
+			pr_err("%s: cannot clear lsw1 rc:%d\n",  __func__, rc);
+		/* b/192986752 make very sure that LSW1 is open */
+		if (uc_data->ls1_en > 0)
+			gpio_set_value_cansleep(uc_data->ls1_en, 0);
+
 		ret = max77759_ext_mode(uc_data, EXT_MODE_OFF);
 		if (ret < 0)
 			return ret;
-
 	}
 
 	return ret;
