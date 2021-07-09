@@ -966,6 +966,15 @@ static void gcpm_chg_select_work(struct work_struct *work)
 
 	mutex_lock(&gcpm->chg_psy_lock);
 
+	if (!gcpm->dc_init_complete) {
+		const int interval = 5; /* 5 seconds */
+
+		mod_delayed_work(system_wq, &gcpm->select_work,
+				 msecs_to_jiffies(interval * 1000));
+		mutex_unlock(&gcpm->chg_psy_lock);
+		return;
+	}
+
 	index = gcpm_chg_select(gcpm);
 	if (index < 0) {
 		const int interval = 5; /* 5 seconds */
@@ -973,8 +982,8 @@ static void gcpm_chg_select_work(struct work_struct *work)
 		/* TODO: force to default after 3 faults? */
 
 		pr_debug("CHG_CHK: reschedule in %d seconds\n", interval);
-		schedule_delayed_work(&gcpm->select_work,
-				      msecs_to_jiffies(interval * 1000));
+		mod_delayed_work(system_wq, &gcpm->select_work,
+				 msecs_to_jiffies(interval * 1000));
 		mutex_unlock(&gcpm->chg_psy_lock);
 		return;
 	}
@@ -996,7 +1005,7 @@ static void gcpm_chg_select_work(struct work_struct *work)
 
 		dc_done = gcpm_taper_step(gcpm, gcpm->taper_step - 1);
 		if (!dc_done) {
-			schedule_delayed_work(&gcpm->select_work, interval);
+			mod_delayed_work(system_wq, &gcpm->select_work, interval);
 			gcpm->taper_step -= 1;
 		}
 
