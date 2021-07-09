@@ -77,9 +77,9 @@ static int edgetpu_set_cur_state(struct thermal_cooling_device *cdev,
 			dev_err(dev, "error setting tpu policy: %d\n", ret);
 			goto out;
 		}
-		if (state_original == 0)
+		if (pwr_state == TPU_OFF)
 			cooling->thermal_suspended = true;
-		else if (cooling->cooling_state == 0)
+		else if (state_pwr_map[cooling->cooling_state].state == TPU_OFF)
 			cooling->thermal_suspended = false;
 		cooling->cooling_state = state_original;
 		ret = edgetpu_kci_notify_throttling(etdev, pwr_state);
@@ -258,7 +258,7 @@ static int tpu_thermal_parse_dvfs_table(struct edgetpu_thermal *thermal)
 	for (i = 0; i < row_size; ++i) {
 		int idx = col_size * i;
 		state_pwr_map[i].state = of_data_int_array[idx];
-		state_pwr_map[i].power = of_data_int_array[idx+1];
+		state_pwr_map[i].power = of_data_int_array[idx + 1];
 	}
 
 	return 0;

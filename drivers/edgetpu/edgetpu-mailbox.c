@@ -18,6 +18,7 @@
 #include "edgetpu-kci.h"
 #include "edgetpu-mailbox.h"
 #include "edgetpu-mmu.h"
+#include "edgetpu-sw-watchdog.h"
 #include "edgetpu-wakelock.h"
 #include "edgetpu.h"
 
@@ -1132,6 +1133,13 @@ int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_id, s16 vcid
 		eh->fw_state |= bit;
 	}
 	mutex_unlock(&eh->lock);
+	/*
+	 * We are observing OPEN_DEVICE KCI fails while other KCIs (usage update / shutdown) still
+	 * succeed and no firmware crash is reported. Kick off the firmware restart when we are
+	 * facing this and hope this can rescue the device from the bad state.
+	 */
+	if (ret == -ETIMEDOUT)
+		edgetpu_watchdog_bite(etdev, false);
 	return ret;
 }
 

@@ -94,11 +94,15 @@ struct edgetpu_firmware_buffer {
 	const char *name;	/* the name of this firmware */
 };
 
-/*
- * Each handler returns 0 to indicate success, non-zero value to
- * indicate error.
- */
-struct edgetpu_firmware_handlers {
+struct edgetpu_firmware_chip_data {
+	/* Name of default firmware image for this chip. */
+	const char *default_firmware_name;
+
+	/*
+	 * Chip handlers called by common firmware processing.
+	 * Each handler returns 0 to indicate success, non-zero value to
+	 * indicate error.
+	 */
 	int (*after_create)(struct edgetpu_firmware *et_fw);
 	/*
 	 * Release resource used in platform specific implementation,
@@ -154,19 +158,9 @@ struct edgetpu_firmware_handlers {
 	 * Optional platform-specific handler to restart an already loaded
 	 * firmware.
 	 */
-	int (*restart)(struct edgetpu_firmware *et_fw);
+	int (*restart)(struct edgetpu_firmware *et_fw, bool force_reset);
 };
 
-/*
- * Top-level chip-specific run firmware routine.
- * Calls edgetpu_firmware_run() one or more times as appropriate for chip-
- * specific one- or two-stage bootloader processing.
- *
- * @name: the name passed into underlying request_firmware API
- * @flags: edgetpu_firmware_flags for the image
- */
-int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
-			      enum edgetpu_firmware_flags flags);
 /*
  * Returns the chip-specific IOVA where the firmware is mapped.
  *
@@ -175,12 +169,19 @@ int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
 unsigned long edgetpu_chip_firmware_iova(struct edgetpu_dev *etdev);
 
 /*
- * Load and run firmware.  Called by edgetpu_chip_firmware_run().
+ * Load and run firmware.
  * @name: the name passed into underlying request_firmware API
  * @flags: edgetpu_firmware_flags for the image
+ * Used internally by the sysfs load interface and by unit tests.
  */
 int edgetpu_firmware_run(struct edgetpu_dev *etdev, const char *name,
 			 enum edgetpu_firmware_flags flags);
+
+/* Load and run the default firmware name for the chip. */
+int edgetpu_firmware_run_default(struct edgetpu_dev *etdev);
+
+/* Runs default firmware for the chip, caller holds FW/PM locks */
+int edgetpu_firmware_run_default_locked(struct edgetpu_dev *etdev);
 
 /*
  * Private data set and used by handlers. It is expected to
@@ -191,7 +192,7 @@ void edgetpu_firmware_set_data(struct edgetpu_firmware *et_fw, void *data);
 void *edgetpu_firmware_get_data(struct edgetpu_firmware *et_fw);
 
 int edgetpu_firmware_create(struct edgetpu_dev *etdev,
-			    const struct edgetpu_firmware_handlers *handlers);
+			    const struct edgetpu_firmware_chip_data *chip_fw);
 void edgetpu_firmware_destroy(struct edgetpu_dev *etdev);
 void edgetpu_firmware_mappings_show(struct edgetpu_dev *etdev,
 				    struct seq_file *s);
@@ -223,15 +224,16 @@ edgetpu_firmware_set_status_locked(struct edgetpu_dev *etdev,
 /*
  * Restarts the last firmware image loaded
  * Intended for power managed devices to re-run the firmware without a full
- * reload from the file system
+ * reload from the file system.
+ * Optionally, force a CPU reset to recover from a bad firmware state.
  */
-int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev);
+int edgetpu_firmware_restart_locked(struct edgetpu_dev *etdev,
+				    bool force_reset);
 
 /*
  * Loads and runs the specified firmware assuming the required locks have been
- * acquired
+ * acquired.  Used to run second-stage bootloader.
  */
-
 int edgetpu_firmware_run_locked(struct edgetpu_firmware *et_fw,
 				const char *name,
 				enum edgetpu_firmware_flags flags);

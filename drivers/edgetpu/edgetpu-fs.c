@@ -625,6 +625,7 @@ static int edgetpu_ioctl_acquire_wakelock(struct edgetpu_client *client)
 error_release:
 	edgetpu_wakelock_release(client->wakelock);
 	edgetpu_wakelock_unlock(client->wakelock);
+	etdev_err(client->etdev, "PID: %d failed to acquire wakelock", client->pid);
 	return ret;
 }
 
@@ -646,11 +647,15 @@ edgetpu_ioctl_acquire_ext_mailbox(struct edgetpu_client *client,
 				  struct edgetpu_ext_mailbox_ioctl __user *argp)
 {
 	struct edgetpu_ext_mailbox_ioctl ext_mailbox;
+	int ret;
 
 	if (copy_from_user(&ext_mailbox, argp, sizeof(ext_mailbox)))
 		return -EFAULT;
 
-	return edgetpu_chip_acquire_ext_mailbox(client, &ext_mailbox);
+	ret = edgetpu_chip_acquire_ext_mailbox(client, &ext_mailbox);
+	if (ret)
+		etdev_err(client->etdev, "PID: %d failed to acquire ext mailbox", client->pid);
+	return ret;
 }
 
 static int
@@ -1055,6 +1060,7 @@ void edgetpu_fs_remove(struct edgetpu_dev *etdev)
 {
 	device_remove_group(etdev->dev, &edgetpu_attr_group);
 	device_destroy(edgetpu_class, etdev->devno);
+	etdev->etcdev = NULL;
 	cdev_del(&etdev->cdev);
 	debugfs_remove_recursive(etdev->d_entry);
 }

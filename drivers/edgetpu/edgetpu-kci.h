@@ -24,7 +24,7 @@
  * Maximum number of outstanding KCI requests from firmware
  * This is used to size a circular buffer, so it must be a power of 2
  */
-#define REVERSE_KCI_BUFFER_SIZE		(8)
+#define REVERSE_KCI_BUFFER_SIZE		(32)
 
 /*
  * The status field in a firmware response is set to this by us when the

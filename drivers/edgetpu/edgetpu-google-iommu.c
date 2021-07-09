@@ -101,21 +101,21 @@ static int edgetpu_iommu_dev_fault_handler(struct iommu_fault *fault,
 	struct edgetpu_dev *etdev = (struct edgetpu_dev *)token;
 
 	if (fault->type == IOMMU_FAULT_DMA_UNRECOV) {
-		etdev_err(etdev, "Unrecoverable IOMMU fault!\n");
-		etdev_err(etdev, "Reason = %08X\n", fault->event.reason);
-		etdev_err(etdev, "flags = %08X\n", fault->event.flags);
-		etdev_err(etdev, "pasid = %08X\n", fault->event.pasid);
-		etdev_err(etdev, "perms = %08X\n", fault->event.perm);
-		etdev_err(etdev, "addr = %llX\n", fault->event.addr);
-		etdev_err(etdev, "fetch_addr = %llX\n",
+		etdev_warn(etdev, "Unrecoverable IOMMU fault!\n");
+		etdev_warn(etdev, "Reason = %08X\n", fault->event.reason);
+		etdev_warn(etdev, "flags = %08X\n", fault->event.flags);
+		etdev_warn(etdev, "pasid = %08X\n", fault->event.pasid);
+		etdev_warn(etdev, "perms = %08X\n", fault->event.perm);
+		etdev_warn(etdev, "addr = %llX\n", fault->event.addr);
+		etdev_warn(etdev, "fetch_addr = %llX\n",
 			  fault->event.fetch_addr);
 	} else if (fault->type == IOMMU_FAULT_PAGE_REQ) {
-		etdev_err(etdev, "IOMMU page request fault!\n");
-		etdev_err(etdev, "flags = %08X\n", fault->prm.flags);
-		etdev_err(etdev, "pasid = %08X\n", fault->prm.pasid);
-		etdev_err(etdev, "grpid = %08X\n", fault->prm.grpid);
-		etdev_err(etdev, "perms = %08X\n", fault->prm.perm);
-		etdev_err(etdev, "addr = %llX\n", fault->prm.addr);
+		etdev_dbg(etdev, "IOMMU page request fault!\n");
+		etdev_dbg(etdev, "flags = %08X\n", fault->prm.flags);
+		etdev_dbg(etdev, "pasid = %08X\n", fault->prm.pasid);
+		etdev_dbg(etdev, "grpid = %08X\n", fault->prm.grpid);
+		etdev_dbg(etdev, "perms = %08X\n", fault->prm.perm);
+		etdev_dbg(etdev, "addr = %llX\n", fault->prm.addr);
 	}
 	// Tell the IOMMU driver to carry on
 	return -EAGAIN;
@@ -168,7 +168,7 @@ static int edgetpu_iommu_fault_handler(struct iommu_domain *domain,
 	struct edgetpu_iommu_domain *etdomain =
 		(struct edgetpu_iommu_domain *)token;
 
-	dev_err(dev, "IOMMU fault on address %08lX. PASID = %u flags = %08X",
+	dev_dbg(dev, "IOMMU fault on address %08lX. PASID = %u flags = %08X",
 		iova, etdomain->pasid, flags);
 	// Tell the IOMMU driver we are OK with this fault
 	return 0;

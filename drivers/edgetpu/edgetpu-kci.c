@@ -16,8 +16,8 @@
 
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
-#include "edgetpu-kci.h"
 #include "edgetpu-iremap-pool.h"
+#include "edgetpu-kci.h"
 #include "edgetpu-mmu.h"
 #include "edgetpu-telemetry.h"
 #include "edgetpu-usage-stats.h"
@@ -39,6 +39,14 @@
 /* 5 secs. */
 #define KCI_TIMEOUT	(5000)
 #endif
+
+/* A macro for KCIs to leave early when the device state is known to be bad. */
+#define RETURN_ERRNO_IF_ETDEV_NOT_GOOD(kci)                                                        \
+	do {                                                                                       \
+		int ret = edgetpu_get_state_errno_locked(kci->mailbox->etdev);                     \
+		if (ret)                                                                           \
+			return ret;                                                                \
+	} while (0)
 
 static inline u32 edgetpu_kci_queue_element_size(enum mailbox_queue_type type)
 {
@@ -781,6 +789,7 @@ int edgetpu_kci_join_group(struct edgetpu_kci *kci, u8 n_dies, u8 vid)
 
 	if (!kci)
 		return -ENODEV;
+	RETURN_ERRNO_IF_ETDEV_NOT_GOOD(kci);
 	return edgetpu_kci_send_cmd_with_data(kci, &cmd, &detail, sizeof(detail));
 }
 
@@ -792,6 +801,7 @@ int edgetpu_kci_leave_group(struct edgetpu_kci *kci)
 
 	if (!kci)
 		return -ENODEV;
+	RETURN_ERRNO_IF_ETDEV_NOT_GOOD(kci);
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 
@@ -1001,6 +1011,7 @@ int edgetpu_kci_open_device(struct edgetpu_kci *kci, u32 mailbox_id, s16 vcid, b
 
 	if (!kci)
 		return -ENODEV;
+	RETURN_ERRNO_IF_ETDEV_NOT_GOOD(kci);
 	if (vcid < 0)
 		return edgetpu_kci_send_cmd(kci, &cmd);
 	return edgetpu_kci_send_cmd_with_data(kci, &cmd, &detail, sizeof(detail));
@@ -1017,6 +1028,7 @@ int edgetpu_kci_close_device(struct edgetpu_kci *kci, u32 mailbox_id)
 
 	if (!kci)
 		return -ENODEV;
+	RETURN_ERRNO_IF_ETDEV_NOT_GOOD(kci);
 	return edgetpu_kci_send_cmd(kci, &cmd);
 }
 

@@ -16,7 +16,6 @@
 
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
-#include "edgetpu-config.h"
 #include "edgetpu-firmware.h"
 #include "edgetpu-internal.h"
 #include "edgetpu-kci.h"
@@ -435,7 +434,9 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm);
 static int abrolhos_power_up(struct edgetpu_pm *etpm)
 {
 	struct edgetpu_dev *etdev = etpm->etdev;
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
 	struct abrolhos_platform_dev *abpdev = to_abrolhos_dev(etdev);
+#endif
 	int ret = abrolhos_pwr_state_set(
 		etpm->etdev, abrolhos_get_initial_pwr_state(etdev->dev));
 
@@ -479,12 +480,10 @@ static int abrolhos_power_up(struct edgetpu_pm *etpm)
 	/* attempt firmware run */
 	switch (edgetpu_firmware_status_locked(etdev)) {
 	case FW_VALID:
-		ret = edgetpu_firmware_restart_locked(etdev);
+		ret = edgetpu_firmware_restart_locked(etdev, false);
 		break;
 	case FW_INVALID:
-		ret = edgetpu_firmware_run_locked(etdev->firmware,
-						  EDGETPU_DEFAULT_FIRMWARE_NAME,
-						  FW_DEFAULT);
+		ret = edgetpu_firmware_run_default_locked(etdev);
 		break;
 	default:
 		break;
@@ -511,6 +510,11 @@ abrolhos_pm_shutdown_firmware(struct abrolhos_platform_dev *etpdev,
 		return;
 
 	etdev_warn(etdev, "Firmware shutdown request failed!\n");
+	etdev_warn(etdev, "Attempting firmware restart\n");
+	if (!edgetpu_firmware_restart_locked(etdev, true) &&
+	    !edgetpu_pchannel_power_down(etdev, false))
+		return;
+
 	etdev_warn(etdev, "Requesting early GSA reset\n");
 
 	/*

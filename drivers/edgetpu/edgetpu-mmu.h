@@ -16,11 +16,6 @@
 #include "edgetpu-internal.h"
 #include "edgetpu.h"
 
-/* TODO(b/153947157): remove this */
-#if IS_ENABLED(CONFIG_EDGETPU_TEST)
-#include <linux/iommu-ext.h>
-#endif
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
 #ifndef IOMMU_PASID_INVALID
 #define IOMMU_PASID_INVALID	(-1U)

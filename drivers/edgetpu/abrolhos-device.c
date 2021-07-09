@@ -225,9 +225,9 @@ int edgetpu_chip_release_ext_mailbox(struct edgetpu_client *client,
 
 	mutex_lock(&apdev->tz_mailbox_lock);
 	if (!apdev->secure_client) {
-		etdev_err(client->etdev, "TZ mailbox already released\n");
+		etdev_warn(client->etdev, "TZ mailbox already released\n");
 		mutex_unlock(&apdev->tz_mailbox_lock);
-		return -ENODEV;
+		return 0;
 	}
 	if (apdev->secure_client != client) {
 		etdev_err(client->etdev,

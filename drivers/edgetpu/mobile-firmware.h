@@ -49,6 +49,4 @@ struct mobile_image_header {
 int mobile_edgetpu_firmware_create(struct edgetpu_dev *etdev);
 void mobile_edgetpu_firmware_destroy(struct edgetpu_dev *etdev);
 
-int mobile_edgetpu_firmware_run_default(struct edgetpu_dev *etdev);
-
 #endif /* __MOBILE_FIRMWARE_H__ */

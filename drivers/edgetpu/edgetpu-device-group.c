@@ -1493,8 +1493,8 @@ int edgetpu_device_group_unmap(struct edgetpu_device_group *group,
 	int ret = 0;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
-		ret = edgetpu_group_errno(group);
+	if (!is_finalized_or_errored(group)) {
+		ret = -EINVAL;
 		goto unlock_group;
 	}
 
@@ -1788,11 +1788,16 @@ int edgetpu_group_attach_and_open_mailbox(struct edgetpu_device_group *group)
 	 * Only attaching mailbox for finalized groups.
 	 * Don't attach mailbox for errored groups.
 	 */
-	if (edgetpu_device_group_is_finalized(group)) {
-		ret = edgetpu_group_attach_mailbox_locked(group);
-		if (!ret)
-			ret = edgetpu_group_activate(group);
-	}
+	if (!edgetpu_device_group_is_finalized(group))
+		goto out_unlock;
+	ret = edgetpu_group_attach_mailbox_locked(group);
+	if (ret)
+		goto out_unlock;
+	ret = edgetpu_group_activate(group);
+	if (ret)
+		edgetpu_group_detach_mailbox_locked(group);
+
+out_unlock:
 	mutex_unlock(&group->lock);
 	return ret;
 }

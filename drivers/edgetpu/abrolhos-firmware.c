@@ -64,11 +64,16 @@ static void abrolhos_firmware_teardown_buffer(
 {
 }
 
-static int abrolhos_firmware_restart(struct edgetpu_firmware *et_fw)
+static int abrolhos_firmware_restart(struct edgetpu_firmware *et_fw,
+				     bool force_reset)
 {
 	struct edgetpu_dev *etdev = et_fw->etdev;
 	struct abrolhos_platform_dev *edgetpu_pdev = to_abrolhos_dev(etdev);
 	int tpu_state;
+
+	/* We are in a bad state, send shutdown command and hope the device recovers */
+	if (force_reset)
+		gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_SHUTDOWN);
 
 	tpu_state = gsa_send_tpu_cmd(edgetpu_pdev->gsa_dev, GSA_TPU_START);
 
@@ -199,7 +204,8 @@ out_unmap:
 	return ret;
 }
 
-static const struct edgetpu_firmware_handlers abrolhos_firmware_handlers = {
+static const struct edgetpu_firmware_chip_data abrolhos_firmware_chip_data = {
+	.default_firmware_name = EDGETPU_DEFAULT_FIRMWARE_NAME,
 	.alloc_buffer = abrolhos_firmware_alloc_buffer,
 	.free_buffer = abrolhos_firmware_free_buffer,
 	.setup_buffer = abrolhos_firmware_setup_buffer,
@@ -210,18 +216,12 @@ static const struct edgetpu_firmware_handlers abrolhos_firmware_handlers = {
 
 int mobile_edgetpu_firmware_create(struct edgetpu_dev *etdev)
 {
-	return edgetpu_firmware_create(etdev, &abrolhos_firmware_handlers);
+	return edgetpu_firmware_create(etdev, &abrolhos_firmware_chip_data);
 }
 
 void mobile_edgetpu_firmware_destroy(struct edgetpu_dev *etdev)
 {
 	edgetpu_firmware_destroy(etdev);
-}
-
-int edgetpu_chip_firmware_run(struct edgetpu_dev *etdev, const char *name,
-			      enum edgetpu_firmware_flags flags)
-{
-	return edgetpu_firmware_run(etdev, name, flags);
 }
 
 unsigned long edgetpu_chip_firmware_iova(struct edgetpu_dev *etdev)

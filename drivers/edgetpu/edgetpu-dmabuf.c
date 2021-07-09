@@ -744,8 +744,9 @@ int edgetpu_unmap_dmabuf(struct edgetpu_device_group *group, u32 die_index,
 	int ret = -EINVAL;
 
 	mutex_lock(&group->lock);
-	if (!edgetpu_device_group_is_finalized(group)) {
-		ret = edgetpu_group_errno(group);
+	/* allows unmapping on errored groups */
+	if (!edgetpu_device_group_is_finalized(group) && !edgetpu_device_group_is_errored(group)) {
+		ret = -EINVAL;
 		goto out_unlock;
 	}
 	edgetpu_mapping_lock(mappings);
