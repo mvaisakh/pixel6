@@ -471,9 +471,10 @@ static int pca9468_check_state(u8 val[8], struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	pr_err("%s: Error reg[1]=0x%x,[2]=0x%x,[3]=0x%x,[4]=0x%x,[5]=0x%x,[6]=0x%x,[7]=0x%x\n",
-	       __func__, val[1], val[2], val[3], val[4], val[5], val[6],
-	       val[7]);
+	logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+			"%s: Error reg[1]=0x%x,[2]=0x%x,[3]=0x%x,[4]=0x%x,[5]=0x%x,[6]=0x%x,[7]=0x%x\n",
+			__func__, val[1], val[2], val[3], val[4], val[5], val[6],
+			val[7]);
 
 	return 0;
 }
@@ -489,12 +490,14 @@ static void pca9468_dump_test_debug(struct pca9468_charger *pca9468)
 		pr_err("%s: cannot read test registers (%d)\n", __func__, ret);
 	} else {
 
-		pr_err("%s: Error reg[0x40]=0x%x,[0x41]=0x%x,[0x42]=0x%x,[0x43]=0x%x,[0x44]=0x%x,[0x45]=0x%x,[0x46]=0x%x,[0x47]=0x%x\n",
-			__func__, test_val[0], test_val[1], test_val[2], test_val[3],
-			test_val[4], test_val[5], test_val[6], test_val[7]);
-		pr_err("%s: Error reg[0x48]=0x%x,[0x49]=0x%x,[0x4A]=0x%x,[0x4B]=0x%x,[0x4C]=0x%x,[0x4D]=0x%x,[0x4E]=0x%x,[0x4F]=0x%x\n",
-			__func__, test_val[8], test_val[9], test_val[10], test_val[11],
-			test_val[12], test_val[13], test_val[14], test_val[15]);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: Error reg[0x40]=0x%x,[0x41]=0x%x,[0x42]=0x%x,[0x43]=0x%x,[0x44]=0x%x,[0x45]=0x%x,[0x46]=0x%x,[0x47]=0x%x\n",
+				__func__, test_val[0], test_val[1], test_val[2], test_val[3],
+				test_val[4], test_val[5], test_val[6], test_val[7]);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: Error reg[0x48]=0x%x,[0x49]=0x%x,[0x4A]=0x%x,[0x4B]=0x%x,[0x4C]=0x%x,[0x4D]=0x%x,[0x4E]=0x%x,[0x4F]=0x%x\n",
+				__func__, test_val[8], test_val[9], test_val[10], test_val[11],
+				test_val[12], test_val[13], test_val[14], test_val[15]);
 	}
 }
 
@@ -589,7 +592,6 @@ static int pca9468_check_not_active(struct pca9468_charger *pca9468)
 	}
 
 	if (val[PCA9468_REG_STS_A] & PCA9468_BIT_CFLY_SHORT_STS) {
-		/* Flying cap is short to GND */
 		pr_err("%s: Flying Cap is shorted to GND", __func__);
 		return -EINVAL;
 	}
@@ -635,8 +637,9 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 	/* Dump registers again */
 	pca9468_check_state(val, pca9468);
 	ret = regmap_bulk_read(pca9468->regmap, 0x48, val, 3);
-	pr_err("%s: Error reg[0x48]=0x%x,[0x49]=0x%x,[0x4a]=0x%x\n",
-		__func__, val[0], val[1], val[2]);
+	logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+			"%s: Error reg[0x48]=0x%x,[0x49]=0x%x,[0x4a]=0x%x\n",
+			__func__, val[0], val[1], val[2]);
 
 	return ret;
 }
@@ -1991,7 +1994,10 @@ static int pca9468_apply_new_iin(struct pca9468_charger *pca9468)
 	return ret;
 }
 
-/* also called from pca9468_set_new_cc_max() */
+/*
+ * also called from pca9468_set_new_cc_max()
+ * call holding mutex_unlock(&pca9468->lock);
+ */
 static int pca9468_set_new_iin(struct pca9468_charger *pca9468, int iin)
 {
 	int ret = 0;
@@ -2001,7 +2007,7 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468, int iin)
 		return 0;
 	}
 
-	/* same as previous request nevermind */
+	/* previus request still pending, no need to update */
 	if (pca9468->iin_cc == pca9468->new_iin)
 		return 0;
 
@@ -2011,6 +2017,8 @@ static int pca9468_set_new_iin(struct pca9468_charger *pca9468, int iin)
 	/* apply iin_cc in pca9468_preset_config() at start */
 	if (pca9468->charging_state == DC_STATE_NO_CHARGING ||
 	    pca9468->charging_state == DC_STATE_CHECK_VBAT) {
+
+		/* used on start vs the ->iin_cfg one */
 		pca9468->iin_cc = iin;
 	} else {
 		/*
@@ -2344,6 +2352,10 @@ static int pca9468_charge_adjust_ccmode(struct pca9468_charger *pca9468)
 
 	mutex_lock(&pca9468->lock);
 
+	if (pca9468->charging_state != DC_STATE_ADJUST_CC)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_ADJUST_CC);
+
 	pca9468->charging_state = DC_STATE_ADJUST_CC;
 
 	ret = pca9468_check_error(pca9468);
@@ -2497,8 +2509,10 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 	pr_debug("%s: ======START======= \n", __func__);
 
 	mutex_lock(&pca9468->lock);
-	pr_debug("%s: = charging_state=%u == \n", __func__,
-		 pca9468->charging_state);
+
+	if (pca9468->charging_state != DC_STATE_CC_MODE)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_CC_MODE);
 
 	pca9468->charging_state = DC_STATE_CC_MODE;
 
@@ -2656,8 +2670,10 @@ static int pca9468_charge_start_cvmode(struct pca9468_charger *pca9468)
 	pr_debug("%s: ======START=======\n", __func__);
 
 	mutex_lock(&pca9468->lock);
-	pr_debug("%s: = charging_state=%u == \n", __func__,
-		 pca9468->charging_state);
+
+	if (pca9468->charging_state != DC_STATE_START_CV)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_START_CV);
 
 	pca9468->charging_state = DC_STATE_START_CV;
 
@@ -2805,8 +2821,10 @@ static int pca9468_charge_cvmode(struct pca9468_charger *pca9468)
 	pr_debug("%s: ======START=======\n", __func__);
 
 	mutex_lock(&pca9468->lock);
-	pr_debug("%s: = charging_state=%u -> %u== \n", __func__,
-		 pca9468->charging_state, DC_STATE_CV_MODE);
+
+	if (pca9468->charging_state != DC_STATE_CV_MODE)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_CV_MODE);
 
 	pca9468->charging_state = DC_STATE_CV_MODE;
 
@@ -2956,7 +2974,7 @@ error_exit:
 
 /*
  * Preset TA voltage and current for Direct Charging Mode using
- * the configured cc_max and fv_uv limits.
+ * the configured cc_max and fv_uv limits. Used only on start
  */
 static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 {
@@ -2967,12 +2985,16 @@ static int pca9468_preset_dcmode(struct pca9468_charger *pca9468)
 	pr_debug("%s: = charging_state=%u == \n", __func__,
 		 pca9468->charging_state);
 
-	/* gcpm must set this */
+	/* gcpm set ->cc_max and ->fv_uv before starting */
 	if (pca9468->cc_max < 0 || pca9468->fv_uv < 0) {
 		pr_err("%s: cc_max=%d fv_uv=%d invalid\n", __func__,
 		       pca9468->cc_max, pca9468->fv_uv);
 		return -EINVAL;
 	}
+
+	if (pca9468->charging_state != DC_STATE_PRESET_DC)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_PRESET_DC);
 
 	pca9468->charging_state = DC_STATE_PRESET_DC;
 
@@ -3077,8 +3099,9 @@ static int pca9468_preset_config(struct pca9468_charger *pca9468)
 
 	mutex_lock(&pca9468->lock);
 
-	pr_debug("%s: = charging_state=%u == \n", __func__,
-		 pca9468->charging_state);
+	if (pca9468->charging_state != DC_STATE_PRESET_DC)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_PRESET_DC);
 
 	pca9468->charging_state = DC_STATE_PRESET_DC;
 
@@ -3121,6 +3144,11 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 		 pca9468->charging_state);
 
 	mutex_lock(&pca9468->lock);
+
+	if (pca9468->charging_state != DC_STATE_CHECK_ACTIVE)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_CHECK_ACTIVE);
+
 	pca9468->charging_state = DC_STATE_CHECK_ACTIVE;
 
 	ret = pca9468_check_error(pca9468);
@@ -3235,10 +3263,12 @@ static int pca9468_check_vbatmin(struct pca9468_charger *pca9468)
 	int ret = 0, vbat;
 
 	pr_debug("%s: =========START=========\n", __func__);
-	pr_debug("%s: = charging_state=%u == \n", __func__,
-		 pca9468->charging_state);
 
 	mutex_lock(&pca9468->lock);
+
+	if (pca9468->charging_state != DC_STATE_CHECK_VBAT)
+		dev_info(pca9468->dev, "%s: charging_state=%u->%u\n", __func__,
+			 pca9468->charging_state, DC_STATE_CHECK_VBAT);
 
 	pca9468->charging_state = DC_STATE_CHECK_VBAT;
 
@@ -3501,7 +3531,7 @@ static void pca9468_timer_work(struct work_struct *work)
 	}
 
 	logbuffer_prlog(pca9468, LOGLEVEL_DEBUG,
-			"%s: timer_id=%d->%d, charging_state=%u->%d, period=%ld",
+			"%s: timer_id=%d->%d, charging_state=%u->%u, period=%ld",
 			__func__, timer_id, pca9468->timer_id, charging_state,
 			pca9468->charging_state, pca9468->timer_period);
 
