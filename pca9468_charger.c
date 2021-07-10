@@ -520,21 +520,28 @@ static int pca9468_check_not_active(struct pca9468_charger *pca9468)
 	/* Check INT1_STS first */
 	if ((val[PCA9468_REG_INT1_STS] & PCA9468_BIT_V_OK_STS) != PCA9468_BIT_V_OK_STS) {
 		/* VBUS is invalid */
-		pr_err("%s: VOK is invalid", __func__);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: VOK is invalid", __func__);
 
 		/* Check STS_A. NOTE: V_OV_TRACKING is with VIN OV */
 		if (val[PCA9468_REG_STS_A] & PCA9468_BIT_CFLY_SHORT_STS)
-			pr_err("%s: Flying Cap is shorted to GND", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: Flying Cap is shorted to GND", __func__);
 		else if (val[PCA9468_REG_STS_A] & PCA9468_BIT_VOUT_UV_STS)
-			pr_err("%s: VOUT UV", __func__); /* VOUT < VOUT_OK */
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: VOUT UV", __func__); /* VOUT < VOUT_OK */
 		else if (val[PCA9468_REG_STS_A] & PCA9468_BIT_VBAT_OV_STS)
-			pr_err("%s: VBAT OV", __func__); /* VBAT > VBAT_OV */
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: VBAT OV", __func__); /* VBAT > VBAT_OV */
 		else if (val[PCA9468_REG_STS_A] & PCA9468_BIT_VIN_OV_STS)
-			pr_err("%s: VIN OV", __func__); /* VIN > V_OV_FIXED */
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: VIN OV", __func__); /* VIN > V_OV_FIXED */
 		else if (val[PCA9468_REG_STS_A] & PCA9468_BIT_VIN_UV_STS)
-			pr_err("%s: VIN UV", __func__); /* VIN < V_UVTH */
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: VIN UV", __func__); /* VIN < V_UVTH */
 		else
-			pr_err("%s: Invalid VIN or VOUT", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: Invalid VIN or VOUT", __func__);
 
 		return  -EINVAL;
 	}
@@ -553,8 +560,9 @@ static int pca9468_check_not_active(struct pca9468_charger *pca9468)
 
 		/* Read NTC ADC */
 		ntc_adc = pca9468_read_adc(pca9468, ADCCH_NTC);	/* uV unit */
-		pr_err("%s: NTC Protection, NTC_TH=%d(uV), NTC_ADC=%d(uV)",
-		       __func__, ntc_th, ntc_adc);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: NTC Protection, NTC_TH=%d(uV), NTC_ADC=%d(uV)",
+				__func__, ntc_th, ntc_adc);
 
 		return -EINVAL;
 	}
@@ -563,18 +571,22 @@ static int pca9468_check_not_active(struct pca9468_charger *pca9468)
 		/* OCP event happens */
 
 		if (val[PCA9468_REG_STS_B] & PCA9468_BIT_OCP_FAST_STS)
-			pr_err("%s: IIN is over OCP_FAST", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: IIN is over OCP_FAST", __func__);
 		else if (val[PCA9468_REG_STS_B] & PCA9468_BIT_OCP_AVG_STS)
-			pr_err("%s: IIN is over OCP_AVG", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: IIN is over OCP_AVG", __func__);
 		else
-			pr_err("%s: No Loop active", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: No Loop active", __func__);
 
 		return -EINVAL;
 	}
 
 	if (val[PCA9468_REG_INT1_STS] & PCA9468_BIT_TEMP_REG_STS) {
 		/* Over temperature protection */
-		pr_err("%s: Device is in temperature regulation", __func__);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: Device is in temperature regulation", __func__);
 		return -EINVAL;
 	}
 
@@ -582,17 +594,21 @@ static int pca9468_check_not_active(struct pca9468_charger *pca9468)
 		const u8 sts_b = val[PCA9468_REG_STS_B];
 
 		if (sts_b & PCA9468_BIT_CHARGE_TIMER_STS)
-			pr_err("%s: Charger timer is expired", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: Charger timer is expired", __func__);
 		else if (sts_b & PCA9468_BIT_WATCHDOG_TIMER_STS)
-			pr_err("%s: Watchdog timer is expired", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: Watchdog timer is expired", __func__);
 		else
-			pr_err("%s: Timer INT, but no timer STS", __func__);
+			logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+					"%s: Timer INT, but no timer STS", __func__);
 
 		return -EINVAL;
 	}
 
 	if (val[PCA9468_REG_STS_A] & PCA9468_BIT_CFLY_SHORT_STS) {
-		pr_err("%s: Flying Cap is shorted to GND", __func__);
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: Flying Cap is shorted to GND", __func__);
 		return -EINVAL;
 	}
 
@@ -613,38 +629,39 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 
 	pr_debug("%s: RCP check, STS_B=0x%x\n",	__func__, reg_val);
 
-	/* Check Active status */
+	/* RCP condition happened, but VIN is valid and the PCA is active */
 	if (reg_val & PCA9468_BIT_ACTIVE_STATE_STS) {
-		/* RCP condition happened, but VIN is still valid */
-
-		/* If VIN is increased, input current will increased over
-		 * IIN_LOW level
+		/*
+		 * If VIN is increased, input current will increased over
+		 * IIN_LOW level.
 		 */
-		/* Normal charging */
 		return 0;
 	}
 
-	/* It is not RCP condition */
-	if (reg_val & PCA9468_BIT_STANDBY_STATE_STS) {
-		/* Need to retry if DC is in starting state */
-		pr_err("%s: Any abnormal condition, retry\n", __func__);
-		ret = -EAGAIN;
-	}  else {
-		pr_err("%s: Shutdown state\n", __func__);
-		ret = -EINVAL;
-	}
-
-	/* Dump registers again */
 	pca9468_check_state(val, pca9468);
 	ret = regmap_bulk_read(pca9468->regmap, 0x48, val, 3);
 	logbuffer_prlog(pca9468, LOGLEVEL_ERR,
 			"%s: Error reg[0x48]=0x%x,[0x49]=0x%x,[0x4a]=0x%x\n",
 			__func__, val[0], val[1], val[2]);
 
+	/* Not in RCP state, retry if DC is starting */
+	if (reg_val & PCA9468_BIT_STANDBY_STATE_STS) {
+		logbuffer_prlog(pca9468, LOGLEVEL_WARNING,
+				"%s: device in abnormal state, retry");
+		ret = -EAGAIN;
+	}  else {
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: device shutdown", ret);
+		ret = -EINVAL;
+	}
+
 	return ret;
 }
 
-/* Check Active status */
+/*
+ * Check Active status
+ * call holding mutex_lock(&pca9468->lock)
+ */
 static int pca9468_check_error(struct pca9468_charger *pca9468)
 {
 	unsigned int reg_val;
@@ -698,36 +715,34 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 		/* PCA9468 is in shutdown state */
 		pr_err("%s: PCA9468 is in shutdown\n", __func__);
 		ret = -EINVAL;
-	} else {
-		/* Standby? state */
-
-		/* Check the RCP condition, T_REVI_DET is 300ms */
-		/* Wait 200ms */
-		msleep(200);
-
+	} else if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
 		/*
 		 * Sometimes battery driver might call set_property function
 		 * to stop charging during msleep. At this case, charging
 		 * state would change DC_STATE_NO_CHARGING. PCA9468 should
 		 * stop checking RCP condition and exit timer_work
 		 */
-		if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
-			pr_err("%s: other driver forced to stop direct charging\n",
-				__func__);
-			ret = -EINVAL;
-		} else {
+		pr_err("%s: other driver forced to stop direct charging\n", __func__);
+		ret = -EINVAL;
+	} else {
 
-			ret = pca9468_check_standby(pca9468);
-			if (ret == 0) {
-				pr_info("%s: RCP happened, but VIN is valid\n",
-					__func__);
-			}
+		/* Check the RCP condition, T_REVI_DET is 300ms */
+		msleep(200);
+
+		ret = pca9468_check_standby(pca9468);
+		if (ret == 0) {
+			const int charging_state = pca9468->charging_state;
+
+			logbuffer_prlog(pca9468, charging_state == DC_STATE_CHECK_ACTIVE ?
+					LOGLEVEL_WARNING : LOGLEVEL_ERR,
+					"%s: RCP triggered but VIN is valid, state=%d",
+					charging_state);
 		}
 	}
 
 error:
 	pr_debug("%s: Not Active Status=%d\n", __func__, ret);
-	return -EINVAL;
+	return ret;
 }
 
 static int pca9468_get_iin(struct pca9468_charger *pca9468, int *iin)
@@ -3403,7 +3418,7 @@ static void pca9468_timer_work(struct work_struct *work)
 {
 	struct pca9468_charger *pca9468 =
 		container_of(work, struct pca9468_charger, timer_work.work);
-	const int charging_state = pca9468->charging_state;
+	const unsigned int charging_state = pca9468->charging_state;
 	int timer_id;
 	int ret = 0;
 
