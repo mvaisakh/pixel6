@@ -38,26 +38,22 @@ extern "C" {
  * slc  : for configuring system level cache partitions
  * dpm  : for dynamic power manager requests update.
  */
-enum lwis_device_types {
-	DEVICE_TYPE_UNKNOWN = -1,
-	DEVICE_TYPE_TOP = 0,
-	DEVICE_TYPE_I2C,
-	DEVICE_TYPE_IOREG,
-	DEVICE_TYPE_SLC,
-	DEVICE_TYPE_DPM,
-	NUM_DEVICE_TYPES
-};
+#define DEVICE_TYPE_UNKNOWN -1
+#define DEVICE_TYPE_TOP 0
+#define DEVICE_TYPE_I2C 1
+#define DEVICE_TYPE_IOREG 2
+#define DEVICE_TYPE_SLC 3
+#define DEVICE_TYPE_DPM 4
+#define NUM_DEVICE_TYPES 5
 
 // Qos clock family.
-enum lwis_clock_family {
-	CLOCK_FAMILY_INVALID = -1,
-	CLOCK_FAMILY_CAM,
-	CLOCK_FAMILY_INTCAM,
-	CLOCK_FAMILY_TNR,
-	CLOCK_FAMILY_MIF,
-	CLOCK_FAMILY_INT,
-	NUM_CLOCK_FAMILY
-};
+#define CLOCK_FAMILY_INVALID -1
+#define CLOCK_FAMILY_CAM 0
+#define CLOCK_FAMILY_INTCAM 1
+#define CLOCK_FAMILY_TNR 2
+#define CLOCK_FAMILY_MIF 3
+#define CLOCK_FAMILY_INT 4
+#define NUM_CLOCK_FAMILY 5
 
 /* Device tree strings have a maximum length of 31, according to specs.
    Adding 1 byte for the null character. */
@@ -76,7 +72,7 @@ struct lwis_clk_setting {
 
 struct lwis_device_info {
 	int id;
-	enum lwis_device_types type;
+	int32_t type;
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct lwis_clk_setting clks[LWIS_MAX_CLOCK_NUM];
 	int32_t num_clks;
@@ -310,7 +306,7 @@ struct lwis_qos_setting {
 	// Device id for this vote.
 	int32_t device_id;
 	// Target clock family.
-	enum lwis_clock_family clock_family;
+	int32_t clock_family;
 	// read BW
 	int64_t read_bw;
 	// write BW

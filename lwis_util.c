@@ -77,7 +77,7 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint
 	return ret;
 }
 
-const char *lwis_device_type_to_string(enum lwis_device_types type)
+const char *lwis_device_type_to_string(int32_t type)
 {
 	switch (type) {
 	case DEVICE_TYPE_TOP:

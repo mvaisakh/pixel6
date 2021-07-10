@@ -35,8 +35,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev);
  *  lwis_platform_update_qos: handles platform-specific parts of
  *  updating qos requirements. "value" is in KHz.
  */
-int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
-			     enum lwis_clock_family clock_family);
+int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value, int32_t clock_family);
 
 /*
  *  lwis_platform_remove_qos: handles platform-specific parts of

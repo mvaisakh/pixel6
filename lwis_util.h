@@ -50,7 +50,7 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint
  * lwis_device_type_to_string: Converts the LWIS device type into a human-
  * readable string. Useful for debug logging.
  */
-const char *lwis_device_type_to_string(enum lwis_device_types type);
+const char *lwis_device_type_to_string(int32_t type);
 
 /*
  * lwis_get_time: Returns time since boot, this uses CLOCK_BOOTTIME which

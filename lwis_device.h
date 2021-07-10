@@ -166,7 +166,7 @@ struct lwis_device_debug_info {
 struct lwis_device {
 	struct lwis_platform *platform;
 	int id;
-	enum lwis_device_types type;
+	int32_t type;
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct device *dev;
 	struct platform_device *plat_dev;

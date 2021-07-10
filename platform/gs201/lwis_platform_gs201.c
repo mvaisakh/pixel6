@@ -189,7 +189,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 }
 
 int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
-			     enum lwis_clock_family clock_family)
+			     int32_t clock_family)
 {
 	struct lwis_platform *platform;
 	struct exynos_pm_qos_request *qos_req;
