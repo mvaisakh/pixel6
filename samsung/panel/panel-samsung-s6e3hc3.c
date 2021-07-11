@@ -548,63 +548,6 @@ static const struct exynos_dsi_cmd s6e3hc3_init_cmds[] = {
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_init);
 
-static const struct exynos_dsi_cmd s6e3hc3_evt1_por_lhbm_on_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x80), /* 1 cycle */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xE7, 0x1F), /* global para */
-	EXYNOS_DSI_CMD_SEQ(0x1F, 0x2D, 0x09, 0x39), /* center posi. */
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_por_lhbm_on);
-
-static const struct exynos_dsi_cmd s6e3hc3_evt1_doe_lhbm_on_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD0(unlock_cmd_f1),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x81), /* 2 cycle */
-	EXYNOS_DSI_CMD_SEQ(0xB1, 0x90),
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD_SEQ(0xB0, 0x01, 0xE7, 0x1F), /* global para */
-	EXYNOS_DSI_CMD_SEQ(0x1F, 0x2D, 0x09, 0x39), /* center posi. */
-	EXYNOS_DSI_CMD0(lock_cmd_f1),
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_doe_lhbm_on);
-
-static const struct exynos_dsi_cmd s6e3hc3_evtandafter_lhbm_off_60hz_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
-	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x01), /* 60 hz */
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_lhbm_off_60hz);
-
-static const struct exynos_dsi_cmd s6e3hc3_evtandafter_lhbm_off_120hz_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x82), /* 3 cycle */
-	EXYNOS_DSI_CMD_SEQ(0xB1, 0x00), /* EM freg. change */
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evtandafter_lhbm_off_120hz);
-
-static const struct exynos_dsi_cmd s6e3hc3_evt1_1_lhbm_on_cmds[] = {
-	EXYNOS_DSI_CMD0(unlock_cmd_f0),
-	EXYNOS_DSI_CMD0(unlock_cmd_f1),
-	EXYNOS_DSI_CMD_SEQ(0xBD, 0x21, 0x81), /* 2 cycle */
-	EXYNOS_DSI_CMD_SEQ(0xB1, 0x90),
-	EXYNOS_DSI_CMD_SEQ(0x60, 0x00), /* 120 hz */
-	EXYNOS_DSI_CMD_SEQ(0xF7, 0x0F), /* update key */
-	EXYNOS_DSI_CMD0(lock_cmd_f1),
-	EXYNOS_DSI_CMD0(lock_cmd_f0),
-};
-static DEFINE_EXYNOS_CMD_SET(s6e3hc3_evt1_1_lhbm_on);
-
 #define S6E3HC3_LOCAL_HBM_GAMMA_CMD_SIZE 6
 #define S6E3HC3_PANEL_ID3_DOE            0x20
 #define S6E3HC3_PANEL_ID3_DOE3           0x29
@@ -664,42 +607,63 @@ static void s6e3hc3_lhbm_gamma_write(struct exynos_panel *ctx)
 static void s6e3hc3_extra_lhbm_settings(struct exynos_panel *ctx,
 				 bool local_hbm_en)
 {
-	u32 id;
-
 	dev_dbg(ctx->dev, "%s(panel_rev: 0x%x)\n", __func__, ctx->panel_rev);
 	if (ctx->panel_rev >= PANEL_REV_EVT1) {
-		const int vrefresh = drm_mode_vrefresh(&ctx->current_mode->mode);
-
+		EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, unlock_cmd_f0, 0);
 		if (local_hbm_en) {
 			if (ctx->panel_rev == PANEL_REV_EVT1) {
-				if (!s6e3hc3_get_panel_id3(ctx, &id)) {
+				u32 id = 0;
+				bool is_doe_cfg = false;
+
+				if (!s6e3hc3_get_panel_id3(ctx, &id))
 					dev_err(ctx->dev,
 						"fail to get panel id and load evt1 por settings!\n");
-					exynos_panel_send_cmd_set(ctx,
-						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
-					return;
-				}
+				is_doe_cfg = (id & S6E3HC3_PANEL_ID3_DOE) != 0;
 
-				if (id & S6E3HC3_PANEL_ID3_DOE)
-					exynos_panel_send_cmd_set(ctx,
-						&s6e3hc3_evt1_doe_lhbm_on_cmd_set);
-				else
-					exynos_panel_send_cmd_set(ctx,
-						&s6e3hc3_evt1_por_lhbm_on_cmd_set);
+				if (is_doe_cfg) {
+					EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, unlock_cmd_f1, 0);
+					/* 2 cycle */
+					EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xBD, 0x21, 0x81);
+					EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xB1, 0x90);
+				} else {
+					/* 1 cycle */
+					EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xBD, 0x21, 0x80);
+				}
+				/* 120 hz */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0x60, 0x00);
+				/* update key */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xF7, 0x0F);
+				/* global para */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xB0, 0x01, 0xE7, 0x1F);
+				/* center posi. */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0x1F, 0x2D, 0x09, 0x39);
+				if (is_doe_cfg)
+					EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, lock_cmd_f1, 0);
 			} else {
-				exynos_panel_send_cmd_set(ctx,
-					&s6e3hc3_evt1_1_lhbm_on_cmd_set);
+				EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, unlock_cmd_f1, 0);
+				/* 2 cycle */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xBD, 0x21, 0x81);
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xB1, 0x90);
+				/* 120 hz */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0x60, 0x00);
+				/* update key */
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xF7, 0x0F);
+				EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, lock_cmd_f1, 0);
 			}
 		} else {
+			const int vrefresh = drm_mode_vrefresh(&ctx->current_mode->mode);
+
+			EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xBD, 0x21, 0x82);
+			EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xB1, 0x00);
 			if (vrefresh == 60)
-				exynos_panel_send_cmd_set(ctx,
-					&s6e3hc3_evtandafter_lhbm_off_60hz_cmd_set);
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0x60, 0x01);
 			else if (vrefresh == 120)
-				exynos_panel_send_cmd_set(ctx,
-					&s6e3hc3_evtandafter_lhbm_off_120hz_cmd_set);
+				EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0x60, 0x00);
 			else
 				dev_err(ctx->dev, "unsupported refresh rate!\n");
+			EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, 0, 0xF7, 0x0F);
 		}
+		EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, lock_cmd_f0, 0);
 	}
 }
 

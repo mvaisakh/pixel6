@@ -56,9 +56,10 @@
 #define PANEL_REV_LT(rev)	((rev) - 1)
 #define PANEL_REV_ALL_BUT(rev)	(PANEL_REV_ALL & ~(rev))
 
-#define HBM_FLAG_GHBM_UPDATE BIT(0)
-#define HBM_FLAG_BL_UPDATE   BIT(1)
-#define HBM_FLAG_LHBM_UPDATE BIT(2)
+#define HBM_FLAG_GHBM_UPDATE    BIT(0)
+#define HBM_FLAG_BL_UPDATE      BIT(1)
+#define HBM_FLAG_LHBM_UPDATE    BIT(2)
+#define HBM_FLAG_DIMMING_UPDATE BIT(3)
 
 enum exynos_panel_state {
 	PANEL_STATE_ON = 0,
@@ -402,6 +403,8 @@ struct exynos_panel {
 
 	bool hbm_mode;
 	bool dimming_on;
+	/* request_dimming_on from drm commit */
+	bool request_dimming_on;
 	struct backlight_device *bl;
 	struct mutex mode_lock;
 	struct mutex bl_state_lock;
@@ -530,6 +533,15 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, d, ARRAY_SIZE(d), ret);	\
 } while (0)
 
+#define EXYNOS_DCS_WRITE_SEQ_FLAGS(ctx, flags, seq...) do {				\
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);	\
+	u8 d[] = { seq };						\
+	int ret;							\
+	ret = exynos_dsi_dcs_write_buffer(dsi, d, ARRAY_SIZE(d), flags);		\
+	if (ret < 0)							\
+		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, d, ARRAY_SIZE(d), ret);	\
+} while (0)
+
 #define EXYNOS_DCS_WRITE_SEQ_DELAY(ctx, delay, seq...) do {		\
 	EXYNOS_DCS_WRITE_SEQ(ctx, seq);					\
 	usleep_range(delay * 1000, delay * 1000 + 10);			\
@@ -538,6 +550,14 @@ static inline void exynos_bin2hex(const void *buf, size_t len,
 #define EXYNOS_DCS_WRITE_TABLE(ctx, table) do {					\
 	int ret;								\
 	ret = exynos_dcs_write(ctx, table, ARRAY_SIZE(table));			\
+	if (ret < 0)								\
+		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, table, ARRAY_SIZE(table), ret);	\
+} while (0)
+
+#define EXYNOS_DCS_WRITE_TABLE_FLAGS(ctx, table, flags) do {					\
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);	\
+	int ret;								\
+	ret = exynos_dsi_dcs_write_buffer(dsi, table, ARRAY_SIZE(table), flags);		\
 	if (ret < 0)								\
 		EXYNOS_DCS_WRITE_PRINT_ERR(ctx, table, ARRAY_SIZE(table), ret);	\
 } while (0)
@@ -596,6 +616,8 @@ void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_pane
 void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness);
 int exynos_panel_common_init(struct mipi_dsi_device *dsi,
 				struct exynos_panel *ctx);
+ssize_t exynos_dsi_dcs_write_buffer(struct mipi_dsi_device *dsi,
+				const void *data, size_t len, u16 flags);
 
 int exynos_panel_probe(struct mipi_dsi_device *dsi);
 int exynos_panel_remove(struct mipi_dsi_device *dsi);
