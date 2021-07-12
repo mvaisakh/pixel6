@@ -45,6 +45,68 @@ struct pca9468_platform_data {
 
 /* - PPS Integration Shared definitions ---------------------------------- */
 
+/* AC[0] */
+#define P9468_CHGS_VER		1
+#define P9468_CHGS_VER_MASK	0xff
+/* AC[1] APDO */
+/* RS[0] */
+#define P9468_CHGS_FLAG_SHIFT	0
+#define P9468_CHGS_FLAG_MASK	0xff
+#define P9468_CHGS_F_STBY	(1 << 0)
+#define P9468_CHGS_F_SHDN	(1 << 1)
+#define P9468_CHGS_F_DONE	(1 << 2)
+#define P9468_CHGS_PRE_SHIFT	8
+#define P9468_CHGS_PRE_MASK	(0xff << P9468_CHGS_PRE_SHIFT)
+#define P9468_CHGS_RCPC_SHIFT	16
+#define P9468_CHGS_RCPC_MASK	(0xff << P9468_CHGS_RCPC_SHIFT)
+#define P9468_CHGS_NC_SHIFT	24
+#define P9468_CHGS_NC_MASK	(0xff << P9468_CHGS_NC_SHIFT)
+/* RS[1] */
+#define P9468_CHGS_OVCC_SHIFT	0
+#define P9468_CHGS_OVCC_MASK	(0xffff << P9468_CHGS_OVCC_SHIFT)
+#define P9468_CHGS_ADJ_SHIFT	16
+#define P9468_CHGS_ADJ_MASK	(0xffff << P9468_CHGS_ADJ_MASK)
+/* RS[2] */
+#define P9468_CHGS_CC_SHIFT	0
+#define P9468_CHGS_CC_MASK	(0xffff << P9468_CHGS_CC_SHIFT)
+#define P9468_CHGS_CV_SHIFT	16
+#define P9468_CHGS_CV_MASK	(0xffff << P9468_CHGS_CV_SHIFT)
+/* RS[3] */
+#define P9468_CHGS_CA_SHIFT	0
+#define P9468_CHGS_CA_MASK	(0xff << P9468_CHGS_CA_SHIFT)
+
+
+struct p9468_chg_stats {
+	u32 adapter_capabilities[2];
+	u32 receiver_state[5];
+
+	bool valid;
+	unsigned int rcp_count;
+	unsigned int ovc_count;
+	unsigned int nc_count;
+	unsigned int pre_count;
+	unsigned int ca_count;
+	unsigned int cc_count;
+	unsigned int cv_count;
+	unsigned int adj_count;
+};
+
+#define p9468_chg_stats_valid(chg_data) ((chg_data)->valid)
+
+static inline void p9468_chg_stats_update_flags(struct p9468_chg_stats *chg_data, u8 flags)
+{
+	chg_data->receiver_state[0] |= flags << P9468_CHGS_FLAG_SHIFT;
+}
+
+static inline void p9468_chg_stats_set_flags(struct p9468_chg_stats *chg_data, u8 flags)
+{
+	chg_data->receiver_state[0] &= ~P9468_CHGS_FLAG_MASK;
+	p9468_chg_stats_update_flags(chg_data, flags);
+}
+
+#define p9468_chg_stats_inc_ovcf(chg_data) \
+	do { (chg_data)->ovc_count++; } while (0)
+
 /**
  * struct pca9468_charger - pca9468 charger instance
  * @monitor_wake_lock: lock to enter the suspend mode
@@ -177,7 +239,9 @@ struct pca9468_charger {
 	u32			debug_address;
 	int			debug_adc_channel;
 
+	struct p9468_chg_stats	chg_data;
 /* Google Integration END */
+
 };
 
 /* Direct Charging State */
@@ -258,6 +322,15 @@ int pca9468_get_charge_type(struct pca9468_charger *pca9468);
 
 extern int debug_printk_prlog;
 extern int debug_no_logbuffer;
-void logbuffer_prlog(struct pca9468_charger *pca9468, int level, const char *f, ...);
+
+__printf(3,4)
+void logbuffer_prlog(const struct pca9468_charger *pca9468, int level, const char *f, ...);
+
+/* charge stats */
+void p9468_chg_stats_init(struct p9468_chg_stats *chg_data);
+int p9468_chg_stats_update(struct p9468_chg_stats *chg_data,
+			   const struct pca9468_charger *pca9468);
+int p9468_chg_stats_done(struct p9468_chg_stats *chg_data,
+			 const struct pca9468_charger *pca9468);
 
 #endif

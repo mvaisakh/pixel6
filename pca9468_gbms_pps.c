@@ -27,7 +27,7 @@ int debug_no_logbuffer = 0;
 #define LOGBUFFER_TMPSIZE 256
 
 /* will add a \n (if not there) */
-void logbuffer_prlog(struct pca9468_charger *pca9468, int level, const char *f, ...)
+void logbuffer_prlog(const struct pca9468_charger *pca9468, int level, const char *f, ...)
 {
 	va_list args;
 
@@ -42,6 +42,8 @@ void logbuffer_prlog(struct pca9468_charger *pca9468, int level, const char *f, 
 }
 
 /* DC PPS integration ------------------------------------------------------ */
+
+static void p9468_chg_stats_set_apdo(struct p9468_chg_stats *chg_data, u32 apdo);
 
 static struct device_node *pca9468_find_config(struct device_node * node)
 {
@@ -150,6 +152,8 @@ int pca9468_usbpd_setup(struct pca9468_charger *pca9468)
 			return -ENODEV;
 		}
 
+		pr_err("%s: TCPM name is %s\n", __func__,
+		       pps_name(tcpm_psy));
 		pca9468->tcpm_psy_name = tcpm_psy->desc->name;
 		pca9468->pd = tcpm_psy;
 	} else {
@@ -281,7 +285,7 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468,
 			       unsigned int ta_max_vol,
 			       unsigned int ta_max_cur)
 {
-	int ret = 0;
+	int ret;
 
 	/* limits */
 	pca9468->ta_objpos = 0; /* if !=0 will return the ca */
@@ -312,6 +316,9 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468,
 	pr_debug("%s: APDO pos=%u max_v=%u max_c=%u max_pwr=%lu\n", __func__,
 		 pca9468->ta_objpos, pca9468->ta_max_vol, pca9468->ta_max_cur,
 		 pca9468->ta_max_pwr);
+
+	p9468_chg_stats_set_apdo(&pca9468->chg_data,
+				 pca9468->pps_data.src_caps[pca9468->ta_objpos - 1]);
 
 	return 0;
 }
@@ -624,6 +631,92 @@ int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
 		if (rc > 0)
 			chg_state->f.icl = rc / 1000;
 	}
+
+	return 0;
+}
+
+/* ------------------------------------------------------------------------ */
+
+/* call holding (&pca9468->lock); */
+void p9468_chg_stats_init(struct p9468_chg_stats *chg_data)
+{
+	memset(chg_data, 0, sizeof(*chg_data));
+	chg_data->adapter_capabilities[0] |= P9468_CHGS_VER;
+}
+
+static void p9468_chg_stats_set_apdo(struct p9468_chg_stats *chg_data, u32 apdo)
+{
+	chg_data->adapter_capabilities[1] = apdo;
+}
+
+/* call holding (&pca9468->lock); */
+int p9468_chg_stats_update(struct p9468_chg_stats *chg_data,
+			   const struct pca9468_charger *pca9468)
+{
+	switch (pca9468->charging_state) {
+	case DC_STATE_NO_CHARGING:
+		chg_data->nc_count++;
+		break;
+	case DC_STATE_CHECK_VBAT:
+	case DC_STATE_PRESET_DC:
+		chg_data->pre_count++;
+		break;
+	case DC_STATE_CHECK_ACTIVE:
+		chg_data->ca_count++;
+		break;
+	case DC_STATE_ADJUST_CC:
+	case DC_STATE_CC_MODE:
+		chg_data->cc_count++;
+		break;
+	case DC_STATE_START_CV:
+	case DC_STATE_CV_MODE:
+		chg_data->cv_count++;
+		break;
+	case DC_STATE_ADJUST_TAVOL:
+	case DC_STATE_ADJUST_TACUR:
+		chg_data->adj_count++;
+		break;
+	case DC_STATE_CHARGING_DONE:
+		chg_data->receiver_state[0] |= P9468_CHGS_F_DONE;
+		break;
+	default: break;
+	}
+
+	return 0;
+}
+
+int p9468_chg_stats_done(struct p9468_chg_stats *chg_data,
+			 const struct pca9468_charger *pca9468)
+{
+	/* AC[0] version */
+	/* AC[1] is APDO */
+	/* RS[0][0:8] flags */
+	chg_data->receiver_state[0] = (chg_data->pre_count & 0xff) <<
+				      P9468_CHGS_PRE_SHIFT;
+	chg_data->receiver_state[0] |= (chg_data->rcp_count & 0xff) <<
+				       P9468_CHGS_RCPC_SHIFT;
+	chg_data->receiver_state[0] |= (chg_data->nc_count & 0xff) <<
+				       P9468_CHGS_NC_SHIFT;
+	/* RS[1] counters */
+	chg_data->receiver_state[1] = (chg_data->ovc_count & 0xffff) <<
+				      P9468_CHGS_OVCC_SHIFT;
+	chg_data->receiver_state[1] |= (chg_data->adj_count & 0xffff) <<
+				       P9468_CHGS_ADJ_SHIFT;
+	/* RS[2] counters */
+	chg_data->receiver_state[2] = (chg_data->adj_count & 0xffff) <<
+				      P9468_CHGS_ADJ_SHIFT;
+	chg_data->receiver_state[2] |= (chg_data->adj_count & 0xffff) <<
+				       P9468_CHGS_ADJ_SHIFT;
+	/* RS[3] counters */
+	chg_data->receiver_state[3] = (chg_data->cc_count & 0xffff) <<
+				      P9468_CHGS_CC_SHIFT;
+	chg_data->receiver_state[3] |= (chg_data->cv_count & 0xffff) <<
+				       P9468_CHGS_CV_SHIFT;
+	/* RS[4] counters */
+	chg_data->receiver_state[1] = (chg_data->ca_count & 0xff) <<
+				      P9468_CHGS_CA_SHIFT;
+
+	chg_data->valid = true;
 
 	return 0;
 }
