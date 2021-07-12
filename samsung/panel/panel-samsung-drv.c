@@ -385,12 +385,9 @@ void exynos_panel_reset(struct exynos_panel *ctx)
 }
 EXPORT_SYMBOL(exynos_panel_reset);
 
-int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
+static int _exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 {
 	int ret;
-
-	if (IS_ENABLED(CONFIG_BOARD_EMULATOR))
-		return 0;
 
 	if (on) {
 		if (ctx->enable_gpio) {
@@ -483,6 +480,27 @@ int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
 				return ret;
 			}
 		}
+	}
+
+	return 0;
+}
+
+int exynos_panel_set_power(struct exynos_panel *ctx, bool on)
+{
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	int ret;
+
+	if (IS_ENABLED(CONFIG_BOARD_EMULATOR))
+		return 0;
+
+	if (funcs && funcs->set_power)
+		ret = funcs->set_power(ctx, on);
+	else
+		ret = _exynos_panel_set_power(ctx, on);
+
+	if (ret) {
+		dev_err(ctx->dev, "failed to set power: ret %d \n", ret);
+		return ret;
 	}
 
 	ctx->bl->props.power = on ? FB_BLANK_UNBLANK : FB_BLANK_POWERDOWN;

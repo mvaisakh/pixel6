@@ -155,6 +155,13 @@ struct exynos_panel_funcs {
 	void (*set_local_hbm_mode)(struct exynos_panel *exynos_panel,
 				 bool local_hbm_en);
 	/**
+	 * @set_power:
+	 *
+	 * This callback is used to implement panel specific power on/off sequence.
+	 */
+	int (*set_power)(struct exynos_panel *exynos_panel, bool enable);
+
+	/**
 	 * @is_mode_seamless:
 	 *
 	 * This callback is used to check if a switch to a particular mode can be done
