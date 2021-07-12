@@ -96,7 +96,7 @@ lwis_client_event_state_find_or_create(struct lwis_client *lwis_client, int64_t 
 	/* If it doesn't, we'll have to create one */
 	if (unlikely(state == NULL)) {
 		/* Allocate a new state object */
-		new_state = kmalloc(sizeof(struct lwis_client_event_state), GFP_KERNEL);
+		new_state = kmalloc(sizeof(struct lwis_client_event_state), GFP_ATOMIC);
 		/* Oh no, ENOMEM */
 		if (!new_state) {
 			dev_err(lwis_client->lwis_dev->dev,
@@ -222,7 +222,7 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 	/* If it doesn't, we'll have to create one */
 	if (unlikely(state == NULL)) {
 		/* Allocate a new state object */
-		new_state = kmalloc(sizeof(struct lwis_device_event_state), GFP_KERNEL);
+		new_state = kmalloc(sizeof(struct lwis_device_event_state), GFP_ATOMIC);
 		/* Oh no, ENOMEM */
 		if (!new_state) {
 			dev_err(lwis_dev->dev, "Could not allocate lwis_device_event_state\n");
