@@ -614,7 +614,7 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 
 	/* TODO: look in the power supply device node ? maybe? */
 	if (!pps_data->nr_snk_pdo)
-		pr_warn("%s has nr_sink_pdo=0\n", pps_name(pps_psy));
+		dev_warn(dev, "%s has nr_sink_pdo=0\n", pps_name(pps_psy));
 
 	/*
 	 * The port needs to ping or update the PPS adapter every 10 seconds
@@ -630,7 +630,7 @@ int pps_init(struct pd_pps_data *pps_data, struct device *dev,
 		pps_data->pps_ws = wakeup_source_register(NULL,
 							  pps_name(pps_psy));
 		if (!pps_data->pps_ws) {
-			pr_err("Failed to register wakeup source\n");
+			dev_err(dev, "Failed to register wakeup source\n");
 			return -ENODEV;
 		}
 	}
