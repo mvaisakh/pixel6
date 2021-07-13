@@ -133,7 +133,8 @@ static int lwis_open(struct inode *node, struct file *fp)
 	return 0;
 }
 
-static int lwis_release_client(struct lwis_client *lwis_client)
+/* Cleans client contents to a reset state. This will hold the LWIS client mutex. */
+static int lwis_cleanup_client(struct lwis_client *lwis_client)
 {
 	/* Let's lock the mutex while we're cleaning up to avoid other parts
 	 * of the code from acquiring dangling pointers to the client or any
@@ -161,34 +162,63 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	lwis_client_enrolled_buffers_clear(lwis_client);
 
 	mutex_unlock(&lwis_client->lock);
-	kfree(lwis_client);
 
 	return 0;
 }
+
+/* Calling this requires holding lwis_dev->lock. */
+static inline bool check_client_exists(const struct lwis_device *lwis_dev,
+				       const struct lwis_client *lwis_client)
+{
+	struct lwis_client *p, *n;
+	list_for_each_entry_safe (p, n, &lwis_dev->clients, node) {
+		if (lwis_client == p) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Release client and deletes its entry from the device's client list,
+ * this assumes that LWIS device still exists and will hold LWIS device
+ * and LWIS client locks. */
+static int lwis_release_client(struct lwis_client *lwis_client)
+{
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	int rc = 0;
+	unsigned long flags;
+	rc = lwis_cleanup_client(lwis_client);
+	if (rc) {
+		return rc;
+	}
+
+	/* Take this lwis_client off the list of active clients */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	if (check_client_exists(lwis_dev, lwis_client)) {
+		list_del(&lwis_client->node);
+	} else {
+		dev_err(lwis_dev->dev, "Trying to release a client tied to this device, "
+				       "but the entry was not found on the clients list.");
+	}
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	kfree(lwis_client);
+	return 0;
+}
+
 /*
  *  lwis_release: Closing an instance of a LWIS device
  */
 static int lwis_release(struct inode *node, struct file *fp)
 {
 	struct lwis_client *lwis_client = fp->private_data;
-	struct lwis_client *p, *n;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
-	unsigned long flags;
 	int rc = 0;
 	bool is_client_enabled = lwis_client->is_enabled;
 
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
-	/* Take this lwis_client off the list of active clients */
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_entry_safe (p, n, &lwis_dev->clients, node) {
-		if (lwis_client == p)
-			list_del(&lwis_client->node);
-	}
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-
 	rc = lwis_release_client(lwis_client);
-
 	mutex_lock(&lwis_dev->client_lock);
 	/* Release power if client closed without power down called */
 	if (is_client_enabled && lwis_dev->enabled > 0) {
