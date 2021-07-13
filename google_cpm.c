@@ -727,9 +727,7 @@ static struct pd_pps_data *gcpm_pps_data(struct gcpm_drv *gcpm)
 	return pps_data;
 }
 
-/*
- * Wait for a source to become ready for the handoff
- */
+/* Wait for a source to become ready for the handoff */
 static int gcpm_pps_wait_for_ready(struct gcpm_drv *gcpm)
 {
 	struct pd_pps_data *pps_data = gcpm_pps_data(gcpm);
@@ -1361,6 +1359,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
 		int index;
 
+		/* Also ping the source */
 		pps_ui = gcpm_pps_wait_for_ready(gcpm);
 		if (pps_ui < 0) {
 			pr_info("PPS_Work: wait for source elap=%lld, dc_state=%d (%d)\n",
@@ -2606,13 +2605,16 @@ static int google_cpm_probe(struct platform_device *pdev)
 	/* GCPM might need a gpio to enable/disable DC/PPS */
 	gcpm->dcen_gpio = of_get_named_gpio(pdev->dev.of_node, "google,dc-en", 0);
 	if (gcpm->dcen_gpio >= 0) {
+		unsigned long init_flags = GPIOF_OUT_INIT_LOW;
+
 		of_property_read_u32(pdev->dev.of_node, "google,dc-en-value",
 				     &gcpm->dcen_gpio_default);
+		if (gcpm->dcen_gpio_default)
+			init_flags = GPIOF_OUT_INIT_HIGH;
 
-		/* make sure that the DC is DISABLED before doing this */
-		ret = gpio_direction_output(gcpm->dcen_gpio,
-					    gcpm->dcen_gpio_default);
-		pr_info("google,dc-en value = %d ret=%d\n",
+		ret = devm_gpio_request_one(&pdev->dev, gcpm->dcen_gpio,
+					    init_flags, "dc_pu_pin");
+		pr_info("google,dc-en value =%d ret=%d\n",
 			gcpm->dcen_gpio_default, ret);
 	}
 
