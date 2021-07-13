@@ -81,14 +81,18 @@ struct p9468_chg_stats {
 	u32 receiver_state[5];
 
 	bool valid;
-	unsigned int rcp_count;
 	unsigned int ovc_count;
+	unsigned int ovc_max_ibatt;
+	unsigned int ovc_max_delta;
+
+	unsigned int rcp_count;
 	unsigned int nc_count;
 	unsigned int pre_count;
 	unsigned int ca_count;
 	unsigned int cc_count;
 	unsigned int cv_count;
 	unsigned int adj_count;
+	unsigned int stby_count;
 };
 
 #define p9468_chg_stats_valid(chg_data) ((chg_data)->valid)
@@ -104,8 +108,17 @@ static inline void p9468_chg_stats_set_flags(struct p9468_chg_stats *chg_data, u
 	p9468_chg_stats_update_flags(chg_data, flags);
 }
 
-#define p9468_chg_stats_inc_ovcf(chg_data) \
-	do { (chg_data)->ovc_count++; } while (0)
+static inline void p9468_chg_stats_inc_ovcf(struct p9468_chg_stats *chg_data,
+					    int ibatt, int cc_max)
+{
+	const int delta = ibatt - cc_max;
+
+	chg_data->ovc_count++;
+	if (delta > chg_data->ovc_max_delta) {
+		chg_data->ovc_max_ibatt = ibatt;
+		chg_data->ovc_max_delta = delta;
+	}
+}
 
 /**
  * struct pca9468_charger - pca9468 charger instance

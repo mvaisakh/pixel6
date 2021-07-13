@@ -651,14 +651,22 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 
 	pr_debug("%s: RCP check, STS_B=%#x\n",	__func__, reg_val);
 
-	/* RCP condition happened, but VIN is valid and the PCA is active */
+	/* RCP condition, but VIN is valid and the PCA is active */
 	if (reg_val & PCA9468_BIT_ACTIVE_STATE_STS) {
+		const int charging_state = pca9468->charging_state;
+
 		/*
-		 * If VIN is increased, input current will increased over
+		 * Try again when called from pca9468_check_active_state().
+		 * If VIN is increased, input current will increase over
 		 * IIN_LOW level.
 		 */
+		logbuffer_prlog(pca9468, charging_state == DC_STATE_CHECK_ACTIVE ?
+				LOGLEVEL_WARNING : LOGLEVEL_ERR,
+				"%s: RCP triggered but VIN is valid, state=%d",
+				__func__, charging_state);
+
 		pca9468->chg_data.rcp_count++;
-		return 0;
+		return -EAGAIN;
 	}
 
 	/* re-read and dump state, debug registers */
@@ -667,12 +675,12 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 	logbuffer_prlog(pca9468, LOGLEVEL_ERR,
 			"%s: Error reg[0x48]=%#x,[0x49]=%#x,[0x4a]=%#x",
 			__func__, val[0], val[1], val[2]);
+	pca9468_dump_config(pca9468, LOGLEVEL_INFO);
 
 	/* Not in RCP state, retry only when DC is starting */
 	if (reg_val & PCA9468_BIT_STANDBY_STATE_STS) {
-		logbuffer_prlog(pca9468, LOGLEVEL_WARNING, "%s: device in standby, retry", __func__);
-		p9468_chg_stats_update_flags(&pca9468->chg_data, P9468_CHGS_F_STBY);
-		pca9468_dump_config(pca9468, LOGLEVEL_INFO);
+		logbuffer_prlog(pca9468, LOGLEVEL_WARNING, "%s: device in standby", __func__);
+		pca9468->chg_data.stby_count++;
 		ret = -EAGAIN;
 	}  else {
 		logbuffer_prlog(pca9468, LOGLEVEL_ERR, "%s: device in shutdown", __func__);
@@ -684,7 +692,17 @@ static int pca9468_check_standby(struct pca9468_charger *pca9468)
 }
 
 /*
- * Check Active status, 0 is active, <0 is not.
+ * Check Active status, 0 is active (or in RCP), <0 indicates a problem.
+ * The function is called from different contexts/functions, errors are fatal
+ * (i.e. stop charging) from all contexts except when this is called from
+ * pca9468_check_active_state().
+ *
+ * Other contexts:
+ * . pca9468_charge_adjust_ccmode
+ * . pca9468_charge_ccmode
+ * . pca9468_charge_start_cvmode
+ * . pca9468_charge_cvmode
+ *
  * call holding mutex_lock(&pca9468->lock)
  */
 static int pca9468_check_error(struct pca9468_charger *pca9468)
@@ -758,14 +776,6 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 		 * -EINVAL on error.
 		 */
 		ret = pca9468_check_standby(pca9468);
-		if (ret == 0) {
-			const int charging_state = pca9468->charging_state;
-
-			logbuffer_prlog(pca9468, charging_state == DC_STATE_CHECK_ACTIVE ?
-					LOGLEVEL_WARNING : LOGLEVEL_ERR,
-					"%s: RCP triggered but VIN is valid, state=%d",
-					__func__, charging_state);
-		}
 	}
 
 error:
@@ -1085,7 +1095,7 @@ static int pca9468_set_ta_current_comp(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d prev_iin=%d",
@@ -1336,7 +1346,7 @@ static int pca9468_set_ta_current_comp2(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], iin_cfg=%d icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -1462,7 +1472,7 @@ static int pca9468_set_ta_voltage_comp(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -1554,7 +1564,7 @@ static int pca9468_set_rx_voltage_comp(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -1798,7 +1808,7 @@ static int pca9468_adjust_ta_current(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=%d ta_limit=%d, iin_cfg=%d icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -1887,7 +1897,7 @@ static int pca9468_adjust_ta_voltage(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -1970,7 +1980,7 @@ static int pca9468_adjust_rx_voltage(struct pca9468_charger *pca9468)
 
 	ovc_flag = ibat > pca9468->cc_max;
 	if (ovc_flag)
-		p9468_chg_stats_inc_ovcf(&pca9468->chg_data);
+		p9468_chg_stats_inc_ovcf(&pca9468->chg_data, ibat, pca9468->cc_max);;
 
 	logbuffer_prlog(pca9468, ovc_flag ? LOGLEVEL_WARNING : LOGLEVEL_DEBUG,
 			"%s: iin=%d, iin_cc=[%d,%d,%d], icn=%d ibat=%d, cc_max=%d rc=%d",
@@ -3215,7 +3225,10 @@ error:
 	return ret;
 }
 
-/* Check the charging status before entering the adjust cc mode */
+/*
+ * Check the charging status at start before entering the adjust cc mode or
+ * from pca9468_send_message() after a failure.
+ */
 static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 {
 	int ret = 0;
@@ -3235,38 +3248,44 @@ static int pca9468_check_active_state(struct pca9468_charger *pca9468)
 	ret = pca9468_check_error(pca9468);
 	if (ret == 0) {
 		/* PCA9468 is active state */
-
 		pca9468->retry_cnt = 0;
 		pca9468->timer_id = TIMER_ADJUST_CCMODE;
 		pca9468->timer_period = 0;
 	} else if (ret == -EAGAIN) {
-		int rc;
 
 		/* try restarting only */
 		if (pca9468->retry_cnt >= PCA9468_MAX_RETRY_CNT) {
-			pr_err("%s: retry fail\n", __func__);
+			pr_err("%s: retry failed\n", __func__);
 			ret = -EINVAL;
 			goto exit_done;
 		}
 
-		/* Disable charging */
-		rc = pca9468_set_charging(pca9468, false);
-		pr_err("%s: retry charging start - retry_cnt=%d, (%d)\n",
-			__func__, pca9468->retry_cnt, rc);
+		/* Disable charging to retry later, return -EAGAIN if
+		 *
+		 */
+		ret = pca9468_set_charging(pca9468, false);
+		pr_err("%s: retry cnt=%d, (%d)\n", __func__,
+		       pca9468->retry_cnt, ret);
+		if (ret == 0) {
+			pca9468->timer_id = TIMER_PRESET_DC;
+			pca9468->timer_period = 0;
+			pca9468->retry_cnt++;
+		}
+	}
 
-		/* Go to DC_STATE_PRESET_DC */
-		pca9468->timer_id = TIMER_PRESET_DC;
-		pca9468->timer_period = 0;
-		pca9468->retry_cnt++;
-	} else {
-		/* Implement error handler function if it is needed */
+exit_done:
+
+	/* Implement error handler function if it is needed */
+	if (ret < 0) {
+		logbuffer_prlog(pca9468, LOGLEVEL_ERR,
+				"%s: charging_state=%d, not active or error (%d)",
+				__func__, pca9468->charging_state, ret);
 		pca9468->timer_id = TIMER_ID_NONE;
 		pca9468->timer_period = 0;
 	}
 
 	mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 			 msecs_to_jiffies(pca9468->timer_period));
-exit_done:
 	mutex_unlock(&pca9468->lock);
 	return ret;
 }
@@ -4521,7 +4540,7 @@ static ssize_t p9468_show_chg_stats(struct device *dev, struct device_attribute 
 		goto exit_done;
 
 	len = scnprintf(buff, max_size,
-			"D:%x,%x %x,%x,%x,%x,%x\n",
+			"D:%#x,%#x %#x,%#x,%#x,%#x,%#x\n",
 			chg_data->adapter_capabilities[0],
 			chg_data->adapter_capabilities[1],
 			chg_data->receiver_state[0],
@@ -4530,9 +4549,12 @@ static ssize_t p9468_show_chg_stats(struct device *dev, struct device_attribute 
 			chg_data->receiver_state[3],
 			chg_data->receiver_state[4]);
 	len += scnprintf(&buff[len], max_size - len,
-			"N:%d,%d, %d,%d,%d,%d,%d,%d\n",
-			chg_data->ovc_count,
+			"N: ovc=%d,ovc_ibatt=%d,ovc_delta=%d rcp=%d,stby=%d\n",
+			chg_data->ovc_count, chg_data->ovc_max_ibatt, chg_data->ovc_max_delta,
 			chg_data->rcp_count,
+			chg_data->stby_count);
+	len += scnprintf(&buff[len], max_size - len,
+			"C: nc=%d,pre=%d,ca=%d,cc=%d,cv=%d,adj=%d\n",
 			chg_data->nc_count,
 			chg_data->pre_count,
 			chg_data->ca_count,

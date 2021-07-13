@@ -702,6 +702,8 @@ int p9468_chg_stats_done(struct p9468_chg_stats *chg_data,
 	/* AC[0] version */
 	/* AC[1] is APDO */
 	/* RS[0][0:8] flags */
+	if (chg_data->stby_count)
+		p9468_chg_stats_update_flags(chg_data, P9468_CHGS_F_STBY);
 	chg_data->receiver_state[0] = (chg_data->pre_count & 0xff) <<
 				      P9468_CHGS_PRE_SHIFT;
 	chg_data->receiver_state[0] |= (chg_data->rcp_count & 0xff) <<
