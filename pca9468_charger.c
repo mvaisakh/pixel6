@@ -372,8 +372,10 @@ static int pca9468_get_charging_enabled(struct pca9468_charger *pca9468)
 	return intval;
 }
 
+/* call holding mutex_lock(&pca9468->lock); */
 static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 {
+	const int ntc_protection_en = 0; /* TODO: DT option? */
 	int ret, val;
 
 	pr_debug("%s: enable=%d\n", __func__,  enable);
@@ -383,6 +385,8 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 		pr_debug("%s: no op, already enabled\n", __func__);
 		return 0;
 	}
+
+	/* might needs to disable NTC_PROTECTION_EN in all cases */
 
 	if (enable) {
 		/* Improve adc */
@@ -447,10 +451,10 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 		ret = regmap_write(pca9468->regmap, PCA9468_REG_ADC_ACCESS,
 				   val);
 
-		/* Enable NTC_PROTECTION_EN TODO: disable */
+		/* Restore NTC_PROTECTION_EN */
 		ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_TEMP_CTRL,
 					 PCA9468_BIT_NTC_PROTECTION_EN,
-					 PCA9468_BIT_NTC_PROTECTION_EN);
+					 ntc_protection_en);
 	} else {
 		/* Wait 5ms to keep the shutdown sequence */
 		mdelay(5);
@@ -706,7 +710,6 @@ static int pca9468_check_error(struct pca9468_charger *pca9468)
 	}
 
 	/* not in error but in standby or shutdown */
-	/* will stop charging in timer_work */
 
 	ret = pca9468_check_not_active(pca9468);
 	if (ret < 0) {
@@ -3228,13 +3231,6 @@ static int pca9468_start_direct_charging(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		goto error_done;
 
-	/* Set EN_CFG to active HIGH */
-	val =  PCA9468_EN_ACTIVE_H;
-	ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
-				 PCA9468_BIT_EN_CFG, val);
-	if (ret < 0)
-		goto error_done;
-
 	/* Set NTC voltage threshold */
 	val = pca9468->pdata->ntc_th / PCA9468_NTC_TH_STEP;
 	ret = regmap_write(pca9468->regmap, PCA9468_REG_NTC_TH_1, (val & 0xFF));
@@ -3595,9 +3591,7 @@ static int pca9468_hw_ping(struct pca9468_charger *pca9468)
 	return 0;
 }
 
-/* we can have multiple device drivers using this piece of HW
- * TODO: execute this in ONLINE
- */
+/* one and done in probe */
 static int pca9468_hw_init(struct pca9468_charger *pca9468)
 {
 	unsigned int val;
@@ -3617,8 +3611,8 @@ static int pca9468_hw_init(struct pca9468_charger *pca9468)
 	if (ret < 0)
 		return ret;
 
-	/* Set Reverse Current Detection and standby mode */
-	val = PCA9468_BIT_REV_IIN_DET | PCA9468_EN_ACTIVE_L |
+	/* Enable Reverse Current Detection, Active mode High, Force standby */
+	val = PCA9468_BIT_REV_IIN_DET | PCA9468_EN_ACTIVE_H |
 	      PCA9468_STANDBY_FORCED;
 	ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
 				 (PCA9468_BIT_REV_IIN_DET |
@@ -3636,8 +3630,7 @@ static int pca9468_hw_init(struct pca9468_charger *pca9468)
 		return ret;
 
 	/* Set the ADC channels, NTC is invalid if Bias is not enabled */
-	val = PCA9468_BIT_CH7_EN |	/* NTC voltage ADC */
-	      PCA9468_BIT_CH6_EN |	/* DIETEMP ADC */
+	val = PCA9468_BIT_CH6_EN |	/* DIETEMP ADC */
 	      PCA9468_BIT_CH5_EN |	/* IIN ADC */
 	      PCA9468_BIT_CH3_EN |	/* VBAT ADC */
 	      PCA9468_BIT_CH2_EN |	/* VIN ADC */
@@ -3978,12 +3971,7 @@ static int pca9468_mains_set_property(struct power_supply *psy,
 
 			pca9468->mains_online = false;
 		} else if (pca9468->mains_online == false) {
-			ret = pca9468_hw_init(pca9468);
-			if (ret < 0)
-				pr_err("%s: cannot online (%d)\n",
-				       __func__, ret);
-			else
-				pca9468->mains_online = true;
+			pca9468->mains_online = true;
 		}
 
 		break;
