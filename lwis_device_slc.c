@@ -58,43 +58,35 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 {
 #ifdef CONFIG_OF
 	struct device_node *node = lwis_dev->plat_dev->dev.of_node;
-	int i = 0;
-	int ret = 0;
+	int num_pt_id = 0, num_pt_size = 0, i = 0, ret = 0;
 	struct lwis_slc_device *slc_dev = (struct lwis_slc_device *)lwis_dev;
-	size_t pt_size_kb[MAX_NUM_PT] = { 512, 1024, 1024, 1024, 1536, 1536, 1536, 2048, 2048 };
+	size_t pt_size_kb[MAX_NUM_PT] = {};
 
 	if (!lwis_dev) {
 		pr_err("LWIS device cannot be NULL\n");
 		return -ENODEV;
 	}
 
-	slc_dev->num_pt = of_property_count_strings(node, "pt_id");
-	if (slc_dev->num_pt > MAX_NUM_PT) {
+	num_pt_id = of_property_count_strings(node, "pt_id");
+	num_pt_size = of_property_count_u32_elems(node, "pt_size");
+	if (num_pt_id != num_pt_size) {
+		dev_err(lwis_dev->dev,
+			"Mismatch partition names and sizes: %d partition names VS %d partition sizes",
+			num_pt_id, num_pt_size);
+		return -EINVAL;
+	}
+	if (num_pt_id > MAX_NUM_PT) {
 		dev_err(lwis_dev->dev,
 			"The number of partitions in slc device is %d, exceeds the max value %d",
-			slc_dev->num_pt, MAX_NUM_PT);
+			num_pt_id, MAX_NUM_PT);
 		return -EINVAL;
 	}
 
-	for (i = 0; i < slc_dev->num_pt; ++i) {
-		const char* name;
-		of_property_read_string_index(node, "pt_id", i, &name);
-		if (strncmp(name, "CAMERA1WAY", 10) == 0) {
-			pt_size_kb[i] = 256;
-		} else if (strncmp(name, "CAMERA2WAY", 10) == 0) {
-			pt_size_kb[i] = 512;
-		} else if (strncmp(name, "CAMERA3WAY", 10) == 0) {
-			pt_size_kb[i] = 768;
-		} else if (strncmp(name, "CAMERA4WAY", 10) == 0) {
-			pt_size_kb[i] = 1024;
-		} else if (strncmp(name, "CAMERA6WAY", 10) == 0) {
-			pt_size_kb[i] = 1536;
-		} else if (strncmp(name, "CAMERA8WAY", 10) == 0) {
-			pt_size_kb[i] = 2048;
-		} else if (strncmp(name, "CAMERA12WAY", 11) == 0) {
-			pt_size_kb[i] = 3072;
-		} else {
-			dev_err(lwis_dev->dev, "Unknown slc pt name %s", name);
+	for (i = 0; i < num_pt_id; i++) {
+		/* Make sure pt_size are in ascending order, since it's required by the allocation logic. */
+		of_property_read_u32_index(node, "pt_size", i, (u32 *)&pt_size_kb[i]);
+		if (i > 0 && pt_size_kb[i] < pt_size_kb[i - 1]) {
+			dev_err(lwis_dev->dev, "SLC partition sizes are not in ascending order!");
 			return -EINVAL;
 		}
 	}
@@ -107,6 +99,7 @@ static int lwis_slc_enable(struct lwis_device *lwis_dev)
 		slc_dev->partition_handle = NULL;
 		return ret;
 	}
+	slc_dev->num_pt = num_pt_id;
 	for (i = 0; i < slc_dev->num_pt; i++) {
 		slc_dev->pt[i].id = i;
 		slc_dev->pt[i].size_kb = pt_size_kb[i];
@@ -164,6 +157,12 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer
 		dev_err(slc_dev->base_dev.dev, "Partition handle is NULL\n");
 		return -ENODEV;
 	}
+
+	if (slc_dev->num_pt <= 0) {
+		dev_err(slc_dev->base_dev.dev, "No valid partitions is found in SLC\n");
+		return -EINVAL;
+	}
+
 	for (i = 0; i < slc_dev->num_pt; i++) {
 		if (slc_dev->pt[i].partition_id == PT_PTID_INVALID &&
 		    slc_dev->pt[i].size_kb >= SIZE_TO_KB(alloc_info->size)) {
@@ -188,8 +187,14 @@ int lwis_slc_buffer_alloc(struct lwis_device *lwis_dev, struct lwis_alloc_buffer
 			}
 		}
 	}
-	dev_err(lwis_dev->dev, "Failed to find valid partition, largest size supported is %zuKB\n",
-		slc_dev->pt[slc_dev->num_pt - 1].size_kb);
+	dev_err(lwis_dev->dev,
+		"Failed to find valid partition, largest size supported is %zuKB, asking for %zuKB\n",
+		slc_dev->pt[slc_dev->num_pt - 1].size_kb, SIZE_TO_KB(alloc_info->size));
+	for (i = 0; i < slc_dev->num_pt; i++) {
+		dev_err(lwis_dev->dev, "Partition[%d]: size %zuKB is %s\n", i,
+			slc_dev->pt[i].size_kb,
+			(slc_dev->pt[i].partition_id == PT_PTID_INVALID) ? "NOT in use" : "in use");
+	}
 	return -EINVAL;
 }
 

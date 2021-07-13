@@ -13,7 +13,7 @@
 #include "lwis_device.h"
 #include <soc/google/pt.h>
 
-#define MAX_NUM_PT 9
+#define MAX_NUM_PT 16
 
 struct slc_partition {
 	int id;
