@@ -687,6 +687,13 @@ struct heatmap_report {
 	/* data is in BE order; order should be enforced after data is read */
 	strength_t data[LOCAL_HEATMAP_WIDTH * LOCAL_HEATMAP_HEIGHT];
 } __packed;
+
+struct heatmap_data {
+	ktime_t timestamp;
+	uint16_t size_x;
+	uint16_t size_y;
+	uint8_t *data;
+} __packed;
 #endif
 
 #define TEST_MODE_MIN_MAX		false
@@ -926,9 +933,11 @@ struct sec_ts_data {
 	int heatmap_dump;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
+	struct heatmap_data mutual_strength_heatmap;
 	strength_t *heatmap_buff;
 	strength_t *encoded_buff;
 	bool heatmap_init_done;
+	bool v4l2_mutual_strength_updated;
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)

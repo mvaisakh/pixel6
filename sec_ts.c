@@ -1375,13 +1375,13 @@ static void sec_ts_reinit(struct sec_ts_data *ts)
 /* Update a state machine used to toggle control of the touch IC's motion
  * filter.
  */
-static void update_motion_filter(struct sec_ts_data *ts)
+static void update_motion_filter(struct sec_ts_data *ts, unsigned long touch_id)
 {
 	/* Motion filter timeout, in milliseconds */
 	const u32 mf_timeout_ms = 500;
 	u8 next_state;
 	/* Count the active touches */
-	u8 touches = hweight32(ts->tid_touch_state);
+	u8 touches = hweight32(touch_id);
 
 	if (ts->use_default_mf)
 		return;
@@ -1444,6 +1444,15 @@ static bool read_heatmap_raw(struct v4l2_heatmap *v4l2)
 	int result;
 	int max_x = v4l2->format.width;
 	int max_y = v4l2->format.height;
+
+	if (ts->v4l2_mutual_strength_updated &&
+	    ts->mutual_strength_heatmap.size_x == max_x &&
+	    ts->mutual_strength_heatmap.size_y == max_y) {
+		memcpy(v4l2->frame, ts->mutual_strength_heatmap.data,
+		       max_x * max_y * 2);
+		ts->v4l2_mutual_strength_updated = false;
+		return true;
+	}
 
 	if (ts->tsp_dump_lock == 1) {
 		input_info(true, &ts->client->dev,
@@ -2108,6 +2117,45 @@ static void sec_ts_populate_coordinate_channel(struct sec_ts_data *ts,
 	}
 }
 
+static void sec_ts_update_v4l2_mutual_strength(struct sec_ts_data *ts,
+					       uint32_t size_x,
+					       uint32_t size_y,
+					       int16_t *heatmap)
+{
+	if (!ts->mutual_strength_heatmap.data) {
+		ts->mutual_strength_heatmap.data = devm_kmalloc(
+			&ts->client->dev, size_x * size_y * 2, GFP_KERNEL);
+		if (!ts->mutual_strength_heatmap.data) {
+			input_err(true, &ts->client->dev,
+				  "%s: kmalloc for mutual_strength_heatmap (%d) failed.\n",
+				  __func__, size_x * size_y * 2);
+		} else {
+			ts->mutual_strength_heatmap.size_x = size_x;
+			ts->mutual_strength_heatmap.size_y = size_y;
+			input_info(true, &ts->client->dev,
+				   "%s: kmalloc for mutual_strength_heatmap (%d).\n",
+				   __func__, size_x * size_y * 2);
+		}
+	}
+
+	if (ts->mutual_strength_heatmap.data) {
+		if (ts->mutual_strength_heatmap.size_x == size_x &&
+		    ts->mutual_strength_heatmap.size_y == size_y) {
+			memcpy(ts->mutual_strength_heatmap.data,
+			       heatmap, size_x * size_y * 2);
+			ts->mutual_strength_heatmap.timestamp =
+				ts->timestamp;
+			ts->v4l2_mutual_strength_updated = true;
+		} else {
+			input_info(true, &ts->client->dev,
+				   "%s: unmatched heatmap size (%d,%d) (%d,%d).\n",
+				   __func__, size_x, size_y,
+				   ts->mutual_strength_heatmap.size_x,
+				   ts->mutual_strength_heatmap.size_y);
+		}
+	}
+}
+
 #define PTFLIB_ENCODED_COUNTER_OFFSET		0x00A8
 #define PTFLIB_ENCODED_COUNTER_READ_SIZE	6
 #define PTFLIB_ENCODED_DATA_READ_SIZE		338
@@ -2203,6 +2251,10 @@ static int sec_ts_populate_encoded_channel(struct sec_ts_data *ts,
 		for (x = mutual_strength->tx_size - 1; x >= 0; x--)
 			((uint16_t *) mutual_strength->data)[i++] =
 			    ts->heatmap_buff[x * mutual_strength->rx_size + y];
+
+	sec_ts_update_v4l2_mutual_strength(ts, mutual_strength->tx_size,
+					   mutual_strength->rx_size,
+					   (int16_t *) mutual_strength->data);
 
 	return 0;
 }
@@ -2307,6 +2359,12 @@ static void sec_ts_populate_mutual_channel(struct sec_ts_data *ts,
 			 mutual_strength->data)[frame_index++] =
 			    be16_to_cpu(heatmap_value);
 		}
+	}
+
+	if (target_data_type == TYPE_SIGNAL_DATA) {
+		sec_ts_update_v4l2_mutual_strength(ts,
+		    mutual_strength->tx_size, mutual_strength->rx_size,
+		    (int16_t *) mutual_strength->data);
 	}
 }
 
@@ -2864,7 +2922,7 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	 */
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	if (processed_pointer_event) {
-		if (ts->heatmap_init_done) {
+		if (ts->heatmap_init_done && !ts->offload.offload_running) {
 			heatmap_read(&ts->v4l2, ktime_to_ns(ts->timestamp));
 		}
 
@@ -2912,6 +2970,10 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 				"COORD: all fingers released with palm(s)/grip(s) leaved once\n");
 		}
 	}
+
+	/* Disable the firmware motion filter during single touch */
+	if (!ts->offload.offload_running)
+		update_motion_filter(ts, ts->tid_touch_state);
 #endif
 }
 
@@ -2942,11 +3004,6 @@ static irqreturn_t sec_ts_irq_thread(int irq, void *ptr)
 
 	sec_ts_read_event(ts);
 
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-	/* Disable the firmware motion filter during single touch */
-	update_motion_filter(ts);
-#endif
-
 	cpu_latency_qos_update_request(&ts->pm_qos_req, PM_QOS_DEFAULT_VALUE);
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_IRQ, false);
@@ -2960,6 +3017,7 @@ static void sec_ts_offload_report(void *handle,
 {
 	struct sec_ts_data *ts = (struct sec_ts_data *)handle;
 	bool touch_down = 0;
+	unsigned long touch_id = 0;
 	int i;
 
 	mutex_lock(&ts->eventlock);
@@ -2970,6 +3028,7 @@ static void sec_ts_offload_report(void *handle,
 		if (report->coords[i].status == COORD_STATUS_FINGER) {
 			input_mt_slot(ts->input_dev, i);
 			touch_down = 1;
+			__set_bit(i, &touch_id);
 			input_report_key(ts->input_dev, BTN_TOUCH,
 					 touch_down);
 			input_mt_report_slot_state(ts->input_dev,
@@ -3001,6 +3060,12 @@ static void sec_ts_offload_report(void *handle,
 	input_sync(ts->input_dev);
 
 	mutex_unlock(&ts->eventlock);
+
+	if (touch_down)
+		heatmap_read(&ts->v4l2, ktime_to_ns(report->timestamp));
+
+	/* Disable the firmware motion filter during single touch */
+	update_motion_filter(ts, touch_id);
 }
 #endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
 
@@ -4227,6 +4292,11 @@ static int sec_ts_probe(struct spi_device *client)
 	ts->power_status = SEC_TS_STATE_POWER_ON;
 	ts->external_factory = false;
 	ts->heatmap_init_done = false;
+	ts->mutual_strength_heatmap.timestamp = 0;
+	ts->mutual_strength_heatmap.size_x = 0;
+	ts->mutual_strength_heatmap.size_y = 0;
+	ts->mutual_strength_heatmap.data = NULL;
+	ts->v4l2_mutual_strength_updated = false;
 
 	ret = sec_ts_wait_for_ready(ts, SEC_TS_ACK_BOOT_COMPLETE);
 	if (ret < 0) {
