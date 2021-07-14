@@ -704,18 +704,11 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 	group->mbox_attr = *attr;
 	if (attr->priority & EDGETPU_PRIORITY_DETACHABLE)
 		group->mailbox_detachable = true;
-	/* adds @client as the first entry */
-	ret = edgetpu_device_group_add(group, client);
-	if (ret) {
-		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
-			  __func__, group->workload_id, ret);
-		goto error_put_group;
-	}
 
 	etdomain = edgetpu_mmu_alloc_domain(group->etdev);
 	if (!etdomain) {
 		ret = -ENOMEM;
-		goto error_leave_group;
+		goto error_put_group;
 	}
 	group->etdomain = etdomain;
 	if (etdomain->token != EDGETPU_DOMAIN_TOKEN_END)
@@ -723,10 +716,18 @@ edgetpu_device_group_alloc(struct edgetpu_client *client,
 			EDGETPU_CONTEXT_DOMAIN_TOKEN | etdomain->token;
 	else
 		group->context_id = EDGETPU_CONTEXT_INVALID;
+
+	/* adds @client as the first entry */
+	ret = edgetpu_device_group_add(group, client);
+	if (ret) {
+		etdev_dbg(group->etdev, "%s: group %u add failed ret=%d",
+			  __func__, group->workload_id, ret);
+		goto error_free_mmu_domain;
+	}
 	return group;
 
-error_leave_group:
-	edgetpu_device_group_leave(client);
+error_free_mmu_domain:
+	edgetpu_mmu_free_domain(group->etdev, group->etdomain);
 error_put_group:
 	edgetpu_device_group_put(group);
 error:

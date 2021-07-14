@@ -131,6 +131,16 @@ struct edgetpu_client {
 	u64 perdie_events;
 };
 
+/* edgetpu_dev#clients list entry. */
+struct edgetpu_list_device_client {
+	struct list_head list;
+	struct edgetpu_client *client;
+};
+
+/* Macro to loop through etdev->clients (hold clients_lock prior). */
+#define for_each_list_device_client(etdev, c)                                  \
+	list_for_each_entry(c, &etdev->clients, list)
+
 struct edgetpu_mapping;
 struct edgetpu_mailbox_manager;
 struct edgetpu_kci;
@@ -179,6 +189,8 @@ struct edgetpu_dev {
 
 	/* end of fields protected by @groups_lock */
 
+	struct mutex clients_lock; /* protects clients */
+	struct list_head clients;
 	void *mmu_cookie;	   /* mmu driver private data */
 	void *dram_cookie;	   /* on-device DRAM private data */
 	struct edgetpu_mailbox_manager *mailbox_manager;

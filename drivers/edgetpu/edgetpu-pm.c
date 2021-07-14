@@ -15,6 +15,7 @@
 #include "edgetpu-mailbox.h"
 #include "edgetpu-pm.h"
 #include "edgetpu-sw-watchdog.h"
+#include "edgetpu-wakelock.h"
 
 #if IS_ENABLED(CONFIG_EDGETPU_TEST)
 #include "unittests/factory/fake-edgetpu-firmware.h"
@@ -310,15 +311,28 @@ void edgetpu_pchannel_power_up(struct edgetpu_dev *etdev)
 int edgetpu_pm_suspend(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_pm *etpm = etdev->pm;
+	struct edgetpu_list_device_client *lc;
 
-	if (etpm && etpm->p->power_up_count) {
-		etdev_warn_ratelimited(
-			etdev, "cannot suspend with power up count = %d\n",
-			etpm->p->power_up_count);
+	if (!etpm || !etpm->p->power_up_count)
+		return 0;
+
+	etdev_warn_ratelimited(
+		etdev, "cannot suspend with power up count = %d\n",
+		etpm->p->power_up_count);
+
+	if (!mutex_trylock(&etdev->clients_lock))
 		return -EAGAIN;
+	for_each_list_device_client(etdev, lc) {
+		if (NO_WAKELOCK(lc->client->wakelock) ||
+		    !lc->client->wakelock->req_count)
+			continue;
+		etdev_warn_ratelimited(etdev, "pid %d tgid %d count %d\n",
+				       lc->client->pid,
+				       lc->client->tgid,
+				       lc->client->wakelock->req_count);
 	}
-
-	return 0;
+	mutex_unlock(&etdev->clients_lock);
+	return -EAGAIN;
 }
 
 int edgetpu_pm_resume(struct edgetpu_dev *etdev)

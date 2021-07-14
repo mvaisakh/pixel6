@@ -1003,9 +1003,32 @@ static ssize_t watchdog_timeout_count_show(
 }
 static DEVICE_ATTR_RO(watchdog_timeout_count);
 
+static ssize_t clients_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
+	struct edgetpu_list_device_client *lc;
+	ssize_t ret = 0;
+
+	mutex_lock(&etdev->clients_lock);
+	for_each_list_device_client(etdev, lc) {
+		ret += scnprintf(buf, PAGE_SIZE - ret,
+				 "pid %d tgid %d wakelock %d\n",
+				 lc->client->pid, lc->client->tgid,
+				 NO_WAKELOCK(lc->client->wakelock) ?
+				 0 : lc->client->wakelock->req_count);
+		buf += ret;
+	}
+	mutex_unlock(&etdev->clients_lock);
+	return ret;
+}
+static DEVICE_ATTR_RO(clients);
+
 static struct attribute *edgetpu_dev_attrs[] = {
 	&dev_attr_firmware_crash_count.attr,
 	&dev_attr_watchdog_timeout_count.attr,
+	&dev_attr_clients.attr,
 	NULL,
 };
 

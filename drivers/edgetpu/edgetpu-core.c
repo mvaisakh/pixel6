@@ -371,6 +371,8 @@ int edgetpu_device_add(struct edgetpu_dev *etdev,
 	INIT_LIST_HEAD(&etdev->groups);
 	etdev->n_groups = 0;
 	etdev->group_join_lockout = false;
+	mutex_init(&etdev->clients_lock);
+	INIT_LIST_HEAD(&etdev->clients);
 	etdev->vcid_pool = (1u << EDGETPU_NUM_VCIDS) - 1;
 	mutex_init(&etdev->state_lock);
 	etdev->state = ETDEV_STATE_NOFW;
@@ -457,13 +459,19 @@ void edgetpu_device_remove(struct edgetpu_dev *etdev)
 struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 {
 	struct edgetpu_client *client;
+	struct edgetpu_list_device_client *l = kmalloc(sizeof(*l), GFP_KERNEL);
 
-	client = kzalloc(sizeof(*client), GFP_KERNEL);
-	if (!client)
+	if (!l)
 		return ERR_PTR(-ENOMEM);
+	client = kzalloc(sizeof(*client), GFP_KERNEL);
+	if (!client) {
+		kfree(l);
+		return ERR_PTR(-ENOMEM);
+	}
 	client->wakelock = edgetpu_wakelock_alloc(etdev);
 	if (!client->wakelock) {
 		kfree(client);
+		kfree(l);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -474,6 +482,10 @@ struct edgetpu_client *edgetpu_client_add(struct edgetpu_dev *etdev)
 	/* equivalent to edgetpu_client_get() */
 	refcount_set(&client->count, 1);
 	client->perdie_events = 0;
+	mutex_lock(&etdev->clients_lock);
+	l->client = client;
+	list_add_tail(&l->list, &etdev->clients);
+	mutex_unlock(&etdev->clients_lock);
 	return client;
 }
 
@@ -494,14 +506,27 @@ void edgetpu_client_put(struct edgetpu_client *client)
 void edgetpu_client_remove(struct edgetpu_client *client)
 {
 	struct edgetpu_dev *etdev;
+	struct edgetpu_list_device_client *lc;
 
 	if (IS_ERR_OR_NULL(client))
 		return;
 	etdev = client->etdev;
+	mutex_lock(&etdev->clients_lock);
+	/* remove the client from the device list */
+	for_each_list_device_client(etdev, lc) {
+		if (lc->client == client) {
+			list_del(&lc->list);
+			kfree(lc);
+			break;
+		}
+	}
+	mutex_unlock(&etdev->clients_lock);
 	/*
 	 * A quick check without holding client->group_lock.
 	 *
-	 * If client doesn't belong to a group then we are fine to not proceed.
+	 * If client doesn't belong to a group then we are fine to not remove
+	 * from groups.
+	 *
 	 * If there is a race that the client belongs to a group but is removing
 	 * by another process - this will be detected by the check with holding
 	 * client->group_lock later.
