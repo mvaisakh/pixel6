@@ -94,6 +94,7 @@ struct max77759_chgr_data {
 	struct mutex io_lock;
 	bool resume_complete;
 	bool init_complete;
+	struct wakeup_source *usecase_wake_lock;
 
 	int fship_dtls;
 	bool online;
@@ -1859,6 +1860,7 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	bool nope;
 	u8 reg;
 
+	__pm_stay_awake(data->usecase_wake_lock);
 	mutex_lock(&data->io_lock);
 
 	reason = trigger;
@@ -1970,6 +1972,7 @@ unlock_done:
 		 from_use_case, use_case,
 		 reg, cb_data.reg);
 	mutex_unlock(&data->io_lock);
+	__pm_relax(data->usecase_wake_lock);
 }
 
 static int max77759_get_charge_enabled(struct max77759_chgr_data *data,
@@ -3854,6 +3857,12 @@ static int max77759_charger_probe(struct i2c_client *client,
 	atomic_set(&data->early_topoff_cnt, 0);
 	i2c_set_clientdata(client, data);
 
+	data->usecase_wake_lock = wakeup_source_register(NULL, "max77759-usecase");
+	if (!data->usecase_wake_lock) {
+		pr_err("Failed to register wakeup source\n");
+		return -ENODEV;
+	}
+
 	/* NOTE: only one instance */
 	ret = of_property_read_string(dev->of_node, "max77759,psy-name", &tmp);
 	if (ret == 0)
@@ -3962,6 +3971,9 @@ static int max77759_charger_remove(struct i2c_client *client)
 	if (data->tz_vdroop[VDROOP2])
 		thermal_zone_of_sensor_unregister(data->dev, data->tz_vdroop[VDROOP2]);
 #endif
+
+	wakeup_source_unregister(data->usecase_wake_lock);
+
 	return 0;
 }
 
