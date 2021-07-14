@@ -1797,6 +1797,18 @@ unlock_done:
 	mutex_unlock(&charger->stats_lock);
 }
 
+static bool p9412_is_calibration_done(struct p9221_charger_data *charger)
+{
+	u8 reg;
+	int ret;
+
+	ret = p9221_reg_read_8(charger, P9412_EPP_CAL_STATE_REG, &reg);
+
+	dev_info(&charger->client->dev, "EPP_CAL_STATE_REG=%02x\n", reg);
+
+	return ((ret == 0) && ((reg & P9412_EPP_CAL_STATE_MASK) == 0));
+}
+
 static bool feature_check_fast_charge(struct p9221_charger_data *charger)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
@@ -1869,6 +1881,10 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		/* will return -EAGAIN until the feature is supported */
 		feat_enable = feature_check_fast_charge(charger);
 		if (feat_enable == 0)
+			return -EAGAIN;
+
+		/* need to check calibration is done before re-negotiate */
+		if (!p9412_is_calibration_done(charger))
 			return -EAGAIN;
 
 		ret = p9221_set_hpp_dc_icl(charger, true);

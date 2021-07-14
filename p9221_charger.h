@@ -374,6 +374,7 @@
 #define P9412_TX_I_API_LIM_REG			0x56
 #define P9412_ALIGN_X_REG			0xB0 /* 1 byte 8 bit raw */
 #define P9412_ALIGN_Y_REG			0xB1 /* 1 byte 8 bit raw */
+#define P9412_EPP_CAL_STATE_REG			0xB8
 #define P9412_PROP_TX_POTEN_PWR_REG		0xC4
 #define P9412_PROP_REQ_PWR_REG			0xC5
 #define P9412_PROP_CURR_PWR_REG			0xC6
@@ -434,6 +435,11 @@
 #define P9412_STAT_TXCONFLICT			BIT(1)
 /* EPT code */
 #define EPT_END_OF_CHARGE			BIT(0)
+/* EPP calibration state */
+#define P9412_CAL_STATE_1			BIT(1)
+#define P9412_CAL_STATE_2			BIT(3)
+#define P9412_EPP_CAL_STATE_MASK		(P9412_CAL_STATE_1 | \
+						 P9412_CAL_STATE_2)
 
 #define P9221_CRC8_POLYNOMIAL			0x07    /* (x^8) + x^2 + x + 1 */
 #define P9412_ADT_TYPE_AUTH			0x02
