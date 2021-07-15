@@ -288,7 +288,10 @@ struct batt_drv {
 	struct votable	*msc_interval_votable;
 	struct votable	*fcc_votable;
 	struct votable	*fv_votable;
+
+	/* FAN level */
 	struct votable	*fan_level_votable;
+	int fan_last_level;
 
 	/* stats */
 	int msc_state;
@@ -801,6 +804,10 @@ static int fan_calculate_level(const struct batt_drv *batt_drv)
 	int charging_rate, fan_level, chg_fan_level;
 	int health_fan_level = FAN_LVL_NOT_CARE;
 
+	if (batt_drv->jeita_stop_charging == 1)
+		return FAN_LVL_ALARM;
+
+	/* defender limits from google_charger */
 	fan_level = fan_bt_calculate_level(batt_drv);
 	if (batt_drv->cc_max == 0 || batt_drv->battery_capacity == 0)
 		return fan_level;
@@ -812,6 +819,7 @@ static int fan_calculate_level(const struct batt_drv *batt_drv)
 	if (health_fan_level > fan_level)
 		fan_level = health_fan_level;
 
+	/* cc_max should be 0 when disconnected */
 	charging_rate = batt_drv->cc_max / batt_drv->battery_capacity / 10;
 	if (charging_rate <= FAN_CHG_LIMIT_LOW)
 		chg_fan_level = FAN_LVL_LOW;
@@ -842,8 +850,13 @@ static int fan_level_cb(struct votable *votable, void *data,
 	if (!batt_drv)
 		return 0;
 
-	pr_debug("FAN_LEVEL change to %d\n", lvl);
-	power_supply_changed(batt_drv->psy);
+	if (batt_drv->fan_last_level != lvl) {
+		pr_debug("FAN_LEVEL %d->%d\n", batt_drv->fan_last_level, lvl);
+
+		batt_drv->fan_last_level = lvl;
+		if (batt_drv->psy)
+			power_supply_changed(batt_drv->psy);
+	}
 
 	return 0;
 }
@@ -4374,7 +4387,10 @@ static ssize_t fan_level_store(struct device *dev,
 		return -ERANGE;
 
 	batt_drv->fan_level = level;
-	power_supply_changed(batt_drv->psy);
+
+	/* always send a power supply event when forcing the value */
+	if (batt_drv->psy)
+		power_supply_changed(batt_drv->psy);
 
 	return count;
 }
@@ -5835,6 +5851,7 @@ static int google_battery_probe(struct platform_device *pdev)
 	}
 
 	batt_drv->fan_level = -1;
+	batt_drv->fan_last_level = -1;
 	batt_drv->fan_level_votable =
 		create_votable(VOTABLE_FAN_LEVEL, VOTE_MAX, fan_level_cb, batt_drv);
 	if (IS_ERR(batt_drv->fan_level_votable)) {
