@@ -279,6 +279,7 @@ struct batt_drv {
 	int checked_cv_cnt;
 	int checked_ov_cnt;
 	int checked_tier_switch_cnt;
+	int last_log_cnt;
 
 	int fv_uv;
 	int cc_max;
@@ -386,6 +387,37 @@ static int psy_changed(struct notifier_block *nb,
 
 	return NOTIFY_OK;
 }
+
+/* ------------------------------------------------------------------------- */
+
+
+#define BATT_PRLOG_DEBUG  0
+#define BATT_PRLOG_ALWAYS 1
+#define BATT_PRLOG_LAST_LOG_COUNT 10
+
+static int debug_printk_prlog = LOGLEVEL_INFO;
+
+static inline int batt_prlog_level(bool level)
+{
+	return level ? BATT_PRLOG_ALWAYS : BATT_PRLOG_DEBUG;
+}
+
+__printf(2,3)
+static void batt_prlog__(int info_level, const char *format, ...)
+{
+	const int level = info_level == BATT_PRLOG_ALWAYS ? LOGLEVEL_INFO : LOGLEVEL_DEBUG;
+
+	if (level <= debug_printk_prlog) {
+		va_list args;
+
+		va_start(args, format);
+			vprintk(format, args);
+		va_end(args);
+	}
+
+}
+
+#define batt_prlog(l, fmt, ...) batt_prlog__(l, pr_fmt(fmt), ##__VA_ARGS__)
 
 /* ------------------------------------------------------------------------- */
 
@@ -2026,8 +2058,9 @@ static inline void batt_reset_chg_drv_state(struct batt_drv *batt_drv)
 	batt_drv->checked_cv_cnt = 0;
 	batt_drv->checked_ov_cnt = 0;
 	batt_drv->checked_tier_switch_cnt = 0;
-	/* stats */
+	/* stats and logs */
 	batt_drv->msc_state = -1;
+	batt_drv->last_log_cnt = 0;
 	/* health */
 	batt_reset_rest_state(&batt_drv->chg_health);
 	/* fan level */
@@ -2046,11 +2079,13 @@ static bool msc_logic_soft_jeita(const struct batt_drv *batt_drv, int temp)
 	if (temp < profile->temp_limits[0] ||
 	    temp > profile->temp_limits[profile->temp_nb_limits - 1]) {
 		if (batt_drv->jeita_stop_charging < 0) {
-			pr_info("MSC_JEITA temp=%d off limits, do not enable charging\n",
-				temp);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_JEITA temp=%d off limits, do not enable charging\n",
+				   temp);
 		} else if (batt_drv->jeita_stop_charging == 0) {
-			pr_info("MSC_JEITA temp=%d off limits, disabling charging\n",
-				temp);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_JEITA temp=%d off limits, disabling charging\n",
+				    temp);
 		}
 
 		return true;
@@ -2105,22 +2140,25 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 			msc_state = MSC_VSWITCH;
 			*vbatt_idx = batt_drv->vbatt_idx + 1;
 
-			pr_info("MSC_VSWITCH vt=%d vb=%d ibatt=%d me=%d\n",
-				vtier, vbatt, ibatt, match_enable);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_VSWITCH vt=%d vb=%d ibatt=%d me=%d\n",
+				   vtier, vbatt, ibatt, match_enable);
 		} else if (-ibatt == cc_max) {
 			/* pullback, double penalty if at full current */
 			msc_state = MSC_VOVER;
 			batt_drv->checked_ov_cnt *= 2;
 
-			pr_info("MSC_VOVER vt=%d  vb=%d ibatt=%d fv_uv=%d->%d\n",
-				vtier, vbatt, ibatt,
-				batt_drv->fv_uv, *fv_uv);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_VOVER vt=%d  vb=%d ibatt=%d fv_uv=%d->%d\n",
+				   vtier, vbatt, ibatt,
+				   batt_drv->fv_uv, *fv_uv);
 		} else {
 			/* simple pullback */
 			msc_state = MSC_PULLBACK;
-			pr_info("MSC_PULLBACK vt=%d vb=%d ibatt=%d fv_uv=%d->%d\n",
-				vtier, vbatt, ibatt,
-				batt_drv->fv_uv, *fv_uv);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				  "MSC_PULLBACK vt=%d vb=%d ibatt=%d fv_uv=%d->%d\n",
+				  vtier, vbatt, ibatt,
+				  batt_drv->fv_uv, *fv_uv);
 		}
 
 		/*
@@ -2154,10 +2192,11 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		if (batt_drv->checked_cv_cnt == 0)
 			batt_drv->checked_cv_cnt = 1;
 
-		pr_info("MSC_FAST vt=%d vb=%d fv_uv=%d->%d vchrg=%d cv_cnt=%d\n",
-			vtier, vbatt, batt_drv->fv_uv, *fv_uv,
-			batt_drv->chg_state.f.vchrg,
-			batt_drv->checked_cv_cnt);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_FAST vt=%d vb=%d ib=%d fv_uv=%d->%d vchrg=%d cv_cnt=%d\n",
+			   vtier, vbatt, ibatt, batt_drv->fv_uv, *fv_uv,
+			   batt_drv->chg_state.f.vchrg,
+			   batt_drv->checked_cv_cnt);
 
 	} else if (chg_type == POWER_SUPPLY_CHARGE_TYPE_TRICKLE) {
 		/*
@@ -2172,8 +2211,8 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		if (batt_drv->checked_cv_cnt == 0)
 			batt_drv->checked_cv_cnt = 1;
 
-		pr_info("MSC_PRE vt=%d vb=%d fv_uv=%d chg_type=%d\n",
-			vtier, vbatt, *fv_uv, chg_type);
+		batt_prlog(BATT_PRLOG_ALWAYS, "MSC_PRE vt=%d vb=%d fv_uv=%d chg_type=%d\n",
+			   vtier, vbatt, *fv_uv, chg_type);
 	} else if (chg_type != POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT) {
 		const int type_margin = utv_margin;
 
@@ -2192,33 +2231,39 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 			batt_drv->checked_cv_cnt = 1;
 		}
 
-		pr_info("MSC_TYPE vt=%d margin=%d cv_cnt=%d vb=%d fv_uv=%d chg_type=%d\n",
-			vtier, type_margin, batt_drv->checked_cv_cnt, vbatt,
-			*fv_uv, chg_type);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_TYPE vt=%d margin=%d cv_cnt=%d vb=%d fv_uv=%d chg_type=%d\n",
+			   vtier, type_margin, batt_drv->checked_cv_cnt, vbatt,
+			   *fv_uv, chg_type);
 
 	} else if (batt_drv->checked_ov_cnt) {
 		/*
 		 * TAPER_DLY: countdown to raise fv_uv and/or check
 		 * for tier switch, will keep steady...
 		 */
-		pr_info("MSC_DLY vt=%d vb=%d fv_uv=%d margin=%d cv_cnt=%d, ov_cnt=%d\n",
-			vtier, vbatt, *fv_uv, profile->cv_range_accuracy,
-			batt_drv->checked_cv_cnt,
-			batt_drv->checked_ov_cnt);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_DLY vt=%d vb=%d fv_uv=%d margin=%d cv_cnt=%d, ov_cnt=%d\n",
+			   vtier, vbatt, *fv_uv, profile->cv_range_accuracy,
+			   batt_drv->checked_cv_cnt,
+			   batt_drv->checked_ov_cnt);
 
 		msc_state = MSC_DLY;
 		batt_drv->checked_ov_cnt -= 1;
 		*update_interval = profile->cv_update_interval;
 
 	} else if ((vtier - vbatt) < utv_margin) {
+		const bool log_level = batt_drv->msc_state != MSC_STEADY &&
+				      batt_drv->msc_state != MSC_RSTC;
+
 		/* TAPER_STEADY: close enough to tier */
 
 		msc_state = MSC_STEADY;
 		*update_interval = profile->cv_update_interval;
 
-		pr_info("MSC_STEADY vt=%d vb=%d fv_uv=%d margin=%d\n",
-			vtier, vbatt, *fv_uv,
-			profile->cv_range_accuracy);
+		batt_prlog(batt_prlog_level(log_level),
+			   "MSC_STEADY vt=%d vb=%d fv_uv=%d margin=%d\n",
+			   vtier, vbatt, *fv_uv,
+			   profile->cv_range_accuracy);
 	} else if (batt_drv->checked_tier_switch_cnt >= (switch_cnt - 1)) {
 		/*
 		 * TAPER_TIERCNTING: prepare to switch to next tier
@@ -2228,9 +2273,10 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		msc_state = MSC_TIERCNTING;
 		*update_interval = profile->cv_update_interval;
 
-		pr_info("MSC_TIERCNTING vt=%d vb=%d fv_uv=%d margin=%d\n",
-			vtier, vbatt, *fv_uv,
-			profile->cv_range_accuracy);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_TIERCNTING vt=%d vb=%d fv_uv=%d margin=%d\n",
+			   vtier, vbatt, *fv_uv,
+			   profile->cv_range_accuracy);
 	} else if (match_enable) {
 		/*
 		 * TAPER_RAISE: under tier vlim, raise one click &
@@ -2244,11 +2290,11 @@ static int msc_logic_irdrop(struct batt_drv *batt_drv,
 		/* debounce next taper voltage adjustment */
 		batt_drv->checked_cv_cnt = profile->cv_debounce_cnt;
 
-		pr_info("MSC_RAISE vt=%d vb=%d fv_uv=%d->%d\n",
-			vtier, vbatt, batt_drv->fv_uv, *fv_uv);
+		batt_prlog(BATT_PRLOG_ALWAYS, "MSC_RAISE vt=%d vb=%d fv_uv=%d->%d\n",
+			   vtier, vbatt, batt_drv->fv_uv, *fv_uv);
 	} else {
 		msc_state = MSC_STEADY;
-		pr_info("MSC_DISB vt=%d vb=%d fv_uv=%d->%d\n",
+		batt_prlog(BATT_PRLOG_DEBUG, "MSC_DISB vt=%d vb=%d fv_uv=%d->%d\n",
 			vtier, vbatt, batt_drv->fv_uv, *fv_uv);
 	}
 
@@ -2498,9 +2544,10 @@ done_no_op:
 	if (!changed)
 		return false;
 
-	pr_info("MSC_HEALTH: now=%lld deadline=%lld aon_soc=%d ttf=%lld state=%d->%d fv_uv=%d, cc_max=%d\n",
-		now, rest->rest_deadline, rest->always_on_soc,
-		ttf, rest->rest_state, rest_state, fv_uv, cc_max);
+	batt_prlog(BATT_PRLOG_ALWAYS,
+		   "MSC_HEALTH: now=%lld deadline=%lld aon_soc=%d ttf=%lld state=%d->%d fv_uv=%d, cc_max=%d\n",
+		   now, rest->rest_deadline, rest->always_on_soc, ttf,
+		   rest->rest_state, rest_state, fv_uv, cc_max);
 	logbuffer_log(batt_drv->ttf_stats.ttf_log,
 		      "MSC_HEALTH: now=%lld deadline=%lld aon_soc=%d ttf=%lld state=%d->%d fv_uv=%d, cc_max=%d\n",
 		      now, rest->rest_deadline, rest->always_on_soc,
@@ -2554,6 +2601,7 @@ static int msc_logic(struct batt_drv *batt_drv)
 	int update_interval = MSC_DEFAULT_UPDATE_INTERVAL;
 	const ktime_t now = get_boot_sec();
 	ktime_t elap = now - batt_drv->ce_data.last_update;
+	bool changed;
 
 	temp = GPSY_GET_INT_PROP(fg_psy, POWER_SUPPLY_PROP_TEMP, &ioerr);
 	if (ioerr < 0)
@@ -2571,7 +2619,9 @@ static int msc_logic(struct batt_drv *batt_drv)
 
 		return 0;
 	} else if (batt_drv->jeita_stop_charging) {
-		pr_info("MSC_JEITA temp=%d ok, enabling charging\n", temp);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_JEITA temp=%d ok, enabling charging\n",
+			   temp);
 		batt_drv->jeita_stop_charging = 0;
 	}
 
@@ -2598,14 +2648,19 @@ static int msc_logic(struct batt_drv *batt_drv)
 		if (batt_drv->vbatt_idx == -1)
 			vbatt_idx = gbms_msc_voltage_idx(profile, vbatt);
 
-		pr_info("MSC_SEED temp=%d vbatt=%d temp_idx:%d->%d, vbatt_idx:%d->%d\n",
-			temp, vbatt, batt_drv->temp_idx, temp_idx,
-			batt_drv->vbatt_idx, vbatt_idx);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_SEED temp=%d vb=%d temp_idx:%d->%d, vbatt_idx:%d->%d\n",
+			   temp, vbatt, batt_drv->temp_idx, temp_idx,
+			   batt_drv->vbatt_idx, vbatt_idx);
 
 		/* Debounce tier switch only when not already switching */
 		if (batt_drv->checked_tier_switch_cnt == 0)
 			batt_drv->checked_cv_cnt = profile->cv_debounce_cnt;
 	} else if (ibatt > 0) {
+		const int vtier = profile->volt_limits[vbatt_idx];
+		const bool log_level = batt_drv->msc_state != MSC_DSG ||
+				       batt_drv->cc_max != 0;
+
 		/*
 		 * Track battery voltage if discharging is due to system load,
 		 * low ILIM or lack of headroom; stop charging work and reset
@@ -2617,13 +2672,15 @@ static int msc_logic(struct batt_drv *batt_drv)
 		msc_state = MSC_DSG;
 		vbatt_idx = gbms_msc_voltage_idx(profile, vbatt);
 
-		pr_info("MSC_DSG vbatt_idx:%d->%d vbatt=%d ibatt=%d fv_uv=%d cv_cnt=%d ov_cnt=%d\n",
-			batt_drv->vbatt_idx, vbatt_idx,
-			vbatt, ibatt, fv_uv,
-			batt_drv->checked_cv_cnt,
-			batt_drv->checked_ov_cnt);
+		batt_prlog(batt_prlog_level(log_level),
+			   "MSC_DSG vbatt_idx:%d->%d vt=%d fv_uv=%d vb=%d ib=%d cv_cnt=%d ov_cnt=%d\n",
+			   batt_drv->vbatt_idx, vbatt_idx, vtier, fv_uv, vbatt, ibatt,
+			   batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt);
+
 	} else if (batt_drv->vbatt_idx == profile->volt_nb_limits - 1) {
 		const int chg_type = batt_drv->chg_state.f.chg_type;
+		const int vtier = profile->volt_limits[vbatt_idx];
+		int log_level;
 
 		/*
 		 * will not adjust charger voltage only in the configured
@@ -2641,8 +2698,19 @@ static int msc_logic(struct batt_drv *batt_drv)
 			msc_state = MSC_LAST;
 		}
 
-		pr_info("MSC_LAST vbatt=%d ibatt=%d fv_uv=%d\n",
-			vbatt, ibatt, fv_uv);
+		log_level = batt_prlog_level(batt_drv->msc_state != msc_state);
+		if (log_level != BATT_PRLOG_ALWAYS && msc_state == MSC_LAST) {
+
+			if (batt_drv->last_log_cnt > 0)
+				batt_drv->last_log_cnt--;
+			if (batt_drv->last_log_cnt == 0) {
+				batt_drv->last_log_cnt = BATT_PRLOG_LAST_LOG_COUNT;
+				log_level = batt_prlog_level(true);
+			}
+		}
+
+		batt_prlog(log_level, "MSC_LAST vt=%d fv_uv=%d vb=%d ib=%d\n",
+			   vtier, fv_uv, vbatt, ibatt);
 
 	} else {
 		const int tier_idx = batt_drv->vbatt_idx;
@@ -2676,23 +2744,23 @@ static int msc_logic(struct batt_drv *batt_drv)
 			/* debounce period on tier switch */
 			batt_drv->checked_cv_cnt -= 1;
 
-			pr_info("MSC_WAIT s:%d->%d vt=%d vb=%d fv_uv=%d ibatt=%d cv_cnt=%d ov_cnt=%d t_cnt=%d\n",
-				msc_state, MSC_WAIT,
-				vtier, vbatt, fv_uv, ibatt,
-				batt_drv->checked_cv_cnt,
-				batt_drv->checked_ov_cnt,
-				batt_drv->checked_tier_switch_cnt);
+			batt_prlog(batt_prlog_level(msc_state != MSC_FAST),
+				   "MSC_WAIT s:%d->%d vt=%d fv_uv=%d vb=%d ib=%d cv_cnt=%d ov_cnt=%d t_cnt=%d\n",
+				   msc_state, MSC_WAIT, vtier, fv_uv, vbatt, ibatt,
+				   batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt,
+				   batt_drv->checked_tier_switch_cnt);
 
 			if (-ibatt > cc_next_max)
 				batt_drv->checked_tier_switch_cnt = 0;
 
 			msc_state = MSC_WAIT;
 		} else if (-ibatt > cc_next_max) {
+
 			/* current over next tier, reset tier switch count */
-			pr_info("MSC_RSTC s:%d->%d vt=%d vb=%d fv_uv=%d ibatt=%d cc_next_max=%d t_cnt=%d->0\n",
-				msc_state, MSC_RSTC, vtier, vbatt,
-				fv_uv, ibatt, cc_next_max,
-				batt_drv->checked_tier_switch_cnt);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_RSTC s:%d->%d vt=%d fv_uv=%d vb=%d ib=%d cc_next_max=%d t_cnt=%d->0\n",
+				   msc_state, MSC_RSTC, vtier, fv_uv, vbatt, ibatt, cc_next_max,
+				   batt_drv->checked_tier_switch_cnt);
 
 			batt_drv->checked_tier_switch_cnt = 0;
 			msc_state = MSC_RSTC;
@@ -2700,18 +2768,20 @@ static int msc_logic(struct batt_drv *batt_drv)
 			/* next tier, fv_uv detemined at MSC_SET */
 			vbatt_idx = batt_drv->vbatt_idx + 1;
 
-			pr_info("MSC_NEXT s:%d->%d tier vb=%d ibatt=%d vbatt_idx=%d->%d\n",
-				msc_state, MSC_NEXT, vbatt, ibatt,
-				batt_drv->vbatt_idx, vbatt_idx);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_NEXT s:%d->%d tier vb=%d ib=%d vbatt_idx=%d->%d\n",
+				   msc_state, MSC_NEXT, vbatt, ibatt,
+				   batt_drv->vbatt_idx, vbatt_idx);
 
 			msc_state = MSC_NEXT;
 		} else {
 			/* current under next tier, +1 on tier switch count */
 			batt_drv->checked_tier_switch_cnt++;
 
-			pr_info("MSC_NYET s:%d->%d ibatt=%d cc_next_max=%d t_cnt=%d\n",
-				msc_state, MSC_NYET, ibatt, cc_next_max,
-				batt_drv->checked_tier_switch_cnt);
+			batt_prlog(BATT_PRLOG_ALWAYS,
+				   "MSC_NYET s:%d->%d vt=%d vb=%d ib=%d cc_next_max=%d t_cnt=%d\n",
+				   msc_state, MSC_NYET, vtier, vbatt, ibatt, cc_next_max,
+				   batt_drv->checked_tier_switch_cnt);
 
 			msc_state = MSC_NYET;
 		}
@@ -2754,11 +2824,14 @@ static int msc_logic(struct batt_drv *batt_drv)
 	batt_drv->ce_data.last_update = now;
 	mutex_unlock(&batt_drv->stats_lock);
 
-	pr_debug("MSC_LOGIC cv_cnt=%d ov_cnt=%d temp_idx:%d->%d, vbatt_idx:%d->%d, fv=%d->%d, ui=%d->%d\n",
-		batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt,
-		batt_drv->temp_idx, temp_idx, batt_drv->vbatt_idx,
-		vbatt_idx, batt_drv->fv_uv, fv_uv, batt_drv->cc_max,
-		update_interval);
+	changed = batt_drv->temp_idx != temp_idx ||
+		  batt_drv->vbatt_idx != vbatt_idx ||
+		  batt_drv->fv_uv != fv_uv;
+	batt_prlog(batt_prlog_level(changed),
+		   "MSC_LOGIC temp_idx:%d->%d, vbatt_idx:%d->%d, fv=%d->%d, ui=%d->%d cv_cnt=%d ov_cnt=%d\n",
+		   batt_drv->temp_idx, temp_idx, batt_drv->vbatt_idx, vbatt_idx,
+		   batt_drv->fv_uv, fv_uv, batt_drv->cc_max, update_interval,
+		   batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt);
 
 	/* next update */
 	batt_drv->msc_update_interval = update_interval;
@@ -2804,6 +2877,18 @@ static void ssoc_change_state(struct batt_ssoc_state *ssoc_state, bool ben)
 	ssoc_state->buck_enabled = ben;
 }
 
+static void batt_prlog_din(union gbms_charger_state *chg_state, int log_level)
+{
+	batt_prlog(log_level,
+		   "MSC_DIN chg_state=%lx f=0x%x chg_s=%s chg_t=%s vchg=%d icl=%d\n",
+		   (unsigned long)chg_state->v,
+		   chg_state->f.flags,
+		   gbms_chg_status_s(chg_state->f.chg_status),
+		   gbms_chg_type_s(chg_state->f.chg_type),
+		   chg_state->f.vchrg,
+		   chg_state->f.icl);
+}
+
 /* called holding chg_lock */
 static int batt_chg_logic(struct batt_drv *batt_drv)
 {
@@ -2812,19 +2897,14 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 	bool changed = false;
 	const bool disable_votes = batt_drv->disable_votes;
 	union gbms_charger_state *chg_state = &batt_drv->chg_state;
+	int log_vote_level = BATT_PRLOG_DEBUG;
 
 	if (!batt_drv->chg_profile.cccm_limits)
 		return -EINVAL;
 
 	__pm_stay_awake(batt_drv->msc_ws);
 
-	pr_info("MSC_DIN chg_state=%lx f=0x%x chg_s=%s chg_t=%s vchg=%d icl=%d\n",
-		(unsigned long)chg_state->v,
-		chg_state->f.flags,
-		gbms_chg_status_s(chg_state->f.chg_status),
-		gbms_chg_type_s(chg_state->f.chg_type),
-		chg_state->f.vchrg,
-		chg_state->f.icl);
+	batt_prlog_din(chg_state, BATT_PRLOG_ALWAYS);
 
 	/* disconnect! */
 	if ((batt_drv->chg_state.f.flags & GBMS_CS_FLAG_BUCK_EN) == 0) {
@@ -2860,7 +2940,10 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 		goto msc_logic_done;
 	}
 
-	/* here when connected to power supply */
+	/*
+	 * here when connected to power supply
+	 * The following block one only on start.
+	 */
 	if (batt_drv->ssoc_state.buck_enabled <= 0) {
 		const qnum_t ssoc_delta = ssoc_get_delta(batt_drv);
 
@@ -2903,14 +2986,14 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 	if ((batt_drv->chg_state.f.flags & GBMS_CS_FLAG_DONE) != 0) {
 		changed = batt_rl_enter(&batt_drv->ssoc_state,
 					BATT_RL_STATUS_DISCHARGE);
+
 		batt_drv->chg_done = true;
 	} else if (batt_drv->batt_full) {
 		changed = batt_rl_enter(&batt_drv->ssoc_state,
 					BATT_RL_STATUS_RECHARGE);
 
 		/* We can skip the uevent because we have volt tiers >= 100 */
-		if (changed)
-			batt_chg_stats_pub(batt_drv, "100%", false, true);
+		batt_chg_stats_pub(batt_drv, "100%", false, true);
 	}
 
 	err = msc_logic(batt_drv);
@@ -2918,9 +3001,10 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 		/* NOTE: google charger will poll again. */
 		batt_drv->msc_update_interval = -1;
 
-		pr_err("MSC_DOUT ERROR=%d fv_uv=%d cc_max=%d update_interval=%d\n",
-			err, batt_drv->fv_uv, batt_drv->cc_max,
-			batt_drv->msc_update_interval);
+		batt_prlog(BATT_PRLOG_ALWAYS,
+			   "MSC_DOUT ERROR=%d fv_uv=%d cc_max=%d update_interval=%d\n",
+			   err, batt_drv->fv_uv, batt_drv->cc_max,
+			   batt_drv->msc_update_interval);
 
 		goto msc_logic_exit;
 	}
@@ -2939,15 +3023,19 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 	}
 
 msc_logic_done:
+
 	/* set ->cc_max = 0 on RL and SW_JEITA, no vote on interval in RL_DSG */
 	if (batt_drv->ssoc_state.rl_status == BATT_RL_STATUS_DISCHARGE) {
+		log_vote_level = batt_prlog_level(batt_drv->cc_max != 0);
 		batt_drv->msc_update_interval = -1;
 		batt_drv->cc_max = 0;
 	}
 
 	jeita_stop = batt_drv->jeita_stop_charging == 1;
-	if (jeita_stop)
+	if (jeita_stop) {
+		log_vote_level = batt_prlog_level(batt_drv->cc_max != 0);
 		batt_drv->cc_max = 0;
+	}
 
 	/* Fan level can be updated only during power transfer */
 	if (batt_drv->fan_level_votable) {
@@ -2957,14 +3045,17 @@ msc_logic_done:
 		pr_debug("MSC_FAN_LVL: level=%d\n", level);
 	}
 
-	pr_info("%s msc_state=%d cv_cnt=%d ov_cnt=%d rl_sts=%d temp_idx:%d, vbatt_idx:%d  fv_uv=%d cc_max=%d update_interval=%d\n",
-		(disable_votes) ? "MSC_DOUT" : "MSC_VOTE",
-		batt_drv->msc_state,
-		batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt,
-		batt_drv->ssoc_state.rl_status,
-		batt_drv->temp_idx, batt_drv->vbatt_idx,
-		batt_drv->fv_uv, batt_drv->cc_max,
-		batt_drv->msc_update_interval);
+	if (changed)
+		log_vote_level = BATT_PRLOG_ALWAYS;
+	batt_prlog(log_vote_level,
+		   "%s msc_state=%d cv_cnt=%d ov_cnt=%d rl_sts=%d temp_idx:%d, vbatt_idx:%d  fv_uv=%d cc_max=%d update_interval=%d\n",
+		   (disable_votes) ? "MSC_DOUT" : "MSC_VOTE",
+		   batt_drv->msc_state,
+		   batt_drv->checked_cv_cnt, batt_drv->checked_ov_cnt,
+		   batt_drv->ssoc_state.rl_status,
+		   batt_drv->temp_idx, batt_drv->vbatt_idx,
+		   batt_drv->fv_uv, batt_drv->cc_max,
+		   batt_drv->msc_update_interval);
 
 	 /*
 	  * google_charger has voted(<=0) on msc_interval_votable and the
@@ -4569,6 +4660,7 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	if (IS_ERR_OR_NULL(de))
 		return 0;
 
+	debugfs_create_u32("debug_level", 0644, de, &debug_printk_prlog);
 	debugfs_create_file("cycle_count_sync", 0600, de, batt_drv,
 			    &cycle_count_bins_sync_fops);
 	debugfs_create_file("ssoc_gdf", 0600, de, batt_drv, &debug_ssoc_gdf_fops);
