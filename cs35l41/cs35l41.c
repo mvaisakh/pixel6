@@ -545,7 +545,8 @@ static int cs35l41_hibernate_force_wake_put(struct snd_kcontrol *kcontrol,
 	unsigned int amp_active;
 
 	regmap_read(cs35l41->regmap, CS35L41_PWR_CTRL1, &amp_active);
-
+	dev_info(cs35l41->dev, "hb force wake %d from hibernate state %d\n",
+		cs35l41->hibernate_force_wake, cs35l41->amp_hibernate);
 	if (cs35l41->amp_hibernate == CS35L41_HIBERNATE_AWAKE ||
 		(cs35l41->amp_hibernate == CS35L41_HIBERNATE_NOT_LOADED &&
 		 cs35l41->dsp.running)) {
@@ -1937,10 +1938,10 @@ static int cs35l41_hibernate(struct snd_soc_dapm_widget *w,
 	struct cs35l41_private *cs35l41 =
 		snd_soc_component_get_drvdata(component);
 	int ret = 0;
-
+	dev_info(cs35l41->dev, "%s event 0x%x hibernate state %d\n",
+		__func__, event, cs35l41->amp_hibernate);
 	if (!cs35l41->dsp.running ||
-	     cs35l41->amp_hibernate == CS35L41_HIBERNATE_INCOMPATIBLE ||
-	     cs35l41->hibernate_force_wake)
+	     cs35l41->amp_hibernate == CS35L41_HIBERNATE_INCOMPATIBLE)
 		return 0;
 
 	switch (event) {
@@ -3350,7 +3351,7 @@ static int cs35l41_enter_hibernate(struct cs35l41_private *cs35l41)
 {
 	int i;
 
-	dev_dbg(cs35l41->dev, "%s: hibernate state %d\n",
+	dev_info(cs35l41->dev, "%s: hibernate state %d\n",
 		__func__, cs35l41->amp_hibernate);
 
 	if (cs35l41->amp_hibernate == CS35L41_HIBERNATE_STANDBY)
@@ -3404,7 +3405,7 @@ static int cs35l41_exit_hibernate(struct cs35l41_private *cs35l41)
 	u8 total_trim_cache_reg_size = 0;
 	u32 *p_trim_data = NULL;
 
-	dev_dbg(cs35l41->dev, "%s: hibernate state %d\n",
+	dev_info(cs35l41->dev, "%s: hibernate state %d\n",
 		__func__, cs35l41->amp_hibernate);
 
 	if (cs35l41->amp_hibernate != CS35L41_HIBERNATE_STANDBY)
