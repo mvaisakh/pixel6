@@ -18,6 +18,7 @@
 struct slc_partition {
 	int id;
 	size_t size_kb;
+	int fd;
 	ptid_t partition_id;
 	struct pt_handle *partition_handle;
 };
