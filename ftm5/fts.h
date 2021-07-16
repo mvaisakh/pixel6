@@ -235,6 +235,13 @@ struct heatmap_report {
 	strength_t data[LOCAL_HEATMAP_WIDTH * LOCAL_HEATMAP_HEIGHT];
 } __attribute__((packed));
 /* **** END **** */
+
+struct heatmap_data {
+	ktime_t timestamp;
+	uint16_t size_x;
+	uint16_t size_y;
+	uint8_t *data;
+} __attribute__((packed));
 #endif
 /*
   * Configuration mode
@@ -820,6 +827,7 @@ struct fts_ts_info {
 	struct pm_qos_request pm_qos_req;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	struct v4l2_heatmap v4l2;
+	struct heatmap_data mutual_strength_heatmap;
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
@@ -889,6 +897,7 @@ struct fts_ts_info {
 	int grip_enabled;	/* Grip mode */
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 	int heatmap_mode;	/* heatmap mode*/
+	bool v4l2_mutual_strength_updated;
 #endif
 	/* Stop changing motion filter and keep fw design */
 	bool use_default_mf;
