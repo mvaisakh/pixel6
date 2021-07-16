@@ -558,8 +558,8 @@ static int ttf_soc_qual_cc(const struct batt_ttf_stats *stats,
 	else if (cc < min_cc)
 		cc = min_cc;
 
-	pr_info("%d: cc_cur=%d, ref_cc=%d src->cc=%d, cc=%d\n",
-		i, cc_cur, stats->soc_ref.cc[i], src->cc[i], cc);
+	pr_debug("%d: cc_cur=%d, ref_cc=%d src->cc=%d, cc=%d\n",
+		 i, cc_cur, stats->soc_ref.cc[i], src->cc[i], cc);
 
 	return cc;
 }
