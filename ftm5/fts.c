@@ -5356,6 +5356,106 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 	return res;
 }
 
+/* Report a finger down event on the long press gesture area then immediately
+ * report a cancel event(MT_TOOL_PALM).
+ */
+static void report_cancel_event(struct fts_ts_info *info)
+{
+	dev_info(info->dev, "%s\n", __func__);
+
+	mutex_lock(&info->input_report_mutex);
+
+	/* Finger down on UDFPS area. */
+	input_mt_slot(info->input_dev, 0);
+	input_report_key(info->input_dev, BTN_TOUCH, 1);
+	input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
+	input_report_abs(info->input_dev, ABS_MT_POSITION_X, info->board->udfps_x);
+	input_report_abs(info->input_dev, ABS_MT_POSITION_Y, info->board->udfps_y);
+	input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, 200);
+	input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, 200);
+#ifndef SKIP_PRESSURE
+	input_report_abs(info->input_dev, ABS_MT_PRESSURE, 1);
+#endif
+	input_sync(info->input_dev);
+
+	/* Report MT_TOOL_PALM for canceling the touch event. */
+	input_mt_slot(info->input_dev, 0);
+	input_report_key(info->input_dev, BTN_TOUCH, 1);
+	input_mt_report_slot_state(info->input_dev, MT_TOOL_PALM, 1);
+	input_sync(info->input_dev);
+
+	/* Release touches. */
+	input_mt_slot(info->input_dev, 0);
+	input_report_abs(info->input_dev, ABS_MT_PRESSURE, 0);
+	input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 0);
+	input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, -1);
+	input_report_key(info->input_dev, BTN_TOUCH, 0);
+	input_sync(info->input_dev);
+
+	mutex_unlock(&info->input_report_mutex);
+}
+
+/* Check the finger status on long press gesture area. */
+static void check_finger_status(struct fts_ts_info *info)
+{
+	u8 command[3] = { FTS_CMD_SYSTEM, SYS_CMD_LOAD_DATA, LOAD_DEBUG_INFO };
+	u8 data[DEBUG_INFO_SIZE] = { 0 };
+	ktime_t ktime_start = ktime_get();
+	int retry = 0;
+	int ret;
+
+	dev_info(info->dev, "%s\n", __func__);
+
+	while (ktime_ms_delta(ktime_get(), ktime_start) < 500) {
+		retry++;
+		ret = fts_write(info, command, ARRAY_SIZE(command));
+		if (ret < OK) {
+			dev_err(info->dev,
+				"%s: error while writing the sys cmd ERROR %08X\n",
+				__func__, ret);
+			msleep(10);
+			continue;
+		}
+
+		ret = fts_writeReadU8UX(info, FTS_CMD_FRAMEBUFFER_R, BITS_16,
+					ADDR_FRAMEBUFFER, data, DEBUG_INFO_SIZE,
+					DUMMY_FRAMEBUFFER);
+		if (ret < OK) {
+			dev_err(info->dev,
+				"%s: error while write/read cmd ERROR %08X\n",
+				__func__, ret);
+			msleep(10);
+			continue;
+		}
+
+		/* Check header. */
+		if (data[0] != HEADER_SIGNATURE || data[1] != LOAD_DEBUG_INFO) {
+			dev_err(info->dev,
+				"%s: Fail to get debug info, header = %#x %#x, read next frame.\n",
+				__func__, data[0], data[1]);
+			msleep(10);
+			continue;
+		}
+
+		/* Check scan mode (data[4]).
+		0x05: low power detect mode.
+		0x06: low power active mode. */
+		if (data[4] != DEBUG_INFO_LP_DETECT && data[4] != DEBUG_INFO_LP_ACTIVE)
+			return;
+
+		/* Check finger count (data[60]). */
+		if (data[60] == 0) {
+			/* Report cancel event when finger count is 0. */
+			report_cancel_event(info);
+			break;
+		} else if (data[60] > 1) {
+			/* Skip the process when the count is abnormal. */
+			break;
+		}
+		msleep(10);
+	}
+}
+
 /**
   * Configure the switch GPIO to toggle bus master between AP and SLPI.
   * gpio_value takes one of
@@ -5403,6 +5503,9 @@ static void fts_resume_work(struct work_struct *work)
 	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	info->resume_bit = 1;
+
+	if (info->board->udfps_x != 0 && info->board->udfps_y != 0)
+		check_finger_status(info);
 
 	fts_system_reset(info);
 
@@ -6070,6 +6173,14 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	}
 	bdata->x_axis_max = coords[0];
 	bdata->y_axis_max = coords[1];
+
+	if (of_property_read_u32_array(np, "st,udfps-coords", coords, 2)) {
+		dev_err(dev, "st,udfps-coords not found\n");
+		coords[0] = 0;
+		coords[1] = 0;
+	}
+	bdata->udfps_x = coords[0];
+	bdata->udfps_y = coords[1];
 
 	bdata->sensor_inverted_x = 0;
 	if (of_property_read_bool(np, "st,sensor_inverted_x"))

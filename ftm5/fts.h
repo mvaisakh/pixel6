@@ -304,6 +304,8 @@ struct fts_hw_platform_data {
 	bool sensor_inverted;
 	int x_axis_max;
 	int y_axis_max;
+	int udfps_x;
+	int udfps_y;
 	bool auto_fw_update;
 	bool separate_save_golden_ms_raw_cmd;
 	bool sensor_inverted_x;

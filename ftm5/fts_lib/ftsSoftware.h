@@ -348,7 +348,13 @@ enum {
 						 * Force */
 #define LOAD_SENS_CAL_COEFF		0xC0	/* /< Load Sesitivity
 						 * Calibration Coefficients */
-#define LOAD_GOLDEN_MUTUAL_RAW  	0x80  	/* /< Load Goden Mutual Raw Data */
+#define LOAD_DEBUG_INFO 		0xC3	/* /< Load Sesitivity
+						 * Calibration Coefficients */
+#define LOAD_GOLDEN_MUTUAL_RAW  	0x80	/* /< Load Goden Mutual Raw Data */
+
+/* Debug information. */
+#define DEBUG_INFO_LP_DETECT		0x05	/* Low power detect scan mode. */
+#define DEBUG_INFO_LP_ACTIVE		0x06	/* Low power active scan mode. */
 
 /** @}*/
 

@@ -56,6 +56,9 @@ typedef enum {
 #define SYS_INFO_SIZE			216	/* Num bytes of die info */
 /** @}*/
 
+/* Size in bytes of Debug Info data */
+#define DEBUG_INFO_SIZE			64	/* Num bytes of debug info */
+
 /* RETRY MECHANISM */
 #define RETRY_MAX_REQU_DATA		2	/* /< Max number of attempts
 						 * performed
