@@ -2161,6 +2161,11 @@ static int pca9468_set_new_cc_max(struct pca9468_charger *pca9468, int cc_max)
 	if (ret == 0)
 		pca9468->cc_max = cc_max;
 
+	/* update input current for pca9468 */
+	ret = pca9468_set_input_current(pca9468, iin_max);
+	if (ret < 0)
+		pr_err("%s: cannot set input current (%d)\n", __func__, ret);
+
 done:
 	pr_debug("%s: ret=%d\n", __func__, ret);
 	mutex_unlock(&pca9468->lock);
