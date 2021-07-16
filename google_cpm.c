@@ -44,6 +44,7 @@
 /* Non DC Charger is the default */
 #define GCPM_DEFAULT_CHARGER	0
 /* TODO: handle capabilities based on index number */
+#define GCPM_INDEX_DC_DISABLE	-1
 #define GCPM_INDEX_DC_ENABLE	1
 #define GCPM_MAX_CHARGERS	4
 
@@ -526,14 +527,13 @@ static int gcpm_dc_start(struct gcpm_drv *gcpm, int index)
 }
 
 /*
- * Select the DC charger using the thermal policy. DC charging is enabled
- * when demand is over dc_limit (default 0) and vbatt > vbatt_min (default
- * 3.6V or device tree). DC is stopped when vbatt is over vbatt_max (4.4V,
- * or DT) and not started when vbatt is over vbatt_high (default 200mV under
- * vbatt_max or DT). DC charging is not stopped after start unless vbatt
- * falls under vbatt_low.
+ * Select the DC charger using the thermal policy.
+ * DC charging is enabled when demand is over dc_limit (default 0) and
+ * vbatt > vbatt_min (default or device tree). DC is not disabled when
+ * vbatt is over vbat low.
+ * DC is stopped when vbatt is over vbatt_max (default or DT) and not started
+ * when vbatt is over vbatt_high (some default 200mV under vbatt_max).
  * NOTE: program target before enabling chaging.
- * call holding mutex_lock(&gcpm->chg_psy_lock);
  */
 enum gcpm_dc_ctl_t {
 	GCPM_DC_CTL_DEFAULT = 0,
@@ -547,8 +547,6 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 {
 	struct power_supply *chg_psy;
 	bool use_dc_limits = gcpm->pps_index == PPS_INDEX_WLC;
-	const int vbatt_min = gcpm->dc_limit_vbatt_min;
-	const int vbatt_max = gcpm->dc_limit_vbatt_max;
 	int batt_demand, index = GCPM_DEFAULT_CHARGER;
 	int cc_min = gcpm->dc_limit_cc_min;
 	int cc_max = gcpm->cc_max;
@@ -597,7 +595,7 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 			cc_max = gcpm->dc_fcc_limit;
 	}
 
-	/* keep on default charger until we have valid charging parameters */
+	/* keeps on default charger until we have valid charging parameters */
 	if (cc_max <= 0 || gcpm->fv_uv <= 0)
 		return GCPM_DEFAULT_CHARGER;
 
@@ -622,11 +620,17 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 
 	/* TODO: add debounce on demand */
 
-	/* could select different modes here depending on capabilities */
+	/*
+	 * min and max are hard limits, low and high are debounce.
+	 * 	low < MIN < high < MAX
+	 * TODO: factor to a separate function, pass vbatt in
+	 * NOTE: check the current charger, should check battery?
+	 */
 	chg_psy = gcpm_chg_get_default(gcpm);
-	if (chg_psy && (vbatt_max || vbatt_min)) {
+	if (chg_psy) {
+		const int vbatt_min = gcpm->dc_limit_vbatt_min;
+		const int vbatt_max = gcpm->dc_limit_vbatt_max;
 		const int vbatt_high = gcpm->dc_limit_vbatt_high;
-		const int vbatt_low = gcpm->dc_limit_vbatt_low;
 
 		/* NOTE: check the current charger, should check battery? */
 		vbatt = GPSY_GET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW);
@@ -635,24 +639,43 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 			return gcpm->dc_index;
 		}
 
-		if (vbatt_low && vbatt < vbatt_low)
-			return -EAGAIN;
+		/*
+		 * re-enable DC_ICL if it was disabled by taper control.
+		 * TODO: Move to gcpm_chg_select_work() next to the taper
+		 * control logic.
+		 * NOTE: the check in gcpm_chg_dc_check_source() prevents this
+		 * from retrying to enable DC while on NON PPS adapters.
+		 */
+		if (vbatt < vbatt_high && gcpm->dc_state == DC_DISABLED)
+			gcpm->dc_state = DC_IDLE;
 
-		/* Hard limits */
-		if (vbatt_min && vbatt < vbatt_min)
-			index = gcpm->dc_index == GCPM_DEFAULT_CHARGER ?
-				-EAGAIN : gcpm->dc_index; /* debounce? */
-		else if (vbatt_max && vbatt > vbatt_max)
-			index = GCPM_DEFAULT_CHARGER; /* disable */
-		else if (vbatt_high && vbatt > vbatt_high)
-			index = gcpm->dc_index; /* debounce */
-		else if (vbatt_min && vbatt < vbatt_min)
-			index = GCPM_DEFAULT_CHARGER;
+		/*
+		 * Need to keep checking when vbatt is under low to make sure
+		 * that DC starts at min. No keeps the current
+		 */
+		if (vbatt_max || vbatt_min) {
+			const int vbatt_low = gcpm->dc_limit_vbatt_low;
 
-		/* demand decides DC unless under vmin */
-		pr_debug("%s: index=%d->%d vbatt=%d: low=%d min=%d high=%d max=%d\n",
-			 __func__, gcpm->dc_index, index, vbatt, vbatt_low, vbatt_min,
-			 vbatt_high, vbatt_max);
+			/* -EAGAIN will check for it */
+			if (vbatt_low && vbatt < vbatt_low)
+				return gcpm->dc_index == GCPM_DEFAULT_CHARGER ?
+				      -EAGAIN : gcpm->dc_index; /* debounce */
+
+			if (vbatt_min && vbatt < vbatt_min)
+				index = gcpm->dc_index == GCPM_DEFAULT_CHARGER ?
+					-EAGAIN : gcpm->dc_index; /* debounce? */
+			else if (vbatt_max && vbatt > vbatt_max)
+				index = GCPM_DEFAULT_CHARGER; /* disable */
+			else if (vbatt_high && vbatt > vbatt_high)
+				index = gcpm->dc_index; /* debounce */
+			else if (vbatt_min && vbatt < vbatt_min)
+				index = GCPM_DEFAULT_CHARGER;
+
+			/* demand decides DC unless under vmin */
+			pr_debug("%s: index=%d->%d vbatt=%d: low=%d min=%d high=%d max=%d\n",
+				 __func__, gcpm->dc_index, index, vbatt, vbatt_low, vbatt_min,
+				 vbatt_high, vbatt_max);
+		}
 	}
 
 	if (index >= gcpm->chg_psy_count) {
@@ -964,40 +987,44 @@ static void gcpm_chg_select_work(struct work_struct *work)
 
 	mutex_lock(&gcpm->chg_psy_lock);
 
+	pr_debug("%s: on=%d dc_state=%d dc_index=%d\n", __func__,
+		 gcpm->dc_init_complete, gcpm->dc_state, gcpm->dc_index);
+
 	if (!gcpm->dc_init_complete) {
 		const int interval = 5; /* 5 seconds */
 
 		mod_delayed_work(system_wq, &gcpm->select_work,
 				 msecs_to_jiffies(interval * 1000));
-		mutex_unlock(&gcpm->chg_psy_lock);
-		return;
+		goto unlock_done;
 	}
 
 	index = gcpm_chg_select(gcpm);
 	if (index < 0) {
 		const int interval = 5; /* 5 seconds */
 
-		/* TODO: force to default after 3 faults? */
+		pr_debug("%s: index=%d dc_state=%d dc_index=%d\n",
+			 __func__, index, gcpm->dc_state, gcpm->dc_index);
 
-		pr_debug("CHG_CHK: reschedule in %d seconds\n", interval);
-		mod_delayed_work(system_wq, &gcpm->select_work,
-				 msecs_to_jiffies(interval * 1000));
-		mutex_unlock(&gcpm->chg_psy_lock);
-		return;
+		/* -EAGAIN is used between low and min */
+		if (index == -EAGAIN)
+			mod_delayed_work(system_wq, &gcpm->select_work,
+					 msecs_to_jiffies(interval * 1000));
+
+		goto unlock_done;
 	}
 
-	/*
-	 * taper control while in dc_ena might knock down fv_uv by a little
-	 * and will reduce cc_max every gcpm->taper_step_interval by a fixed
-	 * amount seconds for gcpm->taper_step_count seconds.
-	 */
+	/* will not try to enable if the source cannot do PPS */
 	dc_ena = gcpm_chg_dc_check_source(gcpm, index);
 	if (dc_ena && gcpm->dc_fcc_hold) {
-		pr_debug("%s: CPM_THERM_DC_FCC hold from limit\n",
-			 __func__);
+		pr_debug("%s: CPM_THERM_DC_FCC hold from limit\n", __func__);
 		dc_ena = false;
 	}
 
+	/*
+	 * taper control reduces cc_max every gcpm->taper_step_interval seconds
+	 * by a fixed amount for gcpm->taper_step_count seconds. fv_uv might
+	 * also be lowered by a fixed amount.
+	 */
 	if (dc_ena && gcpm->taper_step > 0) {
 		const int interval = msecs_to_jiffies(gcpm->taper_step_interval * 1000);
 
@@ -1007,12 +1034,18 @@ static void gcpm_chg_select_work(struct work_struct *work)
 			gcpm->taper_step -= 1;
 		}
 
-		pr_debug("CHG_CHK: taper_step=%d done=%d\n", gcpm->taper_step, dc_done);
+		pr_debug("%s: taper_step=%d done=%d\n", __func__,
+			 gcpm->taper_step, dc_done);
 	} else if (gcpm->taper_step != 0) {
 		gcpm_taper_ctl(gcpm, 0);
+
+		/*
+		 * TODO: move the reset of DC state to DC_ENABLE when vbatt
+		 * fall under vbatt_high here.
+		 */
 	}
 
-	pr_debug("CHG_CHK: DC dc_ena=%d dc_state=%d dc_index=%d->%d\n",
+	pr_debug("%s: DC dc_ena=%d dc_state=%d dc_index=%d->%d\n", __func__,
 		 dc_ena, gcpm->dc_state, gcpm->dc_index, index);
 
 	/*
@@ -1026,13 +1059,17 @@ static void gcpm_chg_select_work(struct work_struct *work)
 			pr_info("CHG_CHK: dc_ena=%d dc_done=%d stop PPS_Work for dc_index=%d\n",
 				dc_ena, dc_done, gcpm->dc_index);
 
-			/* dc_done prevents DC to restart for the session */
-			gcpm->dc_index = dc_done ? -1 : GCPM_DEFAULT_CHARGER;
+			/*
+			 * dc_done will prevent DC to restart until disconnect
+			 * or voltage goes over _high.
+			 */
+			gcpm->dc_index = dc_done ? GCPM_INDEX_DC_DISABLE :
+					 GCPM_DEFAULT_CHARGER;
 			gcpm_taper_ctl(gcpm, 0);
 			schedule_pps_interval = 0;
 		}
 	} else if (gcpm->dc_state == DC_DISABLED) {
-		pr_debug("CHG_CHK: PPS_Work disabled for the session\n");
+		pr_debug("%s: PPS_Work disabled for the session\n", __func__);
 	} else if (gcpm->dc_state == DC_IDLE) {
 		pr_info("CHG_CHK: start PPS_Work for dc_index=%d\n", index);
 
@@ -1049,12 +1086,14 @@ static void gcpm_chg_select_work(struct work_struct *work)
 	}
 
 	if (schedule_pps_interval >= 0) {
-		pr_debug("CHG_CHK: DC schedule pps_work in %ds\n",
+		pr_debug("%s: DC schedule pps_work in %ds\n", __func__,
 			 schedule_pps_interval / 1000);
+
 		mod_delayed_work(system_wq, &gcpm->pps_work,
 				 msecs_to_jiffies(schedule_pps_interval));
 	}
 
+unlock_done:
 	mutex_unlock(&gcpm->chg_psy_lock);
 }
 
@@ -1214,17 +1253,23 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	struct pd_pps_data *pps_data;
 	int ret, pps_ui = -ENODEV;
 
+	pr_debug("%s: ok=%d dc_index=%d dc_state=%d\n", __func__,
+		 gcpm->resume_complete && gcpm->init_complete,
+		 gcpm->dc_index, gcpm->dc_state);
+
 	/* spurious during init */
 	mutex_lock(&gcpm->chg_psy_lock);
 	if (!gcpm->resume_complete || !gcpm->init_complete) {
-		mutex_unlock(&gcpm->chg_psy_lock);
-		return;
+		/* TODO: should probably reschedule */
+		goto pps_dc_done;
 	}
 
 	/* disconnect, gcpm_chg_check() and most errors reset ->dc_index */
 	if (gcpm->dc_index <= 0) {
 		const int active_index = gcpm->chg_psy_active; /* will change */
+		const bool dc_disable = gcpm->dc_index == GCPM_INDEX_DC_DISABLE;
 
+		/* will leave gcpm->dc_state in DC_DISABLED */
 		ret = gcpm_pps_wlc_dc_restart_default(gcpm);
 		if (ret < 0) {
 			pr_warn("PPS_Work: retry restart elap=%lld dc_state=%d %d->%d (%d)\n",
@@ -1236,7 +1281,7 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 		}
 
 		/* Re-enable DC if just switching to the default charger */
-		if (gcpm->dc_index == GCPM_DEFAULT_CHARGER)
+		if (!dc_disable)
 			gcpm->dc_state = DC_IDLE;
 
 		logbuffer_prlog(gcpm, LOGLEVEL_INFO,
@@ -1419,11 +1464,11 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 
 pps_dc_reschedule:
 	if (pps_ui <= 0) {
-		pr_debug("PPS_Work: pps_ui=%d dc_state=%d",
-			 pps_ui, gcpm->dc_state);
+		pr_debug("PPS_Work: pps_ui=%d dc_index=%d dc_state=%d",
+			 pps_ui, gcpm->dc_index, gcpm->dc_state);
 	} else {
-		pr_debug("PPS_Work: reschedule in %d dc_state=%d (%d:%d)",
-			 pps_ui, gcpm->dc_state, gcpm->out_uv, gcpm->out_ua);
+		pr_debug("PPS_Work: reschedule in %d dc_index=%d dc_state=%d (%d:%d)",
+			 pps_ui, gcpm->dc_index, gcpm->dc_state, gcpm->out_uv, gcpm->out_ua);
 
 		schedule_delayed_work(&gcpm->pps_work, msecs_to_jiffies(pps_ui));
 	}
@@ -1515,7 +1560,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 		/* google_charger send this on disconnect and input_suspend. */
 		pr_info("%s: ChargeDisable value=%d dc_index=%d dc_state=%d\n",
 			__func__, pval->intval, gcpm->dc_index, gcpm->dc_state);
-		ta_check = true;
+
 		if (pval->intval) {
 			/*
 			 * more or less the same as gcpm_pps_wlc_dc_work() when
@@ -1524,8 +1569,9 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 			 * TODO: factor the code with gcpm_pps_wlc_dc_work().
 			 */
 
-			/* No op if the current source is not DC, ->dc_state
-			 * will be DC_DISABLED if this actually disabled.
+			/*
+			 * No op if the current source is not DC, ->dc_state
+			 * will be DC_DISABLED if this was actually disabled.
 			 */
 			ret = gcpm_dc_stop(gcpm,  gcpm->chg_psy_active);
 			if (ret == -EAGAIN) {
@@ -1538,7 +1584,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 				pr_debug("%s: fail 2 offline pps, dc_state=%d (%d)\n",
 					__func__, gcpm->dc_state, ret);
 
-			/* disable DC, and clear taper */
+			/* reset to the default charger, and clear taper */
 			gcpm->dc_index = GCPM_DEFAULT_CHARGER;
 			gcpm_taper_ctl(gcpm, 0);
 
@@ -1551,19 +1597,38 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 				pr_err("%s: cannot start default (%d)\n",
 				       __func__, ret);
 
+			pr_info("%s: ChargeDisable value=%d dc_index=%d dc_state=%d\n",
+				__func__, pval->intval, gcpm->dc_index, gcpm->dc_state);
+
 			/*
-			 * route = true so active will get the property. No
-			 * need to re-check the TA selection on disable.
+			 * route = true so active will get the property.
+			 * No need to re-check the TA selection on disable.
 			 */
 			ta_check = false;
 		} else if (gcpm->dc_state <= DC_IDLE) {
+			/*
+			 * ->dc_state will be DC_DISABLED if DC was disabled
+			 * via GBMS_PROP_CHARGE_DISABLE(1) of from other
+			 * conditions such as taper control.
+			 */
+			if (gcpm->dc_state == DC_DISABLED)
+				gcpm->dc_state = DC_IDLE;
+
+			pr_info("%s: ChargeDisable value=%d dc_index=%d dc_state=%d\n",
+				__func__, pval->intval, gcpm->dc_index, gcpm->dc_state);
+
 			gcpm_pps_online(gcpm);
+			ta_check = true;
 		}
 
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
+		pr_info("%s: ONLINE value=%d dc_index=%d dc_state=%d\n",
+			__func__, pval->intval, gcpm->dc_index,
+			gcpm->dc_state);
 		ta_check = true;
 		break;
+
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		psp = POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX;
 		/* compat, fall through */
