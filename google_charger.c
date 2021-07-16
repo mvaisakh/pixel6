@@ -60,6 +60,7 @@
 #define CHG_DRV_MODE_DISABLED	2
 #define CHG_DRV_MODE_NOOP	3
 
+#define DRV_DEFAULT_CC0UPDATE_INTERVAL	0
 #define DRV_DEFAULTCC_UPDATE_INTERVAL	30000
 #define DRV_DEFAULTCV_UPDATE_INTERVAL	2000
 
@@ -260,6 +261,7 @@ struct chg_drv {
 static void reschedule_chg_work(struct chg_drv *chg_drv)
 {
 	mod_delayed_work(system_wq, &chg_drv->chg_work, 0);
+	pr_debug("%s: rescheduling\n", __func__);
 }
 
 static enum alarmtimer_restart
@@ -289,7 +291,7 @@ static int chg_psy_changed(struct notifier_block *nb,
 	struct power_supply *psy = data;
 	struct chg_drv *chg_drv = container_of(nb, struct chg_drv, psy_nb);
 
-	pr_debug("name=%s evt=%lu\n", psy->desc->name, action);
+	pr_debug("%s name=%s evt=%lu\n", __func__, psy->desc->name, action);
 
 	if ((action != PSY_EVENT_PROP_CHANGED) ||
 	    (psy == NULL) || (psy->desc == NULL) || (psy->desc->name == NULL))
@@ -392,8 +394,10 @@ static inline int chg_reset_state(struct chg_drv *chg_drv)
 				  GBMS_PROP_CHARGE_CHARGER_STATE,
 				  chg_drv->chg_state.v);
 	/* handle google_battery not resume case */
-	if (ret == -EAGAIN)
+	if (ret == -EAGAIN) {
+		pr_debug("MSC_CHG: reset charger state failed %d", ret);
 		return ret;
+	}
 
 	return 0;
 }
@@ -904,7 +908,8 @@ static void chg_work_adapter_details(union gbms_ce_adapter_details *ad,
 static int chg_work_roundtrip(struct chg_drv *chg_drv,
 			      union gbms_charger_state *chg_state)
 {
-	int fv_uv = -1, cc_max = -1, update_interval, rc;
+	int fv_uv = -1, cc_max = -1;
+	int update_interval, rc;
 
 	rc = gbms_read_charger_state(chg_state, chg_drv->chg_psy);
 	if (rc < 0)
@@ -944,8 +949,26 @@ static int chg_work_roundtrip(struct chg_drv *chg_drv,
 	vote(chg_drv->msc_fcc_votable, MSC_CHG_VOTER,
 			(chg_drv->user_cc_max == -1) && (cc_max >= 0), cc_max);
 
-	/* update_interval <= 0 means stop charging */
+	/*
+	 * determine next undate interval only looking at the charger state
+	 * and adjust using the new charging parameters from the battery.
+	 * NOTE: chg_drv->cc_max and chg_drv->fv_uv are from the PREVIOUS
+	 * update. cc_max and fv_uv come from the current roundtrip to
+	 * the battery.
+	 */
 	update_interval = chg_work_next_interval(chg_drv, chg_state);
+
+	pr_debug("%s: chg_drv->cc_max=%d cc_max=%d, update_interval=%d\n",
+		 __func__, chg_drv->cc_max, cc_max, update_interval);
+
+	/* no need to poll on cc_max==0 since, will be NOT charging */
+	if (cc_max == 0) {
+		pr_debug("%s: update_interval=%d->%d\n", __func__,
+			 update_interval, DRV_DEFAULT_CC0UPDATE_INTERVAL);
+		update_interval = DRV_DEFAULT_CC0UPDATE_INTERVAL;
+	}
+
+	/* update_interval <= 0 means stop charging */
 	if (update_interval <= 0)
 		return update_interval;
 
@@ -1776,6 +1799,9 @@ static void chg_work(struct work_struct *work)
 	 * NOTE: might have cc_max==0 from the roundtrip on JEITA
 	 */
 update_charger:
+	pr_debug("MSC_CHG disable_charging=%d, update_interval=%d\n",
+		 chg_drv->disable_charging, update_interval);
+
 	if (!chg_drv->disable_charging && update_interval > 0) {
 
 		/* msc_update_charger_cb will write to charger and reschedule */
@@ -1842,18 +1868,17 @@ update_charger:
 	if (chg_drv->bd_state.enabled) {
 		unsigned long jif = msecs_to_jiffies(CHG_WORK_BD_TRIGGERED_MS);
 
-		pr_debug("MSC_BD reschedule in %d ms\n",
-			 CHG_WORK_BD_TRIGGERED_MS);
+		pr_debug("MSC_BD reschedule in %d ms\n", CHG_WORK_BD_TRIGGERED_MS);
 		schedule_delayed_work(&chg_drv->chg_work, jif);
 	}
 
 	goto exit_chg_work;
 
 rerun_error:
-	success = schedule_delayed_work(&chg_drv->chg_work,
-					CHG_WORK_ERROR_RETRY_MS);
+	success = schedule_delayed_work(&chg_drv->chg_work, CHG_WORK_ERROR_RETRY_MS);
 
-	/* no need to reschedule the pending after an error
+	/*
+	 * no need to reschedule the pending after an error
 	 * NOTE: rc is the return code from battery properties
 	 */
 	if (rc != -EAGAIN)
