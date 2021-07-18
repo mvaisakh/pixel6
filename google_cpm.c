@@ -59,7 +59,7 @@
 
 /* demand based limits */
 #define GCPM_DEFAULT_DC_LIMIT_VBATT_MAX		4450000
-#define GCPM_DEFAULT_DC_LIMIT_DELTA_HIGH	100000
+#define GCPM_DEFAULT_DC_LIMIT_DELTA_HIGH	200000
 
 /* behavior in taper */
 #define GCPM_TAPER_STEP_FV_MARGIN	0
