@@ -2578,10 +2578,12 @@ static int msc_pm_hold(int msc_state)
 	case MSC_HEALTH:
 	case MSC_WAIT:
 	case MSC_FAST:
+	case MSC_NYET:
+	case MSC_STEADY:
 		pm_state = 0;  /* pm_relax */
 		break;
 	default:
-		pr_info("hold not defined for msc_state=%d\n", msc_state);
+		pr_debug("hold not defined for msc_state=%d\n", msc_state);
 		pm_state = 0;  /* pm_relax */
 		break;
 	}
