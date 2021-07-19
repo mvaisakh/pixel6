@@ -26,7 +26,7 @@
 struct pca9468_platform_data {
 	int	irq_gpio;		/* GPIO pin that's connected to INT# */
 	unsigned int	iin_cfg;	/* Input Current Limit - uA unit */
-	unsigned int	iin_cfg_dt;	/* from config/dt */
+	unsigned int	iin_cfg_max;	/* from config/dt */
 	unsigned int	v_float;	/* V_Float Voltage - uV unit */
 	unsigned int	v_float_dt;	/* from config/dt */
 	unsigned int 	iin_topoff;	/* Input Topoff current -uV unit */
