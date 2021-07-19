@@ -2557,6 +2557,62 @@ static void sec_ts_offload_set_running(struct sec_ts_data *ts, bool running)
 
 #endif /* CONFIG_TOUCHSCREEN_OFFLOAD */
 
+static void sec_ts_handle_fod_event(struct sec_ts_data *ts,
+					struct sec_ts_event_status *p_event_status)
+{
+	struct sec_ts_fod_event *p_fod =
+				(struct sec_ts_fod_event *)p_event_status;
+	int x = p_fod->x_b11_b8 << 8 | p_fod->x_b7_b0;
+	int y = p_fod->y_b11_b8 << 8 | p_fod->y_b7_b0;
+
+	if (test_bit(0, &ts->tid_touch_state)) {
+		input_info(true, &ts->client->dev,
+			   "%s: slot 0 is in use!", __func__);
+		return;
+	}
+
+	if (!x || !y) {
+		input_info(true, &ts->client->dev,
+			   "%s: one of coords is ZERO(%d, %d)!",
+			   __func__, x, y);
+		x = ts->plat_data->fod_x;
+		y = ts->plat_data->fod_y;
+	}
+
+	input_info(true, &ts->client->dev,
+		   "STATUS: FoD: %s, X,Y: %d, %d\n", p_fod->status ? "ON" : "OFF", x, y);
+
+	if (p_fod->status == false) {
+		mutex_lock(&ts->eventlock);
+		input_mt_slot(ts->input_dev, 0);
+		input_report_key(ts->input_dev, BTN_TOUCH, 1);
+		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 1);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, x);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, y);
+		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 140);
+		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MINOR, 140);
+#ifndef SKIP_PRESSURE
+		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 1);
+#endif
+		input_sync(ts->input_dev);
+
+		/* Report MT_TOOL_PALM for canceling the touch event. */
+		input_mt_slot(ts->input_dev, 0);
+		input_report_key(ts->input_dev, BTN_TOUCH, 1);
+		input_mt_report_slot_state(ts->input_dev, MT_TOOL_PALM, 1);
+		input_sync(ts->input_dev);
+
+		/* Release slot 0. */
+		input_mt_slot(ts->input_dev, 0);
+		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
+		input_mt_report_slot_state(ts->input_dev,
+					   MT_TOOL_FINGER, 0);
+		input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, -1);
+		input_report_key(ts->input_dev, BTN_TOUCH, 0);
+		input_sync(ts->input_dev);
+		mutex_unlock(&ts->eventlock);
+	}
+}
 
 static void sec_ts_read_vendor_event(struct sec_ts_data *ts,
 					struct sec_ts_event_status *p_event_status)
@@ -2632,6 +2688,10 @@ static void sec_ts_read_vendor_event(struct sec_ts_data *ts,
 			input_info(true, &ts->client->dev,
 				"STATUS: palm: %d.\n",
 				status_data_1);
+			break;
+
+		case SEC_TS_EVENT_STATUS_ID_FOD:
+			sec_ts_handle_fod_event(ts, p_event_status);
 			break;
 
 		default:
@@ -5321,6 +5381,7 @@ static void sec_ts_resume_work(struct work_struct *work)
 {
 	struct sec_ts_data *ts = container_of(work, struct sec_ts_data,
 					      resume_work);
+	u8 touch_mode[2] = {0};
 	int ret = 0;
 
 	input_info(true, &ts->client->dev, "%s\n", __func__);
@@ -5347,10 +5408,49 @@ static void sec_ts_resume_work(struct work_struct *work)
 
 	ts->power_status = SEC_TS_STATE_POWER_ON;
 
-	ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
-	if (ret < 0)
-		input_err(true, &ts->client->dev,
-			"%s: reset failed! ret %d\n", __func__, ret);
+	ret = ts->sec_ts_read(ts, SEC_TS_CMD_CHG_SYSMODE, touch_mode,
+			       sizeof(touch_mode));
+	if (ret < 0) {
+		ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				  "%s: reset failed! ret %d\n", __func__, ret);
+		}
+	} else {
+		u8 power_mode = 0;
+
+		input_info(true, &ts->client->dev, "%s: before resume: mode %#x, state %#x.",
+			   __func__, touch_mode[0], touch_mode[1]);
+
+		if (touch_mode[0] == TOUCH_SYSTEM_MODE_LOWPOWER) {
+			ret = sec_ts_write(ts, SEC_TS_CMD_SET_POWER_MODE,
+					   &power_mode, sizeof(power_mode));
+			if (ret < 0) {
+				input_err(true, &ts->client->dev,
+					  "%s: set power mode failed(%d)\n",
+					  __func__, ret);
+			}
+			sec_ts_delay(50);
+			ret = ts->sec_ts_read(ts, SEC_TS_CMD_CHG_SYSMODE, touch_mode,
+					      sizeof(touch_mode));
+			if (ret < 0) {
+				input_err(true, &ts->client->dev,
+					  "%s: set read touch mode failed(%d)\n",
+					  __func__, ret);
+
+			} else {
+				input_info(true, &ts->client->dev,
+					   "%s: after resume: mode %#x, state %#x",
+					   __func__, touch_mode[0], touch_mode[1]);
+			}
+		} else {
+			ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
+			if (ret < 0) {
+				input_err(true, &ts->client->dev,
+					  "%s: reset failed! ret %d\n", __func__, ret);
+			}
+		}
+	}
 
 	if (ts->plat_data->enable_sync)
 		ts->plat_data->enable_sync(true);

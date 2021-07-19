@@ -773,7 +773,27 @@ struct sec_ts_gesture_status {
 #define SEC_TS_EVENT_STATUS_ID_NOISE		0x64
 #define SEC_TS_EVENT_STATUS_ID_WLC		0x66
 #define SEC_TS_EVENT_STATUS_ID_GRIP		0x69
+#define SEC_TS_EVENT_STATUS_ID_FOD		0x6B
 #define SEC_TS_EVENT_STATUS_ID_PALM		0x70
+
+/* 8 byte */
+struct sec_ts_fod_event {
+	struct {
+		u8 type;
+		u8 id;
+		u8 status;
+		u8 x_b7_b0;
+		union {
+			struct {
+				u8 y_b11_b8:4;
+				u8 x_b11_b8:4;
+			};
+			u8 x_y_b11_b8;
+		};
+		u8 y_b7_b0;
+		u8 reserved[2];
+	};
+} __packed;
 
 /* 8 byte */
 struct sec_ts_event_status {
