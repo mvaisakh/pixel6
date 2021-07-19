@@ -1345,6 +1345,22 @@ static const struct file_operations recovery_fops = {
 	.release = seq_release,
 };
 
+static void buf_dump_all(const struct decon_device *decon)
+{
+	int i;
+
+	for (i = 0; i < decon->dpp_cnt; ++i)
+		dpp_dump_buffer(decon->dpp[i]);
+}
+
+static void buf_dump_handler(struct kthread_work *work)
+{
+	const struct decon_device *decon =
+		container_of(work, struct decon_device, buf_dump_work);
+
+	buf_dump_all(decon);
+}
+
 int dpu_init_debug(struct decon_device *decon)
 {
 	int i;
@@ -1373,6 +1389,8 @@ int dpu_init_debug(struct decon_device *decon)
 	spin_lock_init(&decon->d.event_lock);
 	decon->d.event_log_cnt = event_cnt;
 	atomic_set(&decon->d.event_log_idx, -1);
+
+	kthread_init_work(&decon->buf_dump_work, buf_dump_handler);
 
 	if (!decon->crtc)
 		goto err_event_log;
@@ -1607,13 +1625,22 @@ void dpu_print_hex_dump(void __iomem *regs, const void *buf, size_t len)
 	}
 }
 
-void decon_dump_all(struct decon_device *decon)
+void decon_dump_all(struct decon_device *decon,
+		enum dpu_event_condition cond, bool async_buf_dump)
 {
 	bool active = pm_runtime_active(decon->dev);
+	struct kthread_worker *worker = &decon->worker;
 
 	pr_info("DPU power %s state\n", active ? "on" : "off");
 
-	decon_dump_event_condition(decon, DPU_EVT_CONDITION_ALL);
+	if ((cond == DPU_EVT_CONDITION_ALL) || (cond == DPU_EVT_CONDITION_IDMA_ERROR)) {
+		if (async_buf_dump)
+			kthread_queue_work(worker, &decon->buf_dump_work);
+		else
+			buf_dump_all(decon);
+	}
+
+	decon_dump_event_condition(decon, cond);
 
 	if (active)
 		decon_dump(decon);
@@ -1667,7 +1694,7 @@ int dpu_itmon_notifier(struct notifier_block *nb, unsigned long act, void *data)
 		pr_info("%s: port: %s, dest: %s\n", __func__,
 				itmon_data->port, itmon_data->dest);
 
-		decon_dump_all(decon);
+		decon_dump_all(decon, DPU_EVT_CONDITION_ALL, true);
 
 		decon->itmon_notified = true;
 		return NOTIFY_OK;

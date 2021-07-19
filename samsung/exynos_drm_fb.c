@@ -215,6 +215,18 @@ dma_addr_t exynos_drm_fb_dma_addr(const struct drm_framebuffer *fb, int index)
 	return exynos_gem->dma_addr + fb->offsets[index];
 }
 
+void *exynos_drm_fb_to_vaddr(const struct drm_framebuffer *fb)
+{
+	struct exynos_drm_gem *exynos_gem;
+
+	if (WARN_ON_ONCE(!fb->obj[0]))
+		return 0;
+
+	exynos_gem = to_exynos_gem(fb->obj[0]);
+
+	return exynos_drm_gem_get_vaddr(exynos_gem);
+}
+
 static void plane_state_to_win_config(struct dpu_bts_win_config *win_config,
 				      const struct drm_plane_state *plane_state)
 {
@@ -577,7 +589,7 @@ static void exynos_atomic_commit_tail(struct drm_atomic_state *old_state)
 			pr_warn("decon%u framestart timeout (%d fps). recovering(%d)\n",
 					decon->id, fps, recovering);
 			if (!recovering)
-				decon_dump_all(decon);
+				decon_dump_all(decon, DPU_EVT_CONDITION_ALL, false);
 
 			decon_force_vblank_event(decon);
 

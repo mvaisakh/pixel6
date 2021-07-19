@@ -81,14 +81,38 @@ static void exynos_drm_gem_unmap(struct exynos_drm_gem *exynos_gem_obj)
 void exynos_drm_gem_free_object(struct drm_gem_object *obj)
 {
 	struct exynos_drm_gem *exynos_gem_obj = to_exynos_gem(obj);
+	struct dma_buf *dma_buf;
 
 	exynos_drm_gem_unmap(exynos_gem_obj);
 
-	if (obj->import_attach)
+	if (obj->import_attach) {
+		dma_buf = obj->import_attach->dmabuf;
+		if (dma_buf && exynos_gem_obj->vaddr)
+			dma_buf_vunmap(dma_buf, exynos_gem_obj->vaddr);
+
 		drm_prime_gem_destroy(obj, exynos_gem_obj->sgt);
+	}
 
 	drm_gem_object_release(&exynos_gem_obj->base);
 	kfree(exynos_gem_obj);
+}
+
+void *exynos_drm_gem_get_vaddr(struct exynos_drm_gem *exynos_gem_obj)
+{
+	struct dma_buf_attachment *attach = exynos_gem_obj->base.import_attach;
+
+	if (WARN_ON(!attach))
+		return NULL;
+
+	if (!exynos_gem_obj->vaddr) {
+		exynos_gem_obj->vaddr = dma_buf_vmap(attach->dmabuf);
+		if (!exynos_gem_obj->vaddr)
+			pr_err("Failed to map virtual address\n");
+		else
+			pr_debug("mapped vaddr: %pK\n", exynos_gem_obj->vaddr);
+	}
+
+	return  exynos_gem_obj->vaddr;
 }
 
 static int exynos_drm_gem_create(struct drm_device *dev, struct drm_file *filep,

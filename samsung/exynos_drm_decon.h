@@ -428,6 +428,7 @@ struct decon_device {
 	struct task_struct		*thread;
 	struct kthread_worker		worker;
 	struct kthread_work		early_wakeup_work;
+	struct kthread_work		buf_dump_work;
 	struct exynos_recovery		recovery;
 
 	u32				irq_fs;	/* frame start irq number*/
@@ -461,8 +462,9 @@ static inline struct decon_device *get_decon_drvdata(u32 id)
 	return NULL;
 }
 
-void decon_dump(struct decon_device *decon);
-void decon_dump_all(struct decon_device *decon);
+void decon_dump(const struct decon_device *decon);
+void decon_dump_all(struct decon_device *decon,
+		enum dpu_event_condition cond, bool async_buf_dump);
 void decon_dump_event_condition(const struct decon_device *decon,
 		enum dpu_event_condition condition);
 int dpu_init_debug(struct decon_device *decon);

@@ -1415,7 +1415,7 @@ static void dsim_underrun_info(struct dsim_device *dsim, u32 underrun_cnt)
 static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 {
 	struct dsim_device *dsim = dev_id;
-	const struct decon_device *decon = dsim_get_decon(dsim);
+	struct decon_device *decon = (struct decon_device *)dsim_get_decon(dsim);
 	unsigned int int_src;
 
 	spin_lock(&dsim->slock);
@@ -1467,7 +1467,7 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 			dsim_underrun_info(dsim, decon->d.underrun_cnt + 1);
 			DPU_EVENT_LOG(DPU_EVT_DSIM_UNDERRUN, decon->id, NULL);
 			if (time_after(jiffies, last_dumptime + msecs_to_jiffies(5000))) {
-				decon_dump_event_condition(decon, DPU_EVT_CONDITION_UNDERRUN);
+				decon_dump_all(decon, DPU_EVT_CONDITION_UNDERRUN, true);
 				last_dumptime = jiffies;
 			}
 		} else {

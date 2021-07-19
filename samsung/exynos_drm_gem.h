@@ -26,6 +26,7 @@ struct exynos_drm_gem {
 	struct drm_gem_object base;
 	struct sg_table *sgt;
 	dma_addr_t dma_addr;
+	void *vaddr;
 	unsigned int flags;
 };
 
@@ -45,6 +46,7 @@ exynos_drm_gem_prime_import_sg_table(struct drm_device *dev,
 				     struct sg_table *sgt);
 struct drm_gem_object *exynos_drm_gem_prime_import(struct drm_device *dev,
 						   struct dma_buf *dma_buf);
+void *exynos_drm_gem_get_vaddr(struct exynos_drm_gem *exynos_gem_obj);
 
 #define to_exynos_gem(x)    container_of(x, struct exynos_drm_gem, base)
 

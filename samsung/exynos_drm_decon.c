@@ -79,7 +79,7 @@ static void decon_seamless_mode_set(struct exynos_drm_crtc *exynos_crtc,
 static int decon_request_te_irq(struct exynos_drm_crtc *exynos_crtc,
 				const struct exynos_drm_connector_state *exynos_conn_state);
 
-void decon_dump(struct decon_device *decon)
+void decon_dump(const struct decon_device *decon)
 {
 	int i;
 	int acquired = console_trylock();
@@ -1109,7 +1109,7 @@ static int dpu_sysmmu_fault_handler(struct iommu_fault *fault, void *data)
 
 	decon_warn(decon, "%s +\n", __func__);
 
-	decon_dump_all(decon);
+	decon_dump_all(decon, DPU_EVT_CONDITION_ALL, false);
 
 	return 0;
 }

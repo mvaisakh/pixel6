@@ -29,6 +29,7 @@ static inline bool exynos_drm_fb_is_colormap(const struct drm_framebuffer *fb)
 }
 
 dma_addr_t exynos_drm_fb_dma_addr(const struct drm_framebuffer *fb, int index);
+void *exynos_drm_fb_to_vaddr(const struct drm_framebuffer *fb);
 
 void exynos_drm_mode_config_init(struct drm_device *dev);
 

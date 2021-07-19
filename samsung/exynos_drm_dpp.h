@@ -133,6 +133,7 @@ static struct dpp_device *of_find_dpp_by_node(struct device_node *np)
 #endif
 
 void dpp_dump(struct dpp_device *dpp);
+void dpp_dump_buffer(struct dpp_device *dpp);
 
 static __always_inline const char *get_comp_src_name(u64 comp_src)
 {
