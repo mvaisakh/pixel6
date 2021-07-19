@@ -665,28 +665,59 @@ int exynos_panel_prepare(struct drm_panel *panel)
 }
 EXPORT_SYMBOL(exynos_panel_prepare);
 
-void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
-			       const struct exynos_dsi_cmd_set *cmd_set)
+void exynos_panel_send_cmd_set_flags(struct exynos_panel *ctx,
+				     const struct exynos_dsi_cmd_set *cmd_set, u32 flags)
 {
-	int i;
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	const struct exynos_dsi_cmd *c;
+	const struct exynos_dsi_cmd *last_cmd = NULL;
+	const u32 async_mask = PANEL_CMD_SET_BATCH | PANEL_CMD_SET_QUEUE;
+	u16 dsi_flags = 0;
 
-	if (!cmd_set)
+	if (!cmd_set || !cmd_set->num_cmd)
 		return;
 
-	for (i = 0; i < cmd_set->num_cmd; i++) {
-		u32 delay_ms = cmd_set->cmds[i].delay_ms;
+	/* shouldn't have both queue and batch set together */
+	WARN_ON((flags & async_mask) == async_mask);
 
-		if (ctx->panel_rev &&
-		    !(cmd_set->cmds[i].panel_rev & ctx->panel_rev))
+	if (flags & PANEL_CMD_SET_IGNORE_VBLANK)
+		dsi_flags |= EXYNOS_DSI_MSG_IGNORE_VBLANK;
+
+	/* if not batched or queued, all commands should be sent out immediately */
+	if (!(flags & async_mask))
+		dsi_flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+	c = &cmd_set->cmds[cmd_set->num_cmd - 1];
+	if (!c->panel_rev) {
+		last_cmd = c;
+	} else {
+		for (; c >= cmd_set->cmds; c--) {
+			if (c->panel_rev & ctx->panel_rev) {
+				last_cmd = c;
+				break;
+			}
+		}
+	}
+
+	/* no commands to transfer */
+	if (!last_cmd)
+		return;
+
+	for (c = cmd_set->cmds; c <= last_cmd; c++) {
+		u32 delay_ms = c->delay_ms;
+
+		if (ctx->panel_rev && !(c->panel_rev & ctx->panel_rev))
 			continue;
 
-		exynos_dcs_write(ctx, cmd_set->cmds[i].cmd,
-				cmd_set->cmds[i].cmd_len);
+		if ((c == last_cmd) && !(flags & PANEL_CMD_SET_QUEUE))
+			dsi_flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+		exynos_dsi_dcs_write_buffer(dsi, c->cmd, c->cmd_len, dsi_flags);
 		if (delay_ms)
 			usleep_range(delay_ms * 1000, delay_ms * 1000 + 10);
 	}
 }
-EXPORT_SYMBOL(exynos_panel_send_cmd_set);
+EXPORT_SYMBOL(exynos_panel_send_cmd_set_flags);
 
 void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode)
 {

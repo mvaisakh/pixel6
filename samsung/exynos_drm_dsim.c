@@ -1826,7 +1826,8 @@ dsim_write_data(struct dsim_device *dsim, const struct mipi_dsi_msg *msg)
 
 			__dsim_write_data(dsim, msg, is_long);
 
-			need_wait_vblank(dsim);
+			if (!(flags & EXYNOS_DSI_MSG_IGNORE_VBLANK))
+				need_wait_vblank(dsim);
 
 			dsim_reg_ready_packetgo(dsim->id, true);
 			dsim_debug(dsim, "packet go ready\n");

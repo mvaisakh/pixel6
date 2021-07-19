@@ -56,6 +56,18 @@
 #define PANEL_REV_LT(rev)	((rev) - 1)
 #define PANEL_REV_ALL_BUT(rev)	(PANEL_REV_ALL & ~(rev))
 
+/* indicates that all commands in this cmd set should be batched together */
+#define PANEL_CMD_SET_BATCH  BIT(0)
+/*
+ * indicates that all commands in this cmd set should be queued, a follow up
+ * command should take care of triggering transfer of batch
+ */
+#define PANEL_CMD_SET_QUEUE  BIT(1)
+
+/* packetgo feature to batch msgs can wait for vblank, use this flag to ignore explicitly */
+#define PANEL_CMD_SET_IGNORE_VBLANK BIT(2)
+
+
 #define HBM_FLAG_GHBM_UPDATE    BIT(0)
 #define HBM_FLAG_BL_UPDATE      BIT(1)
 #define HBM_FLAG_LHBM_UPDATE    BIT(2)
@@ -640,8 +652,13 @@ void exynos_panel_debugfs_create_cmdset(struct exynos_panel *ctx,
 					struct dentry *parent,
 					const struct exynos_dsi_cmd_set *cmdset,
 					const char *name);
-void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
-			       const struct exynos_dsi_cmd_set *cmd_set);
+void exynos_panel_send_cmd_set_flags(struct exynos_panel *ctx, const struct exynos_dsi_cmd_set *cmd_set,
+			       u32 flags);
+static inline void exynos_panel_send_cmd_set(struct exynos_panel *ctx,
+					     const struct exynos_dsi_cmd_set *cmd_set)
+{
+	exynos_panel_send_cmd_set_flags(ctx, cmd_set, 0);
+}
 void exynos_panel_set_lp_mode(struct exynos_panel *ctx, const struct exynos_panel_mode *pmode);
 void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness);
 int exynos_panel_common_init(struct mipi_dsi_device *dsi,

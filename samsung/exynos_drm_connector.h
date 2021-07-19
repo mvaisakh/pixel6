@@ -19,6 +19,11 @@
 
 struct exynos_drm_connector;
 
+/** Private DSI msg flags **/
+
+/* packetgo feature to batch msgs can wait for vblank, use this flag to ignore */
+#define EXYNOS_DSI_MSG_IGNORE_VBLANK  BIT(14)
+
 struct exynos_drm_connector_properties {
 	struct drm_property *max_luminance;
 	struct drm_property *max_avg_luminance;
