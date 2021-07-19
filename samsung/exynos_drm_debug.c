@@ -393,7 +393,7 @@ static void dpu_print_log_atomic(struct dpu_log_atomic *atomic,
 					win->dpp_ch);
 
 		str_comp = get_comp_src_name(win->comp_src);
-		drm_printf(p, "%s %s %s\n", buf, fmt->name, str_comp);
+		drm_printf(p, "%s %s %s\n", buf, fmt ? fmt->name : "Unknown", str_comp);
 	}
 }
 
@@ -693,7 +693,7 @@ static void dpu_event_log_print(const struct decon_device *decon, struct drm_pri
 					log->data.plane_info.width,
 					log->data.plane_info.height,
 					log->data.plane_info.index,
-					fmt->name);
+					fmt ? fmt->name : "Unknown");
 			break;
 		case DPU_EVT_PLANE_UPDATE:
 		case DPU_EVT_PLANE_DISABLE:
