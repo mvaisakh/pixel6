@@ -866,6 +866,7 @@ static void p9221_power_mitigation_work(struct work_struct *work)
 {
 	struct p9221_charger_data *charger = container_of(work,
 			struct p9221_charger_data, power_mitigation_work.work);
+	const u32 vout_5500mv = 5500;
 
 	charger->wait_for_online = false;
 
@@ -878,6 +879,12 @@ static void p9221_power_mitigation_work(struct work_struct *work)
 	}
 
 	if (!p9221_is_epp(charger)) {
+		if (charger->trigger_power_mitigation) {
+			dev_info(&charger->client->dev, "power_mitigate: change Vout to 5.5V\n");
+			charger->chip_set_vout_max(charger, vout_5500mv);
+			dev_info(&charger->client->dev, "power_mitigate: write 0 to 0xF4\n");
+			p9221_reg_write_8(charger, 0xF4, 0);
+		}
 		charger->fod_cnt = 0;
 		dev_info(&charger->client->dev,
 			 "power_mitigate: already BPP\n");
@@ -1950,6 +1957,7 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 {
 	int ret;
 	u32 threshold;
+	int icl_ua = 0;
 
 	mutex_lock(&charger->stats_lock);
 
@@ -1978,6 +1986,7 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 		goto unlock_done;
 
 	if ((charger->last_capacity > threshold) &&
+	    p9221_is_epp(charger) &&
 	    !charger->trigger_power_mitigation) {
 		charger->trigger_power_mitigation = true;
 		ret = delayed_work_pending(
@@ -1988,6 +1997,21 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 			    msecs_to_jiffies(
 			    P9221_POWER_MITIGATE_DELAY_MS));
 	}
+
+	if (!charger->trigger_power_mitigation)
+		goto unlock_done;
+
+	if (capacity > 94)
+		icl_ua = 750000;
+	if (capacity > 96)
+		icl_ua = 600000;
+	if (capacity > 98)
+		icl_ua = 300000;
+	vote(charger->dc_icl_votable, DD_VOTER, icl_ua > 0, icl_ua);
+	if (icl_ua > 0)
+		dev_info(&charger->client->dev, "power_mitigate: set ICL to %duA\n", icl_ua);
+
+
 unlock_done:
 	  mutex_unlock(&charger->stats_lock);
 }
