@@ -396,13 +396,14 @@ static inline bool is_auto_mode_preferred(struct exynos_panel *ctx)
 static void s6e3hc3_update_early_exit(struct exynos_panel *ctx, bool enable)
 {
 	struct s6e3hc3_panel *spanel = to_spanel(ctx);
+	const u32 flags = PANEL_CMD_SET_QUEUE;
 
 	dev_dbg(ctx->dev, "%s: en=%d\n", __func__, enable);
 
 	if (enable)
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_enable_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, &s6e3hc3_early_exit_enable_cmd_set, flags);
 	else
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_early_exit_disable_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, &s6e3hc3_early_exit_disable_cmd_set, flags);
 
 	spanel->early_exit_enabled = enable;
 }
@@ -411,24 +412,25 @@ static void s6e3hc3_update_refresh_mode(struct exynos_panel *ctx,
 				     const struct s6e3hc3_mode_data *mdata)
 {
 	const bool auto_mode_preferred = is_auto_mode_preferred(ctx);
+	const u32 flags = PANEL_CMD_SET_IGNORE_VBLANK | PANEL_CMD_SET_BATCH;
 
 	if (auto_mode_preferred && mdata->auto_mode_cmd_set) {
 		s6e3hc3_update_early_exit(ctx, true);
-		exynos_panel_send_cmd_set(ctx, mdata->auto_mode_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, mdata->auto_mode_cmd_set, flags);
 	} else {
+		const struct exynos_dsi_cmd_set *cmdset;
+
 		s6e3hc3_update_early_exit(ctx, false);
 
-		if (ctx->hbm_mode) {
-			if (mdata->manual_mode_ghbm_cmd_set)
-				exynos_panel_send_cmd_set(ctx, mdata->manual_mode_ghbm_cmd_set);
-		} else {
-			if (mdata->manual_mode_cmd_set)
-				exynos_panel_send_cmd_set(ctx, mdata->manual_mode_cmd_set);
-		}
+		cmdset = ctx->hbm_mode ? mdata->manual_mode_ghbm_cmd_set :
+					       mdata->manual_mode_cmd_set;
+
+		if (cmdset)
+			exynos_panel_send_cmd_set_flags(ctx, cmdset, flags);
 	}
 
 	if (mdata->common_mode_cmd_set)
-		exynos_panel_send_cmd_set(ctx, mdata->common_mode_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, mdata->common_mode_cmd_set, flags);
 
 	/* when mode is explicitly set panel idle effect would be disabled */
 	ctx->panel_idle_vrefresh = 0;
@@ -459,6 +461,7 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	const struct s6e3hc3_mode_data *mdata;
 	struct s6e3hc3_panel *spanel = to_spanel(ctx);
 	bool idle_active;
+	u16 dsi_flags = PANEL_CMD_SET_IGNORE_VBLANK | PANEL_CMD_SET_BATCH;
 
 	if (unlikely(!pmode))
 		return false;
@@ -504,12 +507,12 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 		s6e3hc3_update_early_exit(ctx, true);
 
 		/* enable 10hz idle mode with 120hz early exit */
-		exynos_panel_send_cmd_set(ctx, &s6e3hc3_mode_idle_10hz_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, &s6e3hc3_mode_idle_10hz_cmd_set, dsi_flags);
 	} else {
 		/* disable early exit after coming out of idle */
 		s6e3hc3_update_early_exit(ctx, false);
 
-		exynos_panel_send_cmd_set(ctx, mdata->wakeup_mode_cmd_set);
+		exynos_panel_send_cmd_set_flags(ctx, mdata->wakeup_mode_cmd_set, dsi_flags);
 	}
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 
