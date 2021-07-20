@@ -292,17 +292,26 @@ static void dsim_encoder_enable(struct drm_encoder *encoder, struct drm_atomic_s
 	struct dsim_device *dsim = encoder_to_dsim(encoder);
 	struct drm_crtc *crtc = drm_encoder_get_new_crtc(encoder, state);
 	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
+	const struct decon_device *decon = to_exynos_crtc(crtc)->ctx;
+	struct device *supplier = decon->dev;
 
 	dsim_debug(dsim, "current state: %d\n", dsim->state);
 
+	if (dsim->dev_link && (dsim->dev_link->supplier != supplier)) {
+		device_link_del(dsim->dev_link);
+		dsim->dev_link = NULL;
+	}
+
+	if (!dsim->dev_link) {
+		const u32 dl_flags = DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_SUPPLIER;
+
+		dsim->dev_link = device_link_add(dsim->dev, supplier, dl_flags);
+		if (WARN(!dsim->dev_link, "unable to create dev link between decon/dsim\n"))
+			return;
+	}
+
+
 	if (dsim->state == DSIM_STATE_SUSPEND) {
-		if (!dsim->dev_link) {
-			const struct decon_device *decon = to_exynos_crtc(crtc)->ctx;
-
-			dsim->dev_link = device_link_add(dsim->dev, decon->dev,
-							 DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
-		}
-
 		_dsim_enable(dsim);
 		dsim_set_te_pinctrl(dsim, 1);
 	} else if (dsim->state == DSIM_STATE_BYPASS) {
@@ -437,11 +446,6 @@ static void dsim_encoder_disable(struct drm_encoder *encoder, struct drm_atomic_
 		_dsim_disable(dsim);
 
 		dsim_set_te_pinctrl(dsim, 0);
-
-		if ((!crtc || crtc->state->connectors_changed) && dsim->dev_link) {
-			device_link_del(dsim->dev_link);
-			dsim->dev_link = NULL;
-		}
 	}
 
 	DPU_ATRACE_END(__func__);
