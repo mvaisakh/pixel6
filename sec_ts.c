@@ -3464,6 +3464,15 @@ static int sec_ts_parse_dt(struct spi_device *client)
 	pdata->max_x = coords[0] - 1;
 	pdata->max_y = coords[1] - 1;
 
+	if (of_property_read_u32_array(np, "sec,fod_coords", coords, 2)) {
+		input_info(true, &client->dev,
+			  "%s: sec,fod_coords not found!\n", __func__);
+		coords[0] = 0;
+		coords[1] = 0;
+	}
+	pdata->fod_x = coords[0];
+	pdata->fod_y = coords[1];
+
 #ifdef PAT_CONTROL
 	if (of_property_read_u32(np, "sec,pat_function",
 				 &pdata->pat_function) < 0) {

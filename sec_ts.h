@@ -1124,6 +1124,8 @@ struct sec_ts_data {
 };
 
 struct sec_ts_plat_data {
+	int fod_x;
+	int fod_y;
 	int max_x;
 	int max_y;
 	unsigned int irq_gpio;
