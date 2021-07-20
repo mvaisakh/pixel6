@@ -78,6 +78,7 @@ static void p9221_dump_charge_stats(struct p9221_charger_data *charger);
 static bool p9221_check_feature(struct p9221_charger_data *charger, u64 ft);
 static const char *p9221_get_tx_id_str(struct p9221_charger_data *charger);
 static int p9221_set_bpp_vout(struct p9221_charger_data *charger);
+static int p9221_set_hpp_dc_icl(struct p9221_charger_data *charger, bool enable);
 
 static char *align_status_str[] = {
 	"...", "M2C", "OK", "-1"
@@ -555,6 +556,10 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 			p9221_write_fod(charger);
 		}
 	}
+
+	ret = p9221_set_hpp_dc_icl(charger, false);
+	if (ret < 0)
+		dev_warn(&charger->client->dev, "Cannot disable HPP_ICL (%d)\n", ret);
 
 	return 0;
 }
@@ -1901,7 +1906,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 
 		/* FIXME: shouldn't we disable the cap divider here? */
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger))) {
-			ret = p9221_set_hpp_dc_icl(charger, true);
+			ret = p9221_set_hpp_dc_icl(charger, false);
 			if (ret < 0)
 				dev_warn(&charger->client->dev, "Cannot disable HPP_ICL (%d)\n", ret);
 			return -EOPNOTSUPP;
