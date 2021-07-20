@@ -351,7 +351,7 @@ struct exynos_panel_desc {
 
 #define PANEL_ID_MAX		32
 #define PANEL_EXTINFO_MAX	16
-#define LOCAL_HBM_MAX_TIMEOUT_MS 1500 /* 1500 ms */
+#define LOCAL_HBM_MAX_TIMEOUT_MS 3000 /* 3000 ms */
 #define LOCAL_HBM_GAMMA_CMD_SIZE_MAX 16
 
 struct exynos_bl_notifier {
