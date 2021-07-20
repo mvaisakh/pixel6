@@ -1717,34 +1717,35 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 {
 	const u8 insel_mask = MAX77759_CHG_CNFG_12_CHGINSEL_MASK |
 			      MAX77759_CHG_CNFG_12_WCINSEL_MASK;
+	bool force_wlc = false;
 	u8 insel_value = 0;
-	int wlc_on;
-	int ret;
+	int ret, wlc_on;
 
-	if (cb_data->buck_on && !cb_data->chgin_off) {
+	if (cb_data_is_inflow_off(cb_data)) {
+		/*
+		 * input_suspend masks both inputs:
+		 * TODO: use a separate use case for usb + wlc
+		 */
+	} else if (cb_data->buck_on && !cb_data->chgin_off) {
 		insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
-	} else if (cb_data->wlc_rx) {
+	} else if (cb_data->wlc_rx && !cb_data->wlcin_off) {
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
-
-		/* input_suspend */
-		if (cb_data->wlcin_off)
-			pr_warn("%s: wlc_rx=%d with wlcin_off=%d\n", __func__,
-				cb_data->wlc_rx, cb_data->wlcin_off);
 	} else if (cb_data->otg_on) {
 		/* all OTG cases MUST mask CHGIN */
-		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
-	} else if (cb_data_is_inflow_off(cb_data)) {
-		/* input_suspend masks only CHGIN */
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
 	} else {
 		/* disconnected, do not enable chgin if in input_suspend */
 		if (!cb_data->chgin_off)
 			insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
 
-		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+		/* disconnected, do not enable wlc_in if in input_suspend */
+		if (!cb_data->wlcin_off)
+			insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+
+		force_wlc = true;
 	}
 
-	if (from_uc != use_case) {
+	if (from_uc != use_case || force_wlc) {
 		wlc_on = (insel_value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
 
 		/* b/182973431 disable WLC_IC while CHGIN, rtx will enable WLC later */
@@ -1763,8 +1764,9 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 	/* changing [CHGIN|WCIN]_INSEL: works when protection is disabled  */
 	ret = max77759_chg_insel_write(uc_data->client, insel_mask, insel_value);
 
-	pr_debug("%s: usecase=%d mask=%x insel=%x wlc_on=%d (%d)\n", __func__,
-		 use_case, insel_mask, insel_value, wlc_on, ret);
+	pr_debug("%s: usecase=%d->%d mask=%x insel=%x wlc_on=%d force_wlc=%d (%d)\n",
+		 __func__, from_uc, use_case, insel_mask, insel_value, wlc_on,
+		 force_wlc, ret);
 
 	return ret;
 }
@@ -1881,7 +1883,9 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	cb_data.el = el;	/* election */
 
 	/* read directly instead of using the vote */
-	cb_data.wlc_rx = max77759_wcin_is_online(data);
+	cb_data.wlc_rx = max77759_wcin_is_online(data) &&
+			 !data->wcin_input_suspend;
+	cb_data.wlcin_off = !!data->wcin_input_suspend;
 
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
@@ -1895,12 +1899,12 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	}
 
 	dev_info(data->dev, "%s:%s full=%d raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
-		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d"
+		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d wcin_susp=%d"
 		" chgin_off=%d wlcin_off=%d frs_on=%d\n",
 		__func__, trigger ? trigger : "<>",
 		data->charge_done, cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
-		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on,
-		cb_data.otg_on, cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx,
+		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on, cb_data.otg_on,
+		cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx, data->wcin_input_suspend,
 		cb_data.chgin_off, cb_data.wlcin_off, cb_data.frs_on);
 
 	/* just use raw "as is", no changes to switches etc */
@@ -2315,8 +2319,6 @@ static void max77759_dc_suspend_vote_callback(struct gvotable_election *el,
 	ret = max77759_wcin_input_suspend(data, suspend, "DC_SUSPEND");
 	if (ret < 0)
 		return;
-
-	/* buck_on in not set on WLC */
 
 	pr_debug("%s: DC_SUSPEND reason=%s, value=%ld suspend=%d (%d)\n",
 		 __func__, reason ? reason : "", (long)value, suspend, ret);
