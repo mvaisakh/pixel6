@@ -258,8 +258,8 @@ static void dpp_test_fixed_config_params(struct dpp_params_info *config, u32 w,
 	config->y_hd_y2_stride = 0;
 	config->y_pl_c2_stride = 0;
 
-	config->h_ratio = (config->src.w << 20) / config->dst.w;
-	config->v_ratio = (config->src.h << 20) / config->dst.h;
+	config->h_ratio = mult_frac(1 << 20, config->src.w, config->dst.w);
+	config->v_ratio = mult_frac(1 << 20, config->src.h, config->dst.h);
 
 	config->is_block = false;
 	config->rcv_num = exynos_devfreq_get_domain_freq(DEVFREQ_DISP) ? : 0x7FFFFFFF;
@@ -354,11 +354,11 @@ static void dpp_convert_plane_state_to_config(struct dpp_params_info *config,
 	}
 
 	if (config->rot & DPP_ROT) {
-		config->h_ratio = (config->src.h << 20) / config->dst.w;
-		config->v_ratio = (config->src.w << 20) / config->dst.h;
+		config->h_ratio = mult_frac(1 << 20, config->src.h, config->dst.w);
+		config->v_ratio = mult_frac(1 << 20, config->src.w, config->dst.h);
 	} else {
-		config->h_ratio = (config->src.w << 20) / config->dst.w;
-		config->v_ratio = (config->src.h << 20) / config->dst.h;
+		config->h_ratio = mult_frac(1 << 20, config->src.w, config->dst.w);
+		config->v_ratio = mult_frac(1 << 20, config->src.h, config->dst.h);
 	}
 
 	config->is_block = false;
