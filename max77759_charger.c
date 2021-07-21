@@ -3276,7 +3276,9 @@ static int sys_uvlo1_set(void *d, u64 val)
 		return -EIO;
 
 	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP *
-			(val & MAX77759_CHG_CNFG_15_SYS_UVLO1_MASK) + VD_LOWER_LIMIT);
+			((val & MAX77759_CHG_CNFG_15_SYS_UVLO1_MASK)
+			>> MAX77759_CHG_CNFG_15_SYS_UVLO1_SHIFT) + VD_LOWER_LIMIT)
+			- THERMAL_HYST_LEVEL;
 
 	return 0;
 }
@@ -3307,7 +3309,9 @@ static int sys_uvlo2_set(void *d, u64 val)
 		return -EIO;
 
 	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP *
-			(val & MAX77759_CHG_CNFG_16_SYS_UVLO2_MASK) + VD_LOWER_LIMIT);
+			((val & MAX77759_CHG_CNFG_16_SYS_UVLO2_MASK)
+			>> MAX77759_CHG_CNFG_16_SYS_UVLO2_SHIFT) + VD_LOWER_LIMIT)
+			- THERMAL_HYST_LEVEL;
 
 	return 0;
 }
@@ -3807,13 +3811,19 @@ static int max77759_init_vdroop(void *data_)
 	if (ret < 0)
 		return -ENODEV;
 
-	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP1] = VD_BATTERY_VOLTAGE
+			- (VD_STEP * ((regdata & MAX77759_CHG_CNFG_15_SYS_UVLO1_MASK)
+			>> MAX77759_CHG_CNFG_15_SYS_UVLO1_SHIFT)
+			+ VD_LOWER_LIMIT) - THERMAL_HYST_LEVEL;
 
 	ret = max77759_reg_read(data->regmap, MAX77759_CHG_CNFG_16, &regdata);
 	if (ret < 0)
 		return -ENODEV;
 
-	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE - (VD_STEP * regdata + VD_LOWER_LIMIT);
+	data->triggered_lvl[VDROOP2] = VD_BATTERY_VOLTAGE
+			- (VD_STEP * ((regdata & MAX77759_CHG_CNFG_16_SYS_UVLO2_MASK)
+			>> MAX77759_CHG_CNFG_16_SYS_UVLO2_SHIFT)
+			+ VD_LOWER_LIMIT) - THERMAL_HYST_LEVEL;
 
 	data->tz_vdroop[VDROOP1] = thermal_zone_of_sensor_register(data->dev,
 							      VDROOP1, data,
