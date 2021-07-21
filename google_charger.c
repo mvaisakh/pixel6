@@ -52,6 +52,7 @@
 
 #define CHG_DRV_EAGAIN_RETRIES		3
 #define CHG_WORK_ERROR_RETRY_MS		1000
+#define CHG_WORK_EAGAIN_RETRY_MS	5000
 #define CHG_WORK_BD_TRIGGERED_MS	(5 * 60 * 1000)
 
 #define CHG_DRV_CC_HW_TOLERANCE_MAX	250
@@ -549,6 +550,7 @@ static int info_ext_state(union gbms_ce_adapter_details *ad,
 static int chg_set_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 {
 	struct power_supply *chg_psy = chg_drv->chg_psy;
+	union power_supply_propval pval;
 	int rc;
 
 	/*
@@ -556,23 +558,35 @@ static int chg_set_charger(struct chg_drv *chg_drv, int fv_uv, int cc_max)
 	 *   when cc_max > chg_drv->cc_max, set voltage, current
 	 */
 	if (cc_max < chg_drv->cc_max) {
-		rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
-				   cc_max);
+		pval.intval = cc_max;
+
+		rc = power_supply_set_property(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
+					       &pval);
+		if (rc == -EAGAIN)
+			return rc;
 		if (rc != 0) {
 			pr_err("MSC_CHG cannot set charging current rc=%d\n", rc);
 			return -EIO;
 		}
 	}
 
-	rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, fv_uv);
+	pval.intval = fv_uv;
+	rc = power_supply_set_property(chg_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
+				       &pval);
+	if (rc == -EAGAIN)
+		return rc;
 	if (rc != 0) {
 		pr_err("MSC_CHG cannot set float voltage rc=%d\n", rc);
 		return -EIO;
 	}
 
 	if (cc_max > chg_drv->cc_max) {
-		rc = GPSY_SET_PROP(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
-				   cc_max);
+		pval.intval = cc_max;
+
+		rc = power_supply_set_property(chg_psy, POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
+					       &pval);
+		if (rc == -EAGAIN)
+			return rc;
 		if (rc != 0) {
 			pr_err("MSC_CHG cannot set charging current rc=%d\n", rc);
 			return -EIO;
@@ -1832,7 +1846,7 @@ update_charger:
 
 		/* needs to disable_charging, will reschedule */
 		res = chg_update_charger(chg_drv, chg_drv->fv_uv, 0);
-		if (res < 0)
+		if (res < 0 && res != -EAGAIN)
 			pr_err("MSC_CHG cannot update charger (%d)\n", res);
 
 		pr_debug("MSC_CHG charging disabled res=%d rc=%d ui=%d\n",
@@ -3127,7 +3141,9 @@ static int msc_update_charger_cb(struct votable *votable,
 
 	/* adjust charger for target demand */
 	rc = chg_update_charger(chg_drv, fv_uv, cc_max);
-	if (rc < 0)
+	if (rc == -EAGAIN)
+		update_interval = CHG_WORK_EAGAIN_RETRY_MS;
+	else if (rc < 0)
 		update_interval = CHG_WORK_ERROR_RETRY_MS;
 
 msc_reschedule:

@@ -1664,7 +1664,7 @@ static int gcpm_psy_set_property(struct power_supply *psy,
 	chg_psy = gcpm_chg_get_active(gcpm);
 	if (chg_psy) {
 		ret = power_supply_set_property(chg_psy, psp, pval);
-		if (ret < 0) {
+		if (ret < 0 && ret != -EAGAIN) {
 			pr_err("cannot route prop=%d to %d:%s (%d)\n", psp,
 				gcpm->chg_psy_active, gcpm_psy_name(chg_psy),
 				ret);
