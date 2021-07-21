@@ -408,6 +408,12 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 
 	if (no_csp) {
 		charger->last_capacity = -1;
+		if (charger->com_busy >= COM_BUSY_MAX) {
+			if (charger->chip_send_ccreset(charger) == 0)
+				charger->com_busy = 0;
+		} else {
+			charger->com_busy += 1;
+		}
 		logbuffer_log(charger->rtx_log,
 			     "com_busy=%d, did not send csp",
 			     charger->com_busy);
@@ -419,7 +425,7 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 	if (charger->ben_state) {
 		ret = charger->chip_send_csp_in_txmode(charger, stat);
 		if (ret == 0)
-			charger->com_busy = true;
+			charger->com_busy += 1;
 	}
 
 	if (charger->online) {
@@ -1985,6 +1991,9 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 	/* p9221_is_online() is true when the device in TX mode. */
 	if (charger->online && charger->last_capacity >= 0 && charger->last_capacity <= 100)
 		mod_delayed_work(system_wq, &charger->charge_stats_work, 0);
+
+	if (!charger->online)
+		goto unlock_done;
 
 	/* trigger DD */
 	threshold = (charger->mitigate_threshold > 0) ?
@@ -3942,7 +3951,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			goto exit;
 		}
 
-		charger->com_busy = false;
+		charger->com_busy = 0;
 		charger->rtx_csp = 0;
 		charger->rtx_err = RTX_NO_ERROR;
 		charger->is_rtx_mode = false;
@@ -4325,6 +4334,12 @@ static void p9382_txid_work(struct work_struct *work)
 	int ret = 0;
 
 	if (charger->ints.pppsent_bit && charger->com_busy) {
+		if (charger->com_busy >= COM_BUSY_MAX) {
+			if (charger->chip_send_ccreset(charger) == 0)
+				charger->com_busy = 0;
+		} else {
+			charger->com_busy += 1;
+		}
 		schedule_delayed_work(&charger->txid_work,
 				      msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		logbuffer_log(charger->rtx_log,
@@ -4340,7 +4355,7 @@ static void p9382_txid_work(struct work_struct *work)
 			      sizeof(charger->fast_id_str), false);
 		dev_info(&charger->client->dev, "Fast serial ID send(%s)\n",
 			 charger->fast_id_str);
-		charger->com_busy = true;
+		charger->com_busy += 1;
 	}
 }
 
@@ -4415,7 +4430,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	}
 
 	if (irq_src & pppsent_bit)
-		charger->com_busy = false;
+		charger->com_busy = 0;
 
 	if (irq_src & (hard_ocp_bit | tx_conflict_bit)) {
 		if (irq_src & hard_ocp_bit)
@@ -4445,7 +4460,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 					msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		} else {
 			charger->rtx_csp = 0;
-			charger->com_busy = false;
+			charger->com_busy = 0;
 		}
 	}
 

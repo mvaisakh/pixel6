@@ -344,6 +344,7 @@
 #define P9382A_COM_CHAN_SEND_SIZE_REG		0x101
 #define BIDI_COM_PACKET_TYPE			0x98
 #define PROPRIETARY_PACKET_TYPE			0x80
+#define CHANNEL_RESET_PACKET_TYPE		0xA8
 #define FAST_SERIAL_ID_HEADER			0x4F
 #define FAST_SERIAL_ID_SIZE			4
 #define ACCESSORY_TYPE_MASK			0x7
@@ -358,6 +359,7 @@
 #define TXID_SEND_DELAY_MS			(1 * 1000)
 #define TXSOC_SEND_DELAY_MS			(5 * 1000)
 
+#define COM_BUSY_MAX				10
 /*
  * P9412 unique registers
  */
@@ -652,7 +654,7 @@ struct p9221_charger_data {
 	u16				auth_type;
 	bool				tx_done;
 	bool				tx_busy;
-	bool				com_busy;
+	u32				com_busy;
 	bool				check_np;
 	bool				check_dc;
 	bool				check_det;
