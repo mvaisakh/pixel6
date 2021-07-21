@@ -122,6 +122,7 @@ struct cs35l41_private {
 	struct delayed_work hb_work;
 	struct workqueue_struct *wq;
 	struct mutex hb_lock;
+	struct mutex hb_forcewake_lock;
 	struct cs35l41_rst_cache reset_cache;
 	struct mutex rate_lock;
 	struct mutex force_int_lock;

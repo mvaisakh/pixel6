@@ -547,6 +547,8 @@ static int cs35l41_hibernate_force_wake_put(struct snd_kcontrol *kcontrol,
 	regmap_read(cs35l41->regmap, CS35L41_PWR_CTRL1, &amp_active);
 	dev_info(cs35l41->dev, "hb force wake %d from hibernate state %d\n",
 		cs35l41->hibernate_force_wake, cs35l41->amp_hibernate);
+
+	mutex_lock(&cs35l41->hb_forcewake_lock);
 	if (cs35l41->amp_hibernate == CS35L41_HIBERNATE_AWAKE ||
 		(cs35l41->amp_hibernate == CS35L41_HIBERNATE_NOT_LOADED &&
 		 cs35l41->dsp.running)) {
@@ -569,7 +571,7 @@ static int cs35l41_hibernate_force_wake_put(struct snd_kcontrol *kcontrol,
 			mutex_unlock(&cs35l41->hb_lock);
 		}
 	}
-
+	mutex_unlock(&cs35l41->hb_forcewake_lock);
 	return 0;
 }
 
@@ -1952,8 +1954,11 @@ static int cs35l41_hibernate(struct snd_soc_dapm_widget *w,
 		mutex_unlock(&cs35l41->hb_lock);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		queue_delayed_work(cs35l41->wq, &cs35l41->hb_work,
-					msecs_to_jiffies(2000));
+		mutex_lock(&cs35l41->hb_forcewake_lock);
+		if (!cs35l41->hibernate_force_wake)
+			queue_delayed_work(cs35l41->wq, &cs35l41->hb_work,
+						msecs_to_jiffies(2000));
+		mutex_unlock(&cs35l41->hb_forcewake_lock);
 		break;
 	default:
 		dev_err(cs35l41->dev, "Invalid event = 0x%x\n", event);
@@ -3918,10 +3923,13 @@ int cs35l41_probe(struct cs35l41_private *cs35l41,
 			goto err;
 		}
 
-		if (cs35l41->pdata.hibernate_enable)
+		if (cs35l41->pdata.hibernate_enable) {
 			cs35l41->amp_hibernate = CS35L41_HIBERNATE_NOT_LOADED;
-		else
+			cs35l41->hibernate_force_wake = 1;
+		} else {
 			cs35l41->amp_hibernate = CS35L41_HIBERNATE_INCOMPATIBLE;
+			cs35l41->hibernate_force_wake = 0;
+		}
 
 		cs35l41->reset_cache.extclk_cfg = false;
 		cs35l41->reset_cache.asp_wl = -1;
@@ -3988,6 +3996,7 @@ int cs35l41_probe(struct cs35l41_private *cs35l41,
 
 	INIT_DELAYED_WORK(&cs35l41->hb_work, cs35l41_hibernate_work);
 	mutex_init(&cs35l41->hb_lock);
+	mutex_init(&cs35l41->hb_forcewake_lock);
 	return 0;
 err_codec:
 	snd_soc_unregister_component(cs35l41->dev);
@@ -4010,6 +4019,7 @@ int cs35l41_remove(struct cs35l41_private *cs35l41)
 #endif
 	destroy_workqueue(cs35l41->wq);
 	mutex_destroy(&cs35l41->hb_lock);
+	mutex_destroy(&cs35l41->hb_forcewake_lock);
 	destroy_workqueue(cs35l41->vol_ctl.ramp_wq);
 	mutex_destroy(&cs35l41->vol_ctl.vol_mutex);
 	regmap_write(cs35l41->regmap, CS35L41_IRQ1_MASK1, 0xFFFFFFFF);
