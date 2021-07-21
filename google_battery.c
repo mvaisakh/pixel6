@@ -4922,6 +4922,9 @@ static int batt_history_data_work(struct batt_drv *batt_drv)
  * poll the battery, run SOC%, dead battery, critical.
  * scheduled from psy_changed and from timer
  */
+
+#define UPDATE_INTERVAL_AT_FULL_FACTOR	4
+
 static void google_battery_work(struct work_struct *work)
 {
 	struct batt_drv *batt_drv =
@@ -4965,13 +4968,6 @@ static void google_battery_work(struct work_struct *work)
 		goto reschedule;
 	}
 
-	if (fg_status != batt_drv->fg_status) {
-		pr_debug("%s: change of fg_status %d->%d\n",
-			 __func__, batt_drv->fg_status, fg_status);
-		notify_psy_changed = true;
-	}
-	batt_drv->fg_status = fg_status;
-
 	/* batt_lock protect SSOC code etc. */
 	mutex_lock(&batt_drv->batt_lock);
 
@@ -4995,6 +4991,8 @@ static void google_battery_work(struct work_struct *work)
 
 			if (ssoc > prev_ssoc)
 				bat_log_ttf_estimate("SSOC", ssoc, batt_drv);
+
+			dump_ssoc_state(ssoc_state, batt_drv->ssoc_log);
 			notify_psy_changed = true;
 		}
 
@@ -5026,7 +5024,23 @@ static void google_battery_work(struct work_struct *work)
 		if (full && !batt_drv->batt_full)
 			bat_log_ttf_estimate("Full", ssoc, batt_drv);
 		batt_drv->batt_full = full;
+
+		/* debounce fg_status changes at 100% */
+		if (fg_status != batt_drv->fg_status && !full) {
+			pr_debug("%s: change of fg_status %d->%d\n",
+					__func__, batt_drv->fg_status, fg_status);
+			notify_psy_changed = true;
+		}
+
+
+		/* slow down the updates at full */
+		if (full && batt_drv->batt_full)
+			update_interval *= UPDATE_INTERVAL_AT_FULL_FACTOR;
+
 	}
+
+	/* notifications for this are debounced  */
+	batt_drv->fg_status = fg_status;
 
 	/* TODO: poll other data here if needed */
 
@@ -5093,8 +5107,8 @@ static void google_battery_work(struct work_struct *work)
 
 	mutex_unlock(&batt_drv->chg_lock);
 
+	/* TODO: we might not need to do this all the time */
 	batt_cycle_count_update(batt_drv, ssoc_get_real(ssoc_state));
-	dump_ssoc_state(ssoc_state, batt_drv->ssoc_log);
 
 reschedule:
 
