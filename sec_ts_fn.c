@@ -8002,12 +8002,13 @@ static void force_touch_active(void *device_data)
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	int active, ret;
+	u16 bus_ref = SEC_TS_BUS_REF_FORCE_ACTIVE;
 
 	sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_SYSFS, true);
 
 	sec_cmd_set_default_result(sec);
 
-	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 2) {
 		sec_cmd_set_cmd_result(sec, "NG", 2);
 		sec_cmd_set_cmd_exit(sec);
 		sec->cmd_state = SEC_CMD_STATUS_FAIL;
@@ -8016,15 +8017,27 @@ static void force_touch_active(void *device_data)
 		return;
 	}
 
-	active = sec->cmd_param[0];
+	/* Specific case for bugreport. */
+	if (sec->cmd_param[0] == 2) {
+		bus_ref = SEC_TS_BUS_REF_BUGREPORT;
+		active = (sec->cmd_param[1]) ? true : false;
+		if (active)
+			ts->bugreport_ktime_start = ktime_get();
+		else
+			ts->bugreport_ktime_start = 0;
+	} else {
+		active = sec->cmd_param[0];
+	}
 	input_info(true, &ts->client->dev,
-		"%s: %s\n", __func__, active ? "enable" : "disable");
+		   "%s: %s %#x\n", __func__, active ? "enable" : "disable",
+		   bus_ref);
+
 	if (active)
 		pm_stay_awake(&ts->client->dev);
 	else
 		pm_relax(&ts->client->dev);
 
-	ret = sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_FORCE_ACTIVE, active);
+	ret = sec_ts_set_bus_ref(ts, bus_ref, active);
 	if (ret == 0) {
 		sec_cmd_set_cmd_result(sec, "OK", 2);
 		sec->cmd_state = SEC_CMD_STATUS_OK;

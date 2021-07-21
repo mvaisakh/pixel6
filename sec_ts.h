@@ -586,7 +586,8 @@ enum {
 	SEC_TS_BUS_REF_INPUT_DEV	= 0x10,
 	SEC_TS_BUS_REF_READ_INFO	= 0x20,
 	SEC_TS_BUS_REF_SYSFS		= 0x40,
-	SEC_TS_BUS_REF_FORCE_ACTIVE	= 0x80
+	SEC_TS_BUS_REF_FORCE_ACTIVE	= 0x80,
+	SEC_TS_BUS_REF_BUGREPORT	= 0x100
 };
 
 enum {
@@ -1092,6 +1093,8 @@ struct sec_ts_data {
 	bool force_wlc;
 	ktime_t usb_changed_ktime;
 	ktime_t wlc_changed_ktime;
+
+	ktime_t bugreport_ktime_start;
 
 	int (*sec_ts_write)(struct sec_ts_data *ts, u8 reg,
 				u8 *data, int len);

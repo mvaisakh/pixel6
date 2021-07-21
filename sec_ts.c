@@ -5179,9 +5179,10 @@ static int sec_ts_pm_suspend(struct device *dev)
 {
 	struct sec_ts_data *ts = dev_get_drvdata(dev);
 
-	if (ts->bus_refmask)
+	if (ts->bus_refmask) {
 		input_info(true, &ts->client->dev,
 			"%s: bus_refmask 0x%X\n", __func__, ts->bus_refmask);
+	}
 
 	/* Flush work in case a suspend is in progress */
 	flush_workqueue(ts->event_wq);
@@ -5190,6 +5191,19 @@ static int sec_ts_pm_suspend(struct device *dev)
 		input_err(true, &ts->client->dev,
 			"%s: can't suspend because touch bus is in use!\n",
 			__func__);
+		if (ts->bus_refmask == SEC_TS_BUS_REF_BUGREPORT) {
+			s64 delta_ms = ktime_ms_delta(ktime_get(),
+						      ts->bugreport_ktime_start);
+
+			if (delta_ms > 30 * MSEC_PER_SEC) {
+				sec_ts_set_bus_ref(ts, SEC_TS_BUS_REF_BUGREPORT, false);
+				pm_relax(&ts->client->dev);
+				ts->bugreport_ktime_start = 0;
+				input_err(true, &ts->client->dev,
+					  "%s: force release SEC_TS_BUS_REF_BUGREPORT(delta: %lld)!\n",
+					   __func__, delta_ms);
+			}
+		}
 		return -EBUSY;
 	}
 
