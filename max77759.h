@@ -106,6 +106,7 @@ struct max77759_foreach_cb_data {
 
 	int chgin_off;	/* input_suspend, mode=0 */
 	int wlcin_off;	/* input_suspend, mode=0 */
+	int usb_wlc;	/* input_suspend, mode=0 */
 
 	/* wlc_on is the same as wlc_rx */
 	bool buck_on;	/* wired power in (chgin_on) from TCPCI */
@@ -178,6 +179,8 @@ enum gsu_usecases {
 
 	GSU_MODE_WLC_TX 	= 11,	/* 6-2, 1056, */
 	GSU_MODE_USB_OTG_WLC_TX	= 12,	/* 7-2, 1060, */
+
+	GSU_MODE_USB_WLC_RX	= 13,
 };
 
 /* internal system values */
@@ -188,6 +191,9 @@ enum {
 	GBMS_CHGR_MODE_CHGIN_OFF	= 0x11 + MAX77759_CHGR_MODE_ALL_OFF,
 	/* WCIN inflow off */
 	GBMS_CHGR_MODE_WLCIN_OFF	= 0x12 + MAX77759_CHGR_MODE_ALL_OFF,
+	/* USB + WLC_RX mode */
+	GBMS_CHGR_MODE_USB_WLC_RX	= 0x13 + MAX77759_CHGR_MODE_ALL_OFF,
+
 	/* charging enabled (charging current != 0) */
 	GBMS_CHGR_MODE_CHGR_BUCK_ON	= 0x10 + MAX77759_CHGR_MODE_CHGR_BUCK_ON,
 	/* Compat: old for programmging */

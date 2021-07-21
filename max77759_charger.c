@@ -398,9 +398,9 @@ static int max77759_foreach_callback(void *data, const char *reason,
 	case MAX77759_CHGR_MODE_CHGR_BUCK_BOOST_UNO_ON:
 	case MAX77759_CHGR_MODE_OTG_BUCK_BOOST_ON:
 	case MAX77759_CHGR_MODE_CHGR_OTG_BUCK_BOOST_ON:
+		pr_debug("%s: RAW vote=0x%x\n", __func__, mode);
 		if (cb_data->use_raw)
 			break;
-		pr_debug("%s: RAW vote=0x%x\n", __func__, mode);
 		cb_data->raw_value = mode;
 		cb_data->reason = reason;
 		cb_data->use_raw = true;
@@ -425,6 +425,15 @@ static int max77759_foreach_callback(void *data, const char *reason,
 			 __func__, reason ? reason : "<>", mode);
 		cb_data->stby_on += 1;
 		break;
+	/* USB+WLCIN, factory only */
+	case GBMS_CHGR_MODE_USB_WLC_RX:
+		pr_debug("%s: USB_WLC_RX %s vote=0x%x\n",
+			 __func__, reason ? reason : "<>", mode);
+		if (!cb_data->usb_wlc)
+			cb_data->reason = reason;
+		cb_data->usb_wlc += 1;
+		break;
+
 	/* input_suspend => 0 ilim */
 	case GBMS_CHGR_MODE_CHGIN_OFF:
 		if (!cb_data->chgin_off)
@@ -812,6 +821,9 @@ static int max77759_to_standby(struct max77759_usecase_data *uc_data,
 			need_stby = false;
 			break;
 	}
+
+	if (use_case == GSU_MODE_USB_WLC_RX || use_case == GSU_RAW_MODE)
+		need_stby = true;
 
 	pr_info("%s: use_case=%d->%d from_otg=%d need_stby=%x\n", __func__,
 		 from_uc, use_case, from_otg, need_stby);
@@ -1358,6 +1370,7 @@ static int max77759_to_usecase(struct max77759_usecase_data *uc_data, int use_ca
 				return ret;
 		}
 		break;
+	case GSU_MODE_USB_WLC_RX:
 	case GSU_RAW_MODE:
 		/* just write the value to the register (it's in stby) */
 		break;
@@ -1470,12 +1483,16 @@ static int max77759_get_usecase(struct max77759_foreach_cb_data *cb_data)
 		}
 	}
 
-	/* OTG modes override the others */
+	/* OTG modes override the others, might need to move under usb_wlc */
 	if (cb_data->otg_on || cb_data->frs_on)
 		return max77759_get_otg_usecase(cb_data);
 
 	/* buck_on is wired, wlc_rx is wireless, might still need rTX */
-	if (!buck_on && !cb_data->wlc_rx) {
+	if (cb_data->usb_wlc) {
+		/* USB+WLC for factory and testing */
+		usecase = GSU_MODE_USB_WLC_RX;
+		mode = MAX77759_CHGR_MODE_CHGR_BUCK_ON;
+	} else if (!buck_on && !cb_data->wlc_rx) {
 		mode = MAX77759_CHGR_MODE_ALL_OFF;
 
 		/* Rtx using the internal battery */
@@ -1721,7 +1738,10 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 	u8 insel_value = 0;
 	int ret, wlc_on;
 
-	if (cb_data_is_inflow_off(cb_data)) {
+	if (cb_data->usb_wlc) {
+		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
+		force_wlc = true;
+	} else if (cb_data_is_inflow_off(cb_data)) {
 		/*
 		 * input_suspend masks both inputs:
 		 * TODO: use a separate use case for usb + wlc
@@ -1886,25 +1906,27 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	cb_data.wlc_rx = max77759_wcin_is_online(data) &&
 			 !data->wcin_input_suspend;
 	cb_data.wlcin_off = !!data->wcin_input_suspend;
-
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
+
+
 	nope = !cb_data.use_raw && !cb_data.stby_on && !cb_data.dc_on &&
 	       !cb_data.chgr_on && !cb_data.buck_on && ! cb_data.boost_on &&
 	       !cb_data.otg_on && !cb_data.uno_on && !cb_data.wlc_tx &&
-	       !cb_data.wlc_rx;
+	       !cb_data.wlc_rx && !cb_data.wlcin_off && !cb_data.chgin_off &&
+	       !cb_data.usb_wlc;
 	if (nope) {
 		pr_debug("%s: nope callback\n", __func__);
 		goto unlock_done;
 	}
 
 	dev_info(data->dev, "%s:%s full=%d raw=%d stby_on=%d, dc_on=%d, chgr_on=%d, buck_on=%d,"
-		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d wcin_susp=%d"
+		" boost_on=%d, otg_on=%d, uno_on=%d wlc_tx=%d wlc_rx=%d usb_wlc=%d"
 		" chgin_off=%d wlcin_off=%d frs_on=%d\n",
 		__func__, trigger ? trigger : "<>",
 		data->charge_done, cb_data.use_raw, cb_data.stby_on, cb_data.dc_on,
 		cb_data.chgr_on, cb_data.buck_on, cb_data.boost_on, cb_data.otg_on,
-		cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx, data->wcin_input_suspend,
+		cb_data.uno_on, cb_data.wlc_tx, cb_data.wlc_rx, cb_data.usb_wlc,
 		cb_data.chgin_off, cb_data.wlcin_off, cb_data.frs_on);
 
 	/* just use raw "as is", no changes to switches etc */
