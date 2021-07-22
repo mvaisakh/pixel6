@@ -116,6 +116,12 @@ static int adc_gain[16] = { 0,  1,  2,  3,  4,  5,  6,  7,
 
 #define PCA9468_OTV_MARGIN		12000	/* uV */
 
+/* irdrop default limit */
+#define PCA9468_IRDROP_LIMIT_CNT	3	/* tiers */
+#define PCA9468_IRDROP_LIMIT_TIER1	105000	/* uV */
+#define PCA9468_IRDROP_LIMIT_TIER2	75000	/* uV */
+#define PCA9468_IRDROP_LIMIT_TIER3	0	/* uV */
+
 /* INT1 Register Buffer */
 enum {
 	REG_INT1,
@@ -865,14 +871,14 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
  * increases.
  * NOTE: how does this change with temperature, battery age?
  */
-static int pca9468_irdrop_limit(int fv_uv)
+static int pca9468_irdrop_limit(struct pca9468_charger *pca9468, int fv_uv)
 {
-	int delta = 75000;
+	int delta = pca9468->pdata->irdrop_limits[1];
 
 	if (fv_uv < 4300000)
-		delta = 105000;
+		delta = pca9468->pdata->irdrop_limits[0];
 	if (fv_uv >= PCA9468_COMP_VFLOAT_MAX)
-		delta = 0;
+		delta = pca9468->pdata->irdrop_limits[2];
 
 	return delta;
 }
@@ -880,7 +886,7 @@ static int pca9468_irdrop_limit(int fv_uv)
 /* use max limit,  */
 static int pca9468_apply_irdrop(struct pca9468_charger *pca9468, int fv_uv)
 {
-	const int delta_limit = pca9468_irdrop_limit(fv_uv);
+	const int delta_limit = pca9468_irdrop_limit(pca9468, fv_uv);
 	int ret, vbat, pca_vbat = 0, delta = 0;
 	const bool adaptive = false;
 
@@ -4402,6 +4408,26 @@ static int of_pca9468_dt(struct device *dev,
 		pdata->iin_cc_comp_offset = PCA9468_IIN_CC_COMP_OFFSET;
 	pr_info("%s: pca9468,iin_cc_comp_offset is %u\n", __func__, pdata->iin_cc_comp_offset);
 
+	/* irdrop limits */
+	pdata->irdrop_limit_cnt =
+	    of_property_count_elems_of_size(np_pca9468, "google,irdrop-limits", sizeof(u32));
+	if (pdata->irdrop_limit_cnt < PCA9468_IRDROP_LIMIT_CNT) {
+		pr_info("%s: google,irdrop-limits size get failed, use default irdrop limits %d\n",
+			__func__, pdata->irdrop_limit_cnt);
+		ret = -EINVAL;
+	} else {
+		ret = of_property_read_u32_array(np_pca9468, "google,irdrop-limits",
+						 (u32 *)pdata->irdrop_limits,
+						 PCA9468_IRDROP_LIMIT_CNT);
+		if (ret)
+			pr_info("%s: google,irdrop-limits get failed, use default irdrop limits",
+				__func__);
+	}
+	if (ret) {
+		pdata->irdrop_limits[0] = PCA9468_IRDROP_LIMIT_TIER1;
+		pdata->irdrop_limits[1] = PCA9468_IRDROP_LIMIT_TIER2;
+		pdata->irdrop_limits[2] = PCA9468_IRDROP_LIMIT_TIER3;
+	}
 
 #ifdef CONFIG_THERMAL
 	/* USBC thermal zone */

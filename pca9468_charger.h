@@ -38,6 +38,10 @@ struct pca9468_platform_data {
 	int		iin_max_offset;
 	int		iin_cc_comp_offset;
 
+	/* irdrop */
+	unsigned int	irdrop_limits[3];
+	int		irdrop_limit_cnt;
+
 #ifdef CONFIG_THERMAL
 	const char *usb_tz_name;
 #endif
