@@ -486,8 +486,8 @@ static int p9382_wait_for_mode(struct p9221_charger_data *chgr, int mode)
 	int loops, ret;
 	uint8_t sys_mode;
 
-	/* 30 * 100 = 3 sec */
-	for (loops = 30 ; loops ; loops--) {
+	/* 20 * 50 = 1 sec */
+	for (loops = 20 ; loops ; loops--) {
 		ret = chgr->reg_read_8(chgr, P9221R5_SYSTEM_MODE_REG,
 					&sys_mode);
 		if (ret < 0) {
@@ -499,7 +499,7 @@ static int p9382_wait_for_mode(struct p9221_charger_data *chgr, int mode)
 		if (sys_mode == mode)
 			return 0;
 
-		msleep(100);
+		msleep(50);
 	}
 
 	return -ETIMEDOUT;

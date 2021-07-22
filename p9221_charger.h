@@ -452,6 +452,8 @@
 #define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
 #define HPP_MODE_PWR_REQUIRE			23
 
+#define RTX_RESET_COUNT_MAX			3
+
 /* Features */
 typedef enum {
     WLCF_DISABLE_ALL_FEATURE     = 0x00,
@@ -622,6 +624,7 @@ struct p9221_charger_data {
 	struct delayed_work		power_mitigation_work;
 	struct work_struct		uevent_work;
 	struct work_struct		rtx_disable_work;
+	struct work_struct		rtx_reset_work;
 	struct alarm			icl_ramp_alarm;
 	struct timer_list		vrect_timer;
 	struct timer_list		align_timer;
@@ -688,6 +691,7 @@ struct p9221_charger_data {
 	int				rtx_state;
 	u32				rtx_csp;
 	int				rtx_err;
+	int				rtx_reset_cnt;
 	bool				chg_on_rtx;
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
@@ -699,6 +703,7 @@ struct p9221_charger_data {
 	u32				fod_cnt;
 	bool				trigger_power_mitigation;
 	bool				wait_for_online;
+	struct mutex			rtx_lock;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
