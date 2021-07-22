@@ -179,7 +179,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 		/* Save the userspace buffer address */
 		user_buf = read_entry->rw_batch.buf;
 		/* Allocate read buffer */
-		read_entry->rw_batch.buf = kmalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+		read_entry->rw_batch.buf = kvmalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register read buffer\n");
@@ -217,7 +217,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 
 reg_read_exit:
 	if (batch_mode) {
-		kfree(read_entry->rw_batch.buf);
+		kvfree(read_entry->rw_batch.buf);
 	}
 	return ret;
 }
@@ -234,7 +234,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 		user_buf = write_entry->rw_batch.buf;
 		/* Allocate write buffer and copy contents from userspace */
 		write_entry->rw_batch.buf =
-			kmalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
+			kvmalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register write buffer\n");
@@ -261,7 +261,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 
 reg_write_exit:
 	if (batch_mode) {
-		kfree(write_entry->rw_batch.buf);
+		kvfree(write_entry->rw_batch.buf);
 	}
 	return ret;
 }
@@ -298,14 +298,14 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 		return ret;
 	}
 	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
-	io_entries = kmalloc(buf_size, GFP_KERNEL);
+	io_entries = kvmalloc(buf_size, GFP_KERNEL);
 	if (!io_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
 		return -ENOMEM;
 	}
 	if (copy_from_user(io_entries, (void __user *)k_msg->io_entries, buf_size)) {
 		ret = -EFAULT;
-		kfree(io_entries);
+		kvfree(io_entries);
 		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.");
 		return ret;
 	}
@@ -385,7 +385,7 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev, struct lwis_io_entries *us
 
 reg_io_exit:
 	if (k_entries) {
-		kfree(k_entries);
+		kvfree(k_entries);
 	}
 	return ret;
 }
@@ -690,7 +690,7 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 soft_reset_exit:
 	if (k_entries) {
-		kfree(k_entries);
+		kvfree(k_entries);
 	}
 	return ret;
 }
@@ -1073,7 +1073,7 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
-	k_entries = kmalloc(entry_size, GFP_KERNEL);
+	k_entries = kvmalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate periodic io entries\n");
 		return -ENOMEM;
@@ -1093,7 +1093,7 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 	for (i = 0; i < num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = kmalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
+			k_buf = kvmalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(
 					lwis_dev->dev,
@@ -1118,11 +1118,11 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 error_free_buf:
 	for (i = 0; i <= last_buf_alloc_idx; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(k_entries[i].rw_batch.buf);
+			kvfree(k_entries[i].rw_batch.buf);
 		}
 	}
 error_free_entries:
-	kfree(k_entries);
+	kvfree(k_entries);
 	return ret;
 }
 
