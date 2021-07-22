@@ -2993,9 +2993,6 @@ static int batt_chg_logic(struct batt_drv *batt_drv)
 	} else if (batt_drv->batt_full) {
 		changed = batt_rl_enter(&batt_drv->ssoc_state,
 					BATT_RL_STATUS_RECHARGE);
-
-		/* We can skip the uevent because we have volt tiers >= 100 */
-		batt_chg_stats_pub(batt_drv, "100%", false, true);
 	}
 
 	err = msc_logic(batt_drv);
@@ -5021,22 +5018,24 @@ static void google_battery_work(struct work_struct *work)
 
 		/* fuel gauge triggered recharge logic. */
 		full = (ssoc == SSOC_FULL);
-		if (full && !batt_drv->batt_full)
+		if (full && !batt_drv->batt_full) {
 			bat_log_ttf_estimate("Full", ssoc, batt_drv);
+			batt_chg_stats_pub(batt_drv, "100%", false, true);
+		}
 		batt_drv->batt_full = full;
 
 		/* debounce fg_status changes at 100% */
-		if (fg_status != batt_drv->fg_status && !full) {
-			pr_debug("%s: change of fg_status %d->%d\n",
-					__func__, batt_drv->fg_status, fg_status);
-			notify_psy_changed = true;
+		if (fg_status != batt_drv->fg_status) {
+
+			pr_debug("%s: ssoc=%d full=%d change of fg_status %d->%d\n",
+				 __func__, ssoc, full, batt_drv->fg_status, fg_status);
+			if (!full)
+				notify_psy_changed = true;
 		}
 
-
 		/* slow down the updates at full */
-		if (full && batt_drv->batt_full)
+		if (full && batt_drv->chg_done)
 			update_interval *= UPDATE_INTERVAL_AT_FULL_FACTOR;
-
 	}
 
 	/* notifications for this are debounced  */
