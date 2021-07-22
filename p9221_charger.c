@@ -3906,6 +3906,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 
 	if (enable == 0) {
 		logbuffer_log(charger->rtx_log, "disable rtx\n");
+
 		if (charger->is_rtx_mode) {
 			ret = charger->chip_tx_mode_en(charger, false);
 			charger->is_rtx_mode = false;
@@ -4361,7 +4362,7 @@ static void p9382_txid_work(struct work_struct *work)
 
 static void p9382_rtx_work(struct work_struct *work)
 {
-	u8 mode_reg;
+	u8 mode_reg = 0;
 	int ret = 0;
 	struct p9221_charger_data *charger = container_of(work,
 			struct p9221_charger_data, rtx_work.work);
@@ -4371,15 +4372,17 @@ static void p9382_rtx_work(struct work_struct *work)
 
 	/* Check if RTx mode is auto turn off */
 	ret = charger->chip_get_sys_mode(charger, &mode_reg);
-	if (ret == 0) {
-		if (charger->is_rtx_mode && !(mode_reg & P9XXX_SYS_OP_MODE_TX_MODE)) {
-			logbuffer_log(charger->rtx_log,
-				      "is_rtx_on: ben=%d, mode=%02x",
-				      charger->ben_state, mode_reg);
-			charger->is_rtx_mode = false;
-			p9382_set_rtx(charger, false);
-		}
-	}
+	if ((ret == 0) && (mode_reg & P9XXX_SYS_OP_MODE_TX_MODE))
+		return;
+
+	dev_info(&charger->client->dev, "is_rtx_on: ben=%d, mode=%02x, ret=%d",
+		 charger->ben_state, mode_reg, ret);
+	logbuffer_log(charger->rtx_log, "is_rtx_on: ben=%d, mode=%02x, ret=%d",
+		      charger->ben_state, mode_reg, ret);
+
+	charger->rtx_err = RTX_HARD_OCP;
+	charger->is_rtx_mode = false;
+	p9382_set_rtx(charger, false);
 
 	schedule_delayed_work(&charger->rtx_work,
 			      msecs_to_jiffies(P9382_RTX_TIMEOUT_MS));
