@@ -2963,6 +2963,12 @@ static bool fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 
 	touchType = event[1] & 0x0F;
 	touchId = (event[1] & 0xF0) >> 4;
+	if (touchId >= TOUCH_ID_MAX) {
+		mutex_unlock(&info->input_report_mutex);
+		dev_err(info->dev, "%s : Invalid touch ID = %d ! No Report...\n",
+			__func__, touchId);
+		goto no_report;
+	}
 
 	x = (((int)event[3] & 0x0F) << 8) | (event[2]);
 	y = ((int)event[4] << 4) | ((event[3] & 0xF0) >> 4);
@@ -3112,6 +3118,12 @@ static bool fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 
 	touchType = event[1] & 0x0F;
 	touchId = (event[1] & 0xF0) >> 4;
+	if (touchId >= TOUCH_ID_MAX) {
+		mutex_unlock(&info->input_report_mutex);
+		dev_err(info->dev, "%s : Invalid touch ID = %d ! No Report...\n",
+			__func__, touchId);
+		return false;
+	}
 
 	switch (touchType) {
 #ifdef STYLUS_MODE
@@ -4477,8 +4489,8 @@ static void fts_offload_report(void *handle,
 #ifndef SKIP_PRESSURE
 			if ((int)report->coords[i].pressure <= 0) {
 				dev_err(info->dev,
-					"%s: Pressure is %i, but pointer is not leaving.\n",
-					__func__, (int)report->coords[i].pressure);
+					"%s: Pressure is %i, but pointer %d is not leaving.\n",
+					__func__, (int)report->coords[i].pressure, i);
 			}
 			input_report_abs(info->input_dev, ABS_MT_PRESSURE,
 					 report->coords[i].pressure);
