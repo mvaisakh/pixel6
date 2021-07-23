@@ -4602,7 +4602,7 @@ static ssize_t p9468_set_chg_stats(struct device *dev, struct device_attribute *
 	return count;
 }
 
-static DEVICE_ATTR(chg_stats, 0444, p9468_show_chg_stats, p9468_set_chg_stats);
+static DEVICE_ATTR(chg_stats, 0644, p9468_show_chg_stats, p9468_set_chg_stats);
 
 
 static int pca9468_create_fs_entries(struct pca9468_charger *chip)
