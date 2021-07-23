@@ -2879,6 +2879,12 @@ static void ssoc_change_state(struct batt_ssoc_state *ssoc_state, bool ben)
 	ssoc_state->buck_enabled = ben;
 }
 
+static void bd_trickle_reset(struct batt_ssoc_state *ssoc_state)
+{
+	ssoc_state->bd_trickle_cnt = 0;
+	ssoc_state->disconnect_time = 0;
+}
+
 static void batt_prlog_din(union gbms_charger_state *chg_state, int log_level)
 {
 	batt_prlog(log_level,
@@ -4372,6 +4378,26 @@ static ssize_t set_bd_trickle_reset_sec(struct device *dev,
 static DEVICE_ATTR(bd_trickle_reset_sec, 0660,
 		   show_bd_trickle_reset_sec, set_bd_trickle_reset_sec);
 
+static ssize_t bd_clear_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct power_supply *psy = container_of(dev, struct power_supply, dev);
+	struct batt_drv *batt_drv = power_supply_get_drvdata(psy);
+	int ret = 0, val = 0;
+
+	ret = kstrtoint(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	if (val)
+		bd_trickle_reset(&batt_drv->ssoc_state);
+
+	return count;
+}
+
+static DEVICE_ATTR_WO(bd_clear);
+
 static ssize_t batt_show_time_to_ac(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
@@ -4613,6 +4639,10 @@ static int batt_init_fs(struct batt_drv *batt_drv)
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_bd_trickle_reset_sec);
 	if (ret)
 		dev_err(&batt_drv->psy->dev, "Failed to create bd_trickle_reset_sec\n");
+
+	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_bd_clear);
+	if (ret)
+		dev_err(&batt_drv->psy->dev, "Failed to create bd_clear\n");
 
 	ret = device_create_file(&batt_drv->psy->dev, &dev_attr_pairing_state);
 	if (ret)
