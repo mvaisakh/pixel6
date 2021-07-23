@@ -74,9 +74,9 @@ struct s6e3hc3_mode_data {
 	 *
 	 * This cmd set is sent to panel during mode switch to enable manual mode in GHBM on
 	 * because the manual mode command is different in normal and global high brightness
-	 * modes. This mode is typically enabled when driver is not allowed to change modes
-	 * while idle. In this mode, the panel should remain in this mode (regardless of
-	 * idleness) until we indicate otherwise.
+	 * modes on EVT1_1 and after. This mode is typically enabled when driver is not
+	 * allowed to change modes while idle. In this mode, the panel should remain in this
+	 * mode (regardless of idleness) until we indicate otherwise.
 	 *
 	 * If auto mode cmd set is defined, then manual mode cmd set should also be defined.
 	 */
@@ -283,9 +283,9 @@ static const struct exynos_dsi_cmd s6e3hc3_mode_120_manual_cmds[] = {
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_manual);
 
 static const struct exynos_dsi_cmd s6e3hc3_mode_120_ghbm_manual_cmds[] = {
-	EXYNOS_DSI_CMD0(manual_mode),
-	EXYNOS_DSI_CMD0(mode_set_120hz_GHBM),
-	EXYNOS_DSI_CMD0(freq_update),
+	EXYNOS_DSI_CMD0_REV(manual_mode, PANEL_REV_GE(PANEL_REV_EVT1_1)),
+	EXYNOS_DSI_CMD0_REV(mode_set_120hz_GHBM, PANEL_REV_GE(PANEL_REV_EVT1_1)),
+	EXYNOS_DSI_CMD0_REV(freq_update, PANEL_REV_GE(PANEL_REV_EVT1_1)),
 };
 static DEFINE_EXYNOS_CMD_SET(s6e3hc3_mode_120_ghbm_manual);
 
