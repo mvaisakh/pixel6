@@ -325,7 +325,7 @@ int pca9468_get_apdo_max_power(struct pca9468_charger *pca9468,
 
 /* WLC_DC ---------------------------------------------------------------- */
 /* call holding mutex_unlock(&pca9468->lock); */
-static struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
+struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468)
 {
 	if (!pca9468->wlc_psy) {
 		const char *wlc_psy_name = pca9468->wlc_psy_name ?  : "wireless";
@@ -346,7 +346,7 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 {
 	union power_supply_propval pro_val;
 	struct power_supply *wlc_psy;
-	int ret = -EINVAL, vbatt;
+	int ret = -EINVAL;
 
 	/* Vbus reset happened in the previous PD communication */
 	if (pca9468->mains_online == false)
@@ -378,17 +378,6 @@ int pca9468_send_rx_voltage(struct pca9468_charger *pca9468,
 					val, ret);
 
 				return -EINVAL;
-			}
-
-			/* set Vout to Vbatt*4 before leave WLC-DC */
-			vbatt = pca9468_read_adc(pca9468, ADCCH_VBAT);
-			if (vbatt > 0) {
-				pro_val.intval = vbatt * 4;
-				ret = power_supply_set_property(wlc_psy,
-								POWER_SUPPLY_PROP_VOLTAGE_NOW,
-								&pro_val);
-				dev_info(pca9468->dev, "set rx voltage to %d, vbatt=%d(%d)\n",
-					 pro_val.intval, vbatt, ret);
 			}
 
 			pro_val.intval = PPS_PSY_FIXED_ONLINE;

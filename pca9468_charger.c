@@ -373,13 +373,113 @@ static int pca9468_get_charging_enabled(struct pca9468_charger *pca9468)
 	return intval;
 }
 
+
+/* b/194346461 ramp down IIN */
+static int pca9468_wlc_ramp_down_iin(struct pca9468_charger *pca9468,
+				     struct power_supply *wlc_psy)
+{
+	const int ramp_down_step = PCA9468_IIN_CFG_STEP;
+	int ret = 0, iin;
+
+	if (!pca9468->wlc_ramp_out_iin)
+		return 0;
+
+	iin = pca9468_input_current_limit(pca9468);
+	for ( ; iin >= PCA9468_IIN_CFG_MIN; iin -= ramp_down_step) {
+		int iin_adc, wlc_iout = -1;
+
+		iin_adc = pca9468_read_adc(pca9468, ADCCH_IIN);
+		if (wlc_psy) {
+			union power_supply_propval pro_val;
+
+			ret = power_supply_get_property(wlc_psy,
+					POWER_SUPPLY_PROP_CURRENT_NOW,
+					&pro_val);
+			if (ret == 0)
+				wlc_iout = pro_val.intval;
+		}
+
+		ret = pca9468_set_input_current(pca9468, iin);
+		if (ret < 0) {
+			pr_err("%s: ramp down iin=%d (%d)\n", __func__,
+				iin, ret);
+			break;
+		}
+
+		pr_debug("%s: iin_adc=%d, wlc_iout-%d ramp down iin=%d\n",
+				__func__, iin_adc, wlc_iout, iin);
+		msleep(pca9468->wlc_ramp_out_delay);
+	}
+
+	return ret;
+}
+
+/* b/194346461 ramp down VOUT */
+#define WLC_VOUT_CFG_STEP	40000
+
+/* the caller will set to vbatt * 4 */
+static int pca9468_wlc_ramp_down_vout(struct pca9468_charger *pca9468,
+				      struct power_supply *wlc_psy)
+{
+	const int ramp_down_step = WLC_VOUT_CFG_STEP;
+	union power_supply_propval pro_val;
+	int ret, vbatt;
+	int vout = 0;
+
+	if (!pca9468->wlc_ramp_out_vout)
+		return 0;
+
+	while (true) {
+		vbatt = pca9468_read_adc(pca9468, ADCCH_VBAT);
+		if (vbatt <= 0) {
+			pr_err("%s: invalid vbatt %d\n", __func__, vbatt);
+			break;
+		}
+
+		ret = power_supply_get_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
+					        &pro_val);
+		if (ret < 0) {
+			pr_err("%s: invalid vout %d\n", __func__, ret);
+			break;
+		}
+
+		if (pro_val.intval <= vbatt * 4)
+			return 0;
+
+		if (!vout)
+			vout = pro_val.intval;
+		if (vout < vbatt * 4) {
+			pr_debug("%s: underflow vout=%d, vbatt=%d (target=%d)\n", __func__,
+			         vout, vbatt, vbatt * 4);
+			return 0;
+		}
+
+		pro_val.intval = vout - ramp_down_step;
+
+		pr_debug("%s: vbatt=%d, wlc_vout=%d->%d\n", __func__, vbatt,
+			 vout, pro_val.intval);
+
+		ret = power_supply_set_property(wlc_psy, POWER_SUPPLY_PROP_VOLTAGE_NOW,
+						&pro_val);
+		if (ret < 0) {
+			pr_err("%s: cannot set vout %d\n", __func__, ret);
+			break;
+		}
+
+		msleep(pca9468->wlc_ramp_out_delay);
+		vout = pro_val.intval;
+	}
+
+	return -EIO;
+}
+
 /* call holding mutex_lock(&pca9468->lock); */
 static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 {
 	const int ntc_protection_en = 0; /* TODO: DT option? */
 	int ret, val;
 
-	pr_debug("%s: enable=%d\n", __func__,  enable);
+	pr_debug("%s: enable=%d ta_type=%d\n", __func__,  enable, pca9468->ta_type);
 
 	if (enable && pca9468_get_charging_enabled(pca9468) == enable) {
 		pr_debug("%s: no op, already enabled\n", __func__);
@@ -391,12 +491,10 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 	if (enable) {
 		/* Improve adc */
 		val = 0x5B;
-		ret = regmap_write(pca9468->regmap, PCA9468_REG_ADC_ACCESS,
-				   val);
+		ret = regmap_write(pca9468->regmap, PCA9468_REG_ADC_ACCESS, val);
 		if (ret < 0)
 			goto error;
-		ret = regmap_update_bits(pca9468->regmap,
-					 PCA9468_REG_ADC_IMPROVE,
+		ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_ADC_IMPROVE,
 					 PCA9468_BIT_ADC_IIN_IMP, 0);
 		if (ret < 0)
 			goto error;
@@ -421,19 +519,19 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 
 	} else {
 		/* Disable NTC_PROTECTION_EN */
-		ret = regmap_update_bits(pca9468->regmap,
-					 PCA9468_REG_TEMP_CTRL,
+		ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_TEMP_CTRL,
 					 PCA9468_BIT_NTC_PROTECTION_EN, 0);
 	}
 
-	/* Enable or Disable PCA9468 */
-	val = enable ? PCA9468_STANDBY_DONOT : PCA9468_STANDBY_FORCED;
-	ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
-				 PCA9468_BIT_STANDBY_EN, val);
-	if (ret < 0)
-		goto error;
-
 	if (enable) {
+		/* ENABLE PCA9468 */
+		ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
+					 PCA9468_BIT_STANDBY_EN,
+					 PCA9468_STANDBY_DONOT);
+		if (ret < 0)
+			goto error;
+
+
 		/* Wait 50ms, first to keep the start-up sequence */
 		mdelay(50);
 		/* Wait 150ms */
@@ -456,6 +554,48 @@ static int pca9468_set_charging(struct pca9468_charger *pca9468, bool enable)
 					 PCA9468_BIT_NTC_PROTECTION_EN,
 					 ntc_protection_en);
 	} else {
+
+		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
+			struct power_supply *wlc_psy;
+			int ret;
+
+			wlc_psy = pca9468_get_rx_psy(pca9468);
+			if (wlc_psy) {
+				union power_supply_propval pro_val;
+				int vbatt;
+
+				ret = pca9468_wlc_ramp_down_iin(pca9468, wlc_psy);
+				if (ret < 0)
+					dev_err(pca9468->dev, "cannot ramp out iin (%d)\n", ret);
+
+				ret = pca9468_wlc_ramp_down_vout(pca9468, wlc_psy);
+				if (ret < 0)
+					dev_err(pca9468->dev, "cannot ramp out vout (%d)\n", ret);
+
+				/* last step will always set vout to 4 * vbatt */
+				vbatt = pca9468_read_adc(pca9468, ADCCH_VBAT);
+				if (vbatt > 0) {
+					pro_val.intval = vbatt * 4;
+
+					ret = power_supply_set_property(wlc_psy,
+							POWER_SUPPLY_PROP_VOLTAGE_NOW,
+							&pro_val);
+
+					dev_info(pca9468->dev, "set rx voltage to %d, vbatt=%d (%d)\n",
+						 pro_val.intval, vbatt, ret);
+				} else {
+					dev_info(pca9468->dev, "cannot set rx voltage, vbatt=%d\n", vbatt);
+				}
+			}
+		}
+
+		/* turn off the PCA */
+		ret = regmap_update_bits(pca9468->regmap, PCA9468_REG_START_CTRL,
+					 PCA9468_BIT_STANDBY_EN,
+					 PCA9468_STANDBY_FORCED);
+		if (ret < 0)
+			goto error;
+
 		/* Wait 5ms to keep the shutdown sequence */
 		mdelay(5);
 	}
@@ -788,22 +928,17 @@ error:
 
 static int pca9468_get_iin(struct pca9468_charger *pca9468, int *iin)
 {
+	const int offset = iin_fsw_cfg[pca9468->pdata->fsw_cfg];
+	int temp;
 
-	if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
-		*iin = 0;
-	} else {
-		const int offset = iin_fsw_cfg[pca9468->pdata->fsw_cfg];
-		int temp;
+	temp = pca9468_read_adc(pca9468, ADCCH_IIN);
+	if (temp < 0)
+		return temp;
 
-		temp = pca9468_read_adc(pca9468, ADCCH_IIN);
-		if (temp < 0)
-			return temp;
+	if (temp < offset)
+		temp = offset;
 
-		if (temp < offset)
-			temp = offset;
-		*iin = (temp - offset) * 2;
-	}
-
+	*iin = (temp - offset) * 2;
 	return 0;
 }
 
@@ -1047,6 +1182,8 @@ static int pca9468_stop_charging(struct pca9468_charger *pca9468)
 
 	/* close stats */
 	p9468_chg_stats_done(&pca9468->chg_data, pca9468);
+
+	/* TODO: something here to prep TA for the switch */
 
 	ret = pca9468_set_charging(pca9468, false);
 	if (ret < 0) {
@@ -2605,7 +2742,7 @@ static int pca9468_apply_new_limits(struct pca9468_charger *pca9468)
 /* 2:1 Direct Charging CC MODE control */
 static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 {
-	int rc, ccmode, vin_vol, iin, ibat, ret = 0;
+	int ccmode, vin_vol, iin, ret = 0;
 	bool apply_ircomp = false;
 
 	pr_debug("%s: ======START======= \n", __func__);
@@ -2643,10 +2780,6 @@ static int pca9468_charge_ccmode(struct pca9468_charger *pca9468)
 
 	switch(ccmode) {
 	case STS_MODE_LOOP_INACTIVE:
-
-		rc = pca9468_get_iin(pca9468, &ibat);
-		if (rc < 0)
-			ibat = pca9468->cc_max;
 
 		/* Set input current compensation */
 		if (pca9468->ta_type == TA_TYPE_WIRELESS) {
@@ -4648,6 +4781,14 @@ static int pca9468_create_fs_entries(struct pca9468_charger *chip)
 		return -ENOENT;
 	}
 
+	debugfs_create_bool("wlc_rampout_iin", 0644, chip->debug_root,
+			     &chip->wlc_ramp_out_iin);
+	debugfs_create_bool("wlc_rampout_vout", 0644, chip->debug_root,
+			    &chip->wlc_ramp_out_vout);
+	debugfs_create_u32("wlc_rampout_delay", 0644, chip->debug_root,
+			   &chip->wlc_ramp_out_delay);
+
+
 	debugfs_create_u32("debug_level", 0644, chip->debug_root,
 			   &debug_printk_prlog);
 	debugfs_create_u32("no_logbuffer", 0644, chip->debug_root,
@@ -4723,6 +4864,8 @@ static int pca9468_probe(struct i2c_client *client,
 	pca9468_chg->dev = &client->dev;
 	pca9468_chg->pdata = pdata;
 	pca9468_chg->charging_state = DC_STATE_NO_CHARGING;
+	pca9468_chg->wlc_ramp_out_iin = true;
+	pca9468_chg->wlc_ramp_out_delay = 250; /* 250 ms default */
 
 	/* Create a work queue for the direct charger */
 	pca9468_chg->dc_wq = alloc_ordered_workqueue("pca9468_dc_wq", WQ_MEM_RECLAIM);

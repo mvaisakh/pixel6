@@ -182,6 +182,7 @@
 #define PCA9468_MAX_REGISTER		0x4F
 
 
+#define PCA9468_IIN_CFG_MIN		500000
 /* input current step, unit - uA */
 #define PCA9468_IIN_CFG_STEP		100000
 /* input current, unit - uA */

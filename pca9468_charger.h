@@ -256,6 +256,11 @@ struct pca9468_charger {
 	u32			debug_address;
 	int			debug_adc_channel;
 
+
+	bool wlc_ramp_out_iin;
+	bool wlc_ramp_out_vout;
+	u32 wlc_ramp_out_delay;
+
 	struct p9468_chg_stats	chg_data;
 /* Google Integration END */
 
@@ -331,6 +336,7 @@ int pca9468_get_rx_max_power(struct pca9468_charger *pca9468);
 int pca9468_set_ta_type(struct pca9468_charger *pca9468, int pps_index);
 
 /* GBMS integration */
+struct power_supply *pca9468_get_rx_psy(struct pca9468_charger *pca9468);
 int pca9468_get_chg_chgr_state(struct pca9468_charger *pca9468,
 			       union gbms_charger_state *chg_state);
 int pca9468_is_present(struct pca9468_charger *pca9468);
