@@ -532,6 +532,22 @@ static int max77759_ls_mode(struct max77759_usecase_data *uc_data, int mode)
 	case 0:
 		/* the OVP open right away */
 		ret = gpio_get_value_cansleep(uc_data->lsw1_is_open);
+		if (ret <= 0 && uc_data->ls1_en > 0) {
+			const int max_count = 3;
+			int loops;
+
+			/*  do it manually and re-read after 20ms */
+			for (loops = 0; loops < max_count; loops++) {
+				gpio_set_value_cansleep(uc_data->ls1_en, 0);
+				msleep(20);
+
+				ret = gpio_get_value_cansleep(uc_data->lsw1_is_open);
+				pr_debug("%s: open lsw1 attempt %d/%d ret=%d\n",
+					 __func__, loops, max_count, ret);
+				if (ret > 0)
+					break;
+			}
+		}
 		break;
 	case 1:
 		/* it takes 11 ms to turn on the OVP */
@@ -996,9 +1012,6 @@ static int gs101_otg_mode(struct max77759_usecase_data *uc_data, int to)
 		rc = max77759_ls_mode(uc_data, 0);
 		if (rc < 0)
 			pr_err("%s: cannot clear lsw1 rc:%d\n",  __func__, rc);
-		/* b/192986752 make very sure that LSW1 is open */
-		if (uc_data->ls1_en > 0)
-			gpio_set_value_cansleep(uc_data->ls1_en, 0);
 
 		ret = max77759_ext_mode(uc_data, EXT_MODE_OFF);
 		if (ret < 0)
@@ -1969,7 +1982,7 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	if (ret < 0) {
 		ret = max77759_force_standby(data);
 		if (ret < 0) {
-			dev_err(data->dev, "use_case=%d->%d to_stby failed ret:%d\n",
+			dev_err(data->dev, "use_case=%d->%d force_stby failed ret:%d\n",
 				data->uc_data.use_case, use_case, ret);
 			goto unlock_done;
 		}
