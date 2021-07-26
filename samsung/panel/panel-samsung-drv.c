@@ -817,7 +817,6 @@ static int exynos_update_status(struct backlight_device *bl)
 	const struct exynos_panel_funcs *exynos_panel_func;
 	int brightness = bl->props.brightness;
 	int min_brightness = ctx->desc->min_brightness ? : 1;
-	struct drm_connector_state *conn_state;
 	u32 bl_range = 0;
 
 	if (!ctx->enabled || !ctx->initialized) {
@@ -834,14 +833,6 @@ static int exynos_update_status(struct backlight_device *bl)
 
 	dev_info(ctx->dev, "req: %d, br: %d\n", bl->props.brightness,
 		brightness);
-
-	/* TODO(b/175121444): add drm_modeset_lock() to protect brightness sync */
-	conn_state = ctx->exynos_connector.base.state;
-	if (conn_state) {
-		struct exynos_drm_connector_state *exynos_connector_state =
-			to_exynos_connector_state(conn_state);
-		exynos_connector_state->brightness_level = brightness;
-	}
 
 	mutex_lock(&ctx->mode_lock);
 	exynos_panel_func = ctx->desc->exynos_panel_func;
@@ -2038,8 +2029,6 @@ static ssize_t dimming_on_store(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
-	struct drm_connector_state *conn_state;
-	struct drm_mode_config *config;
 	bool dimming_on;
 	int ret;
 
@@ -2055,17 +2044,6 @@ static ssize_t dimming_on_store(struct device *dev,
 	}
 
 	if (funcs && funcs->set_dimming_on) {
-		config = &ctx->exynos_connector.base.dev->mode_config;
-
-		drm_modeset_lock(&config->connection_mutex, NULL);
-		conn_state = ctx->exynos_connector.base.state;
-		if (conn_state) {
-			struct exynos_drm_connector_state *exynos_connector_state =
-				to_exynos_connector_state(conn_state);
-			exynos_connector_state->dimming_on = dimming_on;
-		}
-		drm_modeset_unlock(&config->connection_mutex);
-
 		mutex_lock(&ctx->mode_lock);
 		funcs->set_dimming_on(ctx, dimming_on);
 		mutex_unlock(&ctx->mode_lock);
