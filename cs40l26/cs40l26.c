@@ -2263,7 +2263,7 @@ static int cs40l26_input_init(struct cs40l26_private *cs40l26)
 	if (!cs40l26->input)
 		return -ENOMEM;
 
-	cs40l26->input->name = "cs40l26_input";
+	cs40l26->input->name = cs40l26->pdata.device_name;
 	cs40l26->input->id.product = cs40l26->devid;
 	cs40l26->input->id.version = cs40l26->revid;
 
@@ -3034,12 +3034,18 @@ static int cs40l26_handle_platform_data(struct cs40l26_private *cs40l26)
 {
 	struct device *dev = cs40l26->dev;
 	struct device_node *np = dev->of_node;
+	const char *str = NULL;
 	u32 val;
 
 	if (!np) {
 		dev_err(dev, "No platform data found\n");
 		return -ENOENT;
 	}
+
+	if (!of_property_read_string(np, "input-device-name", &str))
+		cs40l26->pdata.device_name = str;
+	else
+		cs40l26->pdata.device_name = CS40L26_INPUT_DEV_NAME;
 
 	if (of_property_read_bool(np, "cirrus,basic-config"))
 		cs40l26->fw_mode = CS40L26_FW_MODE_ROM;

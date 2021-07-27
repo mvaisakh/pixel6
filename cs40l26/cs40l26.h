@@ -620,6 +620,7 @@
 #define CS40L26_MAX_I2C_READ_SIZE_BYTES	32
 
 #define CS40L26_DEV_NAME		"CS40L26"
+#define CS40L26_INPUT_DEV_NAME		"cs40l26_input"
 #define CS40L26_DEVID_A			0x40A260
 #define CS40L26_DEVID_B			0x40A26B
 #define CS40L26_DEVID_MASK		GENMASK(23, 0)
@@ -1258,6 +1259,7 @@ struct cs40l26_pseq_v2_op {
 };
 
 struct cs40l26_platform_data {
+	const char *device_name;
 	bool vbbr_en;
 	u32 vbbr_thld;
 	u32 vbbr_max_att;
