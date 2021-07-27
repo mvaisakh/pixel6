@@ -1159,9 +1159,12 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 	 * "num_pages" is decided from user-space arguments, don't show warnings
 	 * when facing malicious input.
 	 */
-	pages = kcalloc(num_pages, sizeof(*pages), GFP_KERNEL | __GFP_NOWARN);
-	if (!pages)
+	pages = kvmalloc((num_pages * sizeof(*pages)), GFP_KERNEL | __GFP_NOWARN);
+	if (!pages) {
+		etdev_dbg(etdev, "%s: kvmalloc failed (%lu bytes)\n", __func__,
+			  (num_pages * sizeof(*pages)));
 		return ERR_PTR(-ENOMEM);
+	}
 
 	/*
 	 * The host pages might be read-only and could fail if we attempt to pin
@@ -1202,7 +1205,7 @@ static struct page **edgetpu_pin_user_pages(struct edgetpu_device_group *group,
 error:
 	for (i = 0; i < num_pages; i++)
 		unpin_user_page(pages[i]);
-	kfree(pages);
+	kvfree(pages);
 
 	return ERR_PTR(ret);
 }
@@ -1467,7 +1470,7 @@ int edgetpu_device_group_map(struct edgetpu_device_group *group,
 
 	mutex_unlock(&group->lock);
 	arg->device_address = map->device_address;
-	kfree(pages);
+	kvfree(pages);
 	return 0;
 
 error:
@@ -1482,7 +1485,7 @@ error:
 			unpin_user_page(pages[i]);
 	}
 	mutex_unlock(&group->lock);
-	kfree(pages);
+	kvfree(pages);
 	return ret;
 }
 
