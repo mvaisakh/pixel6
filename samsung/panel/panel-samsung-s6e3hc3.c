@@ -162,6 +162,9 @@ static const struct exynos_dsi_cmd s6e3hc3_lp_cmds[] = {
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0x60, 0x00),	/* 30Hz */
 	EXYNOS_DSI_CMD0_REV(unlock_cmd_f0, PANEL_REV_GE(PANEL_REV_PROTO1_1)),
 
+	/* Changeable TE */
+	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1), 0xB9, 0x00),
+
 	/* enable fast exit */
 	EXYNOS_DSI_CMD_SEQ_REV(PANEL_REV_GE(PANEL_REV_PROTO1_1),
 			       0xBD, 0x21, 0x02),
