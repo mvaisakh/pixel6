@@ -70,7 +70,8 @@
 #define MAX20339_LSW1_IS_CLOSED_OFF		6
 #define MAX20339_OTG_ENA_OFF			7
 
-#define MAX20339_GPIO_GET_TIMEOUT_MS		100
+#define MAX20339_LSW1_TIMEOUT_MS		100
+#define MAX20339_VIN_VALID_TIMEOUT_MS		100
 
 struct max20339_ovp {
 	struct i2c_client *client;
@@ -187,7 +188,7 @@ static int max20339_gpio_get_direction(struct gpio_chip *chip,
 static bool max20339_is_lsw_closed(struct max20339_ovp *ovp, int offset)
 {
 	int ret;
-	unsigned int val;
+	unsigned int val = 0;
 
 	ret = regmap_read(ovp->regmap, offset ==  MAX20339_LSW1_OFF ?
 			  MAX20339_STATUS2 : MAX20339_STATUS3, &val);
@@ -200,9 +201,11 @@ static bool max20339_is_lsw_closed(struct max20339_ovp *ovp, int offset)
 /* 1 same as state, 0 not same */
 static int max20339_test_lsw1_state(struct max20339_ovp *ovp, int state)
 {
+	const int poll_interval_ms = 20;
+	int ret = -ETIMEDOUT;
 	unsigned int val;
 	bool closed;
-	int ret;
+	int i;
 
 	ret = regmap_read(ovp->regmap, MAX20339_STATUS2, &val);
 	if (ret < 0)
@@ -212,9 +215,16 @@ static int max20339_test_lsw1_state(struct max20339_ovp *ovp, int state)
 	if (closed == state)
 		return 1;
 
-	ret = wait_event_timeout(ovp->gpio_get_wq,
-			   max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) == state,
-			   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
+	/* wait_event_timeout() timeout is not reliable */
+	for (i = 0; i <= MAX20339_LSW1_TIMEOUT_MS; i += poll_interval_ms) {
+		if (max20339_is_lsw_closed(ovp, MAX20339_LSW1_OFF) == state) {
+			ret = 0;
+			break;
+		}
+
+		mdelay(poll_interval_ms);
+	}
+
 	if (!ret)
 		dev_warn(&ovp->client->dev, "Timeout for lsw1==%d\n", state);
 
@@ -280,7 +290,7 @@ static int max20339_gpio_get(struct gpio_chip *chip, unsigned int offset)
 			return 1;
 
 		wait_event_timeout(ovp->gpio_get_wq, max20339_is_vin_valid(ovp),
-				   msecs_to_jiffies(MAX20339_GPIO_GET_TIMEOUT_MS));
+				   msecs_to_jiffies(MAX20339_VIN_VALID_TIMEOUT_MS));
 		return max20339_is_vin_valid(ovp) ? 1 : 0;
 	}
 
@@ -299,7 +309,7 @@ static void max20339_gpio_set(struct gpio_chip *chip,
 	int i;
 	struct max20339_ovp *ovp = gpiochip_get_data(chip);
 
-	dev_dbg(&ovp->client->dev, "%s %d", __func__, value);
+	dev_dbg(&ovp->client->dev, "%s off=%u val=%d", __func__, offset, value);
 	switch (offset) {
 	case MAX20339_LSW1_OFF:
 		sw_cntl_reg = MAX20339_SW_CNTL_REG;
