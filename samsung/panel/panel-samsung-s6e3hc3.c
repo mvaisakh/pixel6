@@ -586,18 +586,6 @@ static void s6e3hc3_write_display_mode(struct exynos_panel *ctx,
 	EXYNOS_DCS_WRITE_SEQ(ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY, val);
 }
 
-static void s6e3hc3_set_lp_mode(struct exynos_panel *ctx,
-		const struct exynos_panel_mode *pmode)
-{
-	if (ctx->hbm.local_hbm.enabled == true) {
-		/* TODO: turn off LHBM to avoid underrun */
-		dev_err(ctx->dev, "LHBM is on while switching to LP mode `%s`\n",
-			pmode->mode.name);
-	}
-
-	exynos_panel_set_lp_mode(ctx, pmode);
-}
-
 static void s6e3hc3_set_nolp_mode(struct exynos_panel *ctx,
 				  const struct exynos_panel_mode *pmode)
 {
@@ -796,7 +784,7 @@ static int s6e3hc3_enable(struct drm_panel *panel)
 	ctx->enabled = true;
 
 	if (pmode->exynos_mode.is_lp_mode)
-		s6e3hc3_set_lp_mode(ctx, pmode);
+		exynos_panel_set_lp_mode(ctx, pmode);
 	else
 		EXYNOS_DCS_WRITE_TABLE(ctx, display_on);
 
@@ -925,11 +913,9 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 	if (ctx->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
-	mutex_lock(&ctx->mode_lock);
 	pmode = ctx->current_mode;
 	if (unlikely(pmode == NULL)) {
 		dev_err(ctx->dev, "%s: unknown current mode\n", __func__);
-		mutex_unlock(&ctx->mode_lock);
 		return;
 	}
 
@@ -942,7 +928,6 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 		if (vrefresh != 120) {
 			dev_err(ctx->dev, "unexpected mode `%s` while enabling LHBM, give up\n",
 				pmode->mode.name);
-			mutex_unlock(&ctx->mode_lock);
 			return;
 		}
 	}
@@ -950,22 +935,6 @@ static void s6e3hc3_set_local_hbm_mode(struct exynos_panel *ctx,
 	ctx->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3hc3_extra_lhbm_settings(ctx, local_hbm_en);
 	s6e3hc3_write_display_mode(ctx, &pmode->mode);
-	mutex_unlock(&ctx->mode_lock);
-
-	if (!(ctx->hbm.update_flags & HBM_FLAG_LHBM_UPDATE)) {
-		struct drm_mode_config *config;
-		struct drm_crtc *crtc = NULL;
-
-		config = &ctx->exynos_connector.base.dev->mode_config;
-		drm_modeset_lock(&config->connection_mutex, NULL);
-		if (ctx->exynos_connector.base.state)
-			crtc = ctx->exynos_connector.base.state->crtc;
-		drm_modeset_unlock(&config->connection_mutex);
-		if (crtc) {
-			drm_crtc_wait_one_vblank(crtc);
-			drm_crtc_wait_one_vblank(crtc);
-		}
-	}
 }
 
 static void s6e3hc3_mode_set(struct exynos_panel *ctx,
@@ -1178,7 +1147,7 @@ static const struct drm_panel_funcs s6e3hc3_drm_funcs = {
 
 static const struct exynos_panel_funcs s6e3hc3_exynos_funcs = {
 	.set_brightness = exynos_panel_set_brightness,
-	.set_lp_mode = s6e3hc3_set_lp_mode,
+	.set_lp_mode = exynos_panel_set_lp_mode,
 	.set_nolp_mode = s6e3hc3_set_nolp_mode,
 	.set_binned_lp = exynos_panel_set_binned_lp,
 	.set_hbm_mode = s6e3hc3_set_hbm_mode,

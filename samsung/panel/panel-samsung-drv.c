@@ -2069,6 +2069,8 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
 	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+	struct drm_mode_config *config;
+	struct drm_crtc *crtc = NULL;
 	bool local_hbm_en;
 	int ret;
 
@@ -2089,7 +2091,20 @@ static ssize_t local_hbm_mode_store(struct device *dev,
 	}
 
 	dev_info(ctx->dev, "%s: set LHBM to %d\n", __func__, local_hbm_en);
+	mutex_lock(&ctx->mode_lock);
 	funcs->set_local_hbm_mode(ctx, local_hbm_en);
+	mutex_unlock(&ctx->mode_lock);
+
+	config = &ctx->exynos_connector.base.dev->mode_config;
+	drm_modeset_lock(&config->connection_mutex, NULL);
+	if (ctx->exynos_connector.base.state)
+		crtc = ctx->exynos_connector.base.state->crtc;
+	drm_modeset_unlock(&config->connection_mutex);
+	if (crtc) {
+		drm_crtc_wait_one_vblank(crtc);
+		drm_crtc_wait_one_vblank(crtc);
+	}
+
 	sysfs_notify(&bd->dev.kobj, NULL, "local_hbm_mode");
 	if (local_hbm_en) {
 		queue_delayed_work(ctx->hbm.wq,
@@ -2691,6 +2706,22 @@ static void exynos_panel_check_modeset_timing(struct drm_crtc *crtc,
 	DPU_ATRACE_END(__func__);
 }
 
+static void panel_update_local_hbm_locked(struct exynos_panel *ctx, bool enabled)
+{
+	if (!ctx->desc->exynos_panel_func->set_local_hbm_mode)
+		return;
+
+	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, enabled);
+	sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
+	if (enabled) {
+		queue_delayed_work(ctx->hbm.wq,
+				&ctx->hbm.local_hbm.timeout_work,
+				msecs_to_jiffies(ctx->hbm.local_hbm.max_timeout_ms));
+	} else {
+		cancel_delayed_work(&ctx->hbm.local_hbm.timeout_work);
+	}
+}
+
 static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 				  const struct drm_display_mode *mode,
 				  const struct drm_display_mode *adjusted_mode)
@@ -2742,6 +2773,12 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 		bool state_changed = false;
 
 		if (is_lp_mode && funcs->set_lp_mode) {
+			if (ctx->hbm.local_hbm.enabled && funcs->set_local_hbm_mode) {
+				dev_warn(ctx->dev,
+					"LHBM is on when switching to LP mode(%s), turn off LHBM first\n",
+					pmode->mode.name);
+				panel_update_local_hbm_locked(ctx, false);
+			}
 			funcs->set_lp_mode(ctx, pmode);
 			if (ctx->vddd && ctx->vddd_lp_uV)
 				regulator_set_voltage(ctx->vddd, ctx->vddd_lp_uV, ctx->vddd_lp_uV);
@@ -2793,7 +2830,9 @@ static void local_hbm_timeout_work(struct work_struct *work)
 	dev_dbg(ctx->dev, "%s\n", __func__);
 
 	dev_info(ctx->dev, "%s: turn off LHBM\n", __func__);
+	mutex_lock(&ctx->mode_lock);
 	ctx->desc->exynos_panel_func->set_local_hbm_mode(ctx, false);
+	mutex_unlock(&ctx->mode_lock);
 	sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
 }
 
@@ -2803,7 +2842,6 @@ static void hbm_work(struct work_struct *work)
 			 container_of(work, struct exynos_panel, hbm.hbm_work);
 	const struct exynos_panel_funcs *exynos_panel_func = ctx->desc->exynos_panel_func;
 	struct drm_crtc_commit *commit = ctx->hbm.commit;
-	bool handle_lhbm_timeout_work = false;
 	u32 delay_us, timeout_ms, te_period_us;
 	int fps;
 
@@ -2846,9 +2884,9 @@ static void hbm_work(struct work_struct *work)
 		DPU_ATRACE_BEGIN("set_lhbm");
 		dev_info(ctx->dev, "%s: set LHBM to %d (%dHz)\n",
 			__func__, ctx->hbm.local_hbm.request_hbm_mode, fps);
-		exynos_panel_func->set_local_hbm_mode(ctx, ctx->hbm.local_hbm.request_hbm_mode);
-		sysfs_notify(&ctx->bl->dev.kobj, NULL, "local_hbm_mode");
-		handle_lhbm_timeout_work = true;
+		mutex_lock(&ctx->mode_lock);
+		panel_update_local_hbm_locked(ctx, ctx->hbm.local_hbm.request_hbm_mode);
+		mutex_unlock(&ctx->mode_lock);
 		DPU_ATRACE_END("set_lhbm");
 	}
 
@@ -2876,15 +2914,6 @@ static void hbm_work(struct work_struct *work)
 	ctx->hbm.update_flags = 0;
 	mutex_unlock(&ctx->hbm.hbm_work_lock);
 
-	if (handle_lhbm_timeout_work) {
-		if (ctx->hbm.local_hbm.request_hbm_mode) {
-			queue_delayed_work(ctx->hbm.wq,
-				 &ctx->hbm.local_hbm.timeout_work,
-				 msecs_to_jiffies(ctx->hbm.local_hbm.max_timeout_ms));
-		} else {
-			cancel_delayed_work(&ctx->hbm.local_hbm.timeout_work);
-		}
-	}
 	DPU_ATRACE_END("hbm");
 }
 

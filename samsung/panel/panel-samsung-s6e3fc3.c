@@ -412,25 +412,8 @@ static void s6e3fc3_set_local_hbm_mode(struct exynos_panel *exynos_panel,
 	if (exynos_panel->hbm.local_hbm.enabled == local_hbm_en)
 		return;
 
-	mutex_lock(&exynos_panel->mode_lock);
 	exynos_panel->hbm.local_hbm.enabled = local_hbm_en;
 	s6e3fc3_update_wrctrld(exynos_panel);
-	mutex_unlock(&exynos_panel->mode_lock);
-
-	if (!(exynos_panel->hbm.update_flags & HBM_FLAG_LHBM_UPDATE)) {
-		struct drm_mode_config *config;
-		struct drm_crtc *crtc = NULL;
-
-		config = &exynos_panel->exynos_connector.base.dev->mode_config;
-		drm_modeset_lock(&config->connection_mutex, NULL);
-		if (exynos_panel->exynos_connector.base.state)
-			crtc = exynos_panel->exynos_connector.base.state->crtc;
-		drm_modeset_unlock(&config->connection_mutex);
-		if (crtc) {
-			drm_crtc_wait_one_vblank(crtc);
-			drm_crtc_wait_one_vblank(crtc);
-		}
-	}
 }
 
 static void s6e3fc3_mode_set(struct exynos_panel *ctx,
