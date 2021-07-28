@@ -512,6 +512,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 {
 	const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+	const int extben_gpio = charger->pdata->ext_ben_gpio;
 	const int req_pwr = EPP_MODE_REQ_PWR;
 	int ret;
 	u8 cdmode;
@@ -522,6 +523,10 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 	charger->wlc_dc_enabled = false;
 	if (dc_sw_gpio >= 0)
 		gpio_set_value_cansleep(dc_sw_gpio, 0);
+	if (extben_gpio)
+		gpio_set_value_cansleep(extben_gpio, 0);
+	p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, 0);
+
 
 	/* Check it's in Cap Div mode */
 	ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
@@ -1861,6 +1866,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	/* online = 2 enable LL, return < 0 if NOT on LL */
 	if (online == PPS_PSY_PROG_ONLINE) {
 		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+		const int extben_gpio = charger->pdata->ext_ben_gpio;
 		bool feat_enable;
 
 		pr_info("%s: online=%d, enabled=%d wlc_dc_enabled=%d prop_mode_en=%d\n",
@@ -1924,6 +1930,9 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		charger->wlc_dc_enabled = true;
 		if (dc_sw_gpio >= 0)
 			gpio_set_value_cansleep(dc_sw_gpio, 1);
+		if (extben_gpio)
+			gpio_set_value_cansleep(extben_gpio, 1);
+		p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, V5P0AP_SWITCH_EN);
 
 		return 1;
 	} else if (wlc_dc_enabled) {

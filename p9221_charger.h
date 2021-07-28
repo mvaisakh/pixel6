@@ -384,6 +384,8 @@
 #define P9412_PROP_MODE_ERR_STS_REG		0xC9
 #define P9412_VOUT_SET_REG			0x6C /* 2 byte 10 mV */
 #define P9412_DIE_TEMP_REG			0x46 /* 2 byte in C */
+#define P9412_V5P0AP_SWITCH_REG			0x81
+#define V5P0AP_SWITCH_EN			BIT(7)
 
 #define P9412_CDMODE_STS_REG			0x100
 #define P9412_CDMODE_REQ_REG			0x101
