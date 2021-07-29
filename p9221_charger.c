@@ -5589,6 +5589,8 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	charger->last_capacity = -1;
 	charger->count = 1;
+	bin_attr_rxdata.size = charger->rx_buf_size;
+	bin_attr_txdata.size = charger->tx_buf_size;
 	ret = sysfs_create_group(&charger->dev->kobj, &p9221_attr_group);
 	if (ret) {
 		dev_info(&client->dev, "sysfs_create_group failed\n");
