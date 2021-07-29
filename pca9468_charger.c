@@ -343,12 +343,9 @@ static int pca9468_set_input_current(struct pca9468_charger *pca9468,
 {
 	int ret, val;
 
-	/* round-up and increase one step */
+	/* just round-up */
 	iin = iin + PD_MSG_TA_CUR_STEP;
 	val = PCA9468_IIN_CFG(iin);
-
-	/* Set IIN_CFG to one step higher */
-	val = val + 1;
 	if (val > 0x32)
 		val = 0x32; /* maximum value is 5A */
 
