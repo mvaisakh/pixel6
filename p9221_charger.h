@@ -401,7 +401,7 @@
 #define P9412_PROP_TX_ID_REG			0x154
 
 #define P9412_DATA_BUF_START			0x804
-#define P9412_DATA_BUF_SIZE			0xFC /* 252 bytes */
+#define P9412_DATA_BUF_SIZE			0x7FC /* 2044 bytes */
 #define P9412_PP_SEND_BUF_START			0x50
 #define P9412_PP_RECV_BUF_START			0x58
 
