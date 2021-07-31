@@ -1013,16 +1013,24 @@ static ssize_t clients_show(
 {
 	struct edgetpu_dev *etdev = dev_get_drvdata(dev);
 	struct edgetpu_list_device_client *lc;
+	ssize_t len;
 	ssize_t ret = 0;
 
 	mutex_lock(&etdev->clients_lock);
 	for_each_list_device_client(etdev, lc) {
-		ret += scnprintf(buf, PAGE_SIZE - ret,
-				 "pid %d tgid %d wakelock %d\n",
-				 lc->client->pid, lc->client->tgid,
-				 NO_WAKELOCK(lc->client->wakelock) ?
-				 0 : lc->client->wakelock->req_count);
-		buf += ret;
+		struct edgetpu_device_group *group;
+
+		mutex_lock(&lc->client->group_lock);
+		group = lc->client->group;
+		len = scnprintf(buf, PAGE_SIZE - ret,
+				"pid %d tgid %d group %d wakelock %d\n",
+				lc->client->pid, lc->client->tgid,
+				group ? group->workload_id : -1,
+				NO_WAKELOCK(lc->client->wakelock) ?
+				0 : lc->client->wakelock->req_count);
+		mutex_unlock(&lc->client->group_lock);
+		buf += len;
+		ret += len;
 	}
 	mutex_unlock(&etdev->clients_lock);
 	return ret;

@@ -597,12 +597,12 @@ static void abrolhos_power_down(struct edgetpu_pm *etpm)
 	abrolhos_pm_cleanup_bts_scenario(etdev);
 
 	/*
-	 * A client closing the edgetpu device or crashing can leave the
-	 * TZ mailbox in acquired state, but firmware loses state on power down.
+	 * It should be impossible that power_down() is called when abpdev->secure_client is set.
+	 * Non-null secure_client implies ext mailbox is acquired, which implies wakelock is
+	 * acquired.
 	 * Clear the state here just in case.
 	 */
 	abpdev->secure_client = NULL;
-
 }
 
 static int abrolhos_pm_after_create(struct edgetpu_pm *etpm)

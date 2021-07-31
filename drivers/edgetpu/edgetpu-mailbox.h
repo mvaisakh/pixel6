@@ -362,7 +362,7 @@ int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_id, s16 vcid
 /*
  * Similar to edgetpu_mailbox_activate() but sends CLOSE_DEVICE KCI instead.
  */
-int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id);
+void edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id);
 /* Sets @eh->fw_state to 0. */
 void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh);
 /*

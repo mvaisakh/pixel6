@@ -1003,8 +1003,7 @@ static int edgetpu_mailbox_external_alloc_enable(struct edgetpu_client *client,
 	if (ret) {
 		while (i--) {
 			id = ext_mailbox->descriptors[i].mailbox->mailbox_id;
-			if (edgetpu_mailbox_deactivate(group->etdev, id))
-				etdev_err(group->etdev, "Deactivate mailbox %d failed", id);
+			edgetpu_mailbox_deactivate(group->etdev, id);
 		}
 		/*
 		 * Deactivate only fails if f/w is unresponsive which will put group
@@ -1050,8 +1049,7 @@ void edgetpu_mailbox_external_disable_free_locked(struct edgetpu_device_group *g
 	for (i = 0; i < ext_mailbox->count; i++) {
 		id = ext_mailbox->descriptors[i].mailbox->mailbox_id;
 		etdev_dbg(group->etdev, "Disabling mailbox: %d\n", id);
-		if (edgetpu_mailbox_deactivate(group->etdev, id))
-			etdev_err(group->etdev, "Deactivate mailbox %d failed", id);
+		edgetpu_mailbox_deactivate(group->etdev, id);
 	}
 	/*
 	 * Deactivate only fails if f/w is unresponsive which will put group
@@ -1092,8 +1090,13 @@ out:
 
 int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, int mailbox_id)
 {
-	int ret;
+	int ret = 0;
 
+	/*
+	 * A successful enable_ext() increases the wakelock event which prevents wakelock being
+	 * released, so theoretically the check fail here can only happen when enable_ext() is
+	 * failed or not called before.
+	 */
 	if (!edgetpu_wakelock_lock(client->wakelock)) {
 		etdev_err(client->etdev, "Disabling mailbox %d needs wakelock acquired\n",
 			  mailbox_id);
@@ -1107,10 +1110,7 @@ int edgetpu_mailbox_disable_ext(struct edgetpu_client *client, int mailbox_id)
 	}
 	etdev_dbg(client->etdev, "Disabling mailbox: %d\n", mailbox_id);
 
-	ret = edgetpu_mailbox_deactivate(client->etdev, mailbox_id);
-	if (ret)
-		etdev_err(client->etdev, "Deactivate mailbox %d failed: %d", mailbox_id, ret);
-
+	edgetpu_mailbox_deactivate(client->etdev, mailbox_id);
 out:
 	if (!ret)
 		edgetpu_wakelock_dec_event_locked(client->wakelock,
@@ -1143,7 +1143,7 @@ int edgetpu_mailbox_activate(struct edgetpu_dev *etdev, u32 mailbox_id, s16 vcid
 	return ret;
 }
 
-int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id)
+void edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id)
 {
 	struct edgetpu_handshake *eh = &etdev->mailbox_manager->open_devices;
 	const u32 bit = BIT(mailbox_id);
@@ -1152,12 +1152,15 @@ int edgetpu_mailbox_deactivate(struct edgetpu_dev *etdev, u32 mailbox_id)
 	mutex_lock(&eh->lock);
 	if (bit & eh->fw_state)
 		ret = edgetpu_kci_close_device(etdev->kci, mailbox_id);
-	if (!ret) {
-		eh->state &= ~bit;
-		eh->fw_state &= ~bit;
-	}
+	if (ret)
+		etdev_err(etdev, "Deactivate mailbox %d failed: %d", mailbox_id, ret);
+	/*
+	 * Always clears the states, FW should never reject CLOSE_DEVICE requests unless it's
+	 * unresponsive.
+	 */
+	eh->state &= ~bit;
+	eh->fw_state &= ~bit;
 	mutex_unlock(&eh->lock);
-	return ret;
 }
 
 void edgetpu_handshake_clear_fw_state(struct edgetpu_handshake *eh)

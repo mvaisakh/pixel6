@@ -172,8 +172,9 @@ int edgetpu_chip_acquire_ext_mailbox(struct edgetpu_client *client,
 		mutex_unlock(&apdev->tz_mailbox_lock);
 		return -EBUSY;
 	}
-	apdev->secure_client = client;
 	ret = edgetpu_mailbox_enable_ext(client, ABROLHOS_TZ_MAILBOX_ID, NULL);
+	if (!ret)
+		apdev->secure_client = client;
 	mutex_unlock(&apdev->tz_mailbox_lock);
 	return ret;
 }
@@ -212,7 +213,9 @@ void edgetpu_chip_client_remove(struct edgetpu_client *client)
 	struct abrolhos_platform_dev *apdev = to_abrolhos_dev(client->etdev);
 
 	mutex_lock(&apdev->tz_mailbox_lock);
-	if (apdev->secure_client == client)
+	if (apdev->secure_client == client) {
 		apdev->secure_client = NULL;
+		edgetpu_mailbox_disable_ext(client, ABROLHOS_TZ_MAILBOX_ID);
+	}
 	mutex_unlock(&apdev->tz_mailbox_lock);
 }
