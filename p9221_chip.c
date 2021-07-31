@@ -1189,14 +1189,26 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 		return 0;
 	}
 
-	if (val8 == P9XXX_SYS_OP_MODE_PROPRIETARY)
+	if (val8 == P9XXX_SYS_OP_MODE_PROPRIETARY) {
+
+		/* Step0: don't even try if power is not supported */
+		ret = chgr->reg_read_8(chgr, P9412_PROP_TX_POTEN_PWR_REG, &txpwr);
+		txpwr = txpwr / 2;
+		if (ret != 0 || txpwr < HPP_MODE_PWR_REQUIRE) {
+			dev_info(&chgr->client->dev,
+				"PROP_MODE: power=%dW not supported\n", txpwr);
+			chgr->prop_mode_en = false;
+			goto err_exit;
+		}
+
 		goto enable_capdiv;
+	}
 
 	ret = p9xxx_chip_get_tx_mfg_code(chgr, &chgr->mfg);
 	if (chgr->mfg != WLC_MFG_GOOGLE) {
 		dev_err(&chgr->client->dev,
 			"PROP_MODE: mfg code =%02x\n", chgr->mfg);
-                return 0;
+		return 0;
 	}
 
 	/*
