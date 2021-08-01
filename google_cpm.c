@@ -646,7 +646,7 @@ static int gcpm_chg_select(struct gcpm_drv *gcpm)
 		 * NOTE: the check in gcpm_chg_dc_check_source() prevents this
 		 * from retrying to enable DC while on NON PPS adapters.
 		 */
-		if (vbatt < vbatt_high && gcpm->dc_state == DC_DISABLED)
+		if (gcpm->fv_uv < vbatt_high && gcpm->dc_state == DC_DISABLED)
 			gcpm->dc_state = DC_IDLE;
 
 		/*
