@@ -4614,6 +4614,77 @@ static void p9221_check_dc_reset(struct p9221_charger_data *charger,
 }
 #endif
 
+static void p9221_handle_pp(struct p9221_charger_data *charger)
+{
+	u8 tmp;
+	u8 buff[sizeof(charger->pp_buf)];
+	char bufstr[sizeof(charger->pp_buf) * 3 + 1];
+	int msg_len;
+	int res;
+
+	res = p9xxx_chip_get_pp_buf(charger, buff, sizeof(buff));
+	if (res) {
+		dev_err(&charger->client->dev, "Failed to read PP: %d\n", res);
+		return;
+	}
+
+	/* WPC 1.2.4: 5.2.2.4.1 */
+	switch (buff[0]) {
+	case 0x00 ... 0x1F:
+		msg_len = 1 + (buff[0] - 0) / 32;
+		break;
+	case 0x20 ... 0x7F:
+		msg_len = 2 + (buff[0] - 32) / 16;
+		break;
+	case 0x80 ... 0xDF:
+		msg_len = 8 + (buff[0] - 128) / 8;
+		break;
+	case 0xE0 ... 0xFF:
+		msg_len = 20 + (buff[0] - 224) / 4;
+		break;
+	}
+
+	/* len is the length of the data + 1 for header. (cksum not supplied) */
+	p9221_hex_str(buff, msg_len + 1, bufstr, sizeof(bufstr), false);
+	dev_info(&charger->client->dev, "Received PP: %s\n", bufstr);
+	logbuffer_log(charger->log, "Received PP: %s", bufstr);
+
+	if ((buff[0] == CHARGE_STATUS_PACKET_HEADER) &&
+	    (buff[1] == PP_TYPE_POWER_CONTROL) &&
+	    (buff[2] == PP_SUBTYPE_SOC)) {
+		u8 crc = p9221_crc8(&buff[1], CHARGE_STATUS_PACKET_SIZE - 1,
+				    CRC8_INIT_VALUE);
+		if (buff[4] != crc) {
+			dev_err(&charger->client->dev, "PP CSP CRC mismatch\n");
+			return;
+		}
+		charger->rtx_csp = buff[3] / 2;
+		dev_info(&charger->client->dev, "Received Tx's soc=%d\n",
+			 charger->rtx_csp);
+		schedule_work(&charger->uevent_work);
+		return;
+	}
+
+	/*
+	 * We only care about 0x4F proprietary packets.  Don't touch pp_buf
+	 * if there is no match.
+	 */
+	if (buff[0] != 0x4f)
+		return;
+	memcpy(charger->pp_buf, buff, sizeof(charger->pp_buf));
+	charger->pp_buf_valid = 1;
+
+	/* Check if charging on a Tx phone */
+	tmp = charger->pp_buf[4] & ACCESSORY_TYPE_MASK;
+	charger->chg_on_rtx = (tmp == ACCESSORY_TYPE_PHONE);
+	dev_info(&charger->client->dev, "chg_on_rtx=%d\n", charger->chg_on_rtx);
+	if (charger->chg_on_rtx) {
+		vote(charger->dc_icl_votable, P9382A_RTX_VOTER, true,
+		     P9221_DC_ICL_RTX_UA);
+		dev_info(&charger->client->dev, "set ICL to %dmA",
+			 P9221_DC_ICL_RTX_UA / 1000);
+	}
+}
 
 /* Handler for R5 and R7 chips */
 static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
@@ -4660,49 +4731,7 @@ static void p9221_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 
 	/* Proprietary packet */
 	if (irq_src & charger->ints.pp_rcvd_bit) {
-		u8 tmp, buff[sizeof(charger->pp_buf)], crc;
-
-		/* TODO: extract to a separate function */
-		res = p9xxx_chip_get_pp_buf(charger, buff, sizeof(buff));
-		if (res) {
-			dev_err(&charger->client->dev,
-				"Failed to read PP len: %d\n", res);
-		} else if (res == 0 && buff[0] == CHARGE_STATUS_PACKET_HEADER) {
-			crc = p9221_crc8(&buff[1], CHARGE_STATUS_PACKET_SIZE - 1,
-					 CRC8_INIT_VALUE);
-			if ((buff[1] == PP_TYPE_POWER_CONTROL) &&
-			    (buff[2] == PP_SUBTYPE_SOC) &&
-			    (buff[4] == crc)) {
-				charger->rtx_csp = buff[3] / 2;
-				dev_info(&charger->client->dev,
-					 "Received Tx's soc=%d\n",
-					 charger->rtx_csp);
-				schedule_work(&charger->uevent_work);
-			}
-		} else {
-			memcpy(charger->pp_buf, buff, sizeof(charger->pp_buf));
-
-			/* We only care about PP which come with 0x4F header */
-			charger->pp_buf_valid = (charger->pp_buf[0] == 0x4F);
-
-			p9221_hex_str(charger->pp_buf, sizeof(charger->pp_buf),
-				      charger->pp_buf_str, sizeof(charger->pp_buf_str),
-				      false);
-			dev_info(&charger->client->dev, "Received PP: %s\n", charger->pp_buf_str);
-
-			/* Check if charging on a Tx phone */
-			tmp = charger->pp_buf[4] & ACCESSORY_TYPE_MASK;
-			charger->chg_on_rtx = (tmp == ACCESSORY_TYPE_PHONE);
-			dev_info(&charger->client->dev,
-				 "chg_on_rtx=%d\n", charger->chg_on_rtx);
-			if (charger->chg_on_rtx) {
-				vote(charger->dc_icl_votable, P9382A_RTX_VOTER,
-				     true, P9221_DC_ICL_RTX_UA);
-				dev_info(&charger->client->dev,
-					 "set ICL to %dmA",
-					 P9221_DC_ICL_RTX_UA/1000);
-			}
-		}
+		p9221_handle_pp(charger);
 	}
 
 	/* CC Reset complete */
