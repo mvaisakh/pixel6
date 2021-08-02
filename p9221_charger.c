@@ -408,6 +408,12 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 
 	if (no_csp) {
 		charger->last_capacity = -1;
+		if (charger->com_busy >= COM_BUSY_MAX) {
+			if (charger->chip_send_ccreset(charger) == 0)
+				charger->com_busy = 0;
+		} else {
+			charger->com_busy += 1;
+		}
 		logbuffer_log(charger->rtx_log,
 			     "com_busy=%d, did not send csp",
 			     charger->com_busy);
@@ -419,7 +425,7 @@ static int p9221_send_csp(struct p9221_charger_data *charger, u8 stat)
 	if (charger->ben_state) {
 		ret = charger->chip_send_csp_in_txmode(charger, stat);
 		if (ret == 0)
-			charger->com_busy = true;
+			charger->com_busy += 1;
 	}
 
 	if (charger->online) {
@@ -512,6 +518,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 {
 	const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+	const int extben_gpio = charger->pdata->ext_ben_gpio;
 	const int req_pwr = EPP_MODE_REQ_PWR;
 	int ret;
 	u8 cdmode;
@@ -522,6 +529,10 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 	charger->wlc_dc_enabled = false;
 	if (dc_sw_gpio >= 0)
 		gpio_set_value_cansleep(dc_sw_gpio, 0);
+	if (extben_gpio)
+		gpio_set_value_cansleep(extben_gpio, 0);
+	p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, 0);
+
 
 	/* Check it's in Cap Div mode */
 	ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
@@ -1861,6 +1872,7 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	/* online = 2 enable LL, return < 0 if NOT on LL */
 	if (online == PPS_PSY_PROG_ONLINE) {
 		const int dc_sw_gpio = charger->pdata->dc_switch_gpio;
+		const int extben_gpio = charger->pdata->ext_ben_gpio;
 		bool feat_enable;
 
 		pr_info("%s: online=%d, enabled=%d wlc_dc_enabled=%d prop_mode_en=%d\n",
@@ -1924,6 +1936,9 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		charger->wlc_dc_enabled = true;
 		if (dc_sw_gpio >= 0)
 			gpio_set_value_cansleep(dc_sw_gpio, 1);
+		if (extben_gpio)
+			gpio_set_value_cansleep(extben_gpio, 1);
+		p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, V5P0AP_SWITCH_EN);
 
 		return 1;
 	} else if (wlc_dc_enabled) {
@@ -1976,6 +1991,9 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 	/* p9221_is_online() is true when the device in TX mode. */
 	if (charger->online && charger->last_capacity >= 0 && charger->last_capacity <= 100)
 		mod_delayed_work(system_wq, &charger->charge_stats_work, 0);
+
+	if (!charger->online)
+		goto unlock_done;
 
 	/* trigger DD */
 	threshold = (charger->mitigate_threshold > 0) ?
@@ -3539,22 +3557,15 @@ static ssize_t rtx_status_show(struct device *dev,
 	static const char * const rtx_state_text[] = {
 		"not support", "available", "active", "disabled" };
 
-	u8 reg;
-	int ret;
-
 	if (!charger->pdata->has_rtx)
 		charger->rtx_state = RTX_NOTSUPPORTED;
 
 	if (p9221_is_online(charger)) {
-		charger->rtx_state = RTX_DISABLED;
-		ret = charger->chip_get_sys_mode(charger, &reg);
-		if ((ret == 0) && (reg == P9XXX_SYS_OP_MODE_TX_MODE))
+		if (charger->ben_state || charger->rtx_reset_cnt)
 			charger->rtx_state = RTX_ACTIVE;
+		else
+			charger->rtx_state = RTX_DISABLED;
 	} else {
-		/* FIXME: b/147213330
-		 * if otg enabled, rtx disabled.
-		 * if otg disabled, rtx available.
-		 */
 		charger->rtx_state = RTX_AVAILABLE;
 	}
 
@@ -3886,8 +3897,11 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 {
 	int ret = 0, tx_icl = -1;
 
+	mutex_lock(&charger->rtx_lock);
+
 	if (enable == 0) {
 		logbuffer_log(charger->rtx_log, "disable rtx\n");
+
 		if (charger->is_rtx_mode) {
 			ret = charger->chip_tx_mode_en(charger, false);
 			charger->is_rtx_mode = false;
@@ -3933,7 +3947,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 			goto exit;
 		}
 
-		charger->com_busy = false;
+		charger->com_busy = 0;
 		charger->rtx_csp = 0;
 		charger->rtx_err = RTX_NO_ERROR;
 		charger->is_rtx_mode = false;
@@ -3983,9 +3997,14 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 		}
 	}
 exit:
-	schedule_work(&charger->uevent_work);
-	if (enable == 0)
+	if (charger->rtx_reset_cnt == 0)
+		schedule_work(&charger->uevent_work);
+	if (enable == 0 &&
+	    charger->rtx_reset_cnt == 0)
 		pm_relax(charger->dev);
+
+	mutex_unlock(&charger->rtx_lock);
+
 	return ret;
 }
 
@@ -4010,12 +4029,19 @@ static ssize_t rtx_store(struct device *dev,
 	struct p9221_charger_data *charger = i2c_get_clientdata(client);
 	int ret;
 
-	if (buf[0] == '0')
+	if (buf[0] == '0') {
+		dev_info(&charger->client->dev, "battery share off\n");
+		logbuffer_log(charger->rtx_log, "battery share off");
+		charger->rtx_reset_cnt = 0;
 		ret = p9382_set_rtx(charger, false);
-	else if (buf[0] == '1')
+	} else if (buf[0] == '1') {
+		dev_info(&charger->client->dev, "battery share on\n");
+		logbuffer_log(charger->rtx_log, "battery share on");
+		charger->rtx_reset_cnt = 0;
 		ret = p9382_set_rtx(charger, true);
-	else
+	} else {
 		return -EINVAL;
+	}
 
 	if (ret == 0)
 		return count;
@@ -4316,6 +4342,12 @@ static void p9382_txid_work(struct work_struct *work)
 	int ret = 0;
 
 	if (charger->ints.pppsent_bit && charger->com_busy) {
+		if (charger->com_busy >= COM_BUSY_MAX) {
+			if (charger->chip_send_ccreset(charger) == 0)
+				charger->com_busy = 0;
+		} else {
+			charger->com_busy += 1;
+		}
 		schedule_delayed_work(&charger->txid_work,
 				      msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		logbuffer_log(charger->rtx_log,
@@ -4331,13 +4363,40 @@ static void p9382_txid_work(struct work_struct *work)
 			      sizeof(charger->fast_id_str), false);
 		dev_info(&charger->client->dev, "Fast serial ID send(%s)\n",
 			 charger->fast_id_str);
-		charger->com_busy = true;
+		charger->com_busy += 1;
 	}
+}
+
+static void p9xxx_reset_rtx_for_ocp(struct p9221_charger_data *charger)
+{
+	charger->rtx_reset_cnt += 1;
+
+	if (charger->rtx_reset_cnt == RTX_RESET_COUNT_MAX) {
+		  charger->rtx_err = RTX_HARD_OCP;
+		  charger->rtx_reset_cnt = 0;
+	}
+
+	charger->is_rtx_mode = false;
+	p9382_set_rtx(charger, false);
+
+	if (charger->rtx_reset_cnt) {
+		dev_info(&charger->client->dev, "re-enable RTx mode, cnt=%d\n", charger->rtx_reset_cnt);
+		logbuffer_log(charger->rtx_log, "re-enable RTx mode, cnt=%d\n", charger->rtx_reset_cnt);
+		p9382_set_rtx(charger, true);
+	}
+}
+
+static void p9xxx_rtx_reset_work(struct work_struct *work)
+{
+	struct p9221_charger_data *charger = container_of(work,
+			struct p9221_charger_data, rtx_reset_work);
+
+	p9xxx_reset_rtx_for_ocp(charger);
 }
 
 static void p9382_rtx_work(struct work_struct *work)
 {
-	u8 mode_reg;
+	u8 mode_reg = 0;
 	int ret = 0;
 	struct p9221_charger_data *charger = container_of(work,
 			struct p9221_charger_data, rtx_work.work);
@@ -4347,16 +4406,17 @@ static void p9382_rtx_work(struct work_struct *work)
 
 	/* Check if RTx mode is auto turn off */
 	ret = charger->chip_get_sys_mode(charger, &mode_reg);
-	if (ret == 0) {
-		if (charger->is_rtx_mode && !(mode_reg & P9XXX_SYS_OP_MODE_TX_MODE)) {
-			logbuffer_log(charger->rtx_log,
-				      "is_rtx_on: ben=%d, mode=%02x",
-				      charger->ben_state, mode_reg);
-			charger->is_rtx_mode = false;
-			p9382_set_rtx(charger, false);
-		}
-	}
+	if ((ret == 0) && (mode_reg & P9XXX_SYS_OP_MODE_TX_MODE))
+		goto reschedule;
 
+	dev_info(&charger->client->dev, "is_rtx_on: ben=%d, mode=%02x, ret=%d",
+		 charger->ben_state, mode_reg, ret);
+	logbuffer_log(charger->rtx_log, "is_rtx_on: ben=%d, mode=%02x, ret=%d",
+		      charger->ben_state, mode_reg, ret);
+
+	p9xxx_reset_rtx_for_ocp(charger);
+
+reschedule:
 	schedule_delayed_work(&charger->rtx_work,
 			      msecs_to_jiffies(P9382_RTX_TIMEOUT_MS));
 }
@@ -4406,7 +4466,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 	}
 
 	if (irq_src & pppsent_bit)
-		charger->com_busy = false;
+		charger->com_busy = 0;
 
 	if (irq_src & (hard_ocp_bit | tx_conflict_bit)) {
 		if (irq_src & hard_ocp_bit)
@@ -4419,8 +4479,14 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		logbuffer_log(charger->rtx_log, "rtx_err=%d, STATUS_REG=%04x",
 			      charger->rtx_err, status_reg);
 
-		charger->is_rtx_mode = false;
-		p9382_set_rtx(charger, false);
+		cancel_delayed_work_sync(&charger->rtx_work);
+		if (charger->rtx_err == RTX_HARD_OCP) {
+			charger->rtx_err = 0;
+			schedule_work(&charger->rtx_reset_work);
+		} else {
+			charger->is_rtx_mode = false;
+			p9382_set_rtx(charger, false);
+		}
 	}
 
 	if (irq_src & rx_connected_bit) {
@@ -4436,7 +4502,7 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 					msecs_to_jiffies(TXID_SEND_DELAY_MS));
 		} else {
 			charger->rtx_csp = 0;
-			charger->com_busy = false;
+			charger->com_busy = 0;
 		}
 	}
 
@@ -5327,6 +5393,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	mutex_init(&charger->cmd_lock);
 	mutex_init(&charger->stats_lock);
 	mutex_init(&charger->chg_features.feat_lock);
+	mutex_init(&charger->rtx_lock);
 	timer_setup(&charger->vrect_timer, p9221_vrect_timer_handler, 0);
 	timer_setup(&charger->align_timer, p9221_align_timer_handler, 0);
 	INIT_DELAYED_WORK(&charger->dcin_work, p9221_dcin_work);
@@ -5339,6 +5406,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&charger->rtx_work, p9382_rtx_work);
 	INIT_WORK(&charger->uevent_work, p9221_uevent_work);
 	INIT_WORK(&charger->rtx_disable_work, p9382_rtx_disable_work);
+	INIT_WORK(&charger->rtx_reset_work, p9xxx_rtx_reset_work);
 	INIT_DELAYED_WORK(&charger->power_mitigation_work,
 			  p9221_power_mitigation_work);
 	alarm_init(&charger->icl_ramp_alarm, ALARM_BOOTTIME,
@@ -5521,6 +5589,8 @@ static int p9221_charger_probe(struct i2c_client *client,
 
 	charger->last_capacity = -1;
 	charger->count = 1;
+	bin_attr_rxdata.size = charger->rx_buf_size;
+	bin_attr_txdata.size = charger->tx_buf_size;
 	ret = sysfs_create_group(&charger->dev->kobj, &p9221_attr_group);
 	if (ret) {
 		dev_info(&client->dev, "sysfs_create_group failed\n");
@@ -5610,6 +5680,7 @@ static int p9221_charger_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&charger->rtx_work);
 	cancel_work_sync(&charger->uevent_work);
 	cancel_work_sync(&charger->rtx_disable_work);
+	cancel_work_sync(&charger->rtx_reset_work);
 	cancel_delayed_work_sync(&charger->power_mitigation_work);
 	alarm_try_to_cancel(&charger->icl_ramp_alarm);
 	del_timer_sync(&charger->vrect_timer);
@@ -5620,6 +5691,7 @@ static int p9221_charger_remove(struct i2c_client *client)
 	mutex_destroy(&charger->io_lock);
 	mutex_destroy(&charger->stats_lock);
 	mutex_destroy(&charger->chg_features.feat_lock);
+	mutex_destroy(&charger->rtx_lock);
 	if (charger->log)
 		logbuffer_unregister(charger->log);
 	if (charger->rtx_log)

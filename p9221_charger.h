@@ -344,6 +344,7 @@
 #define P9382A_COM_CHAN_SEND_SIZE_REG		0x101
 #define BIDI_COM_PACKET_TYPE			0x98
 #define PROPRIETARY_PACKET_TYPE			0x80
+#define CHANNEL_RESET_PACKET_TYPE		0xA8
 #define FAST_SERIAL_ID_HEADER			0x4F
 #define FAST_SERIAL_ID_SIZE			4
 #define ACCESSORY_TYPE_MASK			0x7
@@ -358,6 +359,7 @@
 #define TXID_SEND_DELAY_MS			(1 * 1000)
 #define TXSOC_SEND_DELAY_MS			(5 * 1000)
 
+#define COM_BUSY_MAX				10
 /*
  * P9412 unique registers
  */
@@ -384,6 +386,8 @@
 #define P9412_PROP_MODE_ERR_STS_REG		0xC9
 #define P9412_VOUT_SET_REG			0x6C /* 2 byte 10 mV */
 #define P9412_DIE_TEMP_REG			0x46 /* 2 byte in C */
+#define P9412_V5P0AP_SWITCH_REG			0x81
+#define V5P0AP_SWITCH_EN			BIT(7)
 
 #define P9412_CDMODE_STS_REG			0x100
 #define P9412_CDMODE_REQ_REG			0x101
@@ -397,7 +401,7 @@
 #define P9412_PROP_TX_ID_REG			0x154
 
 #define P9412_DATA_BUF_START			0x804
-#define P9412_DATA_BUF_SIZE			0xFC /* 252 bytes */
+#define P9412_DATA_BUF_SIZE			0x7FC /* 2044 bytes */
 #define P9412_PP_SEND_BUF_START			0x50
 #define P9412_PP_RECV_BUF_START			0x58
 
@@ -447,6 +451,8 @@
 
 #define P9XXX_CHARGER_FEATURE_CACHE_SIZE	32
 #define HPP_MODE_PWR_REQUIRE			23
+
+#define RTX_RESET_COUNT_MAX			3
 
 /* Features */
 typedef enum {
@@ -618,6 +624,7 @@ struct p9221_charger_data {
 	struct delayed_work		power_mitigation_work;
 	struct work_struct		uevent_work;
 	struct work_struct		rtx_disable_work;
+	struct work_struct		rtx_reset_work;
 	struct alarm			icl_ramp_alarm;
 	struct timer_list		vrect_timer;
 	struct timer_list		align_timer;
@@ -650,7 +657,7 @@ struct p9221_charger_data {
 	u16				auth_type;
 	bool				tx_done;
 	bool				tx_busy;
-	bool				com_busy;
+	u32				com_busy;
 	bool				check_np;
 	bool				check_dc;
 	bool				check_det;
@@ -684,6 +691,7 @@ struct p9221_charger_data {
 	int				rtx_state;
 	u32				rtx_csp;
 	int				rtx_err;
+	int				rtx_reset_cnt;
 	bool				chg_on_rtx;
 	bool				is_rtx_mode;
 	bool				prop_mode_en;
@@ -695,6 +703,7 @@ struct p9221_charger_data {
 	u32				fod_cnt;
 	bool				trigger_power_mitigation;
 	bool				wait_for_online;
+	struct mutex			rtx_lock;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;

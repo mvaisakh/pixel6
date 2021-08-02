@@ -343,12 +343,9 @@ static int pca9468_set_input_current(struct pca9468_charger *pca9468,
 {
 	int ret, val;
 
-	/* round-up and increase one step */
+	/* just round-up */
 	iin = iin + PD_MSG_TA_CUR_STEP;
 	val = PCA9468_IIN_CFG(iin);
-
-	/* Set IIN_CFG to one step higher */
-	val = val + 1;
 	if (val > 0x32)
 		val = 0x32; /* maximum value is 5A */
 
@@ -4030,12 +4027,14 @@ static int pca9468_set_charging_enabled(struct pca9468_charger *pca9468, int ind
 	if (pca9468->charging_state == DC_STATE_CHARGING_DONE)
 		index = 0;
 
-	logbuffer_prlog(pca9468, LOGLEVEL_DEBUG,
-			"%s: pps_idx=%d->%d charging_state=%d timer_id=%d", __func__,
-			pca9468->pps_index, index, pca9468->charging_state,
-			pca9468->timer_id);
-
 	if (index == 0) {
+
+		logbuffer_prlog(pca9468, LOGLEVEL_DEBUG,
+				"%s: stop pps_idx=%d->%d charging_state=%d timer_id=%d",
+				__func__, pca9468->pps_index, index,
+				pca9468->charging_state,
+				pca9468->timer_id);
+
 		/* this is the same as stop charging */
 		pca9468->pps_index = 0;
 
@@ -4048,6 +4047,12 @@ static int pca9468_set_charging_enabled(struct pca9468_charger *pca9468, int ind
 		mod_delayed_work(pca9468->dc_wq, &pca9468->timer_work,
 				 msecs_to_jiffies(pca9468->timer_period));
 	} else if (pca9468->charging_state == DC_STATE_NO_CHARGING) {
+		logbuffer_prlog(pca9468, LOGLEVEL_DEBUG,
+				"%s: start pps_idx=%d->%d charging_state=%d timer_id=%d",
+				__func__, pca9468->pps_index, index,
+				pca9468->charging_state,
+				pca9468->timer_id);
+
 		/* Start Direct Charging on Index */
 		pca9468->dc_start_time = get_boot_sec();
 		p9468_chg_stats_init(&pca9468->chg_data);
