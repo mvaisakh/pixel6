@@ -355,5 +355,6 @@ int p9468_chg_stats_update(struct p9468_chg_stats *chg_data,
 			   const struct pca9468_charger *pca9468);
 int p9468_chg_stats_done(struct p9468_chg_stats *chg_data,
 			 const struct pca9468_charger *pca9468);
+void p9468_chg_stats_dump(const struct pca9468_charger *pca9468);
 
 #endif
