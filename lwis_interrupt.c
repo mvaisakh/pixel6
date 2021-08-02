@@ -377,10 +377,23 @@ int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list)
 int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
 				  irq_handler_t handler, void *dev)
 {
+	/* Using high level core for camera IRQ */
+	const unsigned int cpu = 0x7;
+	int ret = 0;
+
 	BUG_ON(!list);
 
-	return request_irq(list->irq[index].irq, handler, IRQF_SHARED, list->irq[index].full_name,
-			   dev);
+	ret = request_irq(list->irq[index].irq, handler, IRQF_SHARED, list->irq[index].full_name,
+			  dev);
+	if (ret) {
+		return ret;
+	}
+	/* TODO: Put this under platform-specific portion of LWIS,
+	 * as CPU could have different meanings for different platforms */
+	if (irq_set_affinity_hint(list->irq[index].irq, cpumask_of(cpu)) != 0) {
+		pr_warn("Interrupt %s cannot set affinity.\n", list->irq[index].full_name);
+	}
+	return ret;
 }
 
 int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
