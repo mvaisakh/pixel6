@@ -10,6 +10,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-buffer: " fmt
 
+#include <linux/fs.h>
 #include <linux/slab.h>
 #include <soc/google/pt.h>
 
@@ -17,6 +18,40 @@
 #include "lwis_device.h"
 #include "lwis_device_slc.h"
 #include "lwis_platform_dma.h"
+
+static struct lwis_buffer_enrollment_list *enrollment_list_find(struct lwis_client *client,
+								dma_addr_t dma_vaddr)
+{
+	struct lwis_buffer_enrollment_list *list;
+	hash_for_each_possible (client->enrolled_buffers, list, node, dma_vaddr) {
+		if (list->vaddr == dma_vaddr) {
+			return list;
+		}
+	}
+	return NULL;
+}
+
+static struct lwis_buffer_enrollment_list *enrollment_list_create(struct lwis_client *client,
+								  dma_addr_t dma_vaddr)
+{
+	struct lwis_buffer_enrollment_list *enrollment_list =
+		kmalloc(sizeof(struct lwis_buffer_enrollment_list), GFP_KERNEL);
+	if (!enrollment_list) {
+		dev_err(client->lwis_dev->dev, "Cannot allocate new entrollment list\n");
+		return NULL;
+	}
+	enrollment_list->vaddr = dma_vaddr;
+	INIT_LIST_HEAD(&enrollment_list->list);
+	hash_add(client->enrolled_buffers, &enrollment_list->node, dma_vaddr);
+	return enrollment_list;
+}
+
+static struct lwis_buffer_enrollment_list *
+enrollment_list_find_or_create(struct lwis_client *client, dma_addr_t dma_vaddr)
+{
+	struct lwis_buffer_enrollment_list *list = enrollment_list_find(client, dma_vaddr);
+	return (list == NULL) ? enrollment_list_create(client, dma_vaddr) : list;
+}
 
 int lwis_buffer_alloc(struct lwis_client *lwis_client, struct lwis_alloc_buffer_info *alloc_info,
 		      struct lwis_allocated_buffer *buffer)
@@ -104,6 +139,8 @@ int lwis_buffer_free(struct lwis_client *lwis_client, struct lwis_allocated_buff
 
 int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buffer *buffer)
 {
+	struct lwis_buffer_enrollment_list *enrollment_list;
+	struct list_head *it_enrollment;
 	struct lwis_enrolled_buffer *old_buffer;
 
 	if (!lwis_client) {
@@ -158,28 +195,37 @@ int lwis_buffer_enroll(struct lwis_client *lwis_client, struct lwis_enrolled_buf
 	if (IS_ERR_OR_NULL((void *)buffer->info.dma_vaddr)) {
 		dev_err(lwis_client->lwis_dev->dev, "Could not map dma vaddr for fd: %d",
 			buffer->info.fd);
-		dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
-					 buffer->dma_direction);
-		dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
-		dma_buf_put(buffer->dma_buf);
-		return -EINVAL;
+		goto err;
 	}
 
-	old_buffer = lwis_client_enrolled_buffer_find(lwis_client, buffer->info.dma_vaddr);
-
-	if (old_buffer) {
-		dev_err(lwis_client->lwis_dev->dev, "Duplicate vaddr %pad for fd %d",
-			&buffer->info.dma_vaddr, buffer->info.fd);
-		dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
-					 buffer->dma_direction);
-		dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
-		dma_buf_put(buffer->dma_buf);
-		return -EINVAL;
+	// Insert the new enrollment to the enrolled_buffers hashtable.
+	enrollment_list = enrollment_list_find_or_create(lwis_client, buffer->info.dma_vaddr);
+	if (!enrollment_list) {
+		dev_err(lwis_client->lwis_dev->dev, "Cannot create enrollment list\n");
+		goto err;
 	}
 
-	hash_add(lwis_client->enrolled_buffers, &buffer->node, buffer->info.dma_vaddr);
+	// Check if there was duplicated identical enrollment.
+	list_for_each (it_enrollment, &enrollment_list->list) {
+		old_buffer = list_entry(it_enrollment, struct lwis_enrolled_buffer, list_node);
+		if (old_buffer->info.fd == buffer->info.fd &&
+		    old_buffer->info.dma_vaddr == buffer->info.dma_vaddr) {
+			dev_err(lwis_client->lwis_dev->dev, "Duplicate vaddr %pad for fd %d",
+				&buffer->info.dma_vaddr, buffer->info.fd);
+			goto err;
+		}
+	}
+
+	list_add_tail(&buffer->list_node, &enrollment_list->list);
+	buffer->enrollment_list = enrollment_list;
 
 	return 0;
+err:
+	dma_buf_unmap_attachment(buffer->dma_buf_attachment, buffer->sg_table,
+				 buffer->dma_direction);
+	dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
+	dma_buf_put(buffer->dma_buf);
+	return -EINVAL;
 }
 
 int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_buffer *buffer)
@@ -200,23 +246,34 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_
 	dma_buf_detach(buffer->dma_buf, buffer->dma_buf_attachment);
 	dma_buf_put(buffer->dma_buf);
 	/* Delete the node from the hash table */
-	hash_del(&buffer->node);
+	list_del(&buffer->list_node);
+	if (list_empty(&buffer->enrollment_list->list)) {
+		hash_del(&buffer->enrollment_list->node);
+	}
 	return 0;
 }
 
 struct lwis_enrolled_buffer *lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
-							      dma_addr_t dma_vaddr)
+							      int fd, dma_addr_t dma_vaddr)
 {
-	struct lwis_enrolled_buffer *p;
+	struct lwis_buffer_enrollment_list *enrollment_list;
+	struct lwis_enrolled_buffer *buffer;
+	struct list_head *it_enrollment;
 
 	if (!lwis_client) {
 		pr_err("lwis_client_enrolled_buffer_find: LWIS client is NULL\n");
 		return NULL;
 	}
 
-	hash_for_each_possible (lwis_client->enrolled_buffers, p, node, dma_vaddr) {
-		if (p->info.dma_vaddr == dma_vaddr) {
-			return p;
+	enrollment_list = enrollment_list_find(lwis_client, dma_vaddr);
+	if (!enrollment_list || list_empty(&enrollment_list->list)) {
+		return NULL;
+	}
+
+	list_for_each (it_enrollment, &enrollment_list->list) {
+		buffer = list_entry(it_enrollment, struct lwis_enrolled_buffer, list_node);
+		if (buffer->info.fd == fd && buffer->info.dma_vaddr == dma_vaddr) {
+			return buffer;
 		}
 	}
 
@@ -226,10 +283,13 @@ struct lwis_enrolled_buffer *lwis_client_enrolled_buffer_find(struct lwis_client
 int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 {
 	/* Our hash table iterator */
-	struct lwis_enrolled_buffer *buffer;
+	struct lwis_buffer_enrollment_list *enrollment_list;
 	/* Temporary vars for hash table traversal */
 	struct hlist_node *n;
 	int i;
+	/* Enrollment list iterator */
+	struct list_head *it_enrollment, *it_enrollment_tmp;
+	struct lwis_enrolled_buffer *buffer;
 
 	if (!lwis_client) {
 		pr_err("lwis_client_enrolled_buffers_clear: LWIS client is NULL\n");
@@ -237,11 +297,15 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 	}
 
 	/* Iterate over the entire hash table */
-	hash_for_each_safe (lwis_client->enrolled_buffers, i, n, buffer, node) {
-		/* Disenroll the buffer */
-		lwis_buffer_disenroll(lwis_client, buffer);
-		/* Free the object */
-		kfree(buffer);
+	hash_for_each_safe (lwis_client->enrolled_buffers, i, n, enrollment_list, node) {
+		list_for_each_safe (it_enrollment, it_enrollment_tmp, &enrollment_list->list) {
+			buffer = list_entry(it_enrollment, struct lwis_enrolled_buffer, list_node);
+			/* Disenroll the buffer */
+			lwis_buffer_disenroll(lwis_client, buffer);
+			/* Free the object */
+			kfree(buffer);
+		}
+		kfree(enrollment_list);
 	}
 
 	return 0;

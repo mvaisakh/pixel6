@@ -137,7 +137,10 @@ static void list_allocated_buffers(struct lwis_client *client, char *k_buf, size
 static void list_enrolled_buffers(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
 	char tmp_buf[128] = {};
+	struct lwis_buffer_enrollment_list *enrollment_list;
+	struct list_head *it_enrollment;
 	struct lwis_enrolled_buffer *buffer;
+	dma_addr_t end_dma_vaddr;
 	int i;
 	int idx = 0;
 
@@ -147,14 +150,17 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf, size_
 	}
 
 	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
-	hash_for_each (client->enrolled_buffers, i, buffer, node) {
-		scnprintf(tmp_buf, sizeof(tmp_buf),
-			  "[%2d] FD: %d Mode: %s%s Addr:[0x%px ~ 0x%px] Size: %zu\n", idx++,
-			  buffer->info.fd, buffer->info.dma_read ? "r" : "",
-			  buffer->info.dma_write ? "w" : "", (void *)buffer->info.dma_vaddr,
-			  (void *)(buffer->info.dma_vaddr + (buffer->dma_buf->size - 1)),
-			  buffer->dma_buf->size);
-		strlcat(k_buf, tmp_buf, k_buf_size);
+	hash_for_each (client->enrolled_buffers, i, enrollment_list, node) {
+		list_for_each (it_enrollment, &enrollment_list->list) {
+			buffer = list_entry(it_enrollment, struct lwis_enrolled_buffer, list_node);
+			end_dma_vaddr = buffer->info.dma_vaddr + (buffer->dma_buf->size - 1);
+			scnprintf(tmp_buf, sizeof(tmp_buf),
+				  "[%2d] FD: %d Mode: %s%s Addr:[%pad ~ %pad] Size: %zu\n", idx++,
+				  buffer->info.fd, buffer->info.dma_read ? "r" : "",
+				  buffer->info.dma_write ? "w" : "", &buffer->info.dma_vaddr,
+				  &end_dma_vaddr, buffer->dma_buf->size);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+		}
 	}
 }
 

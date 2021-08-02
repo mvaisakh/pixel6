@@ -110,6 +110,11 @@ struct lwis_buffer_info {
 	uint64_t dma_vaddr;
 };
 
+struct lwis_enrolled_buffer_info {
+	int fd;
+	uint64_t dma_vaddr;
+};
+
 enum lwis_io_entry_types {
 	LWIS_IO_ENTRY_READ,
 	LWIS_IO_ENTRY_READ_BATCH,
@@ -333,7 +338,7 @@ struct lwis_dpm_qos_requirements {
 
 #define LWIS_GET_DEVICE_INFO _IOWR(LWIS_IOC_TYPE, 1, struct lwis_device_info)
 #define LWIS_BUFFER_ENROLL _IOWR(LWIS_IOC_TYPE, 2, struct lwis_buffer_info)
-#define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, uint64_t)
+#define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, struct lwis_enrolled_buffer_info)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)

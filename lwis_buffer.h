@@ -25,13 +25,20 @@ struct lwis_enrolled_buffer {
 	struct dma_buf *dma_buf;
 	struct dma_buf_attachment *dma_buf_attachment;
 	struct sg_table *sg_table;
-	struct hlist_node node;
+	struct list_head list_node;
+	struct lwis_buffer_enrollment_list *enrollment_list;
 };
 
 struct lwis_allocated_buffer {
 	int fd;
 	size_t size;
 	struct dma_buf *dma_buf;
+	struct hlist_node node;
+};
+
+struct lwis_buffer_enrollment_list {
+	dma_addr_t vaddr;
+	struct list_head list;
 	struct hlist_node node;
 };
 
@@ -84,7 +91,7 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_
  * Returns: Pointer on success, NULL otherwise
  */
 struct lwis_enrolled_buffer *lwis_client_enrolled_buffer_find(struct lwis_client *lwis_client,
-							      dma_addr_t dma_vaddr);
+							      int fd, dma_addr_t dma_vaddr);
 
 /*
  * lwis_client_enrolled_buffers_clear: Frees all items in
