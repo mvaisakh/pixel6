@@ -735,6 +735,7 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 	int i;
 	const struct exynos_binned_lp *binned_lp;
 	struct backlight_device *bl = ctx->bl;
+	bool is_lp_state;
 
 	for (i = 0; i < ctx->desc->num_binned_lp; i++) {
 		binned_lp = &ctx->desc->binned_lp[i];
@@ -744,11 +745,23 @@ void exynos_panel_set_binned_lp(struct exynos_panel *ctx, const u16 brightness)
 	if (i == ctx->desc->num_binned_lp)
 		return;
 
-	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
+	mutex_lock(&ctx->bl_state_lock);
+	is_lp_state = is_backlight_lp_state(bl);
+	mutex_unlock(&ctx->bl_state_lock);
 
 	mutex_lock(&ctx->lp_state_lock);
+
+	if (is_lp_state && ctx->current_binned_lp &&
+	    binned_lp->bl_threshold == ctx->current_binned_lp->bl_threshold) {
+		mutex_unlock(&ctx->lp_state_lock);
+		return;
+	}
+
+	exynos_panel_send_cmd_set(ctx, &binned_lp->cmd_set);
+
 	ctx->current_binned_lp = binned_lp;
 	dev_dbg(ctx->dev, "enter lp_%s\n", ctx->current_binned_lp->name);
+
 	mutex_unlock(&ctx->lp_state_lock);
 
 	exynos_panel_set_backlight_state(ctx,
@@ -2760,6 +2773,11 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 		exynos_panel_set_power(ctx, false);
 	}
 
+	if (current_mode == pmode) {
+		mutex_unlock(&ctx->mode_lock);
+		return;
+	}
+
 	dev_dbg(ctx->dev, "changing display mode to %dx%d@%d\n",
 		pmode->mode.hdisplay, pmode->mode.vdisplay, drm_mode_vrefresh(&pmode->mode));
 
@@ -2790,7 +2808,7 @@ static void exynos_panel_bridge_mode_set(struct drm_bridge *bridge,
 			funcs->set_nolp_mode(ctx, pmode);
 			state_changed = true;
 			need_update_backlight = true;
-		} else if ((ctx->current_mode != pmode) && funcs->mode_set) {
+		} else if (funcs->mode_set) {
 			if (exynos_connector_state->sync_rr_switch && ctx->enabled)
 				exynos_panel_check_modeset_timing(crtc, &current_mode->mode);
 			funcs->mode_set(ctx, pmode);
