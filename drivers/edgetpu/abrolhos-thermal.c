@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include <linux/version.h>
+#include <soc/google/gs101_tmu.h>
 
 #include "abrolhos-platform.h"
 #include "abrolhos-pm.h"
@@ -323,6 +324,21 @@ static ssize_t user_vote_store(struct device *dev, struct device_attribute *attr
 
 static DEVICE_ATTR_RW(user_vote);
 
+static int tpu_pause_callback(enum thermal_pause_state action, void *dev)
+{
+	int ret = -EINVAL;
+
+	if (!dev)
+		return ret;
+
+	if (action == THERMAL_SUSPEND)
+		ret = edgetpu_thermal_suspend(dev);
+	else if (action == THERMAL_RESUME)
+		ret = edgetpu_thermal_resume(dev);
+
+	return ret;
+}
+
 static int
 tpu_thermal_cooling_register(struct edgetpu_thermal *thermal, char *type)
 {
@@ -369,6 +385,8 @@ static int tpu_thermal_init(struct edgetpu_thermal *thermal, struct device *dev)
 		return err;
 	}
 
+	register_tpu_thermal_pause_cb(tpu_pause_callback, dev);
+
 	return 0;
 }
 
@@ -413,7 +431,6 @@ int edgetpu_thermal_suspend(struct device *dev)
 	mutex_unlock(&cooling->lock);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(edgetpu_thermal_suspend);
 
 int edgetpu_thermal_resume(struct device *dev)
 {
@@ -435,4 +452,3 @@ int edgetpu_thermal_resume(struct device *dev)
 	mutex_unlock(&cooling->lock);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(edgetpu_thermal_resume);
