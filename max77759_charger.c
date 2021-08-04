@@ -1750,16 +1750,17 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 {
 	const u8 insel_mask = MAX77759_CHG_CNFG_12_CHGINSEL_MASK |
 			      MAX77759_CHG_CNFG_12_WCINSEL_MASK;
+	int wlc_on = cb_data->wlc_tx && !cb_data->dc_on;
 	bool force_wlc = false;
 	u8 insel_value = 0;
-	int ret, wlc_on;
+	int ret;
 
 	if (cb_data->usb_wlc) {
 		insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
 		force_wlc = true;
 	} else if (cb_data_is_inflow_off(cb_data)) {
 		/*
-		 * input_suspend masks both inputs:
+		 * input_suspend masks both inputs but must still allow
 		 * TODO: use a separate use case for usb + wlc
 		 */
 	} else if (cb_data->buck_on && !cb_data->chgin_off) {
@@ -1775,14 +1776,14 @@ static int max77759_set_insel(struct max77759_usecase_data *uc_data,
 			insel_value |= MAX77759_CHG_CNFG_12_CHGINSEL;
 
 		/* disconnected, do not enable wlc_in if in input_suspend */
-		if (!cb_data->wlcin_off)
+		if (!cb_data->wlcin_off || cb_data->wlc_tx)
 			insel_value |= MAX77759_CHG_CNFG_12_WCINSEL;
 
 		force_wlc = true;
 	}
 
-	if (from_uc != use_case || force_wlc) {
-		wlc_on = (insel_value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
+	if (from_uc != use_case || force_wlc || wlc_on) {
+		wlc_on = wlc_on || (insel_value & MAX77759_CHG_CNFG_12_WCINSEL) != 0;
 
 		/* b/182973431 disable WLC_IC while CHGIN, rtx will enable WLC later */
 		ret = gs101_wlc_en(uc_data, wlc_on);
@@ -1924,7 +1925,6 @@ static void max77759_mode_callback(struct gvotable_election *el,
 	cb_data.wlcin_off = !!data->wcin_input_suspend;
 	/* now scan all the reasons, accumulate in cb_data */
 	gvotable_election_for_each(el, max77759_foreach_callback, &cb_data);
-
 
 	nope = !cb_data.use_raw && !cb_data.stby_on && !cb_data.dc_on &&
 	       !cb_data.chgr_on && !cb_data.buck_on && ! cb_data.boost_on &&
