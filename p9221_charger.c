@@ -697,6 +697,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 
 	mutex_lock(&charger->stats_lock);
 	charger->online = false;
+	charger->online_at = 0;
 	cancel_delayed_work(&charger->charge_stats_work);
 	p9221_dump_charge_stats(charger);
 	mutex_unlock(&charger->stats_lock);
@@ -1968,11 +1969,63 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 	return 1;
 }
 
+/* 400 seconds debounce for auth per WPC spec */
+#define DREAM_DEBOUNCE_TIME_S 400
+
+/* trigger DD */
+static void p9221_dream_defend(struct p9221_charger_data *charger)
+{
+	const ktime_t now = get_boot_sec();
+	u32 threshold;
+	int ret;
+
+	/* debounce for auth */
+	if (now - charger->online_at < DREAM_DEBOUNCE_TIME_S) {
+		pr_debug("%s: now=%lld, online_at=%lld delta=%lld\n", __func__,
+			 now, charger->online_at, now - charger->online_at);
+		return;
+	}
+
+	threshold = charger->mitigate_threshold > 0 ? charger->mitigate_threshold :
+		    charger->pdata->power_mitigate_threshold;
+	if (!threshold)
+		return;
+
+	if (charger->last_capacity > threshold &&
+		!charger->trigger_power_mitigation) {
+
+		charger->trigger_power_mitigation = true;
+		ret = delayed_work_pending(&charger->power_mitigation_work);
+		if (!ret)
+			schedule_delayed_work( &charger->power_mitigation_work,
+			    msecs_to_jiffies( P9221_POWER_MITIGATE_DELAY_MS));
+	}
+
+}
+
+/* improve LL BPP CEP_timeout */
+static void p9221_ll_bpp_cep(struct p9221_charger_data *charger)
+{
+	int icl_ua = 0;
+
+	/* we need this only on luxury liner */
+
+	if (charger->last_capacity > 94)
+		icl_ua = 750000;
+	if (charger->last_capacity > 96)
+		icl_ua = 600000;
+	if (charger->last_capacity > 98)
+		icl_ua = 300000;
+
+	vote(charger->dc_icl_votable, DD_VOTER, icl_ua > 0, icl_ua);
+	if (icl_ua > 0)
+		dev_info(&charger->client->dev,
+			 "power_mitigate: set ICL to %duA\n", icl_ua);
+}
+
 static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 {
 	int ret;
-	u32 threshold;
-	int icl_ua = 0;
 
 	mutex_lock(&charger->stats_lock);
 
@@ -1995,40 +2048,11 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 	if (!charger->online)
 		goto unlock_done;
 
-	/* trigger DD */
-	threshold = (charger->mitigate_threshold > 0) ?
-		    charger->mitigate_threshold :
-		    charger->pdata->power_mitigate_threshold;
+	if (p9221_is_epp(charger))
+		p9221_dream_defend(charger);
 
-	if (!threshold)
-		goto unlock_done;
-
-	if ((charger->last_capacity > threshold) &&
-	    p9221_is_epp(charger) &&
-	    !charger->trigger_power_mitigation) {
-		charger->trigger_power_mitigation = true;
-		ret = delayed_work_pending(
-		      &charger->power_mitigation_work);
-		if (!ret)
-			schedule_delayed_work(
-			    &charger->power_mitigation_work,
-			    msecs_to_jiffies(
-			    P9221_POWER_MITIGATE_DELAY_MS));
-	}
-
-	if (!charger->trigger_power_mitigation)
-		goto unlock_done;
-
-	if (capacity > 94)
-		icl_ua = 750000;
-	if (capacity > 96)
-		icl_ua = 600000;
-	if (capacity > 98)
-		icl_ua = 300000;
-	vote(charger->dc_icl_votable, DD_VOTER, icl_ua > 0, icl_ua);
-	if (icl_ua > 0)
-		dev_info(&charger->client->dev, "power_mitigate: set ICL to %duA\n", icl_ua);
-
+	if (charger->trigger_power_mitigation)
+		p9221_ll_bpp_cep(charger);
 
 unlock_done:
 	  mutex_unlock(&charger->stats_lock);
@@ -2359,8 +2383,10 @@ static void p9221_set_online(struct p9221_charger_data *charger)
 	charger->tx_done = true;
 	charger->rx_done = false;
 	charger->last_capacity = -1;
+	charger->online_at = get_boot_sec();
 
 	/* reset data for the new charging entry */
+
 	p9221_charge_stats_init(&charger->chg_data);
 	mutex_unlock(&charger->stats_lock);
 

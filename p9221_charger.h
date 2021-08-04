@@ -704,6 +704,7 @@ struct p9221_charger_data {
 	bool				trigger_power_mitigation;
 	bool				wait_for_online;
 	struct mutex			rtx_lock;
+	ktime_t				online_at;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
