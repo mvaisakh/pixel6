@@ -540,23 +540,25 @@ static int s6e3hc3_atomic_check(struct exynos_panel *ctx, struct drm_atomic_stat
 	if (!old_crtc_state || !new_crtc_state || !new_crtc_state->active)
 		return 0;
 
-	if (ctx->panel_idle_enabled && old_crtc_state->self_refresh_active) {
+	if ((ctx->panel_idle_enabled && old_crtc_state->self_refresh_active) ||
+	    !drm_atomic_crtc_effectively_active(old_crtc_state)) {
 		struct drm_display_mode *mode = &new_crtc_state->adjusted_mode;
 
-		/* set clock to max refresh rate on self refresh exit due to early exit */
+		/* set clock to max refresh rate on self refresh exit or resume due to early exit */
 		mode->clock = mode->htotal * mode->vtotal * 120 / 1000;
 
 		if (mode->clock != new_crtc_state->mode.clock) {
 			new_crtc_state->mode_changed = true;
-			dev_dbg(ctx->dev, "raise mode (%s) clock to 120hz on self refresh exit\n",
-				mode->name);
+			dev_dbg(ctx->dev, "raise mode (%s) clock to 120hz on %s\n",
+				mode->name,
+				old_crtc_state->self_refresh_active ? "self refresh exit" : "resume");
 		}
 	} else if (old_crtc_state->active_changed &&
 		   (old_crtc_state->adjusted_mode.clock != old_crtc_state->mode.clock)) {
-		/* clock hacked in last commit due to self refresh exit, undo that */
+		/* clock hacked in last commit due to self refresh exit or resume, undo that */
 		new_crtc_state->mode_changed = true;
 		new_crtc_state->adjusted_mode.clock = new_crtc_state->mode.clock;
-		dev_dbg(ctx->dev, "restore mode (%s) clock after self refresh exit\n",
+		dev_dbg(ctx->dev, "restore mode (%s) clock after self refresh exit or resume\n",
 			new_crtc_state->mode.name);
 	}
 
