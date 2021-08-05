@@ -23,6 +23,7 @@ struct edgetpu_thermal {
 	struct mutex lock;
 	void *op_data;
 	unsigned long cooling_state;
+	unsigned long sysfs_req;
 	unsigned int tpu_num_states;
 	struct edgetpu_dev *etdev;
 	bool thermal_suspended; /* TPU thermal suspended state */
