@@ -1008,12 +1008,12 @@ static int pca9468_read_status(struct pca9468_charger *pca9468)
 
 	if (reg_val & PCA9468_BIT_VIN_UV_STS) {
 		ret = STS_MODE_VIN_UVLO;
+	} else if (reg_val & PCA9468_BIT_IIN_LOOP_STS) {
+		ret = STS_MODE_IIN_LOOP;
 	} else if (reg_val & PCA9468_BIT_CHG_LOOP_STS) {
 		ret = STS_MODE_CHG_LOOP; /* never */
 	} else if (reg_val & PCA9468_BIT_VFLT_LOOP_STS) {
 		ret = STS_MODE_VFLT_LOOP;
-	} else if (reg_val & PCA9468_BIT_IIN_LOOP_STS) {
-		ret = STS_MODE_IIN_LOOP;
 	} else {
 		ret = STS_MODE_LOOP_INACTIVE; /* lower IIN or TA to enter CC? */
 	}
