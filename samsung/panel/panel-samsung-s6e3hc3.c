@@ -862,11 +862,13 @@ static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
 
 		if (vrefresh == 60) {
 			EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_60hz);
+			EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
 		} else if (vrefresh == 120) {
 			if (hbm_mode)
 				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz_GHBM);
 			else
 				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz);
+			EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
 		}
 	}
 }
