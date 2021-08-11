@@ -1167,14 +1167,34 @@ static int p9412_capdiv_en(struct p9221_charger_data *chgr, u8 mode)
 
 	return ((cdmode & mask) == mask) ? 0 :  -ETIMEDOUT;
 }
+static bool debounce_for_auth(struct p9221_charger_data *chgr)
+{
+	const ktime_t now = get_boot_sec();
+
+	/* debounce for auth */
+	if (now - chgr->online_at >= WLCDC_DEBOUNCE_TIME_S)
+		return false;
+
+	pr_debug("%s: now=%lld, online_at=%lld delta=%lld\n", __func__,
+			now, chgr->online_at, now - chgr->online_at);
+	mutex_lock(&chgr->auth_lock);
+	if (!chgr->auth_delay) {
+		p9221_set_auth_dc_icl(chgr, true);
+		alarm_start_relative(&chgr->auth_dc_icl_alarm,
+					ms_to_ktime(WLCDC_DEBOUNCE_TIME_S * 1000));
+		chgr->auth_delay = true;
+	}
+	mutex_unlock(&chgr->auth_lock);
+	return true;
+}
 
 /* For high power mode */
-static bool p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+static int p9221_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	return -ENOTSUPP;
 }
 
-static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
+static int p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 {
 	int ret, loops;
 	u8 val8, cdmode, txpwr, pwr_stp, mode_sts, err_sts, prop_cur_pwr, prop_req_pwr;
@@ -1200,7 +1220,8 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 			chgr->prop_mode_en = false;
 			goto err_exit;
 		}
-
+		if (debounce_for_auth(chgr))
+			return -EAGAIN;
 		goto enable_capdiv;
 	}
 
@@ -1267,6 +1288,8 @@ static bool p9412_prop_mode_enable(struct p9221_charger_data *chgr, int req_pwr)
 	if ((ret == 0) && (txpwr >= HPP_MODE_PWR_REQUIRE)) {
 		dev_info(&chgr->client->dev,
 			 "PROP_MODE: Tx potential power=%dW\n", txpwr);
+		if (debounce_for_auth(chgr))
+			return -EAGAIN;
 	} else {
 		chgr->prop_mode_en = false;
 		goto err_exit;

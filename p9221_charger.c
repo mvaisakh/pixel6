@@ -55,8 +55,6 @@
 
 #define REENABLE_RTX_DELAY	3000
 
-#define get_boot_sec() div_u64(ktime_to_ns(ktime_get_boottime()), NSEC_PER_SEC)
-
 enum wlc_align_codes {
 	WLC_ALIGN_CHECKING = 0,
 	WLC_ALIGN_MOVE,
@@ -515,6 +513,7 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 	vote(charger->dc_icl_votable, DCIN_AICL_VOTER, false, 0);
 	vote(charger->dc_icl_votable, HPP_DC_ICL_VOTER, false, 0);
 	vote(charger->dc_icl_votable, DD_VOTER, false, 0);
+	vote(charger->dc_icl_votable, AUTH_DC_ICL_VOTER, false, 0);
 }
 
 static int p9221_set_switch_reg(struct p9221_charger_data *charger, bool enable)
@@ -749,6 +748,12 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 
 	/* clear all session features */
 	feature_update_session(charger, WLCF_DISABLE_ALL_FEATURE);
+
+	mutex_lock(&charger->auth_lock);
+	alarm_try_to_cancel(&charger->auth_dc_icl_alarm);
+	p9221_set_auth_dc_icl(charger, false);
+	charger->auth_delay = false;
+	mutex_unlock(&charger->auth_lock);
 
 	p9221_vote_defaults(charger);
 	if (charger->enabled)
@@ -1879,6 +1884,21 @@ static int p9221_set_hpp_dc_icl(struct p9221_charger_data *charger, bool enable)
 	return ret;
 }
 
+int p9221_set_auth_dc_icl(struct p9221_charger_data *charger, bool enable)
+{
+	int ret = 0, icl_ua;
+
+	if (charger->last_capacity > 80)
+		icl_ua = P9221_AUTH_DC_ICL_UA_100;
+	else
+		icl_ua = P9221_AUTH_DC_ICL_UA_500;
+
+	if (charger->dc_icl_votable)
+		ret = vote(charger->dc_icl_votable, AUTH_DC_ICL_VOTER,
+			   enable, enable ? icl_ua : 0);
+	return ret;
+}
+
 /* < 0 error, 0 = no changes, > 1 changed */
 static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 {
@@ -1941,7 +1961,9 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 		 * mode isn't enabled (i.e. with p9412_prop_mode_enable())
 		 */
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger)))
-			charger->chip_prop_mode_en(charger, HPP_MODE_PWR_REQUIRE);
+			ret = charger->chip_prop_mode_en(charger, HPP_MODE_PWR_REQUIRE);
+		if (ret == -EAGAIN)
+			return ret;
 
 		/* FIXME: shouldn't we disable the cap divider here? */
 		if (!(charger->prop_mode_en && p9xxx_is_capdiv_en(charger))) {
@@ -2003,6 +2025,14 @@ static void p9221_dream_defend(struct p9221_charger_data *charger)
 	if (now - charger->online_at < DREAM_DEBOUNCE_TIME_S) {
 		pr_debug("%s: now=%lld, online_at=%lld delta=%lld\n", __func__,
 			 now, charger->online_at, now - charger->online_at);
+		mutex_lock(&charger->auth_lock);
+		if (!charger->auth_delay) {
+			p9221_set_auth_dc_icl(charger, true);
+			alarm_start_relative(&charger->auth_dc_icl_alarm,
+					     ms_to_ktime(WLCDC_DEBOUNCE_TIME_S * 1000));
+			charger->auth_delay = true;
+		}
+		mutex_unlock(&charger->auth_lock);
 		return;
 	}
 
@@ -2029,6 +2059,9 @@ static void p9221_ll_bpp_cep(struct p9221_charger_data *charger)
 	int icl_ua = 0;
 
 	/* we need this only on luxury liner */
+	if (charger->mfg != WLC_MFG_GOOGLE ||
+	    !p9221_check_feature(charger, WLCF_DREAM_DEFEND))
+		return;
 
 	if (charger->last_capacity > 94)
 		icl_ua = 750000;
@@ -2312,6 +2345,29 @@ static int p9221_set_dc_icl(struct p9221_charger_data *charger)
 			"Could not set rx_iout limit reg: %d\n", ret);
 
 	return ret;
+}
+
+static enum alarmtimer_restart p9221_auth_dc_icl_alarm_cb(struct alarm *alarm,
+							  ktime_t now)
+{
+	struct p9221_charger_data *charger =
+			container_of(alarm, struct p9221_charger_data,
+				     auth_dc_icl_alarm);
+
+	dev_info(&charger->client->dev, "Remove Auth ICL vote\n");
+	pm_stay_awake(charger->dev);
+	schedule_delayed_work(&charger->auth_dc_icl_work, msecs_to_jiffies(100));
+
+	return ALARMTIMER_NORESTART;
+}
+
+static void p9221_auth_dc_icl_work(struct work_struct *work)
+{
+	struct p9221_charger_data *charger = container_of(work,
+			struct p9221_charger_data, auth_dc_icl_work.work);
+
+	vote(charger->dc_icl_votable, AUTH_DC_ICL_VOTER, false, 0);
+	pm_relax(charger->dev);
 }
 
 static enum alarmtimer_restart p9221_icl_ramp_alarm_cb(struct alarm *alarm,
@@ -5481,6 +5537,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	mutex_init(&charger->stats_lock);
 	mutex_init(&charger->chg_features.feat_lock);
 	mutex_init(&charger->rtx_lock);
+	mutex_init(&charger->auth_lock);
 	timer_setup(&charger->vrect_timer, p9221_vrect_timer_handler, 0);
 	timer_setup(&charger->align_timer, p9221_align_timer_handler, 0);
 	INIT_DELAYED_WORK(&charger->dcin_work, p9221_dcin_work);
@@ -5491,6 +5548,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&charger->align_work, p9221_align_work);
 	INIT_DELAYED_WORK(&charger->dcin_pon_work, p9221_dcin_pon_work);
 	INIT_DELAYED_WORK(&charger->rtx_work, p9382_rtx_work);
+	INIT_DELAYED_WORK(&charger->auth_dc_icl_work, p9221_auth_dc_icl_work);
 	INIT_WORK(&charger->uevent_work, p9221_uevent_work);
 	INIT_WORK(&charger->rtx_disable_work, p9382_rtx_disable_work);
 	INIT_WORK(&charger->rtx_reset_work, p9xxx_rtx_reset_work);
@@ -5498,6 +5556,8 @@ static int p9221_charger_probe(struct i2c_client *client,
 			  p9221_power_mitigation_work);
 	alarm_init(&charger->icl_ramp_alarm, ALARM_BOOTTIME,
 		   p9221_icl_ramp_alarm_cb);
+	alarm_init(&charger->auth_dc_icl_alarm, ALARM_BOOTTIME,
+		   p9221_auth_dc_icl_alarm_cb);
 
 	/* setup function pointers for platform */
 	/* first from *_charger.c -> *_chip.c */
@@ -5765,11 +5825,13 @@ static int p9221_charger_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&charger->dcin_pon_work);
 	cancel_delayed_work_sync(&charger->align_work);
 	cancel_delayed_work_sync(&charger->rtx_work);
+	cancel_delayed_work_sync(&charger->auth_dc_icl_work);
 	cancel_work_sync(&charger->uevent_work);
 	cancel_work_sync(&charger->rtx_disable_work);
 	cancel_work_sync(&charger->rtx_reset_work);
 	cancel_delayed_work_sync(&charger->power_mitigation_work);
 	alarm_try_to_cancel(&charger->icl_ramp_alarm);
+	alarm_try_to_cancel(&charger->auth_dc_icl_alarm);
 	del_timer_sync(&charger->vrect_timer);
 	del_timer_sync(&charger->align_timer);
 	device_init_wakeup(charger->dev, false);
@@ -5779,6 +5841,7 @@ static int p9221_charger_remove(struct i2c_client *client)
 	mutex_destroy(&charger->stats_lock);
 	mutex_destroy(&charger->chg_features.feat_lock);
 	mutex_destroy(&charger->rtx_lock);
+	mutex_destroy(&charger->auth_lock);
 	if (charger->log)
 		logbuffer_unregister(charger->log);
 	if (charger->rtx_log)
