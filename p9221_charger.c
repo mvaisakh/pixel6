@@ -1340,7 +1340,7 @@ static bool p9221_check_feature(struct p9221_charger_data *charger, u64 ft)
 
 	/* compat mode until the features API is usedm check txid */
 	val = (tx_id & TXID_TYPE_MASK) >> TXID_TYPE_SHIFT;
-	if (val == TXID_DD_TYPE)
+	if (val == TXID_DD_TYPE || val == TXID_DD_TYPE2)
 		supported = true;
 
 	/* NOTE: some features need to be tied to mfgid */

@@ -467,6 +467,7 @@ typedef enum {
 #define TXID_TYPE_MASK			0xFF000000 /* bit[24-31] */
 #define TXID_TYPE_SHIFT			24
 #define TXID_DD_TYPE			0xE0
+#define TXID_DD_TYPE2			0xA0
 #define P9221_POWER_MITIGATE_DELAY_MS   (10 * 1000)
 #define P9221_FOD_MAX_TIMES             3
 
