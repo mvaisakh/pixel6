@@ -389,8 +389,8 @@ static void s6e3hc3_update_te2(struct exynos_panel *ctx)
 
 static inline bool is_auto_mode_preferred(struct exynos_panel *ctx)
 {
-	/* don't want to enable auto mode/early exit during hbm */
-	if (IS_HBM_ON(ctx->hbm_mode))
+	/* don't want to enable auto mode/early exit during hbm or dimming on */
+	if (IS_HBM_ON(ctx->hbm_mode) || ctx->dimming_on)
 		return false;
 
 	return ctx->panel_idle_enabled;

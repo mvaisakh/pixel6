@@ -1257,6 +1257,21 @@ static const struct exynos_drm_connector_funcs exynos_panel_connector_funcs = {
 	.atomic_set_property = exynos_panel_connector_set_property,
 };
 
+static void exynos_panel_set_dimming(struct exynos_panel *ctx, bool dimming_on)
+{
+	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
+
+	if (!funcs || !funcs->set_dimming_on)
+		return;
+
+	mutex_lock(&ctx->mode_lock);
+	if (dimming_on != ctx->dimming_on) {
+		funcs->set_dimming_on(ctx, dimming_on);
+		panel_update_idle_mode_locked(ctx);
+	}
+	mutex_unlock(&ctx->mode_lock);
+}
+
 static void exynos_panel_commit_properties(
 				struct exynos_panel *ctx,
 				const struct exynos_drm_connector_state *conn_state)
@@ -1332,11 +1347,10 @@ static void exynos_panel_commit_properties(
 		backlight_update_status(ctx->bl);
 	}
 
-	mutex_lock(&ctx->mode_lock);
-	if ((update_flags & HBM_FLAG_DIMMING_UPDATE) &&
-		exynos_panel_func->set_dimming_on)
-		exynos_panel_func->set_dimming_on(ctx, conn_state->dimming_on);
-	mutex_unlock(&ctx->mode_lock);
+
+	if (update_flags & HBM_FLAG_DIMMING_UPDATE)
+		exynos_panel_set_dimming(ctx, conn_state->dimming_on);
+
 }
 
 static void exynos_panel_connector_atomic_commit(
@@ -2041,7 +2055,6 @@ static ssize_t dimming_on_store(struct device *dev,
 {
 	struct backlight_device *bd = to_backlight_device(dev);
 	struct exynos_panel *ctx = bl_get_data(bd);
-	const struct exynos_panel_funcs *funcs = ctx->desc->exynos_panel_func;
 	bool dimming_on;
 	int ret;
 
@@ -2056,11 +2069,7 @@ static ssize_t dimming_on_store(struct device *dev,
 		return ret;
 	}
 
-	if (funcs && funcs->set_dimming_on) {
-		mutex_lock(&ctx->mode_lock);
-		funcs->set_dimming_on(ctx, dimming_on);
-		mutex_unlock(&ctx->mode_lock);
-	}
+	exynos_panel_set_dimming(ctx, dimming_on);
 
 	return count;
 }
@@ -2929,7 +2938,7 @@ static void hbm_work(struct work_struct *work)
 
 	if (ctx->hbm.update_flags & HBM_FLAG_DIMMING_UPDATE) {
 		DPU_ATRACE_BEGIN("set_dimming");
-		exynos_panel_func->set_dimming_on(ctx, ctx->request_dimming_on);
+		exynos_panel_set_dimming(ctx, ctx->request_dimming_on);
 		DPU_ATRACE_END("set_dimming");
 	}
 
