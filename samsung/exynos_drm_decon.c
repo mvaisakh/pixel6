@@ -819,9 +819,12 @@ static void decon_seamless_mode_bts_update(struct decon_device *decon,
 	/*
 	 * when going from high->low refresh rate need to run with the higher fps while the
 	 * switch takes effect in display, this could happen within 2 vsyncs in the worst case
+	 *
+	 * TODO: change to 3 to extend the time of higher fps due to b/196466885. Restore to
+	 * 2 once the issue is clarified.
 	 */
 	if (decon->bts.fps > drm_mode_vrefresh(mode)) {
-		atomic_set(&decon->bts.delayed_update, 2);
+		atomic_set(&decon->bts.delayed_update, 3);
 	} else {
 		decon_mode_update_bts(decon, mode);
 		atomic_set(&decon->bts.delayed_update, 0);
