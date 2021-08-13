@@ -51,4 +51,10 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 			     unsigned int bw_kb_read, unsigned int bw_kb_write,
 			     unsigned int bw_kb_rt);
 
+/*
+ *  lwis_plaform_set_default_irq_affinity: handles platform-specific parts of
+ *  setting default irq affinity.
+ */
+int lwis_plaform_set_default_irq_affinity(unsigned int irq);
+
 #endif /* LWIS_PLATFORM_H_ */

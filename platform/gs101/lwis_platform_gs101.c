@@ -318,3 +318,9 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 	}
 	return ret;
 }
+
+int lwis_plaform_set_default_irq_affinity(unsigned int irq)
+{
+	const int cpu = 0x2;
+	return irq_set_affinity_hint(irq, cpumask_of(cpu));
+}

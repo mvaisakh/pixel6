@@ -17,6 +17,7 @@
 
 #include "lwis_device.h"
 #include "lwis_event.h"
+#include "lwis_platform.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
@@ -109,6 +110,11 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 
 	request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
 		    &list->irq[index]);
+
+	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
+		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
+			 list->irq[index].full_name);
+	}
 
 	return 0;
 }
