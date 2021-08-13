@@ -2448,8 +2448,10 @@ static int dsim_suspend(struct device *dev)
 	mutex_lock(&dsim->state_lock);
 	dsim->suspend_state = dsim->state;
 
-	if (dsim->state == DSIM_STATE_HSCLKEN)
+	if (dsim->state == DSIM_STATE_HSCLKEN) {
 		_dsim_enter_ulps_locked(dsim);
+		dev->power.must_resume = true;
+	}
 
 	dsim_debug(dsim, "-\n");
 
