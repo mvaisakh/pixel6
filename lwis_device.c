@@ -688,14 +688,6 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->irqs) {
-		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
-		if (ret) {
-			dev_err(lwis_dev->dev, "Failed to request interrupts (%d)\n", ret);
-			goto error_power_up;
-		}
-	}
-
 	if (lwis_dev->vops.device_enable) {
 		ret = lwis_dev->vops.device_enable(lwis_dev);
 		if (ret) {
@@ -952,10 +944,6 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev, "Error executing device disable function\n");
 			last_error = ret;
 		}
-	}
-
-	if (lwis_dev->irqs) {
-		lwis_interrupt_free_all_default(lwis_dev->irqs);
 	}
 
 	if (lwis_dev->phys) {
