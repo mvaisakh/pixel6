@@ -517,6 +517,22 @@ static void p9221_vote_defaults(struct p9221_charger_data *charger)
 	vote(charger->dc_icl_votable, DD_VOTER, false, 0);
 }
 
+static int p9221_set_switch_reg(struct p9221_charger_data *charger, bool enable)
+{
+	u8 swreg;
+	int ret = p9221_reg_read_8(charger, P9412_V5P0AP_SWITCH_REG, &swreg);
+	if (ret < 0) {
+		dev_warn(&charger->client->dev,
+			 "Failed to read swreg (%d)\n", ret);
+		return ret;
+	}
+	if (enable)
+		swreg |= V5P0AP_SWITCH_EN;
+	else
+		swreg &= ~V5P0AP_SWITCH_EN;
+	return p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, swreg);
+}
+
 #define EPP_MODE_REQ_PWR		15
 static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 {
@@ -534,8 +550,8 @@ static int p9221_reset_wlc_dc(struct p9221_charger_data *charger)
 		gpio_set_value_cansleep(dc_sw_gpio, 0);
 	if (extben_gpio)
 		gpio_set_value_cansleep(extben_gpio, 0);
-	p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, 0);
 
+	p9221_set_switch_reg(charger, false);
 
 	/* Check it's in Cap Div mode */
 	ret = charger->reg_read_8(charger, P9412_CDMODE_STS_REG, &cdmode);
@@ -1942,7 +1958,8 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			gpio_set_value_cansleep(dc_sw_gpio, 1);
 		if (extben_gpio)
 			gpio_set_value_cansleep(extben_gpio, 1);
-		p9221_reg_write_8(charger, P9412_V5P0AP_SWITCH_REG, V5P0AP_SWITCH_EN);
+
+		p9221_set_switch_reg(charger, true);
 
 		return 1;
 	} else if (wlc_dc_enabled) {
