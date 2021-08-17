@@ -1474,6 +1474,7 @@ bd_rerun:
 	if (!bd_state->triggered) {
 		/* disable the overheat flag, race with DWELL-DEFEND */
 		bd_batt_set_overheat(chg_drv, false);
+		chg_update_charging_state(chg_drv, false, false);
 	} else {
 		schedule_delayed_work(&chg_drv->bd_work,
 				      msecs_to_jiffies(interval_ms));
