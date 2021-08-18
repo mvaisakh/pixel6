@@ -722,6 +722,7 @@ static void p9221_set_offline(struct p9221_charger_data *charger)
 
 	charger->force_bpp = false;
 	charger->chg_on_rtx = false;
+	charger->ll_bpp_cep = -EINVAL;
 	p9221_reset_wlc_dc(charger);
 	charger->prop_mode_en = false;
 
@@ -1970,6 +1971,8 @@ static int p9221_set_psy_online(struct p9221_charger_data *charger, int online)
 			ret = p9221_set_hpp_dc_icl(charger, false);
 			if (ret < 0)
 				dev_warn(&charger->client->dev, "Cannot disable HPP_ICL (%d)\n", ret);
+
+			pr_debug("%s: HPP not supported\n", __func__);
 			return -EOPNOTSUPP;
 		}
 
@@ -2044,6 +2047,7 @@ static void p9221_dream_defend(struct p9221_charger_data *charger)
 	if (charger->last_capacity > threshold &&
 		!charger->trigger_power_mitigation) {
 
+		/* trigger_power_mitigation is the same as dream defend */
 		charger->trigger_power_mitigation = true;
 		ret = delayed_work_pending(&charger->power_mitigation_work);
 		if (!ret)
@@ -2054,26 +2058,58 @@ static void p9221_dream_defend(struct p9221_charger_data *charger)
 }
 
 /* improve LL BPP CEP_timeout */
-static void p9221_ll_bpp_cep(struct p9221_charger_data *charger)
+static void p9221_ll_bpp_cep(struct p9221_charger_data *charger, int capacity)
 {
 	int icl_ua = 0;
 
-	/* we need this only on luxury liner */
-	if (charger->mfg != WLC_MFG_GOOGLE ||
-	    !p9221_check_feature(charger, WLCF_DREAM_DEFEND))
-		return;
-
-	if (charger->last_capacity > 94)
+	if (capacity > 94)
 		icl_ua = 750000;
-	if (charger->last_capacity > 96)
+	if (capacity > 96)
 		icl_ua = 600000;
-	if (charger->last_capacity > 98)
+	if (capacity > 98)
 		icl_ua = 300000;
 
 	vote(charger->dc_icl_votable, DD_VOTER, icl_ua > 0, icl_ua);
 	if (icl_ua > 0)
 		dev_info(&charger->client->dev,
 			 "power_mitigate: set ICL to %duA\n", icl_ua);
+}
+
+static int p9221_ll_check_id(struct p9221_charger_data *charger)
+{
+	uint16_t ptmc_id = charger->mfg;
+	int ret;
+
+	/*
+	 * TODO: this returns 0 on 3rd party. Solve by debounce changes of
+	 * last_capacity for some time after online and/or adding a robust
+	 * way to detect if the device is actuall on a pad that needs the
+	 * WAR and behaviors controlled by this check.
+	 */
+	if (ptmc_id == 0) {
+		ret = p9xxx_chip_get_tx_mfg_code(charger, &ptmc_id);
+		if (ret < 0 || ptmc_id == 0) {
+			pr_debug("%s: cannot get mfg code ptmc_id=%x (%d)\n",
+				 __func__, ptmc_id, ret);
+			return -EAGAIN;
+		}
+	}
+
+	if (ptmc_id != WLC_MFG_GOOGLE) {
+		pr_debug("%s: ptmc_id=%x\n", __func__, ptmc_id);
+		return 0;
+	}
+
+	/* NOTE: will keep the alternate limit and keep checking on 3rd party */
+	if (p9221_get_tx_id_str(charger) == NULL) {
+		pr_debug("%s: retry %x\n", __func__, charger->tx_id);
+		return -EAGAIN;
+	}
+
+	/* optional check for P9221R5_EPP_TX_GUARANTEED_POWER_REG == 0x1e */
+
+	pr_debug("%s: tx_ix=%08x\n", __func__, charger->tx_id);
+	return ((charger->tx_id & TXID_TYPE_MASK) >> TXID_TYPE_SHIFT) == TXID_DD_TYPE2;
 }
 
 static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
@@ -2104,8 +2140,11 @@ static void p9221_set_capacity(struct p9221_charger_data *charger, int capacity)
 	if (p9221_is_epp(charger))
 		p9221_dream_defend(charger);
 
-	if (charger->trigger_power_mitigation)
-		p9221_ll_bpp_cep(charger);
+	/* CEP LL workaround tp improve comms */
+	if (charger->ll_bpp_cep < 0)
+		charger->ll_bpp_cep = p9221_ll_check_id(charger);
+	if (charger->ll_bpp_cep == 1 && !p9221_is_epp(charger))
+		p9221_ll_bpp_cep(charger, charger->last_capacity);
 
 unlock_done:
 	  mutex_unlock(&charger->stats_lock);

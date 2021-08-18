@@ -713,6 +713,7 @@ struct p9221_charger_data {
 	ktime_t				online_at;
 	bool				auth_delay;
 	struct mutex			auth_lock;
+	int 				ll_bpp_cep;
 
 #if IS_ENABLED(CONFIG_GPIOLIB)
 	struct gpio_chip gpio;
