@@ -398,6 +398,12 @@ static int pca9468_wlc_ramp_down_iin(struct pca9468_charger *pca9468,
 			union power_supply_propval pro_val;
 
 			ret = power_supply_get_property(wlc_psy,
+					POWER_SUPPLY_PROP_ONLINE,
+					&pro_val);
+			if (ret < 0 || pro_val.intval != PPS_PSY_PROG_ONLINE)
+				break;
+
+			ret = power_supply_get_property(wlc_psy,
 					POWER_SUPPLY_PROP_CURRENT_NOW,
 					&pro_val);
 			if (ret == 0)
