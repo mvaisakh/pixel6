@@ -30,6 +30,9 @@ struct s6e3hc3_panel {
 
 	/** @early_exit_enabled: indicates whether panel is currently in early exit mode */
 	int early_exit_enabled;
+
+	/** @is_hbm_update: indicates if there is a hbm state update request */
+	bool is_hbm_update;
 };
 
 #define to_spanel(ctx) container_of(ctx, struct s6e3hc3_panel, base)
@@ -414,6 +417,7 @@ static void s6e3hc3_update_early_exit(struct exynos_panel *ctx, bool enable)
 static void s6e3hc3_update_refresh_mode(struct exynos_panel *ctx,
 				     const struct s6e3hc3_mode_data *mdata)
 {
+	struct s6e3hc3_panel *spanel = to_spanel(ctx);
 	const bool auto_mode_preferred = is_auto_mode_preferred(ctx);
 	const u32 flags = PANEL_CMD_SET_IGNORE_VBLANK | PANEL_CMD_SET_BATCH;
 
@@ -425,8 +429,8 @@ static void s6e3hc3_update_refresh_mode(struct exynos_panel *ctx,
 
 		s6e3hc3_update_early_exit(ctx, false);
 
-		cmdset = ctx->hbm_mode ? mdata->manual_mode_ghbm_cmd_set :
-					       mdata->manual_mode_cmd_set;
+		cmdset = (!spanel->is_hbm_update && ctx->hbm_mode) ?
+				mdata->manual_mode_ghbm_cmd_set : mdata->manual_mode_cmd_set;
 
 		if (cmdset)
 			exynos_panel_send_cmd_set_flags(ctx, cmdset, flags);
@@ -843,11 +847,14 @@ static void s6e3hc3_commit_done(struct exynos_panel *ctx)
 		s6e3hc3_trigger_early_exit(ctx);
 }
 
-static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
-				 bool hbm_mode)
+static void s6e3hc3_set_hbm_setting(struct exynos_panel *ctx,
+				const struct drm_display_mode *mode, bool is_hbm_on)
 {
+	const int vrefresh = drm_mode_vrefresh(mode);
+
+	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 	if (ctx->panel_rev == PANEL_REV_PROTO1) {
-		if (hbm_mode) {
+		if (is_hbm_on) {
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x00, 0x01, 0x49);
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x00);
 			usleep_range(17000, 17010);
@@ -857,25 +864,21 @@ static void s6e3hc3_set_hbm_extra_setting(struct exynos_panel *ctx,
 			EXYNOS_DCS_WRITE_SEQ(ctx, 0x49, 0x01);
 		}
 	} else if (ctx->panel_rev >= PANEL_REV_EVT1_1) {
-		const struct exynos_panel_mode *pmode = ctx->current_mode;
-		const int vrefresh = drm_mode_vrefresh(&pmode->mode);
-
-		if (vrefresh == 60) {
+		if (vrefresh == 60)
 			EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_60hz);
-			EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
-		} else if (vrefresh == 120) {
-			if (hbm_mode)
-				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz_GHBM);
-			else
-				EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz);
-			EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
-		}
+		else if (vrefresh == 120)
+			EXYNOS_DCS_WRITE_TABLE(ctx, mode_set_120hz);
+		EXYNOS_DCS_WRITE_TABLE(ctx, freq_update);
 	}
+	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
+
+	s6e3hc3_write_display_mode(ctx, mode);
 }
 
 static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 				 enum exynos_hbm_mode mode)
 {
+	struct s6e3hc3_panel *spanel = to_spanel(ctx);
 	const struct exynos_panel_mode *pmode = ctx->current_mode;
 	const bool hbm_update =
 		(IS_HBM_ON(ctx->hbm_mode) != IS_HBM_ON(mode));
@@ -890,24 +893,24 @@ static void s6e3hc3_set_hbm_mode(struct exynos_panel *ctx,
 
 	ctx->hbm_mode = mode;
 
-	EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 	if (hbm_update) {
-		if (IS_HBM_ON(mode)) {
+		const bool is_hbm_on = IS_HBM_ON(mode);
+
+		spanel->is_hbm_update = hbm_update;
+		if (is_hbm_on)
 			s6e3hc3_set_self_refresh(ctx, false);
-			s6e3hc3_set_hbm_extra_setting(ctx, mode);
-			s6e3hc3_write_display_mode(ctx, &pmode->mode);
-		} else {
-			s6e3hc3_set_hbm_extra_setting(ctx, mode);
-			s6e3hc3_write_display_mode(ctx, &pmode->mode);
+		s6e3hc3_set_hbm_setting(ctx, &pmode->mode, is_hbm_on);
+		if (!is_hbm_on)
 			s6e3hc3_set_self_refresh(ctx, ctx->self_refresh_active);
-		}
+		spanel->is_hbm_update = false;
 	}
 	if (irc_update) {
+		EXYNOS_DCS_WRITE_TABLE(ctx, unlock_cmd_f0);
 		EXYNOS_DCS_WRITE_SEQ(ctx, 0xB0, 0x02, 0xB6, 0x1D);
 		EXYNOS_DCS_WRITE_SEQ(ctx, 0x1D, IS_HBM_ON_IRC_OFF(mode) ? 0x05 : 0x25);
+		EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 	}
 
-	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 	dev_info(ctx->dev, "hbm_on=%d hbm_ircoff=%d\n", IS_HBM_ON(ctx->hbm_mode),
 		 IS_HBM_ON_IRC_OFF(ctx->hbm_mode));
 }
