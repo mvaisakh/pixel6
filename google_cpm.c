@@ -96,8 +96,9 @@ enum gcpm_dc_state_t {
 #define PPS_PROG_TIMEOUT_S	10
 #define PPS_PROG_RETRY_MS	2000
 #define PPS_ACTIVE_RETRY_MS	1500
-#define PPS_ACTIVE_TIMEOUT_S	25
-#define PPS_READY_TIMEOUT_S	(PPS_ACTIVE_TIMEOUT_S + 10)
+#define PPS_ACTIVE_USB_TIMEOUT_S	25
+#define PPS_ACTIVE_WLC_TIMEOUT_S	500
+#define PPS_READY_DELTA_TIMEOUT_S	10
 
 #define PPS_ERROR_RETRY_MS	1000
 
@@ -859,6 +860,14 @@ static int gcpm_pps_work(struct gcpm_drv *gcpm)
 	return ret;
 }
 
+static int gcpm_pps_timeout(struct gcpm_drv *gcpm)
+{
+	struct pd_pps_data *wlc_pps_data = &gcpm->wlc_pps_data;
+
+	return (wlc_pps_data->stage != PPS_NOTSUPP && wlc_pps_data->pd_online)
+		? PPS_ACTIVE_WLC_TIMEOUT_S : PPS_ACTIVE_USB_TIMEOUT_S;
+}
+
 static int gcpm_pps_offline(struct gcpm_drv *gcpm)
 {
 	int ret;
@@ -1386,12 +1395,17 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	 */
 	pps_data = gcpm_pps_data(gcpm);
 	if (!pps_data) {
-		if (elap < PPS_ACTIVE_TIMEOUT_S) {
-			/* give more time to turn online  */
+		int timeout_s = gcpm_pps_timeout(gcpm);
+
+		if (elap < timeout_s) {
+			/*
+			 * WLC + Auth might require a very long time to become
+			 * active.
+			 */
 			pps_ui = PPS_ACTIVE_RETRY_MS;
 		} else {
-			pr_err("PPS_Work: ACTIVE timeout, elap=%lld dc_state=%d (%d)\n",
-			       elap, gcpm->dc_state, ret);
+			pr_err("PPS_Work: ACTIVE timeout=%d, elap=%lld dc_state=%d (%d)\n",
+			       timeout_s, elap, gcpm->dc_state, ret);
 
 			/* TODO: abort for the session  */
 			pps_ui = PPS_ERROR_RETRY_MS;
@@ -1402,16 +1416,17 @@ static void gcpm_pps_wlc_dc_work(struct work_struct *work)
 	}
 
 	if (gcpm->dc_state == DC_ENABLE_PASSTHROUGH) {
+		int timeout_s = gcpm_pps_timeout(gcpm) + PPS_READY_DELTA_TIMEOUT_S;
 		int index;
 
 		/* Also ping the source */
 		pps_ui = gcpm_pps_wait_for_ready(gcpm);
 		if (pps_ui < 0) {
-			pr_info("PPS_Work: wait for source elap=%lld, dc_state=%d (%d)\n",
-				elap, gcpm->dc_state, pps_ui);
+			pr_info("PPS_Work: wait for source timeout=%d elap=%lld, dc_state=%d (%d)\n",
+				timeout_s, elap, gcpm->dc_state, pps_ui);
 			if (pps_ui != -EAGAIN)
 				gcpm->dc_index = GCPM_DEFAULT_CHARGER;
-			if (elap > PPS_READY_TIMEOUT_S)
+			if (elap > timeout_s)
 				gcpm->dc_index = GCPM_DEFAULT_CHARGER;
 
 			/* error retry */

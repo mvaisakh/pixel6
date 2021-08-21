@@ -767,6 +767,7 @@ int pps_work(struct pd_pps_data *pps, struct power_supply *pps_psy)
 			return PD_T_PPS_TIMEOUT;
 		case -EAGAIN:
 			pps_log(pps, "work: not in SNK_READY, rerun");
+			pps->pd_online = pd_online;
 			return rc;
 		case -EOPNOTSUPP:
 			pps->stage = PPS_NOTSUPP;
