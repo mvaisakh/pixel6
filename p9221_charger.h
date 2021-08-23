@@ -73,6 +73,7 @@
 #define P9XXX_NEG_POWER_11W		(11 / 0.5)
 #define P9382_RTX_TIMEOUT_MS		(2 * 1000)
 #define WLCDC_DEBOUNCE_TIME_S		400
+#define WLCDC_AUTH_CHECK_MS		(5 * 1000)
 /*
  * P9221 common registers
  */
@@ -835,4 +836,6 @@ enum p9382_rtx_err {
       -ENOTSUPP : chgr->reg_write_n(chgr, chgr->reg_set_fod_addr, data, len))
 #define p9xxx_chip_get_fod_reg(chgr, data, len) (chgr->reg_set_fod_addr == 0 ? \
       -ENOTSUPP : chgr->reg_read_n(chgr, chgr->reg_set_fod_addr, data, len))
+
+
 #endif /* __P9221_CHARGER_H__ */
