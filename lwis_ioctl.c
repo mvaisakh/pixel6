@@ -986,12 +986,12 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 	ret = lwis_transaction_submit_locked(client, k_transaction);
 	if (ret) {
 		k_transaction->info.id = LWIS_ID_INVALID;
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
 			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
 		free_transaction(k_transaction);
-		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		return ret;
 	}
 
@@ -1023,12 +1023,12 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 	ret = lwis_transaction_replace_locked(client, k_transaction);
 	if (ret) {
 		k_transaction->info.id = LWIS_ID_INVALID;
+		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		if (copy_to_user((void __user *)msg, &k_transaction->info,
 				 sizeof(struct lwis_transaction_info))) {
 			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
 		free_transaction(k_transaction);
-		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		return ret;
 	}
 
