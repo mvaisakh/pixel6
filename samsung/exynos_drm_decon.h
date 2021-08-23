@@ -563,7 +563,7 @@ static inline void decon_trigger_recovery(struct decon_device *decon)
 	struct exynos_recovery *recovery = &decon->recovery;
 
 	atomic_inc(&recovery->recovering);
-	kthread_queue_work(&decon->worker, &recovery->work);
+	queue_work(system_highpri_wq, &recovery->work);
 }
 
 #endif /* __EXYNOS_DRM_DECON_H__ */

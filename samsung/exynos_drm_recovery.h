@@ -19,7 +19,7 @@
 
 struct decon_device;
 struct exynos_recovery {
-	struct kthread_work work;
+	struct work_struct work;
 	int count;
 	atomic_t recovering;
 };

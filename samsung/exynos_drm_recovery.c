@@ -28,7 +28,7 @@
 #include "exynos_drm_decon.h"
 #include "exynos_drm_recovery.h"
 
-static void exynos_recovery_handler(struct kthread_work *work)
+static void exynos_recovery_handler(struct work_struct *work)
 {
 	struct exynos_recovery *recovery = container_of(work,
 					struct exynos_recovery, work);
@@ -45,7 +45,7 @@ static void exynos_recovery_handler(struct kthread_work *work)
 	struct drm_plane_state *plane_state;
 	int ret, i;
 
-	pr_debug("starting recovery...\n");
+	pr_info("starting recovery...\n");
 
 	drm_modeset_acquire_init(&ctx, 0);
 
@@ -108,7 +108,7 @@ retry:
 		goto out;
 
 	recovery->count++;
-	pr_debug("recovery is successfully finished(%d)\n", recovery->count);
+	pr_info("recovery is successfully finished(%d)\n", recovery->count);
 
 out:
 	if (ret == -EDEADLK) {
@@ -132,7 +132,7 @@ void exynos_recovery_register(struct decon_device *decon)
 {
 	struct exynos_recovery *recovery = &decon->recovery;
 
-	kthread_init_work(&recovery->work, exynos_recovery_handler);
+	INIT_WORK(&recovery->work, exynos_recovery_handler);
 	recovery->count = 0;
 	atomic_set(&recovery->recovering, 0);
 
