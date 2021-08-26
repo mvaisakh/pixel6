@@ -427,9 +427,22 @@ static int sec_ts_read_internal(struct sec_ts_data *ts, u8 reg,
 
 				ret = -EIO;
 
-				input_err(true, &ts->client->dev,
-					  "%s: retry %d for 0x%02X size(%d) delay(%d)\n",
-					  __func__, retry + 1, reg, len, spi_delay_us);
+				/*
+				 * For LP idle state from AOD to normal screen-on,
+				 * T-IC needs one SPI cmds to wake-up.
+				 * Therefore, change the log level to warning
+				 * for this intended behavir.
+				 */
+				if (!completion_done(&ts->bus_resumed) &&
+					reg == SEC_TS_CMD_CHG_SYSMODE) {
+					dev_warn(&ts->client->dev,
+						"%s: wake-up touch(#%d) by 0x%02X cmd delay_us(%d)\n",
+						__func__, retry + 1, reg, spi_delay_us);
+				} else {
+					input_err(true, &ts->client->dev,
+						"%s: retry %d for 0x%02X size(%d) delay_us(%d)\n",
+						__func__, retry + 1, reg, len, spi_delay_us);
+				}
 				ts->comm_err_count++;
 
 				usleep_range(1 * 1000, 1 * 1000);
@@ -5411,44 +5424,57 @@ static void sec_ts_resume_work(struct work_struct *work)
 	ret = ts->sec_ts_read(ts, SEC_TS_CMD_CHG_SYSMODE, touch_mode,
 			       sizeof(touch_mode));
 	if (ret < 0) {
+		input_err(true, &ts->client->dev,
+			"%s: read touch mode failed(%d)\n",
+			__func__, ret);
 		ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
 		if (ret < 0) {
 			input_err(true, &ts->client->dev,
 				  "%s: reset failed! ret %d\n", __func__, ret);
 		}
 	} else {
-		u8 power_mode = 0;
+		u8 power_mode = TO_TOUCH_MODE;
+		u8 state_manage_on = { STATE_MANAGE_ON };
 
-		input_info(true, &ts->client->dev, "%s: before resume: mode %#x, state %#x.",
-			   __func__, touch_mode[0], touch_mode[1]);
+		input_info(true, &ts->client->dev,
+			"%s: before resume: mode %#x, state %#x.\n",
+			__func__, touch_mode[0], touch_mode[1]);
 
-		if (touch_mode[0] == TOUCH_SYSTEM_MODE_LOWPOWER) {
-			ret = sec_ts_write(ts, SEC_TS_CMD_SET_POWER_MODE,
-					   &power_mode, sizeof(power_mode));
-			if (ret < 0) {
-				input_err(true, &ts->client->dev,
-					  "%s: set power mode failed(%d)\n",
-					  __func__, ret);
-			}
-			sec_ts_delay(50);
-			ret = ts->sec_ts_read(ts, SEC_TS_CMD_CHG_SYSMODE, touch_mode,
-					      sizeof(touch_mode));
-			if (ret < 0) {
-				input_err(true, &ts->client->dev,
-					  "%s: set read touch mode failed(%d)\n",
-					  __func__, ret);
-
-			} else {
-				input_info(true, &ts->client->dev,
-					   "%s: after resume: mode %#x, state %#x",
-					   __func__, touch_mode[0], touch_mode[1]);
-			}
-		} else {
+		/* Enable Normal scan. */
+		ret = sec_ts_write(ts, SEC_TS_CMD_SET_POWER_MODE,
+				   &power_mode, sizeof(power_mode));
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				  "%s: set power mode failed(%d)\n",
+				  __func__, ret);
 			ret = sec_ts_system_reset(ts, RESET_MODE_HW, false, false);
 			if (ret < 0) {
 				input_err(true, &ts->client->dev,
 					  "%s: reset failed! ret %d\n", __func__, ret);
 			}
+		} else {
+			/* Wait at least 50 ms for mode change. */
+			sec_ts_delay(50);
+		}
+
+		ret = ts->sec_ts_read(ts, SEC_TS_CMD_CHG_SYSMODE, touch_mode,
+				      sizeof(touch_mode));
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				  "%s: read touch mode failed(%d)\n",
+				  __func__, ret);
+		} else {
+			input_info(true, &ts->client->dev,
+				   "%s: after resume: mode %#x, state %#x.\n",
+				   __func__, touch_mode[0], touch_mode[1]);
+		}
+
+		ret = sec_ts_write(ts, SEC_TS_CMD_STATEMANAGE_ON, &state_manage_on,
+				sizeof(state_manage_on));
+		if (ret < 0) {
+			input_err(true, &ts->client->dev,
+				"%s: SEC_TS_CMD_STATEMANAGE_ON failed! ret %d\n",
+				__func__, ret);
 		}
 	}
 
