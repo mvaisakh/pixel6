@@ -4170,10 +4170,7 @@ static int p9382_set_rtx(struct p9221_charger_data *charger, bool enable)
 
 			ret = p9382_disable_dcin_en(charger, false);
 
-			if (charger->is_rtx_mode) {
-				pm_relax(charger->dev);
-				charger->is_rtx_mode = false;
-			}
+			charger->is_rtx_mode = false;
 			goto error;
 		}
 
@@ -4207,9 +4204,20 @@ error:
 done:
 	if (charger->rtx_reset_cnt == 0)
 		schedule_work(&charger->uevent_work);
-	if (enable == 0 &&
-	    charger->rtx_reset_cnt == 0)
+
+	if (enable && charger->is_rtx_mode && !charger->rtx_wakelock) {
+		pm_stay_awake(charger->dev);
+		charger->rtx_wakelock = true;
+	} else if (!enable && charger->rtx_wakelock) {
 		pm_relax(charger->dev);
+		charger->rtx_wakelock = false;
+	} else {
+		dev_info(&charger->client->dev, "%s RTx(%d), rtx_wakelock=%d\n",
+			 enable ? "enable" : "disable",
+			 charger->is_rtx_mode, charger->rtx_wakelock);
+	}
+	dev_dbg(&charger->client->dev, "%s RTx(%d), rtx_wakelock=%d\n",
+		enable ? "enable" : "disable", charger->is_rtx_mode, charger->rtx_wakelock);
 
 	mutex_unlock(&charger->rtx_lock);
 
@@ -4656,7 +4664,6 @@ static void rtx_irq_handler(struct p9221_charger_data *charger, u16 irq_src)
 		}
 		if (mode_reg == P9XXX_SYS_OP_MODE_TX_MODE) {
 			charger->is_rtx_mode = true;
-			pm_stay_awake(charger->dev);
 			cancel_delayed_work_sync(&charger->rtx_work);
 			schedule_delayed_work(&charger->rtx_work,
 				    msecs_to_jiffies(P9382_RTX_TIMEOUT_MS));
@@ -5629,6 +5636,7 @@ static int p9221_charger_probe(struct i2c_client *client,
 	charger->is_mfg_google = false;
 	charger->fw_rev = 0;
 	charger->chip_id = charger->pdata->chip_id;
+	charger->rtx_wakelock = false;
 	mutex_init(&charger->io_lock);
 	mutex_init(&charger->cmd_lock);
 	mutex_init(&charger->stats_lock);
