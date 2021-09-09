@@ -3474,9 +3474,6 @@ static int chg_set_fcc_charge_cntl_limit(struct thermal_cooling_device *tcd,
 		pr_info("MSC_THERM_FCC lvl=%d ret=%d fcc=%d disable=%d\n",
 			 tdev->current_level, ret, fcc, chg_disable);
 
-		ret = vote(chg_drv->msc_chg_disable_votable, THERMAL_DAEMON_VOTER,
-			   chg_disable, 0);
-
 		/* apply immediately */
 		reschedule_chg_work(chg_drv);
 	}
