@@ -472,26 +472,30 @@ static int ioctl_buffer_enroll(struct lwis_client *lwis_client, struct lwis_buff
 	}
 
 	if (copy_from_user((void *)&buffer->info, (void __user *)msg, sizeof(buffer->info))) {
+		ret = -EFAULT;
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n",
 			sizeof(buffer->info));
-		kfree(buffer);
-		return -EFAULT;
+		goto error_enroll;
 	}
 
 	ret = lwis_buffer_enroll(lwis_client, buffer);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to enroll buffer\n");
-		kfree(buffer);
-		return ret;
+		goto error_enroll;
 	}
 
 	if (copy_to_user((void __user *)msg, (void *)&buffer->info, sizeof(buffer->info))) {
+		ret = -EFAULT;
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(buffer->info));
 		lwis_buffer_disenroll(lwis_client, buffer);
-		return -EFAULT;
+		goto error_enroll;
 	}
 
 	return 0;
+
+error_enroll:
+	kfree(buffer);
+	return ret;
 }
 
 static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,

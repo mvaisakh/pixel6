@@ -221,6 +221,7 @@ int lwis_slc_buffer_free(struct lwis_device *lwis_dev, int fd)
 	if (slc_pt->fd != fd) {
 		dev_warn(lwis_dev->dev, "Stale SLC buffer free for fd %d with ptid %d\n", fd,
 			 slc_pt->partition_id);
+		fput(fp);
 		return -EINVAL;
 	}
 

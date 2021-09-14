@@ -247,7 +247,7 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_
 	dma_buf_put(buffer->dma_buf);
 	/* Delete the node from the hash table */
 	list_del(&buffer->list_node);
-	if (list_empty(&buffer->enrollment_list->list)) {
+	if (!list_empty(&buffer->enrollment_list->list)) {
 		hash_del(&buffer->enrollment_list->node);
 	}
 	return 0;
