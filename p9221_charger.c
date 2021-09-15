@@ -623,18 +623,17 @@ static int feature_set_dc_icl(struct p9221_charger_data *charger, u32 ilim_ua)
 static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
-	const u64 session_features = chg_fts->session_features;
 	int ret = 0;
 
 	pr_debug("%s: enable=%d chip_id=%x\n", __func__, enable,
 		 charger->pdata->chip_id);
 
-	if (charger->pdata->chip_id != P9412_CHIP_ID)
-		return -EINVAL;
-
 	/* wc_vol =12V & wc_cur = 1.27A */
 	if (enable && !(chg_fts->session_features & WLCF_CHARGE_15W)) {
 		const u32 vout_mv = P9221_UV_TO_MV(CHARGE_15W_VOUT_UV);
+
+		if (charger->pdata->chip_id != P9412_CHIP_ID)
+			return -ENOTSUPP;
 
 		ret = charger->chip_set_vout_max(charger, vout_mv);
 		if (ret == 0)
@@ -643,46 +642,57 @@ static int feature_15w_enable(struct p9221_charger_data *charger, bool enable)
 			ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true,
 				   CHARGE_15W_ILIM_UA);
 
-		chg_fts->session_features |= WLCF_CHARGE_15W;
 	} else if (!enable && (chg_fts->session_features & WLCF_CHARGE_15W)) {
 		int ocp_icl;
 
+		/* not support disable while online (maybe todo) */
+		if (charger->online)
+			return -EINVAL;
+
+		/* WLCF_CHARGE_15W is not not set on !P9412_CHIP_ID */
 		ocp_icl = (charger->dc_icl_epp > 0) ?
 			   charger->dc_icl_epp : P9221_DC_ICL_EPP_UA;
 		ret = vote(charger->dc_icl_votable, P9221_OCP_VOTER, true, ocp_icl);
-		chg_fts->session_features &= ~WLCF_CHARGE_15W;
 	}
-
-	pr_debug("%s: sessione_features:%llx->%llx ret=%d\n", __func__,
-		 session_features, chg_fts->session_features, ret);
 
 	return ret;
 }
+
+#define FEAT_SESSION_SUPPORTED \
+	(WLCF_DREAM_DEFEND | WLCF_DREAM_ALIGN | WLCF_FAST_CHARGE | WLCF_CHARGE_15W)
 
 /* handle the session properties here */
 static int feature_update_session(struct p9221_charger_data *charger, u64 ft)
 {
 	struct p9221_charger_feature *chg_fts = &charger->chg_features;
-	int ret = 0;
+	u64 session_features;
+	int ret;
 
 	mutex_lock(&chg_fts->feat_lock);
+	session_features = chg_fts->session_features;
 
 	pr_debug("%s: ft=%llx", __func__, ft);
 
-	if (ft & WLCF_CHARGE_15W) {
-		ret = feature_15w_enable(charger, true);
-	} else if (chg_fts->session_features & WLCF_CHARGE_15W) {
-		/* not support disable 15W while online (maybe todo) */
-		if (charger->online)
-			dev_warn(&charger->client->dev, "Cannot disable 15W while online\n");
-		else
-			feature_15w_enable(charger, false);
+	/* change the valid (and add code if needed) */
+	if (ft & ~FEAT_SESSION_SUPPORTED)
+		dev_warn(charger->dev, "unsupported features ft=%llx\n", ft);
 
+	if (ft & WLCF_DREAM_DEFEND)
+		chg_fts->session_features |= WLCF_DREAM_DEFEND;
+	else
+		chg_fts->session_features &= ~WLCF_DREAM_DEFEND;
+
+	if (ft & WLCF_DREAM_ALIGN) {
+		chg_fts->session_features |= WLCF_DREAM_ALIGN;
+	} else if (chg_fts->session_features & WLCF_DREAM_ALIGN) {
+		/* TODO: kill aligmnent aid? */
+		chg_fts->session_features &= ~WLCF_DREAM_ALIGN;
 	}
 
 	if (ft & WLCF_FAST_CHARGE) {
 		chg_fts->session_features |= WLCF_FAST_CHARGE;
 	} else if (chg_fts->session_features & WLCF_FAST_CHARGE) {
+
 		/* TODO: support disable while online */
 		if (charger->online) {
 			dev_warn(&charger->client->dev, "Cannot disable FAST_CHARGE while online\n");
@@ -691,6 +701,31 @@ static int feature_update_session(struct p9221_charger_data *charger, u64 ft)
 			charger->icl_ramp_alt_ua = 0;
 		}
 	}
+
+	/* this might fail in interesting ways */
+	ret = feature_15w_enable(charger, ft & WLCF_CHARGE_15W);
+	if (ret < 0) {
+		const bool enable = (ft & WLCF_CHARGE_15W) != 0;
+
+		dev_warn(&charger->client->dev, "error on feat 15W ena=%d ret=%d\n",
+			 enable, ret);
+
+		/*
+		 * -EINVAL, -ENOTSUPP or an I/O error.
+		 * TODO report the failure in the session_features
+		 */
+
+	} else if (ft & WLCF_CHARGE_15W) {
+		chg_fts->session_features |= WLCF_CHARGE_15W;
+	} else {
+		chg_fts->session_features &= ~WLCF_CHARGE_15W;
+	}
+
+	/* warn when a feature doesn't have a rule and align session_features */
+	if (session_features != ft)
+		logbuffer_log(charger->log, "session features %llx->%llx [%llx]\n",
+			      session_features, ft, chg_fts->session_features);
+	chg_fts->session_features = ft;
 
 	mutex_unlock(&chg_fts->feat_lock);
 	return 0;
@@ -1348,11 +1383,8 @@ static bool p9221_check_feature(struct p9221_charger_data *charger, u64 ft)
 	if (supported)
 		return true;
 
-	if (!supported && !feat_compat_mode) {
-		pr_debug("%s: tx_id=%x, ft=%llx compat=%d not supported\n",
-			 __func__, tx_id, ft, feat_compat_mode);
+	if (!supported && !feat_compat_mode)
 		return false;
-	}
 
 	/* compat mode until the features API is usedm check txid */
 	val = (tx_id & TXID_TYPE_MASK) >> TXID_TYPE_SHIFT;
@@ -3666,7 +3698,10 @@ static ssize_t features_store(struct device *dev,
 		 * TODO: possibly clear the cache as well.
 		 * NOTE: Protect this with a lock.
 		 */
-		charger->pdata->feat_compat_mode = false;
+		if (charger->pdata->feat_compat_mode) {
+			dev_info(charger->dev, "compat mode off\n");
+			charger->pdata->feat_compat_mode = false;
+		}
 	} else {
 		ret = feature_update_session(charger, ft);
 		if (ret < 0)
