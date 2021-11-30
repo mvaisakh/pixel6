@@ -19,6 +19,9 @@
 # <<Broadcom-WL-IPTag/Open:>>
 #
 
+menuconfig WLAN_BCM4389
+	tristate "BCM4389 WiFi Chip support"
+
 config BCMDHD
 	tristate "Broadcom FullMAC wireless cards support"
 	---help---

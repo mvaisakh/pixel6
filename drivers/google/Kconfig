@@ -1,0 +1,19 @@
+# Include all driver sources
+menuconfig GOOGLE_DRIVERS
+    tristate "Google Drivers"
+
+source "drivers/google/amplifiers/audiometrics/Kconfig"
+source "drivers/google/amplifiers/cs40l25/Kconfig"
+source "drivers/google/bms/Kconfig"
+source "drivers/google/display/samsung/Kconfig"
+source "drivers/google/edgetpu/drivers/edgetpu/Kconfig"
+source "drivers/google/gpu/mali_kbase/Kconfig"
+source "drivers/google/gpu/mali_pixel/Kconfig"
+source "drivers/google/lwis/Kconfig"
+source "drivers/google/nfc/Kconfig"
+source "drivers/google/power/reset/Kconfig"
+source "drivers/google/touch/common/Kconfig"
+source "drivers/google/touch/fts/ftm5/Kconfig"
+source "drivers/google/touch/sec_ts/Kconfig"
+source "drivers/google/wlan/bcm4389/Kconfig"
+source "drivers/google/wlan/bcm43752/Kconfig"
