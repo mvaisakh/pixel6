@@ -24,7 +24,7 @@ menuconfig WLAN_BCM4389
 
 config BCMDHD
 	tristate "Broadcom FullMAC wireless cards support"
-	---help---
+	help
 	  This module adds support for wireless adapters based on
 	  Broadcom FullMAC chipset.
 
@@ -93,34 +93,34 @@ config BCMDHD_FW_PATH
 	depends on BCMDHD
 	string "Firmware path"
 	default "/vendor/etc/wifi/fw_bcmdhd.bin"
-	---help---
+	help
 	  Path to the firmware file.
 
 config BCMDHD_NVRAM_PATH
 	depends on BCMDHD
 	string "NVRAM path"
 	default "/vendor/etc/wifi/bcmdhd.cal"
-	---help---
+	help
 	  Path to the calibration file.
 
 config BCMDHD_CLM_PATH
 	depends on BCMDHD
 	string "CLM path"
 	default "/vendor/etc/wifi/bcmdhd_clm.blob"
-	---help---
+	help
 	  Path to the clm file.
 
 config BCMDHD_MAP_PATH
 	depends on BCMDHD
 	string "MAP path"
 	default "/vendor/etc/wifi/fw_bcmdhd.map"
-	---help---
+	help
 	  Path to the map file.
 
 config BROADCOM_WIFI_RESERVED_MEM
 	bool "BROADCOM Reserved memory for wifi device"
 	depends on BCMDHD
-	---help---
+	help
 	  This is a configuration for Broadcom WLAN driver.
 
 config BCMDHD_WEXT
@@ -135,28 +135,28 @@ config DHD_USE_STATIC_BUF
 	bool "Enable memory preallocation"
 	depends on BCMDHD
 	default n
-	---help---
+	help
 	  Use memory preallocated in platform
 
 config DHD_USE_SCHED_SCAN
 	bool "Use CFG80211 sched scan"
 	depends on BCMDHD && CFG80211
 	default n
-	---help---
+	help
 	  Use CFG80211 sched scan
 
 config DHD_SET_RANDOM_MAC_VAL
 	hex "Vendor OUI"
 	depends on BCMDHD
 	default 0x001A11
-	---help---
+	help
 	  Set vendor OUI for SoftAP
 
 config WLAN_REGION_CODE
 	int "---Region codes for Broadcom WiFi Driver"
 	depends on BCMDHD
 	default 100
-	---help---
+	help
 		This is a region code for Broadcom Wi-Fi featured functions.
 		- 100 : EUR OPEN
 		- 101 : EUR ORG
@@ -170,38 +170,38 @@ config WLAIBSS
 	bool "Advanced IBSS mode"
 	depends on (BCM4335 || BCM4339 || BCM4354 || BCM4358 || BCM4359 || BCM4361 || BCM4362)
 	default y
-	---help---
+	help
 	  This is a configuration for Oxygen Network.
 
 config WL_RELMCAST
 	bool "Reliable Multicast Support"
 	depends on (BCM4335 || BCM4339 || BCM4354 || BCM4358 || BCM4359 || BCM4361 || BCM4362)
 	default y
-	---help---
+	help
 	  This is a configuration for RMC.
 
 config WL_NAN
 	bool "NAN Feature"
 	depends on BCMDHD
 	default n
-	---help---
+	help
 	  This is a configuration for NAN Feature.
 
 config BCMDHD_PREALLOC_MEMDUMP
 	bool "BROADCOM PCIE specific memory reserved for MEMDUMP"
 	depends on BROADCOM_WIFI_RESERVED_MEM
-	---help---
+	help
 	  Preallocated memory support for dongle memory dump
 
 config BCMDHD_OOB_HOST_WAKE
         bool "Use the external WLAN_HOST_WAKE pin"
         depends on BCMDHD
-        ---help---
+        help
           Use the external GPIO pin to wake up host
 
 config BCMDHD_GET_OOB_STATE
         bool "Support WLAN_HOST_WAKE pin level information"
         depends on BCMDHD_OOB_HOST_WAKE
         default y
-        ---help---
+        help
           Support WLAN_HOST_WAKE pin level information
