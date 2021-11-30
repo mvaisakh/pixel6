@@ -1,3 +1,6 @@
+menuconfig GOOGLE_TS_COMMON
+	tristate "Google Common Touchscreen Driver"
+
 config TOUCHSCREEN_HEATMAP
 	tristate "Heatmap support for touchscreen"
 	depends on (TOUCHSCREEN_FTS || TOUCHSCREEN_SEC_TS)

@@ -240,4 +240,7 @@ source "drivers/most/Kconfig"
 
 source "drivers/bts/Kconfig"
 
+# Include Google Drivers
+source "drivers/google/Kconfig"
+
 endmenu
