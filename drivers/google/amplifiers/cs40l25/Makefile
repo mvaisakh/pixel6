@@ -10,8 +10,8 @@ obj-$(CONFIG_SND_SOC_CS40L2X)	+= snd_soc_cs40l2x.o
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
-CUSTOM_INCLUDE ?= -I$(shell pwd)/include/
-
+CUSTOM_INCLUDE := -I$(srctree)/drivers/google/amplifiers/cs40l25/include/
+ccflags-y += $(CUSTOM_INCLUDE)
 KBUILD_OPTIONS += CONFIG_HAPTICS_CS40L2X=m \
 		  CONFIG_SND_SOC_CS40L2X=m \
 		  ccflags-y='$(CUSTOM_INCLUDE)'
