@@ -47,7 +47,7 @@ config MALI_REAL_HW
 	def_bool !MALI_NO_MALI
 
 menu "Platform specific options"
-source "drivers/gpu/arm/midgard/platform/Kconfig"
+source "drivers/google/gpu/mali_kbase/platform/Kconfig"
 endmenu
 
 config MALI_CSF_SUPPORT
@@ -374,9 +374,9 @@ config MALI_ARBITRATION
 	  If unsure, say N.
 
 if MALI_ARBITRATION
-source "drivers/gpu/arm/midgard/arbitration/Kconfig"
+source "drivers/google/gpu/mali_kbase/arbitration/Kconfig"
 endif
 
-source "drivers/gpu/arm/midgard/tests/Kconfig"
+source "drivers/google/gpu/mali_kbase/tests/Kconfig"
 
 endif
