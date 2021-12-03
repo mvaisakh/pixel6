@@ -24,6 +24,9 @@
 # and BCMDHD_ROOT is passed as KBUILD_OPTIONS for out-of-tree Makefile
 BCMDHD_ROOT=$(srctree)/$(src)
 
+# Workaround for Bare-metal compilers
+DHDCFLAGS += -D__linux__ -D__KERNEL__
+
 #####################
 # SDIO/PCIe Basic feature
 #####################

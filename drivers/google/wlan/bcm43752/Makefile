@@ -21,6 +21,10 @@
 #
 
 BCMDHD_ROOT=$(srctree)/$(src)
+
+# Workaround for Bare-metal compilers
+DHDCFLAGS += -D__linux__ -D__KERNEL__
+
 #####################
 # SDIO/PCIE Basic feature
 #####################
