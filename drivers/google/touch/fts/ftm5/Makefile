@@ -1,19 +1,16 @@
-KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
-M ?= $(shell pwd)
+# FTM5 support
+obj-$(CONFIG_TOUCHSCREEN_FTS)	+= ftm5.o
+ftm5-objs = fts.o fts_proc.o
+ftm5-objs += \
+	fts_lib/ftsCompensation.o fts_lib/ftsCore.o fts_lib/ftsError.o \
+	fts_lib/ftsFrame.o fts_lib/ftsIO.o fts_lib/ftsTest.o fts_lib/ftsTime.o \
+	fts_lib/ftsTool.o fts_lib/ftsFlash.o fts_lib/ftsGesture.o
 
 KBUILD_OPTIONS	+= CONFIG_TOUCHSCREEN_FTS=m
 EXTRA_CFLAGS	+= -DDYNAMIC_DEBUG_MODULE
 EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_TBN
 EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_HEATMAP
 EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_OFFLOAD
-EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/display
-EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/touch/common
-EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/touch/common/include
-EXTRA_SYMBOLS	+= $(OUT_DIR)/../google-modules/touch/common/Module.symvers
-
-modules modules_install clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) \
-	$(KBUILD_OPTIONS) \
-	EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
-	KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" \
-	$(@)
+EXTRA_CFLAGS	+= -I$(srctree)/drivers/google/display
+EXTRA_CFLAGS	+= -I$(srctree)/drivers/google/touch/common
+EXTRA_CFLAGS	+= -I$(srctree)/drivers/google/touch/common/include
