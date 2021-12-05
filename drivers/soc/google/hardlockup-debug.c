@@ -380,8 +380,10 @@ static int hardlockup_debugger_probe(struct platform_device *pdev)
 
 	register_pm_notifier(&hardlockup_debugger_pm_nb);
 
+#ifdef CONFIG_TRACING
 	WARN_ON(register_trace_android_vh_cpu_idle_exit(
 				vh_bug_on_wdt_fiq_pending, NULL));
+#endif
 
 	dev_info(&pdev->dev,
 			"Initialized hardlockup debug dump successfully.\n");

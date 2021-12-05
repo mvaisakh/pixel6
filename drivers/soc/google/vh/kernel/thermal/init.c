@@ -17,6 +17,7 @@ extern void vh_thermal_pm_notify_suspend(void *data, struct thermal_zone_device 
 static int vh_thermal_init(void)
 {
 	int ret = 0;
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_vh_enable_thermal_genl_check(
 						vh_enable_thermal_genl_check, NULL);
 	if (ret)
@@ -24,6 +25,7 @@ static int vh_thermal_init(void)
 
 	ret =  register_trace_android_vh_thermal_pm_notify_suspend(
 						vh_thermal_pm_notify_suspend, NULL);
+#endif
 	return ret;
 }
 

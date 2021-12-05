@@ -29,6 +29,7 @@ static int vh_long_preemptirq_init(void)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_rvh_irqs_disable(note_irq_disable, NULL);
 	if (ret)
 		return ret;
@@ -48,6 +49,7 @@ static int vh_long_preemptirq_init(void)
 	ret = register_trace_sched_switch(note_context_switch, NULL);
 	if (ret)
 		return ret;
+#endif
 
 	return ret;
 }

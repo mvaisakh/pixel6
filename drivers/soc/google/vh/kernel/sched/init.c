@@ -56,6 +56,7 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_rvh_find_energy_efficient_cpu(
 						rvh_find_energy_efficient_cpu_pixel_mod, NULL);
 	if (ret)
@@ -109,9 +110,6 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
-	ret = cpufreq_register_governor(&sched_pixel_gov);
-	if (ret)
-		return ret;
 
 	ret = register_trace_android_rvh_sched_fork(rvh_sched_fork_pixel_mod, NULL);
 	if (ret)
@@ -120,6 +118,11 @@ static int vh_sched_init(void)
 	// Disable TTWU_QUEUE.
 	sysctl_sched_features &= ~(1UL << __SCHED_FEAT_TTWU_QUEUE);
 	static_key_disable(&sched_feat_keys[__SCHED_FEAT_TTWU_QUEUE]);
+#endif
+
+	ret = cpufreq_register_governor(&sched_pixel_gov);
+	if (ret)
+		return ret;
 
 	return 0;
 }

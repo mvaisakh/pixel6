@@ -26,8 +26,13 @@ static void vh_of_i2c_get_board_info_mod(void *data, struct device_node *node,
 
 static int vh_i2c_init(void)
 {
-	return register_trace_android_vh_of_i2c_get_board_info(vh_of_i2c_get_board_info_mod,
+#ifdef CONFIG_TRACING
+	int ret;
+
+	ret = register_trace_android_vh_of_i2c_get_board_info(vh_of_i2c_get_board_info_mod,
 								NULL);
+#endif
+	return 0;
 }
 
 module_init(vh_i2c_init);

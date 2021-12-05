@@ -15,12 +15,14 @@ extern void rvh_cgroup_force_kthread_migration_pixel_mod(void *data, struct task
 
 static int vh_cgroup_init(void)
 {
+#ifdef CONFIG_TRACING
 	int ret;
 
 	ret = register_trace_android_rvh_cgroup_force_kthread_migration(
 		rvh_cgroup_force_kthread_migration_pixel_mod, NULL);
 	if (ret)
 		return ret;
+#endif
 
 	return 0;
 }
