@@ -4048,12 +4048,14 @@ static int exynos_pcie_rc_probe(struct platform_device *pdev)
 
 	if (!is_vhook_registered) {
 		dev_info(&pdev->dev, "register PCI sleep hook\n");
+#ifdef CONFIG_TRACING
 		ret = register_trace_android_rvh_pci_d3_sleep(exynos_d3_sleep_hook,
 							      NULL);
 		if (ret) {
 			dev_err(&pdev->dev, "PCI sleep hook failed\n");
 			return ret;
 		}
+#endif
 		is_vhook_registered = true;
 	}
 
