@@ -1294,6 +1294,7 @@ static int __init gbms_storage_init(void)
 	if (has_bee)
 		schedule_delayed_work(&bee_work, msecs_to_jiffies(0));
 
+#ifdef CONFIG_DEBUG_FS
 	rootdir = debugfs_create_dir("gbms_storage", NULL);
 	if (IS_ERR_OR_NULL(rootdir))
 		return 0;
@@ -1306,6 +1307,7 @@ static int __init gbms_storage_init(void)
 			    &gbms_providers_offline_ops);
 	debugfs_create_file("export", S_IFREG | 0200, rootdir, NULL,
 			    &gbms_providers_export_ops);
+#endif
 
 	return 0;
 }
