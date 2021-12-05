@@ -35,7 +35,9 @@ obj-$(CONFIG_EXYNOS_BCM_DBG_DUMP)	+= exynos-bcm_dbg-dump.o
 # CPIF
 obj-$(CONFIG_EXYNOS_MODEM_IF) += cpif/
 
+ifeq ($(CONFIG_TRACING),y)
 obj-y				    	+= debug/
+endif
 
 # Emerald Hill
 obj-$(CONFIG_GOOGLE_EH) += eh/
