@@ -1440,10 +1440,12 @@ static int exynos_cpupm_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_vh_cpu_idle_enter(vendor_hook_cpu_idle_enter, NULL);
 	WARN_ON(ret);
 	ret = register_trace_android_vh_cpu_idle_exit(vendor_hook_cpu_idle_exit, NULL);
 	WARN_ON(ret);
+#endif
 
 	cpupm_init_time = ktime_get();
 

@@ -47,7 +47,7 @@ void test_irq_disable_long(void *u1, unsigned long u2, unsigned long u3)
 
 	this_cpu_write(irq_disabled_ts, 0);
 	ts = sched_clock() - ts;
-
+#ifdef CONFIG_TRACING
 	if (ts > sysctl_irqsoff_tracing_threshold_ns) {
 		trace_irq_disable_long(ts);
 
@@ -56,6 +56,7 @@ void test_irq_disable_long(void *u1, unsigned long u2, unsigned long u3)
 					ts, CALLER_ADDR2, CALLER_ADDR3,
 					CALLER_ADDR4, CALLER_ADDR5);
 	}
+#endif
 
 	if (sysctl_irqsoff_crash_sentinel_value == IRQSOFF_SENTINEL &&
 			ts > sysctl_irqsoff_crash_threshold_ns) {

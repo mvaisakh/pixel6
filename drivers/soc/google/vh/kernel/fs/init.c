@@ -16,6 +16,7 @@ static int vh_fs_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_vh_ep_create_wakeup_source(vh_ep_create_wakeup_source_mod,
 								NULL);
 	if (ret)
@@ -24,6 +25,7 @@ static int vh_fs_init(void)
 	ret = register_trace_android_vh_timerfd_create(vh_timerfd_create_mod, NULL);
 	if (ret)
 		return ret;
+#endif
 
 	return 0;
 }
