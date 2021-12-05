@@ -599,7 +599,7 @@ static int gpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	nd.data = gpufreq_cdev->gpufreq_state;
 
 	blocking_notifier_call_chain(&gpu_notifier, GPU_THROTTLING, &nd);
-	trace_vendor_cdev_update(cdev->type, gpufreq_cdev->sysfs_req, state);
+	trace_vendor_cdev_update_gpu(cdev->type, gpufreq_cdev->sysfs_req, state);
 	trace_clock_set_rate(cdev->type, gpufreq_cdev->sysfs_req, raw_smp_processor_id());
 
 	return 0;
@@ -696,8 +696,8 @@ static int gpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 	if (ret)
 		return ret;
 
-	if (trace_thermal_exynos_power_gpu_get_power_enabled())
-		trace_thermal_exynos_power_gpu_get_power(freq, load, dynamic_power, static_power);
+	if (trace_thermal_exynos_gpu_power_get_power_enabled())
+		trace_thermal_exynos_gpu_power_get_power(freq, load, dynamic_power, static_power);
 
 	*power = static_power + dynamic_power;
 
@@ -786,7 +786,7 @@ static int gpufreq_power2state(struct thermal_cooling_device *cdev,
 		return -EINVAL;
 	}
 
-	trace_thermal_exynos_power_gpu_limit(target_freq, *state, power);
+	trace_thermal_exynos_gpu_power_limit(target_freq, *state, power);
 	return 0;
 }
 

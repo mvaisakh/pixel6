@@ -7,7 +7,7 @@
 
 #include <linux/tracepoint.h>
 
-TRACE_EVENT(thermal_exynos_power_gpu_get_power,
+TRACE_EVENT(thermal_exynos_gpu_power_get_power,
 	TP_PROTO(unsigned long freq, u32 load, u32 dynamic_power, u32 static_power),
 
 	TP_ARGS(freq, load, dynamic_power, static_power),
@@ -30,7 +30,7 @@ TRACE_EVENT(thermal_exynos_power_gpu_get_power,
 		  __entry->freq, __entry->load, __entry->dynamic_power, __entry->static_power)
 );
 
-TRACE_EVENT(thermal_exynos_power_gpu_limit,
+TRACE_EVENT(thermal_exynos_gpu_power_limit,
 	TP_PROTO(unsigned int freq, unsigned long cdev_state, u32 power),
 
 	TP_ARGS(freq, cdev_state, power),
@@ -52,7 +52,7 @@ TRACE_EVENT(thermal_exynos_power_gpu_limit,
 		  __entry->power)
 );
 
-TRACE_EVENT(vendor_cdev_update,
+TRACE_EVENT(vendor_cdev_update_gpu,
 	TP_PROTO(const char *cdev_type, unsigned long sysfs_req, unsigned long state),
 
 	TP_ARGS(cdev_type, sysfs_req, state),
