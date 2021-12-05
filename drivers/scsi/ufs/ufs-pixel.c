@@ -1667,6 +1667,7 @@ int pixel_init(struct ufs_hba *hba)
 	memset(&ufs->ufs_stats, 0, sizeof(struct pixel_ufs_stats));
 	ufs->ufs_stats.hibern8_flag = false;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_vh_ufs_prepare_command(
 				pixel_ufs_prepare_command, NULL);
 	if (ret)
@@ -1701,6 +1702,8 @@ int pixel_init(struct ufs_hba *hba)
 				pixel_ufs_check_int_errors, NULL);
 	if (ret)
 		return ret;
+
+#endif
 
 	pixel_ufs_init_cmd_log(hba);
 
