@@ -1,0 +1,6 @@
+config NITROUS
+	tristate "Enable Broadcom Nitrous Bluetooth"
+	default n
+	help
+	   Enable Broadcom nitrous bluetooth build
+	   support.
