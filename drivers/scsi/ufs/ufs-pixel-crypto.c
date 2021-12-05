@@ -340,6 +340,7 @@ int pixel_ufs_crypto_init(struct ufs_hba *hba)
 	if (err)
 		return err;
 
+#ifdef CONFIG_TRACING
 	err = register_trace_android_vh_ufs_fill_prdt(
 				pixel_ufs_crypto_fill_prdt, NULL);
 	if (err)
@@ -349,6 +350,7 @@ int pixel_ufs_crypto_init(struct ufs_hba *hba)
 				pixel_ufs_crypto_restore_keys, NULL);
 	if (err)
 		return err;
+#endif
 
 	/* Advertise crypto support to ufshcd-core. */
 	hba->caps |= UFSHCD_CAP_CRYPTO;
