@@ -1623,6 +1623,7 @@ static int max77759_register_vendor_hooks(struct i2c_client *client)
 	if (hooks_installed)
 		return 0;
 
+#ifdef CONFIG_TRACING
 	ret = register_trace_android_vh_typec_tcpci_override_toggling(
 			max77759_typec_tcpci_override_toggling, NULL);
 
@@ -1671,6 +1672,7 @@ static int max77759_register_vendor_hooks(struct i2c_client *client)
 			"register_trace_android_vh_typec_tcpm_log failed ret:%d\n", ret);
 		return ret;
 	}
+#endif
 
 	hooks_installed = true;
 
