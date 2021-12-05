@@ -313,10 +313,10 @@ struct samsung_cmu_info {
 	const char *clk_name;
 };
 
-extern struct samsung_clk_provider *__init samsung_clk_init(
+extern struct samsung_clk_provider * samsung_clk_init(
 			struct device_node *np, void __iomem *base,
 			unsigned long nr_clks);
-extern void __init samsung_clk_of_add_provider(struct device_node *np,
+extern void samsung_clk_of_add_provider(struct device_node *np,
 			struct samsung_clk_provider *ctx);
 extern void __init samsung_clk_of_register_fixed_ext(
 			struct samsung_clk_provider *ctx,

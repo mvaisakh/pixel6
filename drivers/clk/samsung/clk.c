@@ -54,7 +54,7 @@ struct samsung_clk_reg_dump *samsung_clk_alloc_reg_dump(
 }
 
 /* setup the essentials required to support clock lookup using ccf */
-struct samsung_clk_provider *__init samsung_clk_init(struct device_node *np,
+struct samsung_clk_provider *samsung_clk_init(struct device_node *np,
 			void __iomem *base, unsigned long nr_clks)
 {
 	struct samsung_clk_provider *ctx;
@@ -74,7 +74,7 @@ struct samsung_clk_provider *__init samsung_clk_init(struct device_node *np,
 	return ctx;
 }
 
-void __init samsung_clk_of_add_provider(struct device_node *np,
+void samsung_clk_of_add_provider(struct device_node *np,
 				struct samsung_clk_provider *ctx)
 {
 	if (np) {
