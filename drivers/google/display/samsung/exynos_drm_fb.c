@@ -455,7 +455,7 @@ static void exynos_atomic_bts_post_update(struct drm_device *dev,
 static inline unsigned long fps_timeout(int fps)
 {
 	/* default to 60 fps, if fps is not provided */
-	const frame_time_ms = DIV_ROUND_UP(MSEC_PER_SEC, fps ? : 60);
+	const int frame_time_ms = DIV_ROUND_UP(MSEC_PER_SEC, fps ? : 60);
 
 	return msecs_to_jiffies(frame_time_ms) + TIMEOUT;
 }
