@@ -5723,20 +5723,6 @@ int fts_set_bus_ref(struct fts_ts_info *info, u16 ref, bool enable)
 	return result;
 }
 
-struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
-{
-	struct drm_connector *connector;
-	struct drm_connector_list_iter conn_iter;
-
-	drm_connector_list_iter_begin(bridge->dev, &conn_iter);
-	drm_for_each_connector_iter(connector, &conn_iter) {
-		if (connector->encoder == bridge->encoder)
-			break;
-	}
-	drm_connector_list_iter_end(&conn_iter);
-	return connector;
-}
-
 static bool bridge_is_lp_mode(struct drm_connector *connector)
 {
 	if (connector && connector->state) {

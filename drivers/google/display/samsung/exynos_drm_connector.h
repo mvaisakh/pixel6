@@ -211,4 +211,6 @@ crtc_get_exynos_connector_state(const struct drm_atomic_state *state,
 	return NULL;
 }
 
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge);
+
 #endif /* _EXYNOS_DRM_CONNECTOR_H_ */
