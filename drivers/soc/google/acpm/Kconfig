@@ -34,4 +34,9 @@ config ACPM_MBOX_TEST
 	help
 	  Enable ACPM_MBOX_TEST support
 
+config GS_ACPM_MODULE
+	tristate "GS ACPM Module support"
+	default n
+	help
+	   Enable GS_ACPM_MODULE support
 endif
