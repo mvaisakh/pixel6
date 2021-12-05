@@ -7,6 +7,7 @@ src := drivers/google/display/samsung
 
 ccflags-y := -I$(srctree)/$(src)/cal_common
 ccflags-y += -I$(srctree)/$(src)/../include
+ccflags-y += -D__linux__
 ccflags-$(CONFIG_SOC_GS101) += -I$(srctree)/$(src)/cal_9845
 exynos-drm-$(CONFIG_SOC_GS101) += cal_9845/decon_reg.o
 exynos-drm-$(CONFIG_SOC_GS101) += cal_9845/dsim_reg.o
