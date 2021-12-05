@@ -12,7 +12,7 @@
 
 #include <linux/tracepoint.h>
 
-TRACE_EVENT(tracing_mark_write,
+TRACE_EVENT(tracing_mark_write_ext,
 	TP_PROTO(char type, int pid, const char *name, int value),
 	TP_ARGS(type, pid, name, value),
 	TP_STRUCT__entry(
@@ -31,10 +31,10 @@ TRACE_EVENT(tracing_mark_write,
 		__entry->type, __entry->pid, __get_str(name), __entry->value)
 );
 
-#define DPU_ATRACE_INT_PID(name, value, pid) trace_tracing_mark_write('C', pid, name, value)
+#define DPU_ATRACE_INT_PID(name, value, pid) trace_tracing_mark_write_ext('C', pid, name, value)
 #define DPU_ATRACE_INT(name, value) DPU_ATRACE_INT_PID(name, value, current->tgid)
-#define DPU_ATRACE_BEGIN(name) trace_tracing_mark_write('B', current->tgid, name, 0)
-#define DPU_ATRACE_END(name) trace_tracing_mark_write('E', current->tgid, "", 0)
+#define DPU_ATRACE_BEGIN(name) trace_tracing_mark_write_ext('B', current->tgid, name, 0)
+#define DPU_ATRACE_END(name) trace_tracing_mark_write_ext('E', current->tgid, "", 0)
 
 #endif /* _DPU_TRACE_H_ */
 
