@@ -924,6 +924,7 @@ static int arm_memlat_mon_driver_probe(struct platform_device *pdev)
 	}
 
 	if (!hook_registered) {
+#ifdef CONFIG_TRACING
 		ret = register_trace_android_vh_cpu_idle_enter(
 				vendor_update_event_cpu_idle_enter, NULL);
 		if (ret) {
@@ -937,7 +938,7 @@ static int arm_memlat_mon_driver_probe(struct platform_device *pdev)
 			dev_err(dev, "Register exit vendor hook fail %d\n", ret);
 			return ret;
 		}
-
+#endif
 		hook_registered = true;
 	}
 
