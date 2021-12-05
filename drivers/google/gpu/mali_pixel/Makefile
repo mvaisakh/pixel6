@@ -6,15 +6,15 @@
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 
-KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=m
-KBUILD_OPTIONS += CONFIG_MALI_PRIORITY_CONTROL_MANAGER=m
+KBUILD_OPTIONS += CONFIG_MALI_MEMORY_GROUP_MANAGER=y
+KBUILD_OPTIONS += CONFIG_MALI_PRIORITY_CONTROL_MANAGER=y
 
 KBUILD_OPTIONS += $(KBUILD_EXTRA) # Extra config if any
 
 src:=$(if $(patsubst /%,,$(src)),$(srctree)/$(src),$(src))
 
-CONFIG_MALI_MEMORY_GROUP_MANAGER ?= m
-CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= m
+CONFIG_MALI_MEMORY_GROUP_MANAGER ?= y
+CONFIG_MALI_PRIORITY_CONTROL_MANAGER ?= y
 
 DEFINES += \
 	-DCONFIG_MALI_MEMORY_GROUP_MANAGER=$(CONFIG_MALI_MEMORY_GROUP_MANAGER) \
@@ -33,7 +33,7 @@ endif
 
 # Add kernel module target if any of our config options is enabled
 ifneq ($(mali_pixel-objs),)
-	obj-m += mali_pixel.o
+	obj-y += mali_pixel.o
 	mali_pixel-objs += mali_pixel_mod.o
 endif
 
