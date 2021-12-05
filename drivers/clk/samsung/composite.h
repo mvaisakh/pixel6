@@ -511,7 +511,7 @@ struct samsung_vclk {
 extern void samsung_register_vclk(struct samsung_clk_provider *ctx,
 		struct init_vclk *list, unsigned int nr_vclk);
 
-extern struct samsung_clk_provider *samsung_clk_init(
+extern struct samsung_clk_provider *samsung_clk_init_composite(
 			struct device_node *np, void __iomem *base,
 			unsigned long nr_clks);
 

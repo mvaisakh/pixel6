@@ -1525,7 +1525,7 @@ static int gs101_clock_probe(struct platform_device *pdev)
 		panic("%s: unable to determine soc\n", __func__);
 	}
 
-	gs101_clk_provider = samsung_clk_init(np, reg_base, CLK_NR_CLKS);
+	gs101_clk_provider = samsung_clk_init_composite(np, reg_base, CLK_NR_CLKS);
 	if (!gs101_clk_provider)
 		panic("%s: unable to allocate context.\n", __func__);
 

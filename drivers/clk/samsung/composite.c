@@ -35,42 +35,21 @@
 static DEFINE_SPINLOCK(lock);
 
 #ifdef CONFIG_PM_SLEEP
-void samsung_clk_save(void __iomem *base,
+extern void samsung_clk_save(void __iomem *base,
 				    struct samsung_clk_reg_dump *rd,
-				    unsigned int num_regs)
-{
-	for (; num_regs > 0; --num_regs, ++rd)
-		rd->value = readl(base + rd->offset);
-}
+				    unsigned int num_regs);
 
-void samsung_clk_restore(void __iomem *base,
+extern void samsung_clk_restore(void __iomem *base,
 				      const struct samsung_clk_reg_dump *rd,
-				      unsigned int num_regs)
-{
-	for (; num_regs > 0; --num_regs, ++rd)
-		writel(rd->value, base + rd->offset);
-}
+				      unsigned int num_regs);
 
-struct samsung_clk_reg_dump *samsung_clk_alloc_reg_dump(
+extern struct samsung_clk_reg_dump *samsung_clk_alloc_reg_dump(
 						const unsigned long *rdump,
-						unsigned long nr_rdump)
-{
-	struct samsung_clk_reg_dump *rd;
-	unsigned int i;
-
-	rd = kcalloc(nr_rdump, sizeof(*rd), GFP_KERNEL);
-	if (!rd)
-		return NULL;
-
-	for (i = 0; i < nr_rdump; ++i)
-		rd[i].offset = rdump[i];
-
-	return rd;
-}
+						unsigned long nr_rdump);
 #endif /* CONFIG_PM_SLEEP */
 
 /* setup the essentials required to support clock lookup using ccf */
-struct samsung_clk_provider *samsung_clk_init(struct device_node *np,
+struct samsung_clk_provider *samsung_clk_init_composite(struct device_node *np,
 			void __iomem *base, unsigned long nr_clks)
 {
 	struct samsung_clk_provider *ctx = NULL;
@@ -99,15 +78,8 @@ struct samsung_clk_provider *samsung_clk_init(struct device_node *np,
 	return ctx;
 }
 
-void samsung_clk_of_add_provider(struct device_node *np,
-				struct samsung_clk_provider *ctx)
-{
-	if (np) {
-		if (of_clk_add_provider(np, of_clk_src_onecell_get,
-					&ctx->clk_data))
-			panic("could not register clk provider\n");
-	}
-}
+extern void samsung_clk_of_add_provider(struct device_node *np,
+				struct samsung_clk_provider *ctx);
 
 /* add a clock instance to the clock lookup table used for dt based lookup */
 static void samsung_clk_add_lookup(struct samsung_clk_provider *ctx,
