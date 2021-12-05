@@ -9,6 +9,7 @@
  */
 
 #include <drm/drm_atomic_state_helper.h>
+#include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
