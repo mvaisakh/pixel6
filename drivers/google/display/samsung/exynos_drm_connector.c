@@ -270,3 +270,18 @@ int exynos_drm_connector_create_properties(struct drm_device *dev)
 
 	return exynos_drm_connector_create_hdr_formats_property(dev);
 }
+
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
+{
+        struct drm_connector *connector;
+        struct drm_connector_list_iter conn_iter;
+
+        drm_connector_list_iter_begin(bridge->dev, &conn_iter);
+        drm_for_each_connector_iter(connector, &conn_iter) {
+                if (connector->encoder == bridge->encoder)
+                        break;
+        }
+        drm_connector_list_iter_end(&conn_iter);
+        return connector;
+}
+EXPORT_SYMBOL(get_bridge_connector);
